@@ -15,6 +15,7 @@ const baseColumn = {
   Color: "#3B82F6",
   MaxTasks: null,
   SortOrder: 2,
+  IsDone: false,
 };
 
 describe("KanbanColumn", () => {
@@ -29,8 +30,8 @@ describe("KanbanColumn", () => {
       <KanbanColumn
         column={baseColumn}
         tasks={[
-          { Id: 1, Title: "T1", Priority: "medium", Status: "in-progress" },
-          { Id: 2, Title: "T2", Priority: "low", Status: "in-progress" },
+          { Id: 1, Title: "T1", Priority: "medium" },
+          { Id: 2, Title: "T2", Priority: "low" },
         ]}
       />,
     );
@@ -38,21 +39,19 @@ describe("KanbanColumn", () => {
     expect(screen.getByText("T2")).toBeInTheDocument();
   });
 
-  it("quick-add button opens input + submits on enter", async () => {
-    const onQuickAdd = vi.fn();
+  it("Add task button calls onRequestAddTask with the column", async () => {
+    const onRequest = vi.fn();
     wrap(
       <KanbanColumn
         column={baseColumn}
         tasks={[]}
-        onQuickAddTask={onQuickAdd}
+        onRequestAddTask={onRequest}
       />,
     );
     const user = userEvent.setup();
     await user.click(screen.getByTestId("quick-add-btn-10"));
-    const input = await screen.findByPlaceholderText(/Task title/i);
-    await user.type(input, "New task{Enter}");
-    expect(onQuickAdd).toHaveBeenCalledWith(
-      expect.objectContaining({ Title: "New task", Status: "in-progress" }),
+    expect(onRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ Id: 10, Title: "In Progress" }),
     );
   });
 
@@ -61,39 +60,32 @@ describe("KanbanColumn", () => {
       <KanbanColumn
         column={{ ...baseColumn, MaxTasks: 2 }}
         tasks={[
-          { Id: 1, Title: "T1", Priority: "medium", Status: "in-progress" },
-          { Id: 2, Title: "T2", Priority: "low", Status: "in-progress" },
+          { Id: 1, Title: "T1", Priority: "medium" },
+          { Id: 2, Title: "T2", Priority: "low" },
         ]}
       />,
     );
     expect(screen.getByText(/Column full/i)).toBeInTheDocument();
   });
 
-  it("hides quick-add when canCreate=false", () => {
+  it("hides the add-task button when canCreate=false", () => {
     wrap(
       <KanbanColumn column={baseColumn} tasks={[]} canCreate={false} />,
     );
     expect(screen.queryByTestId("quick-add-btn-10")).not.toBeInTheDocument();
   });
 
-  it("quick-add submit skipped when input empty", async () => {
-    const onQuickAdd = vi.fn();
+  it("disables add-task at capacity (no onRequestAddTask fired)", async () => {
+    const onRequest = vi.fn();
     wrap(
-      <KanbanColumn column={baseColumn} tasks={[]} onQuickAddTask={onQuickAdd} />,
+      <KanbanColumn
+        column={{ ...baseColumn, MaxTasks: 1 }}
+        tasks={[{ Id: 1, Title: "T1", Priority: "medium" }]}
+        onRequestAddTask={onRequest}
+      />,
     );
     const user = userEvent.setup();
     await user.click(screen.getByTestId("quick-add-btn-10"));
-    const input = await screen.findByPlaceholderText(/Task title/i);
-    await user.type(input, "{Enter}");
-    expect(onQuickAdd).not.toHaveBeenCalled();
-  });
-
-  it("Escape clears the quick-add input", async () => {
-    wrap(<KanbanColumn column={baseColumn} tasks={[]} />);
-    const user = userEvent.setup();
-    await user.click(screen.getByTestId("quick-add-btn-10"));
-    const input = await screen.findByPlaceholderText(/Task title/i);
-    await user.type(input, "Draft{Escape}");
-    expect(screen.queryByPlaceholderText(/Task title/i)).not.toBeInTheDocument();
+    expect(onRequest).not.toHaveBeenCalled();
   });
 });

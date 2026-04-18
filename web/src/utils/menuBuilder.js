@@ -60,13 +60,22 @@ export function menuPath(title) {
  *
  * Returns: [{ title, menuId, icon, permissions, submenus: [...] | null }]
  */
+// Menus that were retired when we moved kanban column management onto the
+// Task board itself. Filter them out of the sidebar even if the backend
+// tblMenu row is still present.
+const HIDDEN_MENU_IDS = new Set([6]); // 6 = "Kanban Columns"
+
 export function buildDynamicMenu(menuRights) {
   if (!menuRights || menuRights.length === 0) return [];
 
-  const parentMenus = menuRights.filter(
+  const visible = menuRights.filter(
+    (item) => !HIDDEN_MENU_IDS.has(item.menuid),
+  );
+
+  const parentMenus = visible.filter(
     (item) => item.parentid === 0 || item.parentid === item.menuid
   );
-  const childMenus = menuRights.filter(
+  const childMenus = visible.filter(
     (item) => item.parentid !== 0 && item.parentid !== item.menuid
   );
 

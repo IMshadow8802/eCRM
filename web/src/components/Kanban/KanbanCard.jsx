@@ -1,6 +1,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { useTheme } from "@mui/material/styles";
 import { Calendar, CheckCheck, Check, Lock } from "lucide-react";
+import dayjs from "dayjs";
 
 import { Chip, Avatar, Checkbox } from "../ui";
 
@@ -157,10 +158,7 @@ export default function KanbanCard({
             )}
             {task.DueDate && (
               <Chip
-                label={new Date(task.DueDate).toLocaleDateString(undefined, {
-                  month: "short",
-                  day: "numeric",
-                })}
+                label={dayjs(task.DueDate).format("DD-MM-YYYY")}
                 icon={<Calendar size={11} />}
                 tone={overdue ? "error" : "default"}
                 size="sm"

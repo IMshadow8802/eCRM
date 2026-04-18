@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { enqueueSnackbar } from "notistack";
+import dayjs from "dayjs";
 import {
   Lock,
   Pin,
@@ -7,13 +10,17 @@ import {
   Reply,
   Send,
   CornerDownRight,
+  Save as SaveIcon,
 } from "lucide-react";
 
 import {
   Modal,
   Button,
   IconButton,
+  TextInput,
   TextArea,
+  NumberInput,
+  DateField,
   Combobox,
   Chip,
   Avatar,
@@ -22,17 +29,11 @@ import {
   Skeleton,
   EmptyState,
 } from "../../../components/ui";
+import { toUserOptions, getUserId } from "../../../utils/userShape";
 import { useApiQuery } from "../../../hooks/useApiQuery";
 import { useApiMutation } from "../../../hooks/useApiMutation";
 import useAuthStore from "../../../stores/useAuthStore";
 import useWorkspaceStore from "../../../stores/useWorkspaceStore";
-
-const STATUS_OPTIONS = [
-  { value: "todo", label: "To Do" },
-  { value: "in-progress", label: "In Progress" },
-  { value: "review", label: "Review" },
-  { value: "done", label: "Done" },
-];
 
 const PRIORITY_TONE = {
   low: "info",
@@ -41,7 +42,15 @@ const PRIORITY_TONE = {
   critical: "error",
 };
 
+const PRIORITY_OPTIONS = [
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "critical", label: "Critical" },
+];
+
 export default function TaskDetailModal({ taskId, open, onClose }) {
+  const queryClient = useQueryClient();
   const [tab, setTab] = useState("details");
   const [newComment, setNewComment] = useState("");
   const [replyTo, setReplyTo] = useState(null);
@@ -56,6 +65,103 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
     showErrorMessage: false,
   });
   const task = taskPayload?.tasks?.[0] ?? null;
+
+  const { data: columnsPayload } = useApiQuery({
+    queryKey: ["kanban-columns", task?.WorkspaceId],
+    endpoint: "/api/kanban/fetchKanbanColumns",
+    params: { WorkspaceId: task?.WorkspaceId, PageNumber: 1, PageSize: 100 },
+    enabled: Boolean(task?.WorkspaceId && open),
+    showErrorMessage: false,
+  });
+  const workspaceColumns =
+    columnsPayload?.kanbanColumns ?? columnsPayload?.columns ?? [];
+  const columnOptions = workspaceColumns.map((c) => ({
+    value: c.Id,
+    label: c.IsDone ? `${c.Title} ✓` : c.Title,
+  }));
+
+  const { data: usersPayload } = useApiQuery({
+    queryKey: ["users", "pick-list"],
+    endpoint: "/api/users/fetchUsers",
+    params: { PageNumber: 1, PageSize: 200 },
+    enabled: Boolean(taskId && open),
+    showErrorMessage: false,
+  });
+  const userOptions = toUserOptions(usersPayload?.users, { withJobTitle: false })
+    .map((o) => ({ value: Number(o.value), label: o.label }));
+
+  // Draft state — mirrors task on load so user can edit + save at once.
+  const [draft, setDraft] = useState(null);
+  useEffect(() => {
+    if (!task) return;
+    const normPriority = String(task.Priority ?? "medium").toLowerCase();
+    setDraft({
+      Title: task.Title ?? "",
+      Description: task.Description ?? "",
+      ColumnId: task.ColumnId ?? null,
+      Priority: PRIORITY_OPTIONS.some((o) => o.value === normPriority)
+        ? normPriority
+        : "medium",
+      AssignedToUserId: task.AssignedToUserId ?? null,
+      DueDate: task.DueDate ? String(task.DueDate).slice(0, 10) : "",
+      EstimatedHours: Number(task.EstimatedHours ?? 0),
+      LoggedHours: Number(task.LoggedHours ?? 0),
+      Progress: Number(task.Progress ?? 0),
+    });
+  }, [task?.Id, task?.UpdatedDate, task?.Priority]);
+
+  const canEditThisTask =
+    task && (canEditOthers || task.CreatedByUserId === currentUserId);
+
+  const isDirty = draft && task && (
+    draft.Title !== (task.Title ?? "") ||
+    draft.Description !== (task.Description ?? "") ||
+    draft.ColumnId !== (task.ColumnId ?? null) ||
+    draft.Priority !== (task.Priority ?? "medium") ||
+    draft.AssignedToUserId !== (task.AssignedToUserId ?? null) ||
+    draft.DueDate !== (task.DueDate ? String(task.DueDate).slice(0, 10) : "") ||
+    Number(draft.EstimatedHours) !== Number(task.EstimatedHours ?? 0) ||
+    Number(draft.LoggedHours) !== Number(task.LoggedHours ?? 0) ||
+    Number(draft.Progress) !== Number(task.Progress ?? 0)
+  );
+
+  const saveDraft = async () => {
+    if (!task || !draft) return;
+    try {
+      await saveMutation.mutateAsync({
+        Id: task.Id,
+        Title: draft.Title.trim() || task.Title,
+        Description: draft.Description,
+        WorkspaceId: task.WorkspaceId,
+        ColumnId: draft.ColumnId,
+        ProjectId: task.ProjectId,
+        ParentTaskId: task.ParentTaskId,
+        AssignedToUserId: draft.AssignedToUserId,
+        TeamId: task.TeamId,
+        Priority: draft.Priority,
+        Type: task.Type,
+        DueDate: draft.DueDate || null,
+        EstimatedHours: draft.EstimatedHours,
+        LoggedHours: draft.LoggedHours,
+        Progress: draft.Progress,
+        IsBlocked: task.IsBlocked,
+        Labels: task.Labels,
+        Watchers: task.Watchers,
+      });
+      enqueueSnackbar("Task saved", { variant: "success" });
+      queryClient.invalidateQueries({ queryKey: ["tasks"], refetchType: "all" });
+      queryClient.invalidateQueries({
+        queryKey: ["kanban-columns"],
+        refetchType: "all",
+      });
+      // The single-task cache backs the modal itself; drop it so the next
+      // open re-fetches fresh instead of hydrating from a stale entry.
+      queryClient.removeQueries({ queryKey: ["task", task.Id] });
+      onClose?.();
+    } catch {
+      refetchTask();
+    }
+  };
 
   const { data: commentsPayload, refetch: refetchComments } = useApiQuery({
     queryKey: ["task", taskId, "comments"],
@@ -93,34 +199,6 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
     showSuccessMessage: false,
   });
 
-  const changeStatus = async (newStatus) => {
-    if (!task) return;
-    try {
-      await saveMutation.mutateAsync({
-        Id: task.Id,
-        Title: task.Title,
-        Description: task.Description,
-        WorkspaceId: task.WorkspaceId,
-        ProjectId: task.ProjectId,
-        ParentTaskId: task.ParentTaskId,
-        AssignedToUserId: task.AssignedToUserId,
-        TeamId: task.TeamId,
-        Priority: task.Priority,
-        Type: task.Type,
-        Status: newStatus?.value ?? newStatus,
-        DueDate: task.DueDate,
-        EstimatedHours: task.EstimatedHours,
-        LoggedHours: task.LoggedHours,
-        Progress: task.Progress,
-        IsBlocked: task.IsBlocked,
-        Labels: task.Labels,
-        Watchers: task.Watchers,
-      });
-      refetchTask();
-    } catch {
-      refetchTask();
-    }
-  };
 
   const submitComment = async () => {
     const text = newComment.trim();
@@ -175,7 +253,7 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
             )}
             {task.CompletedDate && (
               <Chip
-                label={`Done ${new Date(task.CompletedDate).toLocaleDateString()}`}
+                label={`Done ${dayjs(task.CompletedDate).format("DD-MM-YYYY")}`}
                 tone="success"
                 size="sm"
               />
@@ -209,38 +287,143 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
             />
 
             <div style={{ marginTop: 20 }}>
-              {tab === "details" && (
+              {tab === "details" && draft && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                  <TextInput
+                    label="Title"
+                    value={draft.Title}
+                    onChange={(e) =>
+                      setDraft((d) => ({ ...d, Title: e.target.value }))
+                    }
+                    disabled={!canEditThisTask}
+                    required
+                    data-testid="task-title-input"
+                  />
                   <TextArea
                     label="Description"
-                    value={task.Description ?? ""}
-                    rows={4}
-                    disabled={
-                      !canEditOthers && task.CreatedByUserId !== currentUserId
+                    value={draft.Description}
+                    onChange={(e) =>
+                      setDraft((d) => ({ ...d, Description: e.target.value }))
                     }
+                    rows={4}
+                    disabled={!canEditThisTask}
+                    data-testid="task-description-input"
                   />
                   <div style={{ display: "flex", gap: 12 }}>
                     <div style={{ flex: 1 }}>
                       <Combobox
-                        label="Status"
-                        options={STATUS_OPTIONS}
-                        value={STATUS_OPTIONS.find((s) => s.value === task.Status)}
-                        onChange={(v) => changeStatus(v)}
-                        data-testid="task-status-select"
+                        label="Column"
+                        options={columnOptions}
+                        value={
+                          columnOptions.find((o) => o.value === draft.ColumnId) ??
+                          null
+                        }
+                        onChange={(v) =>
+                          setDraft((d) => ({ ...d, ColumnId: v?.value ?? null }))
+                        }
+                        disabled={!canEditThisTask}
+                        data-testid="task-column-select"
                       />
                     </div>
                     <div style={{ flex: 1 }}>
                       <Combobox
                         label="Priority"
-                        options={[
-                          { value: "low", label: "Low" },
-                          { value: "medium", label: "Medium" },
-                          { value: "high", label: "High" },
-                          { value: "critical", label: "Critical" },
-                        ]}
-                        value={{ value: task.Priority, label: task.Priority }}
-                        onChange={() => {}}
-                        disabled
+                        options={PRIORITY_OPTIONS}
+                        value={
+                          PRIORITY_OPTIONS.find((o) => o.value === draft.Priority) ??
+                          null
+                        }
+                        onChange={(v) =>
+                          setDraft((d) => ({
+                            ...d,
+                            Priority: v?.value ?? "medium",
+                          }))
+                        }
+                        disabled={!canEditThisTask}
+                        data-testid="task-priority-select"
+                      />
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 12 }}>
+                    <div style={{ flex: 1 }}>
+                      <Combobox
+                        label="Assignee"
+                        options={userOptions}
+                        value={
+                          userOptions.find((o) => o.value === draft.AssignedToUserId) ??
+                          null
+                        }
+                        onChange={(v) =>
+                          setDraft((d) => ({
+                            ...d,
+                            AssignedToUserId: v?.value ?? null,
+                          }))
+                        }
+                        disabled={!canEditThisTask}
+                        placeholder="Unassigned"
+                        data-testid="task-assignee-select"
+                      />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <DateField
+                        label="Due date"
+                        value={draft.DueDate || null}
+                        onChange={(iso) =>
+                          setDraft((d) => ({ ...d, DueDate: iso || "" }))
+                        }
+                        disabled={!canEditThisTask}
+                        data-testid="task-due-input"
+                      />
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 12 }}>
+                    <div style={{ flex: 1 }}>
+                      <NumberInput
+                        label="Estimated hours"
+                        value={draft.EstimatedHours}
+                        onChange={(e) =>
+                          setDraft((d) => ({
+                            ...d,
+                            EstimatedHours: Number(e.target.value) || 0,
+                          }))
+                        }
+                        min={0}
+                        step={0.5}
+                        disabled={!canEditThisTask}
+                      />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <NumberInput
+                        label="Logged hours"
+                        value={draft.LoggedHours}
+                        onChange={(e) =>
+                          setDraft((d) => ({
+                            ...d,
+                            LoggedHours: Number(e.target.value) || 0,
+                          }))
+                        }
+                        min={0}
+                        step={0.25}
+                        disabled={!canEditThisTask}
+                      />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <NumberInput
+                        label="Progress (%)"
+                        value={draft.Progress}
+                        onChange={(e) =>
+                          setDraft((d) => ({
+                            ...d,
+                            Progress: Math.max(
+                              0,
+                              Math.min(100, Number(e.target.value) || 0),
+                            ),
+                          }))
+                        }
+                        min={0}
+                        max={100}
+                        step={5}
+                        disabled={!canEditThisTask}
                       />
                     </div>
                   </div>
@@ -361,6 +544,23 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
           </>
         )}
       </Modal.Body>
+      {task && tab === "details" && canEditThisTask && (
+        <Modal.Footer>
+          <Button variant="ghost" onClick={onClose} disabled={saveMutation.isPending}>
+            Close
+          </Button>
+          <Button
+            variant="primary"
+            leftIcon={<SaveIcon size={14} />}
+            onClick={saveDraft}
+            disabled={!isDirty}
+            loading={saveMutation.isPending}
+            data-testid="task-save-btn"
+          >
+            Save changes
+          </Button>
+        </Modal.Footer>
+      )}
     </Modal>
   );
 }
@@ -495,15 +695,18 @@ function DepSection({ title, items, emptyText, tone }) {
         </div>
       ) : (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {items.map((d) => (
-            <Chip
-              key={d.TaskId}
-              label={`${d.Title} — ${d.Status}`}
-              tone={d.Status === "done" ? "success" : tone}
-              variant="tonal"
-              size="md"
-            />
-          ))}
+          {items.map((d) => {
+            const done = Boolean(d.ColumnIsDone);
+            return (
+              <Chip
+                key={d.TaskId}
+                label={`${d.Title} — ${done ? "done" : d.ColumnTitle || "open"}`}
+                tone={done ? "success" : tone}
+                variant="tonal"
+                size="md"
+              />
+            );
+          })}
         </div>
       )}
     </div>

@@ -28,7 +28,9 @@ describe("TaskDetailModal", () => {
       Title: "Task 501",
       Description: "Body",
       WorkspaceId: 100,
-      Status: "todo",
+      ColumnId: 1,
+      ColumnTitle: "To Do",
+      ColumnIsDone: false,
       Priority: "high",
       AssigneeName: "Alice",
       IsBlocked: false,
@@ -97,23 +99,24 @@ describe("TaskDetailModal", () => {
     expect(await screen.findByText(/No comments yet/i)).toBeInTheDocument();
   });
 
-  it("status change dispatches save mutation", async () => {
+  it("column change + Save dispatches save mutation with new ColumnId", async () => {
     renderModal(501);
     await screen.findByText("Task 501");
     const user = userEvent.setup();
-    const select = await screen.findByTestId("task-status-select");
-    // Select renders a MUI select — click it to open
+    const select = await screen.findByTestId("task-column-select");
     const combo = select.querySelector("[role='combobox']") ?? select;
     await user.click(combo);
     const doneOption = await screen.findByRole("option", { name: /Done/i });
     await user.click(doneOption);
+    await user.click(await screen.findByTestId("task-save-btn"));
     await waitFor(() => {
-      expect(taskFixture.list[0].Status).toBe("done");
+      expect(taskFixture.list[0].ColumnId).toBe(3);
     });
   });
 
-  it("shows Done badge when task is complete", async () => {
-    taskFixture.list[0].Status = "done";
+  it("shows Done badge when task sits in a done column", async () => {
+    taskFixture.list[0].ColumnId = 3;
+    taskFixture.list[0].ColumnIsDone = true;
     taskFixture.list[0].CompletedDate = new Date().toISOString();
     renderModal(501);
     expect(await screen.findByText(/^Done/)).toBeInTheDocument();

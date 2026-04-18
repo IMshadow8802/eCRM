@@ -37,17 +37,20 @@ describe("TaskBoard", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders columns + new task button when workspace active", async () => {
+  it("renders columns + add-column tile when workspace active", async () => {
     useWorkspaceStore.getState().setActiveWorkspace({
       Id: 100,
       Type: "personal",
       MyRole: "owner",
     });
     renderBoard();
-    expect(await screen.findByTestId("new-task-btn")).toBeInTheDocument();
     expect(await screen.findByText("To Do")).toBeInTheDocument();
     expect(await screen.findByText("In Progress")).toBeInTheDocument();
     expect(await screen.findByText("Done")).toBeInTheDocument();
+    // Top-level "New task" button retired — tasks are created per-column.
+    expect(screen.queryByTestId("new-task-btn")).not.toBeInTheDocument();
+    // Inline column add tile present for an owner.
+    expect(await screen.findByTestId("column-add-button")).toBeInTheDocument();
   });
 
   it("shows tasks in their columns", async () => {
@@ -60,6 +63,7 @@ describe("TaskBoard", () => {
       Id: 601,
       Title: "Test A",
       Status: "todo",
+      ColumnId: 1,
       Priority: "medium",
       WorkspaceId: 100,
       CreatedByUserId: 1,
@@ -68,6 +72,7 @@ describe("TaskBoard", () => {
       Id: 602,
       Title: "Test B",
       Status: "done",
+      ColumnId: 3,
       Priority: "high",
       WorkspaceId: 100,
       CreatedByUserId: 1,
@@ -77,19 +82,7 @@ describe("TaskBoard", () => {
     expect(await screen.findByText("Test B")).toBeInTheDocument();
   });
 
-  it("opens the create modal from new-task-btn", async () => {
-    useWorkspaceStore.getState().setActiveWorkspace({
-      Id: 100,
-      Type: "personal",
-      MyRole: "owner",
-    });
-    renderBoard();
-    const user = userEvent.setup();
-    await user.click(await screen.findByTestId("new-task-btn"));
-    expect(await screen.findByLabelText(/title/i)).toBeInTheDocument();
-  });
-
-  it("hides new-task-btn for viewer role", async () => {
+  it("hides the inline add-column tile for viewer role", async () => {
     useWorkspaceStore.getState().setActiveWorkspace({
       Id: 100,
       Type: "shared",
@@ -97,8 +90,10 @@ describe("TaskBoard", () => {
     });
     renderBoard();
     await waitFor(() => {
-      expect(screen.queryByTestId("new-task-btn")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("column-add-button")).not.toBeInTheDocument();
     });
+    // And the per-column quick-add is gated by canCreate (owner/manager/member).
+    expect(screen.queryByText(/Add task/i)).not.toBeInTheDocument();
   });
 
   it("search input updates query params", async () => {
@@ -114,7 +109,7 @@ describe("TaskBoard", () => {
     expect(search).toHaveValue("urgent");
   });
 
-  it("quick-add from a column creates a task", async () => {
+  it("clicking a column's Add task opens the full modal pre-filled with that column", async () => {
     useWorkspaceStore.getState().setActiveWorkspace({
       Id: 100,
       Type: "personal",
@@ -124,8 +119,11 @@ describe("TaskBoard", () => {
     const user = userEvent.setup();
     const btns = await screen.findAllByText(/Add task/i);
     await user.click(btns[0]);
-    const input = await screen.findByPlaceholderText(/Task title/i);
-    await user.type(input, "Quick one{Enter}");
+    expect(
+      await screen.findByText(/Lands in .+column/i),
+    ).toBeInTheDocument();
+    await user.type(screen.getByLabelText(/title/i), "Quick one");
+    await user.click(screen.getByTestId("create-task-submit"));
     await waitFor(() => {
       expect(taskFixture.list.some((t) => t.Title === "Quick one")).toBe(true);
     });
@@ -141,6 +139,7 @@ describe("TaskBoard", () => {
       Id: 777,
       Title: "Doomed",
       Status: "todo",
+      ColumnId: 1,
       Priority: "low",
       WorkspaceId: 100,
       CreatedByUserId: 1,
@@ -167,6 +166,7 @@ describe("TaskBoard", () => {
       Id: 701,
       Title: "Pick me",
       Status: "todo",
+      ColumnId: 1,
       Priority: "low",
       WorkspaceId: 100,
       CreatedByUserId: 1,

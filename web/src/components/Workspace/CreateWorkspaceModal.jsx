@@ -42,11 +42,6 @@ export default function CreateWorkspaceModal({
     endpoint: "/api/workspaces/saveWorkspace",
     showSuccessMessage: false,
   });
-  const applyTemplateMutation = useApiMutation({
-    endpoint: "/api/workspaces/applyKanbanTemplate",
-    showSuccessMessage: false,
-    showErrorMessage: false,
-  });
 
   const reset = () => {
     setType("shared");
@@ -78,21 +73,10 @@ export default function CreateWorkspaceModal({
         Id: 0,
         Name: trimmed,
         Type: type,
+        TemplateKey: template?.value ?? "basic",
       });
       const workspaceId = saved?.workspaceId;
       if (!workspaceId) throw new Error("missing workspaceId");
-
-      try {
-        await applyTemplateMutation.mutateAsync({
-          WorkspaceId: workspaceId,
-          TemplateKey: template?.value ?? "basic",
-        });
-      } catch {
-        enqueueSnackbar(
-          "Workspace created, but template seeding failed. Add columns manually.",
-          { variant: "warning" },
-        );
-      }
 
       enqueueSnackbar("Workspace created", { variant: "success" });
       onCreated?.({ Id: workspaceId, Name: trimmed, Type: type, MyRole: "owner" });

@@ -13,6 +13,7 @@ class WorkspaceController {
         ProjectId = null,
         Color = null,
         Icon = null,
+        TemplateKey = "basic",
       } = req.body;
 
       const result = await database.executeStoredProcedure("sp_SaveWorkspace", {
@@ -29,11 +30,43 @@ class WorkspaceController {
       });
 
       const spResponse = result.recordsets[0][0];
+      const newWorkspaceId = spResponse.WorkspaceId;
 
-      if (spResponse.ResponseCode < 300 && spResponse.WorkspaceId) {
+      // Auto-seed kanban columns for non-personal workspaces on initial create.
+      // Personal goes through sp_SeedDefaultWorkspace which already seeds.
+      // This removes the silent-fail risk of a separate frontend apply-template
+      // call and guarantees every workspace ships usable.
+      let columnsSeeded = 0;
+      if (
+        Id === 0 &&
+        spResponse.ResponseCode < 300 &&
+        newWorkspaceId &&
+        (Type === "shared" || Type === "project")
+      ) {
+        try {
+          const tplResult = await database.executeStoredProcedure(
+            "sp_ApplyKanbanTemplate",
+            {
+              WorkspaceId: newWorkspaceId,
+              TemplateKey,
+              CompId: req.user.CompId,
+              BranchId: req.user.BranchId,
+            },
+          );
+          columnsSeeded = tplResult.recordsets[0][0]?.ColumnsCreated ?? 0;
+        } catch (tplErr) {
+          console.error(
+            "sp_ApplyKanbanTemplate failed for workspace",
+            newWorkspaceId,
+            tplErr.message,
+          );
+        }
+      }
+
+      if (spResponse.ResponseCode < 300 && newWorkspaceId) {
         await logActivity({
           entityType: "Workspace",
-          entityId: spResponse.WorkspaceId,
+          entityId: newWorkspaceId,
           action: Id === 0 ? ACTIONS.CREATED : ACTIONS.UPDATED,
           description: `Workspace ${Name || ""} ${Id === 0 ? "created" : "updated"}`,
           req,
@@ -46,7 +79,7 @@ class WorkspaceController {
         responseCode: spResponse.ResponseCode,
         data:
           spResponse.ResponseCode < 300
-            ? { workspaceId: spResponse.WorkspaceId }
+            ? { workspaceId: newWorkspaceId, columnsSeeded }
             : null,
         timestamp: new Date().toISOString(),
       });

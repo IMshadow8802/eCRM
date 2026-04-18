@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   DndContext,
   DragOverlay,
@@ -21,6 +22,7 @@ import useWorkspaceStore from "../../stores/useWorkspaceStore";
 import WorkspaceSwitcher from "../../components/Workspace/WorkspaceSwitcher";
 import KanbanColumn from "../../components/Kanban/KanbanColumn";
 import KanbanCard from "../../components/Kanban/KanbanCard";
+import ColumnAddInline from "../../components/Kanban/ColumnAddInline";
 import TaskCreateModal from "./Components/TaskCreateModal";
 import TaskDetailModal from "./Components/TaskDetailModal";
 import {
@@ -29,27 +31,34 @@ import {
   SearchInput,
   Chip,
   EmptyState,
+  Combobox,
+  Modal,
 } from "../../components/ui";
+import { bucketTasksByColumn, ORPHAN_BUCKET_KEY } from "./taskBucket";
+import useAuthStore from "../../stores/useAuthStore";
 
-function normalizeColumnKey(title) {
-  if (!title) return "";
-  return title
-    .trim()
-    .toLowerCase()
-    .replace(/\bto do\b/g, "todo")
-    .replace(/\s+/g, "-");
-}
+const TEMPLATE_OPTIONS = [
+  { value: "basic", label: "Basic — To Do / In Progress / Done" },
+  { value: "scrum", label: "Scrum — Backlog / Sprint / In Progress / Review / Done" },
+  { value: "bug", label: "Bug triage — New / Triaged / In Progress / Fixed / Verified" },
+  { value: "content", label: "Content — Idea / Draft / Review / Published" },
+];
 
 export default function TaskBoard() {
+  const queryClient = useQueryClient();
   const workspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
+  const activeRole = useWorkspaceStore((s) => s.activeWorkspaceRole);
   const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace);
   const canCreate = useWorkspaceStore((s) => s.canCreateTasks)();
+  const isAdmin = useAuthStore((s) => s.user?.IsAdmin) || false;
+  const canManageColumns = activeRole === "owner" || activeRole === "manager" || isAdmin;
   const [search, setSearch] = useState("");
-  const [createOpen, setCreateOpen] = useState(false);
-  const [createDefaults, setCreateDefaults] = useState({ status: "todo" });
   const [openTaskId, setOpenTaskId] = useState(null);
+  const [addingInColumn, setAddingInColumn] = useState(null); // { Id, Title } or null
   const [selectedIds, setSelectedIds] = useState([]);
   const [activeDrag, setActiveDrag] = useState(null);
+  const [templateOpen, setTemplateOpen] = useState(false);
+  const [templateChoice, setTemplateChoice] = useState(TEMPLATE_OPTIONS[0]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -59,6 +68,10 @@ export default function TaskBoard() {
     endpoint: "/api/workspaces/ensurePersonalWorkspace",
     showSuccessMessage: false,
     showErrorMessage: false,
+  });
+  const applyTemplateMutation = useApiMutation({
+    endpoint: "/api/workspaces/applyKanbanTemplate",
+    showSuccessMessage: false,
   });
 
   useEffect(() => {
@@ -112,19 +125,11 @@ export default function TaskBoard() {
     showSuccessMessage: false,
   });
 
-  const tasksByColumn = useMemo(() => {
-    const bucket = {};
-    for (const col of columns) {
-      const key = normalizeColumnKey(col.Title);
-      bucket[key] = [];
-    }
-    for (const t of tasks) {
-      const key = (t.Status || "todo").toLowerCase();
-      if (!bucket[key]) bucket[key] = [];
-      bucket[key].push(t);
-    }
-    return bucket;
-  }, [columns, tasks]);
+  const tasksByColumn = useMemo(
+    () => bucketTasksByColumn(columns, tasks),
+    [columns, tasks],
+  );
+  const orphanTasks = tasksByColumn[ORPHAN_BUCKET_KEY] || [];
 
   const activeTask = activeDrag
     ? tasks.find((t) => `task-${t.Id}` === activeDrag.id)
@@ -140,17 +145,15 @@ export default function TaskBoard() {
     const task = tasks.find((t) => t.Id === taskId);
     if (!task) return;
 
-    let newStatus = null;
+    let newColumnId = null;
     if (String(over.id).startsWith("column-")) {
-      const colId = Number(String(over.id).replace("column-", ""));
-      const col = columns.find((c) => c.Id === colId);
-      if (col) newStatus = normalizeColumnKey(col.Title);
+      newColumnId = Number(String(over.id).replace("column-", ""));
     } else if (String(over.id).startsWith("task-")) {
       const overTaskId = Number(String(over.id).replace("task-", ""));
       const overTask = tasks.find((t) => t.Id === overTaskId);
-      if (overTask) newStatus = overTask.Status;
+      if (overTask) newColumnId = overTask.ColumnId;
     }
-    if (!newStatus || newStatus === task.Status) return;
+    if (!newColumnId || newColumnId === task.ColumnId) return;
 
     try {
       await saveMutation.mutateAsync({
@@ -158,13 +161,13 @@ export default function TaskBoard() {
         Title: task.Title,
         Description: task.Description,
         WorkspaceId: task.WorkspaceId,
+        ColumnId: newColumnId,
         ProjectId: task.ProjectId,
         ParentTaskId: task.ParentTaskId,
         AssignedToUserId: task.AssignedToUserId,
         TeamId: task.TeamId,
         Priority: task.Priority,
         Type: task.Type,
-        Status: newStatus,
         DueDate: task.DueDate,
         EstimatedHours: task.EstimatedHours,
         LoggedHours: task.LoggedHours,
@@ -179,18 +182,7 @@ export default function TaskBoard() {
     }
   };
 
-  const handleQuickAdd = async ({ Title, Status }) => {
-    try {
-      await saveMutation.mutateAsync({
-        Id: 0,
-        Title,
-        Status,
-        WorkspaceId: workspaceId,
-        Priority: "medium",
-      });
-      refetchTasks();
-    } catch {}
-  };
+  const handleRequestAddTask = (column) => setAddingInColumn(column);
 
   const toggleSelect = (id) =>
     setSelectedIds((prev) =>
@@ -206,6 +198,25 @@ export default function TaskBoard() {
       refetchTasks();
     } catch {}
   };
+
+  const handleApplyTemplate = async () => {
+    if (!workspaceId || !templateChoice?.value) return;
+    try {
+      await applyTemplateMutation.mutateAsync({
+        WorkspaceId: workspaceId,
+        TemplateKey: templateChoice.value,
+      });
+      enqueueSnackbar("Template applied", { variant: "success" });
+      setTemplateOpen(false);
+      // Refetch columns so the board renders the new ones immediately.
+      queryClient.invalidateQueries({ queryKey: ["kanban-columns", workspaceId] });
+    } catch {
+      // mutation hook surfaces error toast
+    }
+  };
+
+  const invalidateColumns = () =>
+    queryClient.invalidateQueries({ queryKey: ["kanban-columns", workspaceId] });
 
   if (!workspaceId) {
     return (
@@ -235,18 +246,6 @@ export default function TaskBoard() {
         title="Tasks"
         subtitle="Your boards, shared work, and team projects — all in one place."
         icon={<LayoutGrid size={22} />}
-        actions={
-          canCreate ? (
-            <Button
-              variant="primary"
-              leftIcon={<Plus size={16} />}
-              onClick={() => setCreateOpen(true)}
-              data-testid="new-task-btn"
-            >
-              New task
-            </Button>
-          ) : null
-        }
       />
 
       <div
@@ -291,7 +290,23 @@ export default function TaskBoard() {
         <EmptyState
           icon={<Inbox size={32} />}
           title="No columns yet"
-          description="Apply a kanban template to this workspace to get started."
+          description={
+            canManageColumns
+              ? "Apply a kanban template to get started."
+              : "The owner of this workspace has not added any columns yet."
+          }
+          action={
+            canManageColumns ? (
+              <Button
+                variant="primary"
+                leftIcon={<Plus size={16} />}
+                onClick={() => setTemplateOpen(true)}
+                data-testid="apply-template-cta"
+              >
+                Apply template
+              </Button>
+            ) : null
+          }
           size="md"
         />
       ) : (
@@ -313,21 +328,44 @@ export default function TaskBoard() {
             {columns
               .slice()
               .sort((a, b) => (a.SortOrder ?? 0) - (b.SortOrder ?? 0))
-              .map((col) => {
-                const key = normalizeColumnKey(col.Title);
-                return (
-                  <KanbanColumn
-                    key={col.Id}
-                    column={col}
-                    tasks={tasksByColumn[key] || []}
-                    onOpenTask={(t) => setOpenTaskId(t.Id)}
-                    onQuickAddTask={handleQuickAdd}
-                    selectedTaskIds={selectedIds}
-                    onToggleSelect={toggleSelect}
-                    canCreate={canCreate}
-                  />
-                );
-              })}
+              .map((col) => (
+                <KanbanColumn
+                  key={col.Id}
+                  column={col}
+                  tasks={tasksByColumn[col.Id] || []}
+                  onOpenTask={(t) => setOpenTaskId(t.Id)}
+                  onRequestAddTask={handleRequestAddTask}
+                  onColumnUpdated={invalidateColumns}
+                  selectedTaskIds={selectedIds}
+                  onToggleSelect={toggleSelect}
+                  canCreate={canCreate}
+                  canManage={canManageColumns}
+                  siblingColumns={columns}
+                />
+              ))}
+            {canManageColumns && (
+              <ColumnAddInline
+                workspaceId={workspaceId}
+                onCreated={invalidateColumns}
+              />
+            )}
+            {orphanTasks.length > 0 && (
+              <KanbanColumn
+                key="orphan"
+                column={{
+                  Id: -1,
+                  Title: "Uncategorized",
+                  Color: "#F59E0B",
+                  SortOrder: 9999,
+                }}
+                tasks={orphanTasks}
+                onOpenTask={(t) => setOpenTaskId(t.Id)}
+                selectedTaskIds={selectedIds}
+                onToggleSelect={toggleSelect}
+                canCreate={false}
+                data-testid="orphan-column"
+              />
+            )}
           </div>
 
           <DragOverlay>
@@ -337,11 +375,15 @@ export default function TaskBoard() {
       )}
 
       <TaskCreateModal
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
+        open={Boolean(addingInColumn)}
+        onClose={() => setAddingInColumn(null)}
         workspaceId={workspaceId}
-        defaultStatus={createDefaults.status}
-        onCreated={() => refetchTasks()}
+        columnId={addingInColumn?.Id ?? null}
+        columnTitle={addingInColumn?.Title ?? null}
+        onCreated={() => {
+          setAddingInColumn(null);
+          refetchTasks();
+        }}
       />
 
       <TaskDetailModal
@@ -349,6 +391,40 @@ export default function TaskBoard() {
         open={Boolean(openTaskId)}
         onClose={() => setOpenTaskId(null)}
       />
+
+      <Modal
+        open={templateOpen}
+        onClose={() => setTemplateOpen(false)}
+        size="sm"
+        data-testid="apply-template-modal"
+      >
+        <Modal.Header
+          title="Apply kanban template"
+          subtitle="Seed this workspace with a starter set of columns."
+          onClose={() => setTemplateOpen(false)}
+        />
+        <Modal.Body>
+          <Combobox
+            label="Template"
+            value={templateChoice}
+            onChange={setTemplateChoice}
+            options={TEMPLATE_OPTIONS}
+          />
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="ghost" onClick={() => setTemplateOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            onClick={handleApplyTemplate}
+            loading={applyTemplateMutation.isPending}
+            data-testid="apply-template-confirm"
+          >
+            Apply
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </div>
   );
 }

@@ -6,6 +6,7 @@ import {
   Inbox,
   Users,
   FolderKanban,
+  Eye,
 } from "lucide-react";
 
 import { useApiQuery } from "../../hooks/useApiQuery";
@@ -51,10 +52,21 @@ export default function WorkspaceSwitcher() {
   const workspaces = payload?.workspaces ?? [];
   const active = workspaces.find((w) => w.Id === activeWorkspaceId) ?? null;
 
+  // Two buckets per type:
+  //   mine        — workspaces the user is an explicit member of (MyRole set)
+  //   adminView   — admin-override visibility: workspaces in their company
+  //                 that they are NOT a member of. Read-only from their POV.
+  // Personal is always in `mine` (only owner can see their own personal).
   const grouped = useMemo(() => {
-    const out = { personal: [], shared: [], project: [] };
+    const out = {
+      personal: { mine: [], adminView: [] },
+      shared: { mine: [], adminView: [] },
+      project: { mine: [], adminView: [] },
+    };
     for (const w of workspaces) {
-      if (out[w.Type]) out[w.Type].push(w);
+      if (!out[w.Type]) continue;
+      const bucket = w.MyRole ? "mine" : "adminView";
+      out[w.Type][bucket].push(w);
     }
     return out;
   }, [workspaces]);
@@ -66,17 +78,37 @@ export default function WorkspaceSwitcher() {
     close();
   };
 
-  // Build menu items w/ headers
+  // Build menu items w/ headers.
+  // "Your X" first, then "Admin view X" (read-only) so admins understand
+  // why a workspace appears even though they're not a member.
   const menuItems = [];
   for (const type of ["personal", "shared", "project"]) {
-    if (grouped[type].length === 0) continue;
-    menuItems.push({ header: TYPE_LABEL[type] });
-    for (const w of grouped[type]) {
+    const mine = grouped[type].mine;
+    if (mine.length > 0) {
+      menuItems.push({ header: `Your ${TYPE_LABEL[type]}` });
+      for (const w of mine) {
+        menuItems.push({
+          id: w.Id,
+          label: w.Name,
+          icon: TYPE_ICON[type],
+          onClick: () => pick(w),
+        });
+      }
+    }
+  }
+  for (const type of ["shared", "project"]) {
+    const adminView = grouped[type].adminView;
+    if (adminView.length === 0) continue;
+    menuItems.push({
+      header: `Admin view — ${TYPE_LABEL[type]} (read-only)`,
+    });
+    for (const w of adminView) {
       menuItems.push({
         id: w.Id,
         label: w.Name,
-        icon: TYPE_ICON[type],
+        icon: <Eye size={14} />,
         onClick: () => pick(w),
+        testId: `admin-workspace-${w.Id}`,
       });
     }
   }
@@ -153,8 +185,8 @@ export default function WorkspaceSwitcher() {
               {active.Name}
             </span>
             <Chip
-              label={active.MyRole ?? active.Type}
-              tone="primary"
+              label={active.MyRole ?? "admin view"}
+              tone={active.MyRole ? "primary" : "warning"}
               variant="tonal"
               size="sm"
             />
@@ -190,7 +222,7 @@ export default function WorkspaceSwitcher() {
           setActiveWorkspace(w);
           refetch();
         }}
-        hasPersonal={grouped.personal.length > 0}
+        hasPersonal={grouped.personal.mine.length > 0}
       />
     </>
   );

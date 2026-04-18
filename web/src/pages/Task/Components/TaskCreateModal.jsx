@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Plus } from "lucide-react";
 
 import {
@@ -24,13 +24,13 @@ export default function TaskCreateModal({
   open,
   onClose,
   workspaceId,
-  defaultStatus = "todo",
+  columnId = null,
+  columnTitle = null,
   onCreated,
 }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState("medium");
-  const [status, setStatus] = useState(defaultStatus);
   const [assignee, setAssignee] = useState(null);
   const [dueDate, setDueDate] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -51,10 +51,6 @@ export default function TaskCreateModal({
     endpoint: "/api/tasks/saveTask",
     showSuccessMessage: false,
   });
-
-  useEffect(() => {
-    if (open) setStatus(defaultStatus);
-  }, [open, defaultStatus]);
 
   const reset = () => {
     setTitle("");
@@ -80,8 +76,8 @@ export default function TaskCreateModal({
         Title: title.trim(),
         Description: description,
         WorkspaceId: workspaceId,
+        ColumnId: columnId,
         Priority: priority,
-        Status: status,
         AssignedToUserId: assignee?.value || null,
         DueDate: dueDate || null,
       });
@@ -99,7 +95,11 @@ export default function TaskCreateModal({
     <Modal open={open} onClose={handleClose} size="md" data-testid="create-task-modal">
       <Modal.Header
         title="New task"
-        subtitle="Capture something to do. Add details later."
+        subtitle={
+          columnTitle
+            ? `Lands in “${columnTitle}” column.`
+            : "Capture something to do. Add details later."
+        }
         icon={<Plus size={18} />}
         onClose={handleClose}
       />

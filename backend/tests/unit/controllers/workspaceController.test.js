@@ -38,19 +38,25 @@ beforeEach(() => {
 });
 
 describe("workspaceController.save", () => {
-  it("creates a workspace and logs activity on success", async () => {
+  it("creates a shared workspace, seeds kanban template, and logs activity", async () => {
+    // 1st SP call: sp_SaveWorkspace
     database.executeStoredProcedure.mockResolvedValueOnce(
       spResult([{ ResponseCode: 201, ResponseMess: "Workspace created", WorkspaceId: 42 }]),
     );
+    // 2nd SP call: sp_ApplyKanbanTemplate (auto-invoked)
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 201, ResponseMess: "Template applied", WorkspaceId: 42, TemplateKey: "basic", ColumnsCreated: 3 }]),
+    );
 
     const req = baseReq({
-      body: { Name: "Marketing", Type: "shared", Color: "#F59E0B" },
+      body: { Name: "Marketing", Type: "shared", Color: "#F59E0B", TemplateKey: "basic" },
     });
     const res = mockRes();
     await workspaceController.save(req, res);
 
-    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
-      "sp_SaveWorkspace",
+    const calls = database.executeStoredProcedure.mock.calls;
+    expect(calls[0][0]).toBe("sp_SaveWorkspace");
+    expect(calls[0][1]).toEqual(
       expect.objectContaining({
         Id: 0,
         Name: "Marketing",
@@ -61,6 +67,13 @@ describe("workspaceController.save", () => {
         Color: "#F59E0B",
       }),
     );
+    expect(calls[1][0]).toBe("sp_ApplyKanbanTemplate");
+    expect(calls[1][1]).toEqual({
+      WorkspaceId: 42,
+      TemplateKey: "basic",
+      CompId: 1,
+      BranchId: 2,
+    });
     expect(logActivity).toHaveBeenCalledWith(
       expect.objectContaining({
         entityType: "Workspace",
@@ -71,10 +84,59 @@ describe("workspaceController.save", () => {
     expect(res.status).toHaveBeenCalledWith(201);
     const json = res.json.mock.calls[0][0];
     expect(json.success).toBe(true);
-    expect(json.data).toEqual({ workspaceId: 42 });
+    expect(json.data).toEqual({ workspaceId: 42, columnsSeeded: 3 });
   });
 
-  it("updates a workspace and logs UPDATED when Id > 0", async () => {
+  it("creates a project workspace with the requested TemplateKey", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 201, ResponseMess: "Workspace created", WorkspaceId: 7 }]),
+    );
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 201, ResponseMess: "Template applied", WorkspaceId: 7, TemplateKey: "scrum", ColumnsCreated: 5 }]),
+    );
+
+    const req = baseReq({
+      body: { Name: "Sprint", Type: "project", ProjectId: 9, TemplateKey: "scrum" },
+    });
+    const res = mockRes();
+    await workspaceController.save(req, res);
+
+    const calls = database.executeStoredProcedure.mock.calls;
+    expect(calls[1][1].TemplateKey).toBe("scrum");
+    expect(res.json.mock.calls[0][0].data.columnsSeeded).toBe(5);
+  });
+
+  it("does NOT call sp_ApplyKanbanTemplate when creating a personal workspace", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 201, ResponseMess: "Workspace created", WorkspaceId: 1 }]),
+    );
+
+    const req = baseReq({ body: { Name: "My Tasks", Type: "personal" } });
+    const res = mockRes();
+    await workspaceController.save(req, res);
+
+    const spNames = database.executeStoredProcedure.mock.calls.map((c) => c[0]);
+    expect(spNames).toEqual(["sp_SaveWorkspace"]);
+  });
+
+  it("still succeeds + logs when template SP throws (save is source of truth)", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 201, ResponseMess: "Workspace created", WorkspaceId: 99 }]),
+    );
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("template boom"));
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+
+    const req = baseReq({ body: { Name: "X", Type: "shared" } });
+    const res = mockRes();
+    await workspaceController.save(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(201);
+    expect(res.json.mock.calls[0][0].data.columnsSeeded).toBe(0);
+    expect(logActivity).toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("updates a workspace and logs UPDATED when Id > 0 (no template reseed)", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce(
       spResult([{ ResponseCode: 200, ResponseMess: "Workspace updated", WorkspaceId: 5 }]),
     );
@@ -83,6 +145,8 @@ describe("workspaceController.save", () => {
     const res = mockRes();
     await workspaceController.save(req, res);
 
+    const spNames = database.executeStoredProcedure.mock.calls.map((c) => c[0]);
+    expect(spNames).toEqual(["sp_SaveWorkspace"]);
     expect(logActivity).toHaveBeenCalledWith(
       expect.objectContaining({ action: "Updated", entityId: 5 }),
     );

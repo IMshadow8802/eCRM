@@ -6,9 +6,9 @@ class KanbanController {
     try {
       const {
         Id = 0,
-        ProjectId = null,
+        WorkspaceId = null,
         PageNumber = 1,
-        PageSize = 25,
+        PageSize = 200,
         SearchTerm = null,
       } = req.body || {};
 
@@ -18,7 +18,7 @@ class KanbanController {
 
       const result = await database.executeStoredProcedure("sp_FetchKanbanColumn", {
         Id,
-        ProjectId,
+        WorkspaceId,
         CompId: req.user.CompId,
         BranchId: req.user.BranchId,
         IsAdmin: req.user.IsAdmin,
@@ -37,6 +37,7 @@ class KanbanController {
         responseCode: header.ResponseCode || 200,
         data: {
           columns,
+          kanbanColumns: columns, // backward-compat alias used by some callers
           pagination: {
             currentPage: header.CurrentPage ?? PageNumber,
             pageSize: header.PageSize ?? PageSize,
@@ -58,59 +59,23 @@ class KanbanController {
     }
   }
 
-  async getColumns(req, res) {
-    try {
-      const { ProjectId = null } = req.body;
-
-      const result = await database.executeStoredProcedure(
-        "sp_FetchKanbanColumn",
-        {
-          Id: 0,
-          ProjectId,
-          CompId: req.user.CompId,
-          BranchId: req.user.BranchId,
-          IsAdmin: req.user.IsAdmin,
-        }
-      );
-
-      const spResponse = result.recordsets[0][0];
-      const columns = cleanSpRows(result.recordsets[0]);
-
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
-        data: { columns },
-        timestamp: new Date().toISOString(),
-      });
-    } catch (err) {
-      console.error("Get kanban columns error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to get kanban columns",
-        code: "KANBAN_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
-
   async save(req, res) {
     try {
       const {
         Id = 0,
-        ProjectId,
+        WorkspaceId,
         Title,
-        Color,
+        Color = null,
         SortOrder = 0,
-        MaxTasks,
+        MaxTasks = null,
         IsActive = true,
+        IsDone = false,
       } = req.body;
 
-      if (!ProjectId || ProjectId <= 0) {
+      if (!WorkspaceId || WorkspaceId <= 0) {
         return res.status(400).json({
           success: false,
-          message: "Project ID is required",
+          message: "WorkspaceId is required",
           code: "VALIDATION_ERROR",
           responseCode: 400,
           timestamp: new Date().toISOString(),
@@ -121,15 +86,18 @@ class KanbanController {
         "sp_SaveKanbanColumn",
         {
           Id,
-          ProjectId,
+          WorkspaceId,
           Title,
           Color,
           SortOrder,
           MaxTasks,
           IsActive,
+          IsDone: IsDone ? 1 : 0,
+          UserId: req.user.UserId,
+          IsAdmin: req.user.IsAdmin,
           CompId: req.user.CompId,
           BranchId: req.user.BranchId,
-        }
+        },
       );
 
       const spResponse = result.recordsets[0][0];
@@ -158,7 +126,7 @@ class KanbanController {
 
   async delete(req, res) {
     try {
-      const { Id } = req.body;
+      const { Id, ReassignToColumnId = null } = req.body;
 
       if (!Id || Id <= 0) {
         return res.status(400).json({
@@ -174,9 +142,12 @@ class KanbanController {
         "sp_DeleteKanbanColumn",
         {
           Id,
+          ReassignToColumnId,
+          UserId: req.user.UserId,
+          IsAdmin: req.user.IsAdmin,
           CompId: req.user.CompId,
           BranchId: req.user.BranchId,
-        }
+        },
       );
 
       const spResponse = result.recordsets[0][0];
@@ -185,6 +156,13 @@ class KanbanController {
         success: spResponse.ResponseCode === 200,
         message: spResponse.ResponseMess,
         responseCode: spResponse.ResponseCode,
+        data:
+          spResponse.ResponseCode === 200
+            ? {
+                tasksMoved: spResponse.TasksMoved ?? 0,
+                reassignedTo: spResponse.ReassignedTo ?? null,
+              }
+            : null,
         timestamp: new Date().toISOString(),
       });
     } catch (err) {
@@ -198,7 +176,6 @@ class KanbanController {
       });
     }
   }
-
 }
 
 module.exports = new KanbanController();

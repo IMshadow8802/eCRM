@@ -27,7 +27,7 @@ const DateField = forwardRef(function DateField(
     maxDate,
     fullWidth = true,
     size = "md",
-    placeholder = "YYYY-MM-DD",
+    placeholder = "DD-MM-YYYY",
     id: idProp,
     name,
     "data-testid": testId,
@@ -81,6 +81,7 @@ const DateField = forwardRef(function DateField(
           disabled={disabled}
           minDate={toDayjs(minDate)}
           maxDate={toDayjs(maxDate)}
+          format="DD-MM-YYYY"
           slots={{ openPickerIcon: Calendar }}
           slotProps={{
             textField: {

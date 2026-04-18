@@ -20,9 +20,9 @@ let taskSeq = 500;
 export const taskFixture = {
   list: [],
   columns: [
-    { Id: 1, Title: "To Do", Color: "#94A3B8", SortOrder: 1, WorkspaceId: 100 },
-    { Id: 2, Title: "In Progress", Color: "#3B82F6", SortOrder: 2, WorkspaceId: 100 },
-    { Id: 3, Title: "Done", Color: "#10B981", SortOrder: 3, WorkspaceId: 100 },
+    { Id: 1, Title: "To Do", Color: "#94A3B8", SortOrder: 1, WorkspaceId: 100, IsDone: false },
+    { Id: 2, Title: "In Progress", Color: "#3B82F6", SortOrder: 2, WorkspaceId: 100, IsDone: false },
+    { Id: 3, Title: "Done", Color: "#10B981", SortOrder: 3, WorkspaceId: 100, IsDone: true },
   ],
   reset() {
     this.list = [];
@@ -120,10 +120,39 @@ export const handlers = [
       responseCode: 200,
       data: {
         kanbanColumns: taskFixture.columns,
+        columns: taskFixture.columns,
         pagination: { currentPage: 1, pageSize: 100, totalRecords: 3, totalPages: 1 },
       },
     }),
   ),
+
+  http.post(`*/api/kanban/saveKanbanColumn`, async ({ request }) => {
+    const body = await request.json();
+    const id = body?.Id || Math.max(0, ...taskFixture.columns.map((c) => c.Id)) + 1;
+    const existing = taskFixture.columns.find((c) => c.Id === id);
+    if (existing) {
+      Object.assign(existing, body);
+    } else {
+      taskFixture.columns.push({ Id: id, ...body });
+    }
+    return HttpResponse.json({
+      success: true,
+      message: "ok",
+      responseCode: body?.Id ? 200 : 201,
+      data: { columnId: id },
+    });
+  }),
+
+  http.post(`*/api/kanban/deleteKanbanColumn`, async ({ request }) => {
+    const body = await request.json();
+    taskFixture.columns = taskFixture.columns.filter((c) => c.Id !== body?.Id);
+    return HttpResponse.json({
+      success: true,
+      message: "ok",
+      responseCode: 200,
+      data: { tasksMoved: 0, reassignedTo: body?.ReassignToColumnId ?? null },
+    });
+  }),
 
   http.post(`*/api/tasks/fetchTasks`, async ({ request }) => {
     const body = await request.json();
@@ -163,7 +192,7 @@ export const handlers = [
         Title: body.Title,
         Description: body.Description ?? "",
         WorkspaceId: body.WorkspaceId,
-        Status: body.Status ?? "todo",
+        ColumnId: body.ColumnId ?? null,
         Priority: body.Priority ?? "medium",
         AssignedToUserId: body.AssignedToUserId ?? null,
         DueDate: body.DueDate ?? null,

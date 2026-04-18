@@ -68,7 +68,7 @@ describe("TaskCreateModal", () => {
     });
   });
 
-  it("creates with default priority medium and default status", async () => {
+  it("creates with default priority medium", async () => {
     renderModal();
     const user = userEvent.setup();
     await user.type(screen.getByLabelText(/title/i), "Default");
@@ -76,7 +76,6 @@ describe("TaskCreateModal", () => {
     await waitFor(() => {
       expect(taskFixture.list[0].Priority).toBe("medium");
     });
-    expect(taskFixture.list[0].Status).toBe("todo");
   });
 
   it("renders due date field", async () => {
@@ -87,13 +86,13 @@ describe("TaskCreateModal", () => {
     ).toBeInTheDocument();
   });
 
-  it("uses defaultStatus for new task", async () => {
-    renderModal({ defaultStatus: "in-progress" });
+  it("passes columnId from prop into save payload", async () => {
+    renderModal({ columnId: 5, columnTitle: "Sprint" });
     const user = userEvent.setup();
     await user.type(screen.getByLabelText(/title/i), "S1");
     await user.click(screen.getByTestId("create-task-submit"));
     await waitFor(() => {
-      expect(taskFixture.list[0].Status).toBe("in-progress");
+      expect(taskFixture.list[0].ColumnId).toBe(5);
     });
   });
 });

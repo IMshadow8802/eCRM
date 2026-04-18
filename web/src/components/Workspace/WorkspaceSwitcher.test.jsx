@@ -56,7 +56,7 @@ describe("WorkspaceSwitcher", () => {
     expect(screen.getByText("member")).toBeInTheDocument();
   });
 
-  it("groups workspaces by type in the dropdown", async () => {
+  it("groups workspaces by type under 'Your X' headers", async () => {
     workspaceFixture.seed({
       Id: 1,
       Name: "My Tasks",
@@ -83,12 +83,40 @@ describe("WorkspaceSwitcher", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByTestId("workspace-switcher-button"));
 
-    expect(await screen.findByText("Personal")).toBeInTheDocument();
-    expect(screen.getByText("Shared")).toBeInTheDocument();
-    expect(screen.getByText("Projects")).toBeInTheDocument();
+    expect(await screen.findByText("Your Personal")).toBeInTheDocument();
+    expect(screen.getByText("Your Shared")).toBeInTheDocument();
+    expect(screen.getByText("Your Projects")).toBeInTheDocument();
     expect(screen.getByTestId("workspace-menu-1")).toBeInTheDocument();
     expect(screen.getByTestId("workspace-menu-2")).toBeInTheDocument();
     expect(screen.getByTestId("workspace-menu-3")).toBeInTheDocument();
+  });
+
+  it("surfaces admin-visible workspaces under a separate read-only section", async () => {
+    workspaceFixture.seed({
+      Id: 1,
+      Name: "My Tasks",
+      Type: "personal",
+      MyRole: "owner",
+      MemberCount: 1,
+    });
+    // shared board the admin is NOT a member of — API still returns it
+    workspaceFixture.seed({
+      Id: 9,
+      Name: "Raaj and Aman",
+      Type: "shared",
+      MyRole: null,
+      MemberCount: 3,
+    });
+    renderWithProviders(<WorkspaceSwitcher />);
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId("workspace-switcher-button"));
+
+    expect(await screen.findByText("Your Personal")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Admin view — Shared \(read-only\)/i),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("workspace-menu-9")).toBeInTheDocument();
   });
 
   it("clicking a workspace option sets active workspace", async () => {

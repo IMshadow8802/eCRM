@@ -22,7 +22,6 @@ const Projects = lazy(() => import("./pages/Master/Projects"));
 const Teams = lazy(() => import("./pages/Master/Teams"));
 const Task = lazy(() => import("./pages/Task/TaskBoard"));
 const Users = lazy(() => import("./pages/Master/Users"));
-const KanbanColumns = lazy(() => import("./pages/Master/Kanban"));
 const LeadSource = lazy(() => import("./pages/Master/LeadSource"));
 const Status = lazy(() => import("./pages/Master/Status"));
 const Leads = lazy(() => import("./pages/Master/Leads"));
@@ -39,10 +38,6 @@ const routesConfig = [
   { path: "/projects/*", element: <ProtectedRoute element={<Projects />} /> },
   { path: "/teams/*", element: <ProtectedRoute element={<Teams />} /> },
   { path: "/users/*", element: <ProtectedRoute element={<Users />} /> },
-  {
-    path: "/kanban_columns/*",
-    element: <ProtectedRoute element={<KanbanColumns />} />,
-  },
   { path: "/lead_source/*", element: <ProtectedRoute element={<LeadSource />} /> },
   { path: "/status/*", element: <ProtectedRoute element={<Status />} /> },
   { path: "/leads/*", element: <ProtectedRoute element={<Leads />} /> },
@@ -86,8 +81,11 @@ const App = () => {
       <BrowserRouter basename="/eStockCRM/">
         <SnackbarProvider
           maxSnack={3}
-          style={{ maxWidth: "400px" }}
+          style={{ maxWidth: "400px", zIndex: 1800 }}
           anchorOrigin={{ vertical: "top", horizontal: "center" }}
+          dense
+          preventDuplicate
+          autoHideDuration={3500}
         >
           <SessionMonitor
             options={{
