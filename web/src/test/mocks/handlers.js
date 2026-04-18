@@ -46,6 +46,31 @@ export const notificationFixture = {
 };
 
 export const handlers = [
+  http.post(`*/api/projects/fetchProjects`, async () =>
+    HttpResponse.json({
+      success: true,
+      message: "ok",
+      responseCode: 200,
+      data: {
+        projects: [],
+        pagination: { currentPage: 1, pageSize: 100, totalRecords: 0, totalPages: 1 },
+      },
+    }),
+  ),
+
+  http.post(`*/api/workspaces/respondInvite`, async ({ request }) => {
+    const body = await request.json();
+    return HttpResponse.json({
+      success: true,
+      message: body?.Action === "accept" ? "Invite accepted" : "Invite declined",
+      responseCode: 200,
+      data: {
+        workspaceId: body?.WorkspaceId,
+        inviteStatus: body?.Action === "accept" ? "active" : "declined",
+      },
+    });
+  }),
+
   http.post(`*/api/workspaces/fetchWorkspaces`, async () => {
     const rows = workspaceFixture.list;
     return HttpResponse.json({

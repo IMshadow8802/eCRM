@@ -14,7 +14,12 @@ class WorkspaceController {
         Color = null,
         Icon = null,
         TemplateKey = "basic",
+        Members = [],
       } = req.body;
+
+      const membersJson = Array.isArray(Members) && Members.length
+        ? JSON.stringify(Members.map((m) => Number(m)).filter(Boolean))
+        : null;
 
       const result = await database.executeStoredProcedure("sp_SaveWorkspace", {
         Id,
@@ -25,6 +30,7 @@ class WorkspaceController {
         ProjectId,
         Color,
         Icon,
+        MembersJson: membersJson,
         CompId: req.user.CompId,
         BranchId: req.user.BranchId,
       });
@@ -417,6 +423,68 @@ class WorkspaceController {
         success: false,
         message: "Failed to archive workspace",
         code: "WORKSPACE_ARCHIVE_ERROR",
+        responseCode: 500,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  async respondInvite(req, res) {
+    try {
+      const { WorkspaceId, Action } = req.body;
+
+      if (!WorkspaceId || !Action || !["accept", "decline"].includes(Action)) {
+        return res.status(400).json({
+          success: false,
+          message: "WorkspaceId and Action (accept|decline) are required",
+          code: "VALIDATION_ERROR",
+          responseCode: 400,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const result = await database.executeStoredProcedure(
+        "sp_RespondWorkspaceInvite",
+        {
+          WorkspaceId,
+          UserId: req.user.UserId,
+          Action,
+          CompId: req.user.CompId,
+        },
+      );
+
+      const spResponse = result.recordsets[0][0];
+
+      if (spResponse.ResponseCode === 200) {
+        await logActivity({
+          entityType: "Workspace",
+          entityId: WorkspaceId,
+          action:
+            Action === "accept" ? ACTIONS.ASSIGNED : ACTIONS.DELETED,
+          description: `Invite ${Action}ed`,
+          req,
+        });
+      }
+
+      return res.status(spResponse.ResponseCode).json({
+        success: spResponse.ResponseCode === 200,
+        message: spResponse.ResponseMess,
+        responseCode: spResponse.ResponseCode,
+        data:
+          spResponse.ResponseCode === 200
+            ? {
+                workspaceId: spResponse.WorkspaceId,
+                inviteStatus: spResponse.InviteStatus,
+              }
+            : null,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("Respond invite error:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to respond to invite",
+        code: "WORKSPACE_INVITE_ERROR",
         responseCode: 500,
         timestamp: new Date().toISOString(),
       });

@@ -38,18 +38,22 @@ beforeEach(() => {
 });
 
 describe("workspaceController.save", () => {
-  it("creates a shared workspace, seeds kanban template, and logs activity", async () => {
-    // 1st SP call: sp_SaveWorkspace
+  it("creates a shared workspace with invited members, seeds template, logs activity", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce(
       spResult([{ ResponseCode: 201, ResponseMess: "Workspace created", WorkspaceId: 42 }]),
     );
-    // 2nd SP call: sp_ApplyKanbanTemplate (auto-invoked)
     database.executeStoredProcedure.mockResolvedValueOnce(
       spResult([{ ResponseCode: 201, ResponseMess: "Template applied", WorkspaceId: 42, TemplateKey: "basic", ColumnsCreated: 3 }]),
     );
 
     const req = baseReq({
-      body: { Name: "Marketing", Type: "shared", Color: "#F59E0B", TemplateKey: "basic" },
+      body: {
+        Name: "Marketing",
+        Type: "shared",
+        Color: "#F59E0B",
+        TemplateKey: "basic",
+        Members: [3, 4, 9],
+      },
     });
     const res = mockRes();
     await workspaceController.save(req, res);
@@ -65,6 +69,7 @@ describe("workspaceController.save", () => {
         CompId: 1,
         BranchId: 2,
         Color: "#F59E0B",
+        MembersJson: JSON.stringify([3, 4, 9]),
       }),
     );
     expect(calls[1][0]).toBe("sp_ApplyKanbanTemplate");
@@ -167,6 +172,21 @@ describe("workspaceController.save", () => {
     const json = res.json.mock.calls[0][0];
     expect(json.success).toBe(false);
     expect(json.data).toBeNull();
+  });
+
+  it("omits MembersJson when no members array is provided", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 201, ResponseMess: "ok", WorkspaceId: 1 }]),
+    );
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 201, ResponseMess: "ok", ColumnsCreated: 3 }]),
+    );
+
+    const req = baseReq({ body: { Name: "Solo", Type: "shared" } });
+    const res = mockRes();
+    await workspaceController.save(req, res);
+
+    expect(database.executeStoredProcedure.mock.calls[0][1].MembersJson).toBeNull();
   });
 
   it("returns 500 when database throws", async () => {
@@ -565,6 +585,84 @@ describe("workspaceController.archive", () => {
     await workspaceController.archive(req, res);
     expect(res.status).toHaveBeenCalledWith(500);
     expect(res.json.mock.calls[0][0].code).toBe("WORKSPACE_ARCHIVE_ERROR");
+    spy.mockRestore();
+  });
+});
+
+describe("workspaceController.respondInvite", () => {
+  it("accepts invite + logs activity", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([
+        {
+          ResponseCode: 200,
+          ResponseMess: "Invite accepted",
+          WorkspaceId: 21,
+          InviteStatus: "active",
+        },
+      ]),
+    );
+
+    const req = baseReq({ body: { WorkspaceId: 21, Action: "accept" } });
+    const res = mockRes();
+    await workspaceController.respondInvite(req, res);
+
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
+      "sp_RespondWorkspaceInvite",
+      { WorkspaceId: 21, UserId: 7, Action: "accept", CompId: 1 },
+    );
+    expect(logActivity).toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json.mock.calls[0][0].data).toEqual({
+      workspaceId: 21,
+      inviteStatus: "active",
+    });
+  });
+
+  it("declines invite", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([
+        {
+          ResponseCode: 200,
+          ResponseMess: "Invite declined",
+          WorkspaceId: 9,
+          InviteStatus: "declined",
+        },
+      ]),
+    );
+
+    const req = baseReq({ body: { WorkspaceId: 9, Action: "decline" } });
+    const res = mockRes();
+    await workspaceController.respondInvite(req, res);
+
+    expect(database.executeStoredProcedure.mock.calls[0][1].Action).toBe(
+      "decline",
+    );
+    expect(res.json.mock.calls[0][0].data.inviteStatus).toBe("declined");
+  });
+
+  it("400 on bad action", async () => {
+    const req = baseReq({ body: { WorkspaceId: 1, Action: "whatever" } });
+    const res = mockRes();
+    await workspaceController.respondInvite(req, res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  it("400 when fields missing", async () => {
+    const req = baseReq({ body: {} });
+    const res = mockRes();
+    await workspaceController.respondInvite(req, res);
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  it("returns 500 when database throws", async () => {
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    const req = baseReq({ body: { WorkspaceId: 1, Action: "accept" } });
+    const res = mockRes();
+    await workspaceController.respondInvite(req, res);
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json.mock.calls[0][0].code).toBe("WORKSPACE_INVITE_ERROR");
     spy.mockRestore();
   });
 });

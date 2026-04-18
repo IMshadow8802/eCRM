@@ -56,6 +56,8 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
   const [replyTo, setReplyTo] = useState(null);
   const currentUserId = useAuthStore((s) => s.user?.UserId ?? s.UserId);
   const canEditOthers = useWorkspaceStore((s) => s.canEditOthersTasks)();
+  const workspaceType = useWorkspaceStore((s) => s.activeWorkspaceType);
+  const isPersonal = workspaceType === "personal";
 
   const { data: taskPayload, refetch: refetchTask } = useApiQuery({
     queryKey: ["task", taskId],
@@ -136,7 +138,7 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
         ColumnId: draft.ColumnId,
         ProjectId: task.ProjectId,
         ParentTaskId: task.ParentTaskId,
-        AssignedToUserId: draft.AssignedToUserId,
+        AssignedToUserId: isPersonal ? currentUserId : draft.AssignedToUserId,
         TeamId: task.TeamId,
         Priority: draft.Priority,
         Type: task.Type,
@@ -345,25 +347,28 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 12 }}>
-                    <div style={{ flex: 1 }}>
-                      <Combobox
-                        label="Assignee"
-                        options={userOptions}
-                        value={
-                          userOptions.find((o) => o.value === draft.AssignedToUserId) ??
-                          null
-                        }
-                        onChange={(v) =>
-                          setDraft((d) => ({
-                            ...d,
-                            AssignedToUserId: v?.value ?? null,
-                          }))
-                        }
-                        disabled={!canEditThisTask}
-                        placeholder="Unassigned"
-                        data-testid="task-assignee-select"
-                      />
-                    </div>
+                    {!isPersonal && (
+                      <div style={{ flex: 1 }}>
+                        <Combobox
+                          label="Assignee"
+                          options={userOptions}
+                          value={
+                            userOptions.find(
+                              (o) => o.value === draft.AssignedToUserId,
+                            ) ?? null
+                          }
+                          onChange={(v) =>
+                            setDraft((d) => ({
+                              ...d,
+                              AssignedToUserId: v?.value ?? null,
+                            }))
+                          }
+                          disabled={!canEditThisTask}
+                          placeholder="Unassigned"
+                          data-testid="task-assignee-select"
+                        />
+                      </div>
+                    )}
                     <div style={{ flex: 1 }}>
                       <DateField
                         label="Due date"

@@ -12,6 +12,8 @@ import {
 } from "../../../components/ui";
 import { useApiMutation } from "../../../hooks/useApiMutation";
 import { useApiQuery } from "../../../hooks/useApiQuery";
+import useWorkspaceStore from "../../../stores/useWorkspaceStore";
+import useAuthStore from "../../../stores/useAuthStore";
 
 const PRIORITIES = [
   { value: "low", label: "Low" },
@@ -28,6 +30,9 @@ export default function TaskCreateModal({
   columnTitle = null,
   onCreated,
 }) {
+  const workspaceType = useWorkspaceStore((s) => s.activeWorkspaceType);
+  const currentUserId = useAuthStore((s) => s.user?.Id ?? s.UserId);
+  const isPersonal = workspaceType === "personal";
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState("medium");
@@ -78,7 +83,9 @@ export default function TaskCreateModal({
         WorkspaceId: workspaceId,
         ColumnId: columnId,
         Priority: priority,
-        AssignedToUserId: assignee?.value || null,
+        AssignedToUserId: isPersonal
+          ? currentUserId
+          : assignee?.value || null,
         DueDate: dueDate || null,
       });
       onCreated?.(res);
@@ -133,15 +140,17 @@ export default function TaskCreateModal({
             />
           </div>
           <div style={{ display: "flex", gap: 12 }}>
-            <div style={{ flex: 1 }}>
-              <Combobox
-                label="Assignee"
-                options={userOptions}
-                value={assignee}
-                onChange={setAssignee}
-                placeholder="Unassigned"
-              />
-            </div>
+            {!isPersonal && (
+              <div style={{ flex: 1 }}>
+                <Combobox
+                  label="Assignee"
+                  options={userOptions}
+                  value={assignee}
+                  onChange={setAssignee}
+                  placeholder="Unassigned"
+                />
+              </div>
+            )}
             <div style={{ flex: 1 }}>
               <DateField
                 label="Due date"

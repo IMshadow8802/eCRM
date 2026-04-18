@@ -11,6 +11,9 @@ import {
   RadioGroup,
 } from "../ui";
 import { useApiMutation } from "../../hooks/useApiMutation";
+import { useApiQuery } from "../../hooks/useApiQuery";
+import { toUserOptions } from "../../utils/userShape";
+import useAuthStore from "../../stores/useAuthStore";
 
 const TEMPLATES = [
   { value: "basic", label: "Basic", desc: "To Do / In Progress / Done" },
@@ -33,9 +36,12 @@ export default function CreateWorkspaceModal({
 }) {
   const theme = useTheme();
   const p = theme.tokens;
+  const currentUserId = useAuthStore((s) => s.user?.Id ?? s.UserId);
   const [type, setType] = useState("shared");
   const [name, setName] = useState("");
   const [template, setTemplate] = useState(TEMPLATES[0]);
+  const [members, setMembers] = useState([]); // [{value, label}] for shared
+  const [project, setProject] = useState(null); // {value, label} for project
   const [submitting, setSubmitting] = useState(false);
 
   const saveMutation = useApiMutation({
@@ -43,10 +49,41 @@ export default function CreateWorkspaceModal({
     showSuccessMessage: false,
   });
 
+  // Users list — only needed for shared type, but fetch opportunistically
+  // when the modal opens so switching to shared feels instant.
+  const { data: usersPayload } = useApiQuery({
+    queryKey: ["users", "pick-list"],
+    endpoint: "/api/users/fetchUsers",
+    params: { PageNumber: 1, PageSize: 200 },
+    enabled: open,
+    showErrorMessage: false,
+  });
+  const userOptions = toUserOptions(usersPayload?.users, { withJobTitle: true })
+    .filter((o) => Number(o.value) !== Number(currentUserId))
+    .map((o) => ({ value: Number(o.value), label: o.label }));
+
+  // Projects list — only needed for project type.
+  const { data: projectsPayload } = useApiQuery({
+    queryKey: ["projects", "pick-list"],
+    endpoint: "/api/projects/fetchProjects",
+    params: { PageNumber: 1, PageSize: 200 },
+    enabled: open && type === "project",
+    showErrorMessage: false,
+  });
+  const projectOptions = (projectsPayload?.projects ?? [])
+    .filter((pr) => pr?.TeamId)
+    .map((pr) => ({
+      value: pr.Id,
+      label: pr.TeamName ? `${pr.Name} — ${pr.TeamName}` : pr.Name,
+      teamId: pr.TeamId,
+    }));
+
   const reset = () => {
     setType("shared");
     setName("");
     setTemplate(TEMPLATES[0]);
+    setMembers([]);
+    setProject(null);
     setSubmitting(false);
   };
 
@@ -66,30 +103,45 @@ export default function CreateWorkspaceModal({
       enqueueSnackbar("You already have a personal workspace", { variant: "warning" });
       return;
     }
+    if (type === "project" && !project?.value) {
+      enqueueSnackbar("Pick a project to link this workspace to", { variant: "warning" });
+      return;
+    }
 
     setSubmitting(true);
     try {
-      const saved = await saveMutation.mutateAsync({
+      const payload = {
         Id: 0,
         Name: trimmed,
         Type: type,
         TemplateKey: template?.value ?? "basic",
-      });
+      };
+      if (type === "shared") {
+        payload.Members = members.map((m) => m.value);
+      }
+      if (type === "project") {
+        payload.ProjectId = project.value;
+      }
+
+      const saved = await saveMutation.mutateAsync(payload);
       const workspaceId = saved?.workspaceId;
       if (!workspaceId) throw new Error("missing workspaceId");
 
-      enqueueSnackbar("Workspace created", { variant: "success" });
+      const summary =
+        type === "shared" && members.length
+          ? `Workspace created. ${members.length} invite${members.length === 1 ? "" : "s"} sent.`
+          : "Workspace created";
+      enqueueSnackbar(summary, { variant: "success" });
       onCreated?.({ Id: workspaceId, Name: trimmed, Type: type, MyRole: "owner" });
       reset();
       onClose?.();
     } catch {
-      // error fired
+      // mutation hook surfaces error toast
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Filter out Personal if already present
   const typeOptions = TYPE_OPTIONS.map((o) =>
     o.value === "personal" && hasPersonal ? { ...o, disabled: true } : o,
   );
@@ -127,10 +179,42 @@ export default function CreateWorkspaceModal({
             label="Workspace name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Marketing Q4"
+            placeholder={
+              type === "personal"
+                ? "e.g. My Tasks"
+                : type === "shared"
+                  ? "e.g. Marketing Q4"
+                  : "e.g. Website Redesign"
+            }
             autoFocus
             required
           />
+
+          {type === "shared" && (
+            <Combobox
+              label="Invite members"
+              hint="They'll get a pending invite and have to accept before they can see the board."
+              options={userOptions}
+              value={members}
+              onChange={(arr) => setMembers(arr || [])}
+              multiple
+              placeholder="Pick teammates to invite"
+              data-testid="workspace-members-select"
+            />
+          )}
+
+          {type === "project" && (
+            <Combobox
+              label="Project"
+              hint="Members are pulled from the project's team."
+              options={projectOptions}
+              value={project}
+              onChange={setProject}
+              placeholder="Pick a project"
+              required
+              data-testid="workspace-project-select"
+            />
+          )}
 
           <Combobox
             label="Kanban template"

@@ -146,4 +146,29 @@ describe("WorkspaceSwitcher", () => {
 
     expect(await screen.findByLabelText(/workspace name/i)).toBeInTheDocument();
   });
+
+  it("surfaces pending invites with a badge and opens the accept modal", async () => {
+    workspaceFixture.seed({
+      Id: 77,
+      Name: "Raaj's board",
+      Type: "shared",
+      MyRole: null,
+      MyInviteStatus: "pending",
+      MemberCount: 3,
+    });
+    renderWithProviders(<WorkspaceSwitcher />);
+
+    expect(await screen.findByTestId("pending-invites-badge")).toHaveTextContent("1");
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId("workspace-switcher-button"));
+    expect(await screen.findByText(/Pending invites · 1/i)).toBeInTheDocument();
+
+    await user.click(await screen.findByTestId("workspace-menu-pending-77"));
+    expect(
+      await screen.findByText(/Join "Raaj's board"\?/i),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("invite-accept")).toBeInTheDocument();
+    expect(screen.getByTestId("invite-decline")).toBeInTheDocument();
+  });
 });

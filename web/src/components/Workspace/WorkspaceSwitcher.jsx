@@ -7,11 +7,14 @@ import {
   Users,
   FolderKanban,
   Eye,
+  MailCheck,
 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { useApiQuery } from "../../hooks/useApiQuery";
 import useWorkspaceStore from "../../stores/useWorkspaceStore";
 import CreateWorkspaceModal from "./CreateWorkspaceModal";
+import InviteResponseModal from "./InviteResponseModal";
 import {
   Button,
   Menu,
@@ -33,8 +36,10 @@ const TYPE_LABEL = {
 export default function WorkspaceSwitcher() {
   const theme = useTheme();
   const p = theme.tokens;
+  const queryClient = useQueryClient();
   const [anchorEl, setAnchorEl] = useState(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [inviteTarget, setInviteTarget] = useState(null);
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace);
 
@@ -52,23 +57,27 @@ export default function WorkspaceSwitcher() {
   const workspaces = payload?.workspaces ?? [];
   const active = workspaces.find((w) => w.Id === activeWorkspaceId) ?? null;
 
-  // Two buckets per type:
-  //   mine        — workspaces the user is an explicit member of (MyRole set)
-  //   adminView   — admin-override visibility: workspaces in their company
-  //                 that they are NOT a member of. Read-only from their POV.
-  // Personal is always in `mine` (only owner can see their own personal).
+  // Buckets per type:
+  //   mine        — active member (MyRole set, InviteStatus='active')
+  //   adminView   — admin-override visibility only (no membership)
+  // Pending invites are held separately so they don't get mixed in.
   const grouped = useMemo(() => {
     const out = {
       personal: { mine: [], adminView: [] },
       shared: { mine: [], adminView: [] },
       project: { mine: [], adminView: [] },
     };
+    const pending = [];
     for (const w of workspaces) {
+      if (w.MyInviteStatus === "pending") {
+        pending.push(w);
+        continue;
+      }
       if (!out[w.Type]) continue;
       const bucket = w.MyRole ? "mine" : "adminView";
       out[w.Type][bucket].push(w);
     }
-    return out;
+    return { ...out, pending };
   }, [workspaces]);
 
   const open = (e) => setAnchorEl(e.currentTarget);
@@ -77,11 +86,26 @@ export default function WorkspaceSwitcher() {
     setActiveWorkspace(w);
     close();
   };
+  const openInvite = (w) => {
+    close();
+    setInviteTarget(w);
+  };
 
-  // Build menu items w/ headers.
-  // "Your X" first, then "Admin view X" (read-only) so admins understand
-  // why a workspace appears even though they're not a member.
+  // Build menu items. Pending invites surface at the top so the user can't
+  // miss them. Then "Your X" per type, then admin-visible (read-only).
   const menuItems = [];
+  if (grouped.pending.length > 0) {
+    menuItems.push({ header: `Pending invites · ${grouped.pending.length}` });
+    for (const w of grouped.pending) {
+      menuItems.push({
+        id: `pending-${w.Id}`,
+        label: w.Name,
+        icon: <MailCheck size={14} />,
+        onClick: () => openInvite(w),
+        testId: `pending-workspace-${w.Id}`,
+      });
+    }
+  }
   for (const type of ["personal", "shared", "project"]) {
     const mine = grouped[type].mine;
     if (mine.length > 0) {
@@ -202,6 +226,15 @@ export default function WorkspaceSwitcher() {
             Pick a workspace
           </span>
         )}
+        {grouped.pending.length > 0 && (
+          <Chip
+            label={grouped.pending.length}
+            tone="warning"
+            variant="tonal"
+            size="sm"
+            data-testid="pending-invites-badge"
+          />
+        )}
         <ChevronDown size={16} style={{ color: p.text.tertiary }} />
       </button>
 
@@ -224,6 +257,22 @@ export default function WorkspaceSwitcher() {
         }}
         hasPersonal={grouped.personal.mine.length > 0}
       />
+
+      {inviteTarget && (
+        <InviteResponseModal
+          workspace={inviteTarget}
+          onClose={() => setInviteTarget(null)}
+          onResponded={(w, action) => {
+            queryClient.invalidateQueries({
+              queryKey: ["workspaces", "list"],
+              refetchType: "all",
+            });
+            if (action === "accept") {
+              setActiveWorkspace({ ...w, MyRole: "member" });
+            }
+          }}
+        />
+      )}
     </>
   );
 }

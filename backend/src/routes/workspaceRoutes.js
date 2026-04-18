@@ -15,5 +15,6 @@ router.post("/removeWorkspaceMember", workspaceController.removeMember);
 router.post("/archiveWorkspace", workspaceController.archive);
 router.post("/ensurePersonalWorkspace", workspaceController.ensurePersonal);
 router.post("/applyKanbanTemplate", workspaceController.applyTemplate);
+router.post("/respondInvite", workspaceController.respondInvite);
 
 module.exports = router;
