@@ -38,10 +38,10 @@ describe("CreateWorkspaceModal", () => {
     expect(workspaceFixture.list).toHaveLength(0);
   });
 
-  it("disables Personal option when hasPersonal=true", async () => {
+  it("allows multiple personal workspaces (Personal radio always enabled)", async () => {
     renderModal({ hasPersonal: true });
     const personalBtn = await screen.findByRole("radio", { name: /Personal/i });
-    expect(personalBtn).toBeDisabled();
+    expect(personalBtn).not.toBeDisabled();
   });
 
   it("creates workspace + applies template + calls onCreated", async () => {

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTheme } from "@mui/material/styles";
 import { enqueueSnackbar } from "notistack";
-import { FolderKanban, Inbox, Users, Sparkles } from "lucide-react";
+import { BookOpen, Handshake, Rocket, Sparkles } from "lucide-react";
 
 import {
   Modal,
@@ -23,9 +23,9 @@ const TEMPLATES = [
 ];
 
 const TYPE_OPTIONS = [
-  { value: "personal", label: "Personal", icon: <Inbox size={14} /> },
-  { value: "shared", label: "Shared", icon: <Users size={14} /> },
-  { value: "project", label: "Project", icon: <FolderKanban size={14} /> },
+  { value: "personal", label: "Personal", icon: <BookOpen size={14} /> },
+  { value: "shared", label: "Shared", icon: <Handshake size={14} /> },
+  { value: "project", label: "Project", icon: <Rocket size={14} /> },
 ];
 
 export default function CreateWorkspaceModal({
@@ -99,10 +99,6 @@ export default function CreateWorkspaceModal({
       enqueueSnackbar("Workspace name is required", { variant: "warning" });
       return;
     }
-    if (type === "personal" && hasPersonal) {
-      enqueueSnackbar("You already have a personal workspace", { variant: "warning" });
-      return;
-    }
     if (type === "project" && !project?.value) {
       enqueueSnackbar("Pick a project to link this workspace to", { variant: "warning" });
       return;
@@ -142,9 +138,8 @@ export default function CreateWorkspaceModal({
     }
   };
 
-  const typeOptions = TYPE_OPTIONS.map((o) =>
-    o.value === "personal" && hasPersonal ? { ...o, disabled: true } : o,
-  );
+  // Users can have as many personal workspaces as they want.
+  const typeOptions = TYPE_OPTIONS;
 
   return (
     <Modal open={open} onClose={handleClose} size="md" data-testid="create-workspace-modal">

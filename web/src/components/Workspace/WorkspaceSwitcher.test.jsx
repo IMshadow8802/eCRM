@@ -147,6 +147,27 @@ describe("WorkspaceSwitcher", () => {
     expect(await screen.findByLabelText(/workspace name/i)).toBeInTheDocument();
   });
 
+  it("owners see a gear next to their workspace that opens settings", async () => {
+    workspaceFixture.seed({
+      Id: 55,
+      Name: "Hobbies",
+      Type: "personal",
+      OwnerUserId: 1,
+      MyRole: "owner",
+      MemberCount: 1,
+    });
+    renderWithProviders(<WorkspaceSwitcher />);
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId("workspace-switcher-button"));
+    const gear = await screen.findByTestId("workspace-menu-55-settings");
+    await user.click(gear);
+
+    expect(
+      await screen.findByTestId("workspace-settings-modal"),
+    ).toBeInTheDocument();
+  });
+
   it("surfaces pending invites with a badge and opens the accept modal", async () => {
     workspaceFixture.seed({
       Id: 77,

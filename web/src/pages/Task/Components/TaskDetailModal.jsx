@@ -11,6 +11,14 @@ import {
   Send,
   CornerDownRight,
   Save as SaveIcon,
+  CheckSquare,
+  Square,
+  Plus,
+  Clock,
+  Link2,
+  GitBranch,
+  ListTree,
+  ExternalLink,
 } from "lucide-react";
 
 import {
@@ -49,7 +57,7 @@ const PRIORITY_OPTIONS = [
   { value: "critical", label: "Critical" },
 ];
 
-export default function TaskDetailModal({ taskId, open, onClose }) {
+export default function TaskDetailModal({ taskId, open, onClose, onOpenTask }) {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState("details");
   const [newComment, setNewComment] = useState("");
@@ -184,6 +192,63 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
   const blockers = depsPayload?.blockers ?? [];
   const dependents = depsPayload?.dependents ?? [];
 
+  const { data: checklistPayload, refetch: refetchChecklist } = useApiQuery({
+    queryKey: ["task", taskId, "checklist"],
+    endpoint: "/api/tasks/getTaskChecklist",
+    params: { TaskId: taskId },
+    enabled: Boolean(taskId && open),
+    showErrorMessage: false,
+  });
+  const checklistItems =
+    checklistPayload?.checklist ?? checklistPayload?.items ?? [];
+
+  // Subtasks = tasks whose ParentTaskId === current. We piggy-back on the
+  // workspace-wide fetchTasks query then filter client-side; cheap at the
+  // expected board size.
+  const { data: workspaceTasksPayload } = useApiQuery({
+    queryKey: ["tasks-all", task?.WorkspaceId],
+    endpoint: "/api/tasks/fetchTasks",
+    params: {
+      WorkspaceId: task?.WorkspaceId,
+      PageNumber: 1,
+      PageSize: 200,
+    },
+    enabled: Boolean(task?.WorkspaceId && open),
+    showErrorMessage: false,
+  });
+  const workspaceTasks = workspaceTasksPayload?.tasks ?? [];
+  const subtasks = workspaceTasks.filter((t) => t.ParentTaskId === task?.Id);
+  const potentialDepOptions = workspaceTasks
+    .filter((t) => t.Id !== task?.Id)
+    .map((t) => ({ value: t.Id, label: `#${t.Id} · ${t.Title}` }));
+
+  const { data: timeEntriesPayload, refetch: refetchTimeEntries } = useApiQuery({
+    queryKey: ["task", taskId, "time"],
+    endpoint: "/api/tasks/getTaskTimeEntries",
+    params: { TaskId: taskId },
+    enabled: Boolean(taskId && open),
+    showErrorMessage: false,
+  });
+  const timeEntries =
+    timeEntriesPayload?.timeEntries ?? timeEntriesPayload?.entries ?? [];
+  const loggedHoursTotal = timeEntries.reduce(
+    (sum, e) => sum + Number(e.Hours ?? 0),
+    0,
+  );
+
+  // Auto-progress: checklist wins over subtasks, manual fallback.
+  const autoProgress = (() => {
+    if (checklistItems.length > 0) {
+      const done = checklistItems.filter((c) => c.IsCompleted).length;
+      return Math.round((done / checklistItems.length) * 100);
+    }
+    if (subtasks.length > 0) {
+      const done = subtasks.filter((t) => t.ColumnIsDone).length;
+      return Math.round((done / subtasks.length) * 100);
+    }
+    return null; // no auto source; manual applies
+  })();
+
   const saveMutation = useApiMutation({
     endpoint: "/api/tasks/saveTask",
     showSuccessMessage: false,
@@ -200,6 +265,163 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
     endpoint: "/api/tasks/pinTaskComment",
     showSuccessMessage: false,
   });
+  const saveChecklistMutation = useApiMutation({
+    endpoint: "/api/tasks/saveTaskChecklist",
+    showSuccessMessage: false,
+  });
+  const deleteChecklistMutation = useApiMutation({
+    endpoint: "/api/tasks/deleteTaskChecklist",
+    showSuccessMessage: false,
+  });
+  const logTimeMutation = useApiMutation({
+    endpoint: "/api/tasks/logTaskTime",
+    showSuccessMessage: false,
+  });
+  const deleteTimeMutation = useApiMutation({
+    endpoint: "/api/tasks/deleteTaskTimeEntry",
+    showSuccessMessage: false,
+  });
+  const addDependencyMutation = useApiMutation({
+    endpoint: "/api/tasks/addTaskDependency",
+    showSuccessMessage: false,
+  });
+  const removeDependencyMutation = useApiMutation({
+    endpoint: "/api/tasks/removeTaskDependency",
+    showSuccessMessage: false,
+  });
+  const saveSubtaskMutation = useApiMutation({
+    endpoint: "/api/tasks/saveTask",
+    showSuccessMessage: false,
+  });
+
+  // Checklist handlers
+  const [newChecklistItem, setNewChecklistItem] = useState("");
+  const addChecklistItem = async () => {
+    const text = newChecklistItem.trim();
+    if (!text || !task) return;
+    try {
+      await saveChecklistMutation.mutateAsync({
+        Id: 0,
+        TaskId: task.Id,
+        ItemText: text,
+        IsCompleted: false,
+        SortOrder: 0,
+      });
+      setNewChecklistItem("");
+      refetchChecklist();
+    } catch {}
+  };
+  const toggleChecklistItem = async (item) => {
+    try {
+      await saveChecklistMutation.mutateAsync({
+        Id: item.Id,
+        TaskId: task.Id,
+        ItemText: item.ItemText,
+        IsCompleted: !item.IsCompleted,
+        SortOrder: item.SortOrder ?? 0,
+      });
+      refetchChecklist();
+    } catch {}
+  };
+  const removeChecklistItem = async (item) => {
+    try {
+      await deleteChecklistMutation.mutateAsync({ Id: item.Id });
+      refetchChecklist();
+    } catch {}
+  };
+
+  // Subtasks
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
+  const addSubtask = async () => {
+    const title = newSubtaskTitle.trim();
+    if (!title || !task) return;
+    try {
+      await saveSubtaskMutation.mutateAsync({
+        Id: 0,
+        Title: title,
+        WorkspaceId: task.WorkspaceId,
+        ColumnId: task.ColumnId,
+        ParentTaskId: task.Id,
+        Priority: "medium",
+      });
+      setNewSubtaskTitle("");
+      queryClient.invalidateQueries({
+        queryKey: ["tasks-all", task.WorkspaceId],
+        refetchType: "all",
+      });
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    } catch {}
+  };
+
+  // Dependencies add/remove
+  const [blockerPick, setBlockerPick] = useState(null);
+  const [dependentPick, setDependentPick] = useState(null);
+  const addBlocker = async () => {
+    if (!blockerPick?.value) return;
+    try {
+      await addDependencyMutation.mutateAsync({
+        TaskId: task.Id,
+        DependsOnTaskId: blockerPick.value,
+        Type: "blocks",
+      });
+      setBlockerPick(null);
+      refetchDeps();
+      enqueueSnackbar("Blocker added", { variant: "success" });
+    } catch {}
+  };
+  const addDependent = async () => {
+    if (!dependentPick?.value) return;
+    try {
+      await addDependencyMutation.mutateAsync({
+        TaskId: dependentPick.value,
+        DependsOnTaskId: task.Id,
+        Type: "blocks",
+      });
+      setDependentPick(null);
+      refetchDeps();
+      enqueueSnackbar("Dependent added", { variant: "success" });
+    } catch {}
+  };
+  const removeDependency = async (taskId, dependsOnId) => {
+    try {
+      await removeDependencyMutation.mutateAsync({
+        TaskId: taskId,
+        DependsOnTaskId: dependsOnId,
+      });
+      refetchDeps();
+    } catch {}
+  };
+
+  // Time logging
+  const [logOpen, setLogOpen] = useState(false);
+  const [logHours, setLogHours] = useState(0);
+  const [logNote, setLogNote] = useState("");
+  const submitLogTime = async () => {
+    const hours = Number(logHours);
+    if (!hours || hours <= 0) {
+      enqueueSnackbar("Enter hours greater than 0", { variant: "warning" });
+      return;
+    }
+    try {
+      await logTimeMutation.mutateAsync({
+        TaskId: task.Id,
+        Hours: hours,
+        Description: logNote || null,
+        LogDate: dayjs().format("YYYY-MM-DD"),
+      });
+      setLogOpen(false);
+      setLogHours(0);
+      setLogNote("");
+      refetchTimeEntries();
+      enqueueSnackbar("Time logged", { variant: "success" });
+    } catch {}
+  };
+  const removeTimeEntry = async (entry) => {
+    try {
+      await deleteTimeMutation.mutateAsync({ Id: entry.Id });
+      refetchTimeEntries();
+    } catch {}
+  };
 
 
   const submitComment = async () => {
@@ -220,7 +442,8 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
   if (!open) return null;
 
   return (
-    <Modal open={open} onClose={onClose} size="lg" data-testid="task-detail-modal">
+    <>
+    <Modal open={open} onClose={onClose} size="xl" data-testid="task-detail-modal">
       <Modal.Header
         title={task?.Title ?? "Loading…"}
         subtitle={
@@ -278,11 +501,30 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
               onChange={setTab}
               items={[
                 { value: "details", label: "Details" },
-                { value: "comments", label: "Comments", badge: comments.length },
+                {
+                  value: "subtasks",
+                  label: "Subtasks",
+                  badge: subtasks.length,
+                },
+                {
+                  value: "checklist",
+                  label: "Checklist",
+                  badge: checklistItems.length,
+                },
+                {
+                  value: "comments",
+                  label: "Comments",
+                  badge: comments.length,
+                },
                 {
                   value: "deps",
                   label: "Dependencies",
                   badge: blockers.length + dependents.length,
+                },
+                {
+                  value: "time",
+                  label: "Time",
+                  badge: timeEntries.length,
                 },
               ]}
               data-testid="task-tabs"
@@ -398,24 +640,57 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
                       />
                     </div>
                     <div style={{ flex: 1 }}>
-                      <NumberInput
-                        label="Logged hours"
-                        value={draft.LoggedHours}
-                        onChange={(e) =>
-                          setDraft((d) => ({
-                            ...d,
-                            LoggedHours: Number(e.target.value) || 0,
-                          }))
-                        }
-                        min={0}
-                        step={0.25}
-                        disabled={!canEditThisTask}
-                      />
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 500,
+                          marginBottom: 6,
+                          color: "var(--color-surface-600)",
+                        }}
+                      >
+                        Logged hours
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          height: 40,
+                        }}
+                      >
+                        <Chip
+                          label={`${loggedHoursTotal.toFixed(2)} h`}
+                          tone={
+                            draft.EstimatedHours > 0 &&
+                            loggedHoursTotal > draft.EstimatedHours
+                              ? "error"
+                              : "default"
+                          }
+                          size="sm"
+                          variant="tonal"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          leftIcon={<Clock size={14} />}
+                          onClick={() => setLogOpen(true)}
+                          disabled={!canEditThisTask}
+                          data-testid="log-time-btn"
+                        >
+                          Log time
+                        </Button>
+                      </div>
                     </div>
                     <div style={{ flex: 1 }}>
                       <NumberInput
-                        label="Progress (%)"
-                        value={draft.Progress}
+                        label={
+                          autoProgress != null
+                            ? `Progress — auto ${autoProgress}%`
+                            : "Progress (%)"
+                        }
+                        value={
+                          autoProgress != null ? autoProgress : draft.Progress
+                        }
                         onChange={(e) =>
                           setDraft((d) => ({
                             ...d,
@@ -428,10 +703,174 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
                         min={0}
                         max={100}
                         step={5}
-                        disabled={!canEditThisTask}
+                        disabled={!canEditThisTask || autoProgress != null}
+                        hint={
+                          autoProgress != null
+                            ? checklistItems.length
+                              ? "Driven by checklist — add or tick items to change"
+                              : "Driven by subtask completion"
+                            : undefined
+                        }
                       />
                     </div>
                   </div>
+                </div>
+              )}
+
+              {tab === "checklist" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {checklistItems.length === 0 ? (
+                    <EmptyState
+                      icon={<CheckSquare size={28} />}
+                      title="No checklist yet"
+                      description="Break this task into quick steps. Tick them off as you go."
+                      size="sm"
+                    />
+                  ) : (
+                    checklistItems.map((it) => (
+                      <ChecklistRow
+                        key={it.Id}
+                        item={it}
+                        canEdit={canEditThisTask}
+                        onToggle={() => toggleChecklistItem(it)}
+                        onDelete={() => removeChecklistItem(it)}
+                      />
+                    ))
+                  )}
+                  {canEditThisTask && (
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 8,
+                        alignItems: "center",
+                        marginTop: 6,
+                      }}
+                    >
+                      <TextInput
+                        value={newChecklistItem}
+                        onChange={(e) => setNewChecklistItem(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") addChecklistItem();
+                        }}
+                        placeholder="Add a step…"
+                        size="sm"
+                        data-testid="checklist-input"
+                      />
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        leftIcon={<Plus size={14} />}
+                        onClick={addChecklistItem}
+                        loading={saveChecklistMutation.isPending}
+                        data-testid="checklist-add"
+                      >
+                        Add
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {tab === "subtasks" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {subtasks.length === 0 ? (
+                    <EmptyState
+                      icon={<ListTree size={28} />}
+                      title="No subtasks yet"
+                      description="Split this into smaller pieces that other people can own."
+                      size="sm"
+                    />
+                  ) : (
+                    subtasks.map((s) => (
+                      <SubtaskRow
+                        key={s.Id}
+                        subtask={s}
+                        onOpen={() => onOpenTask?.(s.Id)}
+                      />
+                    ))
+                  )}
+                  {canEditThisTask && (
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 8,
+                        alignItems: "center",
+                        marginTop: 6,
+                      }}
+                    >
+                      <TextInput
+                        value={newSubtaskTitle}
+                        onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") addSubtask();
+                        }}
+                        placeholder="Subtask title…"
+                        size="sm"
+                        data-testid="subtask-input"
+                      />
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        leftIcon={<Plus size={14} />}
+                        onClick={addSubtask}
+                        loading={saveSubtaskMutation.isPending}
+                        data-testid="subtask-add"
+                      >
+                        Add
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {tab === "time" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      fontSize: 13,
+                    }}
+                  >
+                    <div>
+                      Total logged:{" "}
+                      <strong>{loggedHoursTotal.toFixed(2)} h</strong>
+                      {draft?.EstimatedHours > 0 && (
+                        <>
+                          {" "}/ {draft.EstimatedHours.toFixed(2)} h estimated
+                        </>
+                      )}
+                    </div>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      leftIcon={<Clock size={14} />}
+                      onClick={() => setLogOpen(true)}
+                      disabled={!canEditThisTask}
+                    >
+                      Log time
+                    </Button>
+                  </div>
+                  {timeEntries.length === 0 ? (
+                    <EmptyState
+                      icon={<Clock size={28} />}
+                      title="No time logged"
+                      description="Track real hours as you work so the team sees actuals vs estimate."
+                      size="sm"
+                    />
+                  ) : (
+                    timeEntries.map((e) => (
+                      <TimeEntryRow
+                        key={e.Id}
+                        entry={e}
+                        canEdit={
+                          canEditThisTask || e.UserId === currentUserId
+                        }
+                        onDelete={() => removeTimeEntry(e)}
+                      />
+                    ))
+                  )}
                 </div>
               )}
 
@@ -536,13 +975,86 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
                     items={blockers}
                     emptyText="No blockers"
                     tone="error"
+                    canEdit={canEditThisTask}
+                    onRemove={(d) => removeDependency(task.Id, d.TaskId)}
                   />
+                  {canEditThisTask && (
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 8,
+                        alignItems: "center",
+                      }}
+                    >
+                      <div style={{ flex: 1 }}>
+                        <Combobox
+                          options={potentialDepOptions.filter(
+                            (o) =>
+                              !blockers.some((b) => b.TaskId === o.value),
+                          )}
+                          value={blockerPick}
+                          onChange={setBlockerPick}
+                          placeholder="Pick a task that blocks this one"
+                          size="sm"
+                          data-testid="blocker-pick"
+                        />
+                      </div>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        leftIcon={<Link2 size={14} />}
+                        onClick={addBlocker}
+                        disabled={!blockerPick}
+                        loading={addDependencyMutation.isPending}
+                        data-testid="add-blocker-btn"
+                      >
+                        Add blocker
+                      </Button>
+                    </div>
+                  )}
+
                   <DepSection
                     title={`Blocking (${dependents.length})`}
                     items={dependents}
                     emptyText="Nothing waiting on this task"
                     tone="info"
+                    canEdit={canEditThisTask}
+                    onRemove={(d) => removeDependency(d.TaskId, task.Id)}
                   />
+                  {canEditThisTask && (
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 8,
+                        alignItems: "center",
+                      }}
+                    >
+                      <div style={{ flex: 1 }}>
+                        <Combobox
+                          options={potentialDepOptions.filter(
+                            (o) =>
+                              !dependents.some((d) => d.TaskId === o.value),
+                          )}
+                          value={dependentPick}
+                          onChange={setDependentPick}
+                          placeholder="Pick a task that waits on this one"
+                          size="sm"
+                          data-testid="dependent-pick"
+                        />
+                      </div>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        leftIcon={<GitBranch size={14} />}
+                        onClick={addDependent}
+                        disabled={!dependentPick}
+                        loading={addDependencyMutation.isPending}
+                        data-testid="add-dependent-btn"
+                      >
+                        Add dependent
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -567,6 +1079,54 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
         </Modal.Footer>
       )}
     </Modal>
+
+    <Modal
+      open={logOpen}
+      onClose={() => setLogOpen(false)}
+      size="sm"
+      data-testid="log-time-modal"
+    >
+        <Modal.Header
+          title="Log time"
+          subtitle={task ? `On "${task.Title}"` : ""}
+          icon={<Clock size={18} />}
+          onClose={() => setLogOpen(false)}
+        />
+        <Modal.Body>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <NumberInput
+              label="Hours"
+              value={logHours}
+              onChange={(e) => setLogHours(Number(e.target.value) || 0)}
+              min={0}
+              step={0.25}
+              autoFocus
+              data-testid="log-time-hours"
+            />
+            <TextArea
+              label="Note (optional)"
+              value={logNote}
+              onChange={(e) => setLogNote(e.target.value)}
+              rows={3}
+              placeholder="What did you work on?"
+            />
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="ghost" onClick={() => setLogOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            onClick={submitLogTime}
+            loading={logTimeMutation.isPending}
+            data-testid="log-time-submit"
+          >
+            Log
+          </Button>
+        </Modal.Footer>
+      </Modal>
+    </>
   );
 }
 
@@ -675,7 +1235,7 @@ function CommentBubble({
   );
 }
 
-function DepSection({ title, items, emptyText, tone }) {
+function DepSection({ title, items, emptyText, tone, canEdit, onRemove }) {
   return (
     <div>
       <div
@@ -709,10 +1269,180 @@ function DepSection({ title, items, emptyText, tone }) {
                 tone={done ? "success" : tone}
                 variant="tonal"
                 size="md"
+                onDelete={canEdit ? () => onRemove?.(d) : undefined}
               />
             );
           })}
         </div>
+      )}
+    </div>
+  );
+}
+
+function ChecklistRow({ item, canEdit, onToggle, onDelete }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "6px 8px",
+        borderRadius: 8,
+      }}
+    >
+      <button
+        type="button"
+        onClick={canEdit ? onToggle : undefined}
+        disabled={!canEdit}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          border: "none",
+          background: "transparent",
+          cursor: canEdit ? "pointer" : "default",
+          color: item.IsCompleted ? "#10B981" : "#94A3B8",
+          padding: 0,
+        }}
+        data-testid={`checklist-toggle-${item.Id}`}
+      >
+        {item.IsCompleted ? <CheckSquare size={18} /> : <Square size={18} />}
+      </button>
+      <span
+        style={{
+          flex: 1,
+          fontSize: 14,
+          color: "var(--color-surface-700)",
+          textDecoration: item.IsCompleted ? "line-through" : "none",
+          opacity: item.IsCompleted ? 0.6 : 1,
+        }}
+      >
+        {item.ItemText}
+      </span>
+      {canEdit && (
+        <IconButton
+          size="sm"
+          variant="ghost"
+          onClick={onDelete}
+          aria-label="Remove item"
+        >
+          <Trash2 size={14} />
+        </IconButton>
+      )}
+    </div>
+  );
+}
+
+function SubtaskRow({ subtask, onOpen }) {
+  const done = Boolean(subtask.ColumnIsDone);
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "10px 12px",
+        borderRadius: 8,
+        border: "1px solid rgba(148,163,184,0.18)",
+        backgroundColor: "rgba(255,255,255,0.02)",
+      }}
+    >
+      <span style={{ color: done ? "#10B981" : "#94A3B8" }}>
+        {done ? <CheckSquare size={16} /> : <Square size={16} />}
+      </span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 14,
+            fontWeight: 500,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {subtask.Title}
+        </div>
+        <div
+          style={{
+            fontSize: 12,
+            color: "var(--color-surface-500)",
+            marginTop: 2,
+          }}
+        >
+          {subtask.ColumnTitle || "—"}
+          {subtask.AssigneeName ? ` · ${subtask.AssigneeName}` : ""}
+          {subtask.Priority ? ` · ${subtask.Priority}` : ""}
+        </div>
+      </div>
+      <IconButton
+        size="sm"
+        variant="ghost"
+        onClick={onOpen}
+        aria-label="Open subtask"
+      >
+        <ExternalLink size={14} />
+      </IconButton>
+    </div>
+  );
+}
+
+function TimeEntryRow({ entry, canEdit, onDelete }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "8px 12px",
+        borderRadius: 8,
+        border: "1px solid rgba(148,163,184,0.18)",
+      }}
+    >
+      <Clock size={14} style={{ color: "#6366F1" }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 600 }}>
+          {Number(entry.Hours ?? 0).toFixed(2)} h
+          {entry.LogDate && (
+            <span
+              style={{
+                fontWeight: 400,
+                marginLeft: 8,
+                color: "var(--color-surface-500)",
+              }}
+            >
+              {dayjs(entry.LogDate).format("DD-MM-YYYY")}
+            </span>
+          )}
+        </div>
+        {entry.Description && (
+          <div
+            style={{
+              fontSize: 12,
+              color: "var(--color-surface-500)",
+              marginTop: 2,
+              wordBreak: "break-word",
+            }}
+          >
+            {entry.Description}
+          </div>
+        )}
+        {entry.UserFullName && (
+          <div
+            style={{ fontSize: 11, color: "var(--color-surface-400)", marginTop: 2 }}
+          >
+            {entry.UserFullName}
+          </div>
+        )}
+      </div>
+      {canEdit && (
+        <IconButton
+          size="sm"
+          variant="ghost"
+          onClick={onDelete}
+          aria-label="Delete time entry"
+        >
+          <Trash2 size={14} />
+        </IconButton>
       )}
     </div>
   );

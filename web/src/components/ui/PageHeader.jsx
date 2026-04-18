@@ -8,10 +8,13 @@ import { palettes, radii } from "../../styles/tokens";
  */
 export default function PageHeader({
   title,
+  titleSuffix,
   subtitle,
   breadcrumb,
   actions,
   icon,
+  iconBg,
+  iconFg,
   tabs,
   "data-testid": testId,
 }) {
@@ -77,8 +80,8 @@ export default function PageHeader({
               width: 44,
               height: 44,
               borderRadius: r.md,
-              background: p.gradient.statAccent,
-              color: "#FFFFFF",
+              background: iconBg ?? p.gradient.statAccent,
+              color: iconFg ?? "#FFFFFF",
               flexShrink: 0,
             }}
           >
@@ -94,9 +97,14 @@ export default function PageHeader({
               color: p.text.primary,
               letterSpacing: "-0.02em",
               lineHeight: 1.25,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
             }}
           >
             {title}
+            {titleSuffix}
           </h1>
           {subtitle && (
             <p

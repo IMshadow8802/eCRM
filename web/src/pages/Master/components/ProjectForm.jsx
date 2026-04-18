@@ -25,7 +25,9 @@ const projectSchema = z.object({
   Name: z.string().min(1, "Project name is required"),
   Description: z.string().optional(),
   ManagerUserId: z.string().min(1, "Project manager is required"),
-  TeamId: z.string().optional(),
+  // A team is the only way to seed project-workspace membership,
+  // so it's mandatory to pick one up-front.
+  TeamId: z.string().min(1, "Team is required"),
   Status: z.string().min(1, "Status is required"),
   Priority: z.string().min(1, "Priority is required"),
   StartDate: z.string().optional(),
@@ -286,8 +288,9 @@ const ProjectForm = ({
               value={formData.TeamId}
               onChange={(e) => handleInputChange("TeamId", e.target.value)}
               options={teamOptions}
-              placeholder="Select team (optional)"
+              placeholder="Select team"
               error={errors.TeamId}
+              required
             />
           </FormRow>
 

@@ -297,6 +297,48 @@ export const handlers = [
     }),
   ),
 
+  http.post(`*/api/tasks/addTaskDependency`, async () =>
+    HttpResponse.json({ success: true, message: "ok", responseCode: 201 }),
+  ),
+
+  http.post(`*/api/tasks/removeTaskDependency`, async () =>
+    HttpResponse.json({ success: true, message: "ok", responseCode: 200 }),
+  ),
+
+  http.post(`*/api/tasks/getTaskChecklist`, async () =>
+    HttpResponse.json({
+      success: true,
+      message: "ok",
+      responseCode: 200,
+      data: { checklist: [], items: [] },
+    }),
+  ),
+
+  http.post(`*/api/tasks/saveTaskChecklist`, async () =>
+    HttpResponse.json({ success: true, message: "ok", responseCode: 201 }),
+  ),
+
+  http.post(`*/api/tasks/deleteTaskChecklist`, async () =>
+    HttpResponse.json({ success: true, message: "ok", responseCode: 200 }),
+  ),
+
+  http.post(`*/api/tasks/getTaskTimeEntries`, async () =>
+    HttpResponse.json({
+      success: true,
+      message: "ok",
+      responseCode: 200,
+      data: { timeEntries: [], entries: [] },
+    }),
+  ),
+
+  http.post(`*/api/tasks/logTaskTime`, async () =>
+    HttpResponse.json({ success: true, message: "ok", responseCode: 201 }),
+  ),
+
+  http.post(`*/api/tasks/deleteTaskTimeEntry`, async () =>
+    HttpResponse.json({ success: true, message: "ok", responseCode: 200 }),
+  ),
+
   http.post(`*/api/users/fetchUsers`, async () =>
     HttpResponse.json({
       success: true,

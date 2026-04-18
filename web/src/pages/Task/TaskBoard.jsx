@@ -14,6 +14,10 @@ import {
   Trash2,
   LayoutGrid,
   Inbox,
+  CheckSquare,
+  BookOpen,
+  Handshake,
+  Rocket,
 } from "lucide-react";
 
 import { useApiQuery } from "../../hooks/useApiQuery";
@@ -44,10 +48,19 @@ const TEMPLATE_OPTIONS = [
   { value: "content", label: "Content — Idea / Draft / Review / Published" },
 ];
 
+const TYPE_ICON = {
+  personal: <BookOpen size={22} />,
+  shared: <Handshake size={22} />,
+  project: <Rocket size={22} />,
+};
+
 export default function TaskBoard() {
   const queryClient = useQueryClient();
   const workspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   const activeRole = useWorkspaceStore((s) => s.activeWorkspaceRole);
+  const activeType = useWorkspaceStore((s) => s.activeWorkspaceType);
+  const activeName = useWorkspaceStore((s) => s.activeWorkspaceName);
+  const activeColor = useWorkspaceStore((s) => s.activeWorkspaceColor);
   const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace);
   const canCreate = useWorkspaceStore((s) => s.canCreateTasks)();
   const isAdmin = useAuthStore((s) => s.user?.IsAdmin) || false;
@@ -244,8 +257,21 @@ export default function TaskBoard() {
     >
       <PageHeader
         title="Tasks"
+        titleSuffix={
+          activeName ? (
+            <Chip
+              label={activeName}
+              tone="primary"
+              variant="tonal"
+              size="md"
+              data-testid="active-workspace-chip"
+            />
+          ) : null
+        }
         subtitle="Your boards, shared work, and team projects — all in one place."
-        icon={<LayoutGrid size={22} />}
+        icon={TYPE_ICON[activeType] ?? <CheckSquare size={22} />}
+        iconBg={activeColor ?? undefined}
+        iconFg="#FFFFFF"
       />
 
       <div
@@ -390,6 +416,7 @@ export default function TaskBoard() {
         taskId={openTaskId}
         open={Boolean(openTaskId)}
         onClose={() => setOpenTaskId(null)}
+        onOpenTask={(id) => setOpenTaskId(id)}
       />
 
       <Modal

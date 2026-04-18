@@ -3,9 +3,9 @@ import { useTheme } from "@mui/material/styles";
 import {
   ChevronDown,
   Plus,
-  Inbox,
-  Users,
-  FolderKanban,
+  BookOpen,
+  Handshake,
+  Rocket,
   Eye,
   MailCheck,
 } from "lucide-react";
@@ -15,6 +15,7 @@ import { useApiQuery } from "../../hooks/useApiQuery";
 import useWorkspaceStore from "../../stores/useWorkspaceStore";
 import CreateWorkspaceModal from "./CreateWorkspaceModal";
 import InviteResponseModal from "./InviteResponseModal";
+import WorkspaceSettingsModal from "./WorkspaceSettingsModal";
 import {
   Button,
   Menu,
@@ -23,9 +24,9 @@ import {
 } from "../ui";
 
 const TYPE_ICON = {
-  personal: <Inbox size={14} />,
-  shared: <Users size={14} />,
-  project: <FolderKanban size={14} />,
+  personal: <BookOpen size={14} />,
+  shared: <Handshake size={14} />,
+  project: <Rocket size={14} />,
 };
 const TYPE_LABEL = {
   personal: "Personal",
@@ -40,6 +41,7 @@ export default function WorkspaceSwitcher() {
   const [anchorEl, setAnchorEl] = useState(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [inviteTarget, setInviteTarget] = useState(null);
+  const [settingsTarget, setSettingsTarget] = useState(null);
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace);
 
@@ -114,8 +116,27 @@ export default function WorkspaceSwitcher() {
         menuItems.push({
           id: w.Id,
           label: w.Name,
-          icon: TYPE_ICON[type],
+          icon: (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 20,
+                height: 20,
+                borderRadius: theme.radii.sm,
+                backgroundColor: w.Color ? `${w.Color}22` : p.primary.subtle,
+                color: w.Color || p.primary.main,
+              }}
+            >
+              {TYPE_ICON[type]}
+            </span>
+          ),
           onClick: () => pick(w),
+          onSecondary:
+            w.MyRole === "owner" || w.MyRole === "manager"
+              ? () => setSettingsTarget(w)
+              : undefined,
         });
       }
     }
@@ -191,8 +212,10 @@ export default function WorkspaceSwitcher() {
                 width: 24,
                 height: 24,
                 borderRadius: theme.radii.sm,
-                backgroundColor: p.primary.subtle,
-                color: p.primary.main,
+                backgroundColor: active.Color
+                  ? `${active.Color}22`
+                  : p.primary.subtle,
+                color: active.Color || p.primary.main,
               }}
             >
               {TYPE_ICON[active.Type]}
@@ -269,6 +292,22 @@ export default function WorkspaceSwitcher() {
             });
             if (action === "accept") {
               setActiveWorkspace({ ...w, MyRole: "member" });
+            }
+          }}
+        />
+      )}
+
+      {settingsTarget && (
+        <WorkspaceSettingsModal
+          workspace={settingsTarget}
+          onClose={() => setSettingsTarget(null)}
+          onChanged={({ kind, workspace: w }) => {
+            // Archive removes the workspace from the list → clear active.
+            // Edit keeps the same Id → update in place, stay on the board.
+            if (kind === "archive") {
+              if (activeWorkspaceId === w.Id) setActiveWorkspace(null);
+            } else if (kind === "edit") {
+              if (activeWorkspaceId === w.Id) setActiveWorkspace(w);
             }
           }}
         />

@@ -111,9 +111,20 @@ describe("workspaceController.save", () => {
     expect(res.json.mock.calls[0][0].data.columnsSeeded).toBe(5);
   });
 
-  it("does NOT call sp_ApplyKanbanTemplate when creating a personal workspace", async () => {
+  it("calls sp_ApplyKanbanTemplate for personal workspaces too (user-picked template)", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce(
       spResult([{ ResponseCode: 201, ResponseMess: "Workspace created", WorkspaceId: 1 }]),
+    );
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([
+        {
+          ResponseCode: 201,
+          ResponseMess: "Template applied",
+          WorkspaceId: 1,
+          TemplateKey: "basic",
+          ColumnsCreated: 3,
+        },
+      ]),
     );
 
     const req = baseReq({ body: { Name: "My Tasks", Type: "personal" } });
@@ -121,7 +132,7 @@ describe("workspaceController.save", () => {
     await workspaceController.save(req, res);
 
     const spNames = database.executeStoredProcedure.mock.calls.map((c) => c[0]);
-    expect(spNames).toEqual(["sp_SaveWorkspace"]);
+    expect(spNames).toEqual(["sp_SaveWorkspace", "sp_ApplyKanbanTemplate"]);
   });
 
   it("still succeeds + logs when template SP throws (save is source of truth)", async () => {

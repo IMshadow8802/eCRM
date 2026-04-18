@@ -38,17 +38,12 @@ class WorkspaceController {
       const spResponse = result.recordsets[0][0];
       const newWorkspaceId = spResponse.WorkspaceId;
 
-      // Auto-seed kanban columns for non-personal workspaces on initial create.
-      // Personal goes through sp_SeedDefaultWorkspace which already seeds.
-      // This removes the silent-fail risk of a separate frontend apply-template
-      // call and guarantees every workspace ships usable.
+      // Auto-seed kanban columns for every new workspace using the template
+      // the caller picked. sp_SeedDefaultWorkspace still handles the first-
+      // login auto-seed path; manual creates (any type, personal included)
+      // always honour TemplateKey so the board ships usable.
       let columnsSeeded = 0;
-      if (
-        Id === 0 &&
-        spResponse.ResponseCode < 300 &&
-        newWorkspaceId &&
-        (Type === "shared" || Type === "project")
-      ) {
+      if (Id === 0 && spResponse.ResponseCode < 300 && newWorkspaceId) {
         try {
           const tplResult = await database.executeStoredProcedure(
             "sp_ApplyKanbanTemplate",

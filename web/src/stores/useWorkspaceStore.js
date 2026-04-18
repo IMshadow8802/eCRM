@@ -14,8 +14,10 @@ const useWorkspaceStore = create(
   persist(
     (set) => ({
       activeWorkspaceId: null,
-      activeWorkspaceType: null, // 'personal' | 'shared' | 'project'
-      activeWorkspaceRole: null, // 'owner' | 'manager' | 'member' | 'viewer'
+      activeWorkspaceType: null,
+      activeWorkspaceRole: null,
+      activeWorkspaceName: null,
+      activeWorkspaceColor: null,
 
       setActiveWorkspace: (workspace) =>
         set(
@@ -24,11 +26,15 @@ const useWorkspaceStore = create(
                 activeWorkspaceId: workspace.Id ?? null,
                 activeWorkspaceType: workspace.Type ?? null,
                 activeWorkspaceRole: workspace.MyRole ?? null,
+                activeWorkspaceName: workspace.Name ?? null,
+                activeWorkspaceColor: workspace.Color ?? null,
               }
             : {
                 activeWorkspaceId: null,
                 activeWorkspaceType: null,
                 activeWorkspaceRole: null,
+                activeWorkspaceName: null,
+                activeWorkspaceColor: null,
               },
         ),
 
@@ -37,6 +43,8 @@ const useWorkspaceStore = create(
           activeWorkspaceId: null,
           activeWorkspaceType: null,
           activeWorkspaceRole: null,
+          activeWorkspaceName: null,
+          activeWorkspaceColor: null,
         }),
 
       // Caller-facing gates so UI can hide buttons without bespoke logic

@@ -2,6 +2,7 @@ import MuiMenu from "@mui/material/Menu";
 import MuiMenuItem from "@mui/material/MenuItem";
 import ListSubheader from "@mui/material/ListSubheader";
 import { useTheme } from "@mui/material/styles";
+import { MoreVertical } from "lucide-react";
 
 /**
  * Themed dropdown Menu. Accepts `items` or children.
@@ -89,6 +90,49 @@ export default function Menu({
                     }}
                   >
                     {item.shortcut}
+                  </span>
+                )}
+                {item.onSecondary && (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onClose?.(e);
+                      item.onSecondary(e);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onClose?.(e);
+                        item.onSecondary(e);
+                      }
+                    }}
+                    data-testid={
+                      testId && item.id ? `${testId}-${item.id}-settings` : undefined
+                    }
+                    aria-label="Workspace settings"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: 22,
+                      height: 22,
+                      borderRadius: theme.radii.sm,
+                      color: p.text.tertiary,
+                      cursor: "pointer",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = p.surface.subtle;
+                      e.currentTarget.style.color = p.primary.main;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = "transparent";
+                      e.currentTarget.style.color = p.text.tertiary;
+                    }}
+                  >
+                    {item.secondaryIcon ?? <MoreVertical size={14} />}
                   </span>
                 )}
               </MuiMenuItem>
