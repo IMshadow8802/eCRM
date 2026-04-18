@@ -1,0 +1,320 @@
+import { http, HttpResponse } from "msw";
+
+const API = "https://prdinfotech.in/CRM";
+
+// In-memory state for workspace endpoints so tests can observe
+// create → fetch round-trips.
+let workspaceSeq = 100;
+export const workspaceFixture = {
+  list: [],
+  reset() {
+    this.list = [];
+    workspaceSeq = 100;
+  },
+  seed(ws) {
+    this.list.push(ws);
+  },
+};
+
+let taskSeq = 500;
+export const taskFixture = {
+  list: [],
+  columns: [
+    { Id: 1, Title: "To Do", Color: "#94A3B8", SortOrder: 1, WorkspaceId: 100 },
+    { Id: 2, Title: "In Progress", Color: "#3B82F6", SortOrder: 2, WorkspaceId: 100 },
+    { Id: 3, Title: "Done", Color: "#10B981", SortOrder: 3, WorkspaceId: 100 },
+  ],
+  reset() {
+    this.list = [];
+    taskSeq = 500;
+  },
+  seed(t) {
+    this.list.push(t);
+  },
+};
+
+let notifSeq = 900;
+export const notificationFixture = {
+  list: [],
+  reset() {
+    this.list = [];
+    notifSeq = 900;
+  },
+  seed(n) {
+    this.list.push({ Id: ++notifSeq, IsRead: false, CreatedDate: new Date().toISOString(), ...n });
+  },
+};
+
+export const handlers = [
+  http.post(`*/api/workspaces/fetchWorkspaces`, async () => {
+    const rows = workspaceFixture.list;
+    return HttpResponse.json({
+      success: true,
+      message: "ok",
+      responseCode: 200,
+      data: {
+        workspaces: rows,
+        pagination: {
+          currentPage: 1,
+          pageSize: 100,
+          totalRecords: rows.length,
+          totalPages: 1,
+        },
+      },
+    });
+  }),
+
+  http.post(`*/api/workspaces/saveWorkspace`, async ({ request }) => {
+    const body = await request.json();
+    if (!body?.Name || !body?.Name.trim()) {
+      return HttpResponse.json({
+        success: false,
+        message: "Workspace name is required",
+        responseCode: 400,
+      });
+    }
+    const id = ++workspaceSeq;
+    workspaceFixture.list.push({
+      Id: id,
+      Name: body.Name,
+      Type: body.Type,
+      OwnerUserId: 1,
+      MyRole: "owner",
+      MemberCount: 1,
+    });
+    return HttpResponse.json({
+      success: true,
+      message: "Workspace created",
+      responseCode: 201,
+      data: { workspaceId: id },
+    });
+  }),
+
+  http.post(`*/api/workspaces/applyKanbanTemplate`, async ({ request }) => {
+    const body = await request.json();
+    return HttpResponse.json({
+      success: true,
+      message: "Template applied",
+      responseCode: 201,
+      data: {
+        workspaceId: body.WorkspaceId,
+        templateKey: body.TemplateKey,
+        columnsCreated: 3,
+      },
+    });
+  }),
+
+  http.post(`*/api/workspaces/ensurePersonalWorkspace`, async () =>
+    HttpResponse.json({
+      success: true,
+      message: "ok",
+      responseCode: 201,
+      data: { workspaceId: 100, seeded: true },
+    }),
+  ),
+
+  http.post(`*/api/kanban/fetchKanbanColumns`, async () =>
+    HttpResponse.json({
+      success: true,
+      message: "ok",
+      responseCode: 200,
+      data: {
+        kanbanColumns: taskFixture.columns,
+        pagination: { currentPage: 1, pageSize: 100, totalRecords: 3, totalPages: 1 },
+      },
+    }),
+  ),
+
+  http.post(`*/api/tasks/fetchTasks`, async ({ request }) => {
+    const body = await request.json();
+    const filtered =
+      body?.Id > 0
+        ? taskFixture.list.filter((t) => t.Id === body.Id)
+        : taskFixture.list;
+    return HttpResponse.json({
+      success: true,
+      message: "ok",
+      responseCode: 200,
+      data: {
+        tasks: filtered,
+        pagination: {
+          currentPage: 1,
+          pageSize: 200,
+          totalRecords: filtered.length,
+          totalPages: 1,
+        },
+      },
+    });
+  }),
+
+  http.post(`*/api/tasks/saveTask`, async ({ request }) => {
+    const body = await request.json();
+    if (!body?.Title) {
+      return HttpResponse.json({
+        success: false,
+        message: "Task title is required",
+        responseCode: 400,
+      });
+    }
+    if (body.Id === 0 || !body.Id) {
+      const id = ++taskSeq;
+      const newTask = {
+        Id: id,
+        Title: body.Title,
+        Description: body.Description ?? "",
+        WorkspaceId: body.WorkspaceId,
+        Status: body.Status ?? "todo",
+        Priority: body.Priority ?? "medium",
+        AssignedToUserId: body.AssignedToUserId ?? null,
+        DueDate: body.DueDate ?? null,
+        IsBlocked: false,
+        CreatedByUserId: 1,
+      };
+      taskFixture.list.push(newTask);
+      return HttpResponse.json({
+        success: true,
+        message: "Task created",
+        responseCode: 201,
+        data: { taskId: id },
+      });
+    }
+    const idx = taskFixture.list.findIndex((t) => t.Id === body.Id);
+    if (idx !== -1) {
+      taskFixture.list[idx] = { ...taskFixture.list[idx], ...body };
+    }
+    return HttpResponse.json({
+      success: true,
+      message: "Task updated",
+      responseCode: 200,
+      data: { taskId: body.Id },
+    });
+  }),
+
+  http.post(`*/api/tasks/bulkDeleteTasks`, async ({ request }) => {
+    const body = await request.json();
+    const ids = Array.isArray(body?.TaskIds)
+      ? body.TaskIds
+      : String(body?.TaskIds ?? "").split(",").map(Number).filter(Boolean);
+    const before = taskFixture.list.length;
+    taskFixture.list = taskFixture.list.filter((t) => !ids.includes(t.Id));
+    return HttpResponse.json({
+      success: true,
+      message: "ok",
+      responseCode: 200,
+      data: { deletedCount: before - taskFixture.list.length, failedCount: 0 },
+    });
+  }),
+
+  http.post(`*/api/tasks/getTaskComments`, async () =>
+    HttpResponse.json({
+      success: true,
+      message: "ok",
+      responseCode: 200,
+      data: {
+        comments: [],
+        pagination: { currentPage: 1, pageSize: 100, totalRecords: 0, totalPages: 0 },
+      },
+    }),
+  ),
+
+  http.post(`*/api/tasks/addTaskComment`, async () =>
+    HttpResponse.json({
+      success: true,
+      message: "ok",
+      responseCode: 201,
+      data: { commentId: 1 },
+    }),
+  ),
+
+  http.post(`*/api/tasks/deleteTaskComment`, async () =>
+    HttpResponse.json({ success: true, message: "ok", responseCode: 200 }),
+  ),
+
+  http.post(`*/api/tasks/pinTaskComment`, async () =>
+    HttpResponse.json({ success: true, message: "ok", responseCode: 200 }),
+  ),
+
+  http.post(`*/api/tasks/fetchTaskDependencies`, async () =>
+    HttpResponse.json({
+      success: true,
+      message: "ok",
+      responseCode: 200,
+      data: { blockers: [], dependents: [] },
+    }),
+  ),
+
+  http.post(`*/api/users/fetchUsers`, async () =>
+    HttpResponse.json({
+      success: true,
+      message: "ok",
+      responseCode: 200,
+      data: {
+        users: [
+          { Id: 1, Username: "alice", FullName: "Alice" },
+          { Id: 2, Username: "bob", FullName: "Bob" },
+        ],
+        pagination: { currentPage: 1, pageSize: 200, totalRecords: 2, totalPages: 1 },
+      },
+    }),
+  ),
+
+  http.post(`*/api/notifications/fetchNotifications`, async () => {
+    const rows = notificationFixture.list;
+    return HttpResponse.json({
+      success: true,
+      message: "ok",
+      responseCode: 200,
+      data: {
+        notifications: rows,
+        unreadCount: rows.filter((n) => !n.IsRead).length,
+        pagination: {
+          currentPage: 1,
+          pageSize: 20,
+          totalRecords: rows.length,
+          totalPages: 1,
+        },
+      },
+    });
+  }),
+
+  http.post(`*/api/notifications/markNotificationRead`, async ({ request }) => {
+    const body = await request.json();
+    const n = notificationFixture.list.find((x) => x.Id === body.Id);
+    if (n) {
+      n.IsRead = true;
+      n.ReadAt = new Date().toISOString();
+    }
+    return HttpResponse.json({ success: true, message: "ok", responseCode: 200 });
+  }),
+
+  http.post(`*/api/notifications/markAllNotificationsRead`, async () => {
+    notificationFixture.list.forEach((n) => (n.IsRead = true));
+    return HttpResponse.json({
+      success: true,
+      message: "ok",
+      responseCode: 200,
+      data: { updatedCount: notificationFixture.list.length },
+    });
+  }),
+
+  http.post(`${API}/api/auth/loginUser`, async ({ request }) => {
+    const body = await request.json();
+    if (body?.username === "test" && body?.password === "test") {
+      return HttpResponse.json({
+        success: true,
+        message: "Login successful",
+        responseCode: 200,
+        data: {
+          token: "mock-jwt-token",
+          user: { Id: 1, Username: "test", FullName: "Test User", IsAdmin: false },
+          company: { CompId: 1, BranchId: 1 },
+          permissions: { menuItems: [] },
+        },
+      });
+    }
+    return HttpResponse.json(
+      { success: false, message: "Invalid credentials", responseCode: 401 },
+      { status: 401 }
+    );
+  }),
+];

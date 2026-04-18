@@ -1,0 +1,754 @@
+jest.mock("../../../src/config/database", () => ({
+  executeStoredProcedure: jest.fn(),
+}));
+jest.mock("../../../src/utils/activityLogger", () => ({
+  logActivity: jest.fn().mockResolvedValue(undefined),
+  ACTIONS: {
+    CREATED: "Created",
+    UPDATED: "Updated",
+    DELETED: "Deleted",
+    COMMENTED: "Commented",
+    ASSIGNED: "Assigned",
+  },
+}));
+
+const database = require("../../../src/config/database");
+const { logActivity } = require("../../../src/utils/activityLogger");
+const taskController = require("../../../src/controllers/taskController");
+const { mockRes } = require("../../helpers/mockRes");
+
+const baseReq = (overrides = {}) => ({
+  user: { UserId: 7, CompId: 1, BranchId: 2, IsAdmin: false },
+  scope: { branchIds: [1, 2, 3] },
+  body: {},
+  ip: "10.0.0.1",
+  headers: { "user-agent": "jest" },
+  ...overrides,
+});
+
+const spResult = (rows) => ({ recordsets: [rows] });
+
+beforeEach(() => {
+  database.executeStoredProcedure.mockReset();
+  logActivity.mockClear();
+});
+
+// Helper: sequence SP mocks for primary call + any fire-and-forget notify
+function mockSequence(rowsForSave, followupOk = true) {
+  database.executeStoredProcedure.mockResolvedValueOnce(spResult(rowsForSave));
+  if (followupOk) {
+    database.executeStoredProcedure.mockResolvedValue(spResult([{}]));
+  }
+}
+
+describe("taskController.save", () => {
+  it("creates task with WorkspaceId + IsAdmin + notifies assignee", async () => {
+    mockSequence([{ ResponseCode: 201, ResponseMess: "Task created", TaskId: 11 }]);
+    const req = baseReq({
+      body: {
+        Title: "Do X",
+        WorkspaceId: 5,
+        AssignedToUserId: 9,
+        Priority: "high",
+      },
+    });
+    const res = mockRes();
+    await taskController.save(req, res);
+
+    const firstCall = database.executeStoredProcedure.mock.calls[0];
+    expect(firstCall[0]).toBe("sp_SaveTask");
+    expect(firstCall[1]).toMatchObject({
+      Id: 0,
+      Title: "Do X",
+      WorkspaceId: 5,
+      AssignedToUserId: 9,
+      CreatedByUserId: 7,
+      IsAdmin: 0,
+      CompId: 1,
+      BranchId: 2,
+    });
+    expect(logActivity).toHaveBeenCalledWith(
+      expect.objectContaining({ entityType: "Task", entityId: 11, action: "Created" }),
+    );
+    // Second SP call is sp_NotifyTaskAssigned
+    await new Promise((r) => setImmediate(r));
+    const secondCall = database.executeStoredProcedure.mock.calls[1];
+    expect(secondCall[0]).toBe("sp_NotifyTaskAssigned");
+    expect(secondCall[1]).toEqual({ TaskId: 11, ActorUserId: 7 });
+    expect(res.status).toHaveBeenCalledWith(201);
+  });
+
+  it("skips notify when assignee is same as actor (self-assign)", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 201, ResponseMess: "ok", TaskId: 12 }]),
+    );
+    const req = baseReq({
+      body: { Title: "T", WorkspaceId: 5, AssignedToUserId: 7 },
+    });
+    await taskController.save(req, mockRes());
+    await new Promise((r) => setImmediate(r));
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
+  });
+
+  it("JSON-serializes Labels/Watchers when objects", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 201, ResponseMess: "ok", TaskId: 1 }]),
+    );
+    const req = baseReq({
+      body: { Title: "T", WorkspaceId: 1, Labels: ["x"], Watchers: [1, 2] },
+    });
+    await taskController.save(req, mockRes());
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({
+      Labels: '["x"]',
+      Watchers: "[1,2]",
+    });
+  });
+
+  it("does not log activity on validation error from SP", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 400, ResponseMess: "Task title is required" }]),
+    );
+    const req = baseReq({ body: { Title: "", WorkspaceId: 5 } });
+    const res = mockRes();
+    await taskController.save(req, res);
+    expect(logActivity).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  it("returns 500 when DB throws", async () => {
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    const res = mockRes();
+    await taskController.save(baseReq({ body: { Title: "T", WorkspaceId: 1 } }), res);
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json.mock.calls[0][0].code).toBe("TASK_SAVE_ERROR");
+    spy.mockRestore();
+  });
+});
+
+describe("taskController.fetch", () => {
+  it("passes WorkspaceId filter + default PageSize 25 + IsAdmin", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([
+        {
+          ResponseCode: 200,
+          ResponseMess: "Tasks retrieved",
+          TotalRecords: 1,
+          TotalPages: 1,
+          CurrentPage: 1,
+          PageSize: 25,
+          Id: 100,
+          Title: "X",
+          WorkspaceId: 5,
+        },
+      ]),
+    );
+    const req = baseReq({ body: { WorkspaceId: 5 } });
+    const res = mockRes();
+    await taskController.fetch(req, res);
+
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
+      "sp_FetchTask",
+      expect.objectContaining({
+        WorkspaceId: 5,
+        PageSize: 25,
+        PageNumber: 1,
+        IsAdmin: 0,
+        AccessibleBranchIdsJson: JSON.stringify([1, 2, 3]),
+      }),
+    );
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json.mock.calls[0][0].data.tasks).toHaveLength(1);
+  });
+
+  it("returns 500 when DB throws", async () => {
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("x"));
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    await taskController.fetch(baseReq(), mockRes());
+    spy.mockRestore();
+  });
+});
+
+describe("taskController.delete", () => {
+  it("rejects missing Id with 400", async () => {
+    const res = mockRes();
+    await taskController.delete(baseReq({ body: {} }), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  it("calls sp + logs on success", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "ok" }]),
+    );
+    await taskController.delete(baseReq({ body: { Id: 11 } }), mockRes());
+    expect(logActivity).toHaveBeenCalledWith(
+      expect.objectContaining({ entityId: 11, action: "Deleted" }),
+    );
+  });
+
+  it("returns 500 when DB throws", async () => {
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("x"));
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    await taskController.delete(baseReq({ body: { Id: 11 } }), mockRes());
+    spy.mockRestore();
+  });
+});
+
+describe("taskController.bulkDelete", () => {
+  it("rejects empty list", async () => {
+    const res = mockRes();
+    await taskController.bulkDelete(baseReq({ body: { TaskIds: [] } }), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  it("joins array + logs each id", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([
+        { ResponseCode: 200, ResponseMess: "ok", DeletedCount: 2, FailedCount: 0 },
+      ]),
+    );
+    await taskController.bulkDelete(
+      baseReq({ body: { TaskIds: [1, 2] } }),
+      mockRes(),
+    );
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
+      "sp_BulkDeleteTasks",
+      expect.objectContaining({ TaskIds: "1,2" }),
+    );
+    expect(logActivity).toHaveBeenCalledTimes(2);
+  });
+
+  it("accepts CSV string", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "ok", DeletedCount: 1, FailedCount: 0 }]),
+    );
+    await taskController.bulkDelete(
+      baseReq({ body: { TaskIds: "3,4" } }),
+      mockRes(),
+    );
+    expect(database.executeStoredProcedure.mock.calls[0][1].TaskIds).toBe("3,4");
+  });
+
+  it("returns 500 when DB throws", async () => {
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("x"));
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    await taskController.bulkDelete(baseReq({ body: { TaskIds: [1] } }), mockRes());
+    spy.mockRestore();
+  });
+});
+
+describe("taskController.addComment", () => {
+  it("creates a comment + fires sp_NotifyCommentAdded", async () => {
+    mockSequence([{ ResponseCode: 201, ResponseMess: "ok", CommentId: 42 }]);
+    const req = baseReq({ body: { TaskId: 5, Comment: "hi" } });
+    const res = mockRes();
+    await taskController.addComment(req, res);
+
+    expect(database.executeStoredProcedure.mock.calls[0][0]).toBe("sp_SaveTaskComment");
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({
+      Id: 0,
+      TaskId: 5,
+      UserId: 7,
+      Comment: "hi",
+      ParentCommentId: null,
+      IsAdmin: 0,
+    });
+    await new Promise((r) => setImmediate(r));
+    expect(database.executeStoredProcedure.mock.calls[1][0]).toBe(
+      "sp_NotifyCommentAdded",
+    );
+    expect(logActivity).toHaveBeenCalledWith(
+      expect.objectContaining({ entityType: "Task", entityId: 5, action: "Commented" }),
+    );
+  });
+
+  it("edit path skips notify", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "ok", CommentId: 42 }]),
+    );
+    await taskController.addComment(
+      baseReq({ body: { Id: 42, TaskId: 5, Comment: "edit" } }),
+      mockRes(),
+    );
+    await new Promise((r) => setImmediate(r));
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns 500 when DB throws", async () => {
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("x"));
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    await taskController.addComment(
+      baseReq({ body: { TaskId: 1, Comment: "x" } }),
+      mockRes(),
+    );
+    spy.mockRestore();
+  });
+});
+
+describe("taskController.getComments", () => {
+  it("uses PageSize 25 default", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([
+        {
+          ResponseCode: 200,
+          ResponseMess: "ok",
+          TotalRecords: 0,
+          TotalPages: 0,
+          CurrentPage: 1,
+          PageSize: 25,
+          Id: null,
+        },
+      ]),
+    );
+    await taskController.getComments(
+      baseReq({ body: { TaskId: 1 } }),
+      mockRes(),
+    );
+    expect(database.executeStoredProcedure.mock.calls[0][1].PageSize).toBe(25);
+  });
+
+  it("returns 500 when DB throws", async () => {
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("x"));
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    await taskController.getComments(baseReq({ body: { TaskId: 1 } }), mockRes());
+    spy.mockRestore();
+  });
+});
+
+describe("taskController.deleteComment", () => {
+  it("rejects missing Id", async () => {
+    await taskController.deleteComment(baseReq({ body: {} }), mockRes());
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  it("passes IsAdmin to SP", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "ok" }]),
+    );
+    await taskController.deleteComment(
+      baseReq({
+        body: { Id: 9 },
+        user: { UserId: 7, CompId: 1, BranchId: 2, IsAdmin: true },
+      }),
+      mockRes(),
+    );
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({
+      Id: 9,
+      IsAdmin: 1,
+    });
+    expect(logActivity).toHaveBeenCalled();
+  });
+
+  it("returns 500 when DB throws", async () => {
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("x"));
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    await taskController.deleteComment(
+      baseReq({ body: { Id: 1 } }),
+      mockRes(),
+    );
+    spy.mockRestore();
+  });
+});
+
+describe("taskController.pinComment", () => {
+  it("rejects missing CommentId", async () => {
+    await taskController.pinComment(baseReq({ body: {} }), mockRes());
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  it("pins (IsPinned=1)", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "Pinned" }]),
+    );
+    await taskController.pinComment(
+      baseReq({ body: { CommentId: 3 } }),
+      mockRes(),
+    );
+    expect(database.executeStoredProcedure.mock.calls[0][1].IsPinned).toBe(1);
+  });
+
+  it("unpins (IsPinned=0)", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "Unpinned" }]),
+    );
+    await taskController.pinComment(
+      baseReq({ body: { CommentId: 3, IsPinned: false } }),
+      mockRes(),
+    );
+    expect(database.executeStoredProcedure.mock.calls[0][1].IsPinned).toBe(0);
+  });
+
+  it("returns 500 when DB throws", async () => {
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("x"));
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    await taskController.pinComment(baseReq({ body: { CommentId: 3 } }), mockRes());
+    spy.mockRestore();
+  });
+});
+
+describe("taskController.markCommentRead", () => {
+  it("rejects missing CommentId", async () => {
+    await taskController.markCommentRead(baseReq({ body: {} }), mockRes());
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  it("calls sp on success", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "ok" }]),
+    );
+    await taskController.markCommentRead(
+      baseReq({ body: { CommentId: 5 } }),
+      mockRes(),
+    );
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
+      "sp_MarkCommentRead",
+      { CommentId: 5, UserId: 7 },
+    );
+  });
+
+  it("returns 500 when DB throws", async () => {
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("x"));
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    await taskController.markCommentRead(baseReq({ body: { CommentId: 5 } }), mockRes());
+    spy.mockRestore();
+  });
+});
+
+describe("taskController.addDependency", () => {
+  it("rejects missing fields", async () => {
+    await taskController.addDependency(
+      baseReq({ body: { TaskId: 1 } }),
+      mockRes(),
+    );
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  it("adds + logs activity on success", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 201, ResponseMess: "Dependency added" }]),
+    );
+    await taskController.addDependency(
+      baseReq({ body: { TaskId: 1, DependsOnTaskId: 2 } }),
+      mockRes(),
+    );
+    expect(logActivity).toHaveBeenCalledWith(
+      expect.objectContaining({ entityId: 1, fieldName: "Dependency" }),
+    );
+  });
+
+  it("does not log on SP error", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 409, ResponseMess: "cycle" }]),
+    );
+    await taskController.addDependency(
+      baseReq({ body: { TaskId: 1, DependsOnTaskId: 2 } }),
+      mockRes(),
+    );
+    expect(logActivity).not.toHaveBeenCalled();
+  });
+
+  it("returns 500 when DB throws", async () => {
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("x"));
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    await taskController.addDependency(
+      baseReq({ body: { TaskId: 1, DependsOnTaskId: 2 } }),
+      mockRes(),
+    );
+    spy.mockRestore();
+  });
+});
+
+describe("taskController.removeDependency", () => {
+  it("rejects missing fields", async () => {
+    await taskController.removeDependency(
+      baseReq({ body: { TaskId: 1 } }),
+      mockRes(),
+    );
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  it("calls sp on success", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "ok" }]),
+    );
+    await taskController.removeDependency(
+      baseReq({ body: { TaskId: 1, DependsOnTaskId: 2 } }),
+      mockRes(),
+    );
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
+      "sp_RemoveTaskDependency",
+      expect.objectContaining({ TaskId: 1, DependsOnTaskId: 2 }),
+    );
+  });
+
+  it("returns 500 when DB throws", async () => {
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("x"));
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    await taskController.removeDependency(
+      baseReq({ body: { TaskId: 1, DependsOnTaskId: 2 } }),
+      mockRes(),
+    );
+    spy.mockRestore();
+  });
+});
+
+describe("taskController.fetchDependencies", () => {
+  it("rejects missing TaskId", async () => {
+    await taskController.fetchDependencies(
+      baseReq({ body: {} }),
+      mockRes(),
+    );
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  it("partitions into blockers + dependents", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([
+        {
+          ResponseCode: 200,
+          ResponseMess: "ok",
+          Direction: "blocker",
+          TaskId: 9,
+          Title: "API",
+          Status: "todo",
+          Type: "blocks",
+        },
+        {
+          ResponseCode: 200,
+          ResponseMess: "ok",
+          Direction: "dependent",
+          TaskId: 11,
+          Title: "UI",
+          Status: "todo",
+          Type: "blocks",
+        },
+      ]),
+    );
+    const res = mockRes();
+    await taskController.fetchDependencies(
+      baseReq({ body: { TaskId: 5 } }),
+      res,
+    );
+    const json = res.json.mock.calls[0][0];
+    expect(json.data.blockers).toHaveLength(1);
+    expect(json.data.dependents).toHaveLength(1);
+  });
+
+  it("returns 500 when DB throws", async () => {
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("x"));
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    await taskController.fetchDependencies(
+      baseReq({ body: { TaskId: 1 } }),
+      mockRes(),
+    );
+    spy.mockRestore();
+  });
+});
+
+describe("taskController time-tracking + checklist + activity", () => {
+  it("logTime defaults WorkDate to today and calls sp", async () => {
+    mockSequence([{ ResponseCode: 201, ResponseMess: "ok", TimeEntryId: 1 }]);
+    await taskController.logTime(
+      baseReq({ body: { TaskId: 1, Hours: 2, Description: "w" } }),
+      mockRes(),
+    );
+    const call = database.executeStoredProcedure.mock.calls[0][1];
+    expect(call.WorkDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(logActivity).toHaveBeenCalled();
+  });
+
+  it("logTime returns 500 on DB throw", async () => {
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("x"));
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    await taskController.logTime(baseReq({ body: { TaskId: 1, Hours: 1 } }), mockRes());
+    spy.mockRestore();
+  });
+
+  it("getTimeEntries scopes to self for non-admin", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([
+        {
+          ResponseCode: 200,
+          ResponseMess: "ok",
+          TotalRecords: 0,
+          TotalPages: 0,
+          CurrentPage: 1,
+          PageSize: 20,
+          Id: null,
+        },
+      ]),
+    );
+    await taskController.getTimeEntries(
+      baseReq({ body: { TaskId: 1 } }),
+      mockRes(),
+    );
+    expect(database.executeStoredProcedure.mock.calls[0][1].UserId).toBe(7);
+  });
+
+  it("getTimeEntries admin sees all when UserId not specified", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([
+        {
+          ResponseCode: 200,
+          ResponseMess: "ok",
+          TotalRecords: 0,
+          TotalPages: 0,
+          CurrentPage: 1,
+          PageSize: 20,
+          Id: null,
+        },
+      ]),
+    );
+    await taskController.getTimeEntries(
+      baseReq({
+        user: { UserId: 7, CompId: 1, BranchId: 2, IsAdmin: true },
+        body: { TaskId: 1 },
+      }),
+      mockRes(),
+    );
+    expect(database.executeStoredProcedure.mock.calls[0][1].UserId).toBeNull();
+  });
+
+  it("getTimeEntries returns 500 on DB throw", async () => {
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("x"));
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    await taskController.getTimeEntries(baseReq({ body: {} }), mockRes());
+    spy.mockRestore();
+  });
+
+  it("deleteTimeEntry rejects missing Id", async () => {
+    await taskController.deleteTimeEntry(baseReq({ body: {} }), mockRes());
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  it("deleteTimeEntry calls sp + logs", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "ok" }]),
+    );
+    await taskController.deleteTimeEntry(
+      baseReq({ body: { Id: 3 } }),
+      mockRes(),
+    );
+    expect(logActivity).toHaveBeenCalled();
+  });
+
+  it("deleteTimeEntry returns 500 on DB throw", async () => {
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("x"));
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    await taskController.deleteTimeEntry(baseReq({ body: { Id: 1 } }), mockRes());
+    spy.mockRestore();
+  });
+
+  it("saveChecklist create logs CREATED", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 201, ResponseMess: "ok", ChecklistId: 7 }]),
+    );
+    await taskController.saveChecklist(
+      baseReq({ body: { TaskId: 1, ItemText: "do" } }),
+      mockRes(),
+    );
+    expect(logActivity).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "Created" }),
+    );
+  });
+
+  it("saveChecklist update logs UPDATED", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "ok", ChecklistId: 7 }]),
+    );
+    await taskController.saveChecklist(
+      baseReq({ body: { Id: 7, TaskId: 1, ItemText: "do" } }),
+      mockRes(),
+    );
+    expect(logActivity).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "Updated" }),
+    );
+  });
+
+  it("saveChecklist returns 500 on DB throw", async () => {
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("x"));
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    await taskController.saveChecklist(baseReq({ body: { TaskId: 1 } }), mockRes());
+    spy.mockRestore();
+  });
+
+  it("getChecklist returns data", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([
+        {
+          ResponseCode: 200,
+          ResponseMess: "ok",
+          TotalRecords: 1,
+          TotalPages: 1,
+          CurrentPage: 1,
+          PageSize: 50,
+          Id: 1,
+          ItemText: "x",
+        },
+      ]),
+    );
+    const res = mockRes();
+    await taskController.getChecklist(
+      baseReq({ body: { TaskId: 1 } }),
+      res,
+    );
+    expect(res.json.mock.calls[0][0].data.checklist).toHaveLength(1);
+  });
+
+  it("getChecklist returns 500 on DB throw", async () => {
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("x"));
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    await taskController.getChecklist(baseReq({ body: { TaskId: 1 } }), mockRes());
+    spy.mockRestore();
+  });
+
+  it("deleteChecklist rejects missing Id", async () => {
+    await taskController.deleteChecklist(baseReq({ body: {} }), mockRes());
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  it("deleteChecklist calls sp + logs", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "ok" }]),
+    );
+    await taskController.deleteChecklist(
+      baseReq({ body: { Id: 4 } }),
+      mockRes(),
+    );
+    expect(logActivity).toHaveBeenCalled();
+  });
+
+  it("deleteChecklist returns 500 on DB throw", async () => {
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("x"));
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    await taskController.deleteChecklist(baseReq({ body: { Id: 1 } }), mockRes());
+    spy.mockRestore();
+  });
+
+  it("getActivity returns data", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([
+        {
+          ResponseCode: 200,
+          ResponseMess: "ok",
+          TotalRecords: 0,
+          TotalPages: 0,
+          CurrentPage: 1,
+          PageSize: 50,
+          Id: null,
+        },
+      ]),
+    );
+    await taskController.getActivity(
+      baseReq({ body: { TaskId: 1 } }),
+      mockRes(),
+    );
+  });
+
+  it("getActivity returns 500 on DB throw", async () => {
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("x"));
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    await taskController.getActivity(baseReq({ body: { TaskId: 1 } }), mockRes());
+    spy.mockRestore();
+  });
+});

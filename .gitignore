@@ -1,0 +1,101 @@
+# ---------- Dependencies ----------
+node_modules/
+**/node_modules/
+.pnp/
+.pnp.js
+
+# ---------- Build output ----------
+dist/
+dist-web/
+dist-electron/
+dist-ssr/
+build/
+out/
+web-build/
+*.tsbuildinfo
+
+# ---------- Test + coverage ----------
+coverage/
+.nyc_output/
+**/coverage/
+
+# ---------- Env / secrets ----------
+.env
+.env.*
+!.env.example
+
+# ---------- Logs ----------
+logs/
+**/logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+lerna-debug.log*
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# ---------- macOS / Windows cruft ----------
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ---------- Editor / tooling ----------
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.cursor/
+.windsurfrules
+.superdesign/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ---------- Claude / local agent state ----------
+.claude/settings.local.json
+**/.claude/settings.local.json
+
+# ---------- Expo / RN native ----------
+.expo/
+.expo-shared/
+expo-env.d.ts
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# ---------- Android / iOS build artifacts ----------
+android/app/build/
+android/build/
+android/.gradle/
+ios/build/
+ios/Pods/
+ios/DerivedData/
+
+# ---------- PM2 ----------
+.pm2/
+
+# ---------- Electron ----------
+out/
+
+# ---------- Lock files (keep) ----------
+# Root lock files are kept; only transient ones ignored
+*.tgz
+.npm/
+.node_repl_history
+
+# ---------- MCP config (contains DB creds) ----------
+.mcp.json
+.mcp.local.json
+
+# ---------- Misc generated ----------
+*.local

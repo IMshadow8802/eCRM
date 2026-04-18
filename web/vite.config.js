@@ -1,0 +1,55 @@
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+
+export default defineConfig(({ command, mode }) => {
+  const isDev = command === "serve";
+
+  console.log(`Building for: Web`);
+
+  return {
+    // Base path for web deployment
+    base: "/eStockCRM/",
+
+    plugins: [react()],
+
+    build: {
+      // Output to dist-web directory
+      outDir: "dist-web",
+      assetsDir: "assets",
+      rollupOptions: {
+        output: {
+          manualChunks: undefined,
+        },
+      },
+    },
+
+    server: {
+      port: 8080,
+      open: "/",
+      // Proxy API calls to local backend during development.
+      // Frontend issues relative requests like `/api/auth/loginUser`
+      // (see utils/axiosConfig.js: baseURL is empty in dev) and Vite
+      // forwards them to the Express server.
+      proxy: {
+        "/api": {
+          target: "http://localhost:5001",
+          changeOrigin: true,
+        },
+      },
+      // ADD THIS 👇 - This fixes SPA routing in development
+      historyApiFallback: {
+        index: "/index.html",
+        rewrites: [{ from: /^\/eStockCRM\/.*$/, to: "/index.html" }],
+      },
+    },
+
+    // This fixes SPA routing in preview mode
+    preview: {
+      port: 4173,
+      historyApiFallback: {
+        index: "/index.html",
+        rewrites: [{ from: /^\/eStockCRM\/.*$/, to: "/index.html" }],
+      },
+    },
+  };
+});

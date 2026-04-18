@@ -1,0 +1,259 @@
+@import 'tailwindcss';
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter/700.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
+
+@config '../tailwind.config.js';
+
+/* ============================================================
+   Design Tokens — Nexus CRM (source: src/styles/tokens.js)
+   Keep values in sync. MUI theme reads from tokens.js directly,
+   Tailwind utilities here mirror the same numbers.
+   ============================================================ */
+@theme {
+  /* Primary — indigo */
+  --color-primary-50:  #EEF2FF;
+  --color-primary-100: #E0E7FF;
+  --color-primary-200: #C7D2FE;
+  --color-primary-300: #A5B4FC;
+  --color-primary-400: #818CF8;
+  --color-primary-500: #6366F1;
+  --color-primary-600: #4F46E5;
+  --color-primary-700: #4338CA;
+  --color-primary-800: #3730A3;
+  --color-primary-900: #312E81;
+
+  /* Accent — pink */
+  --color-accent-50:  #FDF2F8;
+  --color-accent-100: #FCE7F3;
+  --color-accent-200: #FBCFE8;
+  --color-accent-300: #F9A8D4;
+  --color-accent-400: #F472B6;
+  --color-accent-500: #EC4899;
+  --color-accent-600: #DB2777;
+  --color-accent-700: #BE185D;
+  --color-accent-800: #9D174D;
+  --color-accent-900: #831843;
+
+  /* Semantic */
+  --color-success-50:  #ECFDF5;
+  --color-success-100: #D1FAE5;
+  --color-success-500: #10B981;
+  --color-success-600: #059669;
+  --color-success-700: #047857;
+
+  --color-warning-50:  #FFFBEB;
+  --color-warning-100: #FEF3C7;
+  --color-warning-500: #F59E0B;
+  --color-warning-600: #D97706;
+  --color-warning-700: #B45309;
+
+  --color-danger-50:  #FEF2F2;
+  --color-danger-100: #FEE2E2;
+  --color-danger-500: #EF4444;
+  --color-danger-600: #DC2626;
+  --color-danger-700: #B91C1C;
+
+  --color-info-50:  #F0F9FF;
+  --color-info-100: #E0F2FE;
+  --color-info-500: #0EA5E9;
+  --color-info-600: #0284C7;
+  --color-info-700: #0369A1;
+
+  /* Surface / text / border (light mode base — dark overrides below) */
+  --color-surface-0:   #FFFFFF;
+  --color-surface-50:  #F8FAFC;
+  --color-surface-100: #F1F5F9;
+  --color-surface-200: #E2E8F0;
+  --color-surface-300: #CBD5E1;
+  --color-surface-400: #94A3B8;
+  --color-surface-500: #64748B;
+  --color-surface-600: #475569;
+  --color-surface-700: #334155;
+  --color-surface-800: #1E293B;
+  --color-surface-900: #0F172A;
+
+  /* Typography */
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --text-2xs:   0.7333rem;   /* 11px */
+  --text-2xs--line-height: 0.9333rem;
+  --text-xs:    0.8rem;      /* 12px */
+  --text-xs--line-height:  1.0667rem;
+  --text-sm:    0.8667rem;   /* 13px */
+  --text-sm--line-height:  1.2rem;
+  --text-base:  0.9333rem;   /* 14px */
+  --text-base--line-height: 1.3333rem;
+  --text-lg:    1rem;        /* 15px */
+  --text-lg--line-height:  1.4667rem;
+  --text-xl:    1.0667rem;   /* 16px */
+  --text-xl--line-height:  1.6rem;
+  --text-2xl:   1.2rem;      /* 18px */
+  --text-2xl--line-height: 1.7333rem;
+  --text-3xl:   1.3333rem;   /* 20px */
+  --text-3xl--line-height: 1.8667rem;
+  --text-4xl:   1.6rem;      /* 24px */
+  --text-4xl--line-height: 2.1333rem;
+  --text-5xl:   2.1333rem;   /* 32px */
+  --text-5xl--line-height: 2.6667rem;
+
+  /* Radii — 8/12/16/24 scale */
+  --radius-sm: 0.5333rem;   /*  8px */
+  --radius-md: 0.8rem;      /* 12px */
+  --radius-lg: 1.0667rem;   /* 16px */
+  --radius-xl: 1.6rem;      /* 24px */
+  --radius-full: 9999px;
+
+  /* Shadows — unified with tokens.shadow (light mode) */
+  --shadow-xs: 0 1px 2px rgb(15 23 42 / 0.06);
+  --shadow-sm: 0 2px 4px rgb(15 23 42 / 0.06), 0 1px 2px rgb(15 23 42 / 0.04);
+  --shadow-md: 0 4px 12px rgb(15 23 42 / 0.08), 0 2px 4px rgb(15 23 42 / 0.04);
+  --shadow-lg: 0 12px 24px rgb(15 23 42 / 0.10), 0 4px 8px rgb(15 23 42 / 0.06);
+  --shadow-xl: 0 24px 48px rgb(15 23 42 / 0.12), 0 8px 16px rgb(15 23 42 / 0.08);
+
+  /* Motion */
+  --duration-fast: 160ms;
+  --duration-base: 240ms;
+  --duration-slow: 320ms;
+  --duration-lazy: 480ms;
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Density (tables) */
+  --spacing-cell-x: 0.9333rem;  /* 14px */
+  --spacing-cell-y: 0.6667rem;  /* 10px */
+}
+
+/* ============================================================
+   Base layer
+   ============================================================ */
+@layer base {
+  html {
+    font-size: 15px;
+  }
+
+  body {
+    @apply font-sans text-base text-surface-900 bg-surface-50 antialiased;
+    font-feature-settings: 'cv11', 'ss01', 'tnum';
+    font-weight: 500;
+  }
+
+  /* Dark mode — body + surface color swaps */
+  html.dark body {
+    background-color: #0B1020;
+    color: #E2E8F0;
+  }
+  html.dark {
+    color-scheme: dark;
+    --color-surface-0:   #0B1020;
+    --color-surface-50:  #0B1020;
+    --color-surface-100: #141A2E;
+    --color-surface-200: rgba(148, 163, 184, 0.12);
+    --color-surface-300: rgba(148, 163, 184, 0.24);
+    --color-surface-400: #94A3B8;
+    --color-surface-500: #64748B;
+    --color-surface-600: #CBD5E1;
+    --color-surface-700: #E2E8F0;
+    --color-surface-800: #F1F5F9;
+    --color-surface-900: #F8FAFC;
+  }
+
+  /* Restore v3 border default */
+  *, ::after, ::before, ::backdrop, ::file-selector-button {
+    border-color: var(--color-surface-200, currentcolor);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold;
+    letter-spacing: -0.01em;
+  }
+  h1 { font-size: 1.6rem; line-height: 2.1333rem; font-weight: 700; letter-spacing: -0.02em; }
+  h2 { font-size: 1.3333rem; line-height: 1.8667rem; font-weight: 700; letter-spacing: -0.01em; }
+  h3 { font-size: 1.2rem; line-height: 1.7333rem; font-weight: 600; }
+  h4 { font-size: 1.0667rem; line-height: 1.6rem; font-weight: 600; }
+
+  button, input, select, textarea {
+    font-family: inherit;
+    font-size: inherit;
+  }
+
+  /* Accessible focus ring fallback for non-MUI elements */
+  :where(button, a, [role="button"], input, select, textarea):focus-visible {
+    outline: 2px solid var(--color-primary-600);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  code, pre, .mono, .tabular {
+    font-family: var(--font-mono);
+    font-feature-settings: 'zero', 'ss01';
+  }
+
+  /* Honor reduced-motion */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* ============================================================
+   Scrollbar
+   ============================================================ */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background-color: var(--color-surface-300);
+  border-radius: var(--radius-full);
+  border: 2px solid transparent;
+  background-clip: content-box;
+  transition: background-color var(--duration-base) var(--ease-standard);
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-surface-400);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ============================================================
+   Utility classes used across the design system
+   ============================================================ */
+.glass {
+  backdrop-filter: saturate(180%) blur(12px);
+  -webkit-backdrop-filter: saturate(180%) blur(12px);
+}
+
+.gradient-primary {
+  background: linear-gradient(135deg, var(--color-primary-600) 0%, var(--color-accent-500) 100%);
+}
+.gradient-primary-hover:hover {
+  background: linear-gradient(135deg, var(--color-primary-700) 0%, var(--color-accent-600) 100%);
+}
+
+.shimmer {
+  background: linear-gradient(90deg, transparent, rgba(148,163,184,0.12), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.fade-in {
+  animation: fadeIn var(--duration-slow) var(--ease-standard);
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}

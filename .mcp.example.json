@@ -1,0 +1,27 @@
+{
+  "mcpServers": {
+    "sqlserver-ecrm": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@executeautomation/database-server",
+        "--sqlserver",
+        "--server",
+        "<DB_HOST>",
+        "--database",
+        "<DB_NAME>",
+        "--user",
+        "<DB_USER>",
+        "--password",
+        "<DB_PASSWORD>"
+      ]
+    },
+    "shadcn": {
+      "command": "npx",
+      "args": [
+        "shadcn@latest",
+        "mcp"
+      ]
+    }
+  }
+}
