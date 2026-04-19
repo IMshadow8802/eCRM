@@ -28,7 +28,21 @@ class TaskController {
         IsBlocked = false,
         Labels,
         Watchers,
+        ChecklistItems,
       } = req.body;
+
+      let checklistItemsJson = null;
+      if (Id === 0 || !Id) {
+        const items = Array.isArray(ChecklistItems)
+          ? ChecklistItems
+              .map((it) =>
+                typeof it === "string" ? it : it?.ItemText ?? it?.text ?? "",
+              )
+              .map((s) => (s == null ? "" : String(s).trim()))
+              .filter((s) => s.length > 0)
+          : [];
+        checklistItemsJson = items.length ? JSON.stringify(items) : null;
+      }
 
       const result = await database.executeStoredProcedure("sp_SaveTask", {
         Id,
@@ -51,6 +65,7 @@ class TaskController {
         Labels: typeof Labels === "object" ? JSON.stringify(Labels) : Labels,
         Watchers:
           typeof Watchers === "object" ? JSON.stringify(Watchers) : Watchers,
+        ChecklistItemsJson: checklistItemsJson,
         IsAdmin: req.user.IsAdmin ? 1 : 0,
         CompId: req.user.CompId,
         BranchId: req.user.BranchId,
@@ -639,6 +654,7 @@ class TaskController {
           SortOrder,
           CompId: CompId || req.user.CompId,
           BranchId: BranchId || req.user.BranchId,
+          ActingUserId: req.user.UserId,
         }
       );
 
@@ -748,6 +764,7 @@ class TaskController {
           Id,
           CompId: req.user.CompId,
           BranchId: req.user.BranchId,
+          ActingUserId: req.user.UserId,
         }
       );
 

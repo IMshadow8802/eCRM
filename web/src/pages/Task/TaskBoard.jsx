@@ -136,6 +136,7 @@ export default function TaskBoard() {
   const bulkDeleteMutation = useApiMutation({
     endpoint: "/api/tasks/bulkDeleteTasks",
     showSuccessMessage: false,
+    showErrorMessage: false,
   });
 
   const tasksByColumn = useMemo(
@@ -209,7 +210,13 @@ export default function TaskBoard() {
       enqueueSnackbar(`Deleted ${selectedIds.length} tasks`, { variant: "success" });
       setSelectedIds([]);
       refetchTasks();
-    } catch {}
+    } catch (err) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        "Delete failed";
+      enqueueSnackbar(msg, { variant: "warning" });
+    }
   };
 
   const handleApplyTemplate = async () => {
@@ -416,7 +423,6 @@ export default function TaskBoard() {
         taskId={openTaskId}
         open={Boolean(openTaskId)}
         onClose={() => setOpenTaskId(null)}
-        onOpenTask={(id) => setOpenTaskId(id)}
       />
 
       <Modal

@@ -124,6 +124,53 @@ describe("taskController.save", () => {
     expect(res.json.mock.calls[0][0].code).toBe("TASK_SAVE_ERROR");
     spy.mockRestore();
   });
+
+  it("forwards ChecklistItemsJson when creating a task (strings + object form)", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 201, ResponseMess: "ok", TaskId: 77 }]),
+    );
+    const req = baseReq({
+      body: {
+        Title: "T",
+        WorkspaceId: 5,
+        ChecklistItems: ["First", { ItemText: "Second" }, "  ", ""],
+      },
+    });
+    await taskController.save(req, mockRes());
+    const args = database.executeStoredProcedure.mock.calls[0][1];
+    expect(args.ChecklistItemsJson).toBe(JSON.stringify(["First", "Second"]));
+  });
+
+  it("passes ChecklistItemsJson=null when editing a task (update path)", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "ok", TaskId: 11 }]),
+    );
+    const req = baseReq({
+      body: {
+        Id: 11,
+        Title: "T",
+        WorkspaceId: 5,
+        ChecklistItems: ["noop-on-update"],
+      },
+    });
+    await taskController.save(req, mockRes());
+    const args = database.executeStoredProcedure.mock.calls[0][1];
+    expect(args.ChecklistItemsJson).toBeNull();
+  });
+
+  it("passes ChecklistItemsJson=null on create with no items (SP enforces ≥1)", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([
+        { ResponseCode: 400, ResponseMess: "At least one checklist item is required" },
+      ]),
+    );
+    const req = baseReq({ body: { Title: "T", WorkspaceId: 5 } });
+    const res = mockRes();
+    await taskController.save(req, res);
+    const args = database.executeStoredProcedure.mock.calls[0][1];
+    expect(args.ChecklistItemsJson).toBeNull();
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
 });
 
 describe("taskController.fetch", () => {
@@ -639,7 +686,7 @@ describe("taskController time-tracking + checklist + activity", () => {
     spy.mockRestore();
   });
 
-  it("saveChecklist create logs CREATED", async () => {
+  it("saveChecklist create logs CREATED + forwards ActingUserId", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce(
       spResult([{ ResponseCode: 201, ResponseMess: "ok", ChecklistId: 7 }]),
     );
@@ -650,6 +697,9 @@ describe("taskController time-tracking + checklist + activity", () => {
     expect(logActivity).toHaveBeenCalledWith(
       expect.objectContaining({ action: "Created" }),
     );
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({
+      ActingUserId: 7,
+    });
   });
 
   it("saveChecklist update logs UPDATED", async () => {
@@ -707,7 +757,7 @@ describe("taskController time-tracking + checklist + activity", () => {
     expect(database.executeStoredProcedure).not.toHaveBeenCalled();
   });
 
-  it("deleteChecklist calls sp + logs", async () => {
+  it("deleteChecklist calls sp + logs + forwards ActingUserId", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce(
       spResult([{ ResponseCode: 200, ResponseMess: "ok" }]),
     );
@@ -715,6 +765,9 @@ describe("taskController time-tracking + checklist + activity", () => {
       baseReq({ body: { Id: 4 } }),
       mockRes(),
     );
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({
+      ActingUserId: 7,
+    });
     expect(logActivity).toHaveBeenCalled();
   });
 

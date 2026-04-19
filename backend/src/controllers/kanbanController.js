@@ -69,7 +69,6 @@ class KanbanController {
         SortOrder = 0,
         MaxTasks = null,
         IsActive = true,
-        IsDone = false,
       } = req.body;
 
       if (!WorkspaceId || WorkspaceId <= 0) {
@@ -92,7 +91,6 @@ class KanbanController {
           SortOrder,
           MaxTasks,
           IsActive,
-          IsDone: IsDone ? 1 : 0,
           UserId: req.user.UserId,
           IsAdmin: req.user.IsAdmin,
           CompId: req.user.CompId,

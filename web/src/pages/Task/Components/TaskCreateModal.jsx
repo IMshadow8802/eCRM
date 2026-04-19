@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 
 import {
   Modal,
@@ -38,6 +38,7 @@ export default function TaskCreateModal({
   const [priority, setPriority] = useState("medium");
   const [assignee, setAssignee] = useState(null);
   const [dueDate, setDueDate] = useState("");
+  const [steps, setSteps] = useState([""]);
   const [submitting, setSubmitting] = useState(false);
 
   const { data: usersPayload } = useApiQuery({
@@ -63,6 +64,7 @@ export default function TaskCreateModal({
     setPriority("medium");
     setAssignee(null);
     setDueDate("");
+    setSteps([""]);
     setSubmitting(false);
   };
 
@@ -72,8 +74,19 @@ export default function TaskCreateModal({
     onClose?.();
   };
 
+  const trimmedSteps = steps.map((s) => s.trim()).filter(Boolean);
+  const canSubmit = title.trim().length > 0 && trimmedSteps.length > 0;
+
+  const updateStep = (idx, val) => {
+    setSteps((prev) => prev.map((s, i) => (i === idx ? val : s)));
+  };
+  const addStep = () => setSteps((prev) => [...prev, ""]);
+  const removeStep = (idx) => {
+    setSteps((prev) => (prev.length === 1 ? [""] : prev.filter((_, i) => i !== idx)));
+  };
+
   const submit = async () => {
-    if (!title.trim()) return;
+    if (!canSubmit) return;
     setSubmitting(true);
     try {
       const res = await saveMutation.mutateAsync({
@@ -87,6 +100,7 @@ export default function TaskCreateModal({
           ? currentUserId
           : assignee?.value || null,
         DueDate: dueDate || null,
+        ChecklistItems: trimmedSteps,
       });
       onCreated?.(res);
       reset();
@@ -105,7 +119,7 @@ export default function TaskCreateModal({
         subtitle={
           columnTitle
             ? `Lands in “${columnTitle}” column.`
-            : "Capture something to do. Add details later."
+            : "Break the work into steps. The task completes when every step is ticked."
         }
         icon={<Plus size={18} />}
         onClose={handleClose}
@@ -124,12 +138,78 @@ export default function TaskCreateModal({
             label="Description"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            rows={4}
+            rows={3}
             autoGrow
             placeholder="Optional context, links, acceptance criteria…"
           />
           <div>
-            <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, color: "var(--color-surface-600, #475569)" }}>
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 500,
+                marginBottom: 6,
+                color: "var(--color-surface-600, #475569)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <span>
+                Checklist <span style={{ color: "var(--color-danger, #dc2626)" }}>*</span>
+              </span>
+              <span style={{ fontSize: 11, fontWeight: 400, color: "var(--color-surface-500, #64748b)" }}>
+                At least one. Task auto-completes when all ticked.
+              </span>
+            </div>
+            <div
+              data-testid="create-task-steps"
+              style={{ display: "flex", flexDirection: "column", gap: 6 }}
+            >
+              {steps.map((step, idx) => (
+                <div
+                  key={idx}
+                  style={{ display: "flex", gap: 8, alignItems: "center" }}
+                >
+                  <TextInput
+                    size="sm"
+                    value={step}
+                    onChange={(e) => updateStep(idx, e.target.value)}
+                    placeholder={idx === 0 ? "e.g. Draft outline" : "Another item…"}
+                    data-testid={`create-task-step-${idx}`}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => removeStep(idx)}
+                    disabled={steps.length === 1 && !step}
+                    aria-label="Remove checklist item"
+                    type="button"
+                  >
+                    <Trash2 size={14} />
+                  </Button>
+                </div>
+              ))}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={addStep}
+                type="button"
+                data-testid="create-task-add-step"
+                style={{ alignSelf: "flex-start" }}
+              >
+                <Plus size={14} style={{ marginRight: 4 }} /> Add item
+              </Button>
+            </div>
+          </div>
+          <div>
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 500,
+                marginBottom: 6,
+                color: "var(--color-surface-600, #475569)",
+              }}
+            >
               Priority
             </div>
             <RadioGroup
@@ -169,7 +249,7 @@ export default function TaskCreateModal({
           variant="primary"
           onClick={submit}
           loading={submitting}
-          disabled={!title.trim()}
+          disabled={!canSubmit}
           data-testid="create-task-submit"
         >
           Create task

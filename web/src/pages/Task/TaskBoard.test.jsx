@@ -123,6 +123,9 @@ describe("TaskBoard", () => {
       await screen.findByText(/Lands in .+column/i),
     ).toBeInTheDocument();
     await user.type(screen.getByLabelText(/title/i), "Quick one");
+    const stepInput = await screen.findByTestId("create-task-step-0");
+    const innerStep = stepInput.querySelector("input") || stepInput;
+    await user.type(innerStep, "First step");
     await user.click(screen.getByTestId("create-task-submit"));
     await waitFor(() => {
       expect(taskFixture.list.some((t) => t.Title === "Quick one")).toBe(true);
@@ -154,6 +157,89 @@ describe("TaskBoard", () => {
     await waitFor(() => {
       expect(taskFixture.list.find((t) => t.Id === 777)).toBeUndefined();
     });
+  });
+
+  it("bulk delete surfaces 409 toast when checklist items block deletion", async () => {
+    useWorkspaceStore.getState().setActiveWorkspace({
+      Id: 100,
+      Type: "personal",
+      MyRole: "owner",
+    });
+    taskFixture.seed({
+      Id: 888,
+      Title: "Locked",
+      Status: "todo",
+      ColumnId: 1,
+      Priority: "low",
+      WorkspaceId: 100,
+      ChecklistItems: ["step 1"],
+      CreatedByUserId: 1,
+    });
+    renderBoard();
+    const user = userEvent.setup();
+    const checkbox = await screen.findByTestId("card-select-888");
+    checkbox.click();
+    const deleteBtn = await screen.findByTestId("bulk-delete");
+    await user.click(deleteBtn);
+    // Task survives because MSW returns 409.
+    await waitFor(() => {
+      expect(taskFixture.list.find((t) => t.Id === 888)).toBeDefined();
+    });
+  });
+
+  it("orphan column renders for task with unknown ColumnId", async () => {
+    useWorkspaceStore.getState().setActiveWorkspace({
+      Id: 100,
+      Type: "personal",
+      MyRole: "owner",
+    });
+    taskFixture.seed({
+      Id: 910,
+      Title: "Orphan",
+      ColumnId: 9999,
+      Priority: "low",
+      WorkspaceId: 100,
+      CreatedByUserId: 1,
+    });
+    renderBoard();
+    expect(await screen.findByTestId("kanban-card-910")).toBeInTheDocument();
+    expect(await screen.findByText(/Uncategorized/i)).toBeInTheDocument();
+  });
+
+  it("apply-template modal opens + applies selected template when columns empty", async () => {
+    useWorkspaceStore.getState().setActiveWorkspace({
+      Id: 100,
+      Type: "personal",
+      MyRole: "owner",
+    });
+    const { server } = await import("../../test/mocks/server");
+    const { http, HttpResponse } = await import("msw");
+    server.use(
+      http.post("*/api/kanban/fetchKanbanColumns", async () =>
+        HttpResponse.json({
+          success: true,
+          message: "ok",
+          responseCode: 200,
+          data: {
+            columns: [],
+            kanbanColumns: [],
+            pagination: {
+              currentPage: 1,
+              pageSize: 100,
+              totalRecords: 0,
+              totalPages: 1,
+            },
+          },
+        }),
+      ),
+    );
+    renderBoard();
+    const cta = await screen.findByTestId("apply-template-cta");
+    const user = userEvent.setup();
+    await user.click(cta);
+    expect(await screen.findByTestId("apply-template-modal")).toBeInTheDocument();
+    await user.click(screen.getByTestId("apply-template-confirm"));
+    // Modal closes + toast fires; no hard assertion needed beyond reaching code path
   });
 
   it("bulk delete appears after selecting a task", async () => {

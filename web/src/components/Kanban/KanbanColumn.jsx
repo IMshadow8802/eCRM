@@ -5,7 +5,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { useTheme } from "@mui/material/styles";
-import { Plus, MoreVertical, Check, X, Trash2, CircleCheck } from "lucide-react";
+import { Plus, MoreVertical, Check, X, Trash2 } from "lucide-react";
 
 import KanbanCard from "./KanbanCard";
 import { TextInput, Menu, IconButton, Modal, Button, Combobox } from "../ui";
@@ -65,29 +65,10 @@ export default function KanbanColumn({
         SortOrder: column.SortOrder,
         MaxTasks: column.MaxTasks,
         IsActive: true,
-        IsDone: column.IsDone ? 1 : 0,
       });
       onColumnUpdated?.();
     } finally {
       setRenaming(false);
-    }
-  };
-
-  const toggleDone = async () => {
-    try {
-      await saveColumnMutation.mutateAsync({
-        Id: column.Id,
-        WorkspaceId: column.WorkspaceId,
-        Title: column.Title,
-        Color: column.Color,
-        SortOrder: column.SortOrder,
-        MaxTasks: column.MaxTasks,
-        IsActive: true,
-        IsDone: column.IsDone ? 0 : 1,
-      });
-      onColumnUpdated?.();
-    } finally {
-      setMenuAnchor(null);
     }
   };
 
@@ -142,18 +123,6 @@ export default function KanbanColumn({
             boxShadow: `0 0 0 3px ${column.Color || p.text.tertiary}22`,
           }}
         />
-        {column.IsDone ? (
-          <span
-            title="Tasks in this column are marked complete"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              color: p.success.main,
-            }}
-          >
-            <CircleCheck size={14} />
-          </span>
-        ) : null}
         {renaming ? (
           <div
             style={{ flex: 1, display: "inline-flex", alignItems: "center", gap: 4 }}
@@ -250,14 +219,6 @@ export default function KanbanColumn({
                     setMenuAnchor(null);
                     setRenaming(true);
                   },
-                },
-                {
-                  id: "toggle-done",
-                  label: column.IsDone
-                    ? "Unmark as done column"
-                    : "Mark as done column",
-                  icon: <CircleCheck size={14} />,
-                  onClick: toggleDone,
                 },
                 {
                   id: "delete",

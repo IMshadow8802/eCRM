@@ -17,8 +17,7 @@ import {
   Clock,
   Link2,
   GitBranch,
-  ListTree,
-  ExternalLink,
+  CheckCircle2,
 } from "lucide-react";
 
 import {
@@ -57,7 +56,7 @@ const PRIORITY_OPTIONS = [
   { value: "critical", label: "Critical" },
 ];
 
-export default function TaskDetailModal({ taskId, open, onClose, onOpenTask }) {
+export default function TaskDetailModal({ taskId, open, onClose }) {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState("details");
   const [newComment, setNewComment] = useState("");
@@ -87,7 +86,7 @@ export default function TaskDetailModal({ taskId, open, onClose, onOpenTask }) {
     columnsPayload?.kanbanColumns ?? columnsPayload?.columns ?? [];
   const columnOptions = workspaceColumns.map((c) => ({
     value: c.Id,
-    label: c.IsDone ? `${c.Title} ✓` : c.Title,
+    label: c.Title,
   }));
 
   const { data: usersPayload } = useApiQuery({
@@ -202,9 +201,8 @@ export default function TaskDetailModal({ taskId, open, onClose, onOpenTask }) {
   const checklistItems =
     checklistPayload?.checklist ?? checklistPayload?.items ?? [];
 
-  // Subtasks = tasks whose ParentTaskId === current. We piggy-back on the
-  // workspace-wide fetchTasks query then filter client-side; cheap at the
-  // expected board size.
+  // Piggy-back on a workspace-wide fetchTasks to populate the dependency
+  // picker. Cheap at expected board size.
   const { data: workspaceTasksPayload } = useApiQuery({
     queryKey: ["tasks-all", task?.WorkspaceId],
     endpoint: "/api/tasks/fetchTasks",
@@ -217,7 +215,6 @@ export default function TaskDetailModal({ taskId, open, onClose, onOpenTask }) {
     showErrorMessage: false,
   });
   const workspaceTasks = workspaceTasksPayload?.tasks ?? [];
-  const subtasks = workspaceTasks.filter((t) => t.ParentTaskId === task?.Id);
   const potentialDepOptions = workspaceTasks
     .filter((t) => t.Id !== task?.Id)
     .map((t) => ({ value: t.Id, label: `#${t.Id} · ${t.Title}` }));
@@ -236,17 +233,13 @@ export default function TaskDetailModal({ taskId, open, onClose, onOpenTask }) {
     0,
   );
 
-  // Auto-progress: checklist wins over subtasks, manual fallback.
+  // Auto-progress: driven entirely by checklist completion.
   const autoProgress = (() => {
     if (checklistItems.length > 0) {
       const done = checklistItems.filter((c) => c.IsCompleted).length;
       return Math.round((done / checklistItems.length) * 100);
     }
-    if (subtasks.length > 0) {
-      const done = subtasks.filter((t) => t.ColumnIsDone).length;
-      return Math.round((done / subtasks.length) * 100);
-    }
-    return null; // no auto source; manual applies
+    return null; // no checklist; manual applies
   })();
 
   const saveMutation = useApiMutation({
@@ -289,11 +282,6 @@ export default function TaskDetailModal({ taskId, open, onClose, onOpenTask }) {
     endpoint: "/api/tasks/removeTaskDependency",
     showSuccessMessage: false,
   });
-  const saveSubtaskMutation = useApiMutation({
-    endpoint: "/api/tasks/saveTask",
-    showSuccessMessage: false,
-  });
-
   // Checklist handlers
   const [newChecklistItem, setNewChecklistItem] = useState("");
   const addChecklistItem = async () => {
@@ -327,29 +315,6 @@ export default function TaskDetailModal({ taskId, open, onClose, onOpenTask }) {
     try {
       await deleteChecklistMutation.mutateAsync({ Id: item.Id });
       refetchChecklist();
-    } catch {}
-  };
-
-  // Subtasks
-  const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
-  const addSubtask = async () => {
-    const title = newSubtaskTitle.trim();
-    if (!title || !task) return;
-    try {
-      await saveSubtaskMutation.mutateAsync({
-        Id: 0,
-        Title: title,
-        WorkspaceId: task.WorkspaceId,
-        ColumnId: task.ColumnId,
-        ParentTaskId: task.Id,
-        Priority: "medium",
-      });
-      setNewSubtaskTitle("");
-      queryClient.invalidateQueries({
-        queryKey: ["tasks-all", task.WorkspaceId],
-        refetchType: "all",
-      });
-      queryClient.invalidateQueries({ queryKey: ["tasks"] });
     } catch {}
   };
 
@@ -476,13 +441,19 @@ export default function TaskDetailModal({ taskId, open, onClose, onOpenTask }) {
                 size="sm"
               />
             )}
-            {task.CompletedDate && (
+            {task.IsCompleted ? (
               <Chip
-                label={`Done ${dayjs(task.CompletedDate).format("DD-MM-YYYY")}`}
+                icon={<CheckCircle2 size={11} />}
+                label={
+                  task.CompletedDate
+                    ? `Done ${dayjs(task.CompletedDate).format("DD-MM-YYYY")}`
+                    : "Done"
+                }
                 tone="success"
                 size="sm"
+                data-testid="task-completed-chip"
               />
-            )}
+            ) : null}
           </div>
         )}
       </Modal.Header>
@@ -501,11 +472,6 @@ export default function TaskDetailModal({ taskId, open, onClose, onOpenTask }) {
               onChange={setTab}
               items={[
                 { value: "details", label: "Details" },
-                {
-                  value: "subtasks",
-                  label: "Subtasks",
-                  badge: subtasks.length,
-                },
                 {
                   value: "checklist",
                   label: "Checklist",
@@ -706,9 +672,7 @@ export default function TaskDetailModal({ taskId, open, onClose, onOpenTask }) {
                         disabled={!canEditThisTask || autoProgress != null}
                         hint={
                           autoProgress != null
-                            ? checklistItems.length
-                              ? "Driven by checklist — add or tick items to change"
-                              : "Driven by subtask completion"
+                            ? "Driven by checklist — tick each item to progress"
                             : undefined
                         }
                       />
@@ -763,58 +727,6 @@ export default function TaskDetailModal({ taskId, open, onClose, onOpenTask }) {
                         onClick={addChecklistItem}
                         loading={saveChecklistMutation.isPending}
                         data-testid="checklist-add"
-                      >
-                        Add
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {tab === "subtasks" && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {subtasks.length === 0 ? (
-                    <EmptyState
-                      icon={<ListTree size={28} />}
-                      title="No subtasks yet"
-                      description="Split this into smaller pieces that other people can own."
-                      size="sm"
-                    />
-                  ) : (
-                    subtasks.map((s) => (
-                      <SubtaskRow
-                        key={s.Id}
-                        subtask={s}
-                        onOpen={() => onOpenTask?.(s.Id)}
-                      />
-                    ))
-                  )}
-                  {canEditThisTask && (
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: 8,
-                        alignItems: "center",
-                        marginTop: 6,
-                      }}
-                    >
-                      <TextInput
-                        value={newSubtaskTitle}
-                        onChange={(e) => setNewSubtaskTitle(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") addSubtask();
-                        }}
-                        placeholder="Subtask title…"
-                        size="sm"
-                        data-testid="subtask-input"
-                      />
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        leftIcon={<Plus size={14} />}
-                        onClick={addSubtask}
-                        loading={saveSubtaskMutation.isPending}
-                        data-testid="subtask-add"
                       >
                         Add
                       </Button>
@@ -1261,7 +1173,7 @@ function DepSection({ title, items, emptyText, tone, canEdit, onRemove }) {
       ) : (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
           {items.map((d) => {
-            const done = Boolean(d.ColumnIsDone);
+            const done = Boolean(d.IsCompleted);
             return (
               <Chip
                 key={d.TaskId}
@@ -1329,59 +1241,6 @@ function ChecklistRow({ item, canEdit, onToggle, onDelete }) {
           <Trash2 size={14} />
         </IconButton>
       )}
-    </div>
-  );
-}
-
-function SubtaskRow({ subtask, onOpen }) {
-  const done = Boolean(subtask.ColumnIsDone);
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "10px 12px",
-        borderRadius: 8,
-        border: "1px solid rgba(148,163,184,0.18)",
-        backgroundColor: "rgba(255,255,255,0.02)",
-      }}
-    >
-      <span style={{ color: done ? "#10B981" : "#94A3B8" }}>
-        {done ? <CheckSquare size={16} /> : <Square size={16} />}
-      </span>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div
-          style={{
-            fontSize: 14,
-            fontWeight: 500,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {subtask.Title}
-        </div>
-        <div
-          style={{
-            fontSize: 12,
-            color: "var(--color-surface-500)",
-            marginTop: 2,
-          }}
-        >
-          {subtask.ColumnTitle || "—"}
-          {subtask.AssigneeName ? ` · ${subtask.AssigneeName}` : ""}
-          {subtask.Priority ? ` · ${subtask.Priority}` : ""}
-        </div>
-      </div>
-      <IconButton
-        size="sm"
-        variant="ghost"
-        onClick={onOpen}
-        aria-label="Open subtask"
-      >
-        <ExternalLink size={14} />
-      </IconButton>
     </div>
   );
 }

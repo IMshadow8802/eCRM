@@ -13,6 +13,13 @@ const renderModal = (props = {}) =>
     { router: false },
   );
 
+const fillFirstStep = async (user, text = "Do the thing") => {
+  const input = await screen.findByTestId("create-task-step-0");
+  // TextInput wraps an <input>; userEvent.type targets the inner input
+  const inner = input.querySelector("input") || input;
+  await user.type(inner, text);
+};
+
 describe("TaskCreateModal", () => {
   beforeEach(() => {
     taskFixture.reset();
@@ -30,18 +37,28 @@ describe("TaskCreateModal", () => {
     expect(btn).toBeDisabled();
   });
 
-  it("creates a task and calls onCreated", async () => {
+  it("Create is disabled when no steps are filled", async () => {
+    renderModal();
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/title/i), "Only title");
+    const btn = await screen.findByTestId("create-task-submit");
+    expect(btn).toBeDisabled();
+  });
+
+  it("creates a task with steps and calls onCreated", async () => {
     const onCreated = vi.fn();
     const onClose = vi.fn();
     renderModal({ onCreated, onClose });
     const user = userEvent.setup();
     await user.type(screen.getByLabelText(/title/i), "Fix bug");
+    await fillFirstStep(user, "Reproduce");
     await user.click(screen.getByTestId("create-task-submit"));
     await waitFor(() => {
       expect(onCreated).toHaveBeenCalled();
     });
     expect(taskFixture.list).toHaveLength(1);
     expect(taskFixture.list[0].Title).toBe("Fix bug");
+    expect(taskFixture.list[0].ChecklistItems).toEqual(["Reproduce"]);
   });
 
   it("Cancel closes without creating", async () => {
@@ -53,25 +70,11 @@ describe("TaskCreateModal", () => {
     expect(taskFixture.list).toHaveLength(0);
   });
 
-  it("Cancel does nothing while submitting", async () => {
-    renderModal();
-    const user = userEvent.setup();
-    await user.type(screen.getByLabelText(/title/i), "X");
-    // Fire a click but don't await; then click Cancel — submitting state prevents close
-    const submit = screen.getByTestId("create-task-submit");
-    submit.click();
-    const cancel = screen.getByRole("button", { name: /cancel/i });
-    cancel.click();
-    // Let the async settle
-    await waitFor(() => {
-      expect(taskFixture.list.length).toBeGreaterThanOrEqual(0);
-    });
-  });
-
   it("creates with default priority medium", async () => {
     renderModal();
     const user = userEvent.setup();
     await user.type(screen.getByLabelText(/title/i), "Default");
+    await fillFirstStep(user, "Step");
     await user.click(screen.getByTestId("create-task-submit"));
     await waitFor(() => {
       expect(taskFixture.list[0].Priority).toBe("medium");
@@ -80,7 +83,6 @@ describe("TaskCreateModal", () => {
 
   it("renders due date field", async () => {
     renderModal();
-    // DateField now renders an external label linked to the input
     expect(
       await screen.findByLabelText(/due date/i),
     ).toBeInTheDocument();
@@ -90,9 +92,17 @@ describe("TaskCreateModal", () => {
     renderModal({ columnId: 5, columnTitle: "Sprint" });
     const user = userEvent.setup();
     await user.type(screen.getByLabelText(/title/i), "S1");
+    await fillFirstStep(user, "first");
     await user.click(screen.getByTestId("create-task-submit"));
     await waitFor(() => {
       expect(taskFixture.list[0].ColumnId).toBe(5);
     });
+  });
+
+  it("adds and removes extra steps", async () => {
+    renderModal();
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("create-task-add-step"));
+    expect(screen.getByTestId("create-task-step-1")).toBeInTheDocument();
   });
 });

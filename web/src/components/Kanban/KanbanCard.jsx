@@ -1,6 +1,13 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { useTheme } from "@mui/material/styles";
-import { Calendar, CheckCheck, Check, Lock } from "lucide-react";
+import {
+  Calendar,
+  CheckCheck,
+  Check,
+  Lock,
+  CheckCircle2,
+  ListChecks,
+} from "lucide-react";
 import dayjs from "dayjs";
 
 import { Chip, Avatar, Checkbox } from "../ui";
@@ -40,10 +47,15 @@ export default function KanbanCard({
     zIndex: isDragging ? 100 : 1,
   };
 
+  const isCompleted = Boolean(task.IsCompleted);
   const overdue =
     task.DueDate &&
-    task.Status !== "done" &&
+    !isCompleted &&
     new Date(task.DueDate) < new Date(new Date().toDateString());
+
+  const checklistTotal = Number(task.ChecklistTotal ?? 0);
+  const checklistDone = Number(task.ChecklistDone ?? 0);
+  const showStepsChip = checklistTotal > 0;
 
   return (
     <div
@@ -57,6 +69,7 @@ export default function KanbanCard({
         backgroundColor: p.surface.card,
         border: `1px solid ${selected ? p.primary.main : p.border.default}`,
         cursor: "pointer",
+        opacity: isCompleted && !isDragging ? 0.72 : style.opacity ?? 1,
         boxShadow: isDragging
           ? p.shadow.lg
           : selected
@@ -84,6 +97,7 @@ export default function KanbanCard({
       {...attributes}
       {...listeners}
       data-testid={`kanban-card-${task.Id}`}
+      data-completed={isCompleted ? "true" : "false"}
     >
       <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
         {onToggleSelect && (
@@ -106,10 +120,11 @@ export default function KanbanCard({
             style={{
               fontSize: 14,
               fontWeight: 600,
-              color: p.text.primary,
+              color: isCompleted ? p.text.secondary : p.text.primary,
               marginBottom: task.IsBlocked ? 8 : 6,
               wordBreak: "break-word",
               lineHeight: 1.4,
+              textDecoration: isCompleted ? "line-through" : "none",
             }}
           >
             {task.Title}
@@ -142,6 +157,16 @@ export default function KanbanCard({
               size="sm"
               variant="tonal"
             />
+            {showStepsChip && (
+              <Chip
+                label={`${checklistDone}/${checklistTotal}`}
+                icon={<ListChecks size={11} />}
+                tone={isCompleted ? "success" : "default"}
+                size="sm"
+                variant="tonal"
+                data-testid={`card-steps-${task.Id}`}
+              />
+            )}
             {task.AssigneeName && (
               <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                 <Avatar name={task.AssigneeName} size="xs" />
@@ -169,8 +194,12 @@ export default function KanbanCard({
         </div>
 
         <div style={{ flexShrink: 0, marginLeft: 4 }}>
-          {task.Status === "done" ? (
-            <CheckCheck size={16} style={{ color: p.success.main }} />
+          {isCompleted ? (
+            <CheckCircle2
+              size={16}
+              style={{ color: p.success.main }}
+              data-testid={`card-done-${task.Id}`}
+            />
           ) : task.HasBeenRead ? (
             <CheckCheck size={16} style={{ color: p.info.main }} />
           ) : task.HasBeenDelivered ? (

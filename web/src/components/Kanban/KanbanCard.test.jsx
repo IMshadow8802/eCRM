@@ -109,6 +109,41 @@ describe("KanbanCard", () => {
     expect(screen.getByText("Delivered")).toBeInTheDocument();
   });
 
+  it("shows steps chip when task has checklist totals", () => {
+    wrap(
+      <KanbanCard
+        task={{
+          Id: 20,
+          Title: "With steps",
+          Priority: "medium",
+          ChecklistTotal: 3,
+          ChecklistDone: 1,
+        }}
+      />,
+    );
+    expect(screen.getByTestId("card-steps-20")).toHaveTextContent("1/3");
+  });
+
+  it("strikes through title and shows done icon when IsCompleted", () => {
+    wrap(
+      <KanbanCard
+        task={{
+          Id: 21,
+          Title: "Finished",
+          Priority: "low",
+          IsCompleted: 1,
+          ChecklistTotal: 2,
+          ChecklistDone: 2,
+        }}
+      />,
+    );
+    const card = screen.getByTestId("kanban-card-21");
+    expect(card).toHaveAttribute("data-completed", "true");
+    expect(screen.getByTestId("card-done-21")).toBeInTheDocument();
+    const title = screen.getByText("Finished");
+    expect(title).toHaveStyle({ textDecoration: "line-through" });
+  });
+
   it("renders due date chip with error color when overdue", () => {
     wrap(
       <KanbanCard

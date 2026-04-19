@@ -211,6 +211,18 @@ export const handlers = [
       });
     }
     if (body.Id === 0 || !body.Id) {
+      const checklistItems = Array.isArray(body.ChecklistItems)
+        ? body.ChecklistItems
+            .map((s) => (typeof s === "string" ? s.trim() : ""))
+            .filter(Boolean)
+        : [];
+      if (checklistItems.length === 0) {
+        return HttpResponse.json({
+          success: false,
+          message: "At least one checklist item is required",
+          responseCode: 400,
+        });
+      }
       const id = ++taskSeq;
       const newTask = {
         Id: id,
@@ -222,6 +234,10 @@ export const handlers = [
         AssignedToUserId: body.AssignedToUserId ?? null,
         DueDate: body.DueDate ?? null,
         IsBlocked: false,
+        IsCompleted: 0,
+        ChecklistTotal: checklistItems.length,
+        ChecklistDone: 0,
+        ChecklistItems: checklistItems,
         CreatedByUserId: 1,
       };
       taskFixture.list.push(newTask);
@@ -249,6 +265,16 @@ export const handlers = [
     const ids = Array.isArray(body?.TaskIds)
       ? body.TaskIds
       : String(body?.TaskIds ?? "").split(",").map(Number).filter(Boolean);
+    const blocked = taskFixture.list.find(
+      (t) => ids.includes(t.Id) && (t.ChecklistItems?.length ?? 0) > 0,
+    );
+    if (blocked) {
+      return HttpResponse.json({
+        success: false,
+        message: "Clear checklist items before deleting this task",
+        responseCode: 409,
+      });
+    }
     const before = taskFixture.list.length;
     taskFixture.list = taskFixture.list.filter((t) => !ids.includes(t.Id));
     return HttpResponse.json({
@@ -256,6 +282,26 @@ export const handlers = [
       message: "ok",
       responseCode: 200,
       data: { deletedCount: before - taskFixture.list.length, failedCount: 0 },
+    });
+  }),
+
+  http.post(`*/api/tasks/deleteTask`, async ({ request }) => {
+    const body = await request.json();
+    const id = body?.Id;
+    const target = taskFixture.list.find((t) => t.Id === id);
+    if (target && (target.ChecklistItems?.length ?? 0) > 0) {
+      return HttpResponse.json({
+        success: false,
+        message: "Clear checklist items before deleting this task",
+        responseCode: 409,
+      });
+    }
+    const before = taskFixture.list.length;
+    taskFixture.list = taskFixture.list.filter((t) => t.Id !== id);
+    return HttpResponse.json({
+      success: before > taskFixture.list.length,
+      message: before > taskFixture.list.length ? "Task deleted" : "Task not found",
+      responseCode: before > taskFixture.list.length ? 200 : 404,
     });
   }),
 

@@ -30,7 +30,9 @@ describe("TaskDetailModal", () => {
       WorkspaceId: 100,
       ColumnId: 1,
       ColumnTitle: "To Do",
-      ColumnIsDone: false,
+      IsCompleted: 0,
+      ChecklistTotal: 1,
+      ChecklistDone: 0,
       Priority: "high",
       AssigneeName: "Alice",
       IsBlocked: false,
@@ -114,12 +116,11 @@ describe("TaskDetailModal", () => {
     });
   });
 
-  it("shows Done badge when task sits in a done column", async () => {
-    taskFixture.list[0].ColumnId = 3;
-    taskFixture.list[0].ColumnIsDone = true;
+  it("shows Done chip when task IsCompleted", async () => {
+    taskFixture.list[0].IsCompleted = 1;
     taskFixture.list[0].CompletedDate = new Date().toISOString();
     renderModal(501);
-    expect(await screen.findByText(/^Done/)).toBeInTheDocument();
+    expect(await screen.findByTestId("task-completed-chip")).toBeInTheDocument();
   });
 
   it("close button fires onClose", async () => {
@@ -175,5 +176,52 @@ describe("TaskDetailModal", () => {
     const { container } = renderModal(501, { open: false });
     // Dialog isn't mounted in DOM body when open=false but component returns null
     expect(container).toBeTruthy();
+  });
+
+  it("renders the Checklist tab (replaces legacy Subtasks)", async () => {
+    renderModal(501);
+    await screen.findByText("Task 501");
+    expect(screen.getByRole("tab", { name: /Checklist/i })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /Subtasks/i })).not.toBeInTheDocument();
+  });
+
+  it("Checklist tab shows empty state placeholder when no items", async () => {
+    renderModal(501);
+    await screen.findByText("Task 501");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: /Checklist/i }));
+    expect(await screen.findByText(/No checklist yet/i)).toBeInTheDocument();
+  });
+
+  it("Time tab shows empty state when no entries", async () => {
+    renderModal(501);
+    await screen.findByText("Task 501");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: /Time/i }));
+    expect(await screen.findByText(/No time logged/i)).toBeInTheDocument();
+  });
+
+  it("Log time opens modal from Time tab", async () => {
+    renderModal(501);
+    await screen.findByText("Task 501");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: /Time/i }));
+    const logBtns = screen.getAllByRole("button", { name: /Log time/i });
+    await user.click(logBtns[0]);
+    expect(await screen.findByTestId("log-time-modal")).toBeInTheDocument();
+  });
+
+  it("description edit + Save dispatches save mutation", async () => {
+    renderModal(501);
+    await screen.findByText("Task 501");
+    const user = userEvent.setup();
+    const desc = screen.getByTestId("task-description-input");
+    const inner = desc.querySelector("textarea") || desc;
+    await user.clear(inner);
+    await user.type(inner, "New body");
+    await user.click(await screen.findByTestId("task-save-btn"));
+    await waitFor(() => {
+      expect(taskFixture.list[0].Description).toBe("New body");
+    });
   });
 });
