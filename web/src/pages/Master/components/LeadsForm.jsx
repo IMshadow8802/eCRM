@@ -315,217 +315,194 @@ const LeadsForm = ({
     <FormModal
       open={open}
       title={editingLead ? "Edit Lead" : "Create Lead"}
-      maxWidth="max-w-4xl"
+      maxWidth="max-w-6xl"
     >
       {/* Content */}
       <div className="p-6">
         <FormContainer spacing="space-y-4">
-          {/* Lead Date */}
-          <div className="grid grid-cols-1 gap-4">
-            <FormDateInput
-              label="Lead Date"
-              value={formData.LeadDate}
-              onChange={(e) => handleInputChange("LeadDate", e.target.value)}
-              error={errors.LeadDate}
-              required
-            />
-          </div>
-
-          {/* Customer Information Section Header */}
-          <div className="border-t pt-4">
+          {/* Customer Information */}
+          <div>
             <h3 className="text-sm font-semibold text-gray-700 mb-3">
               Customer Information
             </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <FormDateInput
+                label="Lead Date"
+                value={formData.LeadDate}
+                onChange={(e) => handleInputChange("LeadDate", e.target.value)}
+                error={errors.LeadDate}
+                required
+              />
+              <FormInput
+                label="Customer Name"
+                value={formData.CustomerName}
+                onChange={(e) =>
+                  handleInputChange("CustomerName", e.target.value)
+                }
+                placeholder="Enter customer name"
+                error={errors.CustomerName}
+                required
+                maxLength={100}
+              />
+              <FormPhoneInput
+                label="Mobile Number"
+                value={formData.MobileNo}
+                onChange={(e) => handleInputChange("MobileNo", e.target.value)}
+                placeholder="10-digit mobile number"
+                error={errors.MobileNo}
+                required
+              />
+              <FormPhoneInput
+                label="Alternate Mobile"
+                value={formData.AlternateMobile}
+                onChange={(e) =>
+                  handleInputChange("AlternateMobile", e.target.value)
+                }
+                placeholder="Alternate contact number"
+                error={errors.AlternateMobile}
+              />
+              <FormEmailInput
+                label="Email"
+                value={formData.Email}
+                onChange={(e) => handleInputChange("Email", e.target.value)}
+                placeholder="customer@example.com"
+                error={errors.Email}
+              />
+              <div className="md:col-span-1" />
+              <div className="md:col-span-3">
+                <FormTextarea
+                  label="Address"
+                  value={formData.Address}
+                  onChange={(e) => handleInputChange("Address", e.target.value)}
+                  placeholder="Full address"
+                  error={errors.Address}
+                  rows={2}
+                />
+              </div>
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <FormInput
-              label="Customer Name"
-              value={formData.CustomerName}
-              onChange={(e) =>
-                handleInputChange("CustomerName", e.target.value)
-              }
-              placeholder="Enter customer name"
-              error={errors.CustomerName}
-              required
-              maxLength={100}
-            />
-            <FormPhoneInput
-              label="Mobile Number"
-              value={formData.MobileNo}
-              onChange={(e) => handleInputChange("MobileNo", e.target.value)}
-              placeholder="10-digit mobile number"
-              error={errors.MobileNo}
-              required
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <FormPhoneInput
-              label="Alternate Mobile"
-              value={formData.AlternateMobile}
-              onChange={(e) =>
-                handleInputChange("AlternateMobile", e.target.value)
-              }
-              placeholder="Alternate contact number"
-              error={errors.AlternateMobile}
-            />
-            <FormEmailInput
-              label="Email"
-              value={formData.Email}
-              onChange={(e) => handleInputChange("Email", e.target.value)}
-              placeholder="customer@example.com"
-              error={errors.Email}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 gap-4">
-            <FormTextarea
-              label="Address"
-              value={formData.Address}
-              onChange={(e) => handleInputChange("Address", e.target.value)}
-              placeholder="Full address"
-              error={errors.Address}
-              rows={2}
-            />
-          </div>
-
-          {/* Product Information Section Header */}
+          {/* Product Information */}
           <div className="border-t pt-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">
               Product Information
             </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <FormSelect
+                label="Lead Source"
+                value={formData.LeadSource}
+                onChange={(e) =>
+                  handleInputChange("LeadSource", e.target.value)
+                }
+                options={sourceOptions}
+                placeholder="Select lead source"
+                error={errors.LeadSource}
+                required
+              />
+              <FormInput
+                label="Product Category"
+                value={formData.ProductCategory}
+                onChange={(e) =>
+                  handleInputChange("ProductCategory", e.target.value)
+                }
+                placeholder="e.g., Electronics, Appliances"
+                error={errors.ProductCategory}
+              />
+              <FormInput
+                label="Product Brand"
+                value={formData.ProductBrand}
+                onChange={(e) =>
+                  handleInputChange("ProductBrand", e.target.value)
+                }
+                placeholder="e.g., Samsung, LG"
+                error={errors.ProductBrand}
+              />
+              <FormInput
+                label="Product Model"
+                value={formData.ProductModel}
+                onChange={(e) =>
+                  handleInputChange("ProductModel", e.target.value)
+                }
+                placeholder="Specific model"
+                error={errors.ProductModel}
+              />
+              <FormNumberInput
+                label="Budget"
+                value={formData.Budget}
+                onChange={(e) => handleInputChange("Budget", e.target.value)}
+                placeholder="0.00"
+                error={errors.Budget}
+              />
+              <FormSelect
+                label="Lead Status"
+                value={formData.LeadStatus}
+                onChange={(e) =>
+                  handleInputChange("LeadStatus", e.target.value)
+                }
+                options={statusOptions}
+                placeholder="Select lead status"
+                error={errors.LeadStatus}
+                required
+              />
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <FormSelect
-              label="Lead Source"
-              value={formData.LeadSource}
-              onChange={(e) =>
-                handleInputChange("LeadSource", e.target.value)
-              }
-              options={sourceOptions}
-              placeholder="Select lead source"
-              error={errors.LeadSource}
-              required
-            />
-            <FormInput
-              label="Product Category"
-              value={formData.ProductCategory}
-              onChange={(e) =>
-                handleInputChange("ProductCategory", e.target.value)
-              }
-              placeholder="e.g., Electronics, Appliances"
-              error={errors.ProductCategory}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <FormInput
-              label="Product Brand"
-              value={formData.ProductBrand}
-              onChange={(e) =>
-                handleInputChange("ProductBrand", e.target.value)
-              }
-              placeholder="e.g., Samsung, LG"
-              error={errors.ProductBrand}
-            />
-            <FormInput
-              label="Product Model"
-              value={formData.ProductModel}
-              onChange={(e) =>
-                handleInputChange("ProductModel", e.target.value)
-              }
-              placeholder="Specific model"
-              error={errors.ProductModel}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <FormNumberInput
-              label="Budget"
-              value={formData.Budget}
-              onChange={(e) => handleInputChange("Budget", e.target.value)}
-              placeholder="0.00"
-              error={errors.Budget}
-            />
-            <FormSelect
-              label="Lead Status"
-              value={formData.LeadStatus}
-              onChange={(e) =>
-                handleInputChange("LeadStatus", e.target.value)
-              }
-              options={statusOptions}
-              placeholder="Select lead status"
-              error={errors.LeadStatus}
-              required
-            />
-          </div>
-
-          {/* Follow-up & Assignment Section Header */}
+          {/* Follow-up & Assignment */}
           <div className="border-t pt-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">
               Follow-up & Assignment
             </h3>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <FormDateInput
-              label="Follow-up Date"
-              value={formData.FollowupDate}
-              onChange={(e) =>
-                handleInputChange("FollowupDate", e.target.value)
-              }
-              error={errors.FollowupDate}
-            />
-            <FormSelect
-              label="Assign To"
-              value={formData.AssignTo}
-              onChange={(e) => handleInputChange("AssignTo", e.target.value)}
-              options={userOptions}
-              placeholder="Select user"
-              error={errors.AssignTo}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 gap-4">
-            <FormTextarea
-              label="Remarks"
-              value={formData.Remarks}
-              onChange={(e) => handleInputChange("Remarks", e.target.value)}
-              placeholder="Additional notes"
-              error={errors.Remarks}
-              rows={3}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <FormDateInput
-              label="Assigned Date"
-              value={formData.AssignedDate}
-              onChange={(e) =>
-                handleInputChange("AssignedDate", e.target.value)
-              }
-              error={errors.AssignedDate}
-            />
-            <FormInput
-              label="Invoice Number"
-              value={formData.InvoiceNo}
-              onChange={(e) => handleInputChange("InvoiceNo", e.target.value)}
-              placeholder="For converted leads"
-              error={errors.InvoiceNo}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 gap-4">
-            <FormDateInput
-              label="Invoice Date"
-              value={formData.InvoiceDate}
-              onChange={(e) =>
-                handleInputChange("InvoiceDate", e.target.value)
-              }
-              error={errors.InvoiceDate}
-            />
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <FormDateInput
+                label="Follow-up Date"
+                value={formData.FollowupDate}
+                onChange={(e) =>
+                  handleInputChange("FollowupDate", e.target.value)
+                }
+                error={errors.FollowupDate}
+              />
+              <FormSelect
+                label="Assign To"
+                value={formData.AssignTo}
+                onChange={(e) => handleInputChange("AssignTo", e.target.value)}
+                options={userOptions}
+                placeholder="Select user"
+                error={errors.AssignTo}
+              />
+              <FormDateInput
+                label="Assigned Date"
+                value={formData.AssignedDate}
+                onChange={(e) =>
+                  handleInputChange("AssignedDate", e.target.value)
+                }
+                error={errors.AssignedDate}
+              />
+              <FormInput
+                label="Invoice Number"
+                value={formData.InvoiceNo}
+                onChange={(e) => handleInputChange("InvoiceNo", e.target.value)}
+                placeholder="For converted leads"
+                error={errors.InvoiceNo}
+              />
+              <FormDateInput
+                label="Invoice Date"
+                value={formData.InvoiceDate}
+                onChange={(e) =>
+                  handleInputChange("InvoiceDate", e.target.value)
+                }
+                error={errors.InvoiceDate}
+              />
+              <div className="md:col-span-3">
+                <FormTextarea
+                  label="Remarks"
+                  value={formData.Remarks}
+                  onChange={(e) => handleInputChange("Remarks", e.target.value)}
+                  placeholder="Additional notes"
+                  error={errors.Remarks}
+                  rows={3}
+                />
+              </div>
+            </div>
           </div>
         </FormContainer>
       </div>
