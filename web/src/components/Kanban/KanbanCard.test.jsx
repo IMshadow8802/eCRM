@@ -1,16 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
 import { screen, fireEvent } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { DndContext } from "@dnd-kit/core";
-import { SortableContext } from "@dnd-kit/sortable";
+import { DragDropProvider } from "@dnd-kit/react";
 import KanbanCard from "./KanbanCard";
 import renderWithProviders from "../../test/renderWithProviders";
 
 function wrap(ui) {
   return renderWithProviders(
-    <DndContext>
-      <SortableContext items={["task-1"]}>{ui}</SortableContext>
-    </DndContext>,
+    <DragDropProvider>{ui}</DragDropProvider>,
     { router: false },
   );
 }

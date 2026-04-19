@@ -1,13 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import {
-  DndContext,
-  DragOverlay,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  closestCorners,
-} from "@dnd-kit/core";
+import { DragDropProvider } from "@dnd-kit/react";
 import { enqueueSnackbar } from "notistack";
 import {
   Plus,
@@ -25,7 +18,6 @@ import { useApiMutation } from "../../hooks/useApiMutation";
 import useWorkspaceStore from "../../stores/useWorkspaceStore";
 import WorkspaceSwitcher from "../../components/Workspace/WorkspaceSwitcher";
 import KanbanColumn from "../../components/Kanban/KanbanColumn";
-import KanbanCard from "../../components/Kanban/KanbanCard";
 import ColumnAddInline from "../../components/Kanban/ColumnAddInline";
 import TaskCreateModal from "./Components/TaskCreateModal";
 import TaskDetailModal from "./Components/TaskDetailModal";
@@ -69,13 +61,8 @@ export default function TaskBoard() {
   const [openTaskId, setOpenTaskId] = useState(null);
   const [addingInColumn, setAddingInColumn] = useState(null); // { Id, Title } or null
   const [selectedIds, setSelectedIds] = useState([]);
-  const [activeDrag, setActiveDrag] = useState(null);
   const [templateOpen, setTemplateOpen] = useState(false);
   const [templateChoice, setTemplateChoice] = useState(TEMPLATE_OPTIONS[0]);
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-  );
 
   const ensureMutation = useApiMutation({
     endpoint: "/api/workspaces/ensurePersonalWorkspace",
@@ -145,29 +132,33 @@ export default function TaskBoard() {
   );
   const orphanTasks = tasksByColumn[ORPHAN_BUCKET_KEY] || [];
 
-  const activeTask = activeDrag
-    ? tasks.find((t) => `task-${t.Id}` === activeDrag.id)
-    : null;
-
-  const handleDragStart = (event) => setActiveDrag(event.active);
+  const tasksQueryKey = ["tasks", workspaceId, search];
 
   const handleDragEnd = async (event) => {
-    setActiveDrag(null);
-    const { active, over } = event;
-    if (!over) return;
-    const taskId = Number(String(active.id).replace("task-", ""));
+    if (event.canceled) return;
+    const { source, target } = event.operation;
+    if (!source || !target) return;
+    if (source.type !== "task") return;
+
+    const taskId = source.data?.taskId;
     const task = tasks.find((t) => t.Id === taskId);
     if (!task) return;
 
-    let newColumnId = null;
-    if (String(over.id).startsWith("column-")) {
-      newColumnId = Number(String(over.id).replace("column-", ""));
-    } else if (String(over.id).startsWith("task-")) {
-      const overTaskId = Number(String(over.id).replace("task-", ""));
-      const overTask = tasks.find((t) => t.Id === overTaskId);
-      if (overTask) newColumnId = overTask.ColumnId;
-    }
-    if (!newColumnId || newColumnId === task.ColumnId) return;
+    const targetColumnId = target.data?.columnId;
+    if (!targetColumnId || targetColumnId === task.ColumnId) return;
+
+    // Optimistic: patch React Query cache so card jumps to the target column
+    // immediately, before the save round-trip completes.
+    const previousPayload = queryClient.getQueryData(tasksQueryKey);
+    queryClient.setQueryData(tasksQueryKey, (prev) => {
+      if (!prev?.tasks) return prev;
+      return {
+        ...prev,
+        tasks: prev.tasks.map((t) =>
+          t.Id === taskId ? { ...t, ColumnId: targetColumnId } : t,
+        ),
+      };
+    });
 
     try {
       await saveMutation.mutateAsync({
@@ -175,7 +166,7 @@ export default function TaskBoard() {
         Title: task.Title,
         Description: task.Description,
         WorkspaceId: task.WorkspaceId,
-        ColumnId: newColumnId,
+        ColumnId: targetColumnId,
         ProjectId: task.ProjectId,
         ParentTaskId: task.ParentTaskId,
         AssignedToUserId: task.AssignedToUserId,
@@ -190,8 +181,17 @@ export default function TaskBoard() {
         Labels: task.Labels,
         Watchers: task.Watchers,
       });
-      refetchTasks();
+      // Don't refetch — optimistic cache is already correct. Invalidate so
+      // other screens (detail modal) pick up the change, but no UI flicker here.
+      queryClient.invalidateQueries({
+        queryKey: ["tasks"],
+        refetchType: "none",
+      });
     } catch {
+      // Rollback on failure
+      if (previousPayload) {
+        queryClient.setQueryData(tasksQueryKey, previousPayload);
+      }
       refetchTasks();
     }
   };
@@ -343,12 +343,7 @@ export default function TaskBoard() {
           size="md"
         />
       ) : (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCorners}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-        >
+        <DragDropProvider onDragEnd={handleDragEnd}>
           <div
             style={{
               display: "flex",
@@ -400,11 +395,7 @@ export default function TaskBoard() {
               />
             )}
           </div>
-
-          <DragOverlay>
-            {activeTask ? <KanbanCard task={activeTask} /> : null}
-          </DragOverlay>
-        </DndContext>
+        </DragDropProvider>
       )}
 
       <TaskCreateModal

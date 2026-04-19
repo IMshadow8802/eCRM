@@ -1,4 +1,4 @@
-import { useSortable } from "@dnd-kit/sortable";
+import { useSortable } from "@dnd-kit/react/sortable";
 import { useTheme } from "@mui/material/styles";
 import {
   Calendar,
@@ -21,28 +21,24 @@ const PRIORITY_TONE = {
 
 export default function KanbanCard({
   task,
+  index = 0,
+  columnId,
   onOpen,
   selected = false,
   onToggleSelect,
 }) {
   const theme = useTheme();
   const p = theme.tokens;
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: `task-${task.Id}` });
+  const { ref: sortableRef, isDragging } = useSortable({
+    id: `task-${task.Id}`,
+    index,
+    type: "task",
+    accepts: "task",
+    group: columnId ?? task.ColumnId ?? "default",
+    data: { taskId: task.Id, columnId: columnId ?? task.ColumnId ?? null },
+  });
 
   const style = {
-    transform: transform
-      ? `translate3d(${transform.x}px, ${transform.y}px, 0) scale(${
-          isDragging ? 1.02 : 1
-        })`
-      : undefined,
-    transition,
     opacity: isDragging ? 0.6 : 1,
     zIndex: isDragging ? 100 : 1,
   };
@@ -59,7 +55,7 @@ export default function KanbanCard({
 
   return (
     <div
-      ref={setNodeRef}
+      ref={sortableRef}
       style={{
         ...style,
         position: "relative",
@@ -68,7 +64,7 @@ export default function KanbanCard({
         borderRadius: theme.radii.md,
         backgroundColor: p.surface.card,
         border: `1px solid ${selected ? p.primary.main : p.border.default}`,
-        cursor: "pointer",
+        cursor: "grab",
         opacity: isCompleted && !isDragging ? 0.72 : style.opacity ?? 1,
         boxShadow: isDragging
           ? p.shadow.lg
@@ -94,8 +90,6 @@ export default function KanbanCard({
         e.currentTarget.style.transform = "";
         e.currentTarget.style.boxShadow = p.shadow.xs;
       }}
-      {...attributes}
-      {...listeners}
       data-testid={`kanban-card-${task.Id}`}
       data-completed={isCompleted ? "true" : "false"}
     >

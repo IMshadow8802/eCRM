@@ -1,9 +1,5 @@
 import { useState } from "react";
-import { useDroppable } from "@dnd-kit/core";
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
+import { useDroppable } from "@dnd-kit/react";
 import { useTheme } from "@mui/material/styles";
 import { Plus, MoreVertical, Check, X, Trash2 } from "lucide-react";
 
@@ -25,7 +21,13 @@ export default function KanbanColumn({
 }) {
   const theme = useTheme();
   const p = theme.tokens;
-  const { setNodeRef, isOver } = useDroppable({ id: `column-${column.Id}` });
+  const { ref: dropRef, isDropTarget } = useDroppable({
+    id: `column-${column.Id}`,
+    type: "column",
+    accepts: "task",
+    data: { columnId: column.Id },
+    disabled: column.Id === -1,
+  });
   const [menuAnchor, setMenuAnchor] = useState(null);
   const [renaming, setRenaming] = useState(false);
   const [draftTitle, setDraftTitle] = useState(column.Title || "");
@@ -95,9 +97,9 @@ export default function KanbanColumn({
       style={{
         flex: "0 0 300px",
         minWidth: 300,
-        backgroundColor: isOver ? p.primary.subtle : p.surface.subtle,
+        backgroundColor: isDropTarget ? p.primary.subtle : p.surface.subtle,
         borderRadius: theme.radii.lg,
-        border: `1px solid ${isOver ? p.primary.border : p.border.default}`,
+        border: `1px solid ${isDropTarget ? p.primary.border : p.border.default}`,
         display: "flex",
         flexDirection: "column",
         maxHeight: "calc(100vh - 240px)",
@@ -237,23 +239,20 @@ export default function KanbanColumn({
       </div>
 
       <div
-        ref={setNodeRef}
+        ref={dropRef}
         style={{ padding: 10, overflowY: "auto", flex: 1, minHeight: 100 }}
       >
-        <SortableContext
-          items={tasks.map((t) => `task-${t.Id}`)}
-          strategy={verticalListSortingStrategy}
-        >
-          {tasks.map((task) => (
-            <KanbanCard
-              key={task.Id}
-              task={task}
-              onOpen={onOpenTask}
-              selected={selectedTaskIds.includes(task.Id)}
-              onToggleSelect={onToggleSelect}
-            />
-          ))}
-        </SortableContext>
+        {tasks.map((task, idx) => (
+          <KanbanCard
+            key={task.Id}
+            task={task}
+            index={idx}
+            columnId={column.Id}
+            onOpen={onOpenTask}
+            selected={selectedTaskIds.includes(task.Id)}
+            onToggleSelect={onToggleSelect}
+          />
+        ))}
 
         {canCreate && !isOrphan ? (
           <button
