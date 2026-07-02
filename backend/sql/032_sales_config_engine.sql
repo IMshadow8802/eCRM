@@ -1182,3 +1182,770 @@ GO
 -- SELECT COUNT(*) FROM tblLeads WHERE StageId IS NULL;  -- leads whose status
 --   -- name didn't match any stage (free-text statuses); investigate if high.
 -- ============================================================
+
+-- ============================================================
+-- Task 0.5: Lead / call / follow-up / report SPs, appended to
+-- the same batch as Tasks 0.1-0.4 above. Lead SPs target the
+-- POST-MIGRATION tblLeads (the tblLeads_new shape, renamed into
+-- place by Task 0.4).
+--
+-- Conventions (same as Task 0.3):
+--  - DROP + CREATE PROC guard; every read/write filters/stamps @CompId.
+--  - Mutating SPs validate required params -> ResponseCode 400.
+--  - sp_SaveLead and sp_LogCall wrap their multi-table writes in
+--    BEGIN TRAN / TRY-CATCH.
+--  - Activity is written ONLY through sp_LogLeadActivity (Task 0.3).
+--    That SP emits its own status result set; callers swallow it with
+--    `INSERT INTO @actLog EXEC ...` so the caller's own final SELECT
+--    (Id + ResponseCode/ResponseMess) stays the single meaningful
+--    result set the controller reads.
+--
+-- Custom-value upsert (sp_SaveLead): @CustomJSON is a JSON array of
+-- {fieldId,type,value}. OPENJSON shreds it; a CASE on `type` routes
+-- each value to the correct typed column (text/dropdown -> ValueText,
+-- number/checkbox -> ValueNumber, date -> ValueDate); MERGE on
+-- (EntityId,FieldId) inserts-or-updates one row per field.
+--
+-- SPs added:
+--   sp_SaveLead        - upsert lead core + custom values + activity (tx)
+--   sp_FetchLeads      - paged list (rows + pagination result sets)
+--   sp_FetchLeadDetail - 3 result sets: core / custom values / timeline
+--   sp_MoveLeadStage   - stage change with won/lost rules + activity (tx)
+--   sp_TransferLead    - reassign owner + 'assigned' activity
+--   sp_DeleteLead      - hard delete (tenant-scoped)
+--   sp_LogCall         - insert call (+ optional follow-up) + activity (tx)
+--   sp_FetchCalls      - by lead or by user
+--   sp_FetchLeadActivity - timeline, newest first
+--   sp_PipelineFunnel  - lead count per stage (by SortOrder)
+--   sp_CallsPerUser    - call count per user in a date window
+--   sp_ConversionBySource - per source: total leads + won count
+-- ============================================================
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+-- ------------------------------------------------------------
+-- sp_SaveLead — @Id=0 insert / @Id>0 update the lead core, then
+-- MERGE @CustomJSON into tblCustomFieldValue, then log activity.
+-- All in one transaction. Returns the lead Id.
+-- ------------------------------------------------------------
+IF OBJECT_ID(N'dbo.sp_SaveLead', N'P') IS NOT NULL
+    DROP PROCEDURE dbo.sp_SaveLead;
+GO
+
+CREATE PROC dbo.sp_SaveLead
+    @Id               INT,
+    @CompId           INT,
+    @BranchId         INT,
+    @Name             NVARCHAR(200),
+    @MobileNo         VARCHAR(20)   = NULL,
+    @AltMobile        VARCHAR(20)   = NULL,
+    @Email            NVARCHAR(150) = NULL,
+    @SourceId         INT           = NULL,
+    @PipelineId       INT           = NULL,
+    @StageId          INT           = NULL,
+    @OwnerId          INT           = NULL,
+    @EstValue         DECIMAL(18,2) = NULL,
+    @NextFollowupDate DATETIME      = NULL,
+    @CustomJSON       NVARCHAR(MAX) = NULL,
+    @UserId           INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF @CompId IS NULL OR @CompId <= 0
+    BEGIN
+        SELECT 0 AS Id, 400 AS ResponseCode, 'CompId is required' AS ResponseMess;
+        RETURN;
+    END
+    IF @Name IS NULL OR LTRIM(RTRIM(@Name)) = ''
+    BEGIN
+        SELECT 0 AS Id, 400 AS ResponseCode, 'Name is required' AS ResponseMess;
+        RETURN;
+    END
+    IF @UserId IS NULL OR @UserId <= 0
+    BEGIN
+        SELECT 0 AS Id, 400 AS ResponseCode, 'UserId is required' AS ResponseMess;
+        RETURN;
+    END
+    IF @CustomJSON IS NOT NULL AND ISJSON(@CustomJSON) = 0
+    BEGIN
+        SELECT 0 AS Id, 400 AS ResponseCode, 'CustomJSON is not valid JSON' AS ResponseMess;
+        RETURN;
+    END
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        DECLARE @actLog TABLE (Id INT, ResponseCode INT, ResponseMess NVARCHAR(200));
+        DECLARE @IsInsert BIT = CASE WHEN ISNULL(@Id,0) = 0 THEN 1 ELSE 0 END;
+
+        IF @IsInsert = 1
+        BEGIN
+            INSERT INTO dbo.tblLeads
+                (CompId, BranchId, Name, MobileNo, AltMobile, Email, SourceId,
+                 PipelineId, StageId, OwnerId, EstValue, NextFollowupDate, CreatedBy)
+            VALUES
+                (@CompId, ISNULL(@BranchId,1), @Name, @MobileNo, @AltMobile, @Email, @SourceId,
+                 @PipelineId, @StageId, @OwnerId, @EstValue, @NextFollowupDate, @UserId);
+
+            SET @Id = CAST(SCOPE_IDENTITY() AS INT);
+        END
+        ELSE
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM dbo.tblLeads WHERE Id=@Id AND CompId=@CompId)
+            BEGIN
+                ROLLBACK TRANSACTION;
+                SELECT @Id AS Id, 404 AS ResponseCode, 'Lead not found' AS ResponseMess;
+                RETURN;
+            END
+
+            UPDATE dbo.tblLeads
+            SET Name = @Name, MobileNo = @MobileNo, AltMobile = @AltMobile, Email = @Email,
+                SourceId = @SourceId, PipelineId = @PipelineId, StageId = @StageId,
+                OwnerId = @OwnerId, EstValue = @EstValue, NextFollowupDate = @NextFollowupDate,
+                EditBy = @UserId, UpdatedAt = GETDATE()
+            WHERE Id=@Id AND CompId=@CompId;
+        END
+
+        -- Custom values: MERGE one row per {fieldId,type,value}. Typed column
+        -- chosen by `type`; the other two columns are set NULL so a field that
+        -- changed type doesn't leave a stale value behind.
+        IF @CustomJSON IS NOT NULL
+        BEGIN
+            MERGE dbo.tblCustomFieldValue AS tgt
+            USING (
+                SELECT j.fieldId AS FieldId,
+                       CASE WHEN j.type IN ('text','dropdown') THEN j.value END AS ValueText,
+                       CASE WHEN j.type IN ('number','checkbox') THEN TRY_CAST(j.value AS DECIMAL(18,2)) END AS ValueNumber,
+                       CASE WHEN j.type = 'date' THEN TRY_CAST(j.value AS DATETIME) END AS ValueDate
+                FROM OPENJSON(@CustomJSON)
+                WITH (
+                    fieldId INT           '$.fieldId',
+                    type    VARCHAR(20)    '$.type',
+                    value   NVARCHAR(MAX)  '$.value'
+                ) j
+                WHERE j.fieldId IS NOT NULL
+            ) AS src
+            ON tgt.EntityId = @Id AND tgt.FieldId = src.FieldId AND tgt.Entity = 'lead'
+            WHEN MATCHED THEN
+                UPDATE SET ValueText = src.ValueText, ValueNumber = src.ValueNumber, ValueDate = src.ValueDate
+            WHEN NOT MATCHED THEN
+                INSERT (CompId, Entity, EntityId, FieldId, ValueText, ValueNumber, ValueDate)
+                VALUES (@CompId, 'lead', @Id, src.FieldId, src.ValueText, src.ValueNumber, src.ValueDate);
+        END
+
+        INSERT INTO @actLog
+        EXEC dbo.sp_LogLeadActivity
+            @CompId  = @CompId,
+            @LeadId  = @Id,
+            @UserId  = @UserId,
+            @Type    = CASE WHEN @IsInsert = 1 THEN 'created' ELSE 'field_changed' END,
+            @Summary = CASE WHEN @IsInsert = 1 THEN 'Lead created' ELSE 'Lead details updated' END;
+
+        COMMIT TRANSACTION;
+
+        SELECT @Id AS Id, 200 AS ResponseCode,
+               CASE WHEN @IsInsert = 1 THEN 'Lead created successfully' ELSE 'Lead updated successfully' END AS ResponseMess;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        SELECT ISNULL(@Id,0) AS Id, 500 AS ResponseCode, ERROR_MESSAGE() AS ResponseMess;
+    END CATCH
+END
+GO
+
+-- ------------------------------------------------------------
+-- sp_FetchLeads — paged list, tenant-scoped. Optional filters
+-- (@StageId/@OwnerId/@SourceId) apply only when non-null;
+-- @SearchTerm LIKEs Name/MobileNo/Email. Result set 1 = rows,
+-- result set 2 = pagination row.
+-- ------------------------------------------------------------
+IF OBJECT_ID(N'dbo.sp_FetchLeads', N'P') IS NOT NULL
+    DROP PROCEDURE dbo.sp_FetchLeads;
+GO
+
+CREATE PROC dbo.sp_FetchLeads
+    @CompId     INT,
+    @BranchId   INT           = NULL,
+    @PageNumber INT           = 1,
+    @PageSize   INT           = 10,
+    @SearchTerm NVARCHAR(200) = NULL,
+    @StageId    INT           = NULL,
+    @OwnerId    INT           = NULL,
+    @SourceId   INT           = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SET @PageNumber = CASE WHEN ISNULL(@PageNumber,1) < 1 THEN 1 ELSE @PageNumber END;
+    SET @PageSize   = CASE WHEN ISNULL(@PageSize,10) < 1 THEN 10 ELSE @PageSize END;
+    IF @SearchTerm IS NOT NULL AND LTRIM(RTRIM(@SearchTerm)) = '' SET @SearchTerm = NULL;
+
+    DECLARE @Total INT;
+    SELECT @Total = COUNT(*)
+    FROM dbo.tblLeads l
+    WHERE l.CompId = @CompId
+      AND (@BranchId IS NULL OR l.BranchId = @BranchId)
+      AND (@StageId  IS NULL OR l.StageId  = @StageId)
+      AND (@OwnerId  IS NULL OR l.OwnerId  = @OwnerId)
+      AND (@SourceId IS NULL OR l.SourceId = @SourceId)
+      AND (@SearchTerm IS NULL OR l.Name LIKE '%' + @SearchTerm + '%'
+                              OR l.MobileNo LIKE '%' + @SearchTerm + '%'
+                              OR l.Email LIKE '%' + @SearchTerm + '%');
+
+    -- Result set 1: page of leads
+    SELECT l.Id, l.CompId, l.BranchId, l.Name, l.MobileNo, l.AltMobile, l.Email,
+           l.SourceId, l.PipelineId, l.StageId, l.OwnerId, l.EstValue,
+           l.NextFollowupDate, l.LostReasonId, l.WonAt, l.LostAt,
+           l.CreatedBy, l.EditBy, l.CreatedAt, l.UpdatedAt,
+           200 AS ResponseCode, 'Leads retrieved successfully' AS ResponseMess
+    FROM dbo.tblLeads l
+    WHERE l.CompId = @CompId
+      AND (@BranchId IS NULL OR l.BranchId = @BranchId)
+      AND (@StageId  IS NULL OR l.StageId  = @StageId)
+      AND (@OwnerId  IS NULL OR l.OwnerId  = @OwnerId)
+      AND (@SourceId IS NULL OR l.SourceId = @SourceId)
+      AND (@SearchTerm IS NULL OR l.Name LIKE '%' + @SearchTerm + '%'
+                              OR l.MobileNo LIKE '%' + @SearchTerm + '%'
+                              OR l.Email LIKE '%' + @SearchTerm + '%')
+    ORDER BY l.CreatedAt DESC, l.Id DESC
+    OFFSET (@PageNumber - 1) * @PageSize ROWS FETCH NEXT @PageSize ROWS ONLY;
+
+    -- Result set 2: pagination
+    SELECT @Total AS TotalRecords,
+           CASE WHEN @Total = 0 THEN 0 ELSE CEILING(CAST(@Total AS FLOAT) / @PageSize) END AS TotalPages,
+           @PageNumber AS CurrentPage,
+           @PageSize   AS PageSize;
+END
+GO
+
+-- ------------------------------------------------------------
+-- sp_FetchLeadDetail — 3 result sets:
+--   1) lead core row
+--   2) custom values joined to their def (label/type + typed value)
+--   3) activity timeline, newest first
+-- ------------------------------------------------------------
+IF OBJECT_ID(N'dbo.sp_FetchLeadDetail', N'P') IS NOT NULL
+    DROP PROCEDURE dbo.sp_FetchLeadDetail;
+GO
+
+CREATE PROC dbo.sp_FetchLeadDetail
+    @CompId INT,
+    @LeadId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- 1) core
+    SELECT l.Id, l.CompId, l.BranchId, l.Name, l.MobileNo, l.AltMobile, l.Email,
+           l.SourceId, l.PipelineId, l.StageId, l.OwnerId, l.EstValue,
+           l.NextFollowupDate, l.LostReasonId, l.WonAt, l.LostAt,
+           l.CreatedBy, l.EditBy, l.CreatedAt, l.UpdatedAt,
+           200 AS ResponseCode, 'Lead detail retrieved successfully' AS ResponseMess
+    FROM dbo.tblLeads l
+    WHERE l.Id = @LeadId AND l.CompId = @CompId;
+
+    -- 2) custom values (only fields that have a value row)
+    SELECT d.Id AS FieldId, d.FieldKey, d.Label, d.Type,
+           v.ValueText, v.ValueNumber, v.ValueDate
+    FROM dbo.tblCustomFieldValue v
+    INNER JOIN dbo.tblCustomFieldDef d ON d.Id = v.FieldId
+    WHERE v.CompId = @CompId AND v.Entity = 'lead' AND v.EntityId = @LeadId
+    ORDER BY d.SortOrder;
+
+    -- 3) timeline
+    SELECT a.Id, a.LeadId, a.UserId, a.Type, a.Summary, a.MetaJSON, a.CreatedAt
+    FROM dbo.tblLeadActivity a
+    WHERE a.CompId = @CompId AND a.LeadId = @LeadId
+    ORDER BY a.CreatedAt DESC, a.Id DESC;
+END
+GO
+
+-- ------------------------------------------------------------
+-- sp_MoveLeadStage — move a lead to @StageId. Behaviour depends on
+-- the target stage's StageType (won | lost | open):
+--   won  -> stamp WonAt, log 'won'
+--   lost -> REQUIRE @LostReasonId (else 400, no change);
+--           stamp LostAt + set LostReasonId, log 'lost'
+--   else -> log 'stage_changed'
+-- StageId is always updated. Transaction-wrapped.
+-- ------------------------------------------------------------
+IF OBJECT_ID(N'dbo.sp_MoveLeadStage', N'P') IS NOT NULL
+    DROP PROCEDURE dbo.sp_MoveLeadStage;
+GO
+
+CREATE PROC dbo.sp_MoveLeadStage
+    @CompId       INT,
+    @LeadId       INT,
+    @StageId      INT,
+    @LostReasonId INT = NULL,
+    @UserId       INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF @CompId IS NULL OR @CompId <= 0
+    BEGIN
+        SELECT @LeadId AS Id, 400 AS ResponseCode, 'CompId is required' AS ResponseMess;
+        RETURN;
+    END
+    IF @LeadId IS NULL OR @LeadId <= 0
+    BEGIN
+        SELECT @LeadId AS Id, 400 AS ResponseCode, 'LeadId is required' AS ResponseMess;
+        RETURN;
+    END
+    IF @StageId IS NULL OR @StageId <= 0
+    BEGIN
+        SELECT @LeadId AS Id, 400 AS ResponseCode, 'StageId is required' AS ResponseMess;
+        RETURN;
+    END
+    IF @UserId IS NULL OR @UserId <= 0
+    BEGIN
+        SELECT @LeadId AS Id, 400 AS ResponseCode, 'UserId is required' AS ResponseMess;
+        RETURN;
+    END
+
+    IF NOT EXISTS (SELECT 1 FROM dbo.tblLeads WHERE Id=@LeadId AND CompId=@CompId)
+    BEGIN
+        SELECT @LeadId AS Id, 404 AS ResponseCode, 'Lead not found' AS ResponseMess;
+        RETURN;
+    END
+
+    DECLARE @StageType VARCHAR(20) =
+        (SELECT StageType FROM dbo.tblPipelineStage WHERE Id=@StageId AND CompId=@CompId);
+
+    IF @StageType IS NULL
+    BEGIN
+        SELECT @LeadId AS Id, 404 AS ResponseCode, 'Stage not found' AS ResponseMess;
+        RETURN;
+    END
+
+    -- lost requires a reason; reject BEFORE any write.
+    IF @StageType = 'lost' AND (@LostReasonId IS NULL OR @LostReasonId <= 0)
+    BEGIN
+        SELECT @LeadId AS Id, 400 AS ResponseCode, 'Lost reason required' AS ResponseMess;
+        RETURN;
+    END
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        DECLARE @actLog TABLE (Id INT, ResponseCode INT, ResponseMess NVARCHAR(200));
+        DECLARE @ActType VARCHAR(30);
+
+        IF @StageType = 'won'
+        BEGIN
+            UPDATE dbo.tblLeads
+            SET StageId = @StageId, WonAt = GETDATE(), EditBy = @UserId, UpdatedAt = GETDATE()
+            WHERE Id=@LeadId AND CompId=@CompId;
+            SET @ActType = 'won';
+        END
+        ELSE IF @StageType = 'lost'
+        BEGIN
+            UPDATE dbo.tblLeads
+            SET StageId = @StageId, LostAt = GETDATE(), LostReasonId = @LostReasonId,
+                EditBy = @UserId, UpdatedAt = GETDATE()
+            WHERE Id=@LeadId AND CompId=@CompId;
+            SET @ActType = 'lost';
+        END
+        ELSE
+        BEGIN
+            UPDATE dbo.tblLeads
+            SET StageId = @StageId, EditBy = @UserId, UpdatedAt = GETDATE()
+            WHERE Id=@LeadId AND CompId=@CompId;
+            SET @ActType = 'stage_changed';
+        END
+
+        INSERT INTO @actLog
+        EXEC dbo.sp_LogLeadActivity
+            @CompId  = @CompId,
+            @LeadId  = @LeadId,
+            @UserId  = @UserId,
+            @Type    = @ActType,
+            @Summary = @ActType,
+            @MetaJSON = NULL;
+
+        COMMIT TRANSACTION;
+
+        SELECT @LeadId AS Id, 200 AS ResponseCode, 'Lead stage updated successfully' AS ResponseMess;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        SELECT @LeadId AS Id, 500 AS ResponseCode, ERROR_MESSAGE() AS ResponseMess;
+    END CATCH
+END
+GO
+
+-- ------------------------------------------------------------
+-- sp_TransferLead — reassign the lead owner + log 'assigned'.
+-- ------------------------------------------------------------
+IF OBJECT_ID(N'dbo.sp_TransferLead', N'P') IS NOT NULL
+    DROP PROCEDURE dbo.sp_TransferLead;
+GO
+
+CREATE PROC dbo.sp_TransferLead
+    @CompId  INT,
+    @LeadId  INT,
+    @OwnerId INT,
+    @UserId  INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF @CompId IS NULL OR @CompId <= 0
+    BEGIN
+        SELECT @LeadId AS Id, 400 AS ResponseCode, 'CompId is required' AS ResponseMess;
+        RETURN;
+    END
+    IF @LeadId IS NULL OR @LeadId <= 0
+    BEGIN
+        SELECT @LeadId AS Id, 400 AS ResponseCode, 'LeadId is required' AS ResponseMess;
+        RETURN;
+    END
+    IF @OwnerId IS NULL OR @OwnerId <= 0
+    BEGIN
+        SELECT @LeadId AS Id, 400 AS ResponseCode, 'OwnerId is required' AS ResponseMess;
+        RETURN;
+    END
+    IF @UserId IS NULL OR @UserId <= 0
+    BEGIN
+        SELECT @LeadId AS Id, 400 AS ResponseCode, 'UserId is required' AS ResponseMess;
+        RETURN;
+    END
+
+    IF NOT EXISTS (SELECT 1 FROM dbo.tblLeads WHERE Id=@LeadId AND CompId=@CompId)
+    BEGIN
+        SELECT @LeadId AS Id, 404 AS ResponseCode, 'Lead not found' AS ResponseMess;
+        RETURN;
+    END
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        DECLARE @actLog TABLE (Id INT, ResponseCode INT, ResponseMess NVARCHAR(200));
+
+        UPDATE dbo.tblLeads
+        SET OwnerId = @OwnerId, EditBy = @UserId, UpdatedAt = GETDATE()
+        WHERE Id=@LeadId AND CompId=@CompId;
+
+        INSERT INTO @actLog
+        EXEC dbo.sp_LogLeadActivity
+            @CompId  = @CompId,
+            @LeadId  = @LeadId,
+            @UserId  = @UserId,
+            @Type    = 'assigned',
+            @Summary = 'Lead reassigned';
+
+        COMMIT TRANSACTION;
+
+        SELECT @LeadId AS Id, 200 AS ResponseCode, 'Lead transferred successfully' AS ResponseMess;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        SELECT @LeadId AS Id, 500 AS ResponseCode, ERROR_MESSAGE() AS ResponseMess;
+    END CATCH
+END
+GO
+
+-- ------------------------------------------------------------
+-- sp_DeleteLead — hard delete, tenant-scoped.
+-- ------------------------------------------------------------
+IF OBJECT_ID(N'dbo.sp_DeleteLead', N'P') IS NOT NULL
+    DROP PROCEDURE dbo.sp_DeleteLead;
+GO
+
+CREATE PROC dbo.sp_DeleteLead
+    @Id     INT,
+    @CompId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF @Id IS NULL OR @Id <= 0
+    BEGIN
+        SELECT 400 AS ResponseCode, 'Id is required' AS ResponseMess;
+        RETURN;
+    END
+
+    IF NOT EXISTS (SELECT 1 FROM dbo.tblLeads WHERE Id=@Id AND CompId=@CompId)
+    BEGIN
+        SELECT 404 AS ResponseCode, 'Lead not found' AS ResponseMess;
+        RETURN;
+    END
+
+    DELETE FROM dbo.tblLeads WHERE Id=@Id AND CompId=@CompId;
+
+    SELECT 200 AS ResponseCode, 'Lead deleted successfully' AS ResponseMess;
+END
+GO
+
+-- ------------------------------------------------------------
+-- sp_LogCall — insert a call; if @NextFollowupDate is supplied,
+-- insert a linked tblFollowUp (SourceCallId = the new call id);
+-- log a 'call' activity on the lead. All in one transaction.
+-- Returns the new call Id.
+--
+-- tblFollowUp NOT-NULL columns beyond the params: FollowupType
+-- (defaulted 'call'), Remarks (from @FollowupRemarks, '' fallback),
+-- Status ('Pending'), CreatedBy/EditBy (@UserId), BranchId (from the
+-- lead, 1 fallback). SourceCallId links back to this call.
+-- ------------------------------------------------------------
+IF OBJECT_ID(N'dbo.sp_LogCall', N'P') IS NOT NULL
+    DROP PROCEDURE dbo.sp_LogCall;
+GO
+
+CREATE PROC dbo.sp_LogCall
+    @CompId           INT,
+    @LeadId           INT           = NULL,
+    @TicketId         INT           = NULL,
+    @UserId           INT,
+    @Direction        VARCHAR(5),
+    @OutcomeId        INT           = NULL,
+    @Notes            NVARCHAR(1000)= NULL,
+    @Duration         INT           = NULL,
+    @NextFollowupDate DATETIME      = NULL,
+    @FollowupRemarks  NVARCHAR(1000)= NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF @CompId IS NULL OR @CompId <= 0
+    BEGIN
+        SELECT 0 AS Id, 400 AS ResponseCode, 'CompId is required' AS ResponseMess;
+        RETURN;
+    END
+    IF @UserId IS NULL OR @UserId <= 0
+    BEGIN
+        SELECT 0 AS Id, 400 AS ResponseCode, 'UserId is required' AS ResponseMess;
+        RETURN;
+    END
+    IF (@LeadId IS NULL OR @LeadId <= 0) AND (@TicketId IS NULL OR @TicketId <= 0)
+    BEGIN
+        SELECT 0 AS Id, 400 AS ResponseCode, 'A LeadId or TicketId is required' AS ResponseMess;
+        RETURN;
+    END
+    IF @Direction IS NULL OR @Direction NOT IN ('in','out')
+    BEGIN
+        SELECT 0 AS Id, 400 AS ResponseCode, 'Direction must be in or out' AS ResponseMess;
+        RETURN;
+    END
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        DECLARE @actLog TABLE (Id INT, ResponseCode INT, ResponseMess NVARCHAR(200));
+        DECLARE @CallId INT;
+
+        INSERT INTO dbo.tblCall
+            (CompId, LeadId, TicketId, UserId, Direction, OutcomeId, Notes, Duration, CalledAt, CreatedBy)
+        VALUES
+            (@CompId, @LeadId, @TicketId, @UserId, @Direction, @OutcomeId, @Notes, @Duration, GETDATE(), @UserId);
+
+        SET @CallId = CAST(SCOPE_IDENTITY() AS INT);
+
+        IF @NextFollowupDate IS NOT NULL AND @LeadId IS NOT NULL AND @LeadId > 0
+        BEGIN
+            DECLARE @BranchId INT = (SELECT BranchId FROM dbo.tblLeads WHERE Id=@LeadId AND CompId=@CompId);
+
+            INSERT INTO dbo.tblFollowUp
+                (LeadId, NextFollowupDate, FollowupType, Remarks, Status,
+                 CreatedBy, EditBy, CompId, BranchId, SourceCallId)
+            VALUES
+                (@LeadId, @NextFollowupDate, 'call', ISNULL(@FollowupRemarks,''), 'Pending',
+                 @UserId, @UserId, @CompId, ISNULL(@BranchId,1), @CallId);
+        END
+
+        -- Timeline only tracks leads (tickets have their own logger).
+        IF @LeadId IS NOT NULL AND @LeadId > 0
+        BEGIN
+            INSERT INTO @actLog
+            EXEC dbo.sp_LogLeadActivity
+                @CompId  = @CompId,
+                @LeadId  = @LeadId,
+                @UserId  = @UserId,
+                @Type    = 'call',
+                @Summary = 'Call logged',
+                @MetaJSON = NULL;
+        END
+
+        COMMIT TRANSACTION;
+
+        SELECT @CallId AS Id, 200 AS ResponseCode, 'Call logged successfully' AS ResponseMess;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        SELECT 0 AS Id, 500 AS ResponseCode, ERROR_MESSAGE() AS ResponseMess;
+    END CATCH
+END
+GO
+
+-- ------------------------------------------------------------
+-- sp_FetchCalls — by lead (when @LeadId set) else by user.
+-- ------------------------------------------------------------
+IF OBJECT_ID(N'dbo.sp_FetchCalls', N'P') IS NOT NULL
+    DROP PROCEDURE dbo.sp_FetchCalls;
+GO
+
+CREATE PROC dbo.sp_FetchCalls
+    @CompId INT,
+    @LeadId INT = NULL,
+    @UserId INT = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT c.Id, c.CompId, c.LeadId, c.TicketId, c.UserId, c.Direction, c.OutcomeId,
+           c.Notes, c.Duration, c.CalledAt, c.CreatedBy, c.CreatedAt,
+           200 AS ResponseCode, 'Calls retrieved successfully' AS ResponseMess
+    FROM dbo.tblCall c
+    WHERE c.CompId = @CompId
+      AND ( (@LeadId IS NOT NULL AND c.LeadId = @LeadId)
+         OR (@LeadId IS NULL AND @UserId IS NOT NULL AND c.UserId = @UserId) )
+    ORDER BY c.CalledAt DESC, c.Id DESC;
+END
+GO
+
+-- ------------------------------------------------------------
+-- sp_FetchLeadActivity — timeline for a lead, newest first.
+-- ------------------------------------------------------------
+IF OBJECT_ID(N'dbo.sp_FetchLeadActivity', N'P') IS NOT NULL
+    DROP PROCEDURE dbo.sp_FetchLeadActivity;
+GO
+
+CREATE PROC dbo.sp_FetchLeadActivity
+    @CompId INT,
+    @LeadId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT a.Id, a.CompId, a.LeadId, a.UserId, a.Type, a.Summary, a.MetaJSON, a.CreatedAt,
+           200 AS ResponseCode, 'Activity retrieved successfully' AS ResponseMess
+    FROM dbo.tblLeadActivity a
+    WHERE a.CompId = @CompId AND a.LeadId = @LeadId
+    ORDER BY a.CreatedAt DESC, a.Id DESC;
+END
+GO
+
+-- ------------------------------------------------------------
+-- sp_PipelineFunnel — lead count per stage of a pipeline, ordered
+-- by stage SortOrder. LEFT JOIN so empty stages report 0.
+-- ------------------------------------------------------------
+IF OBJECT_ID(N'dbo.sp_PipelineFunnel', N'P') IS NOT NULL
+    DROP PROCEDURE dbo.sp_PipelineFunnel;
+GO
+
+CREATE PROC dbo.sp_PipelineFunnel
+    @CompId     INT,
+    @BranchId   INT = NULL,
+    @PipelineId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT s.Id AS StageId, s.Name AS StageName, s.StageType, s.SortOrder,
+           COUNT(l.Id) AS LeadCount,
+           200 AS ResponseCode, 'Pipeline funnel retrieved successfully' AS ResponseMess
+    FROM dbo.tblPipelineStage s
+    LEFT JOIN dbo.tblLeads l
+           ON l.StageId = s.Id AND l.CompId = @CompId
+          AND (@BranchId IS NULL OR l.BranchId = @BranchId)
+    WHERE s.CompId = @CompId AND s.PipelineId = @PipelineId AND s.IsActive = 1
+    GROUP BY s.Id, s.Name, s.StageType, s.SortOrder
+    ORDER BY s.SortOrder;
+END
+GO
+
+-- ------------------------------------------------------------
+-- sp_CallsPerUser — call count per user within a date window.
+-- ------------------------------------------------------------
+IF OBJECT_ID(N'dbo.sp_CallsPerUser', N'P') IS NOT NULL
+    DROP PROCEDURE dbo.sp_CallsPerUser;
+GO
+
+CREATE PROC dbo.sp_CallsPerUser
+    @CompId   INT,
+    @BranchId INT      = NULL,
+    @FromDate DATETIME = NULL,
+    @ToDate   DATETIME = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT c.UserId, COUNT(*) AS CallCount,
+           200 AS ResponseCode, 'Calls per user retrieved successfully' AS ResponseMess
+    FROM dbo.tblCall c
+    WHERE c.CompId = @CompId
+      AND (@FromDate IS NULL OR c.CalledAt >= @FromDate)
+      AND (@ToDate   IS NULL OR c.CalledAt <  DATEADD(DAY, 1, @ToDate))
+      AND (@BranchId IS NULL OR EXISTS (
+              SELECT 1 FROM dbo.tblLeads l
+              WHERE l.Id = c.LeadId AND l.CompId = @CompId AND l.BranchId = @BranchId))
+    GROUP BY c.UserId
+    ORDER BY CallCount DESC;
+END
+GO
+
+-- ------------------------------------------------------------
+-- sp_ConversionBySource — per lead source: total leads + won count.
+-- Won = the lead has a WonAt stamp (set by sp_MoveLeadStage).
+-- ------------------------------------------------------------
+IF OBJECT_ID(N'dbo.sp_ConversionBySource', N'P') IS NOT NULL
+    DROP PROCEDURE dbo.sp_ConversionBySource;
+GO
+
+CREATE PROC dbo.sp_ConversionBySource
+    @CompId   INT,
+    @BranchId INT = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT lk.Id AS SourceId, lk.Value AS SourceName,
+           COUNT(l.Id) AS TotalLeads,
+           SUM(CASE WHEN l.WonAt IS NOT NULL THEN 1 ELSE 0 END) AS WonCount,
+           200 AS ResponseCode, 'Conversion by source retrieved successfully' AS ResponseMess
+    FROM dbo.tblLookup lk
+    LEFT JOIN dbo.tblLeads l
+           ON l.SourceId = lk.Id AND l.CompId = @CompId
+          AND (@BranchId IS NULL OR l.BranchId = @BranchId)
+    WHERE lk.CompId = @CompId AND lk.Kind = 'lead_source' AND lk.IsActive = 1
+    GROUP BY lk.Id, lk.Value
+    ORDER BY TotalLeads DESC;
+END
+GO
+
+-- ============================================================
+-- Verification (Task 0.5) — run manually after applying:
+--
+-- After apply: expect 12 rows
+-- SELECT name FROM sys.procedures WHERE name IN
+--  ('sp_SaveLead','sp_FetchLeads','sp_FetchLeadDetail','sp_MoveLeadStage',
+--   'sp_TransferLead','sp_DeleteLead','sp_LogCall','sp_FetchCalls',
+--   'sp_FetchLeadActivity','sp_PipelineFunnel','sp_CallsPerUser','sp_ConversionBySource');
+--
+-- Sample flow (uses CompId=1; a real StageId/pipeline from your data):
+--
+-- 1) Create a lead with two custom values, then read it back.
+--    sp_FetchLeadDetail returns THREE result sets: core / custom values / timeline.
+-- DECLARE @cj NVARCHAR(MAX) =
+--   N'[{"fieldId":1,"type":"text","value":"Acme"},{"fieldId":4,"type":"number","value":"50000"}]';
+-- EXEC sp_SaveLead @Id=0, @CompId=1, @BranchId=1, @Name='Test Lead',
+--      @MobileNo='9990001111', @AltMobile=NULL, @Email='t@example.com',
+--      @SourceId=NULL, @PipelineId=NULL, @StageId=NULL, @OwnerId=1,
+--      @EstValue=50000, @NextFollowupDate=NULL, @CustomJSON=@cj, @UserId=1;
+--   -- note the returned Id, then:
+-- EXEC sp_FetchLeadDetail @CompId=1, @LeadId=<that Id>;  -- 3 result sets
+--
+-- 2) Moving into a LOST stage with NULL reason must return ResponseCode 400
+--    and change nothing (pick a StageId whose StageType='lost'):
+-- EXEC sp_MoveLeadStage @CompId=1, @LeadId=<Id>, @StageId=<lost stage>,
+--      @LostReasonId=NULL, @UserId=1;   -- expect ResponseCode 400 'Lost reason required'
+--
+-- 3) Log a call that schedules a follow-up (creates tblFollowUp w/ SourceCallId):
+-- EXEC sp_LogCall @CompId=1, @LeadId=<Id>, @TicketId=NULL, @UserId=1,
+--      @Direction='out', @OutcomeId=NULL, @Notes='Spoke to client',
+--      @Duration=120, @NextFollowupDate='2026-07-10', @FollowupRemarks='Call back';
+-- ============================================================
