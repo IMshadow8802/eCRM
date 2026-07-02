@@ -10,6 +10,7 @@ const workspaceRoutes = require("../routes/workspaceRoutes");
 const notificationRoutes = require("../routes/notificationRoutes");
 const leadRoutes = require("../routes/leadRoutes");
 const followupRoutes = require("../routes/followupRoutes");
+const callRoutes = require("../routes/callRoutes");
 const leadSourceRoutes = require("../routes/leadSourceRoutes");
 const statusRoutes = require("../routes/statusRoutes");
 const reportRoutes = require("../routes/reportRoutes");
@@ -30,6 +31,7 @@ function setupRoutes(app) {
   app.use("/api/notifications", notificationRoutes);
   app.use("/api/leads", leadRoutes);
   app.use("/api/followups", followupRoutes);
+  app.use("/api/calls", callRoutes);
   app.use("/api/sources", leadSourceRoutes);
   app.use("/api/status", statusRoutes);
   app.use("/api/reports", reportRoutes);
