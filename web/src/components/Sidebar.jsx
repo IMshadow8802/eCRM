@@ -22,10 +22,21 @@ import {
 } from "@mui/icons-material";
 
 import useAuthStore from "../stores/useAuthStore";
-import { buildDynamicMenu } from "../utils/menuBuilder";
+import { buildDynamicMenu, getMenuIcon } from "../utils/menuBuilder";
 
 export const SIDEBAR_WIDTH_EXPANDED = 240;
 export const SIDEBAR_WIDTH_RAIL = 68;
+
+// Prerequisite scaffolding for the sales module (task 2.0): Sales/Settings
+// don't have backend tblMenu rows yet, so they're not permission-gated like
+// the rest of the menu — appended statically so /sales and /settings are
+// reachable while the real pages are built out in later tasks. Once the
+// backend seeds real menu rows for them, buildDynamicMenu picks those up
+// automatically and this list can be dropped.
+const STATIC_MENUS = [
+  { title: "Sales", menuId: "static-sales", icon: getMenuIcon("Sales"), permissions: null, path: "/sales", submenus: null },
+  { title: "Settings", menuId: "static-settings", icon: getMenuIcon("Settings"), permissions: null, path: "/settings", submenus: null },
+];
 
 /**
  * Left-side primary navigation. Three behaviours:
@@ -43,7 +54,7 @@ const Sidebar = ({ collapsed, onToggleCollapsed, mobileOpen, onMobileClose }) =>
   const location = useLocation();
   const { menuRights, setActiveMenuRights } = useAuthStore();
 
-  const menus = buildDynamicMenu(menuRights || []);
+  const menus = [...buildDynamicMenu(menuRights || []), ...STATIC_MENUS];
 
   const [expandedParents, setExpandedParents] = useState({});
   const [flyoutAnchor, setFlyoutAnchor] = useState(null);

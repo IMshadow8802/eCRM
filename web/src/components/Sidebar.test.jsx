@@ -81,6 +81,12 @@ describe("Sidebar", () => {
     expect(screen.getByTestId("sidebar-Reports")).toBeInTheDocument();
   });
 
+  it("always renders the static Sales and Settings entries", () => {
+    renderSidebar();
+    expect(screen.getByTestId("sidebar-Sales")).toBeInTheDocument();
+    expect(screen.getByTestId("sidebar-Settings")).toBeInTheDocument();
+  });
+
   it("shows the collapse toggle on desktop and calls the handler on click", () => {
     const onToggleCollapsed = vi.fn();
     renderSidebar({ onToggleCollapsed });

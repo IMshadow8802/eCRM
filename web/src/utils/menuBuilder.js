@@ -14,6 +14,7 @@ import {
   ContactPhoneOutlined,
   AdminPanelSettingsOutlined,
   CircleOutlined,
+  TrendingUpOutlined,
 } from "@mui/icons-material";
 
 /**
@@ -30,6 +31,7 @@ export function getMenuIcon(menuTitle) {
   if (title.includes("user group")) return AdminPanelSettingsOutlined;
   if (title.includes("user")) return PersonOutlineOutlined;
   if (title.includes("kanban")) return ViewKanbanOutlined;
+  if (title.includes("sales")) return TrendingUpOutlined;
   if (title.includes("status")) return LabelOutlined;
   if (title.includes("source")) return SourceOutlined;
   if (title.includes("lead")) return LeaderboardOutlined;

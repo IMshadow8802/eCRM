@@ -28,6 +28,7 @@ const Leads = lazy(() => import("./pages/Master/Leads"));
 const FollowUps = lazy(() => import("./pages/Master/FollowUps"));
 const UserFollowups = lazy(() => import("./pages/Reports/UserFollowups"));
 const BranchLeadSummary = lazy(() => import("./pages/Reports/BranchLeadSummary"));
+const ComingSoon = lazy(() => import("./pages/ComingSoon"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const routesConfig = [
@@ -50,6 +51,9 @@ const routesConfig = [
     path: "/lead_summary_branch-wise/*",
     element: <ProtectedRoute element={<BranchLeadSummary />} />,
   },
+  // Prerequisite scaffolding — real Sales/Settings pages land in later tasks.
+  { path: "/sales/*", element: <ProtectedRoute element={<ComingSoon title="Sales" />} /> },
+  { path: "/settings/*", element: <ProtectedRoute element={<ComingSoon title="Settings" />} /> },
 ];
 
 function AnimatedRoutes() {
