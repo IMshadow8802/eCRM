@@ -112,6 +112,95 @@ class ReportController {
       });
     }
   }
+
+  async pipelineFunnel(req, res) {
+    try {
+      const { CompId, BranchId } = req.user;
+      const { PipelineId = null } = req.body;
+
+      const result = await database.executeStoredProcedure("sp_PipelineFunnel", {
+        CompId,
+        BranchId,
+        PipelineId,
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Pipeline funnel fetched successfully",
+        responseCode: 200,
+        data: { funnel: result.recordsets[0] },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("Pipeline funnel error:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to fetch pipeline funnel",
+        code: "PIPELINE_FUNNEL_ERROR",
+        responseCode: 500,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  async callsPerUser(req, res) {
+    try {
+      const { CompId, BranchId } = req.user;
+      const { FromDate = null, ToDate = null } = req.body;
+
+      const result = await database.executeStoredProcedure("sp_CallsPerUser", {
+        CompId,
+        BranchId,
+        FromDate,
+        ToDate,
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Calls per user fetched successfully",
+        responseCode: 200,
+        data: { calls: result.recordsets[0] },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("Calls per user error:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to fetch calls per user",
+        code: "CALLS_PER_USER_ERROR",
+        responseCode: 500,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  async conversionBySource(req, res) {
+    try {
+      const { CompId, BranchId } = req.user;
+
+      const result = await database.executeStoredProcedure("sp_ConversionBySource", {
+        CompId,
+        BranchId,
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Conversion by source fetched successfully",
+        responseCode: 200,
+        data: { conversion: result.recordsets[0] },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("Conversion by source error:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to fetch conversion by source",
+        code: "CONVERSION_BY_SOURCE_ERROR",
+        responseCode: 500,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
 }
 
 module.exports = new ReportController();

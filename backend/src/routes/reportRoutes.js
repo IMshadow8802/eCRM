@@ -12,5 +12,8 @@ router.post("/getDashboard", allowEmptyPayload, reportController.getDashboard);
 router.post("/getConvertedSummary", allowEmptyPayload, reportController.getConvertedSummary);
 router.post("/getFollowupsUserWise", allowEmptyPayload, reportController.getFollowupsUserWise);
 router.post("/getLeadSummaryBranchWise", allowEmptyPayload, reportController.getLeadSummaryBranchWise);
+router.post("/pipelineFunnel", allowEmptyPayload, reportController.pipelineFunnel);
+router.post("/callsPerUser", allowEmptyPayload, reportController.callsPerUser);
+router.post("/conversionBySource", allowEmptyPayload, reportController.conversionBySource);
 
 module.exports = router;
