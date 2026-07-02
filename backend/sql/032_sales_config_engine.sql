@@ -143,6 +143,14 @@ BEGIN
 END
 GO
 
+-- Prevent duplicate active lookups + close the sp_SaveLookup TOCTOU race.
+-- Filtered on IsActive=1 so soft-deleted rows can collide freely.
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UQ_tblLookup_CompId_Kind_Value')
+    CREATE UNIQUE INDEX UQ_tblLookup_CompId_Kind_Value
+        ON dbo.tblLookup (CompId, Kind, Value)
+        WHERE IsActive = 1;
+GO
+
 -- ============================================================
 -- Verification — run manually after applying:
 -- After apply: expect 5 rows
@@ -1034,12 +1042,17 @@ BEGIN
 
         -- old->new id map (per brief): keyed by (CompId, OldSourceId).
         -- Value is carried too so Step 4 can resolve the lead's source NAME.
+        -- Dedup on (CompId, Value): duplicate SourceNames in the global
+        -- tblLeadSource master would otherwise multiply lead rows in Step 4's
+        -- LEFT JOIN. One lookup id per (CompId, Value) — MIN is arbitrary but
+        -- stable (all dupes resolve to the same new lookup anyway).
         CREATE TABLE #SourceMap (CompId INT, OldSourceId INT, NewLookupId INT, Value NVARCHAR(200));
         INSERT INTO #SourceMap (CompId, OldSourceId, NewLookupId, Value)
-        SELECT lk.CompId, src.SourceId, lk.Id, lk.Value
+        SELECT lk.CompId, MIN(src.SourceId), MIN(lk.Id), lk.Value
         FROM dbo.tblLookup lk
         JOIN dbo.tblLeadSource src ON src.SourceName = lk.Value
-        WHERE lk.Kind = 'lead_source';
+        WHERE lk.Kind = 'lead_source'
+        GROUP BY lk.CompId, lk.Value;
 
         -- ---- Step 3: seed product custom-field defs (Entity='lead') per company ----
         INSERT INTO dbo.tblCustomFieldDef (CompId, Entity, FieldKey, Label, Type, SortOrder)
@@ -1051,7 +1064,9 @@ BEGIN
             ('model',        'Model',        'text',     2),
             ('budget',       'Budget',       'number',   3),
             ('invoice_no',   'Invoice No',   'text',     4),
-            ('invoice_date', 'Invoice Date', 'date',     5)
+            ('invoice_date', 'Invoice Date', 'date',     5),
+            ('remarks',      'Remarks',      'text',     6),
+            ('address',      'Address',      'text',     7)
         ) f(FieldKey, Label, Type, SortOrder)
         WHERE NOT EXISTS (
             SELECT 1 FROM dbo.tblCustomFieldDef d
@@ -1128,6 +1143,21 @@ BEGIN
         JOIN #LeadMap m ON m.OldLeadId = l.Id
         JOIN dbo.tblCustomFieldDef d ON d.CompId = l.CompId AND d.Entity = 'lead' AND d.FieldKey = 'invoice_no'
         WHERE l.InvoiceNo IS NOT NULL AND LTRIM(RTRIM(l.InvoiceNo)) <> '';
+
+        -- Free-text sales notes preserved as custom fields (no core column).
+        INSERT INTO dbo.tblCustomFieldValue (CompId, Entity, EntityId, FieldId, ValueText)
+        SELECT l.CompId, 'lead', m.NewLeadId, d.Id, LTRIM(RTRIM(l.Remarks))
+        FROM dbo.tblLeads l
+        JOIN #LeadMap m ON m.OldLeadId = l.Id
+        JOIN dbo.tblCustomFieldDef d ON d.CompId = l.CompId AND d.Entity = 'lead' AND d.FieldKey = 'remarks'
+        WHERE l.Remarks IS NOT NULL AND LTRIM(RTRIM(l.Remarks)) <> '';
+
+        INSERT INTO dbo.tblCustomFieldValue (CompId, Entity, EntityId, FieldId, ValueText)
+        SELECT l.CompId, 'lead', m.NewLeadId, d.Id, LTRIM(RTRIM(l.Address))
+        FROM dbo.tblLeads l
+        JOIN #LeadMap m ON m.OldLeadId = l.Id
+        JOIN dbo.tblCustomFieldDef d ON d.CompId = l.CompId AND d.Entity = 'lead' AND d.FieldKey = 'address'
+        WHERE l.Address IS NOT NULL AND LTRIM(RTRIM(l.Address)) <> '';
 
         -- Number field: budget -> ValueNumber (also kept on core EstValue, per brief)
         INSERT INTO dbo.tblCustomFieldValue (CompId, Entity, EntityId, FieldId, ValueNumber)
@@ -1535,10 +1565,14 @@ BEGIN
         DECLARE @actLog TABLE (Id INT, ResponseCode INT, ResponseMess NVARCHAR(200));
         DECLARE @ActType VARCHAR(30);
 
+        -- Each branch clears the stamps it doesn't own, so a lead reopened
+        -- OUT of a won/lost stage stops counting as converted/lost.
         IF @StageType = 'won'
         BEGIN
             UPDATE dbo.tblLeads
-            SET StageId = @StageId, WonAt = GETDATE(), EditBy = @UserId, UpdatedAt = GETDATE()
+            SET StageId = @StageId, WonAt = GETDATE(),
+                LostAt = NULL, LostReasonId = NULL,
+                EditBy = @UserId, UpdatedAt = GETDATE()
             WHERE Id=@LeadId AND CompId=@CompId;
             SET @ActType = 'won';
         END
@@ -1546,6 +1580,7 @@ BEGIN
         BEGIN
             UPDATE dbo.tblLeads
             SET StageId = @StageId, LostAt = GETDATE(), LostReasonId = @LostReasonId,
+                WonAt = NULL,
                 EditBy = @UserId, UpdatedAt = GETDATE()
             WHERE Id=@LeadId AND CompId=@CompId;
             SET @ActType = 'lost';
@@ -1553,7 +1588,9 @@ BEGIN
         ELSE
         BEGIN
             UPDATE dbo.tblLeads
-            SET StageId = @StageId, EditBy = @UserId, UpdatedAt = GETDATE()
+            SET StageId = @StageId,
+                WonAt = NULL, LostAt = NULL, LostReasonId = NULL,
+                EditBy = @UserId, UpdatedAt = GETDATE()
             WHERE Id=@LeadId AND CompId=@CompId;
             SET @ActType = 'stage_changed';
         END
@@ -1668,6 +1705,11 @@ BEGIN
         SELECT 400 AS ResponseCode, 'Id is required' AS ResponseMess;
         RETURN;
     END
+    IF @CompId IS NULL OR @CompId <= 0
+    BEGIN
+        SELECT 400 AS ResponseCode, 'CompId is required' AS ResponseMess;
+        RETURN;
+    END
 
     IF NOT EXISTS (SELECT 1 FROM dbo.tblLeads WHERE Id=@Id AND CompId=@CompId)
     BEGIN
@@ -1675,9 +1717,25 @@ BEGIN
         RETURN;
     END
 
-    DELETE FROM dbo.tblLeads WHERE Id=@Id AND CompId=@CompId;
+    BEGIN TRY
+        BEGIN TRANSACTION;
 
-    SELECT 200 AS ResponseCode, 'Lead deleted successfully' AS ResponseMess;
+        -- Cascade: no DB-level FKs (integrity lives in SPs), so clear child
+        -- rows explicitly, else they orphan against a reused IDENTITY.
+        DELETE FROM dbo.tblCustomFieldValue WHERE Entity='lead' AND EntityId=@Id AND CompId=@CompId;
+        DELETE FROM dbo.tblCall            WHERE LeadId=@Id AND CompId=@CompId;
+        DELETE FROM dbo.tblLeadActivity    WHERE LeadId=@Id AND CompId=@CompId;
+        DELETE FROM dbo.tblFollowUp        WHERE LeadId=@Id AND CompId=@CompId;
+        DELETE FROM dbo.tblLeads           WHERE Id=@Id AND CompId=@CompId;
+
+        COMMIT TRANSACTION;
+
+        SELECT 200 AS ResponseCode, 'Lead deleted successfully' AS ResponseMess;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        SELECT 500 AS ResponseCode, ERROR_MESSAGE() AS ResponseMess;
+    END CATCH
 END
 GO
 
@@ -1729,6 +1787,14 @@ BEGIN
     IF @Direction IS NULL OR @Direction NOT IN ('in','out')
     BEGIN
         SELECT 0 AS Id, 400 AS ResponseCode, 'Direction must be in or out' AS ResponseMess;
+        RETURN;
+    END
+    -- Tenant guard: a supplied lead must belong to this company.
+    -- (@TicketId-only calls are Spec 2 territory; that path is untouched.)
+    IF @LeadId IS NOT NULL AND @LeadId > 0
+       AND NOT EXISTS (SELECT 1 FROM dbo.tblLeads WHERE Id=@LeadId AND CompId=@CompId)
+    BEGIN
+        SELECT 0 AS Id, 404 AS ResponseCode, 'Lead not found' AS ResponseMess;
         RETURN;
     END
 
