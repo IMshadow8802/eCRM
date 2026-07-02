@@ -373,3 +373,576 @@ GO
 -- After apply: non-null (column exists)
 -- SELECT COL_LENGTH('tblFollowUp','SourceCallId');
 -- ============================================================
+
+-- ============================================================
+-- Task 0.3: Lead activity logger + config-engine CRUD SPs,
+-- appended to the same batch as Tasks 0.1/0.2 above.
+--
+-- Convention (matches 031_login_distinguishes_user_state.sql):
+-- IF OBJECT_ID(..., 'P') IS NOT NULL DROP PROCEDURE ...; GO;
+-- CREATE PROC ...  (not CREATE OR ALTER — this repo's existing
+-- SP file drops + recreates, so this batch does the same).
+--
+-- Every SP filters/stamps @CompId (multi-tenant). Save/Delete SPs
+-- validate required params and return ResponseCode 400 on bad
+-- input; Fetch SPs trust @CompId (already scoped server-side from
+-- the JWT by the controller) and skip redundant validation.
+--
+-- Fetch SPs embed ResponseCode/ResponseMess as columns on the
+-- data rows themselves (single result set) — same style 031 uses
+-- for its data + status columns together. sp_FetchPipelines is the
+-- one exception: pipelines carry the status columns, stages are a
+-- second plain result set (spec §6 allows either shape).
+--
+-- SPs added:
+--   sp_LogLeadActivity   - INSERT into tblLeadActivity
+--   sp_SaveCustomField   - upsert tblCustomFieldDef
+--   sp_FetchCustomFields - list tblCustomFieldDef (IsActive=1, by SortOrder)
+--   sp_DeleteCustomField - soft-delete if referenced by tblCustomFieldValue, else hard delete
+--   sp_SavePipeline      - upsert tblPipeline; @IsDefault=1 clears siblings
+--   sp_FetchPipelines    - tblPipeline rows + tblPipelineStage rows (2 result sets)
+--   sp_SaveStage         - upsert tblPipelineStage
+--   sp_DeleteStage       - soft-delete (IsActive=0)
+--   sp_SaveLookup        - upsert tblLookup
+--   sp_FetchLookups      - list tblLookup (IsActive=1, by SortOrder)
+--   sp_DeleteLookup      - soft-delete (IsActive=0)
+-- ============================================================
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+-- ------------------------------------------------------------
+-- sp_LogLeadActivity — single writer for the lead timeline.
+-- ------------------------------------------------------------
+IF OBJECT_ID(N'dbo.sp_LogLeadActivity', N'P') IS NOT NULL
+    DROP PROCEDURE dbo.sp_LogLeadActivity;
+GO
+
+CREATE PROC dbo.sp_LogLeadActivity
+    @CompId   INT,
+    @LeadId   INT,
+    @UserId   INT,
+    @Type     VARCHAR(30),
+    @Summary  NVARCHAR(500) = NULL,
+    @MetaJSON NVARCHAR(MAX) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF @CompId IS NULL OR @CompId <= 0
+    BEGIN
+        SELECT CAST(NULL AS INT) AS Id, 400 AS ResponseCode, 'CompId is required' AS ResponseMess;
+        RETURN;
+    END
+    IF @LeadId IS NULL OR @LeadId <= 0
+    BEGIN
+        SELECT CAST(NULL AS INT) AS Id, 400 AS ResponseCode, 'LeadId is required' AS ResponseMess;
+        RETURN;
+    END
+    IF @UserId IS NULL OR @UserId <= 0
+    BEGIN
+        SELECT CAST(NULL AS INT) AS Id, 400 AS ResponseCode, 'UserId is required' AS ResponseMess;
+        RETURN;
+    END
+    IF @Type IS NULL OR LTRIM(RTRIM(@Type)) = ''
+    BEGIN
+        SELECT CAST(NULL AS INT) AS Id, 400 AS ResponseCode, 'Type is required' AS ResponseMess;
+        RETURN;
+    END
+
+    INSERT INTO dbo.tblLeadActivity (CompId, LeadId, UserId, Type, Summary, MetaJSON, CreatedBy)
+    VALUES (@CompId, @LeadId, @UserId, @Type, @Summary, @MetaJSON, @UserId);
+
+    SELECT SCOPE_IDENTITY() AS Id, 200 AS ResponseCode, 'Activity logged successfully' AS ResponseMess;
+END
+GO
+
+-- ------------------------------------------------------------
+-- sp_SaveCustomField — @Id=0 insert / @Id>0 update tblCustomFieldDef.
+-- Uniqueness on (CompId, Entity, FieldKey) checked explicitly for a
+-- friendly 409 (table also has a unique index as the hard backstop).
+-- ------------------------------------------------------------
+IF OBJECT_ID(N'dbo.sp_SaveCustomField', N'P') IS NOT NULL
+    DROP PROCEDURE dbo.sp_SaveCustomField;
+GO
+
+CREATE PROC dbo.sp_SaveCustomField
+    @Id         INT,
+    @CompId     INT,
+    @Entity     VARCHAR(20),
+    @FieldKey   VARCHAR(50),
+    @Label      NVARCHAR(200),
+    @Type       VARCHAR(20),
+    @Options    NVARCHAR(MAX) = NULL,
+    @IsRequired BIT = 0,
+    @SortOrder  INT = 0,
+    @CreatedBy  INT = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF @CompId IS NULL OR @CompId <= 0
+    BEGIN
+        SELECT 0 AS Id, 400 AS ResponseCode, 'CompId is required' AS ResponseMess;
+        RETURN;
+    END
+    IF @Entity IS NULL OR LTRIM(RTRIM(@Entity)) = ''
+    BEGIN
+        SELECT 0 AS Id, 400 AS ResponseCode, 'Entity is required' AS ResponseMess;
+        RETURN;
+    END
+    IF @FieldKey IS NULL OR LTRIM(RTRIM(@FieldKey)) = ''
+    BEGIN
+        SELECT 0 AS Id, 400 AS ResponseCode, 'FieldKey is required' AS ResponseMess;
+        RETURN;
+    END
+    IF @Label IS NULL OR LTRIM(RTRIM(@Label)) = ''
+    BEGIN
+        SELECT 0 AS Id, 400 AS ResponseCode, 'Label is required' AS ResponseMess;
+        RETURN;
+    END
+    IF @Type IS NULL OR @Type NOT IN ('text','number','date','dropdown','checkbox')
+    BEGIN
+        SELECT 0 AS Id, 400 AS ResponseCode, 'Type must be text, number, date, dropdown, or checkbox' AS ResponseMess;
+        RETURN;
+    END
+
+    IF @Id = 0
+    BEGIN
+        IF EXISTS (SELECT 1 FROM dbo.tblCustomFieldDef WHERE CompId=@CompId AND Entity=@Entity AND FieldKey=@FieldKey)
+        BEGIN
+            SELECT 0 AS Id, 409 AS ResponseCode, 'A field with this key already exists for this entity' AS ResponseMess;
+            RETURN;
+        END
+
+        INSERT INTO dbo.tblCustomFieldDef
+            (CompId, Entity, FieldKey, Label, Type, Options, IsRequired, SortOrder, CreatedBy)
+        VALUES
+            (@CompId, @Entity, @FieldKey, @Label, @Type, @Options, ISNULL(@IsRequired,0), ISNULL(@SortOrder,0), @CreatedBy);
+
+        SET @Id = CAST(SCOPE_IDENTITY() AS INT);
+        SELECT @Id AS Id, 200 AS ResponseCode, 'Custom field created successfully' AS ResponseMess;
+    END
+    ELSE
+    BEGIN
+        IF NOT EXISTS (SELECT 1 FROM dbo.tblCustomFieldDef WHERE Id=@Id AND CompId=@CompId)
+        BEGIN
+            SELECT @Id AS Id, 404 AS ResponseCode, 'Custom field not found' AS ResponseMess;
+            RETURN;
+        END
+
+        IF EXISTS (SELECT 1 FROM dbo.tblCustomFieldDef WHERE CompId=@CompId AND Entity=@Entity AND FieldKey=@FieldKey AND Id<>@Id)
+        BEGIN
+            SELECT @Id AS Id, 409 AS ResponseCode, 'A field with this key already exists for this entity' AS ResponseMess;
+            RETURN;
+        END
+
+        UPDATE dbo.tblCustomFieldDef
+        SET Entity = @Entity, FieldKey = @FieldKey, Label = @Label, Type = @Type,
+            Options = @Options, IsRequired = ISNULL(@IsRequired,0), SortOrder = ISNULL(@SortOrder,0)
+        WHERE Id=@Id AND CompId=@CompId;
+
+        SELECT @Id AS Id, 200 AS ResponseCode, 'Custom field updated successfully' AS ResponseMess;
+    END
+END
+GO
+
+-- ------------------------------------------------------------
+-- sp_FetchCustomFields — active fields for an entity, by SortOrder.
+-- ------------------------------------------------------------
+IF OBJECT_ID(N'dbo.sp_FetchCustomFields', N'P') IS NOT NULL
+    DROP PROCEDURE dbo.sp_FetchCustomFields;
+GO
+
+CREATE PROC dbo.sp_FetchCustomFields
+    @CompId INT,
+    @Entity VARCHAR(20)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT Id, CompId, Entity, FieldKey, Label, Type, Options, IsRequired, SortOrder, IsActive, CreatedBy, CreatedAt,
+           200 AS ResponseCode, 'Custom fields retrieved successfully' AS ResponseMess
+    FROM dbo.tblCustomFieldDef
+    WHERE CompId = @CompId AND Entity = @Entity AND IsActive = 1
+    ORDER BY SortOrder;
+END
+GO
+
+-- ------------------------------------------------------------
+-- sp_DeleteCustomField — soft-delete (IsActive=0) if values exist
+-- against this field, else hard delete.
+-- ------------------------------------------------------------
+IF OBJECT_ID(N'dbo.sp_DeleteCustomField', N'P') IS NOT NULL
+    DROP PROCEDURE dbo.sp_DeleteCustomField;
+GO
+
+CREATE PROC dbo.sp_DeleteCustomField
+    @Id     INT,
+    @CompId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF @Id IS NULL OR @Id <= 0
+    BEGIN
+        SELECT 400 AS ResponseCode, 'Id is required' AS ResponseMess;
+        RETURN;
+    END
+
+    IF NOT EXISTS (SELECT 1 FROM dbo.tblCustomFieldDef WHERE Id=@Id AND CompId=@CompId)
+    BEGIN
+        SELECT 404 AS ResponseCode, 'Custom field not found' AS ResponseMess;
+        RETURN;
+    END
+
+    IF EXISTS (SELECT 1 FROM dbo.tblCustomFieldValue WHERE FieldId=@Id)
+    BEGIN
+        UPDATE dbo.tblCustomFieldDef SET IsActive = 0 WHERE Id=@Id AND CompId=@CompId;
+        SELECT 200 AS ResponseCode, 'Custom field deactivated (values exist)' AS ResponseMess;
+    END
+    ELSE
+    BEGIN
+        DELETE FROM dbo.tblCustomFieldDef WHERE Id=@Id AND CompId=@CompId;
+        SELECT 200 AS ResponseCode, 'Custom field deleted successfully' AS ResponseMess;
+    END
+END
+GO
+
+-- ------------------------------------------------------------
+-- sp_SavePipeline — @Id=0 insert / @Id>0 update tblPipeline.
+-- @IsDefault=1 clears IsDefault on the company's other pipelines
+-- for the same Entity (two statements -> wrapped in a transaction).
+-- ------------------------------------------------------------
+IF OBJECT_ID(N'dbo.sp_SavePipeline', N'P') IS NOT NULL
+    DROP PROCEDURE dbo.sp_SavePipeline;
+GO
+
+CREATE PROC dbo.sp_SavePipeline
+    @Id        INT,
+    @CompId    INT,
+    @Entity    VARCHAR(20),
+    @Name      NVARCHAR(200),
+    @IsDefault BIT = 0
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF @CompId IS NULL OR @CompId <= 0
+    BEGIN
+        SELECT 0 AS Id, 400 AS ResponseCode, 'CompId is required' AS ResponseMess;
+        RETURN;
+    END
+    IF @Entity IS NULL OR LTRIM(RTRIM(@Entity)) = ''
+    BEGIN
+        SELECT 0 AS Id, 400 AS ResponseCode, 'Entity is required' AS ResponseMess;
+        RETURN;
+    END
+    IF @Name IS NULL OR LTRIM(RTRIM(@Name)) = ''
+    BEGIN
+        SELECT 0 AS Id, 400 AS ResponseCode, 'Name is required' AS ResponseMess;
+        RETURN;
+    END
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        IF @Id = 0
+        BEGIN
+            INSERT INTO dbo.tblPipeline (CompId, Entity, Name, IsDefault)
+            VALUES (@CompId, @Entity, @Name, ISNULL(@IsDefault,0));
+
+            SET @Id = CAST(SCOPE_IDENTITY() AS INT);
+        END
+        ELSE
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM dbo.tblPipeline WHERE Id=@Id AND CompId=@CompId)
+            BEGIN
+                ROLLBACK TRANSACTION;
+                SELECT @Id AS Id, 404 AS ResponseCode, 'Pipeline not found' AS ResponseMess;
+                RETURN;
+            END
+
+            UPDATE dbo.tblPipeline
+            SET Name = @Name, IsDefault = ISNULL(@IsDefault,0)
+            WHERE Id=@Id AND CompId=@CompId;
+        END
+
+        IF ISNULL(@IsDefault,0) = 1
+        BEGIN
+            UPDATE dbo.tblPipeline
+            SET IsDefault = 0
+            WHERE CompId=@CompId AND Entity=@Entity AND Id <> @Id;
+        END
+
+        COMMIT TRANSACTION;
+
+        SELECT @Id AS Id, 200 AS ResponseCode, 'Pipeline saved successfully' AS ResponseMess;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        SELECT @Id AS Id, 500 AS ResponseCode, ERROR_MESSAGE() AS ResponseMess;
+    END CATCH
+END
+GO
+
+-- ------------------------------------------------------------
+-- sp_FetchPipelines — pipelines (with status columns) then their
+-- stages, as two result sets.
+-- ------------------------------------------------------------
+IF OBJECT_ID(N'dbo.sp_FetchPipelines', N'P') IS NOT NULL
+    DROP PROCEDURE dbo.sp_FetchPipelines;
+GO
+
+CREATE PROC dbo.sp_FetchPipelines
+    @CompId INT,
+    @Entity VARCHAR(20)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT p.Id, p.CompId, p.Entity, p.Name, p.IsDefault, p.IsActive, p.CreatedAt,
+           200 AS ResponseCode, 'Pipelines retrieved successfully' AS ResponseMess
+    FROM dbo.tblPipeline p
+    WHERE p.CompId = @CompId AND p.Entity = @Entity AND p.IsActive = 1
+    ORDER BY p.IsDefault DESC, p.Name;
+
+    SELECT s.Id, s.CompId, s.PipelineId, s.Name, s.SortOrder, s.StageType, s.Color, s.IsActive
+    FROM dbo.tblPipelineStage s
+    INNER JOIN dbo.tblPipeline p ON p.Id = s.PipelineId
+    WHERE p.CompId = @CompId AND p.Entity = @Entity AND p.IsActive = 1 AND s.IsActive = 1
+    ORDER BY s.PipelineId, s.SortOrder;
+END
+GO
+
+-- ------------------------------------------------------------
+-- sp_SaveStage — @Id=0 insert / @Id>0 update tblPipelineStage.
+-- ------------------------------------------------------------
+IF OBJECT_ID(N'dbo.sp_SaveStage', N'P') IS NOT NULL
+    DROP PROCEDURE dbo.sp_SaveStage;
+GO
+
+CREATE PROC dbo.sp_SaveStage
+    @Id         INT,
+    @PipelineId INT,
+    @CompId     INT,
+    @Name       NVARCHAR(200),
+    @SortOrder  INT = 0,
+    @StageType  VARCHAR(20),
+    @Color      NVARCHAR(20) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF @CompId IS NULL OR @CompId <= 0
+    BEGIN
+        SELECT 0 AS Id, 400 AS ResponseCode, 'CompId is required' AS ResponseMess;
+        RETURN;
+    END
+    IF @PipelineId IS NULL OR @PipelineId <= 0
+       OR NOT EXISTS (SELECT 1 FROM dbo.tblPipeline WHERE Id=@PipelineId AND CompId=@CompId)
+    BEGIN
+        SELECT 0 AS Id, 400 AS ResponseCode, 'Valid PipelineId is required' AS ResponseMess;
+        RETURN;
+    END
+    IF @Name IS NULL OR LTRIM(RTRIM(@Name)) = ''
+    BEGIN
+        SELECT 0 AS Id, 400 AS ResponseCode, 'Name is required' AS ResponseMess;
+        RETURN;
+    END
+    IF @StageType IS NULL OR @StageType NOT IN ('open','won','lost')
+    BEGIN
+        SELECT 0 AS Id, 400 AS ResponseCode, 'StageType must be open, won, or lost' AS ResponseMess;
+        RETURN;
+    END
+
+    IF @Id = 0
+    BEGIN
+        INSERT INTO dbo.tblPipelineStage (CompId, PipelineId, Name, SortOrder, StageType, Color)
+        VALUES (@CompId, @PipelineId, @Name, ISNULL(@SortOrder,0), @StageType, @Color);
+
+        SET @Id = CAST(SCOPE_IDENTITY() AS INT);
+        SELECT @Id AS Id, 200 AS ResponseCode, 'Stage created successfully' AS ResponseMess;
+    END
+    ELSE
+    BEGIN
+        IF NOT EXISTS (SELECT 1 FROM dbo.tblPipelineStage WHERE Id=@Id AND CompId=@CompId)
+        BEGIN
+            SELECT @Id AS Id, 404 AS ResponseCode, 'Stage not found' AS ResponseMess;
+            RETURN;
+        END
+
+        UPDATE dbo.tblPipelineStage
+        SET PipelineId = @PipelineId, Name = @Name, SortOrder = ISNULL(@SortOrder,0),
+            StageType = @StageType, Color = @Color
+        WHERE Id=@Id AND CompId=@CompId;
+
+        SELECT @Id AS Id, 200 AS ResponseCode, 'Stage updated successfully' AS ResponseMess;
+    END
+END
+GO
+
+-- ------------------------------------------------------------
+-- sp_DeleteStage — soft-delete (IsActive=0); leads/tickets may
+-- still reference a stage by Id, same reasoning as sp_DeleteLookup.
+-- ------------------------------------------------------------
+IF OBJECT_ID(N'dbo.sp_DeleteStage', N'P') IS NOT NULL
+    DROP PROCEDURE dbo.sp_DeleteStage;
+GO
+
+CREATE PROC dbo.sp_DeleteStage
+    @Id     INT,
+    @CompId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF @Id IS NULL OR @Id <= 0
+    BEGIN
+        SELECT 400 AS ResponseCode, 'Id is required' AS ResponseMess;
+        RETURN;
+    END
+
+    IF NOT EXISTS (SELECT 1 FROM dbo.tblPipelineStage WHERE Id=@Id AND CompId=@CompId)
+    BEGIN
+        SELECT 404 AS ResponseCode, 'Stage not found' AS ResponseMess;
+        RETURN;
+    END
+
+    UPDATE dbo.tblPipelineStage SET IsActive = 0 WHERE Id=@Id AND CompId=@CompId;
+
+    SELECT 200 AS ResponseCode, 'Stage deleted successfully' AS ResponseMess;
+END
+GO
+
+-- ------------------------------------------------------------
+-- sp_SaveLookup — @Id=0 insert / @Id>0 update tblLookup.
+-- ------------------------------------------------------------
+IF OBJECT_ID(N'dbo.sp_SaveLookup', N'P') IS NOT NULL
+    DROP PROCEDURE dbo.sp_SaveLookup;
+GO
+
+CREATE PROC dbo.sp_SaveLookup
+    @Id        INT,
+    @CompId    INT,
+    @Kind      VARCHAR(30),
+    @Value     NVARCHAR(200),
+    @SortOrder INT = 0
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF @CompId IS NULL OR @CompId <= 0
+    BEGIN
+        SELECT 0 AS Id, 400 AS ResponseCode, 'CompId is required' AS ResponseMess;
+        RETURN;
+    END
+    IF @Kind IS NULL OR LTRIM(RTRIM(@Kind)) = ''
+    BEGIN
+        SELECT 0 AS Id, 400 AS ResponseCode, 'Kind is required' AS ResponseMess;
+        RETURN;
+    END
+    IF @Value IS NULL OR LTRIM(RTRIM(@Value)) = ''
+    BEGIN
+        SELECT 0 AS Id, 400 AS ResponseCode, 'Value is required' AS ResponseMess;
+        RETURN;
+    END
+
+    IF @Id = 0
+    BEGIN
+        IF EXISTS (SELECT 1 FROM dbo.tblLookup WHERE CompId=@CompId AND Kind=@Kind AND Value=@Value AND IsActive=1)
+        BEGIN
+            SELECT 0 AS Id, 409 AS ResponseCode, 'A lookup with this value already exists' AS ResponseMess;
+            RETURN;
+        END
+
+        INSERT INTO dbo.tblLookup (CompId, Kind, Value, SortOrder)
+        VALUES (@CompId, @Kind, @Value, ISNULL(@SortOrder,0));
+
+        SET @Id = CAST(SCOPE_IDENTITY() AS INT);
+        SELECT @Id AS Id, 200 AS ResponseCode, 'Lookup created successfully' AS ResponseMess;
+    END
+    ELSE
+    BEGIN
+        IF NOT EXISTS (SELECT 1 FROM dbo.tblLookup WHERE Id=@Id AND CompId=@CompId)
+        BEGIN
+            SELECT @Id AS Id, 404 AS ResponseCode, 'Lookup not found' AS ResponseMess;
+            RETURN;
+        END
+
+        UPDATE dbo.tblLookup
+        SET Kind = @Kind, Value = @Value, SortOrder = ISNULL(@SortOrder,0)
+        WHERE Id=@Id AND CompId=@CompId;
+
+        SELECT @Id AS Id, 200 AS ResponseCode, 'Lookup updated successfully' AS ResponseMess;
+    END
+END
+GO
+
+-- ------------------------------------------------------------
+-- sp_FetchLookups — active lookups for a Kind, by SortOrder.
+-- ------------------------------------------------------------
+IF OBJECT_ID(N'dbo.sp_FetchLookups', N'P') IS NOT NULL
+    DROP PROCEDURE dbo.sp_FetchLookups;
+GO
+
+CREATE PROC dbo.sp_FetchLookups
+    @CompId INT,
+    @Kind   VARCHAR(30)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT Id, CompId, Kind, Value, SortOrder, IsActive,
+           200 AS ResponseCode, 'Lookups retrieved successfully' AS ResponseMess
+    FROM dbo.tblLookup
+    WHERE CompId = @CompId AND Kind = @Kind AND IsActive = 1
+    ORDER BY SortOrder;
+END
+GO
+
+-- ------------------------------------------------------------
+-- sp_DeleteLookup — soft-delete (IsActive=0).
+-- ------------------------------------------------------------
+IF OBJECT_ID(N'dbo.sp_DeleteLookup', N'P') IS NOT NULL
+    DROP PROCEDURE dbo.sp_DeleteLookup;
+GO
+
+CREATE PROC dbo.sp_DeleteLookup
+    @Id     INT,
+    @CompId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF @Id IS NULL OR @Id <= 0
+    BEGIN
+        SELECT 400 AS ResponseCode, 'Id is required' AS ResponseMess;
+        RETURN;
+    END
+
+    IF NOT EXISTS (SELECT 1 FROM dbo.tblLookup WHERE Id=@Id AND CompId=@CompId)
+    BEGIN
+        SELECT 404 AS ResponseCode, 'Lookup not found' AS ResponseMess;
+        RETURN;
+    END
+
+    UPDATE dbo.tblLookup SET IsActive = 0 WHERE Id=@Id AND CompId=@CompId;
+
+    SELECT 200 AS ResponseCode, 'Lookup deleted successfully' AS ResponseMess;
+END
+GO
+
+-- ============================================================
+-- Verification (Task 0.3) — run manually after applying:
+-- After apply: expect 11 rows
+-- SELECT name FROM sys.procedures WHERE name IN
+--  ('sp_LogLeadActivity','sp_SaveCustomField','sp_FetchCustomFields','sp_DeleteCustomField',
+--   'sp_SavePipeline','sp_FetchPipelines','sp_SaveStage','sp_DeleteStage',
+--   'sp_SaveLookup','sp_FetchLookups','sp_DeleteLookup');
+--
+-- Sample calls — insert a lookup, then fetch it back:
+-- EXEC sp_SaveLookup @Id=0,@CompId=1,@Kind='lead_source',@Value='Website',@SortOrder=1;
+-- EXEC sp_FetchLookups @CompId=1,@Kind='lead_source'; -- expect the row + ResponseCode 200
+-- ============================================================
