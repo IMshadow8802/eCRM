@@ -946,3 +946,239 @@ GO
 -- EXEC sp_SaveLookup @Id=0,@CompId=1,@Kind='lead_source',@Value='Website',@SortOrder=1;
 -- EXEC sp_FetchLookups @CompId=1,@Kind='lead_source'; -- expect the row + ResponseCode 200
 -- ============================================================
+
+-- ============================================================
+-- Task 0.4: Data migration — move existing product-sales lead
+-- data into the generalized model, then rename tables.
+--
+-- Source schema (verified against the live SPs, NOT the stale
+-- src/db/tables.sql reference which predates externally-applied
+-- columns):
+--   tblLeads      — HAS CompId (sp_SaveLead/sp_TransferLead insert
+--                   & filter on it) + BranchId, CustomerName,
+--                   MobileNo, AlternateMobile, Email, Address,
+--                   LeadSource (varchar NAME, not FK), ProductCategory,
+--                   ProductBrand, ProductModel, Budget, LeadStatus
+--                   (varchar NAME, not FK), FollowupDate, Remarks,
+--                   AssignTo, AssignedDate, InvoiceDate, InvoiceNo,
+--                   LeadDate, CreatedBy, CreatedDate, EditBy, EditDate.
+--   tblLeadSource — GLOBAL master (SourceId, SourceName). No CompId.
+--   tblStatus     — GLOBAL master (StatusId, StatusName). No CompId,
+--                   no SortOrder → ordered by StatusId.
+--
+-- Because Source/Status are global but the new tables are per-company,
+-- they are fanned out to every company that has leads. Leads store
+-- source/status as NAMES, so they map by name (not by old id).
+--
+-- Idempotent: guarded by OBJECT_ID('tblLeads_old') — after a clean run
+-- the old table is renamed to tblLeads_old, so a re-run is a no-op.
+-- Every seed insert is additionally NOT EXISTS-guarded. Whole thing
+-- runs in one transaction (single batch — no GO — so the tran and the
+-- #temp maps stay in scope) with TRY/CATCH ROLLBACK.
+-- ============================================================
+IF OBJECT_ID(N'dbo.tblLeads_old') IS NOT NULL
+BEGIN
+    PRINT 'Task 0.4: tblLeads_old already exists — migration already applied, skipping.';
+END
+ELSE
+BEGIN
+    BEGIN TRY
+        BEGIN TRAN;
+
+        -- ---- Step 1: default pipeline (IsDefault=1, Entity='lead') per company ----
+        INSERT INTO dbo.tblPipeline (CompId, Entity, Name, IsDefault)
+        SELECT c.CompId, 'lead', 'Default Sales Pipeline', 1
+        FROM (SELECT DISTINCT CompId FROM dbo.tblLeads WHERE CompId IS NOT NULL) c
+        WHERE NOT EXISTS (
+            SELECT 1 FROM dbo.tblPipeline p
+            WHERE p.CompId = c.CompId AND p.Entity = 'lead' AND p.IsDefault = 1
+        );
+
+        -- ---- Step 1b: stages from the (global) tblStatus master, per default pipeline ----
+        -- SortOrder follows StatusId (no SortOrder col on tblStatus).
+        -- StageType heuristic: name ~ won|convert -> won; ~ lost|dead -> lost; else open.
+        -- (default collation is case-insensitive, so LIKE matches regardless of case.)
+        INSERT INTO dbo.tblPipelineStage (CompId, PipelineId, Name, SortOrder, StageType)
+        SELECT p.CompId, p.Id, LTRIM(RTRIM(s.StatusName)),
+               ROW_NUMBER() OVER (PARTITION BY p.Id ORDER BY s.StatusId) - 1 AS SortOrder,
+               CASE
+                   WHEN s.StatusName LIKE '%won%' OR s.StatusName LIKE '%convert%' THEN 'won'
+                   WHEN s.StatusName LIKE '%lost%' OR s.StatusName LIKE '%dead%'    THEN 'lost'
+                   ELSE 'open'
+               END AS StageType
+        FROM dbo.tblPipeline p
+        CROSS JOIN dbo.tblStatus s
+        WHERE p.Entity = 'lead' AND p.IsDefault = 1
+          AND s.StatusName IS NOT NULL AND LTRIM(RTRIM(s.StatusName)) <> ''
+          AND NOT EXISTS (SELECT 1 FROM dbo.tblPipelineStage st WHERE st.PipelineId = p.Id);
+
+        -- "first stage open if none matched": guarantee every pipeline has an
+        -- 'open' stage — if all stages matched won/lost, force the first to open.
+        UPDATE st
+        SET StageType = 'open'
+        FROM dbo.tblPipelineStage st
+        WHERE st.SortOrder = (SELECT MIN(s2.SortOrder) FROM dbo.tblPipelineStage s2 WHERE s2.PipelineId = st.PipelineId)
+          AND NOT EXISTS (SELECT 1 FROM dbo.tblPipelineStage s3 WHERE s3.PipelineId = st.PipelineId AND s3.StageType = 'open');
+
+        -- ---- Step 2: lead_source lookups from (global) tblLeadSource, fanned per company ----
+        INSERT INTO dbo.tblLookup (CompId, Kind, Value, SortOrder)
+        SELECT c.CompId, 'lead_source', src.SourceName,
+               ROW_NUMBER() OVER (PARTITION BY c.CompId ORDER BY src.SourceId) - 1
+        FROM (SELECT DISTINCT CompId FROM dbo.tblLeads WHERE CompId IS NOT NULL) c
+        CROSS JOIN dbo.tblLeadSource src
+        WHERE src.SourceName IS NOT NULL AND LTRIM(RTRIM(src.SourceName)) <> ''
+          AND NOT EXISTS (
+              SELECT 1 FROM dbo.tblLookup lk
+              WHERE lk.CompId = c.CompId AND lk.Kind = 'lead_source' AND lk.Value = src.SourceName
+          );
+
+        -- old->new id map (per brief): keyed by (CompId, OldSourceId).
+        -- Value is carried too so Step 4 can resolve the lead's source NAME.
+        CREATE TABLE #SourceMap (CompId INT, OldSourceId INT, NewLookupId INT, Value NVARCHAR(200));
+        INSERT INTO #SourceMap (CompId, OldSourceId, NewLookupId, Value)
+        SELECT lk.CompId, src.SourceId, lk.Id, lk.Value
+        FROM dbo.tblLookup lk
+        JOIN dbo.tblLeadSource src ON src.SourceName = lk.Value
+        WHERE lk.Kind = 'lead_source';
+
+        -- ---- Step 3: seed product custom-field defs (Entity='lead') per company ----
+        INSERT INTO dbo.tblCustomFieldDef (CompId, Entity, FieldKey, Label, Type, SortOrder)
+        SELECT c.CompId, 'lead', f.FieldKey, f.Label, f.Type, f.SortOrder
+        FROM (SELECT DISTINCT CompId FROM dbo.tblLeads WHERE CompId IS NOT NULL) c
+        CROSS JOIN (VALUES
+            ('category',     'Category',     'dropdown', 0),
+            ('brand',        'Brand',        'text',     1),
+            ('model',        'Model',        'text',     2),
+            ('budget',       'Budget',       'number',   3),
+            ('invoice_no',   'Invoice No',   'text',     4),
+            ('invoice_date', 'Invoice Date', 'date',     5)
+        ) f(FieldKey, Label, Type, SortOrder)
+        WHERE NOT EXISTS (
+            SELECT 1 FROM dbo.tblCustomFieldDef d
+            WHERE d.CompId = c.CompId AND d.Entity = 'lead' AND d.FieldKey = f.FieldKey
+        );
+        -- ponytail: 'category' dropdown seeded with Options=NULL. The backfilled
+        -- ValueText carries the real category regardless; populate Options from the
+        -- distinct values via the config UI (sp_SaveCustomField) if picker choices
+        -- are needed for NEW leads.
+
+        -- ---- Step 4: populate tblLeads_new; capture old->new lead id map ----
+        -- MERGE (not INSERT..SELECT) so OUTPUT can emit the source lead Id
+        -- alongside the new IDENTITY. ON 1=0 => every row is "not matched" => insert.
+        CREATE TABLE #LeadMap (OldLeadId INT, NewLeadId INT);
+
+        MERGE dbo.tblLeads_new AS tgt
+        USING (
+            SELECT l.Id AS OldId, l.CompId, l.BranchId,
+                   ISNULL(NULLIF(LTRIM(RTRIM(l.CustomerName)), ''), '(no name)') AS Name,
+                   l.MobileNo, l.AlternateMobile AS AltMobile, l.Email,
+                   sm.NewLookupId AS SourceId,
+                   p.Id AS PipelineId,
+                   stg.Id AS StageId,
+                   l.AssignTo AS OwnerId,
+                   l.Budget AS EstValue,
+                   l.FollowupDate AS NextFollowupDate,
+                   l.CreatedBy, l.EditBy,
+                   ISNULL(l.CreatedDate, ISNULL(l.LeadDate, GETDATE())) AS CreatedAt,
+                   l.EditDate AS UpdatedAt
+            FROM dbo.tblLeads l
+            LEFT JOIN #SourceMap sm
+                   ON sm.CompId = l.CompId AND sm.Value = LTRIM(RTRIM(l.LeadSource))
+            LEFT JOIN dbo.tblPipeline p
+                   ON p.CompId = l.CompId AND p.Entity = 'lead' AND p.IsDefault = 1
+            LEFT JOIN dbo.tblPipelineStage stg
+                   ON stg.PipelineId = p.Id AND LTRIM(RTRIM(stg.Name)) = LTRIM(RTRIM(l.LeadStatus))
+        ) AS src
+        ON 1 = 0
+        WHEN NOT MATCHED THEN
+            INSERT (CompId, BranchId, Name, MobileNo, AltMobile, Email, SourceId,
+                    PipelineId, StageId, OwnerId, EstValue, NextFollowupDate,
+                    CreatedBy, EditBy, CreatedAt, UpdatedAt)
+            VALUES (src.CompId, src.BranchId, src.Name, src.MobileNo, src.AltMobile, src.Email, src.SourceId,
+                    src.PipelineId, src.StageId, src.OwnerId, src.EstValue, src.NextFollowupDate,
+                    src.CreatedBy, src.EditBy, src.CreatedAt, src.UpdatedAt)
+        OUTPUT src.OldId, inserted.Id INTO #LeadMap (OldLeadId, NewLeadId);
+
+        -- ---- Step 5: backfill tblCustomFieldValue from old product columns ----
+        -- Text fields: category / brand / model / invoice_no -> ValueText
+        INSERT INTO dbo.tblCustomFieldValue (CompId, Entity, EntityId, FieldId, ValueText)
+        SELECT l.CompId, 'lead', m.NewLeadId, d.Id, LTRIM(RTRIM(l.ProductCategory))
+        FROM dbo.tblLeads l
+        JOIN #LeadMap m ON m.OldLeadId = l.Id
+        JOIN dbo.tblCustomFieldDef d ON d.CompId = l.CompId AND d.Entity = 'lead' AND d.FieldKey = 'category'
+        WHERE l.ProductCategory IS NOT NULL AND LTRIM(RTRIM(l.ProductCategory)) <> '';
+
+        INSERT INTO dbo.tblCustomFieldValue (CompId, Entity, EntityId, FieldId, ValueText)
+        SELECT l.CompId, 'lead', m.NewLeadId, d.Id, LTRIM(RTRIM(l.ProductBrand))
+        FROM dbo.tblLeads l
+        JOIN #LeadMap m ON m.OldLeadId = l.Id
+        JOIN dbo.tblCustomFieldDef d ON d.CompId = l.CompId AND d.Entity = 'lead' AND d.FieldKey = 'brand'
+        WHERE l.ProductBrand IS NOT NULL AND LTRIM(RTRIM(l.ProductBrand)) <> '';
+
+        INSERT INTO dbo.tblCustomFieldValue (CompId, Entity, EntityId, FieldId, ValueText)
+        SELECT l.CompId, 'lead', m.NewLeadId, d.Id, LTRIM(RTRIM(l.ProductModel))
+        FROM dbo.tblLeads l
+        JOIN #LeadMap m ON m.OldLeadId = l.Id
+        JOIN dbo.tblCustomFieldDef d ON d.CompId = l.CompId AND d.Entity = 'lead' AND d.FieldKey = 'model'
+        WHERE l.ProductModel IS NOT NULL AND LTRIM(RTRIM(l.ProductModel)) <> '';
+
+        INSERT INTO dbo.tblCustomFieldValue (CompId, Entity, EntityId, FieldId, ValueText)
+        SELECT l.CompId, 'lead', m.NewLeadId, d.Id, LTRIM(RTRIM(l.InvoiceNo))
+        FROM dbo.tblLeads l
+        JOIN #LeadMap m ON m.OldLeadId = l.Id
+        JOIN dbo.tblCustomFieldDef d ON d.CompId = l.CompId AND d.Entity = 'lead' AND d.FieldKey = 'invoice_no'
+        WHERE l.InvoiceNo IS NOT NULL AND LTRIM(RTRIM(l.InvoiceNo)) <> '';
+
+        -- Number field: budget -> ValueNumber (also kept on core EstValue, per brief)
+        INSERT INTO dbo.tblCustomFieldValue (CompId, Entity, EntityId, FieldId, ValueNumber)
+        SELECT l.CompId, 'lead', m.NewLeadId, d.Id, l.Budget
+        FROM dbo.tblLeads l
+        JOIN #LeadMap m ON m.OldLeadId = l.Id
+        JOIN dbo.tblCustomFieldDef d ON d.CompId = l.CompId AND d.Entity = 'lead' AND d.FieldKey = 'budget'
+        WHERE l.Budget IS NOT NULL;
+
+        -- Date field: invoice_date -> ValueDate
+        INSERT INTO dbo.tblCustomFieldValue (CompId, Entity, EntityId, FieldId, ValueDate)
+        SELECT l.CompId, 'lead', m.NewLeadId, d.Id, l.InvoiceDate
+        FROM dbo.tblLeads l
+        JOIN #LeadMap m ON m.OldLeadId = l.Id
+        JOIN dbo.tblCustomFieldDef d ON d.CompId = l.CompId AND d.Entity = 'lead' AND d.FieldKey = 'invoice_date'
+        WHERE l.InvoiceDate IS NOT NULL;
+
+        -- ---- Step 6: swap tables into place ----
+        EXEC sp_rename 'dbo.tblLeads',     'tblLeads_old';
+        EXEC sp_rename 'dbo.tblLeads_new', 'tblLeads';
+
+        DROP TABLE #SourceMap;
+        DROP TABLE #LeadMap;
+
+        COMMIT TRAN;
+        PRINT 'Task 0.4: leads migration committed.';
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
+        PRINT 'Task 0.4: migration FAILED and was rolled back.';
+        THROW;
+    END CATCH
+END
+GO
+
+-- ============================================================
+-- Verification (Task 0.4) — run manually after applying:
+--
+-- 1) Old vs new lead counts must be equal:
+-- SELECT (SELECT COUNT(*) FROM tblLeads_old) AS old,
+--        (SELECT COUNT(*) FROM tblLeads)     AS new;  -- expect equal
+--
+-- 2) Sample migrated leads (Name/StageId/SourceId resolved):
+-- SELECT TOP 5 l.Id, l.Name, l.StageId, l.SourceId FROM tblLeads l;
+--
+-- 3) Custom-field values were backfilled:
+-- SELECT COUNT(*) FROM tblCustomFieldValue WHERE Entity = 'lead';  -- expect > 0
+--
+-- Optional sanity:
+-- SELECT p.CompId, COUNT(*) AS Stages FROM tblPipelineStage s
+--   JOIN tblPipeline p ON p.Id=s.PipelineId WHERE p.Entity='lead' GROUP BY p.CompId;
+-- SELECT COUNT(*) FROM tblLeads WHERE StageId IS NULL;  -- leads whose status
+--   -- name didn't match any stage (free-text statuses); investigate if high.
+-- ============================================================
