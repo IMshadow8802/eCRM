@@ -28,41 +28,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run lint` - Run ESLint for code quality checks
 
 ### Building
-- `npm run build:web` - Build for web deployment (outputs to `dist-web/`)
-- `npm run build:electron` - Build for Electron app (outputs to `dist/`)  
-- `npm run build:all` - Clean and build both web and electron versions
-- `npm run clean` - Remove all build directories
-
-### Electron Development
-- `npm run electron:dev` - Run Electron in development mode (starts dev server + electron)
-- `npm run electron:start` - Start Electron app with built files
-
-### Distribution
-- `npm run dist:nsis` - Create Windows NSIS installer
-- `npm run dist:portable` - Create Windows portable executable
-- `npm run dist:win-all` - Create all Windows distributions
-- `npm run dist:mac` - Create macOS DMG
-- `npm run dist:all` - Create distributions for all platforms
+- `pnpm build` - Build for web deployment (outputs to `dist-web/`)
+- `pnpm clean` - Remove the build directory
 
 ## Architecture Overview
 
-### Dual Platform Support
-This is a React application that builds for both web and Electron platforms:
-
-- **Web builds**: Deploy to `/eStockCRM/` path with static files
-- **Electron builds**: Desktop application with IPC communication
-- **Platform detection**: `src/utils/platform.js` handles environment detection and routing
-- **Build configuration**: `vite.config.js` uses `BUILD_TARGET` environment variable
+Web-only React SPA deployed to the `/eStockCRM/` path. No desktop/Electron build — that was removed.
 
 ### Key Technologies
-- **Frontend**: React 18 + Vite
-- **UI Libraries**: Material-UI, Material-Tailwind, Heroicons
+- **Frontend**: React 19 + Vite
+- **UI Libraries**: Material-UI v9, Material-Tailwind, Heroicons, lucide-react
 - **State Management**: Zustand stores (auth, tasks, kanban, etc.)
 - **API Client**: Axios with interceptors
 - **Forms**: React Hook Form + Zod validation
-- **Routing**: React Router with conditional BrowserRouter/HashRouter
-- **Drag & Drop**: @dnd-kit for kanban boards
-- **Charts**: ECharts for data visualization
+- **Routing**: React Router v7 with `BrowserRouter` (basename `/eStockCRM/`)
+- **Drag & Drop**: `@dnd-kit/react` for kanban boards
+- **Charts**: recharts for data visualization
 
 ### Core Architecture Patterns
 
@@ -78,16 +59,15 @@ This is a React application that builds for both web and Electron platforms:
 - API base URL from auth store: `https://prdinfotech.in/CRM`
 - Automatic token injection and 401 handling
 
-#### Platform-Specific Routing
-- Uses HashRouter for Electron, BrowserRouter for web
-- Environment detection in `App.jsx` with loading state
-- Conditional basename handling for web deployment path
+#### Routing
+- `BrowserRouter` with `basename="/eStockCRM/"`
+- All API redirects (401, session expiry) go through `utils/redirectToLogin.js` which prepends the same base via `import.meta.env.BASE_URL`
 
 #### Module Organization
 - `src/pages/` - Route components organized by feature area
 - `src/components/` - Reusable UI components
 - `src/hooks/` - Custom React hooks
-- `src/utils/` - Utility functions including platform detection
+- `src/utils/` - Utility functions
 
 ### Key Features
 - **Masters Management**: Leads, Contacts, Complaints, Lead Status
@@ -100,8 +80,6 @@ This is a React application that builds for both web and Electron platforms:
 - Development server runs on port 8080
 - React Query DevTools available in development
 - ESLint configured for React/JSX
-- Electron preload script handles IPC communication
-- Build targets determined by `BUILD_TARGET` environment variable
 
 ### API Response Patterns
 All fetch API responses follow this consistent structure:
@@ -144,20 +122,19 @@ This section maps every file, its purpose, what it imports, and where it's used.
 - **Used by**: index.html
 - **Key setup**: React Query config (5min stale time, 10min cache), MUI ThemeProvider, DevTools
 
-#### `App.jsx` - Router Configuration & Platform Detection
-- **Purpose**: Main routing, platform-aware router selection (Hash/Browser)
+#### `App.jsx` - Router Configuration
+- **Purpose**: Main routing
 - **Imports**:
   - `SnackbarProvider` from notistack
   - `HelmetProvider` from react-helmet-async
-  - `BrowserRouter`, `HashRouter`, `Routes`, `Route`, `Navigate` from react-router-dom
+  - `BrowserRouter`, `Routes`, `Route`, `Navigate` from react-router-dom
   - `ProtectedRoute` from ./components/ProtectedRoutes
   - `RootLayout` from ./components/RootLayout
   - `SessionMonitor` from ./components/SessionMonitor
-  - `getBasename`, `isElectron` from ./utils/platform
   - All page components (lazy loaded)
 - **Exports**: `App` component
 - **Used by**: main.jsx
-- **Routes**: /, /login, /dashboard/*, /tasks/*, /projects/*, /teams/*, /users/*, /kanban_columns/*
+- **Routes**: /, /login, /dashboard/*, /tasks/*, /projects/*, /teams/*, /users/*
 
 ### State Management (`stores/`)
 
@@ -339,12 +316,14 @@ This section maps every file, its purpose, what it imports, and where it's used.
   - hooks/useTokenMonitor.jsx
 - **Logic**: Decodes JWT, checks expiry timestamp
 
-#### `utils/platform.js` - Platform Detection
-- **Purpose**: Detect Electron vs Web environment
-- **Imports**: None
-- **Exports**: `isElectron`, `getBasename`
-- **Used by**: App.jsx
-- **Logic**: Checks for window.electronAPI, determines router type and basename
+#### `utils/redirectToLogin.js` - Login redirect helper
+- **Purpose**: Build the login URL with Vite's `import.meta.env.BASE_URL` so 401 redirects respect the `/eStockCRM/` base.
+- **Exports**: `getLoginUrl()`, `redirectToLogin()`
+- **Used by**: `utils/axiosConfig.js`, `hooks/useApi.js`, `api/axios.js`
+
+#### `utils/authRedirectGuard.js` - Skip auto-logout for auth endpoints
+- **Purpose**: Tells the 401 interceptors to NOT logout + redirect when the failing request is `/api/auth/loginUser` / `logoutUser` / `hashPassword`. Lets bad-credentials toasts surface.
+- **Exports**: `shouldSkipAuthRedirect(url)`
 
 ### Pages (`pages/`)
 
@@ -641,7 +620,3 @@ This section maps every file, its purpose, what it imports, and where it's used.
 → `components/RootLayout.jsx` - Layout wrapper
 → `stores/useAuthStore.js` - Menu permissions
 
-### "I want to handle platform differences (Web vs Electron)"
-→ `utils/platform.js` - Platform detection
-→ `App.jsx` - Router selection based on platform
-→ `vite.config.js` - Build configuration

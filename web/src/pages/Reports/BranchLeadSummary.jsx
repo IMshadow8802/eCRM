@@ -64,7 +64,12 @@ const BranchLeadSummary = () => {
   );
 
   return (
-    <Box display="flex" flexDirection="column" flexGrow={1}>
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        flexGrow: 1
+      }}>
       <PageHeader title="LEAD SUMMARY BRANCH-WISE REPORT" actions={dateFilterActions} />
       <Helmet>
         <title>PRD Infotech | Lead Summary Branch-wise Report</title>

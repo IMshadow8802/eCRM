@@ -263,7 +263,12 @@ const Teams = () => {
   };
 
   return (
-    <Box display="flex" flexDirection="column" flexGrow={1}>
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        flexGrow: 1
+      }}>
       <PageHeader
         title="Teams"
         subtitle="Group people into teams for project and task ownership."
@@ -271,11 +276,9 @@ const Teams = () => {
       <Helmet>
         <title>PRD Infotech | Teams</title>
       </Helmet>
-
       <Box sx={{ mt: 2, width: "100%", overflowX: "auto" }}>
         <MaterialReactTable table={table} />
       </Box>
-
       {/* Team creation/edit modal */}
       <TeamForm
         open={isModalOpen}
@@ -284,7 +287,6 @@ const Teams = () => {
         users={users}
         onTeamSaved={() => {/* React Query will auto-invalidate */}}
       />
-
       {/* Confirmation Dialog */}
       <ConfirmationDialog
         open={confirmation.isOpen}

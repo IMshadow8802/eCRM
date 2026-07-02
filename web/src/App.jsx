@@ -92,7 +92,7 @@ const App = () => {
               tokenWarningMinutes: 5,
               autoLogout: true,
               showNetworkNotifications: true,
-              debug: process.env.NODE_ENV === "development",
+              debug: false, // flip to true to log token/network state each tick
             }}
           >
             <RootLayout>

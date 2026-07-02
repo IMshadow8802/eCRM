@@ -73,7 +73,6 @@ export default function Login() {
       <Helmet>
         <title>CRM — Sign in</title>
       </Helmet>
-
       <Box
         sx={{
           minHeight: "100vh",
@@ -99,7 +98,9 @@ export default function Login() {
         >
           <Stack spacing={3}>
             {/* Brand mark */}
-            <Stack direction="row" alignItems="center" spacing={1.25}>
+            <Stack direction="row" spacing={1.25} sx={{
+              alignItems: "center"
+            }}>
               <Box
                 sx={{
                   width: 32,
@@ -185,11 +186,12 @@ export default function Login() {
 
                 <Stack
                   direction="row"
-                  alignItems="center"
-                  justifyContent="space-between"
                   spacing={2}
-                  sx={{ mt: 0.5 }}
-                >
+                  sx={{
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    mt: 0.5
+                  }}>
                   <Checkbox
                     label="Remember me"
                     checked={remember}
@@ -229,7 +231,6 @@ export default function Login() {
           </Stack>
         </Paper>
       </Box>
-
       <Typography
         component="div"
         sx={{

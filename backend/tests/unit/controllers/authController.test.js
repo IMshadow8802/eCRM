@@ -92,7 +92,7 @@ describe("authController.login response shape", () => {
     expect(payload.data.company).not.toHaveProperty("compId");
   });
 
-  it("rejects invalid password with 401", async () => {
+  it("rejects wrong password with 401 + WRONG_PASSWORD code (distinct from missing-user)", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [
         [
@@ -115,7 +115,63 @@ describe("authController.login response shape", () => {
     );
 
     expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.json.mock.calls[0][0].code).toBe("INVALID_CREDENTIALS");
+    const payload = res.json.mock.calls[0][0];
+    expect(payload.code).toBe("WRONG_PASSWORD");
+    expect(payload.message).toBe("Incorrect password");
+  });
+
+  it("returns 404 + USER_NOT_FOUND when sp_ValidateUser reports the username does not exist", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [
+        [
+          {
+            ResponseCode: 404,
+            ResponseMess: "Username does not exist",
+          },
+        ],
+        [],
+      ],
+    });
+
+    const res = mockRes();
+    await authController.login(
+      { body: { username: "ghost", password: "anything" } },
+      res,
+    );
+
+    expect(res.status).toHaveBeenCalledWith(404);
+    const payload = res.json.mock.calls[0][0];
+    expect(payload.code).toBe("USER_NOT_FOUND");
+    expect(payload.message).toBe("Username does not exist");
+    expect(payload.success).toBe(false);
+    // bcrypt must NOT run when the user does not exist.
+    expect(comparePassword).not.toHaveBeenCalled();
+  });
+
+  it("returns 403 + USER_INACTIVE when sp_ValidateUser reports the account is disabled", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [
+        [
+          {
+            ResponseCode: 403,
+            ResponseMess: "Account is inactive",
+          },
+        ],
+        [],
+      ],
+    });
+
+    const res = mockRes();
+    await authController.login(
+      { body: { username: "disabled", password: "anything" } },
+      res,
+    );
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    const payload = res.json.mock.calls[0][0];
+    expect(payload.code).toBe("USER_INACTIVE");
+    expect(payload.message).toBe("Account is inactive");
+    expect(comparePassword).not.toHaveBeenCalled();
   });
 
   it("rejects missing credentials with 400", async () => {

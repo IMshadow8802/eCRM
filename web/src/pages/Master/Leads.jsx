@@ -268,7 +268,12 @@ const Leads = () => {
   };
 
   return (
-    <Box display="flex" flexDirection="column" flexGrow={1}>
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        flexGrow: 1
+      }}>
       <PageHeader
         title="Leads"
         subtitle="Prospective customers moving through your pipeline."
@@ -276,11 +281,9 @@ const Leads = () => {
       <Helmet>
         <title>PRD Infotech | Leads</title>
       </Helmet>
-
       <Box sx={{ mt: 2, width: "100%", overflowX: "auto" }}>
         <MaterialReactTable table={table} />
       </Box>
-
       {/* Lead creation/edit modal */}
       <LeadsForm
         open={isModalOpen}
@@ -290,7 +293,6 @@ const Leads = () => {
           refetch(); // Refresh table data
         }}
       />
-
       {/* Confirmation Dialog */}
       <ConfirmationDialog
         open={confirmation.isOpen}

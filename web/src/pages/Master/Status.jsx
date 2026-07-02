@@ -101,7 +101,12 @@ const Status = () => {
   };
 
   return (
-    <Box display="flex" flexDirection="column" flexGrow={1}>
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        flexGrow: 1
+      }}>
       <PageHeader title="Status" subtitle="Pipeline statuses available across the workspace." />
       <Helmet>
         <title>PRD Infotech | Status</title>

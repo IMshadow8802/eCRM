@@ -230,7 +230,12 @@ const FollowUps = () => {
   };
 
   return (
-    <Box display="flex" flexDirection="column" flexGrow={1}>
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        flexGrow: 1
+      }}>
       <PageHeader
         title="Follow-ups"
         subtitle="Scheduled touchpoints with leads and prospects."
@@ -238,18 +243,15 @@ const FollowUps = () => {
       <Helmet>
         <title>PRD Infotech | Follow-Ups</title>
       </Helmet>
-
       <Box sx={{ mt: 2, width: "100%", overflowX: "auto" }}>
         <MaterialReactTable table={table} />
       </Box>
-
       <FollowUpForm
         open={isModalOpen}
         onClose={closeModal}
         editingFollowUp={editingFollowUp}
         onFollowUpSaved={() => refetch()}
       />
-
       <ConfirmationDialog
         open={confirmation.isOpen}
         onClose={confirmation.hideConfirmation}

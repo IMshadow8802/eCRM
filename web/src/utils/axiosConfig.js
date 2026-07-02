@@ -1,5 +1,7 @@
 import axios from 'axios';
 import { isTokenExpired, isTokenExpiringSoon } from './tokenUtils';
+import { redirectToLogin } from './redirectToLogin';
+import { shouldSkipAuthRedirect } from './authRedirectGuard';
 import useAuthStore from '../stores/useAuthStore';
 import { enqueueSnackbar } from 'notistack';
 
@@ -35,7 +37,7 @@ const createAxiosInstance = () => {
           });
           
           // Redirect to login page
-          window.location.href = '/login';
+          redirectToLogin();
           return Promise.reject(new Error('Token expired'));
         }
 
@@ -67,17 +69,17 @@ const createAxiosInstance = () => {
     (error) => {
       const { logout } = useAuthStore.getState();
       
-      // Handle 401 Unauthorized responses
-      if (error.response?.status === 401) {
+      // Handle 401 Unauthorized responses (skip for auth endpoints — bad-creds
+      // 401 must surface to the caller, not trigger logout/redirect loop).
+      if (error.response?.status === 401 && !shouldSkipAuthRedirect(error.config?.url)) {
         console.warn('Received 401 Unauthorized, logging out...');
         logout();
-        enqueueSnackbar('Session expired. Please login again.', { 
+        enqueueSnackbar('Session expired. Please login again.', {
           variant: 'error',
-          autoHideDuration: 3000 
+          autoHideDuration: 3000
         });
-        
-        // Redirect to login page
-        window.location.href = '/login';
+
+        redirectToLogin();
         return Promise.reject(new Error('Authentication failed'));
       }
 

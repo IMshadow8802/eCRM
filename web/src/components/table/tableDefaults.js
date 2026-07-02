@@ -40,11 +40,17 @@ export const tableDefaults = {
 
   muiTablePaperProps: {
     elevation: 0,
+    // Kill MRT's internal `lighten(background.default, 0.05)` which in dark
+    // mode synthesizes a blue-biased navy that clashes with the rest of the
+    // page. Force the page background so the table Paper blends into the
+    // content area.
     sx: {
       borderRadius: 2,
       border: "1px solid",
       borderColor: "divider",
       overflow: "hidden",
+      backgroundColor: "background.default",
+      backgroundImage: "none",
     },
   },
 
@@ -100,7 +106,7 @@ export const tableDefaults = {
 
   muiTopToolbarProps: {
     sx: {
-      backgroundColor: "background.paper",
+      backgroundColor: "background.default",
       borderBottom: "1px solid",
       borderColor: "divider",
     },
@@ -108,7 +114,7 @@ export const tableDefaults = {
 
   muiBottomToolbarProps: {
     sx: {
-      backgroundColor: "background.paper",
+      backgroundColor: "background.default",
       borderTop: "1px solid",
       borderColor: "divider",
     },

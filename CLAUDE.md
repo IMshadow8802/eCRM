@@ -5,38 +5,38 @@ File guide Claude Code (claude.ai/code) work code here.
 ## Repository Overview
 
 **Multi-platform CRM system**, three apps:
-- **Web Application** - React/Vite app, web or Electron desktop
+- **Web Application** - React/Vite SPA, deployed under `/eStockCRM/`
 - **Backend API** - Node.js/Express REST API + SQL Server
 - **Mobile Application** - React Native/Expo mobile
 
-Three apps share same backend API + auth. Unified CRM across platforms.
+Three apps share same backend API + auth. Web + mobile only — no desktop/Electron build.
 
 ## Quick Start Commands
 
 ### Web Application (in `web/` directory)
 ```bash
-npm run dev                 # Development server on port 8080
-npm run build:web           # Build for web deployment
-npm run build:electron      # Build for Electron desktop app
-npm run electron:dev        # Run Electron in development mode
-npm run dist:win-all        # Create Windows installers
-npm run dist:mac            # Create macOS DMG
+pnpm dev                    # Development server on port 8080
+pnpm build                  # Build for web deployment (dist-web/)
+pnpm test                   # Vitest (watch)
+pnpm test -- --run --coverage   # Single-shot run with coverage
 ```
 
 ### Backend API (in `backend/` directory)
 ```bash
-npm run dev                 # Development server with nodemon
-npm run prod                # Production server
-npm run pm2:start           # Start with PM2 cluster mode
-npm run pm2:logs            # View PM2 logs
+pnpm dev                    # Development server with nodemon
+pnpm prod                   # Production server
+pnpm pm2:start              # Start with PM2 cluster mode
+pnpm pm2:logs               # View PM2 logs
 ```
 
 ### Mobile Application (in `mobile/` directory)
 ```bash
-npm start                   # Start Expo development server
-npm run android             # Run on Android device/emulator
-npm run ios                 # Run on iOS device/simulator
+pnpm start                  # Start Expo development server
+pnpm android                # Run on Android device/emulator
+pnpm ios                    # Run on iOS device/simulator
 ```
+
+(Always pnpm — npm corrupts the lockfile.)
 
 ## System Architecture
 
@@ -54,7 +54,7 @@ Web App ────┘
 - **Backend**: Express.js, SQL Server (mssql)
 - **Authentication**: JWT tokens + role-based access
 - **Database**: SQL Server + stored procedures
-- **Build Tools**: Vite (web), Expo (mobile), Electron Builder (desktop)
+- **Build Tools**: Vite (web), Expo (mobile)
 
 ## Cross-Platform Development Patterns
 
@@ -203,11 +203,10 @@ src/
 
 ### Platform-Specific Considerations
 
-**Web/Electron**:
-- Use `isElectron()` from `utils/platform.js` for platform detection
-- HashRouter for Electron (file:// protocol), BrowserRouter for web
-- Conditional rendering platform-specific features
-- Build with `BUILD_TARGET` env var
+**Web**:
+- `BrowserRouter` with `basename="/eStockCRM/"`
+- 401 redirects go via `utils/redirectToLogin.js` (uses `import.meta.env.BASE_URL`)
+- Auth-endpoint 401s skipped via `utils/authRedirectGuard.js` so login error toasts surface
 
 **Mobile**:
 - Use React Native APIs (no DOM access)
@@ -249,9 +248,10 @@ DB_PASSWORD=***
 BASE_URL=http://localhost:5001
 ```
 
-### Web (Vite environment variables)
-- `BUILD_TARGET=web|electron` - Determines build config
-- Base URL hardcoded in auth store: `https://prdinfotech.in/CRM`
+### Web (Vite environment)
+- Base path `/eStockCRM/` via `vite.config.js#base` and `BrowserRouter#basename`
+- Dev proxies `/api/*` → `http://localhost:5001`
+- Auth-store API base URL in prod: `https://prdinfotech.in/CRM`
 
 ### Mobile (Expo configuration)
 - API base URL in services layer
@@ -320,7 +320,6 @@ const useStore = create(
 
 ### Web
 - Web build: Deploy to `/eStockCRM/` path + static files
-- Electron: Windows (NSIS/Portable), macOS (DMG) via electron-builder
 
 ### Mobile
 - Build via EAS Build service
@@ -352,7 +351,7 @@ Navigate between app-specific docs + find right files for common tasks.
 
 **Each app has CLAUDE.md: full file trees, import/export, quick nav:**
 
-#### `web/CLAUDE.md` - Web/Electron Application Guide
+#### `web/CLAUDE.md` - Web Application Guide
 - **When to use**: Frontend UI changes, routing, state, web-specific
 - **Contains**: File tree 50+ components, imports/exports, relationships
 - **Key sections**: State (Zustand), API hooks (useApiQuery), form components, charts

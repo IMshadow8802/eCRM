@@ -271,13 +271,12 @@ const TopNav = ({ onOpenMobileSidebar }) => {
             <Stack
               direction="row"
               spacing={1.5}
-              alignItems="center"
               sx={{
+                alignItems: "center",
                 pb: 1.5,
                 borderBottom: "1px solid",
-                borderColor: "divider",
-              }}
-            >
+                borderColor: "divider"
+              }}>
               <Avatar
                 src={Profile}
                 alt={displayName}
@@ -316,7 +315,9 @@ const TopNav = ({ onOpenMobileSidebar }) => {
               </Box>
             </Stack>
             <Stack spacing={0.75} sx={{ py: 1.5, fontSize: "0.8667rem" }}>
-              <Stack direction="row" justifyContent="space-between">
+              <Stack direction="row" sx={{
+                justifyContent: "space-between"
+              }}>
                 <Typography
                   sx={{ fontSize: "inherit", color: "text.secondary" }}
                 >
@@ -326,7 +327,9 @@ const TopNav = ({ onOpenMobileSidebar }) => {
                   #{getUserId(currentUser) ?? "N/A"}
                 </Typography>
               </Stack>
-              <Stack direction="row" justifyContent="space-between">
+              <Stack direction="row" sx={{
+                justifyContent: "space-between"
+              }}>
                 <Typography
                   sx={{ fontSize: "inherit", color: "text.secondary" }}
                 >

@@ -291,7 +291,12 @@ const Projects = () => {
   };
 
   return (
-    <Box display="flex" flexDirection="column" flexGrow={1}>
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        flexGrow: 1
+      }}>
       <PageHeader
         title="Projects"
         subtitle="Track delivery, budget, and team assignments per project."
@@ -299,11 +304,9 @@ const Projects = () => {
       <Helmet>
         <title>PRD Infotech | Projects</title>
       </Helmet>
-
       <Box sx={{ mt: 2, width: "100%", overflowX: "auto" }}>
         <MaterialReactTable table={table} />
       </Box>
-
       {/* Project creation/edit modal */}
       <ProjectForm
         open={isModalOpen}
@@ -315,7 +318,6 @@ const Projects = () => {
           /* React Query will auto-invalidate */
         }}
       />
-
       {/* Confirmation Dialog */}
       <ConfirmationDialog
         open={confirmation.isOpen}

@@ -1,6 +1,8 @@
 // src/api/axios.js
 import axios from "axios";
 import useAuthStore from "../stores/useAuthStore";
+import { redirectToLogin } from "../utils/redirectToLogin";
+import { shouldSkipAuthRedirect } from "../utils/authRedirectGuard";
 
 const resolveBaseURL = () =>
   import.meta.env.DEV ? "" : useAuthStore.getState().API_BASE_URL;
@@ -24,10 +26,13 @@ const createAxiosInstance = () => {
     (response) => response,
     (error) => {
       // Handle common errors here (401, 403, 500, etc.)
-      if (error.response && error.response.status === 401) {
-        // Handle unauthorized - could redirect to login
+      if (
+        error.response &&
+        error.response.status === 401 &&
+        !shouldSkipAuthRedirect(error.config?.url)
+      ) {
         useAuthStore.getState().logout();
-        window.location.href = "/login";
+        redirectToLogin();
       }
       return Promise.reject(error);
     }

@@ -90,29 +90,32 @@ const MasterChipGrid = ({
       <Stack
         direction={{ xs: "column", sm: "row" }}
         spacing={1.5}
-        alignItems={{ xs: "stretch", sm: "center" }}
-        justifyContent="space-between"
         sx={{
+          alignItems: { xs: "stretch", sm: "center" },
+          justifyContent: "space-between",
           p: 1.5,
           borderRadius: 2,
           backgroundColor: "background.paper",
           border: "1px solid",
-          borderColor: "divider",
-        }}
-      >
-        <Stack direction="row" spacing={1.5} alignItems="center">
+          borderColor: "divider"
+        }}>
+        <Stack direction="row" spacing={1.5} sx={{
+          alignItems: "center"
+        }}>
           <TextField
             size="small"
             placeholder="Search…"
             value={search}
             onChange={(e) => onSearchChange?.(e.target.value)}
             data-testid="master-grid-search"
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchRounded fontSize="small" />
-                </InputAdornment>
-              ),
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchRounded fontSize="small" />
+                  </InputAdornment>
+                ),
+              },
             }}
             sx={{ minWidth: 260 }}
           />
@@ -150,7 +153,6 @@ const MasterChipGrid = ({
           </IconButton>
         </Tooltip>
       </Stack>
-
       {/* Grid */}
       {isLoading ? (
         <Box
@@ -216,7 +218,9 @@ const MasterChipGrid = ({
                   onClick={() => onEdit?.(item)}
                   sx={{ p: 1.5, borderRadius: 2 }}
                 >
-                  <Stack direction="row" spacing={1.25} alignItems="center">
+                  <Stack direction="row" spacing={1.25} sx={{
+                    alignItems: "center"
+                  }}>
                     <Box
                       sx={{
                         width: 40,

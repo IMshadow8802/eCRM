@@ -63,7 +63,12 @@ const UserFollowups = () => {
   );
 
   return (
-    <Box display="flex" flexDirection="column" flexGrow={1}>
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        flexGrow: 1
+      }}>
       <PageHeader title="FOLLOWUPS USER-WISE REPORT" actions={dateFilterActions} />
       <Helmet>
         <title>PRD Infotech | Followups User-wise Report</title>

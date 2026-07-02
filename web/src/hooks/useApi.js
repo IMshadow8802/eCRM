@@ -2,6 +2,8 @@
 import { useMemo } from "react";
 import axios from "axios";
 import useAuthStore from "../stores/useAuthStore";
+import { redirectToLogin } from "../utils/redirectToLogin";
+import { shouldSkipAuthRedirect } from "../utils/authRedirectGuard";
 
 const useApi = () => {
   const { API_BASE_URL, token, logout } = useAuthStore();
@@ -45,15 +47,10 @@ const useApi = () => {
     client.interceptors.response.use(
       (response) => response,
       (error) => {
-        if (error.response?.status === 401) {
-          // Token expired or invalid
+        if (error.response?.status === 401 && !shouldSkipAuthRedirect(error.config?.url)) {
           console.warn('API returned 401 - token expired or invalid');
           logout();
-          
-          // Use navigate if available, otherwise fallback to window.location
-          if (typeof window !== 'undefined') {
-            window.location.href = "/login";
-          }
+          redirectToLogin();
         }
         return Promise.reject(error);
       }

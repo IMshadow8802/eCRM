@@ -104,7 +104,12 @@ const LeadSource = () => {
   };
 
   return (
-    <Box display="flex" flexDirection="column" flexGrow={1}>
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        flexGrow: 1
+      }}>
       <PageHeader title="Lead Sources" subtitle="Channels where your leads originate." />
       <Helmet>
         <title>PRD Infotech | Lead Sources</title>

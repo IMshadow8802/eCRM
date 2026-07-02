@@ -73,8 +73,8 @@ class AuthController {
         if (!isPasswordValid) {
           return res.status(401).json({
             success: false,
-            message: "Invalid username/password or user is inactive",
-            code: "INVALID_CREDENTIALS",
+            message: "Incorrect password",
+            code: "WRONG_PASSWORD",
             responseCode: 401,
             timestamp: new Date().toISOString(),
           });
@@ -144,10 +144,14 @@ class AuthController {
           timestamp: new Date().toISOString(),
         });
       } else {
+        const codeByResponse = {
+          404: "USER_NOT_FOUND",
+          403: "USER_INACTIVE",
+        };
         return res.status(spResponse.ResponseCode).json({
           success: false,
           message: spResponse.ResponseMess,
-          code: "INVALID_CREDENTIALS",
+          code: codeByResponse[spResponse.ResponseCode] || "INVALID_CREDENTIALS",
           responseCode: spResponse.ResponseCode,
           timestamp: new Date().toISOString(),
         });

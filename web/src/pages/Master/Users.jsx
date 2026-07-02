@@ -223,7 +223,12 @@ const Users = () => {
   };
 
   return (
-    <Box display="flex" flexDirection="column" flexGrow={1}>
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        flexGrow: 1
+      }}>
       <PageHeader
         title="Users"
         subtitle="Manage accounts, roles, and access for your organization."
@@ -231,11 +236,9 @@ const Users = () => {
       <Helmet>
         <title>PRD Infotech | Users</title>
       </Helmet>
-
       <Box sx={{ mt: 2, width: "100%", overflowX: "auto" }}>
         <MaterialReactTable table={table} />
       </Box>
-
       <UserForm
         open={isModalOpen}
         onClose={closeModal}
@@ -243,7 +246,6 @@ const Users = () => {
         userGroups={userGroups}
         onUserSaved={refetchUsers}
       />
-
       <ConfirmationDialog
         open={confirmation.isOpen}
         onClose={confirmation.hideConfirmation}

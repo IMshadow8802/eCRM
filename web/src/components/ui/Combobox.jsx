@@ -84,7 +84,6 @@ const Combobox = forwardRef(function Combobox(
           )}
         </label>
       )}
-
       <Autocomplete
         id={id}
         ref={ref}
@@ -104,21 +103,24 @@ const Combobox = forwardRef(function Combobox(
         noOptionsText={noOptionsText}
         popupIcon={<ChevronDown size={16} />}
         data-testid={testId}
-        renderTags={(selected, getTagProps) =>
-          selected.map((opt, index) => (
-            <Chip
-              {...getTagProps({ index })}
-              key={typeof opt === "string" ? opt : opt?.value ?? index}
-              label={getOptionLabel(opt)}
-              size="small"
-              sx={{
-                borderRadius: theme.radii.full,
-                backgroundColor: p.primary.subtle,
-                color: p.primary.main,
-                fontWeight: 600,
-              }}
-            />
-          ))
+        renderValue={
+          multiple
+            ? (selected, getItemProps) =>
+                selected.map((opt, index) => (
+                  <Chip
+                    {...getItemProps({ index })}
+                    key={typeof opt === "string" ? opt : opt?.value ?? index}
+                    label={getOptionLabel(opt)}
+                    size="small"
+                    sx={{
+                      borderRadius: theme.radii.full,
+                      backgroundColor: p.primary.subtle,
+                      color: p.primary.main,
+                      fontWeight: 600,
+                    }}
+                  />
+                ))
+            : undefined
         }
         renderInput={(params) => (
           <TextFieldMui
@@ -127,35 +129,38 @@ const Combobox = forwardRef(function Combobox(
             placeholder={placeholder}
             aria-invalid={hasError || undefined}
             aria-describedby={helperId}
-            InputProps={{
-              ...params.InputProps,
-              inputProps: {
-                ...params.inputProps,
+            slotProps={{
+              ...params.slotProps,
+              htmlInput: {
+                ...params.slotProps?.htmlInput,
                 "data-testid": testId ? `${testId}-input` : undefined,
               },
-              sx: {
-                borderRadius: `${theme.radii.md}px`,
-                backgroundColor: p.surface.card,
-                minHeight: inputHeight,
-                paddingY: 0,
-                "& .MuiAutocomplete-input": {
-                  paddingY: "0 !important",
-                  height: inputHeight - 2,
-                  boxSizing: "border-box",
-                  fontSize: 14,
-                  fontWeight: 500,
-                },
-                "& fieldset": { borderColor: p.border.default },
-                "&:hover fieldset": { borderColor: p.border.strong },
-                "&.Mui-focused fieldset": {
-                  borderColor: hasError ? p.error.main : p.border.focus,
-                  borderWidth: 1.5,
-                },
-                transition: "box-shadow 240ms cubic-bezier(0.4,0,0.2,1)",
-                "&.Mui-focused": {
-                  boxShadow: hasError
-                    ? `0 0 0 3px ${p.error.subtle}`
-                    : `0 0 0 3px ${p.primary.subtle}`,
+              input: {
+                ...params.slotProps?.input,
+                sx: {
+                  borderRadius: `${theme.radii.md}px`,
+                  backgroundColor: p.surface.card,
+                  minHeight: inputHeight,
+                  paddingY: 0,
+                  "& .MuiAutocomplete-input": {
+                    paddingY: "0 !important",
+                    height: inputHeight - 2,
+                    boxSizing: "border-box",
+                    fontSize: 14,
+                    fontWeight: 500,
+                  },
+                  "& fieldset": { borderColor: p.border.default },
+                  "&:hover fieldset": { borderColor: p.border.strong },
+                  "&.Mui-focused fieldset": {
+                    borderColor: hasError ? p.error.main : p.border.focus,
+                    borderWidth: 1.5,
+                  },
+                  transition: "box-shadow 240ms cubic-bezier(0.4,0,0.2,1)",
+                  "&.Mui-focused": {
+                    boxShadow: hasError
+                      ? `0 0 0 3px ${p.error.subtle}`
+                      : `0 0 0 3px ${p.primary.subtle}`,
+                  },
                 },
               },
             }}
@@ -178,7 +183,6 @@ const Combobox = forwardRef(function Combobox(
         }}
         {...rest}
       />
-
       {(hint || error) && (
         <span
           id={helperId}

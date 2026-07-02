@@ -50,7 +50,10 @@ function ThemedApp() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(
+const container = document.getElementById("root");
+// Reuse the root across HMR reloads — createRoot() twice on the same node errors.
+const root = (container._reactRoot ??= ReactDOM.createRoot(container));
+root.render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <ThemedApp />
