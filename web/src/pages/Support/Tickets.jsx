@@ -172,10 +172,10 @@ const Tickets = () => {
       <Helmet>
         <title>PRD Infotech | Tickets</title>
       </Helmet>
-      <Box sx={{ display: "flex", gap: 2, my: 2, flexWrap: "wrap" }}>
-        <Box sx={{ width: 180 }}>
+      <Box sx={{ display: "flex", gap: 1, mt: 1, mb: 0.5, flexWrap: "wrap" }}>
+        <Box sx={{ width: 160 }}>
           <Combobox
-            label="Stage"
+            size="sm"
             placeholder="All stages"
             options={stageOpts}
             value={optById(stageOpts, filters.StageId)}
@@ -183,9 +183,9 @@ const Tickets = () => {
             data-testid="filter-stage"
           />
         </Box>
-        <Box sx={{ width: 180 }}>
+        <Box sx={{ width: 160 }}>
           <Combobox
-            label="Priority"
+            size="sm"
             placeholder="All priorities"
             options={priorityOpts}
             value={optById(priorityOpts, filters.Priority)}
@@ -193,9 +193,9 @@ const Tickets = () => {
             data-testid="filter-priority"
           />
         </Box>
-        <Box sx={{ width: 180 }}>
+        <Box sx={{ width: 160 }}>
           <Combobox
-            label="Category"
+            size="sm"
             placeholder="All categories"
             options={categoryOpts}
             value={optById(categoryOpts, filters.CategoryId)}
@@ -203,9 +203,9 @@ const Tickets = () => {
             data-testid="filter-category"
           />
         </Box>
-        <Box sx={{ width: 200 }}>
+        <Box sx={{ width: 180 }}>
           <Combobox
-            label="Assignee"
+            size="sm"
             placeholder="All assignees"
             options={assigneeOpts}
             value={optById(assigneeOpts, filters.AssignedTo)}
@@ -213,9 +213,9 @@ const Tickets = () => {
             data-testid="filter-assignee"
           />
         </Box>
-        <Box sx={{ width: 180 }}>
+        <Box sx={{ width: 160 }}>
           <Combobox
-            label="SLA"
+            size="sm"
             placeholder="All tickets"
             options={breachedOpts}
             value={filters.BreachedOnly ? breachedOpts[0] : null}

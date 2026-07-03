@@ -142,10 +142,10 @@ const Leads = () => {
       <Helmet>
         <title>PRD Infotech | Leads</title>
       </Helmet>
-      <Box sx={{ display: "flex", gap: 2, my: 2, flexWrap: "wrap" }}>
-        <Box sx={{ width: 180 }}>
+      <Box sx={{ display: "flex", gap: 1, mt: 1, mb: 0.5, flexWrap: "wrap" }}>
+        <Box sx={{ width: 170 }}>
           <Combobox
-            label="Stage"
+            size="sm"
             placeholder="All stages"
             options={stageOpts}
             value={optById(stageOpts, filters.StageId)}
@@ -153,9 +153,9 @@ const Leads = () => {
             data-testid="filter-stage"
           />
         </Box>
-        <Box sx={{ width: 200 }}>
+        <Box sx={{ width: 180 }}>
           <Combobox
-            label="Owner"
+            size="sm"
             placeholder="All owners"
             options={ownerOpts}
             value={optById(ownerOpts, filters.OwnerId)}
@@ -163,9 +163,9 @@ const Leads = () => {
             data-testid="filter-owner"
           />
         </Box>
-        <Box sx={{ width: 200 }}>
+        <Box sx={{ width: 180 }}>
           <Combobox
-            label="Source"
+            size="sm"
             placeholder="All sources"
             options={sourceOpts}
             value={optById(sourceOpts, filters.SourceId)}
