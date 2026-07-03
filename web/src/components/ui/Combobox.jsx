@@ -57,6 +57,7 @@ const Combobox = forwardRef(function Combobox(
   const helperId = hint || error ? `${id}-help` : undefined;
 
   const inputHeight = HEIGHT[size] ?? HEIGHT.md;
+  const inputFontSize = size === "sm" ? 13 : size === "lg" ? 15 : 14;
 
   return (
     <div
@@ -140,13 +141,21 @@ const Combobox = forwardRef(function Combobox(
                 sx: {
                   borderRadius: `${theme.radii.md}px`,
                   backgroundColor: p.surface.card,
+                  // Fixed height (not just minHeight) so a single-value
+                  // Autocomplete matches TextInput/DateField exactly instead of
+                  // growing taller from the inputRoot's default vertical padding.
                   minHeight: inputHeight,
-                  paddingY: 0,
+                  height: inputHeight,
+                  paddingTop: 0,
+                  paddingBottom: 0,
+                  alignItems: "center",
+                  flexWrap: "nowrap",
                   "& .MuiAutocomplete-input": {
-                    paddingY: "0 !important",
+                    paddingTop: "0 !important",
+                    paddingBottom: "0 !important",
                     height: inputHeight - 2,
                     boxSizing: "border-box",
-                    fontSize: 14,
+                    fontSize: multiple ? 14 : inputFontSize,
                     fontWeight: 500,
                   },
                   "& fieldset": { borderColor: p.border.default },
