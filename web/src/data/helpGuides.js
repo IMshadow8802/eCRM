@@ -4,26 +4,87 @@ export const HELP_GUIDES = {
   tasks: {
     titleHi: "टास्क कैसे इस्तेमाल करें",
     titleEn: "How to use Tasks",
-    steps: [
+    sections: [
       {
-        hi: "किसी भी कॉलम (To Do, In Progress, Done) में 'Add task' पर क्लिक करके नया टास्क बनाएं।",
-        en: "Click 'Add task' in any column (To Do, In Progress, Done) to create a task.",
+        headingHi: "अपने लिए (Personal board)",
+        headingEn: "For yourself (Personal board)",
+        steps: [
+          {
+            hi: "अपना Personal workspace इस्तेमाल करें (ऊपर-बाएं workspace switcher से) — इसे सिर्फ आप देख सकते हैं, admin भी नहीं।",
+            en: "Use your Personal workspace (top-left workspace switcher) — only you can see it, not even an admin.",
+          },
+          {
+            hi: "किसी कॉलम में 'Add task' पर क्लिक करें; personal board के टास्क अपने आप आपको assign हो जाते हैं।",
+            en: "Click 'Add task' in a column; tasks on a personal board are auto-assigned to you.",
+          },
+          {
+            hi: "टास्क के अंदर checklist जोड़ें — सभी आइटम पूरे होने पर टास्क अपने आप complete हो जाता है।",
+            en: "Add a checklist inside a task — it auto-completes when every item is checked.",
+          },
+          {
+            hi: "स्टेटस बदलने के लिए कार्ड को एक कॉलम से दूसरे में खींचें (drag)।",
+            en: "Drag a card between columns to change its status.",
+          },
+        ],
       },
       {
-        hi: "टास्क खोलकर assignee, priority और due date सेट करें, और checklist जोड़ें।",
-        en: "Open a task to set its assignee, priority and due date, and add a checklist.",
+        headingHi: "अपनी टीम के लिए (Shared / Project board)",
+        headingEn: "For your team (Shared / Project board)",
+        steps: [
+          {
+            hi: "Shared workspace बनाकर लोगों को invite करें (उन्हें invite accept करना होगा) — या Project workspace बनाएं जो किसी project की team से members अपने आप ले लेता है।",
+            en: "Create a Shared workspace and invite people (they must accept the invite) — or a Project workspace, which pulls members from a project's team automatically.",
+          },
+          {
+            hi: "shared/project टास्क में 'Assignee' फ़ील्ड से टास्क किसी साथी को दें।",
+            en: "In a shared/project task, use the 'Assignee' field to give it to a teammate.",
+          },
+          {
+            hi: "members जोड़ना/हटाना सिर्फ workspace का Owner ही कर सकता है।",
+            en: "Only the workspace Owner can add or remove members.",
+          },
+        ],
       },
       {
-        hi: "स्टेटस बदलने के लिए टास्क कार्ड को एक कॉलम से दूसरे कॉलम में खींचें (drag)।",
-        en: "Drag a task card from one column to another to change its status.",
+        headingHi: "कौन क्या कर सकता है (Roles)",
+        headingEn: "Who can do what (Roles)",
+        steps: [
+          {
+            hi: "Owner / Manager: उस बोर्ड के किसी भी टास्क पर पूरा नियंत्रण — बनाना, एडिट, reassign, delete।",
+            en: "Owner / Manager: full control over any task on that board — create, edit, reassign, delete.",
+          },
+          {
+            hi: "Member: नए टास्क बना सकते हैं, और सिर्फ अपने बनाए टास्क पूरी तरह एडिट कर सकते हैं; सभी पर comment कर सकते हैं।",
+            en: "Member: can create tasks and fully edit only the tasks they created; can comment on all.",
+          },
+          {
+            hi: "Viewer: सिर्फ देख और comment कर सकते हैं।",
+            en: "Viewer: can only view and comment.",
+          },
+          {
+            hi: "किसी और के टास्क को assign/reassign करने के लिए Owner/Manager होना ज़रूरी है (या उस टास्क का creator होना)।",
+            en: "Assigning/reassigning someone else's task needs Owner/Manager (or being that task's creator).",
+          },
+        ],
       },
       {
-        hi: "जब टास्क के सभी checklist आइटम पूरे हो जाते हैं, तब टास्क अपने आप complete हो जाता है।",
-        en: "A task is marked complete when all its checklist items are checked.",
-      },
-      {
-        hi: "अपने अलग-अलग बोर्ड देखने के लिए ऊपर-बाएं workspace switcher का उपयोग करें।",
-        en: "Use the workspace switcher (top-left) to move between your boards.",
+        adminOnly: true,
+        headingHi: "आप Admin हैं",
+        headingEn: "You are an Admin",
+        steps: [
+          {
+            hi: "आप अपनी company के किसी भी Shared/Project बोर्ड के किसी भी टास्क को — चाहे किसी ने भी बनाया हो — बना, एडिट, reassign, move और delete कर सकते हैं।",
+            en: "You can create, edit, reassign, move and delete ANY task on any Shared/Project board in your company — no matter who created it.",
+          },
+          {
+            hi: "किसी भी टास्क के 'Assignee' फ़ील्ड से उसे किसी भी user को assign करें।",
+            en: "Use the 'Assignee' field on any task to assign it to any user.",
+          },
+          {
+            hi: "फिर भी किसी का Personal workspace आप नहीं देख/छू सकते — वे हमेशा private रहते हैं।",
+            en: "You still cannot see or touch anyone's Personal workspace — those are always private.",
+          },
+        ],
       },
     ],
   },

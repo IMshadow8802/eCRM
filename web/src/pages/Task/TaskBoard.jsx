@@ -281,7 +281,7 @@ export default function TaskBoard() {
         icon={TYPE_ICON[activeType] ?? <CheckSquare size={22} />}
         iconBg={activeColor ?? undefined}
         iconFg="#FFFFFF"
-        actions={<HelpGuide guide={HELP_GUIDES.tasks} />}
+        actions={<HelpGuide guide={HELP_GUIDES.tasks} isAdmin={isAdmin} />}
       />
 
       <div

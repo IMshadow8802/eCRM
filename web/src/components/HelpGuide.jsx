@@ -11,7 +11,7 @@ import { palettes, radii } from "../styles/tokens";
  * Shows Hindi by default with a one-click toggle to English, so anyone can
  * learn how to use the screen. `guide` = { titleHi, titleEn, steps:[{hi,en}] }.
  */
-export default function HelpGuide({ guide, defaultLang = "en" }) {
+export default function HelpGuide({ guide, defaultLang = "en", isAdmin = false }) {
   const [anchor, setAnchor] = useState(null);
   const [lang, setLang] = useState(defaultLang);
   const theme = useTheme();
@@ -20,8 +20,14 @@ export default function HelpGuide({ guide, defaultLang = "en" }) {
 
   if (!guide) return null;
 
+  const t = (o) => (lang === "hi" ? o?.hi : o?.en);
   const title = lang === "hi" ? guide.titleHi : guide.titleEn;
-  const steps = (guide.steps || []).map((s) => (lang === "hi" ? s.hi : s.en));
+  // A guide is either flat `steps` or grouped `sections` (each with an
+  // optional heading and an `adminOnly` flag). Normalize to sections and drop
+  // admin-only sections for non-admins.
+  const sections = (guide.sections ?? [{ steps: guide.steps || [] }]).filter(
+    (s) => !s.adminOnly || isAdmin,
+  );
 
   const langBtn = (code, label) => (
     <button
@@ -101,21 +107,41 @@ export default function HelpGuide({ guide, defaultLang = "en" }) {
             {langBtn("en", "English")}
           </div>
         </div>
-        <ol
-          style={{
-            margin: 0,
-            paddingLeft: 18,
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-          }}
-        >
-          {steps.map((s, i) => (
-            <li key={i} style={{ fontSize: 13, lineHeight: 1.55, color: p.text.secondary }}>
-              {s}
-            </li>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, maxHeight: 440, overflowY: "auto" }}>
+          {sections.map((section, si) => (
+            <div key={si}>
+              {(section.headingHi || section.headingEn) && (
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.04em",
+                    color: section.adminOnly ? p.primary.main : p.text.tertiary,
+                    marginBottom: 6,
+                  }}
+                >
+                  {lang === "hi" ? section.headingHi : section.headingEn}
+                </div>
+              )}
+              <ol
+                style={{
+                  margin: 0,
+                  paddingLeft: 18,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                }}
+              >
+                {(section.steps || []).map((step, i) => (
+                  <li key={i} style={{ fontSize: 13, lineHeight: 1.55, color: p.text.secondary }}>
+                    {t(step)}
+                  </li>
+                ))}
+              </ol>
+            </div>
           ))}
-        </ol>
+        </div>
       </Popover>
     </>
   );

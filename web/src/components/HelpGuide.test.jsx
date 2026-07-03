@@ -49,4 +49,29 @@ describe("HelpGuide", () => {
     await user.click(screen.getByTestId("help-guide-button"));
     expect(await screen.findByText("टास्क कैसे इस्तेमाल करें")).toBeInTheDocument();
   });
+
+  const SECTIONED = {
+    titleHi: "टास्क", titleEn: "Tasks",
+    sections: [
+      { headingEn: "For yourself", headingHi: "अपने लिए", steps: [{ en: "Add a task", hi: "टास्क जोड़ें" }] },
+      { adminOnly: true, headingEn: "You are an Admin", headingHi: "आप Admin हैं", steps: [{ en: "Assign to anyone", hi: "किसी को भी दें" }] },
+    ],
+  };
+
+  it("hides admin-only sections for non-admins", async () => {
+    const user = userEvent.setup();
+    wrap(<HelpGuide guide={SECTIONED} isAdmin={false} />);
+    await user.click(screen.getByTestId("help-guide-button"));
+    expect(await screen.findByText("For yourself")).toBeInTheDocument();
+    expect(screen.queryByText("You are an Admin")).not.toBeInTheDocument();
+    expect(screen.queryByText("Assign to anyone")).not.toBeInTheDocument();
+  });
+
+  it("shows admin-only sections for admins", async () => {
+    const user = userEvent.setup();
+    wrap(<HelpGuide guide={SECTIONED} isAdmin />);
+    await user.click(screen.getByTestId("help-guide-button"));
+    expect(await screen.findByText("You are an Admin")).toBeInTheDocument();
+    expect(screen.getByText("Assign to anyone")).toBeInTheDocument();
+  });
 });
