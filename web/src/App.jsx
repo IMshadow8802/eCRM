@@ -52,9 +52,16 @@ const SLABreach = lazy(() => import("./pages/Reports/SLABreach"));
 const TicketsByCategory = lazy(() => import("./pages/Reports/TicketsByCategory"));
 const ResolutionSummary = lazy(() => import("./pages/Reports/ResolutionSummary"));
 
-const routesConfig = [
+export const routesConfig = [
   { path: "/", element: <Navigate to="/dashboard" replace /> },
   { path: "/login", element: <Login /> },
+  // Section landing redirects — the sidebar parent items (and rail-mode
+  // flyout headers) navigate to the bare section path, which would otherwise
+  // hit the 404 catch-all. Send each to its first child page.
+  { path: "/sales", element: <Navigate to="/sales/pipeline" replace /> },
+  { path: "/support", element: <Navigate to="/support/board" replace /> },
+  { path: "/settings", element: <Navigate to="/settings/custom-fields" replace /> },
+  { path: "/reports", element: <Navigate to="/reports/pipeline-funnel" replace /> },
   { path: "/dashboard/*", element: <ProtectedRoute element={<Dashboard />} /> },
   { path: "/tasks/*", element: <ProtectedRoute element={<Task />} /> },
   { path: "/projects/*", element: <ProtectedRoute element={<Projects />} /> },
