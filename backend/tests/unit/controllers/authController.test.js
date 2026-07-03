@@ -92,6 +92,50 @@ describe("authController.login response shape", () => {
     expect(payload.data.company).not.toHaveProperty("compId");
   });
 
+  it("threads a menu row's Route through to the permissions payload", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [
+        [
+          {
+            ResponseCode: 200,
+            ResponseMess: "Login successful",
+            UserId: 42,
+            UserName: "alice",
+            UserActive: true,
+            Password: "bcrypt-hash",
+            CompId: 1,
+            BranchId: 2,
+          },
+        ],
+        [
+          {
+            MenuId: 30,
+            ParentId: 0,
+            Description: "Support",
+            Route: "/support",
+            CanView: 1,
+          },
+          {
+            MenuId: 31,
+            ParentId: 30,
+            Description: "Ticket Board",
+            Route: "/support/board",
+            CanView: 1,
+          },
+        ],
+      ],
+    });
+    comparePassword.mockResolvedValueOnce(true);
+
+    const res = mockRes();
+    await authController.login({ body: { username: "alice", password: "pw" } }, res);
+
+    const payload = res.json.mock.calls[0][0];
+    const raw = payload.data.permissions.rawPermissions;
+    expect(raw.find((m) => m.menuid === 31).route).toBe("/support/board");
+    expect(raw.find((m) => m.menuid === 30).route).toBe("/support");
+  });
+
   it("rejects wrong password with 401 + WRONG_PASSWORD code (distinct from missing-user)", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [

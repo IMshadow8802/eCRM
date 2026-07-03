@@ -3,6 +3,12 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
+const mockNavigate = vi.fn();
+vi.mock("react-router-dom", async () => {
+  const actual = await vi.importActual("react-router-dom");
+  return { ...actual, useNavigate: () => mockNavigate };
+});
+
 const setMatchMedia = (matchesByQuery) => {
   window.matchMedia = (query) => ({
     matches: !!matchesByQuery[query],
@@ -43,14 +49,26 @@ vi.mock("../stores/useAuthStore", () => {
         description: "Followups User-wise",
         permissions: { canView: true },
       },
+      // DB-driven Sales menu with an explicit nested Route (from tblMenu.Route).
+      {
+        menuid: 20,
+        parentid: 0,
+        description: "Sales",
+        route: "/sales",
+        permissions: { canView: true },
+      },
+      {
+        menuid: 21,
+        parentid: 20,
+        description: "Pipeline",
+        route: "/sales/pipeline",
+        permissions: { canView: true },
+      },
     ],
     setActiveMenuRights: vi.fn(),
-    user: { IsAdmin: true },
   }));
   return { __esModule: true, default: fn };
 });
-
-import useAuthStore from "../stores/useAuthStore";
 
 import Sidebar from "./Sidebar";
 
@@ -75,6 +93,7 @@ const renderSidebar = (overrides = {}) => {
 describe("Sidebar", () => {
   beforeEach(() => {
     setMatchMedia({});
+    mockNavigate.mockClear();
   });
 
   it("renders every top-level menu item", () => {
@@ -84,23 +103,16 @@ describe("Sidebar", () => {
     expect(screen.getByTestId("sidebar-Reports")).toBeInTheDocument();
   });
 
-  it("always renders the static Sales entry", () => {
+  it("renders the DB-driven Sales menu (from menuRights, not hardcoded)", () => {
     renderSidebar();
     expect(screen.getByTestId("sidebar-Sales")).toBeInTheDocument();
   });
 
-  it("shows Settings only to admins", () => {
+  it("navigates to a submenu's DB Route when clicked", () => {
     renderSidebar();
-    expect(screen.getByTestId("sidebar-Settings")).toBeInTheDocument();
-
-    useAuthStore.mockReturnValueOnce({
-      menuRights: [],
-      setActiveMenuRights: vi.fn(),
-      user: { IsAdmin: false },
-    });
-    renderSidebar();
-    // Two renders mounted; the non-admin one must not add a second Settings.
-    expect(screen.getAllByTestId("sidebar-Settings")).toHaveLength(1);
+    fireEvent.click(screen.getByTestId("sidebar-Sales")); // expand parent
+    fireEvent.click(screen.getByTestId("sidebar-Pipeline"));
+    expect(mockNavigate).toHaveBeenCalledWith("/sales/pipeline");
   });
 
   it("shows the collapse toggle on desktop and calls the handler on click", () => {

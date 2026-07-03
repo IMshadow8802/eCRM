@@ -81,6 +81,9 @@ export function buildDynamicMenu(menuRights) {
     (item) => item.parentid !== 0 && item.parentid !== item.menuid
   );
 
+  // A menu row's `route` (from tblMenu.Route) wins when present so nested SPA
+  // routes like /support/board work; legacy rows without a Route fall back to
+  // the title-slug path.
   return parentMenus.map((parent) => {
     const children = childMenus.filter((c) => c.parentid === parent.menuid);
     return {
@@ -88,7 +91,7 @@ export function buildDynamicMenu(menuRights) {
       menuId: parent.menuid,
       icon: getMenuIcon(parent.description),
       permissions: parent.permissions,
-      path: menuPath(parent.description),
+      path: parent.route || menuPath(parent.description),
       submenus:
         children.length > 0
           ? children.map((child) => ({
@@ -96,7 +99,7 @@ export function buildDynamicMenu(menuRights) {
               menuId: child.menuid,
               icon: getMenuIcon(child.description),
               permissions: child.permissions,
-              path: menuPath(child.description),
+              path: child.route || menuPath(child.description),
             }))
           : null,
     };

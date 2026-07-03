@@ -104,4 +104,17 @@ describe("buildDynamicMenu", () => {
     expect(menus).toHaveLength(1);
     expect(menus[0].title).toBe("Self Parent");
   });
+
+  it("uses a row's Route for the path (nested SPA routes) over the title slug", () => {
+    const rights = [
+      { menuid: 20, parentid: 0, description: "Support", route: "/support", permissions: { canView: true } },
+      { menuid: 21, parentid: 20, description: "Ticket Board", route: "/support/board", permissions: { canView: true } },
+      // no route -> falls back to the title slug
+      { menuid: 22, parentid: 20, description: "Tickets", permissions: { canView: true } },
+    ];
+    const support = buildDynamicMenu(rights).find((m) => m.title === "Support");
+    expect(support.path).toBe("/support");
+    expect(support.submenus.find((s) => s.title === "Ticket Board").path).toBe("/support/board");
+    expect(support.submenus.find((s) => s.title === "Tickets").path).toBe("/tickets");
+  });
 });

@@ -22,62 +22,15 @@ import {
 } from "@mui/icons-material";
 
 import useAuthStore from "../stores/useAuthStore";
-import { buildDynamicMenu, getMenuIcon } from "../utils/menuBuilder";
+import { buildDynamicMenu } from "../utils/menuBuilder";
 
 export const SIDEBAR_WIDTH_EXPANDED = 240;
 export const SIDEBAR_WIDTH_RAIL = 68;
 
-// The config-driven Sales module uses nested routes (/sales/*, /settings/*,
-// /reports/*), which the flat title-slug tblMenu convention (menuPath) can't
-// express — so its nav lives here as an explicit static tree rather than
-// through buildDynamicMenu. Settings is company-admin-level (spec §2), gated
-// on user.IsAdmin below. ponytail: unifying with tblMenu means retiring the
-// legacy Master/Leads menu flow too — a separate product-level migration.
-const SALES_MENU = {
-  title: "Sales",
-  menuId: "static-sales",
-  icon: getMenuIcon("Sales"),
-  permissions: null,
-  path: "/sales",
-  submenus: [
-    { title: "Pipeline", menuId: "static-sales-pipeline", icon: getMenuIcon("Pipeline"), permissions: null, path: "/sales/pipeline" },
-    { title: "Leads", menuId: "static-sales-leads", icon: getMenuIcon("Lead"), permissions: null, path: "/sales/leads" },
-    { title: "Funnel Report", menuId: "static-report-funnel", icon: getMenuIcon("Report"), permissions: null, path: "/reports/pipeline-funnel" },
-    { title: "Calls per User", menuId: "static-report-calls", icon: getMenuIcon("Report"), permissions: null, path: "/reports/calls-per-user" },
-    { title: "Conversion by Source", menuId: "static-report-conversion", icon: getMenuIcon("Report"), permissions: null, path: "/reports/conversion-by-source" },
-  ],
-};
-
-const SUPPORT_MENU = {
-  title: "Support",
-  menuId: "static-support",
-  icon: getMenuIcon("Support"),
-  permissions: null,
-  path: "/support",
-  submenus: [
-    { title: "Ticket Board", menuId: "static-support-board", icon: getMenuIcon("Board"), permissions: null, path: "/support/board" },
-    { title: "Tickets", menuId: "static-support-tickets", icon: getMenuIcon("Ticket"), permissions: null, path: "/support/tickets" },
-    { title: "SLA Breach", menuId: "static-report-sla", icon: getMenuIcon("Report"), permissions: null, path: "/reports/sla-breach" },
-    { title: "By Category", menuId: "static-report-category", icon: getMenuIcon("Report"), permissions: null, path: "/reports/tickets-by-category" },
-    { title: "Resolutions", menuId: "static-report-resolution", icon: getMenuIcon("Report"), permissions: null, path: "/reports/resolution-summary" },
-  ],
-};
-
-const SETTINGS_MENU = {
-  title: "Settings",
-  menuId: "static-settings",
-  icon: getMenuIcon("Settings"),
-  permissions: null,
-  path: "/settings",
-  submenus: [
-    { title: "Custom Fields", menuId: "static-settings-fields", icon: getMenuIcon("Setting"), permissions: null, path: "/settings/custom-fields" },
-    { title: "Pipelines", menuId: "static-settings-pipelines", icon: getMenuIcon("Setting"), permissions: null, path: "/settings/pipelines" },
-    { title: "Lookups", menuId: "static-settings-lookups", icon: getMenuIcon("Setting"), permissions: null, path: "/settings/lookups" },
-    { title: "Ticket Categories", menuId: "static-settings-tcat", icon: getMenuIcon("Setting"), permissions: null, path: "/settings/ticket-categories" },
-    { title: "Priorities", menuId: "static-settings-prio", icon: getMenuIcon("Setting"), permissions: null, path: "/settings/priorities" },
-    { title: "SLA Rules", menuId: "static-settings-sla", icon: getMenuIcon("Setting"), permissions: null, path: "/settings/sla" },
-  ],
-};
+// Nav is fully DB-driven: buildDynamicMenu turns the user's tblMenu +
+// tblGroupAccess rows (menuRights) into the tree, using each row's Route
+// (seeded in 036) for nested SPA paths. Visibility/RBAC is the group's
+// CanView grant — Sales/Support to all groups, Settings to admin groups.
 
 /**
  * Left-side primary navigation. Three behaviours:
@@ -93,10 +46,9 @@ const Sidebar = ({ collapsed, onToggleCollapsed, mobileOpen, onMobileClose }) =>
   const theme_isMobile = useMediaQuery("(max-width:767.98px)");
   const navigate = useNavigate();
   const location = useLocation();
-  const { menuRights, setActiveMenuRights, user } = useAuthStore();
+  const { menuRights, setActiveMenuRights } = useAuthStore();
 
-  const staticMenus = [SALES_MENU, SUPPORT_MENU, ...(user?.IsAdmin ? [SETTINGS_MENU] : [])];
-  const menus = [...buildDynamicMenu(menuRights || []), ...staticMenus];
+  const menus = buildDynamicMenu(menuRights || []);
 
   const [expandedParents, setExpandedParents] = useState({});
   const [flyoutAnchor, setFlyoutAnchor] = useState(null);
