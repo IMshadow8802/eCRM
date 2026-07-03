@@ -11,7 +11,7 @@ import { palettes, radii } from "../styles/tokens";
  * Shows Hindi by default with a one-click toggle to English, so anyone can
  * learn how to use the screen. `guide` = { titleHi, titleEn, steps:[{hi,en}] }.
  */
-export default function HelpGuide({ guide, defaultLang = "hi" }) {
+export default function HelpGuide({ guide, defaultLang = "en" }) {
   const [anchor, setAnchor] = useState(null);
   const [lang, setLang] = useState(defaultLang);
   const theme = useTheme();

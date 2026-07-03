@@ -23,30 +23,30 @@ describe("HelpGuide", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("opens the guide in Hindi by default and toggles to English", async () => {
+  it("opens the guide in English by default and toggles to Hindi", async () => {
     const user = userEvent.setup();
     wrap(<HelpGuide guide={GUIDE} />);
 
     await user.click(screen.getByTestId("help-guide-button"));
 
-    // Hindi by default
-    expect(await screen.findByText("टास्क कैसे इस्तेमाल करें")).toBeInTheDocument();
-    expect(screen.getByText("टास्क बनाएं")).toBeInTheDocument();
-
-    // Toggle to English
-    await user.click(screen.getByTestId("help-lang-en"));
-    expect(screen.getByText("How to use Tasks")).toBeInTheDocument();
+    // English by default
+    expect(await screen.findByText("How to use Tasks")).toBeInTheDocument();
     expect(screen.getByText("Create a task")).toBeInTheDocument();
 
-    // Back to Hindi
+    // Toggle to Hindi
     await user.click(screen.getByTestId("help-lang-hi"));
-    expect(screen.getByText("स्टेटस बदलें")).toBeInTheDocument();
+    expect(screen.getByText("टास्क कैसे इस्तेमाल करें")).toBeInTheDocument();
+    expect(screen.getByText("टास्क बनाएं")).toBeInTheDocument();
+
+    // Back to English
+    await user.click(screen.getByTestId("help-lang-en"));
+    expect(screen.getByText("Change status")).toBeInTheDocument();
   });
 
-  it("can start in English via defaultLang", async () => {
+  it("can start in Hindi via defaultLang", async () => {
     const user = userEvent.setup();
-    wrap(<HelpGuide guide={GUIDE} defaultLang="en" />);
+    wrap(<HelpGuide guide={GUIDE} defaultLang="hi" />);
     await user.click(screen.getByTestId("help-guide-button"));
-    expect(await screen.findByText("How to use Tasks")).toBeInTheDocument();
+    expect(await screen.findByText("टास्क कैसे इस्तेमाल करें")).toBeInTheDocument();
   });
 });
