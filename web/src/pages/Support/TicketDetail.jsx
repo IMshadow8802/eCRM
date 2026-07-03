@@ -95,9 +95,9 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
   });
   const priorities = prioritiesData?.lookups || [];
   const { data: categoriesData } = useApiQuery({
-    queryKey: ["ticket-lookups", "category"],
+    queryKey: ["ticket-lookups", "ticket_category"],
     endpoint: SUPPORT_ENDPOINTS.config.fetchLookups,
-    params: { Kind: "category" },
+    params: { Kind: "ticket_category" },
     showErrorMessage: false,
   });
   const categories = categoriesData?.lookups || [];

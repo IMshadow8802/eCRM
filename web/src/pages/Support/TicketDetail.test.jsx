@@ -80,7 +80,7 @@ const toValues = (fields) =>
 
 const LOOKUPS = {
   priority: [{ Id: 2, Value: "High" }],
-  category: [{ Id: 4, Value: "Billing" }],
+  ticket_category: [{ Id: 4, Value: "Billing" }],
   resolution: [{ Id: 5, Value: "Fixed" }],
 };
 
