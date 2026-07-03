@@ -14,9 +14,9 @@ const LEAD = {
   MobileNo: "9999999999",
   Email: "acme@example.com",
   EstValue: 50000,
-  StageName: "Qualified",
-  SourceName: "Web",
-  OwnerName: "Bob",
+  StageId: 3,
+  OwnerId: 2,
+  SourceId: 5,
   NextFollowupDate: "2026-07-10",
 };
 
@@ -98,6 +98,32 @@ const mockDetail = ({ lead = LEAD, fields = FIELDS, activity = ACTIVITY } = {}) 
         message: "ok",
         responseCode: 200,
         data: { followups: FOLLOWUPS },
+      }),
+    ),
+    // Resolver endpoints: sp_FetchLeadDetail returns only FK ids, so the page
+    // resolves stage/owner/source names from these.
+    http.post("*/api/users/fetchUsers", async () =>
+      HttpResponse.json({
+        success: true,
+        responseCode: 200,
+        data: { users: [{ Id: 2, FullName: "Bob", Username: "bob" }] },
+      }),
+    ),
+    http.post("*/api/config/fetchLookups", async () =>
+      HttpResponse.json({
+        success: true,
+        responseCode: 200,
+        data: { lookups: [{ Id: 5, Value: "Web" }] },
+      }),
+    ),
+    http.post("*/api/config/fetchPipelines", async () =>
+      HttpResponse.json({
+        success: true,
+        responseCode: 200,
+        data: {
+          pipelines: [{ Id: 9, Name: "Sales", IsDefault: true }],
+          stages: [{ Id: 3, PipelineId: 9, Name: "Qualified" }],
+        },
       }),
     ),
   );

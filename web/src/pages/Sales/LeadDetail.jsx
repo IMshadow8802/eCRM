@@ -8,6 +8,8 @@ import { PageHeader, Card, Chip, Button, Tabs, EmptyState, Skeleton } from "../.
 import DynamicField from "../../components/DynamicField";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { useApiMutation } from "../../hooks/useApiMutation";
+import { useUsers } from "../../hooks";
+import { findUserById, getUserName } from "../../utils/userShape";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
 import Timeline from "./Timeline";
 import LogCallModal from "./LogCallModal";
@@ -72,14 +74,37 @@ export default function LeadDetail({ leadId: leadIdProp }) {
   const { data: followupsData } = useApiQuery({
     queryKey: ["lead-followups", leadId],
     endpoint: SALES_ENDPOINTS.followups.fetchFollowups,
-    params: { LeadId: leadId },
+    params: { LeadId: leadId, PageSize: 200 },
     enabled: Boolean(leadId),
     showErrorMessage: false,
   });
   const followups = followupsData?.followups ?? [];
 
+  // sp_FetchLeadDetail returns raw FK ids only (no *Name joins), so resolve
+  // stage/owner/source display names client-side like Leads.jsx does.
+  const { data: usersData } = useUsers({ PageSize: 1000 });
+  const users = usersData?.users || [];
+  const { data: sourcesData } = useApiQuery({
+    queryKey: ["lead-sources"],
+    endpoint: SALES_ENDPOINTS.config.fetchLookups,
+    params: { Kind: "lead_source" },
+    showErrorMessage: false,
+  });
+  const sources = sourcesData?.lookups || [];
+  const { data: pipelinesData } = useApiQuery({
+    queryKey: ["sales-pipelines", "lead"],
+    endpoint: SALES_ENDPOINTS.config.fetchPipelines,
+    params: { Entity: "lead" },
+    showErrorMessage: false,
+  });
+  const stages = pipelinesData?.stages || [];
+
   const lead = data?.lead ?? null;
   const activity = data?.activity ?? [];
+
+  const stageName = stages.find((s) => s.Id === lead?.StageId)?.Name;
+  const ownerName = getUserName(findUserById(users, lead?.OwnerId));
+  const sourceName = sources.find((s) => s.Id === lead?.SourceId)?.Value;
 
   // Merge field definitions (Options/IsRequired/order) with the lead's stored
   // values (keyed by FieldId). Definitions drive rendering so blank fields
@@ -149,7 +174,7 @@ export default function LeadDetail({ leadId: leadIdProp }) {
         subtitle={[lead.MobileNo, lead.Email].filter(Boolean).join(" · ")}
         titleSuffix={
           <Chip
-            label={lead.StageName || "No stage"}
+            label={stageName || "No stage"}
             tone="primary"
             size="sm"
             data-testid="lead-stage-chip"
@@ -192,8 +217,8 @@ export default function LeadDetail({ leadId: leadIdProp }) {
                 <InfoItem label="Mobile" value={lead.MobileNo} />
                 <InfoItem label="Email" value={lead.Email} />
                 <InfoItem label="Estimated value" value={lead.EstValue} />
-                <InfoItem label="Owner" value={lead.OwnerName} />
-                <InfoItem label="Source" value={lead.SourceName} />
+                <InfoItem label="Owner" value={ownerName} />
+                <InfoItem label="Source" value={sourceName} />
                 <InfoItem
                   label="Next follow-up"
                   value={

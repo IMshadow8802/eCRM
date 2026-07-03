@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { screen, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 
@@ -7,6 +7,21 @@ import renderWithProviders from "../../test/renderWithProviders";
 import PipelineFunnel from "./PipelineFunnel";
 
 describe("PipelineFunnel report", () => {
+  // The report resolves the default lead pipeline before funneling it.
+  beforeEach(() => {
+    server.use(
+      http.post("*/api/config/fetchPipelines", () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            pipelines: [{ Id: 9, Name: "Sales", IsDefault: true }],
+            stages: [],
+          },
+        })
+      )
+    );
+  });
+
   it("fetches /api/reports/pipelineFunnel and renders stage rows", async () => {
     server.use(
       http.post("*/api/reports/pipelineFunnel", () =>

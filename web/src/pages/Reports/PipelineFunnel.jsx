@@ -19,10 +19,22 @@ import { useApiQuery } from "../../hooks/useApiQuery";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
 
 const PipelineFunnel = () => {
+  // sp_PipelineFunnel requires a PipelineId (no default) — resolve the
+  // company's default lead pipeline and funnel that one.
+  const { data: pipelinesData } = useApiQuery({
+    queryKey: ["sales-pipelines", "lead"],
+    endpoint: SALES_ENDPOINTS.config.fetchPipelines,
+    params: { Entity: "lead" },
+  });
+  const pipelines = pipelinesData?.pipelines ?? [];
+  const activePipeline = pipelines.find((p) => p.IsDefault) ?? pipelines[0] ?? null;
+  const pipelineId = activePipeline?.Id ?? null;
+
   const { data, isLoading, error } = useApiQuery({
-    queryKey: ["reports-pipeline-funnel"],
+    queryKey: ["reports-pipeline-funnel", pipelineId],
     endpoint: SALES_ENDPOINTS.reports.pipelineFunnel,
-    params: {},
+    params: { PipelineId: pipelineId },
+    enabled: Boolean(pipelineId),
     retry: false,
   });
 
