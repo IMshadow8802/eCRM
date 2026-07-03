@@ -1,8 +1,12 @@
 import React from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ThemeProvider } from "@mui/material/styles";
+
+import { buildTheme } from "../../theme";
 
 const FIXTURE_USERS = [
   { Id: 1, Username: "alice", FullName: "Alice" },
@@ -88,12 +92,21 @@ import { useApiQuery } from "../../hooks/useApiQuery";
 
 const renderPage = () =>
   render(
-    <QueryClientProvider client={new QueryClient()}>
-      <MemoryRouter>
-        <Leads />
-      </MemoryRouter>
-    </QueryClientProvider>
+    <ThemeProvider theme={buildTheme("light")}>
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <Leads />
+        </MemoryRouter>
+      </QueryClientProvider>
+    </ThemeProvider>
   );
+
+// Filters are Combobox (Autocomplete): open, then pick an option by name.
+const pickOption = async (testId, optionName) => {
+  const user = userEvent.setup();
+  await user.click(screen.getByTestId(`${testId}-input`));
+  await user.click(await screen.findByRole("option", { name: optionName }));
+};
 
 describe("Sales Leads page", () => {
   beforeEach(() => {
@@ -172,23 +185,23 @@ describe("Sales Leads page", () => {
     expect(call[0].params).toEqual({ Kind: "lead_source" });
   });
 
-  it("forwards OwnerId when the owner filter changes", () => {
+  it("forwards OwnerId when the owner filter changes", async () => {
     renderPage();
-    fireEvent.change(screen.getByLabelText("Owner"), { target: { value: "2" } });
+    await pickOption("filter-owner", "Bob");
     const cfg = useServerTable.mock.calls.at(-1)[0];
     expect(cfg.extraParams).toEqual({ StageId: null, OwnerId: 2, SourceId: null });
   });
 
-  it("forwards SourceId when the source filter changes", () => {
+  it("forwards SourceId when the source filter changes", async () => {
     renderPage();
-    fireEvent.change(screen.getByLabelText("Source"), { target: { value: "6" } });
+    await pickOption("filter-source", "Referral");
     const cfg = useServerTable.mock.calls.at(-1)[0];
     expect(cfg.extraParams).toEqual({ StageId: null, OwnerId: null, SourceId: 6 });
   });
 
-  it("forwards StageId when the stage filter changes", () => {
+  it("forwards StageId when the stage filter changes", async () => {
     renderPage();
-    fireEvent.change(screen.getByLabelText("Stage"), { target: { value: "3" } });
+    await pickOption("filter-stage", "Qualified");
     const cfg = useServerTable.mock.calls.at(-1)[0];
     expect(cfg.extraParams).toEqual({ StageId: 3, OwnerId: null, SourceId: null });
   });

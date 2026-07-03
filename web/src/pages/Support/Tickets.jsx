@@ -1,10 +1,11 @@
 // src/pages/Support/Tickets.jsx
 import { useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";
-import { Box, Chip, TextField } from "@mui/material";
+import { Box, Chip } from "@mui/material";
 import { MaterialReactTable } from "material-react-table";
 import { useNavigate } from "react-router-dom";
 
+import { Combobox } from "../../components/ui";
 import PageHeader from "../../components/ui/PageHeader";
 import useServerTable from "../../hooks/useServerTable";
 import { useApiQuery } from "../../hooks/useApiQuery";
@@ -24,8 +25,10 @@ const Tickets = () => {
     AssignedTo: "",
     BreachedOnly: false,
   });
-  const setFilter = (key) => (e) =>
-    setFilters((prev) => ({ ...prev, [key]: e.target.value }));
+  // Combobox hands back the selected option (or null when cleared); store its
+  // value ("" = no filter, matching extraParams below).
+  const setFilterValue = (key) => (opt) =>
+    setFilters((prev) => ({ ...prev, [key]: opt?.value ?? "" }));
 
   const { data: usersData } = useUsers({ PageSize: 1000 });
   const users = usersData?.users || [];
@@ -64,6 +67,17 @@ const Tickets = () => {
     () => new Map(stages.map((s) => [s.Id, s.Name])),
     [stages]
   );
+
+  // Filter option lists ({value,label}) for the Combobox filters.
+  const stageOpts = useMemo(() => stages.map((s) => ({ value: s.Id, label: s.Name })), [stages]);
+  const priorityOpts = useMemo(() => priorities.map((p) => ({ value: p.Id, label: p.Value })), [priorities]);
+  const categoryOpts = useMemo(() => categories.map((c) => ({ value: c.Id, label: c.Value })), [categories]);
+  const assigneeOpts = useMemo(
+    () => users.map((u) => ({ value: u.Id, label: getUserName(u) || u.Username })),
+    [users]
+  );
+  const breachedOpts = [{ value: "1", label: "Breached only" }];
+  const optById = (opts, v) => opts.find((o) => o.value === v) ?? null;
 
   const columns = useMemo(
     () => [
@@ -159,87 +173,58 @@ const Tickets = () => {
         <title>PRD Infotech | Tickets</title>
       </Helmet>
       <Box sx={{ display: "flex", gap: 2, my: 2, flexWrap: "wrap" }}>
-        <TextField
-          select
-          label="Stage"
-          size="small"
-          value={filters.StageId}
-          onChange={setFilter("StageId")}
-          slotProps={{ select: { native: true } }}
-          sx={{ minWidth: 160 }}
-        >
-          <option value="">All Stages</option>
-          {stages.map((stage) => (
-            <option key={stage.Id} value={stage.Id}>
-              {stage.Name}
-            </option>
-          ))}
-        </TextField>
-        <TextField
-          select
-          label="Priority"
-          size="small"
-          value={filters.Priority}
-          onChange={setFilter("Priority")}
-          slotProps={{ select: { native: true } }}
-          sx={{ minWidth: 160 }}
-        >
-          <option value="">All Priorities</option>
-          {priorities.map((p) => (
-            <option key={p.Id} value={p.Id}>
-              {p.Value}
-            </option>
-          ))}
-        </TextField>
-        <TextField
-          select
-          label="Category"
-          size="small"
-          value={filters.CategoryId}
-          onChange={setFilter("CategoryId")}
-          slotProps={{ select: { native: true } }}
-          sx={{ minWidth: 160 }}
-        >
-          <option value="">All Categories</option>
-          {categories.map((c) => (
-            <option key={c.Id} value={c.Id}>
-              {c.Value}
-            </option>
-          ))}
-        </TextField>
-        <TextField
-          select
-          label="Assignee"
-          size="small"
-          value={filters.AssignedTo}
-          onChange={setFilter("AssignedTo")}
-          slotProps={{ select: { native: true } }}
-          sx={{ minWidth: 180 }}
-        >
-          <option value="">All Assignees</option>
-          {users.map((user) => (
-            <option key={user.Id} value={user.Id}>
-              {getUserName(user) || user.Username}
-            </option>
-          ))}
-        </TextField>
-        <TextField
-          select
-          label="SLA"
-          size="small"
-          value={filters.BreachedOnly ? "1" : ""}
-          onChange={(e) =>
-            setFilters((prev) => ({
-              ...prev,
-              BreachedOnly: e.target.value === "1",
-            }))
-          }
-          slotProps={{ select: { native: true } }}
-          sx={{ minWidth: 160 }}
-        >
-          <option value="">All Tickets</option>
-          <option value="1">Breached Only</option>
-        </TextField>
+        <Box sx={{ width: 180 }}>
+          <Combobox
+            label="Stage"
+            placeholder="All stages"
+            options={stageOpts}
+            value={optById(stageOpts, filters.StageId)}
+            onChange={setFilterValue("StageId")}
+            data-testid="filter-stage"
+          />
+        </Box>
+        <Box sx={{ width: 180 }}>
+          <Combobox
+            label="Priority"
+            placeholder="All priorities"
+            options={priorityOpts}
+            value={optById(priorityOpts, filters.Priority)}
+            onChange={setFilterValue("Priority")}
+            data-testid="filter-priority"
+          />
+        </Box>
+        <Box sx={{ width: 180 }}>
+          <Combobox
+            label="Category"
+            placeholder="All categories"
+            options={categoryOpts}
+            value={optById(categoryOpts, filters.CategoryId)}
+            onChange={setFilterValue("CategoryId")}
+            data-testid="filter-category"
+          />
+        </Box>
+        <Box sx={{ width: 200 }}>
+          <Combobox
+            label="Assignee"
+            placeholder="All assignees"
+            options={assigneeOpts}
+            value={optById(assigneeOpts, filters.AssignedTo)}
+            onChange={setFilterValue("AssignedTo")}
+            data-testid="filter-assignee"
+          />
+        </Box>
+        <Box sx={{ width: 180 }}>
+          <Combobox
+            label="SLA"
+            placeholder="All tickets"
+            options={breachedOpts}
+            value={filters.BreachedOnly ? breachedOpts[0] : null}
+            onChange={(opt) =>
+              setFilters((prev) => ({ ...prev, BreachedOnly: opt?.value === "1" }))
+            }
+            data-testid="filter-sla"
+          />
+        </Box>
       </Box>
       <Box sx={{ width: "100%", overflowX: "auto" }}>
         <MaterialReactTable table={table} />

@@ -1,8 +1,12 @@
 import React from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ThemeProvider } from "@mui/material/styles";
+
+import { buildTheme } from "../../theme";
 
 const FIXTURE_USERS = [
   { Id: 1, Username: "alice", FullName: "Alice" },
@@ -101,11 +105,13 @@ import { useApiQuery } from "../../hooks/useApiQuery";
 
 const renderPage = () =>
   render(
-    <QueryClientProvider client={new QueryClient()}>
-      <MemoryRouter>
-        <Tickets />
-      </MemoryRouter>
-    </QueryClientProvider>
+    <ThemeProvider theme={buildTheme("light")}>
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <Tickets />
+        </MemoryRouter>
+      </QueryClientProvider>
+    </ThemeProvider>
   );
 
 describe("Support Tickets page", () => {
@@ -202,9 +208,16 @@ describe("Support Tickets page", () => {
     expect(pipelineCall[0].params).toEqual({ Entity: "ticket" });
   });
 
-  it("forwards StageId when the stage filter changes", () => {
+  // The filters are Combobox (Autocomplete) — open, then pick an option.
+  const pickOption = async (testId, optionName) => {
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId(`${testId}-input`));
+    await user.click(await screen.findByRole("option", { name: optionName }));
+  };
+
+  it("forwards StageId when the stage filter changes", async () => {
     renderPage();
-    fireEvent.change(screen.getByLabelText("Stage"), { target: { value: "3" } });
+    await pickOption("filter-stage", "Open");
     const cfg = useServerTable.mock.calls.at(-1)[0];
     expect(cfg.extraParams).toEqual({
       StageId: 3,
@@ -215,9 +228,9 @@ describe("Support Tickets page", () => {
     });
   });
 
-  it("forwards Priority when the priority filter changes", () => {
+  it("forwards Priority when the priority filter changes", async () => {
     renderPage();
-    fireEvent.change(screen.getByLabelText("Priority"), { target: { value: "7" } });
+    await pickOption("filter-priority", "High");
     const cfg = useServerTable.mock.calls.at(-1)[0];
     expect(cfg.extraParams).toEqual({
       StageId: null,
@@ -228,9 +241,9 @@ describe("Support Tickets page", () => {
     });
   });
 
-  it("forwards CategoryId when the category filter changes", () => {
+  it("forwards CategoryId when the category filter changes", async () => {
     renderPage();
-    fireEvent.change(screen.getByLabelText("Category"), { target: { value: "5" } });
+    await pickOption("filter-category", "Billing");
     const cfg = useServerTable.mock.calls.at(-1)[0];
     expect(cfg.extraParams).toEqual({
       StageId: null,
@@ -241,9 +254,9 @@ describe("Support Tickets page", () => {
     });
   });
 
-  it("forwards AssignedTo when the assignee filter changes", () => {
+  it("forwards AssignedTo when the assignee filter changes", async () => {
     renderPage();
-    fireEvent.change(screen.getByLabelText("Assignee"), { target: { value: "2" } });
+    await pickOption("filter-assignee", "Bob");
     const cfg = useServerTable.mock.calls.at(-1)[0];
     expect(cfg.extraParams).toEqual({
       StageId: null,
@@ -254,9 +267,9 @@ describe("Support Tickets page", () => {
     });
   });
 
-  it("forwards BreachedOnly=1 when the SLA toggle is set", () => {
+  it("forwards BreachedOnly=1 when the SLA filter is set", async () => {
     renderPage();
-    fireEvent.change(screen.getByLabelText("SLA"), { target: { value: "1" } });
+    await pickOption("filter-sla", "Breached only");
     const cfg = useServerTable.mock.calls.at(-1)[0];
     expect(cfg.extraParams).toEqual({
       StageId: null,

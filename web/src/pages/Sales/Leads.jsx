@@ -1,11 +1,12 @@
 // src/pages/Sales/Leads.jsx
 import { useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";
-import { Box, TextField } from "@mui/material";
+import { Box } from "@mui/material";
 import { MaterialReactTable } from "material-react-table";
 import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
 
+import { Combobox } from "../../components/ui";
 import PageHeader from "../../components/ui/PageHeader";
 import useServerTable from "../../hooks/useServerTable";
 import { useApiQuery } from "../../hooks/useApiQuery";
@@ -30,8 +31,9 @@ const Leads = () => {
   // Filter state forwarded verbatim as StageId/OwnerId/SourceId — sp_FetchLeads
   // treats each as an optional exact-match filter (null = no filter).
   const [filters, setFilters] = useState({ StageId: "", OwnerId: "", SourceId: "" });
-  const setFilter = (key) => (e) =>
-    setFilters((prev) => ({ ...prev, [key]: e.target.value }));
+  // Combobox hands back the selected option (or null when cleared).
+  const setFilterValue = (key) => (opt) =>
+    setFilters((prev) => ({ ...prev, [key]: opt?.value ?? "" }));
 
   const { data: usersData } = useUsers({ PageSize: 1000 });
   const users = usersData?.users || [];
@@ -56,6 +58,15 @@ const Leads = () => {
     () => new Map(stages.map((s) => [s.Id, s.Name])),
     [stages]
   );
+
+  // Filter option lists ({value,label}) for the Combobox filters.
+  const stageOpts = useMemo(() => stages.map((s) => ({ value: s.Id, label: s.Name })), [stages]);
+  const sourceOpts = useMemo(() => sources.map((s) => ({ value: s.Id, label: s.Value })), [sources]);
+  const ownerOpts = useMemo(
+    () => users.map((u) => ({ value: u.Id, label: getUserName(u) || u.Username })),
+    [users]
+  );
+  const optById = (opts, v) => opts.find((o) => o.value === v) ?? null;
 
   const columns = useMemo(
     () => [
@@ -132,54 +143,36 @@ const Leads = () => {
         <title>PRD Infotech | Leads</title>
       </Helmet>
       <Box sx={{ display: "flex", gap: 2, my: 2, flexWrap: "wrap" }}>
-        <TextField
-          select
-          label="Stage"
-          size="small"
-          value={filters.StageId}
-          onChange={setFilter("StageId")}
-          slotProps={{ select: { native: true } }}
-          sx={{ minWidth: 160 }}
-        >
-          <option value="">All Stages</option>
-          {stages.map((stage) => (
-            <option key={stage.Id} value={stage.Id}>
-              {stage.Name}
-            </option>
-          ))}
-        </TextField>
-        <TextField
-          select
-          label="Owner"
-          size="small"
-          value={filters.OwnerId}
-          onChange={setFilter("OwnerId")}
-          slotProps={{ select: { native: true } }}
-          sx={{ minWidth: 180 }}
-        >
-          <option value="">All Owners</option>
-          {users.map((user) => (
-            <option key={user.Id} value={user.Id}>
-              {getUserName(user) || user.Username}
-            </option>
-          ))}
-        </TextField>
-        <TextField
-          select
-          label="Source"
-          size="small"
-          value={filters.SourceId}
-          onChange={setFilter("SourceId")}
-          slotProps={{ select: { native: true } }}
-          sx={{ minWidth: 180 }}
-        >
-          <option value="">All Sources</option>
-          {sources.map((source) => (
-            <option key={source.Id} value={source.Id}>
-              {source.Value}
-            </option>
-          ))}
-        </TextField>
+        <Box sx={{ width: 180 }}>
+          <Combobox
+            label="Stage"
+            placeholder="All stages"
+            options={stageOpts}
+            value={optById(stageOpts, filters.StageId)}
+            onChange={setFilterValue("StageId")}
+            data-testid="filter-stage"
+          />
+        </Box>
+        <Box sx={{ width: 200 }}>
+          <Combobox
+            label="Owner"
+            placeholder="All owners"
+            options={ownerOpts}
+            value={optById(ownerOpts, filters.OwnerId)}
+            onChange={setFilterValue("OwnerId")}
+            data-testid="filter-owner"
+          />
+        </Box>
+        <Box sx={{ width: 200 }}>
+          <Combobox
+            label="Source"
+            placeholder="All sources"
+            options={sourceOpts}
+            value={optById(sourceOpts, filters.SourceId)}
+            onChange={setFilterValue("SourceId")}
+            data-testid="filter-source"
+          />
+        </Box>
       </Box>
       <Box sx={{ width: "100%", overflowX: "auto" }}>
         <MaterialReactTable table={table} />
