@@ -19,7 +19,21 @@ beforeEach(() => {
 });
 
 describe("callController.logCall", () => {
-  it("injects CompId/UserId, forces TicketId null, and forwards NextFollowupDate", async () => {
+  it("logs a ticket call (TicketId set, LeadId null)", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordset: [{ ResponseCode: 200, ResponseMess: "Logged", Id: 60 }],
+    });
+    const req = baseReq({ body: { TicketId: 4, Direction: "out" } });
+    const res = mockRes();
+    await callController.logCall(req, res);
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
+      "sp_LogCall",
+      expect.objectContaining({ CompId: 5, UserId: 7, LeadId: null, TicketId: 4, Direction: "out" }),
+    );
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it("injects CompId/UserId and forwards a lead call with NextFollowupDate", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordset: [{ ResponseCode: 200, ResponseMess: "Logged", Id: 55 }],
     });

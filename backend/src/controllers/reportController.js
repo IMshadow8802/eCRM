@@ -201,6 +201,86 @@ class ReportController {
       });
     }
   }
+
+  // --- Ticket reports (Spec 2) ---
+
+  async slaBreachSummary(req, res) {
+    try {
+      const { CompId, BranchId } = req.user;
+      const result = await database.executeStoredProcedure("sp_SLABreachSummary", {
+        CompId,
+        BranchId,
+      });
+      return res.status(200).json({
+        success: true,
+        message: "SLA breach summary fetched successfully",
+        responseCode: 200,
+        data: { breach: result.recordsets[0] },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("SLA breach summary error:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to fetch SLA breach summary",
+        code: "SLA_BREACH_SUMMARY_ERROR",
+        responseCode: 500,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  async ticketsByCategory(req, res) {
+    try {
+      const { CompId, BranchId } = req.user;
+      const result = await database.executeStoredProcedure("sp_TicketsByCategory", {
+        CompId,
+        BranchId,
+      });
+      return res.status(200).json({
+        success: true,
+        message: "Tickets by category fetched successfully",
+        responseCode: 200,
+        data: { categories: result.recordsets[0] },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("Tickets by category error:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to fetch tickets by category",
+        code: "TICKETS_BY_CATEGORY_ERROR",
+        responseCode: 500,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  async resolutionSummary(req, res) {
+    try {
+      const { CompId, BranchId } = req.user;
+      const result = await database.executeStoredProcedure("sp_ResolutionSummary", {
+        CompId,
+        BranchId,
+      });
+      return res.status(200).json({
+        success: true,
+        message: "Resolution summary fetched successfully",
+        responseCode: 200,
+        data: { resolutions: result.recordsets[0] },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("Resolution summary error:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to fetch resolution summary",
+        code: "RESOLUTION_SUMMARY_ERROR",
+        responseCode: 500,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
 }
 
 module.exports = new ReportController();

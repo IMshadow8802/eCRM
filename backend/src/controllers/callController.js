@@ -19,11 +19,12 @@ async function runSp(res, spName, params, failMessage) {
 }
 
 const callController = {
-  // Logs a call against a lead. Tickets are Spec 2 — always pass TicketId: null here.
+  // Logs a call against a lead OR a ticket (exactly one of LeadId/TicketId set).
   logCall(req, res) {
     const { CompId, UserId } = req.user;
     const {
-      LeadId,
+      LeadId = null,
+      TicketId = null,
       Direction,
       OutcomeId = null,
       Notes = null,
@@ -37,7 +38,7 @@ const callController = {
       {
         CompId,
         LeadId,
-        TicketId: null,
+        TicketId,
         UserId,
         Direction,
         OutcomeId,

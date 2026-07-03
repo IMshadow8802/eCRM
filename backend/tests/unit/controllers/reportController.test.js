@@ -250,3 +250,51 @@ describe("reportController.conversionBySource", () => {
     expect(res.json.mock.calls[0][0].success).toBe(false);
   });
 });
+
+describe("reportController ticket reports", () => {
+  it("slaBreachSummary calls sp_SLABreachSummary and returns breach rows", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[{ Priority: 4, PriorityName: "urgent", TotalOpen: 5, Breached: 2 }]],
+    });
+    const res = mockRes();
+    await reportController.slaBreachSummary(baseReq(), res);
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_SLABreachSummary", {
+      CompId: 5,
+      BranchId: 2,
+    });
+    expect(res.json.mock.calls[0][0].data.breach).toHaveLength(1);
+  });
+
+  it("ticketsByCategory calls sp_TicketsByCategory and returns category rows", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[{ CategoryId: 1, CategoryName: "Billing", TicketCount: 3 }]],
+    });
+    const res = mockRes();
+    await reportController.ticketsByCategory(baseReq(), res);
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_TicketsByCategory", {
+      CompId: 5,
+      BranchId: 2,
+    });
+    expect(res.json.mock.calls[0][0].data.categories).toHaveLength(1);
+  });
+
+  it("resolutionSummary calls sp_ResolutionSummary and returns resolution rows", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[{ ResolutionId: 1, ResolutionName: "Fixed", TicketCount: 4 }]],
+    });
+    const res = mockRes();
+    await reportController.resolutionSummary(baseReq(), res);
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_ResolutionSummary", {
+      CompId: 5,
+      BranchId: 2,
+    });
+    expect(res.json.mock.calls[0][0].data.resolutions).toHaveLength(1);
+  });
+
+  it("handles DB error as 500 on a ticket report", async () => {
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
+    const res = mockRes();
+    await reportController.slaBreachSummary(baseReq(), res);
+    expect(res.status).toHaveBeenCalledWith(500);
+  });
+});
