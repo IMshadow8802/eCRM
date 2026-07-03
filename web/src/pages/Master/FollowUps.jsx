@@ -6,6 +6,8 @@ import { MaterialReactTable } from "material-react-table";
 import { useSnackbar } from "notistack";
 
 import PageHeader from "../../components/PageHeader";
+import HelpGuide from "../../components/HelpGuide";
+import { HELP_GUIDES } from "../../data/helpGuides";
 import FollowUpForm from "./components/FollowUpForm";
 import ActionButton from "../../components/Design/ActionButton";
 import ConfirmationDialog from "../../components/ConfirmationDialog";
@@ -239,6 +241,7 @@ const FollowUps = () => {
       <PageHeader
         title="Follow-ups"
         subtitle="Scheduled touchpoints with leads and prospects."
+        actions={<HelpGuide guide={HELP_GUIDES.followups} />}
       />
       <Helmet>
         <title>PRD Infotech | Follow-Ups</title>

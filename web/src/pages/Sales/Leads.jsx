@@ -8,6 +8,8 @@ import dayjs from "dayjs";
 
 import { Combobox } from "../../components/ui";
 import PageHeader from "../../components/ui/PageHeader";
+import HelpGuide from "../../components/HelpGuide";
+import { HELP_GUIDES } from "../../data/helpGuides";
 import useServerTable from "../../hooks/useServerTable";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { useUsers } from "../../hooks";
@@ -138,6 +140,7 @@ const Leads = () => {
       <PageHeader
         title="Leads"
         subtitle="Prospective customers moving through your pipeline."
+        actions={<HelpGuide guide={HELP_GUIDES.leads} />}
       />
       <Helmet>
         <title>PRD Infotech | Leads</title>

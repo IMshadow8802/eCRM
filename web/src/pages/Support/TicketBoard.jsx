@@ -8,6 +8,8 @@ import { useApiMutation } from "../../hooks/useApiMutation";
 import { useUsers } from "../../hooks";
 import { SUPPORT_ENDPOINTS } from "../../api/supportQueries";
 import { PageHeader, EmptyState } from "../../components/ui";
+import HelpGuide from "../../components/HelpGuide";
+import { HELP_GUIDES } from "../../data/helpGuides";
 import TicketColumn from "./TicketColumn";
 
 const PIPELINE_ENTITY = "ticket";
@@ -150,6 +152,7 @@ export default function TicketBoard() {
         title="Ticket Board"
         subtitle={activePipeline.Name}
         icon={<LifeBuoy size={22} />}
+        actions={<HelpGuide guide={HELP_GUIDES.tickets} />}
       />
 
       <DragDropProvider onDragEnd={handleDragEnd}>

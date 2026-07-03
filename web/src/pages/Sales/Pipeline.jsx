@@ -7,6 +7,8 @@ import { useApiQuery } from "../../hooks/useApiQuery";
 import { useApiMutation } from "../../hooks/useApiMutation";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
 import { PageHeader, EmptyState } from "../../components/ui";
+import HelpGuide from "../../components/HelpGuide";
+import { HELP_GUIDES } from "../../data/helpGuides";
 import PipelineColumn from "./PipelineColumn";
 
 const PIPELINE_ENTITY = "lead";
@@ -137,6 +139,7 @@ export default function Pipeline() {
         title="Pipeline"
         subtitle={activePipeline.Name}
         icon={<Workflow size={22} />}
+        actions={<HelpGuide guide={HELP_GUIDES.leads} />}
       />
 
       <DragDropProvider onDragEnd={handleDragEnd}>

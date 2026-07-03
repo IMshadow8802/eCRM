@@ -7,6 +7,8 @@ import { useNavigate } from "react-router-dom";
 
 import { Combobox } from "../../components/ui";
 import PageHeader from "../../components/ui/PageHeader";
+import HelpGuide from "../../components/HelpGuide";
+import { HELP_GUIDES } from "../../data/helpGuides";
 import useServerTable from "../../hooks/useServerTable";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { useUsers } from "../../hooks";
@@ -168,6 +170,7 @@ const Tickets = () => {
       <PageHeader
         title="Tickets"
         subtitle="Support requests moving through resolution."
+        actions={<HelpGuide guide={HELP_GUIDES.tickets} />}
       />
       <Helmet>
         <title>PRD Infotech | Tickets</title>
