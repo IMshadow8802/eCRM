@@ -29,6 +29,9 @@ export const SALES_ENDPOINTS = {
     logCall: "/api/calls/logCall",
     fetchCalls: "/api/calls/fetchCalls",
   },
+  followups: {
+    fetchFollowups: "/api/followups/fetchFollowups",
+  },
   reports: {
     pipelineFunnel: "/api/reports/pipelineFunnel",
     callsPerUser: "/api/reports/callsPerUser",
@@ -63,6 +66,9 @@ export const moveLeadStage = post(SALES_ENDPOINTS.leads.moveLeadStage);
 // Calls
 export const logCall = post(SALES_ENDPOINTS.calls.logCall);
 export const fetchCalls = post(SALES_ENDPOINTS.calls.fetchCalls);
+
+// Follow-ups
+export const fetchFollowups = post(SALES_ENDPOINTS.followups.fetchFollowups);
 
 // Reports
 export const pipelineFunnel = post(SALES_ENDPOINTS.reports.pipelineFunnel);

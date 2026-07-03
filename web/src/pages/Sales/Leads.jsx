@@ -36,17 +36,26 @@ const Leads = () => {
   const { data: usersData } = useUsers({ PageSize: 1000 });
   const users = usersData?.users || [];
 
-  // ponytail: sp_FetchLeads returns raw SourceId/StageId, no name join, so
-  // the Source filter/column need their own display source. Lookups
-  // (Kind=lead_source) cover Source; Stage has no equivalent list endpoint
-  // yet (sp_FetchPipelines only returns pipelines, not stages) — upgrade
-  // the Stage filter to a Select once that endpoint exists.
+  // sp_FetchLeads returns raw SourceId/StageId (no name join), so the
+  // filters/columns need their own display source: lookups (Kind=lead_source)
+  // for Source, and fetchPipelines' stages recordset for Stage.
   const { data: sourcesData } = useApiQuery({
     queryKey: ["lead-sources"],
     endpoint: SALES_ENDPOINTS.config.fetchLookups,
     params: { Kind: "lead_source" },
   });
   const sources = sourcesData?.lookups || [];
+
+  const { data: pipelinesData } = useApiQuery({
+    queryKey: ["sales-pipelines", "lead"],
+    endpoint: SALES_ENDPOINTS.config.fetchPipelines,
+    params: { Entity: "lead" },
+  });
+  const stages = pipelinesData?.stages || [];
+  const stageById = useMemo(
+    () => new Map(stages.map((s) => [s.Id, s.Name])),
+    [stages]
+  );
 
   const columns = useMemo(
     () => [
@@ -59,7 +68,7 @@ const Leads = () => {
         enableSorting: false,
         Cell: ({ cell }) => {
           const value = cell.getValue();
-          return value ? `Stage #${value}` : "—";
+          return stageById.get(value) || (value ? `Stage #${value}` : "—");
         },
       },
       {
@@ -84,7 +93,7 @@ const Leads = () => {
         Cell: ({ cell }) => formatDate(cell.getValue()),
       },
     ],
-    [users]
+    [users, stageById]
   );
 
   const extraParams = useMemo(
@@ -124,13 +133,21 @@ const Leads = () => {
       </Helmet>
       <Box sx={{ display: "flex", gap: 2, my: 2, flexWrap: "wrap" }}>
         <TextField
-          label="Stage ID"
-          type="number"
+          select
+          label="Stage"
           size="small"
           value={filters.StageId}
           onChange={setFilter("StageId")}
-          sx={{ minWidth: 140 }}
-        />
+          slotProps={{ select: { native: true } }}
+          sx={{ minWidth: 160 }}
+        >
+          <option value="">All Stages</option>
+          {stages.map((stage) => (
+            <option key={stage.Id} value={stage.Id}>
+              {stage.Name}
+            </option>
+          ))}
+        </TextField>
         <TextField
           select
           label="Owner"

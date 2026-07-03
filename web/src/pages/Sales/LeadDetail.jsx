@@ -69,6 +69,15 @@ export default function LeadDetail({ leadId: leadIdProp }) {
     showErrorMessage: false,
   });
 
+  const { data: followupsData } = useApiQuery({
+    queryKey: ["lead-followups", leadId],
+    endpoint: SALES_ENDPOINTS.followups.fetchFollowups,
+    params: { LeadId: leadId },
+    enabled: Boolean(leadId),
+    showErrorMessage: false,
+  });
+  const followups = followupsData?.followups ?? [];
+
   const lead = data?.lead ?? null;
   const activity = data?.activity ?? [];
 
@@ -163,6 +172,7 @@ export default function LeadDetail({ leadId: leadIdProp }) {
         onChange={setTab}
         items={[
           { value: "details", label: "Details" },
+          { value: "followups", label: "Follow-ups", badge: followups.length },
           { value: "timeline", label: "Timeline", badge: activity.length },
         ]}
         data-testid="lead-detail-tabs"
@@ -245,6 +255,40 @@ export default function LeadDetail({ leadId: leadIdProp }) {
                 </div>
               )}
             </Card>
+          </div>
+        )}
+
+        {tab === "followups" && (
+          <div data-testid="lead-followups">
+            {followups.length === 0 ? (
+              <EmptyState
+                title="No follow-ups"
+                description="Scheduled follow-ups for this lead will appear here."
+                size="sm"
+                data-testid="followups-empty"
+              />
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {followups.map((f) => (
+                  <Card key={f.Id} data-testid="followup-item">
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 600 }}>
+                          {f.NextFollowupDate ? dayjs(f.NextFollowupDate).format("DD-MM-YYYY") : "—"}
+                          {f.FollowupType ? ` · ${f.FollowupType}` : ""}
+                        </div>
+                        {f.Remarks && (
+                          <div style={{ fontSize: 13, color: "var(--muted, #6b7280)", marginTop: 2 }}>
+                            {f.Remarks}
+                          </div>
+                        )}
+                      </div>
+                      <Chip label={f.Status || "Pending"} size="sm" tone="primary" />
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

@@ -46,14 +46,27 @@ vi.mock("../../hooks", () => ({
 }));
 
 vi.mock("../../hooks/useApiQuery", () => ({
-  useApiQuery: vi.fn(() => ({
-    data: {
-      lookups: [
-        { Id: 5, Value: "Website" },
-        { Id: 6, Value: "Referral" },
-      ],
-    },
-  })),
+  useApiQuery: vi.fn((cfg) => {
+    if (cfg?.endpoint === "/api/config/fetchPipelines") {
+      return {
+        data: {
+          pipelines: [{ Id: 9, Name: "Sales", IsDefault: true }],
+          stages: [
+            { Id: 3, PipelineId: 9, Name: "Qualified" },
+            { Id: 4, PipelineId: 9, Name: "Won" },
+          ],
+        },
+      };
+    }
+    return {
+      data: {
+        lookups: [
+          { Id: 5, Value: "Website" },
+          { Id: 6, Value: "Referral" },
+        ],
+      },
+    };
+  }),
 }));
 
 vi.mock("material-react-table", () => ({
@@ -118,11 +131,11 @@ describe("Sales Leads page", () => {
     expect(screen.getByText("Acme Corp")).toBeInTheDocument();
   });
 
-  it("formats the Stage column and falls back to a dash", () => {
+  it("resolves the Stage column to its name and falls back to a dash", () => {
     renderPage();
     const cfg = useServerTable.mock.calls.at(-1)[0];
     const stageCol = cfg.columns.find((c) => c.accessorKey === "StageId");
-    expect(stageCol.Cell({ cell: { getValue: () => 3 } })).toBe("Stage #3");
+    expect(stageCol.Cell({ cell: { getValue: () => 3 } })).toBe("Qualified");
     expect(stageCol.Cell({ cell: { getValue: () => null } })).toBe("—");
   });
 
@@ -175,7 +188,7 @@ describe("Sales Leads page", () => {
 
   it("forwards StageId when the stage filter changes", () => {
     renderPage();
-    fireEvent.change(screen.getByLabelText("Stage ID"), { target: { value: "3" } });
+    fireEvent.change(screen.getByLabelText("Stage"), { target: { value: "3" } });
     const cfg = useServerTable.mock.calls.at(-1)[0];
     expect(cfg.extraParams).toEqual({ StageId: 3, OwnerId: null, SourceId: null });
   });

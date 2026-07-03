@@ -48,6 +48,10 @@ const ACTIVITY = [
   { Id: 1, Type: "created", CreatedAt: "2026-01-01T10:00:00Z" },
 ];
 
+const FOLLOWUPS = [
+  { Id: 1, NextFollowupDate: "2026-07-10", FollowupType: "call", Remarks: "Ring back", Status: "Pending" },
+];
+
 // The test fixtures carry both def info (Label/Type/Options/IsRequired) and
 // value columns on one row. In production those come from two endpoints:
 // fetchCustomFields (defs) and fetchLeadDetail's `fields` (values). Split the
@@ -86,6 +90,14 @@ const mockDetail = ({ lead = LEAD, fields = FIELDS, activity = ACTIVITY } = {}) 
         message: "ok",
         responseCode: 200,
         data: { customFields: toDefs(fields) },
+      }),
+    ),
+    http.post("*/api/followups/fetchFollowups", async () =>
+      HttpResponse.json({
+        success: true,
+        message: "ok",
+        responseCode: 200,
+        data: { followups: FOLLOWUPS },
       }),
     ),
   );
@@ -149,6 +161,17 @@ describe("LeadDetail", () => {
     expect(items).toHaveLength(2);
     expect(items[0]).toHaveTextContent("Created");
     expect(items[1]).toHaveTextContent("Stage changed");
+  });
+
+  it("Follow-ups tab lists the lead's follow-ups", async () => {
+    mockDetail();
+    renderWithProviders(<LeadDetail leadId={9} />, { router: false });
+    await screen.findByText("Acme Corp");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: /Follow-ups/i }));
+    const items = await screen.findAllByTestId("followup-item");
+    expect(items).toHaveLength(1);
+    expect(screen.getByText(/Ring back/)).toBeInTheDocument();
   });
 
   it("Save changes is disabled until a custom field is edited", async () => {
