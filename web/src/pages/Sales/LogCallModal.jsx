@@ -7,10 +7,12 @@ import { useApiMutation } from "../../hooks/useApiMutation";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
 
 /**
- * Logs a manual call against a lead: outcome (from the `call_outcome`
- * lookup), free-text notes, and an optional next-follow-up date.
+ * Logs a manual call against a lead OR a ticket: outcome (from the
+ * `call_outcome` lookup), free-text notes, and an optional next-follow-up
+ * date. Pass either `leadId` (sales) or `ticketId` (support) — exactly one.
+ * (The next-follow-up only takes effect for lead calls server-side.)
  */
-export default function LogCallModal({ open, onClose, leadId, onLogged }) {
+export default function LogCallModal({ open, onClose, leadId, ticketId, onLogged }) {
   const [outcome, setOutcome] = useState(null);
   const [notes, setNotes] = useState("");
   const [nextFollowupDate, setNextFollowupDate] = useState("");
@@ -47,7 +49,8 @@ export default function LogCallModal({ open, onClose, leadId, onLogged }) {
     try {
       const trimmedNotes = notes.trim() || null;
       await logCallMutation.mutateAsync({
-        LeadId: leadId,
+        LeadId: leadId ?? null,
+        TicketId: ticketId ?? null,
         OutcomeId: outcome?.value ?? null,
         Notes: trimmedNotes,
         Direction: "out",

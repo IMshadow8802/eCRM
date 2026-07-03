@@ -48,6 +48,21 @@ const SALES_MENU = {
   ],
 };
 
+const SUPPORT_MENU = {
+  title: "Support",
+  menuId: "static-support",
+  icon: getMenuIcon("Support"),
+  permissions: null,
+  path: "/support",
+  submenus: [
+    { title: "Ticket Board", menuId: "static-support-board", icon: getMenuIcon("Board"), permissions: null, path: "/support/board" },
+    { title: "Tickets", menuId: "static-support-tickets", icon: getMenuIcon("Ticket"), permissions: null, path: "/support/tickets" },
+    { title: "SLA Breach", menuId: "static-report-sla", icon: getMenuIcon("Report"), permissions: null, path: "/reports/sla-breach" },
+    { title: "By Category", menuId: "static-report-category", icon: getMenuIcon("Report"), permissions: null, path: "/reports/tickets-by-category" },
+    { title: "Resolutions", menuId: "static-report-resolution", icon: getMenuIcon("Report"), permissions: null, path: "/reports/resolution-summary" },
+  ],
+};
+
 const SETTINGS_MENU = {
   title: "Settings",
   menuId: "static-settings",
@@ -58,6 +73,9 @@ const SETTINGS_MENU = {
     { title: "Custom Fields", menuId: "static-settings-fields", icon: getMenuIcon("Setting"), permissions: null, path: "/settings/custom-fields" },
     { title: "Pipelines", menuId: "static-settings-pipelines", icon: getMenuIcon("Setting"), permissions: null, path: "/settings/pipelines" },
     { title: "Lookups", menuId: "static-settings-lookups", icon: getMenuIcon("Setting"), permissions: null, path: "/settings/lookups" },
+    { title: "Ticket Categories", menuId: "static-settings-tcat", icon: getMenuIcon("Setting"), permissions: null, path: "/settings/ticket-categories" },
+    { title: "Priorities", menuId: "static-settings-prio", icon: getMenuIcon("Setting"), permissions: null, path: "/settings/priorities" },
+    { title: "SLA Rules", menuId: "static-settings-sla", icon: getMenuIcon("Setting"), permissions: null, path: "/settings/sla" },
   ],
 };
 
@@ -77,7 +95,7 @@ const Sidebar = ({ collapsed, onToggleCollapsed, mobileOpen, onMobileClose }) =>
   const location = useLocation();
   const { menuRights, setActiveMenuRights, user } = useAuthStore();
 
-  const staticMenus = [SALES_MENU, ...(user?.IsAdmin ? [SETTINGS_MENU] : [])];
+  const staticMenus = [SALES_MENU, SUPPORT_MENU, ...(user?.IsAdmin ? [SETTINGS_MENU] : [])];
   const menus = [...buildDynamicMenu(menuRights || []), ...staticMenus];
 
   const [expandedParents, setExpandedParents] = useState({});

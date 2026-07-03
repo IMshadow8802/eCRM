@@ -41,6 +41,17 @@ const PipelineFunnel = lazy(() => import("./pages/Reports/PipelineFunnel"));
 const CallsPerUser = lazy(() => import("./pages/Reports/CallsPerUser"));
 const ConversionBySource = lazy(() => import("./pages/Reports/ConversionBySource"));
 
+// Support / ticketing module (Spec 2)
+const TicketBoard = lazy(() => import("./pages/Support/TicketBoard"));
+const Tickets = lazy(() => import("./pages/Support/Tickets"));
+const TicketDetail = lazy(() => import("./pages/Support/TicketDetail"));
+const TicketCategories = lazy(() => import("./pages/Settings/TicketCategories"));
+const Priorities = lazy(() => import("./pages/Settings/Priorities"));
+const SLA = lazy(() => import("./pages/Settings/SLA"));
+const SLABreach = lazy(() => import("./pages/Reports/SLABreach"));
+const TicketsByCategory = lazy(() => import("./pages/Reports/TicketsByCategory"));
+const ResolutionSummary = lazy(() => import("./pages/Reports/ResolutionSummary"));
+
 const routesConfig = [
   { path: "/", element: <Navigate to="/dashboard" replace /> },
   { path: "/login", element: <Login /> },
@@ -71,6 +82,16 @@ const routesConfig = [
   { path: "/reports/pipeline-funnel", element: <ProtectedRoute element={<PipelineFunnel />} /> },
   { path: "/reports/calls-per-user", element: <ProtectedRoute element={<CallsPerUser />} /> },
   { path: "/reports/conversion-by-source", element: <ProtectedRoute element={<ConversionBySource />} /> },
+  // Support / ticketing module.
+  { path: "/support/board", element: <ProtectedRoute element={<TicketBoard />} /> },
+  { path: "/support/tickets", element: <ProtectedRoute element={<Tickets />} /> },
+  { path: "/support/tickets/:ticketId", element: <ProtectedRoute element={<TicketDetail />} /> },
+  { path: "/settings/ticket-categories", element: <ProtectedRoute element={<TicketCategories />} /> },
+  { path: "/settings/priorities", element: <ProtectedRoute element={<Priorities />} /> },
+  { path: "/settings/sla", element: <ProtectedRoute element={<SLA />} /> },
+  { path: "/reports/sla-breach", element: <ProtectedRoute element={<SLABreach />} /> },
+  { path: "/reports/tickets-by-category", element: <ProtectedRoute element={<TicketsByCategory />} /> },
+  { path: "/reports/resolution-summary", element: <ProtectedRoute element={<ResolutionSummary />} /> },
 ];
 
 function AnimatedRoutes() {

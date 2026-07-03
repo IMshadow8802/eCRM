@@ -120,6 +120,18 @@ describe("LogCallModal", () => {
     });
   });
 
+  it("logs a ticket call with TicketId set and LeadId null", async () => {
+    let captured;
+    mockLogCall((body) => {
+      captured = body;
+    });
+    renderWithProviders(<LogCallModal open ticketId={4} onClose={() => {}} />, { router: false });
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("log-call-submit"));
+    await waitFor(() => expect(captured).toBeTruthy());
+    expect(captured).toMatchObject({ LeadId: null, TicketId: 4, Direction: "out" });
+  });
+
   it("Cancel closes the modal without calling logCall", async () => {
     const captureSpy = vi.fn();
     mockLogCall(captureSpy);
