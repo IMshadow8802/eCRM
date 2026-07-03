@@ -3,12 +3,9 @@
 // Company-admin page: list lead pipelines, drill into one to manage its
 // stages. Same CRUD-master pattern as CustomFields.jsx.
 //
-// ponytail: salesQueries.js exposes no `fetchStages` endpoint — a
-// pipeline's stages must come back embedded on its `fetchPipelines` row
-// (`pipeline.Stages`, array or JSON string), mirroring the JSON
-// member-list convention already used elsewhere (tblProjects.Members).
-// Parsed defensively below; upgrade this if the backend ever ships a
-// dedicated fetchStages endpoint.
+// fetchPipelines returns two arrays: `pipelines` and a flat `stages` list
+// (each stage carries its `PipelineId`). We filter stages to the selected
+// pipeline rather than expecting them embedded on the pipeline row.
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { Box, Stack, Typography, IconButton } from "@mui/material";
@@ -44,19 +41,6 @@ const STAGE_TYPE_OPTIONS = [
   { value: "won", label: "Won" },
   { value: "lost", label: "Lost" },
 ];
-
-const parseStages = (stages) => {
-  if (!stages) return [];
-  let raw = stages;
-  if (typeof stages === "string") {
-    try {
-      raw = JSON.parse(stages);
-    } catch {
-      return [];
-    }
-  }
-  return Array.isArray(raw) ? raw : [];
-};
 
 const emptyPipelineForm = { Name: "" };
 const emptyStageForm = { Name: "", SortOrder: "0", StageType: "open", Color: "#3B82F6" };
@@ -99,7 +83,11 @@ const Pipelines = () => {
     [pipelines, selectedPipelineId]
   );
 
-  const stages = useMemo(() => parseStages(selectedPipeline?.Stages), [selectedPipeline]);
+  const allStages = query.data?.stages || [];
+  const stages = useMemo(
+    () => allStages.filter((s) => s.PipelineId === selectedPipelineId),
+    [allStages, selectedPipelineId]
+  );
   const stageItems = useMemo(() => {
     if (!stageSearch.trim()) return stages;
     const term = stageSearch.trim().toLowerCase();

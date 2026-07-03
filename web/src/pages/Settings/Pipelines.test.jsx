@@ -11,18 +11,26 @@ import renderWithProviders from "../../test/renderWithProviders";
 const renderPage = () => renderWithProviders(<Pipelines />);
 
 let pipelines;
+let stages;
 let lastSaveStageBody;
 let lastSavePipelineBody;
 
+// fetchPipelines returns two arrays: `pipelines` and a flat `stages` list
+// (each stage carries its PipelineId), matching sp_FetchPipelines' 2 result
+// sets. The initial seed embeds Stages on each pipeline for convenience; we
+// flatten it into the shared `stages` list here.
 const seedPipelines = (initial = []) => {
-  pipelines = initial.map((p) => ({ ...p }));
+  pipelines = initial.map(({ Stages, ...p }) => ({ ...p }));
+  stages = initial.flatMap((p) =>
+    (p.Stages || []).map((s) => ({ ...s, PipelineId: p.Id })),
+  );
   server.use(
     http.post("*/api/config/fetchPipelines", async () =>
       HttpResponse.json({
         success: true,
         message: "ok",
         responseCode: 200,
-        data: { pipelines },
+        data: { pipelines, stages },
       }),
     ),
     http.post("*/api/config/savePipeline", async ({ request }) => {
@@ -32,7 +40,7 @@ const seedPipelines = (initial = []) => {
         return HttpResponse.json({ success: false, message: "Name required", responseCode: 400 });
       }
       const id = pipelines.length ? Math.max(...pipelines.map((p) => p.Id)) + 1 : 1;
-      pipelines.push({ Id: id, Entity: body.Entity, Name: body.Name, IsDefault: false, Stages: [] });
+      pipelines.push({ Id: id, Entity: body.Entity, Name: body.Name, IsDefault: false });
       return HttpResponse.json({ success: true, message: "Saved", responseCode: 200, data: { Id: id } });
     }),
     http.post("*/api/config/saveStage", async ({ request }) => {
@@ -41,26 +49,21 @@ const seedPipelines = (initial = []) => {
       if (!body.Name) {
         return HttpResponse.json({ success: false, message: "Name required", responseCode: 400 });
       }
-      const pipeline = pipelines.find((p) => p.Id === body.PipelineId);
-      if (!pipeline) {
+      if (!pipelines.some((p) => p.Id === body.PipelineId)) {
         return HttpResponse.json({ success: false, message: "Pipeline not found", responseCode: 404 });
       }
-      const stages = pipeline.Stages || (pipeline.Stages = []);
       if (body.Id) {
         const idx = stages.findIndex((s) => s.Id === body.Id);
         if (idx !== -1) stages[idx] = { ...stages[idx], ...body };
       } else {
-        const allIds = pipelines.flatMap((p) => (p.Stages || []).map((s) => s.Id));
-        const id = allIds.length ? Math.max(...allIds) + 1 : 1;
+        const id = stages.length ? Math.max(...stages.map((s) => s.Id)) + 1 : 1;
         stages.push({ ...body, Id: id });
       }
       return HttpResponse.json({ success: true, message: "Saved", responseCode: 200, data: { Id: body.Id || 1 } });
     }),
     http.post("*/api/config/deleteStage", async ({ request }) => {
       const body = await request.json();
-      pipelines.forEach((p) => {
-        p.Stages = (p.Stages || []).filter((s) => s.Id !== body.Id);
-      });
+      stages = stages.filter((s) => s.Id !== body.Id);
       return HttpResponse.json({ success: true, message: "Deleted", responseCode: 200 });
     }),
   );

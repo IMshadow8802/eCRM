@@ -25,7 +25,7 @@ import {
 import dayjs from "dayjs";
 
 import PageHeader from "../../components/PageHeader";
-import AppDatePicker from "../../components/Design/AppDatePicker";
+import DateField from "../../components/ui/DateField";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
 
@@ -50,20 +50,20 @@ const CallsPerUser = () => {
   const dateFilterActions = (
     <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
       <Box sx={{ width: 170 }}>
-        <AppDatePicker
+        <DateField
           label="From Date"
           value={dateFilters.FromDate}
-          onChange={(e) =>
-            setDateFilters((prev) => ({ ...prev, FromDate: e.target.value }))
+          onChange={(next) =>
+            setDateFilters((prev) => ({ ...prev, FromDate: next }))
           }
         />
       </Box>
       <Box sx={{ width: 170 }}>
-        <AppDatePicker
+        <DateField
           label="To Date"
           value={dateFilters.ToDate}
-          onChange={(e) =>
-            setDateFilters((prev) => ({ ...prev, ToDate: e.target.value }))
+          onChange={(next) =>
+            setDateFilters((prev) => ({ ...prev, ToDate: next }))
           }
         />
       </Box>

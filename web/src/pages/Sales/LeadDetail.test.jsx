@@ -44,9 +44,31 @@ const FIELDS = [
 ];
 
 const ACTIVITY = [
-  { Id: 2, Action: "stage_changed", CreatedAt: "2026-01-02T10:00:00Z", Details: "Moved to Qualified" },
-  { Id: 1, Action: "created", CreatedAt: "2026-01-01T10:00:00Z" },
+  { Id: 2, Type: "stage_changed", CreatedAt: "2026-01-02T10:00:00Z", Summary: "Moved to Qualified" },
+  { Id: 1, Type: "created", CreatedAt: "2026-01-01T10:00:00Z" },
 ];
+
+// The test fixtures carry both def info (Label/Type/Options/IsRequired) and
+// value columns on one row. In production those come from two endpoints:
+// fetchCustomFields (defs) and fetchLeadDetail's `fields` (values). Split the
+// fixtures the same way so the merge in LeadDetail is exercised for real.
+const toDefs = (fields) =>
+  fields.map((f, i) => ({
+    Id: f.FieldId,
+    Label: f.Label,
+    Type: f.Type,
+    Options: f.Options,
+    IsRequired: f.IsRequired,
+    SortOrder: i,
+  }));
+
+const toValues = (fields) =>
+  fields.map((f) => ({
+    FieldId: f.FieldId,
+    ValueText: f.ValueText,
+    ValueNumber: f.ValueNumber,
+    ValueDate: f.ValueDate,
+  }));
 
 const mockDetail = ({ lead = LEAD, fields = FIELDS, activity = ACTIVITY } = {}) =>
   server.use(
@@ -55,7 +77,15 @@ const mockDetail = ({ lead = LEAD, fields = FIELDS, activity = ACTIVITY } = {}) 
         success: true,
         message: "ok",
         responseCode: 200,
-        data: { lead, fields, activity },
+        data: { lead, fields: toValues(fields), activity },
+      }),
+    ),
+    http.post("*/api/config/fetchCustomFields", async () =>
+      HttpResponse.json({
+        success: true,
+        message: "ok",
+        responseCode: 200,
+        data: { customFields: toDefs(fields) },
       }),
     ),
   );

@@ -52,9 +52,23 @@ const configController = {
     return runSp(res, "sp_SavePipeline", { ...req.body, CompId, CreatedBy: UserId }, "Failed to save pipeline");
   },
 
-  fetchPipelines(req, res) {
+  // sp_FetchPipelines returns 2 result sets (pipelines, then their stages);
+  // both are forwarded so the board/settings can group stages by PipelineId.
+  async fetchPipelines(req, res) {
     const { CompId } = req.user;
-    return fetchRows(res, "sp_FetchPipelines", { CompId, Entity: req.body.Entity }, "pipelines");
+    try {
+      const result = await database.executeStoredProcedure("sp_FetchPipelines", {
+        CompId,
+        Entity: req.body.Entity,
+      });
+      return responseHelper.success(res, "pipelines fetched successfully", {
+        pipelines: result.recordsets?.[0] || result.recordset || [],
+        stages: result.recordsets?.[1] || [],
+      });
+    } catch (err) {
+      console.error("sp_FetchPipelines error:", err);
+      return responseHelper.error(res, "Failed to fetch pipelines");
+    }
   },
 
   saveStage(req, res) {

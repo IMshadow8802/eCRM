@@ -13,7 +13,7 @@ describe("ConversionBySource report", () => {
         HttpResponse.json({
           success: true,
           data: {
-            conversion: [{ SourceId: 1, SourceName: "Website", Total: 50, Won: 8 }],
+            conversion: [{ SourceId: 1, SourceName: "Website", TotalLeads: 50, WonCount: 8 }],
           },
         })
       )

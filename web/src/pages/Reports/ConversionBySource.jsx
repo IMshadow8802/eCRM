@@ -107,8 +107,8 @@ const ConversionBySource = () => {
                   iconType="circle"
                   wrapperStyle={{ fontSize: 11, color: p.text.secondary }}
                 />
-                <Bar dataKey="Total" name="Total" fill={p.primary.main} radius={[8, 8, 0, 0]} />
-                <Bar dataKey="Won" name="Won" fill={p.success.main} radius={[8, 8, 0, 0]} />
+                <Bar dataKey="TotalLeads" name="Total" fill={p.primary.main} radius={[8, 8, 0, 0]} />
+                <Bar dataKey="WonCount" name="Won" fill={p.success.main} radius={[8, 8, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
             <TableContainer
@@ -129,10 +129,10 @@ const ConversionBySource = () => {
                   {rows.map((r) => (
                     <TableRow key={r.SourceId}>
                       <TableCell>{r.SourceName}</TableCell>
-                      <TableCell align="right">{r.Total}</TableCell>
-                      <TableCell align="right">{r.Won}</TableCell>
+                      <TableCell align="right">{r.TotalLeads}</TableCell>
+                      <TableCell align="right">{r.WonCount}</TableCell>
                       <TableCell align="right">
-                        {r.Total ? `${Math.round((r.Won / r.Total) * 100)}%` : "—"}
+                        {r.TotalLeads ? `${Math.round((r.WonCount / r.TotalLeads) * 100)}%` : "—"}
                       </TableCell>
                     </TableRow>
                   ))}

@@ -135,6 +135,22 @@ describe("configController.fetchPipelines", () => {
     const json = res.json.mock.calls[0][0];
     expect(json.data.pipelines).toEqual([{ Id: 1, Name: "Sales Pipeline" }]);
   });
+
+  it("forwards the stages result set (2nd recordset) alongside pipelines", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordset: [{ Id: 1, Name: "Sales Pipeline" }],
+      recordsets: [
+        [{ Id: 1, Name: "Sales Pipeline" }],
+        [{ Id: 41, PipelineId: 1, Name: "New", SortOrder: 1 }],
+      ],
+    });
+    const req = baseReq({ body: { Entity: "lead" } });
+    const res = mockRes();
+    await configController.fetchPipelines(req, res);
+    const json = res.json.mock.calls[0][0];
+    expect(json.data.pipelines).toEqual([{ Id: 1, Name: "Sales Pipeline" }]);
+    expect(json.data.stages).toEqual([{ Id: 41, PipelineId: 1, Name: "New", SortOrder: 1 }]);
+  });
 });
 
 describe("configController.saveStage", () => {

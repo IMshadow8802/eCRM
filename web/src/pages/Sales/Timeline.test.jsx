@@ -22,8 +22,8 @@ describe("Timeline", () => {
     wrap(
       <Timeline
         activity={[
-          { Id: 2, Action: "stage_changed", CreatedAt: "2026-01-02T10:00:00Z" },
-          { Id: 1, Action: "created", CreatedAt: "2026-01-01T10:00:00Z" },
+          { Id: 2, Type: "stage_changed", CreatedAt: "2026-01-02T10:00:00Z" },
+          { Id: 1, Type: "created", CreatedAt: "2026-01-01T10:00:00Z" },
         ]}
       />,
     );
@@ -33,25 +33,23 @@ describe("Timeline", () => {
     expect(items[1]).toHaveTextContent("Stage changed");
   });
 
-  it("renders a detail line and the user who made the change when present", () => {
+  it("renders the Summary line when present", () => {
     wrap(
       <Timeline
         activity={[
           {
             Id: 1,
-            Action: "field_changed",
-            Details: "Budget changed to 5000",
-            UserName: "Alice",
+            Type: "field_changed",
+            Summary: "Budget changed to 5000",
             CreatedAt: "2026-01-01T10:00:00Z",
           },
         ]}
       />,
     );
     expect(screen.getByText("Budget changed to 5000")).toBeInTheDocument();
-    expect(screen.getByText(/Alice/)).toBeInTheDocument();
   });
 
-  it("falls back to a generic label when Action is missing", () => {
+  it("falls back to a generic label when Type is missing", () => {
     wrap(<Timeline activity={[{ Id: 1, CreatedAt: "2026-01-01T10:00:00Z" }]} />);
     expect(screen.getByText("Activity")).toBeInTheDocument();
   });

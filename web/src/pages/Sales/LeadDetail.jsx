@@ -12,29 +12,24 @@ import { SALES_ENDPOINTS } from "../../api/salesQueries";
 import Timeline from "./Timeline";
 import LogCallModal from "./LogCallModal";
 
-// A `fields` row is the custom-field def joined with its current value
-// (one of ValueText/ValueNumber/ValueDate populated, chosen by Type).
-const fieldDef = (row) => ({
-  Id: row.FieldId,
-  Label: row.Label,
-  Type: row.Type,
-  Options: row.Options,
-  IsRequired: row.IsRequired,
-});
-
-const fieldValue = (row) => {
-  switch (row.Type) {
+// fetchLeadDetail's `fields` recordset only carries the stored value columns
+// (ValueText/ValueNumber/ValueDate) for fields that HAVE a value — it has no
+// Options/IsRequired. Those live on the field definitions, fetched separately
+// via /api/config/fetchCustomFields and merged in by FieldId below.
+const fieldValue = (def, valueRow) => {
+  if (!valueRow) return def.Type === "checkbox" ? false : def.Type === "dropdown" ? null : "";
+  switch (def.Type) {
     case "number":
-      return row.ValueNumber ?? "";
+      return valueRow.ValueNumber ?? "";
     case "date":
-      return row.ValueDate ?? "";
+      return valueRow.ValueDate ?? "";
     case "checkbox":
-      return Boolean(row.ValueNumber);
+      return Boolean(valueRow.ValueNumber);
     case "dropdown":
-      return row.ValueText ?? null;
+      return valueRow.ValueText ?? null;
     case "text":
     default:
-      return row.ValueText ?? "";
+      return valueRow.ValueText ?? "";
   }
 };
 
@@ -67,20 +62,35 @@ export default function LeadDetail({ leadId: leadIdProp }) {
     showErrorMessage: false,
   });
 
+  const { data: defsData } = useApiQuery({
+    queryKey: ["custom-field-defs", "lead"],
+    endpoint: SALES_ENDPOINTS.config.fetchCustomFields,
+    params: { Entity: "lead" },
+    showErrorMessage: false,
+  });
+
   const lead = data?.lead ?? null;
-  const fields = useMemo(() => data?.fields ?? [], [data]);
   const activity = data?.activity ?? [];
+
+  // Merge field definitions (Options/IsRequired/order) with the lead's stored
+  // values (keyed by FieldId). Definitions drive rendering so blank fields
+  // still appear; values just seed the draft.
+  const fields = useMemo(() => {
+    const defs = defsData?.customFields ?? [];
+    const valueByFieldId = new Map((data?.fields ?? []).map((v) => [v.FieldId, v]));
+    return defs.map((def) => ({ def, valueRow: valueByFieldId.get(def.Id) }));
+  }, [defsData, data]);
 
   // Draft mirrors the fetched field values so edits are local until saved.
   useEffect(() => {
     const seeded = {};
-    fields.forEach((row) => {
-      seeded[row.FieldId] = fieldValue(row);
+    fields.forEach(({ def, valueRow }) => {
+      seeded[def.Id] = fieldValue(def, valueRow);
     });
     setDraft(seeded);
   }, [fields]);
 
-  const isDirty = fields.some((row) => draft[row.FieldId] !== fieldValue(row));
+  const isDirty = fields.some(({ def, valueRow }) => draft[def.Id] !== fieldValue(def, valueRow));
 
   const saveMutation = useApiMutation({
     endpoint: SALES_ENDPOINTS.leads.saveLeads,
@@ -88,10 +98,10 @@ export default function LeadDetail({ leadId: leadIdProp }) {
   });
 
   const saveCustomFields = async () => {
-    const customJson = fields.map((row) => ({
-      fieldId: row.FieldId,
-      type: row.Type,
-      value: draft[row.FieldId],
+    const customJson = fields.map(({ def }) => ({
+      fieldId: def.Id,
+      type: def.Type,
+      value: draft[def.Id],
     }));
     try {
       await saveMutation.mutateAsync({
@@ -222,13 +232,13 @@ export default function LeadDetail({ leadId: leadIdProp }) {
                     gap: 16,
                   }}
                 >
-                  {fields.map((row) => (
+                  {fields.map(({ def }) => (
                     <DynamicField
-                      key={row.FieldId}
-                      field={fieldDef(row)}
-                      value={draft[row.FieldId]}
+                      key={def.Id}
+                      field={def}
+                      value={draft[def.Id]}
                       onChange={(v) =>
-                        setDraft((d) => ({ ...d, [row.FieldId]: v }))
+                        setDraft((d) => ({ ...d, [def.Id]: v }))
                       }
                     />
                   ))}

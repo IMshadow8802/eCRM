@@ -4,8 +4,10 @@ import dayjs from "dayjs";
 
 import { EmptyState } from "../../components/ui";
 
-const formatAction = (action) =>
-  String(action || "activity")
+// tblLeadActivity rows expose `Type` (created|stage_changed|call|...) and a
+// human-readable `Summary`; there is no separate Action/Details column.
+const formatType = (type) =>
+  String(type || "activity")
     .replace(/_/g, " ")
     .replace(/^\w/, (c) => c.toUpperCase());
 
@@ -42,7 +44,7 @@ export default function Timeline({ activity = [] }) {
     >
       {sorted.map((item, i) => {
         const when = activityDate(item);
-        const detail = item.Details || item.Description || item.Notes;
+        const detail = item.Summary;
         return (
           <div
             key={item.Id ?? i}
@@ -70,7 +72,7 @@ export default function Timeline({ activity = [] }) {
             />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: p.text.primary }}>
-                {formatAction(item.Action)}
+                {formatType(item.Type)}
               </div>
               {detail && (
                 <div style={{ fontSize: 13, color: p.text.secondary, marginTop: 2 }}>
@@ -79,7 +81,6 @@ export default function Timeline({ activity = [] }) {
               )}
               <div style={{ fontSize: 11, color: p.text.tertiary, marginTop: 4 }}>
                 {when ? dayjs(when).format("DD-MM-YYYY HH:mm") : ""}
-                {item.UserName ? ` · ${item.UserName}` : ""}
               </div>
             </div>
           </div>
