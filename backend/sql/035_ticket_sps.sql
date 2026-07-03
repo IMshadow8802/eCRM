@@ -163,10 +163,14 @@ BEGIN
                                 WHERE PipelineId=@PipelineId AND CompId=@CompId
                                   AND IsActive=1 AND StageType='open' ORDER BY SortOrder);
 
-            -- TicketNo: per-company sequence. ponytail: COUNT+1 inside the tran
-            -- is fine at expected volume; swap to a sequence table if two
-            -- concurrent inserts ever collide on the unique TicketNo.
-            DECLARE @Seq INT = (SELECT COUNT(*) + 1 FROM dbo.tblTicket WHERE CompId=@CompId);
+            -- TicketNo: next number after the current MAX suffix for this
+            -- company (MAX, not COUNT, so deleting a ticket never makes the
+            -- next create reuse an existing number and hit the unique index).
+            -- ponytail: still a read-then-insert; swap to a sequence/counter
+            -- row only if concurrent inserts ever collide on the unique key.
+            DECLARE @Seq INT = (SELECT ISNULL(MAX(TRY_CONVERT(INT, RIGHT(TicketNo, 6))), 0) + 1
+                                FROM dbo.tblTicket
+                                WHERE CompId=@CompId AND TicketNo LIKE 'TKT-%');
             SET @TicketNo = 'TKT-' + RIGHT('000000' + CAST(@Seq AS VARCHAR(10)), 6);
 
             -- SLA: resolution target for this priority, else any active company
@@ -334,7 +338,10 @@ BEGIN
     SET NOCOUNT ON;
     IF NOT EXISTS (SELECT 1 FROM dbo.tblTicket WHERE Id=@TicketId AND CompId=@CompId)
     BEGIN SELECT @TicketId AS Id, 404 AS ResponseCode, 'Ticket not found' AS ResponseMess; RETURN; END
-    IF NOT EXISTS (SELECT 1 FROM dbo.tblPipelineStage WHERE Id=@StageId AND CompId=@CompId)
+    -- stage must belong to a ticket pipeline of this company (not a sales stage)
+    IF NOT EXISTS (SELECT 1 FROM dbo.tblPipelineStage s
+                   INNER JOIN dbo.tblPipeline p ON p.Id = s.PipelineId
+                   WHERE s.Id=@StageId AND s.CompId=@CompId AND p.Entity='ticket')
     BEGIN SELECT @TicketId AS Id, 404 AS ResponseCode, 'Stage not found' AS ResponseMess; RETURN; END
 
     BEGIN TRY
@@ -370,7 +377,16 @@ BEGIN
     BEGIN TRY
         BEGIN TRANSACTION;
         DECLARE @actLog TABLE (Id INT, ResponseCode INT, ResponseMess NVARCHAR(200));
-        UPDATE dbo.tblTicket SET ResolutionId=@ResolutionId, ResolvedAt=GETDATE(), EditBy=@UserId, UpdatedAt=GETDATE()
+        -- Advance to the pipeline's first 'won' (Resolved) stage so the board
+        -- column matches the resolved status (spec §6). Keep the current stage
+        -- if the pipeline has no won stage.
+        DECLARE @WonStage INT = (SELECT TOP 1 s.Id FROM dbo.tblPipelineStage s
+            INNER JOIN dbo.tblTicket t ON t.PipelineId = s.PipelineId
+            WHERE t.Id=@TicketId AND s.CompId=@CompId AND s.IsActive=1 AND s.StageType='won'
+            ORDER BY s.SortOrder);
+        UPDATE dbo.tblTicket
+        SET ResolutionId=@ResolutionId, ResolvedAt=GETDATE(),
+            StageId=ISNULL(@WonStage, StageId), EditBy=@UserId, UpdatedAt=GETDATE()
         WHERE Id=@TicketId AND CompId=@CompId;
         INSERT INTO @actLog EXEC dbo.sp_LogTicketActivity
             @CompId=@CompId, @TicketId=@TicketId, @UserId=@UserId, @Type='resolved', @Summary='resolved', @MetaJSON=NULL;
