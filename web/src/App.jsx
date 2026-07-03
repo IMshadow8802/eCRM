@@ -28,8 +28,18 @@ const Leads = lazy(() => import("./pages/Master/Leads"));
 const FollowUps = lazy(() => import("./pages/Master/FollowUps"));
 const UserFollowups = lazy(() => import("./pages/Reports/UserFollowups"));
 const BranchLeadSummary = lazy(() => import("./pages/Reports/BranchLeadSummary"));
-const ComingSoon = lazy(() => import("./pages/ComingSoon"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+
+// Sales module (config-driven pipeline, leads, calls)
+const Pipeline = lazy(() => import("./pages/Sales/Pipeline"));
+const SalesLeads = lazy(() => import("./pages/Sales/Leads"));
+const LeadDetail = lazy(() => import("./pages/Sales/LeadDetail"));
+const CustomFields = lazy(() => import("./pages/Settings/CustomFields"));
+const PipelineSettings = lazy(() => import("./pages/Settings/Pipelines"));
+const Lookups = lazy(() => import("./pages/Settings/Lookups"));
+const PipelineFunnel = lazy(() => import("./pages/Reports/PipelineFunnel"));
+const CallsPerUser = lazy(() => import("./pages/Reports/CallsPerUser"));
+const ConversionBySource = lazy(() => import("./pages/Reports/ConversionBySource"));
 
 const routesConfig = [
   { path: "/", element: <Navigate to="/dashboard" replace /> },
@@ -51,9 +61,16 @@ const routesConfig = [
     path: "/lead_summary_branch-wise/*",
     element: <ProtectedRoute element={<BranchLeadSummary />} />,
   },
-  // Prerequisite scaffolding — real Sales/Settings pages land in later tasks.
-  { path: "/sales/*", element: <ProtectedRoute element={<ComingSoon title="Sales" />} /> },
-  { path: "/settings/*", element: <ProtectedRoute element={<ComingSoon title="Settings" />} /> },
+  // Sales module — config-driven pipeline, leads, calls, reports.
+  { path: "/sales/pipeline", element: <ProtectedRoute element={<Pipeline />} /> },
+  { path: "/sales/leads", element: <ProtectedRoute element={<SalesLeads />} /> },
+  { path: "/sales/leads/:leadId", element: <ProtectedRoute element={<LeadDetail />} /> },
+  { path: "/settings/custom-fields", element: <ProtectedRoute element={<CustomFields />} /> },
+  { path: "/settings/pipelines", element: <ProtectedRoute element={<PipelineSettings />} /> },
+  { path: "/settings/lookups", element: <ProtectedRoute element={<Lookups />} /> },
+  { path: "/reports/pipeline-funnel", element: <ProtectedRoute element={<PipelineFunnel />} /> },
+  { path: "/reports/calls-per-user", element: <ProtectedRoute element={<CallsPerUser />} /> },
+  { path: "/reports/conversion-by-source", element: <ProtectedRoute element={<ConversionBySource />} /> },
 ];
 
 function AnimatedRoutes() {

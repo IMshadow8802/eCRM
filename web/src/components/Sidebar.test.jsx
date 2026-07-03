@@ -45,9 +45,12 @@ vi.mock("../stores/useAuthStore", () => {
       },
     ],
     setActiveMenuRights: vi.fn(),
+    user: { IsAdmin: true },
   }));
   return { __esModule: true, default: fn };
 });
+
+import useAuthStore from "../stores/useAuthStore";
 
 import Sidebar from "./Sidebar";
 
@@ -81,10 +84,23 @@ describe("Sidebar", () => {
     expect(screen.getByTestId("sidebar-Reports")).toBeInTheDocument();
   });
 
-  it("always renders the static Sales and Settings entries", () => {
+  it("always renders the static Sales entry", () => {
     renderSidebar();
     expect(screen.getByTestId("sidebar-Sales")).toBeInTheDocument();
+  });
+
+  it("shows Settings only to admins", () => {
+    renderSidebar();
     expect(screen.getByTestId("sidebar-Settings")).toBeInTheDocument();
+
+    useAuthStore.mockReturnValueOnce({
+      menuRights: [],
+      setActiveMenuRights: vi.fn(),
+      user: { IsAdmin: false },
+    });
+    renderSidebar();
+    // Two renders mounted; the non-admin one must not add a second Settings.
+    expect(screen.getAllByTestId("sidebar-Settings")).toHaveLength(1);
   });
 
   it("shows the collapse toggle on desktop and calls the handler on click", () => {

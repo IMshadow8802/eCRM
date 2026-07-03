@@ -27,16 +27,39 @@ import { buildDynamicMenu, getMenuIcon } from "../utils/menuBuilder";
 export const SIDEBAR_WIDTH_EXPANDED = 240;
 export const SIDEBAR_WIDTH_RAIL = 68;
 
-// Prerequisite scaffolding for the sales module (task 2.0): Sales/Settings
-// don't have backend tblMenu rows yet, so they're not permission-gated like
-// the rest of the menu — appended statically so /sales and /settings are
-// reachable while the real pages are built out in later tasks. Once the
-// backend seeds real menu rows for them, buildDynamicMenu picks those up
-// automatically and this list can be dropped.
-const STATIC_MENUS = [
-  { title: "Sales", menuId: "static-sales", icon: getMenuIcon("Sales"), permissions: null, path: "/sales", submenus: null },
-  { title: "Settings", menuId: "static-settings", icon: getMenuIcon("Settings"), permissions: null, path: "/settings", submenus: null },
-];
+// The config-driven Sales module uses nested routes (/sales/*, /settings/*,
+// /reports/*), which the flat title-slug tblMenu convention (menuPath) can't
+// express — so its nav lives here as an explicit static tree rather than
+// through buildDynamicMenu. Settings is company-admin-level (spec §2), gated
+// on user.IsAdmin below. ponytail: unifying with tblMenu means retiring the
+// legacy Master/Leads menu flow too — a separate product-level migration.
+const SALES_MENU = {
+  title: "Sales",
+  menuId: "static-sales",
+  icon: getMenuIcon("Sales"),
+  permissions: null,
+  path: "/sales",
+  submenus: [
+    { title: "Pipeline", menuId: "static-sales-pipeline", icon: getMenuIcon("Pipeline"), permissions: null, path: "/sales/pipeline" },
+    { title: "Leads", menuId: "static-sales-leads", icon: getMenuIcon("Lead"), permissions: null, path: "/sales/leads" },
+    { title: "Funnel Report", menuId: "static-report-funnel", icon: getMenuIcon("Report"), permissions: null, path: "/reports/pipeline-funnel" },
+    { title: "Calls per User", menuId: "static-report-calls", icon: getMenuIcon("Report"), permissions: null, path: "/reports/calls-per-user" },
+    { title: "Conversion by Source", menuId: "static-report-conversion", icon: getMenuIcon("Report"), permissions: null, path: "/reports/conversion-by-source" },
+  ],
+};
+
+const SETTINGS_MENU = {
+  title: "Settings",
+  menuId: "static-settings",
+  icon: getMenuIcon("Settings"),
+  permissions: null,
+  path: "/settings",
+  submenus: [
+    { title: "Custom Fields", menuId: "static-settings-fields", icon: getMenuIcon("Setting"), permissions: null, path: "/settings/custom-fields" },
+    { title: "Pipelines", menuId: "static-settings-pipelines", icon: getMenuIcon("Setting"), permissions: null, path: "/settings/pipelines" },
+    { title: "Lookups", menuId: "static-settings-lookups", icon: getMenuIcon("Setting"), permissions: null, path: "/settings/lookups" },
+  ],
+};
 
 /**
  * Left-side primary navigation. Three behaviours:
@@ -52,9 +75,10 @@ const Sidebar = ({ collapsed, onToggleCollapsed, mobileOpen, onMobileClose }) =>
   const theme_isMobile = useMediaQuery("(max-width:767.98px)");
   const navigate = useNavigate();
   const location = useLocation();
-  const { menuRights, setActiveMenuRights } = useAuthStore();
+  const { menuRights, setActiveMenuRights, user } = useAuthStore();
 
-  const menus = [...buildDynamicMenu(menuRights || []), ...STATIC_MENUS];
+  const staticMenus = [SALES_MENU, ...(user?.IsAdmin ? [SETTINGS_MENU] : [])];
+  const menus = [...buildDynamicMenu(menuRights || []), ...staticMenus];
 
   const [expandedParents, setExpandedParents] = useState({});
   const [flyoutAnchor, setFlyoutAnchor] = useState(null);
