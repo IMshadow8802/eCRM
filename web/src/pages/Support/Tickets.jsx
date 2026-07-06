@@ -4,10 +4,12 @@ import { Helmet } from "react-helmet-async";
 import { Box, Chip } from "@mui/material";
 import { MaterialReactTable } from "material-react-table";
 import { useNavigate } from "react-router-dom";
+import { Plus } from "lucide-react";
 
-import { Combobox } from "../../components/ui";
+import { Combobox, Button } from "../../components/ui";
 import PageHeader from "../../components/ui/PageHeader";
 import HelpGuide from "../../components/HelpGuide";
+import TicketCreateModal from "./TicketCreateModal";
 import { HELP_GUIDES } from "../../data/helpGuides";
 import useServerTable from "../../hooks/useServerTable";
 import { useApiQuery } from "../../hooks/useApiQuery";
@@ -17,6 +19,7 @@ import { findUserById, getUserName } from "../../utils/userShape";
 
 const Tickets = () => {
   const navigate = useNavigate();
+  const [createOpen, setCreateOpen] = useState(false);
 
   // Filters forwarded verbatim as exact-match params (null = no filter).
   // BreachedOnly is a toggle sent as 1/0. sp_FetchTickets accepts these names.
@@ -170,7 +173,25 @@ const Tickets = () => {
       <PageHeader
         title="Tickets"
         subtitle="Support requests moving through resolution."
-        actions={<HelpGuide guide={HELP_GUIDES.tickets} />}
+        actions={
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <Button
+              variant="primary"
+              size="sm"
+              leftIcon={<Plus size={14} />}
+              onClick={() => setCreateOpen(true)}
+              data-testid="new-ticket-btn"
+            >
+              New Ticket
+            </Button>
+            <HelpGuide guide={HELP_GUIDES.tickets} />
+          </div>
+        }
+      />
+      <TicketCreateModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={(res) => res?.Id && navigate(`/support/tickets/${res.Id}`)}
       />
       <Helmet>
         <title>PRD Infotech | Tickets</title>

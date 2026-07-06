@@ -141,19 +141,24 @@ const Combobox = forwardRef(function Combobox(
                 sx: {
                   borderRadius: `${theme.radii.md}px`,
                   backgroundColor: p.surface.card,
-                  // Fixed height (not just minHeight) so a single-value
-                  // Autocomplete matches TextInput/DateField exactly instead of
-                  // growing taller from the inputRoot's default vertical padding.
-                  minHeight: inputHeight,
-                  height: inputHeight,
-                  paddingTop: 0,
-                  paddingBottom: 0,
                   alignItems: "center",
-                  flexWrap: "nowrap",
+                  // Single-value: fix the height so it matches TextInput/DateField
+                  // exactly (the Autocomplete inputRoot's default padding would
+                  // otherwise make it taller). Multi-value: grow with the chips
+                  // but keep the (empty) placeholder vertically centered.
+                  ...(multiple
+                    ? { minHeight: inputHeight, paddingTop: "3px", paddingBottom: "3px" }
+                    : {
+                        minHeight: inputHeight,
+                        height: inputHeight,
+                        paddingTop: 0,
+                        paddingBottom: 0,
+                        flexWrap: "nowrap",
+                      }),
                   "& .MuiAutocomplete-input": {
                     paddingTop: "0 !important",
                     paddingBottom: "0 !important",
-                    height: inputHeight - 2,
+                    ...(multiple ? {} : { height: inputHeight - 2 }),
                     boxSizing: "border-box",
                     fontSize: multiple ? 14 : inputFontSize,
                     fontWeight: 500,

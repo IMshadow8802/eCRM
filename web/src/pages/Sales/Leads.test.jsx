@@ -213,4 +213,24 @@ describe("Sales Leads page", () => {
     rowProps.onClick();
     expect(mockNavigate).toHaveBeenCalledWith("/sales/leads/42");
   });
+
+  it("renders a New Lead button that opens the create modal", async () => {
+    renderPage();
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("new-lead-btn"));
+    expect(await screen.findByTestId("lead-create-modal")).toBeInTheDocument();
+  });
+
+  it("enables per-row Transfer and Delete actions", () => {
+    renderPage();
+    const cfg = useServerTable.mock.calls.at(-1)[0];
+    expect(cfg.enableRowActions).toBe(true);
+    render(
+      <ThemeProvider theme={buildTheme("light")}>
+        {cfg.renderRowActions({ row: { original: { Id: 101, Name: "Acme" } } })}
+      </ThemeProvider>
+    );
+    expect(screen.getByTestId("transfer-lead-101")).toBeInTheDocument();
+    expect(screen.getByTestId("delete-lead-101")).toBeInTheDocument();
+  });
 });

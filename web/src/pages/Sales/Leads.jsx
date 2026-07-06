@@ -4,9 +4,10 @@ import { Helmet } from "react-helmet-async";
 import { Box } from "@mui/material";
 import { MaterialReactTable } from "material-react-table";
 import { useNavigate } from "react-router-dom";
+import { ArrowRightLeft, Plus, Trash2 } from "lucide-react";
 import dayjs from "dayjs";
 
-import { Combobox } from "../../components/ui";
+import { Button, Combobox, IconButton, Tooltip } from "../../components/ui";
 import PageHeader from "../../components/ui/PageHeader";
 import HelpGuide from "../../components/HelpGuide";
 import { HELP_GUIDES } from "../../data/helpGuides";
@@ -15,6 +16,9 @@ import { useApiQuery } from "../../hooks/useApiQuery";
 import { useUsers } from "../../hooks";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
 import { findUserById, getUserName } from "../../utils/userShape";
+import LeadCreateModal from "./LeadCreateModal";
+import TransferLeadModal from "./TransferLeadModal";
+import DeleteLeadModal from "./DeleteLeadModal";
 
 const formatMoney = (value) =>
   value || value === 0
@@ -29,6 +33,11 @@ const formatDate = (value) => (value ? dayjs(value).format("DD-MMM-YYYY") : "—
 
 const Leads = () => {
   const navigate = useNavigate();
+
+  // Create modal + per-row transfer/delete targets (null = closed).
+  const [createOpen, setCreateOpen] = useState(false);
+  const [transferLead, setTransferLead] = useState(null);
+  const [deleteLead, setDeleteLead] = useState(null);
 
   // Filter state forwarded verbatim as StageId/OwnerId/SourceId — sp_FetchLeads
   // treats each as an optional exact-match filter (null = no filter).
@@ -126,12 +135,43 @@ const Leads = () => {
     extraParams,
     initialPageSize: 25,
     getRowId: (row) => row.Id,
-    enableRowActions: false,
+    enableRowActions: true,
+    displayColumnDefOptions: {
+      "mrt-row-actions": { grow: false, header: "Actions" },
+    },
     muiTableBodyRowProps: ({ row }) => ({
       hover: true,
       sx: { cursor: "pointer" },
       onClick: () => navigate(`/sales/leads/${row.original.Id}`),
     }),
+    // Row actions live inside the clickable row, so each button stops
+    // propagation to avoid also navigating to the lead detail.
+    renderRowActions: ({ row }) => (
+      <Box sx={{ display: "flex", gap: 0.5 }} onClick={(e) => e.stopPropagation()}>
+        <Tooltip title="Transfer">
+          <IconButton
+            size="sm"
+            variant="ghost"
+            aria-label="Transfer lead"
+            data-testid={`transfer-lead-${row.original.Id}`}
+            onClick={() => setTransferLead(row.original)}
+          >
+            <ArrowRightLeft size={16} />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="Delete">
+          <IconButton
+            size="sm"
+            variant="ghost"
+            aria-label="Delete lead"
+            data-testid={`delete-lead-${row.original.Id}`}
+            onClick={() => setDeleteLead(row.original)}
+          >
+            <Trash2 size={16} />
+          </IconButton>
+        </Tooltip>
+      </Box>
+    ),
     muiTableContainerProps: { sx: { maxHeight: "500px" } },
   });
 
@@ -140,7 +180,20 @@ const Leads = () => {
       <PageHeader
         title="Leads"
         subtitle="Prospective customers moving through your pipeline."
-        actions={<HelpGuide guide={HELP_GUIDES.leads} />}
+        actions={
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <Button
+              variant="primary"
+              size="sm"
+              leftIcon={<Plus size={14} />}
+              onClick={() => setCreateOpen(true)}
+              data-testid="new-lead-btn"
+            >
+              New Lead
+            </Button>
+            <HelpGuide guide={HELP_GUIDES.leads} />
+          </Box>
+        }
       />
       <Helmet>
         <title>PRD Infotech | Leads</title>
@@ -180,6 +233,21 @@ const Leads = () => {
       <Box sx={{ width: "100%", overflowX: "auto" }}>
         <MaterialReactTable table={table} />
       </Box>
+
+      <LeadCreateModal open={createOpen} onClose={() => setCreateOpen(false)} />
+
+      <TransferLeadModal
+        open={Boolean(transferLead)}
+        leadId={transferLead?.Id}
+        onClose={() => setTransferLead(null)}
+      />
+
+      <DeleteLeadModal
+        open={Boolean(deleteLead)}
+        leadId={deleteLead?.Id}
+        leadName={deleteLead?.Name}
+        onClose={() => setDeleteLead(null)}
+      />
     </Box>
   );
 };

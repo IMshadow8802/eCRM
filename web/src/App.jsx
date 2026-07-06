@@ -18,22 +18,14 @@ import SessionMonitor from "./components/SessionMonitor";
 // Lazy-loaded components
 const Login = lazy(() => import("./pages/auth/Login"));
 const Dashboard = lazy(() => import("./components/Dashboard"));
-const Projects = lazy(() => import("./pages/Master/Projects"));
-const Teams = lazy(() => import("./pages/Master/Teams"));
 const Task = lazy(() => import("./pages/Task/TaskBoard"));
-const Users = lazy(() => import("./pages/Master/Users"));
-const LeadSource = lazy(() => import("./pages/Master/LeadSource"));
-const Status = lazy(() => import("./pages/Master/Status"));
-const Leads = lazy(() => import("./pages/Master/Leads"));
-const FollowUps = lazy(() => import("./pages/Master/FollowUps"));
-const UserFollowups = lazy(() => import("./pages/Reports/UserFollowups"));
-const BranchLeadSummary = lazy(() => import("./pages/Reports/BranchLeadSummary"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
-// Sales module (config-driven pipeline, leads, calls)
+// Sales module (config-driven pipeline, leads, calls, follow-ups)
 const Pipeline = lazy(() => import("./pages/Sales/Pipeline"));
 const SalesLeads = lazy(() => import("./pages/Sales/Leads"));
 const LeadDetail = lazy(() => import("./pages/Sales/LeadDetail"));
+const SalesFollowUps = lazy(() => import("./pages/Sales/FollowUps"));
 const CustomFields = lazy(() => import("./pages/Settings/CustomFields"));
 const PipelineSettings = lazy(() => import("./pages/Settings/Pipelines"));
 const Lookups = lazy(() => import("./pages/Settings/Lookups"));
@@ -64,25 +56,11 @@ export const routesConfig = [
   { path: "/reports", element: <Navigate to="/reports/pipeline-funnel" replace /> },
   { path: "/dashboard/*", element: <ProtectedRoute element={<Dashboard />} /> },
   { path: "/tasks/*", element: <ProtectedRoute element={<Task />} /> },
-  { path: "/projects/*", element: <ProtectedRoute element={<Projects />} /> },
-  { path: "/teams/*", element: <ProtectedRoute element={<Teams />} /> },
-  { path: "/users/*", element: <ProtectedRoute element={<Users />} /> },
-  { path: "/lead_source/*", element: <ProtectedRoute element={<LeadSource />} /> },
-  { path: "/status/*", element: <ProtectedRoute element={<Status />} /> },
-  { path: "/leads/*", element: <ProtectedRoute element={<Leads />} /> },
-  { path: "/follow-up/*", element: <ProtectedRoute element={<FollowUps />} /> },
-  {
-    path: "/followups_user-wise/*",
-    element: <ProtectedRoute element={<UserFollowups />} />,
-  },
-  {
-    path: "/lead_summary_branch-wise/*",
-    element: <ProtectedRoute element={<BranchLeadSummary />} />,
-  },
-  // Sales module — config-driven pipeline, leads, calls, reports.
+  // Sales module — config-driven pipeline, leads, calls, follow-ups, reports.
   { path: "/sales/pipeline", element: <ProtectedRoute element={<Pipeline />} /> },
   { path: "/sales/leads", element: <ProtectedRoute element={<SalesLeads />} /> },
   { path: "/sales/leads/:leadId", element: <ProtectedRoute element={<LeadDetail />} /> },
+  { path: "/sales/follow-ups", element: <ProtectedRoute element={<SalesFollowUps />} /> },
   { path: "/settings/custom-fields", element: <ProtectedRoute element={<CustomFields />} /> },
   { path: "/settings/pipelines", element: <ProtectedRoute element={<PipelineSettings />} /> },
   { path: "/settings/lookups", element: <ProtectedRoute element={<Lookups />} /> },

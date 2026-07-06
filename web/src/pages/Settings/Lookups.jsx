@@ -2,8 +2,7 @@
 //
 // Company-admin page to manage generic per-company lookups (tblLookup),
 // scoped by Kind (lead_source / call_outcome / lost_reason). Same
-// CRUD-master pattern as CustomFields.jsx / pages/Master/LeadSource.jsx,
-// with a Tabs strip to switch Kind.
+// CRUD-master pattern as CustomFields.jsx, with a Tabs strip to switch Kind.
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { Box } from "@mui/material";

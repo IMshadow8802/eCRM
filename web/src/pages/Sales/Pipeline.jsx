@@ -14,13 +14,8 @@ import PipelineColumn from "./PipelineColumn";
 const PIPELINE_ENTITY = "lead";
 const LEADS_QUERY_KEY = ["sales-leads"];
 
-// ponytail: sp_FetchPipelines returns 2 result sets (pipelines, then their
-// stages) but configController.fetchPipelines currently forwards only
-// `result.recordset` (the first one) — see backend/src/controllers/
-// configController.js `fetchRows`. Until that's fixed, `data.stages` will
-// come back empty from the real API and this board falls through to the
-// "No pipeline configured" empty state. Coded against the intended 2-key
-// shape ({pipelines, stages}) so nothing here needs to change once fixed.
+// sp_FetchPipelines returns 2 result sets (pipelines, then their stages);
+// configController.fetchPipelines forwards both as { pipelines, stages }.
 function bucketLeadsByStage(stages, leads) {
   const bucket = {};
   for (const stage of stages) bucket[stage.Id] = [];

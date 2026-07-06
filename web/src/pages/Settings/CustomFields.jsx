@@ -1,9 +1,8 @@
 // src/pages/Settings/CustomFields.jsx
 //
 // Company-admin page to manage lead custom-field definitions
-// (tblCustomFieldDef, Entity='lead'). Reuses the LeadSource/Status
-// CRUD-master pattern (MasterChipGrid + Design/FormComponents) — see
-// pages/Master/LeadSource.jsx.
+// (tblCustomFieldDef, Entity='lead'). Uses the MasterChipGrid +
+// Design/FormComponents CRUD-master pattern.
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { Box } from "@mui/material";
