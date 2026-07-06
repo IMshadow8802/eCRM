@@ -46,8 +46,11 @@ async function startServer() {
       process.exit(1);
     }
 
-    // Listen on 127.0.0.1 for IIS compatibility (SAME AS ATTENDANCE API)
-    const server = app.listen(PORT, "127.0.0.1", () => {
+    // Bind host: 127.0.0.1 locally (IIS reverse proxy), 0.0.0.0 in Docker.
+    // Docker Compose sets HOST=0.0.0.0 so the port is reachable from outside
+    // the container; local dev keeps the loopback default.
+    const HOST = process.env.HOST || "127.0.0.1";
+    const server = app.listen(PORT, HOST, () => {
       const isProduction = process.env.NODE_ENV === "production";
       const baseUrl = process.env.BASE_URL || `http://localhost:${PORT}`;
 

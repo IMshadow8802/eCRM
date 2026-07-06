@@ -38,7 +38,15 @@ Notion page ("🎯 Nexus CRM") — under **✅ Done**, **🐛 Bug Fix Log**, and
 **📅 Change Log** as appropriate. Use absolute dates (`2026-07-03`, never
 "today"). Fetch the page first, then `notion-update-page` with `content_updates`.
 
-### 0.6 Other standing rules
+### 0.6 Server / deploy — read-only, commands only
+**Never connect to the production server or run a deploy yourself.** Only the
+user runs `ssh myserver`, `rsync`, `docker …`, or anything that touches the box.
+- Claude's job: **write the exact commands** and hand them over. Claude never executes `ssh`/`rsync`/remote `docker` — not via Bash, not any other way.
+- Deploy transport is **always `rsync`, never `scp`** (idempotent; `-c` checksum skips unchanged; add `-n` for a dry-run preview).
+- Everything the server needs is rsync'd, **including the env file**: the prod client env is `backend/.env.prd` (the local prod env, copied up). It is git-ignored and `.dockerignore`d (never baked into the image); Compose loads it at runtime via `env_file`.
+- Full deploy recipe in §8.
+
+### 0.7 Other standing rules
 - **MUI v9**: this repo is on `@mui/material@9` — use `slotProps` (not `InputProps`/`inputProps`/`renderTags`). Reuse the shared `ui/` components (`Combobox`, `TextInput`, `DateField`, `Modal`, `PageHeader`, …) and `FormSelect`/`FormInput` (which wrap them) instead of raw MUI selects.
 - **Multi-tenancy**: every DB query and SP is filtered by `CompId` (+ `BranchId` where relevant). Never leak across companies.
 - **Build phasing for big features**: all SQL first (one batch, user-applied), then backend controllers/routes, then web (fan out to parallel agents by page). Verify page↔SP contracts against the live DB, not just mocked tests.
@@ -195,6 +203,42 @@ sql/              # NNN_*.sql — pending, user-applied scripts only (see §0.2)
 - `GET /health` — uptime/memory. `GET /test-db` — DB connectivity. `GET /api` — HTML route docs.
 
 ## 8. Deployment
-- **Backend**: PM2 cluster on `127.0.0.1` (IIS reverse proxy); logs in `logs/`.
+- **Backend**: **Docker Compose** (single `crm` service, `node:20-alpine`, `backend/Dockerfile` + `backend/docker-compose.yml`) on the aaPanel server (SSH alias **`myserver`**, host `prdinfotech`). App binds `0.0.0.0:$PORT` in-container (`HOST` env); nginx on the box reverse-proxies the public domain → host port `5001`. **Host-port convention: the CRM API always uses the 5000 range** (`5001`, then `5002`, … for further instances) — the `30xx`/`80xx` ranges on the server belong to the eStock docker cluster and PM2 apps; never collide with them.
+  - **Deploy is user-run only** (per §0.6 — Claude gives commands, never runs `ssh`/`rsync`/`docker`). Transport is always `rsync` (add `-n` to preview). Remote dir: `REMOTE=/www/wwwroot/shadowcodes.in/CRM` on `myserver` (confirm once, then it's fixed).
+  - **Recipe** (from `backend/`):
+    ```bash
+    REMOTE=/www/wwwroot/shadowcodes.in/CRM
+    # 1. code + deploy config + prod env (env travels with the code)
+    rsync -avzc src/ myserver:$REMOTE/src/
+    rsync -avzc package.json pnpm-lock.yaml pnpm-workspace.yaml Dockerfile docker-compose.yml .dockerignore .env.prd myserver:$REMOTE/
+    # 2. build + (re)start just the crm service, then tail
+    ssh myserver "cd $REMOTE && docker compose up -d --build crm && docker compose logs crm --tail=50"
+    ```
+  - `.env.prd` = local prod env, rsync'd up; git-ignored + `.dockerignore`d, loaded at runtime via compose `env_file` (never baked into the image). SQL scripts are **never** shipped/applied by the container — run by hand per §0.2. The `pm2:*` npm scripts + `ecosystem.config.js` are **local-dev only** and `.dockerignore`d out of the image.
+  - **Public HTTPS via nginx (aaPanel)** — the container only listens on `127.0.0.1:5001`; nginx maps `https://shadowcodes.in/CRM/` → it. aaPanel auto-includes `proxy/shadowcodes.in/*.conf` (line `include …/proxy/shadowcodes.in/*.conf;` in the site conf), so a proxy = **one file** in that dir. **This is already set up** (`CRM.conf`, path `/CRM/` → `:5001`). To recreate/replicate for a new instance, write the file, test, reload:
+    ```bash
+    cat > /www/server/panel/vhost/nginx/proxy/shadowcodes.in/CRM.conf << 'EOF'
+    #PROXY-START/CRM/
+    location ^~ /CRM/
+    {
+        proxy_pass http://127.0.0.1:5001/;   # trailing slash strips the /CRM prefix → backend sees /health, /api/...
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header REMOTE-HOST $remote_addr;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_http_version 1.1;
+        add_header X-Cache $upstream_cache_status;
+        set $static_fileCRM 0;
+        if ( $uri ~* "\.(gif|png|jpg|css|js|woff|woff2)$" ) { set $static_fileCRM 1; expires 1m; }
+        if ( $static_fileCRM = 0 ) { add_header Cache-Control no-cache; }
+    }
+    #PROXY-END/CRM/
+    EOF
+    nginx -t && nginx -s reload
+    curl -s https://shadowcodes.in/CRM/health   # expect 200 JSON
+    ```
+    Gotchas: **`nginx -s reload` is mandatory** — editing the conf alone does nothing (a stale reload was the one 404 we hit). `location ^~ /CRM/` (prefix, high-priority) beats the SPA's `location /`. The deploy dir `…/shadowcodes.in/CRM` sits inside the web docroot but the `^~` proxy location overrides static file handling, so it's fine. Public API base for the **web frontend** = `https://shadowcodes.in/CRM` (not the dead `prdinfotech.in/CRM`).
 - **Web**: Vite build deployed under `/eStockCRM/`.
 - **Mobile**: EAS Build; OTA via Expo Updates.
