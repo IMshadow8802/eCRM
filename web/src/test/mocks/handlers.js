@@ -46,6 +46,16 @@ export const notificationFixture = {
 };
 
 export const handlers = [
+  // Shared attachments panel loads in LIVE mode on every detail view; return
+  // an empty list so those views don't trip onUnhandledRequest: "error".
+  http.post(`*/api/attachments/fetch`, async () =>
+    HttpResponse.json({
+      success: true,
+      message: "ok",
+      responseCode: 200,
+      data: { attachments: [] },
+    }),
+  ),
   http.post(`*/api/projects/fetchProjects`, async () =>
     HttpResponse.json({
       success: true,

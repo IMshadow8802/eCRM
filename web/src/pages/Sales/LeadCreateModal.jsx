@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
+import { enqueueSnackbar } from "notistack";
 import { UserPlus } from "lucide-react";
 
 import { Modal, Button, TextInput, NumberInput, DateField, Combobox } from "../../components/ui";
 import DynamicField from "../../components/DynamicField";
+import Attachments from "../../components/Attachments";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { useApiMutation } from "../../hooks/useApiMutation";
 import { useUsers } from "../../hooks";
@@ -67,6 +69,7 @@ export default function LeadCreateModal({ open, onClose, onCreated }) {
 
   // Custom-field values keyed by FieldId — mirrors LeadDetail's local draft.
   const [custom, setCustom] = useState({});
+  const attachmentsRef = useRef(null);
 
   const { data: usersData } = useUsers({ PageSize: 1000 });
   const users = usersData?.users || [];
@@ -161,7 +164,7 @@ export default function LeadCreateModal({ open, onClose, onCreated }) {
       value: custom[def.Id],
     }));
     try {
-      await saveMutation.mutateAsync({
+      const saved = await saveMutation.mutateAsync({
         Id: 0,
         Name: values.Name.trim(),
         MobileNo: values.MobileNo.trim(),
@@ -175,6 +178,14 @@ export default function LeadCreateModal({ open, onClose, onCreated }) {
         NextFollowupDate: values.NextFollowupDate || null,
         CustomJSON: JSON.stringify(customJson),
       });
+      const newId = saved?.Id;
+      if (newId && attachmentsRef.current?.stagedCount) {
+        const { failed } = await attachmentsRef.current.uploadStaged(newId);
+        if (failed)
+          enqueueSnackbar(`${failed} file(s) failed to upload — add them from the record`, {
+            variant: "warning",
+          });
+      }
       reset(EMPTY);
       setCustom({});
       onCreated?.();
@@ -370,6 +381,11 @@ export default function LeadCreateModal({ open, onClose, onCreated }) {
               </div>
             </div>
           )}
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Attachments</h3>
+            <Attachments ref={attachmentsRef} entity="lead" entityId={null} />
+          </div>
         </form>
       </Modal.Body>
       <Modal.Footer>

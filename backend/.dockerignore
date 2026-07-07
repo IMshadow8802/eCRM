@@ -18,3 +18,5 @@ logs
 .vscode
 .idea
 sql
+uploads
+CRMUploads

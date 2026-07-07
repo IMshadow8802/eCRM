@@ -15,6 +15,11 @@ services:
       HOST: 0.0.0.0
     env_file:
       - .env.prd
+    volumes:
+      # Per-client uploads: the app always writes to /app/uploads; each client
+      # container mounts its own host dir here, so files never cross clients and
+      # survive rebuilds. Copy this block + rename the host dir for a new client.
+      - ./CRMUploads:/app/uploads
     networks:
       - nexus_network
     logging:

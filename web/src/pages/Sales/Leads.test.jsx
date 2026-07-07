@@ -47,6 +47,14 @@ vi.mock("../../hooks/useServerTable", () => ({
 
 vi.mock("../../hooks", () => ({
   useUsers: vi.fn(() => ({ data: { users: FIXTURE_USERS } })),
+  // Attachments (rendered inside the create modal) pulls useConfirmation.
+  useConfirmation: vi.fn(() => ({
+    confirmationState: { open: false },
+    showConfirmation: vi.fn(),
+    hideConfirmation: vi.fn(),
+    handleConfirm: vi.fn(),
+    confirmDelete: vi.fn(),
+  })),
 }));
 
 vi.mock("../../hooks/useApiQuery", () => ({

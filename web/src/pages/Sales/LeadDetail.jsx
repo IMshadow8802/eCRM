@@ -6,6 +6,7 @@ import dayjs from "dayjs";
 
 import { PageHeader, Card, Chip, Button, Tabs, EmptyState, Skeleton } from "../../components/ui";
 import DynamicField from "../../components/DynamicField";
+import Attachments from "../../components/Attachments";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { useApiMutation } from "../../hooks/useApiMutation";
 import { useUsers } from "../../hooks";
@@ -279,6 +280,11 @@ export default function LeadDetail({ leadId: leadIdProp }) {
                   ))}
                 </div>
               )}
+            </Card>
+
+            <Card>
+              <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Attachments</h3>
+              <Attachments entity="lead" entityId={lead.Id} />
             </Card>
           </div>
         )}

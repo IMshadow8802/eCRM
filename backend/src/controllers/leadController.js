@@ -1,5 +1,6 @@
 const database = require("../config/database");
 const responseHelper = require("../utils/responseHelper");
+const attachmentController = require("./attachmentController");
 
 // Mutating SPs (sp_SaveLead, sp_MoveLeadStage, sp_TransferLead, sp_DeleteLead)
 // log their own activity server-side and swallow that logger's result set,
@@ -120,10 +121,22 @@ const leadController = {
     );
   },
 
-  delete(req, res) {
+  async delete(req, res) {
     const { CompId } = req.user;
     const { Id } = req.body;
-    return runSp(res, "sp_DeleteLead", { Id, CompId }, "Failed to delete lead");
+    try {
+      const result = await database.executeStoredProcedure("sp_DeleteLead", { Id, CompId });
+      const spResponse = result.recordset[0];
+      const message = spResponse.ResponseMess || spResponse.ResponseMessage;
+      if (spResponse.ResponseCode === 200) {
+        await attachmentController.cascadeDelete(CompId, "lead", Id);
+        return responseHelper.success(res, message, spResponse);
+      }
+      return responseHelper.error(res, message, "SP_ERROR", spResponse.ResponseCode);
+    } catch (err) {
+      console.error("sp_DeleteLead error:", err);
+      return responseHelper.error(res, "Failed to delete lead");
+    }
   },
 };
 

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { enqueueSnackbar } from "notistack";
 import { Plus, Trash2 } from "lucide-react";
 
 import {
@@ -10,6 +11,7 @@ import {
   DateField,
   RadioGroup,
 } from "../../../components/ui";
+import Attachments from "../../../components/Attachments";
 import { useApiMutation } from "../../../hooks/useApiMutation";
 import { useApiQuery } from "../../../hooks/useApiQuery";
 import useWorkspaceStore from "../../../stores/useWorkspaceStore";
@@ -40,6 +42,7 @@ export default function TaskCreateModal({
   const [dueDate, setDueDate] = useState("");
   const [steps, setSteps] = useState([""]);
   const [submitting, setSubmitting] = useState(false);
+  const attachmentsRef = useRef(null);
 
   const { data: usersPayload } = useApiQuery({
     queryKey: ["users", "pick-list"],
@@ -102,6 +105,14 @@ export default function TaskCreateModal({
         DueDate: dueDate || null,
         ChecklistItems: trimmedSteps,
       });
+      const newId = res?.taskId;
+      if (newId && attachmentsRef.current?.stagedCount) {
+        const { failed } = await attachmentsRef.current.uploadStaged(newId);
+        if (failed)
+          enqueueSnackbar(`${failed} file(s) failed to upload — add them from the record`, {
+            variant: "warning",
+          });
+      }
       onCreated?.(res);
       reset();
       onClose?.();
@@ -238,6 +249,19 @@ export default function TaskCreateModal({
                 onChange={setDueDate}
               />
             </div>
+          </div>
+          <div>
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 500,
+                marginBottom: 6,
+                color: "var(--color-surface-600, #475569)",
+              }}
+            >
+              Attachments
+            </div>
+            <Attachments ref={attachmentsRef} entity="task" entityId={null} />
           </div>
         </div>
       </Modal.Body>

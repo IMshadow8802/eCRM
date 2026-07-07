@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { enqueueSnackbar } from "notistack";
 import { Plus } from "lucide-react";
 
 import { Modal, Button, TextInput, TextArea, Combobox } from "../../components/ui";
 import DynamicField from "../../components/DynamicField";
+import Attachments from "../../components/Attachments";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { useApiMutation } from "../../hooks/useApiMutation";
 import { useUsers } from "../../hooks";
@@ -41,6 +43,7 @@ export default function TicketCreateModal({ open, onClose, onCreated }) {
   const [assignee, setAssignee] = useState(null);
   const [description, setDescription] = useState("");
   const [draft, setDraft] = useState({});
+  const attachmentsRef = useRef(null);
 
   const queryClient = useQueryClient();
 
@@ -161,6 +164,14 @@ export default function TicketCreateModal({ open, onClose, onCreated }) {
         Description: description.trim() || null,
         CustomJSON: JSON.stringify(customJson),
       });
+      const newId = res?.Id;
+      if (newId && attachmentsRef.current?.stagedCount) {
+        const { failed } = await attachmentsRef.current.uploadStaged(newId);
+        if (failed)
+          enqueueSnackbar(`${failed} file(s) failed to upload — add them from the record`, {
+            variant: "warning",
+          });
+      }
       queryClient.invalidateQueries({ queryKey: ["tickets"] });
       reset();
       onClose?.();
@@ -291,6 +302,10 @@ export default function TicketCreateModal({ open, onClose, onCreated }) {
               ))}
             </div>
           )}
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Attachments</h3>
+            <Attachments ref={attachmentsRef} entity="ticket" entityId={null} />
+          </div>
         </div>
       </Modal.Body>
       <Modal.Footer>

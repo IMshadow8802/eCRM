@@ -12,6 +12,9 @@ RUN pnpm install --prod --frozen-lockfile
 # App source
 COPY . .
 
+# Uploads dir (mount target for the per-client host volume)
+RUN mkdir -p uploads
+
 EXPOSE 5001
 
 # Bind 0.0.0.0 inside the container so the port is reachable from the host

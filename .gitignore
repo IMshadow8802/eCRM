@@ -100,3 +100,7 @@ out/
 
 # ---------- Misc generated ----------
 *.local
+
+# Runtime file uploads (per-client volume in prod; local multer writes here)
+backend/uploads/
+backend/CRMUploads/

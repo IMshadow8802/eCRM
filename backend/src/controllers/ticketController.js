@@ -1,5 +1,6 @@
 const database = require("../config/database");
 const responseHelper = require("../utils/responseHelper");
+const attachmentController = require("./attachmentController");
 
 // Mutating SPs log their own activity server-side and return one status row.
 async function runSp(res, spName, params, failMessage) {
@@ -136,10 +137,22 @@ const ticketController = {
     return runSp(res, "sp_ReopenTicket", { CompId, TicketId, UserId }, "Failed to reopen ticket");
   },
 
-  delete(req, res) {
+  async delete(req, res) {
     const { CompId } = req.user;
     const { Id } = req.body;
-    return runSp(res, "sp_DeleteTicket", { Id, CompId }, "Failed to delete ticket");
+    try {
+      const result = await database.executeStoredProcedure("sp_DeleteTicket", { Id, CompId });
+      const spResponse = result.recordset[0];
+      const message = spResponse.ResponseMess || spResponse.ResponseMessage;
+      if (spResponse.ResponseCode === 200) {
+        await attachmentController.cascadeDelete(CompId, "ticket", Id);
+        return responseHelper.success(res, message, spResponse);
+      }
+      return responseHelper.error(res, message, "SP_ERROR", spResponse.ResponseCode);
+    } catch (err) {
+      console.error("sp_DeleteTicket error:", err);
+      return responseHelper.error(res, "Failed to delete ticket");
+    }
   },
 
   saveSLARule(req, res) {

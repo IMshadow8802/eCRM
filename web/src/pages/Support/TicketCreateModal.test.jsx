@@ -23,6 +23,14 @@ const mutateAsync = vi.fn().mockResolvedValue({ Id: 909 });
 
 vi.mock("../../hooks", () => ({
   useUsers: vi.fn(() => ({ data: { users: FIXTURE_USERS } })),
+  // Attachments (rendered inside the modal) pulls useConfirmation.
+  useConfirmation: vi.fn(() => ({
+    confirmationState: { open: false },
+    showConfirmation: vi.fn(),
+    hideConfirmation: vi.fn(),
+    handleConfirm: vi.fn(),
+    confirmDelete: vi.fn(),
+  })),
 }));
 
 vi.mock("../../hooks/useApiMutation", () => ({

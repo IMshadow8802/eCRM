@@ -37,6 +37,7 @@ import {
   EmptyState,
 } from "../../../components/ui";
 import { toUserOptions, getUserId } from "../../../utils/userShape";
+import Attachments from "../../../components/Attachments";
 import { useApiQuery } from "../../../hooks/useApiQuery";
 import { useApiMutation } from "../../../hooks/useApiMutation";
 import useAuthStore from "../../../stores/useAuthStore";
@@ -677,6 +678,19 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
                         }
                       />
                     </div>
+                  </div>
+                  <div>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 500,
+                        marginBottom: 8,
+                        color: "var(--color-surface-600)",
+                      }}
+                    >
+                      Attachments
+                    </div>
+                    <Attachments entity="task" entityId={task.Id} />
                   </div>
                 </div>
               )}

@@ -1,6 +1,7 @@
 const database = require("../config/database");
 const { logActivity, ACTIONS } = require("../utils/activityLogger");
 const { cleanSpRows } = require("../utils/spHelpers");
+const attachmentController = require("./attachmentController");
 
 class TaskController {
   // ================================
@@ -197,6 +198,7 @@ class TaskController {
       const spResponse = result.recordsets[0][0];
 
       if (spResponse.ResponseCode === 200) {
+        await attachmentController.cascadeDelete(req.user.CompId, "task", Id);
         await logActivity({
           entityType: "Task",
           entityId: Id,
