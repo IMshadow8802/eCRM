@@ -13,6 +13,8 @@ router.use(verifyToken, loadScope);
 
 router.post("/saveLeads", requirePayload, leadController.save);
 router.post("/fetchLeads", allowEmptyPayload, leadController.fetch);
+router.post("/fetchLeadDetail", requirePayload, leadController.detail);
+router.post("/moveLeadStage", requirePayload, leadController.moveStage);
 router.post("/deleteLeads", requirePayload, leadController.delete);
 router.post("/transferLead", requirePayload, leadController.transfer);
 

@@ -1,507 +1,244 @@
 # CLAUDE.md
 
-File guide Claude Code (claude.ai/code) work code here.
+Guidance for Claude Code working in this repository. This is the single source
+of truth for the whole monorepo — there are no per-folder `CLAUDE.md` files.
 
-## Repository Overview
+---
 
-**Multi-platform CRM system**, three apps:
-- **Web Application** - React/Vite SPA, deployed under `/eStockCRM/`
-- **Backend API** - Node.js/Express REST API + SQL Server
-- **Mobile Application** - React Native/Expo mobile
+## 0. Hard rules — non-negotiable
 
-Three apps share same backend API + auth. Web + mobile only — no desktop/Electron build.
+These override any default behaviour. Follow them exactly.
 
-## Quick Start Commands
+### 0.1 Git — read-only unless ordered
+**Never perform any git action other than read, without an explicit order from
+the user in that message.**
+- **Allowed, always:** `git status`, `git log`, `git diff`, `git show`, `git blame` (read-only inspection).
+- **Forbidden without an explicit user instruction:** `git add`, `git commit`, `git push`, `git pull`, `git branch`, `git checkout`/`switch`, `git merge`, `git rebase`, `git reset`, `git restore`, `git rm`, `git stash`, `git tag`, `git cherry-pick`, `gh pr`, and every other mutating git/GitHub action.
+- Make all code changes in the working tree and **leave them uncommitted** for the user to review. When work is ready, say so and wait — do **not** stage or commit on your own initiative.
+- "Explicit order" means the user tells you to commit/push/branch in this conversation. Prior approval does not carry over to later actions.
 
-### Web Application (in `web/` directory)
+### 0.2 SQL — write files, never apply
+- Database schema/procedures are **applied by hand by the user**. Never run DDL/DML: no `sqlcmd`, no `dbq`, no MCP write tools (`write_query`, `create_table`, `alter_table`, `drop_table`) for schema/data changes. MCP **read** queries (`read_query`, `describe_table`, `list_tables`, `sys.sql_modules`) are fine for inspection.
+- Put every script in `backend/sql/` named `NNN_short_name.sql` (incrementing prefix). Include a header comment and a "verify after apply" snippet.
+- A script stays in `backend/sql/` until the **user confirms it is applied**, then it is deleted (the folder holds only not-yet-applied scripts). Merge closely-related fixes into one script where it eases a single manual apply.
+
+### 0.3 Package manager — pnpm only
+Always `pnpm`, never `npm`. npm corrupts the lockfile. Applies to `web/`, `backend/`, `mobile/`.
+
+### 0.4 Test-first — every code change ships with tests
+- No change in `backend/src/` or `web/src/` ships without tests proving the changed behaviour (features, bug fixes, refactors).
+- New behaviour → happy path + ≥1 failure/edge. Bug fix → a regression test that would have failed before the fix (flag it when reporting).
+- Files you modify must reach **≥80% line/branch coverage**. Global floor 60%.
+- Never silence tests (`.only`, `.skip`, `xit`, exclude patterns). Fix the code or the test.
+- Before claiming done: run the suite with coverage and confirm green + ≥80% on touched files.
+
+### 0.5 Log shipped work to Notion
+After each shipped fix/feature/decision, append a dated entry to the project's
+Notion page ("🎯 Nexus CRM") — under **✅ Done**, **🐛 Bug Fix Log**, and/or
+**📅 Change Log** as appropriate. Use absolute dates (`2026-07-03`, never
+"today"). Fetch the page first, then `notion-update-page` with `content_updates`.
+
+### 0.6 Server / deploy — read-only, commands only
+**Never connect to the production server or run a deploy yourself.** Only the
+user runs `ssh myserver`, `rsync`, `docker …`, or anything that touches the box.
+- Claude's job: **write the exact commands** and hand them over. Claude never executes `ssh`/`rsync`/remote `docker` — not via Bash, not any other way.
+- Deploy transport is **always `rsync`, never `scp`** (idempotent; `-c` checksum skips unchanged; add `-n` for a dry-run preview).
+- Everything the server needs is rsync'd, **including the env file**: the prod client env is `backend/.env.prd` (the local prod env, copied up). It is git-ignored and `.dockerignore`d (never baked into the image); Compose loads it at runtime via `env_file`.
+- Full deploy recipe in §8.
+
+### 0.7 Other standing rules
+- **MUI v9**: this repo is on `@mui/material@9` — use `slotProps` (not `InputProps`/`inputProps`/`renderTags`). Reuse the shared `ui/` components (`Combobox`, `TextInput`, `DateField`, `Modal`, `PageHeader`, …) and `FormSelect`/`FormInput` (which wrap them) instead of raw MUI selects.
+- **Multi-tenancy**: every DB query and SP is filtered by `CompId` (+ `BranchId` where relevant). Never leak across companies.
+- **Build phasing for big features**: all SQL first (one batch, user-applied), then backend controllers/routes, then web (fan out to parallel agents by page). Verify page↔SP contracts against the live DB, not just mocked tests.
+- **Audit-style feedback**: when the user asks "is X production-ready / right / dumb", lead with UX/architecture critique, not a feature checklist.
+
+---
+
+## 1. Repository overview
+
+**Multi-platform CRM.** Monorepo with three apps sharing one backend API + auth:
+
+- **`web/`** — React 19 + Vite SPA, deployed under `/eStockCRM/`.
+- **`backend/`** — Node.js + Express 5 REST API over SQL Server (all CRUD via stored procedures).
+- **`mobile/`** — React Native + Expo app (feature parity in progress).
+
+```
+Mobile ─┐
+        ├──> Backend API (Express) ──> SQL Server (stored procedures)
+Web ────┘
+```
+
+Shared conventions: JWT auth + role/permission model, Zustand state, Axios with
+interceptors, standardized JSON responses, `CompId`/`BranchId` multi-tenancy.
+
+---
+
+## 2. Commands
+
+### web/ (port 8080)
 ```bash
-pnpm dev                    # Development server on port 8080
-pnpm build                  # Build for web deployment (dist-web/)
-pnpm test                   # Vitest (watch)
-pnpm test -- --run --coverage   # Single-shot run with coverage
+pnpm dev                      # dev server (Vite, HMR)
+pnpm build                    # production build → dist-web/
+pnpm exec vitest run          # run tests once (exits) — preferred in CI/agents
+pnpm test                     # vitest watch
+pnpm exec vitest run <file>   # run a single test file
 ```
+Tests: Vitest + React Testing Library + MSW. After changing a shared component,
+run the full suite (`pnpm exec vitest run`) — many pages import it.
 
-### Backend API (in `backend/` directory)
+### backend/
 ```bash
-pnpm dev                    # Development server with nodemon
-pnpm prod                   # Production server
-pnpm pm2:start              # Start with PM2 cluster mode
-pnpm pm2:logs               # View PM2 logs
+pnpm dev                      # nodemon dev server (port 5001)
+pnpm prod                     # production
+pnpm pm2:start | pm2:logs     # PM2 cluster
+pnpm exec jest --silent       # run tests
+pnpm exec jest <name>         # single suite
+pnpm exec jest <name> --coverage --collectCoverageFrom='src/controllers/<f>.js'
 ```
+Tests: Jest + Supertest. DB is mocked via `jest.mock("../../../src/config/database")`;
+`tests/helpers/mockRes.js` provides a `res` double. **Note:** mocked DB tests
+cannot catch a missing/renamed stored procedure — verify SP contracts against
+the live DB (`mcp__sqlserver-ecrm__read_query` on `sys.sql_modules`).
 
-### Mobile Application (in `mobile/` directory)
+### mobile/
 ```bash
-pnpm start                  # Start Expo development server
-pnpm android                # Run on Android device/emulator
-pnpm ios                    # Run on iOS device/simulator
+pnpm start                    # Expo dev server
+pnpm android | pnpm ios       # run on device/simulator
 ```
 
-(Always pnpm — npm corrupts the lockfile.)
+---
 
-## System Architecture
+## 3. Architecture
 
-### Data Flow
-```
-Mobile App ─┐
-            ├──> Backend API ──> SQL Server Database
-Web App ────┘
-```
+### Data flow & stack
+- **Request path (backend):** route → controller → `database.executeStoredProcedure(name, params)` → SQL Server → `responseHelper` → client.
+- **State:** Zustand + persistence (web: `localStorage`, mobile: `AsyncStorage`). Key stores: `useAuthStore` (auth, user, permissions, menuRights, API base URL), `useWorkspaceStore`, `useTaskStore`, `useKanbanStore`.
+- **API:** Axios instance with interceptors — injects the JWT, handles 401 (redirect via `utils/redirectToLogin.js`; auth-endpoint 401s skipped via `utils/authRedirectGuard.js`).
+- **API base URL:** prod `https://prdinfotech.in/CRM`; dev proxies `/api/*` → `http://localhost:5001`.
 
-### Technology Stack Overview
-- **Frontend**: React 18, React Native 0.79
-- **State Management**: Zustand + persistence (all platforms)
-- **API Communication**: Axios + interceptors
-- **Backend**: Express.js, SQL Server (mssql)
-- **Authentication**: JWT tokens + role-based access
-- **Database**: SQL Server + stored procedures
-- **Build Tools**: Vite (web), Expo (mobile)
-
-## Cross-Platform Development Patterns
-
-### State Management
-Three apps use **Zustand**, identical store patterns:
-- `useAuthStore` - Auth, user data, permissions
-- `useTaskStore` - Task state
-- `useKanbanStore` - Kanban board state
-
-Persist via:
-- Web: `localStorage`
-- Mobile: `AsyncStorage`
-
-### API Integration
-Same API base URL pattern:
-- Production: `https://prdinfotech.in/CRM`
-- Development: `http://localhost:5001`
-
-**API Response Structure** (consistent across endpoints):
+### Standard API response
 ```json
 {
   "success": true,
-  "message": "Resource retrieved successfully",
+  "message": "...",
   "responseCode": 200,
-  "data": {
-    "resourceName": [...],
-    "pagination": {
-      "currentPage": 1,
-      "pageSize": 10,
-      "totalRecords": 25,
-      "totalPages": 3
-    }
-  },
-  "timestamp": "2025-08-03T08:23:11.705Z"
+  "data": { "resourceName": [ ... ], "pagination": { ... } },
+  "timestamp": "..."
 }
 ```
+On the web, extract `data?.resourceName` (key matches the endpoint).
 
-### Authentication Flow
-1. User login via `/api/auth/login`
-2. Backend return JWT token + user data + menu permissions
-3. Token stored Zustand store (persisted)
-4. All next requests include token in Authorization header
-5. Axios interceptors handle auto token inject + 401 responses
+### Auth & permissions
+1. `POST /api/auth/loginUser` → `sp_ValidateUser` returns JWT + user + **menu rights** (from `tblMenu` ⋈ `tblGroupAccess` ⋈ `tblUserGroupMap`). Menu rights load at **login** — re-login to pick up menu/permission changes.
+2. Token stored in `useAuthStore` (persisted); interceptors attach it.
+3. **Menus are DB-driven**: `tblMenu.Route` gives each row its SPA path (legacy rows fall back to a title-slug). `menuBuilder.buildDynamicMenu(menuRights)` builds the sidebar tree; there are no hardcoded menus. Sidebar visibility = the group's `CanView` grant in `tblGroupAccess`.
+4. **Task/workspace permissions** are a separate model from menu rights — see §6.
 
-## Database Architecture
+### Database conventions (SQL Server)
+- All CRUD via stored procedures. Naming: `sp_[Action][Entity]` (`sp_SaveLead`, `sp_FetchTickets`, `sp_DeleteTask`).
+- CRUD pattern: `@Id = 0` → insert, `@Id > 0` → update.
+- Every SP filters by `@CompId` (+ `@BranchId`); paged fetches use `@PageNumber`/`@PageSize`/`@SearchTerm` and return a second result set with pagination.
+- Mutating SPs return one status row: `Id`, `ResponseCode`, `ResponseMess`. They wrap writes in `BEGIN TRAN`/`TRY-CATCH` and log activity via a single logger SP (`sp_LogLeadActivity` / `sp_LogTicketActivity`) captured with `INSERT INTO @tbl EXEC ...`.
+- Schema is managed externally — no migration files in-repo beyond the pending `backend/sql/` scripts.
 
-### Core Entity Relationships
-```
-tblUser ──┬── tblUser_Groups ──── tblUserGroups (Roles)
-          │
-          ├── tblTeamMembers ──── tblTeams
-          │
-          └── tblProjects ──┬── tblTasks (Hierarchical)
-                            │
-                            ├── tblTaskComments
-                            ├── tblTaskChecklist
-                            ├── tblTimeEntries
-                            └── tblTaskActivity (Audit Trail)
-```
+---
 
-### Stored Procedure Patterns
-- **CRUD Operations**: `@Id=0` create, `@Id>0` update
-- **Multi-tenancy**: All queries filtered by `@CompId` + `@BranchId`
-- **Access Control**: Permission checks via JSON_VALUE for Members/Watchers
-- **Pagination**: Standard `@PageNumber`, `@PageSize`, `@SearchTerm` params
-- **Response Format**: Return `ResponseCode`, `ResponseMess`, data columns
-- **Transaction Safety**: Critical ops wrapped BEGIN/COMMIT + error handling
+## 4. Web (`web/`)
 
-### Permission System
-**Hierarchical Access Control**:
-1. **Role-based**: tblUserGroups → tblGroupAccess (menu-level perms)
-2. **Resource-level**: Project/Task access via ownership, team membership, or JSON member lists
-3. **Company Isolation**: Data filtered by CompId/BranchId
-4. **Audit Trail**: Task ops logged to tblTaskActivity
-
-## Project Structure Guidelines
-
-### Web Application (`web/`)
 ```
 src/
-  ├── components/        # Reusable UI components
-  │   ├── Design/       # Custom button/form components
-  │   ├── Charts/       # ECharts visualization components
-  │   └── [Feature]     # Feature-specific components
-  ├── pages/            # Route components by feature
-  ├── stores/           # Zustand state management
-  ├── hooks/            # Custom React hooks (useApi, useApiQuery)
-  ├── api/              # API query functions
-  ├── utils/            # Utilities (platform detection, token utils)
-  └── App.jsx           # Router configuration (Hash/Browser)
+  api/            # endpoint fetchers (salesQueries, supportQueries, masterQueries/)
+  components/
+    ui/           # design-system primitives (Combobox, TextInput, DateField,
+                  #   Modal, PageHeader, Chip, Button, Tabs, EmptyState, ...)
+    Design/       # legacy FormComponents (FormSelect/FormInput wrap ui/)
+    Charts/       # recharts + ECharts wrappers
+    HelpGuide.jsx # bilingual (EN default / हिंदी) "?" how-to popover
+    Sidebar.jsx   # DB-driven nav via buildDynamicMenu
+  pages/          # route components by feature
+    Task/  Sales/  Support/  Settings/  Reports/  Master/  auth/
+  stores/         # Zustand (useAuthStore, useWorkspaceStore, useTaskStore, ...)
+  hooks/          # useApiQuery, useApiMutation, useServerTable, useUsers, ...
+  utils/          # menuBuilder, userShape, axiosConfig, redirectToLogin, ...
+  data/           # static data (helpGuides.js, ...)
+  App.jsx         # routes (BrowserRouter, basename="/eStockCRM/")
 ```
+- Routing: `BrowserRouter` basename `/eStockCRM/`. Section parents (`/sales`, `/support`, `/settings`, `/reports`) redirect to their first child so bare paths don't 404.
+- Data fetching: `useApiQuery`/`useApiMutation` (TanStack Query); server tables via `useServerTable` + `material-react-table`.
+- Charts: `recharts` (use numeric `height`, never `height="100%"`).
+- Forms: React Hook Form + Zod; render via `ui/` components / `FormSelect`/`FormInput`.
 
-### Backend API (`backend/`)
-```
-src/
-  ├── config/           # Centralized configuration
-  │   ├── database.js   # SQL Server connection pool
-  │   ├── middleware.js # Security, CORS, compression
-  │   ├── routes.js     # Route registration
-  │   └── errorHandlers.js
-  ├── routes/           # Route definitions by feature
-  ├── controllers/      # Business logic
-  ├── middleware/       # Auth middleware
-  └── utils/            # Response helpers, encryption
-```
+## 5. Backend (`backend/`)
 
-### Mobile Application (`mobile/`)
 ```
 src/
-  ├── navigation/       # React Navigation configuration
-  ├── screens/          # Screen components
-  ├── components/       # Reusable UI components
-  ├── stores/           # Zustand state management
-  ├── services/         # API services
-  ├── hooks/            # Custom hooks
-  └── constants/        # App constants, colors, fonts
+  config/         # database.js (mssql pool), middleware.js, routes.js, errorHandlers.js
+  routes/         # <feature>Routes.js — verifyToken + loadScope, POST-per-action
+  controllers/    # <feature>Controller.js — inject CompId/BranchId/UserId from req.user
+  middleware/     # auth.js (JWT), permission.js (loadScope), payloadValidation.js
+  utils/          # responseHelper.js, encryption.js
+tests/unit/       # jest suites mirroring controllers/middleware/utils
+sql/              # NNN_*.sql — pending, user-applied scripts only (see §0.2)
 ```
+- Add an endpoint: controller method → `database.executeStoredProcedure()` → `responseHelper` → route in `routes/<feature>Routes.js` → register in `config/routes.js`.
+- All routes are `POST`; `verifyToken` + `loadScope` populate `req.user` (`UserId`, `CompId`, `BranchId`, `IsAdmin`) and `req.scope` (branch visibility).
 
-## Development Workflows
+## 6. Key domains
 
-### Adding a New Feature (Full Stack)
+### Tasks & workspaces
+- Workspaces are `personal | shared | project` (`tblWorkspaces`). Personal = owner-only, **private even from admins**. Shared = invite members (accept required). Project = members snapshotted from the linked project's team.
+- Roles (`tblWorkspaceMembers`): `owner | manager | member | viewer`. Task authority is derived from workspace role + creator/assignee, enforced by `sp_CheckTaskPermission`: owner/manager do anything; member creates and fully edits only their own tasks; viewer views/comments. Assigning others' tasks needs owner/manager or being the creator. `IsAdmin` bypasses on shared/project only (never personal).
+- Completion is **derived from the checklist** (`tblTaskChecklist`) — `IsDone` column retired; never reintroduce. Dependencies are hard blocks.
 
-**1. Database Layer**
-- Create/modify stored procedures SQL Server
-- Naming convention: `sp_[Entity][Action]`
-- Include permission checks + error handling
-- Test with sample data
+### Sales (config engine)
+- Per-company **config engine**: typed-EAV custom fields (`tblCustomFieldDef`/`tblCustomFieldValue`), configurable pipelines/stages (`tblPipeline`/`tblPipelineStage`), generic lookups (`tblLookup`) — all keyed by an `Entity` discriminator (`'lead'` / `'ticket'`).
+- Leads (`tblLeads`), manual call logging (`tblCall`), follow-ups (`tblFollowUp`), unified activity timeline (`tblLeadActivity`). Pipeline board, leads table, lead detail, Settings, reports.
 
-**2. Backend API**
-- Add route `backend/src/routes/[feature]Routes.js`
-- Controller method `backend/src/controllers/[feature]Controller.js`
-- Use `database.executeStoredProcedure()` for DB calls
-- Return standardized responses via `responseHelper.js`
+### Support (ticketing)
+- Reuses the config engine via `Entity='ticket'`. `tblTicket` + `tblTicketActivity` + SLA (`tblSLARule`, breach computed on read). `tblCall.TicketId` links calls to tickets. Ticket board, table, detail (resolve/close/reopen), Settings, reports.
 
-**3. Web Frontend**
-- API query function `web/src/api/[feature]Queries/`
-- Page/component `web/src/pages/[Feature]/`
-- Use `useApiQuery` hook for fetching
-- Update routing in `App.jsx` if needed
+---
 
-**4. Mobile Frontend**
-- Screen `mobile/src/screens/[Feature]/`
-- Navigation route `mobile/src/navigation/`
-- API service `mobile/src/services/`
-- React Query hooks for fetching
+## 7. Testing & debugging endpoints (backend)
+- `GET /health` — uptime/memory. `GET /test-db` — DB connectivity. `GET /api` — HTML route docs.
 
-### Platform-Specific Considerations
-
-**Web**:
-- `BrowserRouter` with `basename="/eStockCRM/"`
-- 401 redirects go via `utils/redirectToLogin.js` (uses `import.meta.env.BASE_URL`)
-- Auth-endpoint 401s skipped via `utils/authRedirectGuard.js` so login error toasts surface
-
-**Mobile**:
-- Use React Native APIs (no DOM access)
-- Platform-specific code `Platform.OS`
-- Safe areas via `SafeAreaView`
-- Expo APIs for native features
-
-## Key Features Implementation
-
-### Task Management
-- **Hierarchical Tasks**: Parent/child relationships + cascade restrictions
-- **Kanban Board**: Drag-and-drop `@dnd-kit` (web) / React Native Reanimated (mobile)
-- **Time Tracking**: tblTimeEntries with task associations
-- **Comments & Checklists**: Full threading support
-- **Activity Logging**: Full audit trail all ops
-
-### Project Management
-- **Team/Individual Access**: Projects assigned teams or individual members
-- **JSON Member Lists**: Dynamic member assignment via JSON arrays
-- **Budget Tracking**: Financial data per project
-- **Hierarchical Permissions**: Manager → Team Lead → Members
-
-### Authentication & Permissions
-- **JWT-based**: Tokens include user ID, role, permissions
-- **Menu-based Access**: Granular perms (Add/Edit/Delete/View)
-- **Multi-tenant**: Company/Branch isolation at DB level
-- **Session Management**: Auto token refresh + logout
-
-## Environment Configuration
-
-### Backend (`.env` files)
-```
-NODE_ENV=development
-PORT=5001
-DB_SERVER=localhost
-DB_NAME=eCRM+
-DB_USER=sa
-DB_PASSWORD=***
-BASE_URL=http://localhost:5001
-```
-
-### Web (Vite environment)
-- Base path `/eStockCRM/` via `vite.config.js#base` and `BrowserRouter#basename`
-- Dev proxies `/api/*` → `http://localhost:5001`
-- Auth-store API base URL in prod: `https://prdinfotech.in/CRM`
-
-### Mobile (Expo configuration)
-- API base URL in services layer
-- AsyncStorage for persistence
-
-## Testing & Debugging
-
-### Backend
-- Test DB connection: `GET /test-db`
-- Health check: `GET /health`
-- API docs: `GET /api` (HTML interface)
-- JSON endpoints: `GET /` (returns routes)
-
-### Web
-- React Query DevTools in dev
-- Browser DevTools for debugging
-- Network tab for API call inspection
-
-### Mobile
-- Expo DevTools in browser
-- React Native Debugger
-- Flipper for advanced debugging
-
-## Common Development Patterns
-
-### API Query Hook (Web)
-```javascript
-const { data, isLoading, error } = useApiQuery({
-  queryKey: ['resource', filters],
-  queryFn: () => fetchResourceAPI(filters),
-  enabled: true,
-  onSuccess: (data) => { /* handle success */ }
-});
-
-// Extract data: data?.resourceName
-```
-
-### Form Handling (Web)
-- React Hook Form + Zod validation
-- Custom form components `components/Design/FormComponents.jsx`
-- Consistent error handling + user feedback
-
-### Zustand Store Pattern
-```javascript
-const useStore = create(
-  persist(
-    (set) => ({
-      data: null,
-      setData: (data) => set({ data }),
-      clearData: () => set({ data: null })
-    }),
+## 8. Deployment
+- **Backend**: **Docker Compose** (single `crm` service, `node:20-alpine`, `backend/Dockerfile` + `backend/docker-compose.yml`) on the aaPanel server (SSH alias **`myserver`**, host `prdinfotech`). App binds `0.0.0.0:$PORT` in-container (`HOST` env); nginx on the box reverse-proxies the public domain → host port `5001`. **Host-port convention: the CRM API always uses the 5000 range** (`5001`, then `5002`, … for further instances) — the `30xx`/`80xx` ranges on the server belong to the eStock docker cluster and PM2 apps; never collide with them.
+  - **Deploy is user-run only** (per §0.6 — Claude gives commands, never runs `ssh`/`rsync`/`docker`). Transport is always `rsync` (add `-n` to preview). Remote dir: `REMOTE=/www/wwwroot/shadowcodes.in/CRM` on `myserver` (confirm once, then it's fixed).
+  - **Recipe** (from `backend/`):
+    ```bash
+    REMOTE=/www/wwwroot/shadowcodes.in/CRM
+    # 1. code + deploy config + prod env (env travels with the code)
+    rsync -avzc src/ myserver:$REMOTE/src/
+    rsync -avzc package.json pnpm-lock.yaml pnpm-workspace.yaml Dockerfile docker-compose.yml .dockerignore .env.prd myserver:$REMOTE/
+    # 2. build + (re)start just the crm service, then tail
+    ssh myserver "cd $REMOTE && docker compose up -d --build crm && docker compose logs crm --tail=50"
+    ```
+  - `.env.prd` = local prod env, rsync'd up; git-ignored + `.dockerignore`d, loaded at runtime via compose `env_file` (never baked into the image). SQL scripts are **never** shipped/applied by the container — run by hand per §0.2. The `pm2:*` npm scripts + `ecosystem.config.js` are **local-dev only** and `.dockerignore`d out of the image.
+  - **Public HTTPS via nginx (aaPanel)** — the container only listens on `127.0.0.1:5001`; nginx maps `https://shadowcodes.in/CRM/` → it. aaPanel auto-includes `proxy/shadowcodes.in/*.conf` (line `include …/proxy/shadowcodes.in/*.conf;` in the site conf), so a proxy = **one file** in that dir. **This is already set up** (`CRM.conf`, path `/CRM/` → `:5001`). To recreate/replicate for a new instance, write the file, test, reload:
+    ```bash
+    cat > /www/server/panel/vhost/nginx/proxy/shadowcodes.in/CRM.conf << 'EOF'
+    #PROXY-START/CRM/
+    location ^~ /CRM/
     {
-      name: 'store-name',
-      storage: createJSONStorage(() => localStorage) // or AsyncStorage
+        proxy_pass http://127.0.0.1:5001/;   # trailing slash strips the /CRM prefix → backend sees /health, /api/...
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header REMOTE-HOST $remote_addr;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_http_version 1.1;
+        add_header X-Cache $upstream_cache_status;
+        set $static_fileCRM 0;
+        if ( $uri ~* "\.(gif|png|jpg|css|js|woff|woff2)$" ) { set $static_fileCRM 1; expires 1m; }
+        if ( $static_fileCRM = 0 ) { add_header Cache-Control no-cache; }
     }
-  )
-);
-```
-
-## Deployment
-
-### Backend
-- PM2 cluster mode for prod
-- IIS reverse proxy compat (runs on 127.0.0.1)
-- Centralized logging to `logs/` directory
-
-### Web
-- Web build: Deploy to `/eStockCRM/` path + static files
-
-### Mobile
-- Build via EAS Build service
-- Separate iOS/Android builds
-- OTA updates via Expo Updates
-
-## Security Considerations
-
-- **SQL Injection Prevention**: Queries use parameterized inputs
-- **Authentication**: JWT tokens + expiration
-- **CORS**: Configured specific origins
-- **Rate Limiting**: Applied API endpoints
-- **Helmet**: Security headers all responses
-- **Multi-tenancy**: Enforced DB level (CompId/BranchId)
-
-## Important Notes
-
-- Each app own CLAUDE.md (see `web/CLAUDE.md`, `backend/CLAUDE.md`, `mobile/CLAUDE.md`)
-- DB schema managed externally (no migrations in codebase)
-- API responses include pagination metadata
-- Use Postman/Thunder Client for API testing
-- Mobile app active dev, full spec in `REACT_NATIVE_DEVELOPMENT_SPECIFICATION.md`
-
-## Navigation Guide for Claude Instances
-
-Navigate between app-specific docs + find right files for common tasks.
-
-### Application-Specific Documentation
-
-**Each app has CLAUDE.md: full file trees, import/export, quick nav:**
-
-#### `web/CLAUDE.md` - Web Application Guide
-- **When to use**: Frontend UI changes, routing, state, web-specific
-- **Contains**: File tree 50+ components, imports/exports, relationships
-- **Key sections**: State (Zustand), API hooks (useApiQuery), form components, charts
-- **Quick links**: Auth (stores/useAuthStore.js), API client (utils/axiosConfig.js), routing (App.jsx)
-
-#### `backend/CLAUDE.md` - Backend API Guide
-- **When to use**: New API endpoints, controller logic, SP calls, middleware
-- **Contains**: File tree routes, controllers, middleware, utilities, SP mappings
-- **Key sections**: Route registration (config/routes.js), controllers + SP calls, auth middleware
-- **Quick links**: DB config (config/database.js), auth routes (routes/authRoutes.js), task controller (controllers/taskController.js:218-716)
-
-#### `mobile/CLAUDE.md` - React Native Mobile App Guide
-- **When to use**: Mobile UI, RN screens, mobile features, navigation
-- **Contains**: File tree 24 components, 9 screens, navigation, API services
-- **Key sections**: Navigation (AppNavigator.jsx), API services (services/api.js), form components, modals
-- **Quick links**: Auth store (stores/authStore.js), API client (services/api.js:1-540), theme (constants/theme.js)
-
-### Quick Task Routing: Which App to Modify?
-
-#### "I want to add/modify authentication"
-1. **Backend**: `backend/src/controllers/authController.js` - Add auth endpoints
-2. **Web**: `web/src/stores/useAuthStore.js` - Auth state (line 1-227)
-3. **Mobile**: `mobile/src/stores/authStore.js` - Auth state (line 1-118)
-4. **Shared**: Both frontends call `POST /api/auth/loginUser`
-
-#### "I want to add a new API endpoint"
-1. **Backend**: Start here - create route → controller → call SP
-   - `backend/src/routes/[feature]Routes.js` - Define endpoint
-   - `backend/src/controllers/[feature]Controller.js` - Business logic
-   - `backend/src/config/routes.js` - Register route (line 1-224)
-2. **Web**: Add API query function `web/src/api/` or use `useApiQuery` directly
-3. **Mobile**: Add method `mobile/src/services/api.js` (line 1-540)
-
-#### "I want to modify task management"
-1. **Backend**: `backend/src/controllers/taskController.js` (LARGEST: 716 lines)
-   - Calls SPs: `sp_SaveTask`, `sp_FetchTasks`, etc.
-2. **Web**:
-   - List view: `web/src/pages/Task/Task.jsx`
-   - Task card: `web/src/components/TaskCard.jsx`
-   - Task modal: `web/src/pages/Task/Components/TaskModal.jsx`
-   - State: `web/src/stores/useTaskStore.js`
-3. **Mobile**:
-   - List view: `mobile/src/screens/TasksScreen.jsx`
-   - Task card: `mobile/src/components/TaskCard.jsx`
-   - Task modal: `mobile/src/components/TaskModal.jsx`
-   - API: `mobile/src/services/api.js` → `taskAPI` object (line 231-393)
-
-#### "I want to modify the dashboard"
-1. **Backend**: `backend/src/controllers/dashboardController.js` - Stats calc
-2. **Web**: `web/src/components/Dashboard.jsx` - Main dashboard + charts
-3. **Mobile**: `mobile/src/screens/DashboardScreen.jsx` - Mobile dashboard
-
-#### "I want to add a new database table/stored procedure"
-1. **Database**: Create table/SP SQL Server (no migration files)
-2. **Backend**: Controller method calling SP via `database.executeStoredProcedure()`
-3. **Frontend**: Use existing API query patterns (useApiQuery web, React Query mobile)
-
-#### "I want to modify permissions/access control"
-1. **Backend**: `backend/src/middleware/auth.js` - JWT verify, permission checks
-2. **Web**: `web/src/stores/useAuthStore.js` - hasPermission() method (line 132-140)
-3. **Mobile**: `mobile/src/stores/authStore.js` - hasPermission() method (line 48-66)
-4. **Database**: tblGroupAccess, tblUserGroups tables
-
-#### "I want to add a new screen/page"
-1. **Web**:
-   - Component `web/src/pages/[Feature]/`
-   - Route `web/src/App.jsx`
-   - Sidebar menu item `web/src/components/Sidebar.jsx`
-2. **Mobile**:
-   - Screen `mobile/src/screens/[Feature]Screen.jsx`
-   - Drawer `mobile/src/navigation/AppNavigator.jsx` (line 126-133)
-
-#### "I want to modify styling/theme"
-1. **Web**:
-   - `web/src/theme.js` - MUI theme config
-   - TailwindCSS classes in components
-2. **Mobile**: `mobile/src/constants/theme.js` - Full theme object
-
-### Cross-Platform File Patterns
-
-Cross-platform, files serve similar purposes:
-
-| Purpose | Web | Backend | Mobile |
-|---------|-----|---------|--------|
-| **Auth Store** | `stores/useAuthStore.js` (227 lines) | N/A | `stores/authStore.js` (118 lines) |
-| **API Client** | `utils/axiosConfig.js` | N/A | `services/api.js` (540 lines) |
-| **Main Entry** | `main.jsx` → `App.jsx` | `server.js` | `App.js` → `AppNavigator.jsx` |
-| **Routing** | `App.jsx` (React Router) | `config/routes.js` (224 lines) | `navigation/AppNavigator.jsx` (489 lines) |
-| **Theme** | `theme.js` (MUI) | N/A | `constants/theme.js` |
-
-### File Reference Pattern Examples
-
-**Pattern**: `filepath:line_number` = exact code location.
-
-**Authentication flow**:
-- Backend endpoint: `backend/src/routes/authRoutes.js:15` → `/api/auth/loginUser`
-- Backend controller: `backend/src/controllers/authController.js:45-89` → `login()` method
-- Web login page: `web/src/pages/auth/Login.jsx:54-79` → form submission
-- Mobile login: `mobile/src/screens/LoginScreen.jsx:30-55` → authAPI.login()
-
-**Task creation flow**:
-- Backend route: `backend/src/routes/taskRoutes.js:8` → `POST /api/tasks/saveTask`
-- Backend controller: `backend/src/controllers/taskController.js:45-120` → `save()` method calls `sp_SaveTask`
-- Web modal: `web/src/pages/Task/Components/CreateTaskModal.jsx`
-- Mobile modal: `mobile/src/components/AddTaskModal.jsx`
-
-**Permissions check**:
-- Backend middleware: `backend/src/middleware/auth.js:34-67` → `verifyToken()`
-- Web store: `web/src/stores/useAuthStore.js:132-140` → `hasPermission()`
-- Mobile store: `mobile/src/stores/authStore.js:48-66` → `hasPermission()`
-
-### Common Development Scenarios
-
-#### Scenario 1: "Add a new master data entity (e.g., Departments)"
-1. **Database**: Create `tblDepartments` table + CRUD SPs
-2. **Backend**:
-   - Create `backend/src/routes/departmentRoutes.js`
-   - Create `backend/src/controllers/departmentController.js`
-   - Register `backend/src/config/routes.js`
-3. **Web**:
-   - Create `web/src/pages/Master/Departments.jsx` (copy Teams.jsx pattern)
-   - Route `web/src/App.jsx`
-4. **Mobile**:
-   - Create `mobile/src/screens/DepartmentsScreen.jsx`
-   - Add `mobile/src/navigation/AppNavigator.jsx`
-   - API methods `mobile/src/services/api.js`
-
-#### Scenario 2: "Modify task status options"
-1. **Database**: Update `sp_SaveTask` validation if needed
-2. **Backend**: No change (passes through)
-3. **Web**: Update status dropdown `web/src/pages/Task/Components/CreateTaskModal.jsx`
-4. **Mobile**: Update status picker `mobile/src/components/AddTaskModal.jsx`
-
-#### Scenario 3: "Add a new chart to dashboard"
-1. **Backend**: May need stats calc `backend/src/controllers/dashboardController.js`
-2. **Web**:
-   - Chart component `web/src/components/Charts/[ChartName].jsx`
-   - Use in `web/src/components/Dashboard.jsx`
-3. **Mobile**: Add chart `mobile/src/screens/DashboardScreen.jsx` (may need react-native-chart-kit)
-
-### Using the Enhanced CLAUDE.md Files
-
-Each app CLAUDE.md now includes:
-1. **Complete File Tree**: Every file + purpose, imports, exports, usage
-2. **Quick Navigation Guide**: "I want to..." → file paths
-3. **Import/Export Mapping**: See imports at glance
-4. **Line Number References**: Jump to code sections
-
-**Example workflow**:
-1. Start root CLAUDE.md (this) to pick app(s)
-2. Open app CLAUDE.md for file structure
-3. Use "Quick Navigation Guide" to find files
-4. Reference line numbers for methods/logic
+    #PROXY-END/CRM/
+    EOF
+    nginx -t && nginx -s reload
+    curl -s https://shadowcodes.in/CRM/health   # expect 200 JSON
+    ```
+    Gotchas: **`nginx -s reload` is mandatory** — editing the conf alone does nothing (a stale reload was the one 404 we hit). `location ^~ /CRM/` (prefix, high-priority) beats the SPA's `location /`. The deploy dir `…/shadowcodes.in/CRM` sits inside the web docroot but the `^~` proxy location overrides static file handling, so it's fine. Public API base for the **web frontend** = `https://shadowcodes.in/CRM` (not the dead `prdinfotech.in/CRM`).
+- **Web**: Vite build deployed under `/eStockCRM/`.
+- **Mobile**: EAS Build; OTA via Expo Updates.

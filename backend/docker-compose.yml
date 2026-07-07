@@ -1,0 +1,28 @@
+# Nexus CRM backend — single service.
+# Multi-tenancy is handled inside the app (CompId/BranchId), one DB, one
+# container — NOT one-container-per-client like eStock. To host a second
+# isolated instance, copy this block and change container_name/ports/env_file.
+services:
+  crm:
+    build: .
+    container_name: nexus_crm
+    restart: always
+    ports:
+      - "5001:5001"
+    environment:
+      NODE_ENV: production
+      PORT: 5001
+      HOST: 0.0.0.0
+    env_file:
+      - .env.prd
+    networks:
+      - nexus_network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  nexus_network:
+    driver: bridge

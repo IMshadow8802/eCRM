@@ -32,6 +32,8 @@ import {
 } from "../../components/ui";
 import { bucketTasksByColumn, ORPHAN_BUCKET_KEY } from "./taskBucket";
 import useAuthStore from "../../stores/useAuthStore";
+import HelpGuide from "../../components/HelpGuide";
+import { HELP_GUIDES } from "../../data/helpGuides";
 
 const TEMPLATE_OPTIONS = [
   { value: "basic", label: "Basic — To Do / In Progress / Done" },
@@ -279,6 +281,7 @@ export default function TaskBoard() {
         icon={TYPE_ICON[activeType] ?? <CheckSquare size={22} />}
         iconBg={activeColor ?? undefined}
         iconFg="#FFFFFF"
+        actions={<HelpGuide guide={HELP_GUIDES.tasks} isAdmin={isAdmin} />}
       />
 
       <div

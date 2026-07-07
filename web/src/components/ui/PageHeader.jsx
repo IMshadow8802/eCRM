@@ -28,8 +28,8 @@ export default function PageHeader({
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: 12,
-        paddingBottom: 16,
+        gap: 8,
+        paddingBottom: 10,
         borderBottom: tabs ? undefined : `1px solid ${p.border.subtle}`,
       }}
     >

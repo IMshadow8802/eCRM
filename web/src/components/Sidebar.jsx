@@ -27,6 +27,11 @@ import { buildDynamicMenu } from "../utils/menuBuilder";
 export const SIDEBAR_WIDTH_EXPANDED = 240;
 export const SIDEBAR_WIDTH_RAIL = 68;
 
+// Nav is fully DB-driven: buildDynamicMenu turns the user's tblMenu +
+// tblGroupAccess rows (menuRights) into the tree, using each row's Route
+// (seeded in 036) for nested SPA paths. Visibility/RBAC is the group's
+// CanView grant — Sales/Support to all groups, Settings to admin groups.
+
 /**
  * Left-side primary navigation. Three behaviours:
  *   - Desktop / tablet (>= 768px): permanent drawer, width toggles between

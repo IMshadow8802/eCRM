@@ -3,6 +3,12 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
+const mockNavigate = vi.fn();
+vi.mock("react-router-dom", async () => {
+  const actual = await vi.importActual("react-router-dom");
+  return { ...actual, useNavigate: () => mockNavigate };
+});
+
 const setMatchMedia = (matchesByQuery) => {
   window.matchMedia = (query) => ({
     matches: !!matchesByQuery[query],
@@ -43,6 +49,21 @@ vi.mock("../stores/useAuthStore", () => {
         description: "Followups User-wise",
         permissions: { canView: true },
       },
+      // DB-driven Sales menu with an explicit nested Route (from tblMenu.Route).
+      {
+        menuid: 20,
+        parentid: 0,
+        description: "Sales",
+        route: "/sales",
+        permissions: { canView: true },
+      },
+      {
+        menuid: 21,
+        parentid: 20,
+        description: "Pipeline",
+        route: "/sales/pipeline",
+        permissions: { canView: true },
+      },
     ],
     setActiveMenuRights: vi.fn(),
   }));
@@ -72,6 +93,7 @@ const renderSidebar = (overrides = {}) => {
 describe("Sidebar", () => {
   beforeEach(() => {
     setMatchMedia({});
+    mockNavigate.mockClear();
   });
 
   it("renders every top-level menu item", () => {
@@ -79,6 +101,18 @@ describe("Sidebar", () => {
     expect(screen.getByTestId("sidebar-Dashboard")).toBeInTheDocument();
     expect(screen.getByTestId("sidebar-Tasks")).toBeInTheDocument();
     expect(screen.getByTestId("sidebar-Reports")).toBeInTheDocument();
+  });
+
+  it("renders the DB-driven Sales menu (from menuRights, not hardcoded)", () => {
+    renderSidebar();
+    expect(screen.getByTestId("sidebar-Sales")).toBeInTheDocument();
+  });
+
+  it("navigates to a submenu's DB Route when clicked", () => {
+    renderSidebar();
+    fireEvent.click(screen.getByTestId("sidebar-Sales")); // expand parent
+    fireEvent.click(screen.getByTestId("sidebar-Pipeline"));
+    expect(mockNavigate).toHaveBeenCalledWith("/sales/pipeline");
   });
 
   it("shows the collapse toggle on desktop and calls the handler on click", () => {

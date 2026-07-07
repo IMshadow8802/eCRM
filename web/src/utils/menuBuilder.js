@@ -14,12 +14,26 @@ import {
   ContactPhoneOutlined,
   AdminPanelSettingsOutlined,
   CircleOutlined,
+  TrendingUpOutlined,
+  SupportAgentOutlined,
+  ConfirmationNumberOutlined,
+  AccountTreeOutlined,
+  FilterAltOutlined,
+  InsightsOutlined,
+  DoneAllOutlined,
+  TimerOutlined,
+  CategoryOutlined,
+  FlagOutlined,
+  PhoneOutlined,
+  TuneOutlined,
+  ListAltOutlined,
 } from "@mui/icons-material";
 
 /**
  * Maps a menu title string to a MUI icon component.
- * Uses keyword matching so menus coming from the backend (which may
- * phrase titles differently) still resolve to a sensible icon.
+ * Keyword matching, first-match-wins — so order matters: more specific
+ * report/entity keywords come before the generic ones they overlap with
+ * (e.g. "funnel" before "pipeline", "call" before "user").
  */
 export function getMenuIcon(menuTitle) {
   const title = String(menuTitle || "").toLowerCase();
@@ -28,8 +42,22 @@ export function getMenuIcon(menuTitle) {
   if (title.includes("project")) return FolderOpenOutlined;
   if (title.includes("team")) return GroupsOutlined;
   if (title.includes("user group")) return AdminPanelSettingsOutlined;
-  if (title.includes("user")) return PersonOutlineOutlined;
   if (title.includes("kanban")) return ViewKanbanOutlined;
+  // sales/support module — specific first
+  if (title.includes("funnel")) return FilterAltOutlined;
+  if (title.includes("conversion")) return InsightsOutlined;
+  if (title.includes("resolution")) return DoneAllOutlined;
+  if (title.includes("sla")) return TimerOutlined;
+  if (title.includes("categor")) return CategoryOutlined;
+  if (title.includes("priorit")) return FlagOutlined;
+  if (title.includes("call")) return PhoneOutlined;
+  if (title.includes("ticket")) return ConfirmationNumberOutlined;
+  if (title.includes("support")) return SupportAgentOutlined;
+  if (title.includes("sales")) return TrendingUpOutlined;
+  if (title.includes("pipeline")) return AccountTreeOutlined;
+  if (title.includes("field")) return TuneOutlined;
+  if (title.includes("lookup")) return ListAltOutlined;
+  if (title.includes("user")) return PersonOutlineOutlined;
   if (title.includes("status")) return LabelOutlined;
   if (title.includes("source")) return SourceOutlined;
   if (title.includes("lead")) return LeaderboardOutlined;
@@ -79,6 +107,9 @@ export function buildDynamicMenu(menuRights) {
     (item) => item.parentid !== 0 && item.parentid !== item.menuid
   );
 
+  // A menu row's `route` (from tblMenu.Route) wins when present so nested SPA
+  // routes like /support/board work; legacy rows without a Route fall back to
+  // the title-slug path.
   return parentMenus.map((parent) => {
     const children = childMenus.filter((c) => c.parentid === parent.menuid);
     return {
@@ -86,7 +117,7 @@ export function buildDynamicMenu(menuRights) {
       menuId: parent.menuid,
       icon: getMenuIcon(parent.description),
       permissions: parent.permissions,
-      path: menuPath(parent.description),
+      path: parent.route || menuPath(parent.description),
       submenus:
         children.length > 0
           ? children.map((child) => ({
@@ -94,7 +125,7 @@ export function buildDynamicMenu(menuRights) {
               menuId: child.menuid,
               icon: getMenuIcon(child.description),
               permissions: child.permissions,
-              path: menuPath(child.description),
+              path: child.route || menuPath(child.description),
             }))
           : null,
     };

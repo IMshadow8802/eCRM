@@ -11,6 +11,7 @@ function mapMenuRow(item) {
     parentid: item.ParentId,
     description: item.Description,
     image: item.Image,
+    route: item.Route,
     formname: item.FormName,
     formclass: item.FormClass,
     openStyle: item.OpenStyle,

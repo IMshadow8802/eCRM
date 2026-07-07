@@ -10,6 +10,10 @@ import { zIndex as zIndexTokens } from "../../styles/tokens";
 
 const HEIGHT = { sm: 32, md: 40, lg: 48 };
 
+// MUI injects `ownerState` into slot components; lucide icons forward unknown
+// props onto the <svg>, which React warns about. Swallow it here.
+const CalendarIcon = ({ ownerState, ...props }) => <Calendar size={16} {...props} />;
+
 /**
  * Themed date field. Value is ISO string (YYYY-MM-DD). External label
  * rendered above the input so layout matches TextInput/Combobox.
@@ -82,7 +86,7 @@ const DateField = forwardRef(function DateField(
           minDate={toDayjs(minDate)}
           maxDate={toDayjs(maxDate)}
           format="DD-MM-YYYY"
-          slots={{ openPickerIcon: Calendar }}
+          slots={{ openPickerIcon: CalendarIcon }}
           slotProps={{
             textField: {
               id,

@@ -14,6 +14,7 @@ class FollowupController {
         FollowupType = null,
         Remarks = null,
         Status = null,
+        SourceCallId = null,
       } = req.body;
 
       const result = await database.executeStoredProcedure("sp_SaveFollowUp", {
@@ -23,6 +24,7 @@ class FollowupController {
         FollowupType,
         Remarks,
         Status,
+        SourceCallId,
         BranchId: req.user.BranchId,
         CompId: req.user.CompId,
         CreatedBy: req.user.UserId,
