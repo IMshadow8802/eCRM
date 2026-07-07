@@ -13,6 +13,7 @@ import {
   SourceOutlined,
   ContactPhoneOutlined,
   AdminPanelSettingsOutlined,
+  LockPersonOutlined,
   CircleOutlined,
   TrendingUpOutlined,
   SupportAgentOutlined,
@@ -41,6 +42,9 @@ export function getMenuIcon(menuTitle) {
   if (title.includes("task")) return TaskAltOutlined;
   if (title.includes("project")) return FolderOpenOutlined;
   if (title.includes("team")) return GroupsOutlined;
+  if (title.includes("permission") || title.includes("role"))
+    return LockPersonOutlined;
+  if (title.includes("admin")) return AdminPanelSettingsOutlined;
   if (title.includes("user group")) return AdminPanelSettingsOutlined;
   if (title.includes("kanban")) return ViewKanbanOutlined;
   // sales/support module — specific first

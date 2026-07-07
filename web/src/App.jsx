@@ -21,6 +21,13 @@ const Dashboard = lazy(() => import("./components/Dashboard"));
 const Task = lazy(() => import("./pages/Task/TaskBoard"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
+// Admin — people/access provisioning that the task workspaces depend on
+// (shared invites need Users; project workspaces need Projects + Teams).
+const Users = lazy(() => import("./pages/Master/Users"));
+const Teams = lazy(() => import("./pages/Master/Teams"));
+const Projects = lazy(() => import("./pages/Master/Projects"));
+const Groups = lazy(() => import("./pages/Master/Groups"));
+
 // Sales module (config-driven pipeline, leads, calls, follow-ups)
 const Pipeline = lazy(() => import("./pages/Sales/Pipeline"));
 const SalesLeads = lazy(() => import("./pages/Sales/Leads"));
@@ -54,8 +61,14 @@ export const routesConfig = [
   { path: "/support", element: <Navigate to="/support/board" replace /> },
   { path: "/settings", element: <Navigate to="/settings/custom-fields" replace /> },
   { path: "/reports", element: <Navigate to="/reports/pipeline-funnel" replace /> },
+  { path: "/admin", element: <Navigate to="/users" replace /> },
   { path: "/dashboard/*", element: <ProtectedRoute element={<Dashboard />} /> },
   { path: "/tasks/*", element: <ProtectedRoute element={<Task />} /> },
+  // Admin — user/team/project provisioning (backend was always live).
+  { path: "/users/*", element: <ProtectedRoute element={<Users />} /> },
+  { path: "/teams/*", element: <ProtectedRoute element={<Teams />} /> },
+  { path: "/projects/*", element: <ProtectedRoute element={<Projects />} /> },
+  { path: "/groups/*", element: <ProtectedRoute element={<Groups />} /> },
   // Sales module — config-driven pipeline, leads, calls, follow-ups, reports.
   { path: "/sales/pipeline", element: <ProtectedRoute element={<Pipeline />} /> },
   { path: "/sales/leads", element: <ProtectedRoute element={<SalesLeads />} /> },

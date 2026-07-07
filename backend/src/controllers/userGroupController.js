@@ -163,6 +163,89 @@ class UserGroupController {
     }
   }
 
+  // Fetch the full menu list with a group's grant flags (the permissions
+  // matrix). sp_FetchGroupAccess returns every menu + CanView/Add/Edit/Delete
+  // (0 where the group has no grant).
+  async fetchAccess(req, res) {
+    try {
+      const { GroupId } = req.body || {};
+      if (!GroupId || GroupId <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "GroupId is required",
+          code: "VALIDATION_ERROR",
+          responseCode: 400,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const result = await database.executeStoredProcedure("sp_FetchGroupAccess", {
+        GroupId,
+        CompId: req.user.CompId,
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Group access fetched",
+        responseCode: 200,
+        data: { access: cleanSpRows(result.recordsets[0], "MenuId") },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("Fetch group access error:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to fetch group access",
+        code: "GROUP_ACCESS_FETCH_ERROR",
+        responseCode: 500,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  // Bulk-replace a group's menu grants. Body: { GroupId, Access: [{ MenuId,
+  // CanView, CanAdd, CanEdit, CanDelete }] }.
+  async saveAccess(req, res) {
+    try {
+      const { GroupId, Access = [] } = req.body || {};
+      if (!GroupId || GroupId <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "GroupId is required",
+          code: "VALIDATION_ERROR",
+          responseCode: 400,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const accessJson = Array.isArray(Access) ? JSON.stringify(Access) : "[]";
+
+      const result = await database.executeStoredProcedure("sp_SaveGroupAccess", {
+        GroupId,
+        AccessJson: accessJson,
+        CompId: req.user.CompId,
+      });
+
+      const spResponse = result.recordsets[0][0];
+
+      return res.status(spResponse.ResponseCode).json({
+        success: spResponse.ResponseCode < 300,
+        message: spResponse.ResponseMess,
+        responseCode: spResponse.ResponseCode,
+        data: spResponse.ResponseCode < 300 ? { groupId: spResponse.GroupId } : null,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("Save group access error:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to save group access",
+        code: "GROUP_ACCESS_SAVE_ERROR",
+        responseCode: 500,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
 }
 
 module.exports = new UserGroupController();
