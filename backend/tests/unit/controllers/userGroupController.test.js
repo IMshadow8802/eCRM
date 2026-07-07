@@ -81,6 +81,29 @@ describe("userGroupController.saveAccess", () => {
     expect(res.status).toHaveBeenCalledWith(200);
   });
 
+  it("writes a PermissionChanged audit entry with the granted menu set", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[{ ResponseCode: 200, ResponseMess: "Permissions saved", GroupId: 3 }]],
+    });
+    const access = [
+      { MenuId: 2, CanView: 1, CanAdd: 0, CanEdit: 0, CanDelete: 0 },
+      { MenuId: 5, CanView: 0, CanAdd: 0, CanEdit: 0, CanDelete: 0 }, // no grant → excluded
+    ];
+    const res = mockRes();
+    await userGroupController.saveAccess(baseReq({ body: { GroupId: 3, Access: access } }), res);
+
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
+      "sp_SaveActivityLog",
+      expect.objectContaining({
+        EntityType: "UserGroup",
+        EntityId: 3,
+        Action: "PermissionChanged",
+        NewValue: JSON.stringify([2]), // only the granted menu id
+        UserId: 7,
+      }),
+    );
+  });
+
   it("defaults Access to an empty array when omitted", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [[{ ResponseCode: 200, ResponseMess: "Permissions saved", GroupId: 3 }]],

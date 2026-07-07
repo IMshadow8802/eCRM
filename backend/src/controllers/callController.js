@@ -1,14 +1,17 @@
 const database = require("../config/database");
 const responseHelper = require("../utils/responseHelper");
+const { logActivity, ACTIONS } = require("../utils/activityLogger");
 
 // Save-type SP: returns a single row with ResponseCode/ResponseMess.
-async function runSp(res, spName, params, failMessage) {
+// Optional (req, log) fire an audit entry to tblActivityLog on success.
+async function runSp(res, spName, params, failMessage, req, log) {
   try {
     const result = await database.executeStoredProcedure(spName, params);
     const spResponse = result.recordset[0];
     const message = spResponse.ResponseMess || spResponse.ResponseMessage;
 
     if (spResponse.ResponseCode === 200) {
+      if (req && log) await logActivity({ ...log, req });
       return responseHelper.success(res, message, spResponse);
     }
     return responseHelper.error(res, message, "SP_ERROR", spResponse.ResponseCode);
@@ -48,6 +51,13 @@ const callController = {
         FollowupRemarks,
       },
       "Failed to log call",
+      req,
+      {
+        entityType: LeadId ? "Lead" : "Ticket",
+        entityId: LeadId ?? TicketId ?? 0,
+        action: ACTIONS.COMMENTED,
+        description: `Call logged (${Direction || "call"})`,
+      },
     );
   },
 

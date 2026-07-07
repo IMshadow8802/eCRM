@@ -1,5 +1,6 @@
 const database = require("../config/database");
 const { cleanSpRows } = require("../utils/spHelpers");
+const { logActivity, ACTIONS } = require("../utils/activityLogger");
 
 class KanbanController {
   async fetch(req, res) {
@@ -100,6 +101,16 @@ class KanbanController {
 
       const spResponse = result.recordsets[0][0];
 
+      if (spResponse.ResponseCode < 300) {
+        await logActivity({
+          entityType: "KanbanColumn",
+          entityId: spResponse.ColumnId ?? Id,
+          action: Id === 0 ? ACTIONS.CREATED : ACTIONS.UPDATED,
+          description: `Column "${Title}" ${Id === 0 ? "created" : "updated"} in workspace ${WorkspaceId}`,
+          req,
+        });
+      }
+
       return res.status(spResponse.ResponseCode).json({
         success: spResponse.ResponseCode < 300,
         message: spResponse.ResponseMess,
@@ -149,6 +160,16 @@ class KanbanController {
       );
 
       const spResponse = result.recordsets[0][0];
+
+      if (spResponse.ResponseCode === 200) {
+        await logActivity({
+          entityType: "KanbanColumn",
+          entityId: Id,
+          action: ACTIONS.DELETED,
+          description: `Column deleted (${spResponse.TasksMoved ?? 0} task(s) reassigned)`,
+          req,
+        });
+      }
 
       return res.status(spResponse.ResponseCode).json({
         success: spResponse.ResponseCode === 200,

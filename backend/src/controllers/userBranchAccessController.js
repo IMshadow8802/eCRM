@@ -1,6 +1,7 @@
 // src/controllers/userBranchAccessController.js
 const database = require("../config/database");
 const { cleanSpRows } = require("../utils/spHelpers");
+const { logActivity, ACTIONS } = require("../utils/activityLogger");
 
 class UserBranchAccessController {
   async save(req, res) {
@@ -37,6 +38,16 @@ class UserBranchAccessController {
       );
 
       const sp = result.recordsets[0][0];
+      if (sp.ResponseCode < 300) {
+        await logActivity({
+          entityType: "UserBranchAccess",
+          entityId: sp.Id ?? UserId,
+          action: ACTIONS.PERMISSION_CHANGED,
+          newValue: JSON.stringify({ UserId, BranchId, CanRead, CanWrite }),
+          description: `Branch access ${Id === 0 ? "granted" : "updated"} for user ${UserId} on branch ${BranchId}`,
+          req,
+        });
+      }
       return res.status(sp.ResponseCode).json({
         success: sp.ResponseCode < 300,
         message: sp.ResponseMess,
@@ -129,6 +140,15 @@ class UserBranchAccessController {
       );
 
       const sp = result.recordsets[0][0];
+      if (sp.ResponseCode === 200) {
+        await logActivity({
+          entityType: "UserBranchAccess",
+          entityId: Id,
+          action: ACTIONS.DELETED,
+          description: "Branch access revoked",
+          req,
+        });
+      }
       return res.status(sp.ResponseCode).json({
         success: sp.ResponseCode === 200,
         message: sp.ResponseMess,

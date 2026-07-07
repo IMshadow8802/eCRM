@@ -3,6 +3,7 @@ const path = require("path");
 const database = require("../config/database");
 const { cleanSpRows } = require("../utils/spHelpers");
 const { UPLOAD_ROOT, ENTITIES } = require("../middleware/upload");
+const { logActivity, ACTIONS } = require("../utils/activityLogger");
 
 // Absolute path to a stored file.
 function filePath(entity, storedName) {
@@ -61,6 +62,16 @@ class AttachmentController {
 
       const spResponse = result.recordsets[0][0];
       if (spResponse.ResponseCode >= 300) unlinkQuiet(file.path);
+
+      if (spResponse.ResponseCode < 300) {
+        await logActivity({
+          entityType: "Attachment",
+          entityId: spResponse.AttachmentId,
+          action: ACTIONS.CREATED,
+          description: `File "${file.originalname}" attached to ${Entity} #${EntityId}`,
+          req,
+        });
+      }
 
       return res.status(spResponse.ResponseCode).json({
         success: spResponse.ResponseCode < 300,
@@ -173,6 +184,13 @@ class AttachmentController {
       // Row gone → remove the file (best-effort; missing file never blocks).
       if (spResponse.ResponseCode === 200 && spResponse.StoredName) {
         unlinkQuiet(filePath(spResponse.Entity, spResponse.StoredName));
+        await logActivity({
+          entityType: "Attachment",
+          entityId: Id,
+          action: ACTIONS.DELETED,
+          description: `Attachment removed from ${spResponse.Entity}`,
+          req,
+        });
       }
 
       return res.status(spResponse.ResponseCode).json({

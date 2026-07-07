@@ -1,5 +1,6 @@
 const database = require("../config/database");
 const { cleanSpRows } = require("../utils/spHelpers");
+const { logActivity, ACTIONS } = require("../utils/activityLogger");
 
 class UserGroupController {
   async save(req, res) {
@@ -38,13 +39,23 @@ class UserGroupController {
 
       const spResponse = result.recordsets[0][0];
 
+      if (spResponse.ResponseCode < 300) {
+        await logActivity({
+          entityType: "UserGroup",
+          entityId: spResponse.GroupId ?? Id,
+          action: Id === 0 ? ACTIONS.CREATED : ACTIONS.UPDATED,
+          description: `Group "${Name ?? GroupName}" ${Id === 0 ? "created" : "updated"}`,
+          req,
+        });
+      }
+
       return res.status(spResponse.ResponseCode).json({
         success: spResponse.ResponseCode < 300,
         message: spResponse.ResponseMess,
         responseCode: spResponse.ResponseCode,
         data:
-          spResponse.ResponseCode < 300 
-            ? { groupId: spResponse.GroupId } 
+          spResponse.ResponseCode < 300
+            ? { groupId: spResponse.GroupId }
             : null,
         timestamp: new Date().toISOString(),
       });
@@ -145,6 +156,16 @@ class UserGroupController {
 
       const spResponse = result.recordsets[0][0];
 
+      if (spResponse.ResponseCode === 200) {
+        await logActivity({
+          entityType: "UserGroup",
+          entityId: Id,
+          action: ACTIONS.DELETED,
+          description: "User group deleted",
+          req,
+        });
+      }
+
       return res.status(spResponse.ResponseCode).json({
         success: spResponse.ResponseCode === 200,
         message: spResponse.ResponseMess,
@@ -218,7 +239,8 @@ class UserGroupController {
         });
       }
 
-      const accessJson = Array.isArray(Access) ? JSON.stringify(Access) : "[]";
+      const accessList = Array.isArray(Access) ? Access : [];
+      const accessJson = JSON.stringify(accessList);
 
       const result = await database.executeStoredProcedure("sp_SaveGroupAccess", {
         GroupId,
@@ -227,6 +249,23 @@ class UserGroupController {
       });
 
       const spResponse = result.recordsets[0][0];
+
+      if (spResponse.ResponseCode < 300) {
+        // Accountability: record WHO changed a group's menu permissions, WHEN,
+        // and the resulting granted-menu set. PERMISSION_CHANGED is the audit
+        // action; NewValue holds the menu ids the group can now access.
+        const grantedMenuIds = accessList
+          .filter((a) => a.CanView || a.CanAdd || a.CanEdit || a.CanDelete)
+          .map((a) => a.MenuId);
+        await logActivity({
+          entityType: "UserGroup",
+          entityId: GroupId,
+          action: ACTIONS.PERMISSION_CHANGED,
+          newValue: JSON.stringify(grantedMenuIds),
+          description: `Menu permissions updated (${grantedMenuIds.length} menu(s) granted)`,
+          req,
+        });
+      }
 
       return res.status(spResponse.ResponseCode).json({
         success: spResponse.ResponseCode < 300,
