@@ -8,7 +8,7 @@ export default defineConfig(({ command, mode }) => {
 
   return {
     // Base path for web deployment
-    base: "/eStockCRM/",
+    base: "/CRM/",
 
     plugins: [react()],
 
@@ -39,7 +39,7 @@ export default defineConfig(({ command, mode }) => {
       // ADD THIS 👇 - This fixes SPA routing in development
       historyApiFallback: {
         index: "/index.html",
-        rewrites: [{ from: /^\/eStockCRM\/.*$/, to: "/index.html" }],
+        rewrites: [{ from: /^\/CRM\/.*$/, to: "/index.html" }],
       },
     },
 
@@ -48,7 +48,7 @@ export default defineConfig(({ command, mode }) => {
       port: 4173,
       historyApiFallback: {
         index: "/index.html",
-        rewrites: [{ from: /^\/eStockCRM\/.*$/, to: "/index.html" }],
+        rewrites: [{ from: /^\/CRM\/.*$/, to: "/index.html" }],
       },
     },
   };

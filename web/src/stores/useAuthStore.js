@@ -51,7 +51,7 @@ const useAuthStore = create(
         company: initialState.company,
         permissions: initialState.permissions,
         loginTimestamp: initialState.loginTimestamp,
-        API_BASE_URL: "https://prdinfotech.in/CRM", // Updated URL
+        API_BASE_URL: "https://shadowcodes.in/CRM", // prod API (nginx → :5001)
         menuRights: initialState.permissions?.rawPermissions || [],
         activeMenuRights: null,
 

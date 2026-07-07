@@ -10,13 +10,13 @@ afterEach(() => {
 
 describe("getLoginUrl", () => {
   it("prefixes BASE_URL when configured", () => {
-    import.meta.env.BASE_URL = "/eStockCRM/";
-    expect(getLoginUrl()).toBe("/eStockCRM/login");
+    import.meta.env.BASE_URL = "/CRM/";
+    expect(getLoginUrl()).toBe("/CRM/login");
   });
 
   it("collapses trailing slashes so no double slash leaks", () => {
-    import.meta.env.BASE_URL = "/eStockCRM///";
-    expect(getLoginUrl()).toBe("/eStockCRM/login");
+    import.meta.env.BASE_URL = "/CRM///";
+    expect(getLoginUrl()).toBe("/CRM/login");
   });
 
   it("falls back to root base when BASE_URL is empty", () => {
@@ -32,7 +32,7 @@ describe("getLoginUrl", () => {
 
 describe("redirectToLogin", () => {
   it("sets window.location.href to the resolved login URL", () => {
-    import.meta.env.BASE_URL = "/eStockCRM/";
+    import.meta.env.BASE_URL = "/CRM/";
     const setter = vi.fn();
     Object.defineProperty(window, "location", {
       configurable: true,
@@ -46,6 +46,6 @@ describe("redirectToLogin", () => {
       },
     });
     redirectToLogin();
-    expect(setter).toHaveBeenCalledWith("/eStockCRM/login");
+    expect(setter).toHaveBeenCalledWith("/CRM/login");
   });
 });

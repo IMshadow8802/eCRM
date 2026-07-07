@@ -58,7 +58,7 @@ user runs `ssh myserver`, `rsync`, `docker …`, or anything that touches the bo
 
 **Multi-platform CRM.** Monorepo with three apps sharing one backend API + auth:
 
-- **`web/`** — React 19 + Vite SPA, deployed under `/eStockCRM/`.
+- **`web/`** — React 19 + Vite SPA, deployed under `/CRM/`.
 - **`backend/`** — Node.js + Express 5 REST API over SQL Server (all CRUD via stored procedures).
 - **`mobile/`** — React Native + Expo app (feature parity in progress).
 
@@ -161,9 +161,9 @@ src/
   hooks/          # useApiQuery, useApiMutation, useServerTable, useUsers, ...
   utils/          # menuBuilder, userShape, axiosConfig, redirectToLogin, ...
   data/           # static data (helpGuides.js, ...)
-  App.jsx         # routes (BrowserRouter, basename="/eStockCRM/")
+  App.jsx         # routes (BrowserRouter, basename="/CRM/")
 ```
-- Routing: `BrowserRouter` basename `/eStockCRM/`. Section parents (`/sales`, `/support`, `/settings`, `/reports`) redirect to their first child so bare paths don't 404.
+- Routing: `BrowserRouter` basename `/CRM/`. Section parents (`/sales`, `/support`, `/settings`, `/reports`) redirect to their first child so bare paths don't 404.
 - Data fetching: `useApiQuery`/`useApiMutation` (TanStack Query); server tables via `useServerTable` + `material-react-table`.
 - Charts: `recharts` (use numeric `height`, never `height="100%"`).
 - Forms: React Hook Form + Zod; render via `ui/` components / `FormSelect`/`FormInput`.
@@ -240,5 +240,5 @@ sql/              # NNN_*.sql — pending, user-applied scripts only (see §0.2)
     curl -s https://shadowcodes.in/CRM/health   # expect 200 JSON
     ```
     Gotchas: **`nginx -s reload` is mandatory** — editing the conf alone does nothing (a stale reload was the one 404 we hit). `location ^~ /CRM/` (prefix, high-priority) beats the SPA's `location /`. The deploy dir `…/shadowcodes.in/CRM` sits inside the web docroot but the `^~` proxy location overrides static file handling, so it's fine. Public API base for the **web frontend** = `https://shadowcodes.in/CRM` (not the dead `prdinfotech.in/CRM`).
-- **Web**: Vite build deployed under `/eStockCRM/`.
+- **Web**: Vite build (`pnpm build` → `dist-web/`), base + router basename `/CRM/`. Deployed on a **separate IIS server** under `/CRM/` — upload the contents of `dist-web/`; the bundled `public/web.config` does the SPA URL-rewrite (`→ /CRM/index.html`) so deep-link refreshes don't 404. API base is dynamic: dev → Vite proxy to `localhost:5001`; prod → `API_BASE_URL` in `useAuthStore` (`https://shadowcodes.in/CRM`, the Linux API box — separate from the IIS web host).
 - **Mobile**: EAS Build; OTA via Expo Updates.
