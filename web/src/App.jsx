@@ -118,7 +118,7 @@ function AnimatedRoutes() {
 const App = () => {
   return (
     <HelmetProvider>
-      <BrowserRouter basename="/CRM/">
+      <BrowserRouter basename="/prdcrm/">
         <SnackbarProvider
           maxSnack={3}
           style={{ maxWidth: "400px", zIndex: 1800 }}
