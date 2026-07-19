@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "@mui/material/styles";
 import {
   ChevronDown,
@@ -8,10 +8,15 @@ import {
   Rocket,
   Eye,
   MailCheck,
+  Archive,
+  ArchiveRestore,
+  Settings,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { enqueueSnackbar } from "notistack";
 
 import { useApiQuery } from "../../hooks/useApiQuery";
+import { useApiMutation } from "../../hooks/useApiMutation";
 import useWorkspaceStore from "../../stores/useWorkspaceStore";
 import CreateWorkspaceModal from "./CreateWorkspaceModal";
 import InviteResponseModal from "./InviteResponseModal";
@@ -52,12 +57,49 @@ export default function WorkspaceSwitcher() {
   } = useApiQuery({
     queryKey: ["workspaces", "list"],
     endpoint: "/api/workspaces/fetchWorkspaces",
-    params: { PageNumber: 1, PageSize: 100, IncludeArchived: false },
+    params: { PageNumber: 1, PageSize: 100, IncludeArchived: true },
     showErrorMessage: true,
   });
 
-  const workspaces = payload?.workspaces ?? [];
+  const restoreMutation = useApiMutation({
+    endpoint: "/api/workspaces/archiveWorkspace",
+    showSuccessMessage: false,
+  });
+
+  const allRows = payload?.workspaces ?? [];
+  const workspaces = allRows.filter((w) => !w.IsArchived);
+  const archived = allRows.filter((w) => w.IsArchived);
   const active = workspaces.find((w) => w.Id === activeWorkspaceId) ?? null;
+
+  // The store persists a copy of the active workspace (role, type, name,
+  // color). After a transfer/leave/join those go stale — when a fresh list
+  // lands, push the server's row back into the store, and clear the selection
+  // when the workspace is gone (deleted, left, archived, lost access).
+  // Keyed on payload only: reconciling when the *selection* changes would
+  // compare a brand-new pick against a stale list and wrongly clear it.
+  useEffect(() => {
+    if (!payload) return;
+    const s = useWorkspaceStore.getState();
+    if (!s.activeWorkspaceId) return;
+    const rows = payload.workspaces ?? [];
+    // An empty list never clears the selection: every real user owns at
+    // least their personal workspace, so success-with-nothing is a degenerate
+    // state (cold start, flaky fetch) — not proof the active board is gone.
+    if (rows.length === 0) return;
+    const fresh = rows.find((w) => w.Id === s.activeWorkspaceId);
+    if (!fresh || fresh.IsArchived) {
+      setActiveWorkspace(null);
+      return;
+    }
+    if (
+      (fresh.MyRole ?? null) !== s.activeWorkspaceRole ||
+      (fresh.Type ?? null) !== s.activeWorkspaceType ||
+      (fresh.Name ?? null) !== s.activeWorkspaceName ||
+      (fresh.Color ?? null) !== s.activeWorkspaceColor
+    ) {
+      setActiveWorkspace(fresh);
+    }
+  }, [payload, setActiveWorkspace]);
 
   // Buckets per type:
   //   mine        — active member (MyRole set, InviteStatus='active')
@@ -81,6 +123,18 @@ export default function WorkspaceSwitcher() {
     }
     return { ...out, pending };
   }, [workspaces]);
+
+  // A pending invite confronts the user on arrival: auto-open the response
+  // modal once per mount (so every visit to Tasks re-asks until they accept
+  // or decline), and chain to the next invite after each response. A manual
+  // dismiss is respected for the rest of the mount — no unclosable loop.
+  const autoPromptedRef = useRef(false);
+  useEffect(() => {
+    if (autoPromptedRef.current) return;
+    if (grouped.pending.length === 0) return;
+    autoPromptedRef.current = true;
+    setInviteTarget(grouped.pending[0]);
+  }, [grouped.pending]);
 
   const open = (e) => setAnchorEl(e.currentTarget);
   const close = () => setAnchorEl(null);
@@ -133,10 +187,12 @@ export default function WorkspaceSwitcher() {
             </span>
           ),
           onClick: () => pick(w),
-          onSecondary:
-            w.MyRole === "owner" || w.MyRole === "manager"
-              ? () => setSettingsTarget(w)
-              : undefined,
+          // Every member gets the gear: owners/managers manage, members can
+          // at least leave from inside the settings modal. An explicit gear —
+          // the default three-dot glyph read as decoration, not as a door.
+          onSecondary: () => setSettingsTarget(w),
+          secondaryIcon: <Settings size={14} />,
+          secondaryLabel: `Settings for ${w.Name}`,
         });
       }
     }
@@ -157,6 +213,47 @@ export default function WorkspaceSwitcher() {
       });
     }
   }
+  const restore = async (w) => {
+    try {
+      await restoreMutation.mutateAsync({
+        WorkspaceId: w.Id,
+        IsArchived: false,
+      });
+      enqueueSnackbar("Workspace restored", { variant: "success" });
+      queryClient.invalidateQueries({
+        queryKey: ["workspaces", "list"],
+        refetchType: "all",
+      });
+    } catch {
+      // hook toasts
+    }
+  };
+
+  menuItems.push({ header: "Archived" });
+  if (archived.length === 0) {
+    menuItems.push({
+      id: "archived-empty",
+      label: "Nothing archived",
+      muted: true,
+      disabled: true,
+    });
+  } else {
+    for (const w of archived) {
+      menuItems.push({
+        id: `archived-${w.Id}`,
+        label: w.Name,
+        muted: true,
+        icon: <Archive size={14} />,
+        // Row click opens settings (where Delete lives for archived boards).
+        onClick: () => setSettingsTarget(w),
+        onSecondary: () => restore(w),
+        secondaryIcon: <ArchiveRestore size={14} />,
+        secondaryLabel: "Restore",
+        secondaryKey: "restore",
+      });
+    }
+  }
+
   menuItems.push({
     id: "create",
     label: "Create workspace",
@@ -290,6 +387,8 @@ export default function WorkspaceSwitcher() {
               queryKey: ["workspaces", "list"],
               refetchType: "all",
             });
+            const next = grouped.pending.find((pw) => pw.Id !== w.Id);
+            setInviteTarget(next ?? null);
             if (action === "accept") {
               setActiveWorkspace({ ...w, MyRole: "member" });
             }
@@ -302,12 +401,13 @@ export default function WorkspaceSwitcher() {
           workspace={settingsTarget}
           onClose={() => setSettingsTarget(null)}
           onChanged={({ kind, workspace: w }) => {
-            // Archive removes the workspace from the list → clear active.
             // Edit keeps the same Id → update in place, stay on the board.
-            if (kind === "archive") {
-              if (activeWorkspaceId === w.Id) setActiveWorkspace(null);
-            } else if (kind === "edit") {
+            // Archive/delete/leave remove it from view → clear active so the
+            // user lands back on the workspace picker.
+            if (kind === "edit") {
               if (activeWorkspaceId === w.Id) setActiveWorkspace(w);
+            } else if (activeWorkspaceId === w.Id) {
+              setActiveWorkspace(null);
             }
           }}
         />

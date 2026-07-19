@@ -34,6 +34,7 @@ const blankFieldValue = (type) =>
  */
 export default function TicketCreateModal({ open, onClose, onCreated }) {
   const [customerName, setCustomerName] = useState("");
+  const [contactPerson, setContactPerson] = useState("");
   const [contact, setContact] = useState("");
   const [channel, setChannel] = useState(null);
   const [category, setCategory] = useState(null);
@@ -94,6 +95,7 @@ export default function TicketCreateModal({ open, onClose, onCreated }) {
 
   const reset = () => {
     setCustomerName("");
+    setContactPerson("");
     setContact("");
     setChannel(null);
     setCategory(null);
@@ -111,6 +113,7 @@ export default function TicketCreateModal({ open, onClose, onCreated }) {
 
   const canSubmit =
     customerName.trim().length > 0 &&
+    contactPerson.trim().length > 0 &&
     contact.trim().length > 0 &&
     Boolean(channel) &&
     Boolean(category) &&
@@ -124,6 +127,7 @@ export default function TicketCreateModal({ open, onClose, onCreated }) {
       const res = await saveMutation.mutateAsync({
         Id: 0,
         CustomerName: customerName.trim(),
+        ContactPerson: contactPerson.trim(),
         Contact: contact.trim(),
         Channel: channel.value,
         CategoryId: category.value,
@@ -176,8 +180,16 @@ export default function TicketCreateModal({ open, onClose, onCreated }) {
             onChange={(e) => setCustomerName(e.target.value)}
             required
             autoFocus
-            placeholder="e.g. Acme Corp"
+            placeholder="Shop or company name"
             data-testid="ticket-customer"
+          />
+          <TextInput
+            label="Contact person"
+            value={contactPerson}
+            onChange={(e) => setContactPerson(e.target.value)}
+            required
+            placeholder="Who contacted you?"
+            data-testid="ticket-contact-person"
           />
           <TextInput
             label="Contact"

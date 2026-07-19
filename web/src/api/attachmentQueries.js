@@ -32,6 +32,17 @@ export const uploadAttachment = ({ Entity, EntityId, file }) => {
 export const deleteAttachment = ({ Id }) =>
   apiClient.post(ATTACHMENT_ENDPOINTS.delete, { Id });
 
+// Fetch the file as a blob for inline preview — returns the blob and an
+// object URL, no browser download. Caller owns revoking the URL.
+export const fetchAttachmentBlob = async ({ Id }) => {
+  const res = await apiClient.post(
+    ATTACHMENT_ENDPOINTS.download,
+    { Id },
+    { responseType: "blob" },
+  );
+  return { blob: res.data, url: URL.createObjectURL(res.data) };
+};
+
 // Fetch the file as a blob and trigger a browser download via a temporary <a>.
 export const downloadAttachment = async ({ Id, FileName }) => {
   const res = await apiClient.post(

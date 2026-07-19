@@ -12,6 +12,7 @@ const TICKET = {
   Id: 7,
   TicketNo: "TKT-0007",
   CustomerName: "Acme Corp",
+  ContactPerson: "Gurpreet",
   Contact: "9999999999",
   Channel: "email",
   CategoryId: 4,

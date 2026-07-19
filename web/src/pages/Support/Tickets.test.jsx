@@ -138,6 +138,7 @@ describe("Support Tickets page", () => {
       undefined, // action column (id: "open", eye icon) leads — no accessorKey
       "TicketNo",
       "CustomerName",
+      "ContactPerson",
       "Contact",
       "Priority",
       "CategoryId",

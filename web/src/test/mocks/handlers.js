@@ -7,8 +7,14 @@ const API = "https://prdinfotech.in/CRM";
 let workspaceSeq = 100;
 export const workspaceFixture = {
   list: [],
+  deleteCounts: null,
+  syncResult: null,
+  members: null, // roster returned by fetchWorkspaceMembers
   reset() {
     this.list = [];
+    this.deleteCounts = null;
+    this.syncResult = null;
+    this.members = null;
     workspaceSeq = 100;
   },
   seed(ws) {
@@ -81,8 +87,11 @@ export const handlers = [
     });
   }),
 
-  http.post(`*/api/workspaces/fetchWorkspaces`, async () => {
-    const rows = workspaceFixture.list;
+  http.post(`*/api/workspaces/fetchWorkspaces`, async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    const rows = body?.IncludeArchived
+      ? workspaceFixture.list
+      : workspaceFixture.list.filter((w) => !w.IsArchived);
     return HttpResponse.json({
       success: true,
       message: "ok",
@@ -122,6 +131,169 @@ export const handlers = [
       message: "Workspace created",
       responseCode: 201,
       data: { workspaceId: id },
+    });
+  }),
+
+  http.post(`*/api/workspaces/archiveWorkspace`, async ({ request }) => {
+    const body = await request.json();
+    const row = workspaceFixture.list.find((w) => w.Id === body?.WorkspaceId);
+    if (!row) {
+      return HttpResponse.json(
+        { success: false, message: "Workspace not found", responseCode: 404 },
+        { status: 404 },
+      );
+    }
+    row.IsArchived = Boolean(body?.IsArchived);
+    return HttpResponse.json({
+      success: true,
+      message: body?.IsArchived ? "Workspace archived" : "Workspace restored",
+      responseCode: 200,
+      data: { workspaceId: row.Id, isArchived: row.IsArchived },
+    });
+  }),
+
+  http.post(`*/api/workspaces/convertWorkspaceToShared`, async ({ request }) => {
+    const body = await request.json();
+    const row = workspaceFixture.list.find((w) => w.Id === body?.WorkspaceId);
+    if (row) {
+      row.Type = "shared";
+    }
+    return HttpResponse.json({
+      success: true,
+      message: "Workspace shared",
+      responseCode: 200,
+      data: { workspaceId: body?.WorkspaceId },
+    });
+  }),
+
+  http.post(`*/api/workspaces/deleteWorkspace`, async ({ request }) => {
+    const body = await request.json();
+    const row = workspaceFixture.list.find((w) => w.Id === body?.WorkspaceId);
+    if (row && !row.IsArchived) {
+      return HttpResponse.json(
+        {
+          success: false,
+          message: "Archive the workspace before deleting it",
+          responseCode: 400,
+        },
+        { status: 400 },
+      );
+    }
+    const counts = workspaceFixture.deleteCounts ?? {
+      taskCount: 14,
+      commentCount: 32,
+      attachmentCount: 6,
+      memberCount: 3,
+    };
+    if (!body?.DryRun) {
+      workspaceFixture.list = workspaceFixture.list.filter(
+        (w) => w.Id !== body?.WorkspaceId,
+      );
+    }
+    return HttpResponse.json({
+      success: true,
+      message: body?.DryRun ? "Dry run" : "Workspace deleted",
+      responseCode: 200,
+      data: { workspaceId: body?.WorkspaceId, dryRun: Boolean(body?.DryRun), ...counts },
+    });
+  }),
+
+  http.post(`*/api/workspaces/transferWorkspaceOwnership`, async ({ request }) => {
+    const body = await request.json();
+    const row = workspaceFixture.list.find((w) => w.Id === body?.WorkspaceId);
+    if (row) {
+      row.OwnerUserId = body?.NewOwnerUserId;
+      if (row.MyRole === "owner") row.MyRole = "manager";
+    }
+    return HttpResponse.json({
+      success: true,
+      message: "Ownership transferred",
+      responseCode: 200,
+      data: {
+        workspaceId: body?.WorkspaceId,
+        newOwnerUserId: body?.NewOwnerUserId,
+      },
+    });
+  }),
+
+  http.post(`*/api/workspaces/fetchWorkspaceMembers`, async () =>
+    HttpResponse.json({
+      success: true,
+      message: "Members retrieved",
+      responseCode: 200,
+      data: { members: workspaceFixture.members ?? [] },
+    }),
+  ),
+
+  http.post(`*/api/workspaces/addWorkspaceMember`, async ({ request }) => {
+    const body = await request.json();
+    const roster = workspaceFixture.members ?? (workspaceFixture.members = []);
+    const existing = roster.find((m) => m.UserId === body?.UserId);
+    let message = "Invite sent";
+    if (existing) {
+      // Server upserts: removed/declined rows go back to pending.
+      existing.InviteStatus = "pending";
+      existing.IsActive = 1;
+      message = "Invite resent";
+    } else {
+      roster.push({
+        UserId: body?.UserId,
+        FullName: `User ${body?.UserId}`,
+        Username: `user${body?.UserId}`,
+        Role: body?.Role ?? "member",
+        InviteStatus: "pending",
+        IsActive: 1,
+        IsOwner: 0,
+      });
+    }
+    return HttpResponse.json({
+      success: true,
+      message,
+      responseCode: 201,
+      data: {
+        workspaceId: body?.WorkspaceId,
+        userId: body?.UserId,
+        role: body?.Role ?? "member",
+      },
+    });
+  }),
+
+  http.post(`*/api/workspaces/removeWorkspaceMember`, async ({ request }) => {
+    const body = await request.json();
+    // ponytail: tests always run as user Id 1 — treat UserId 1 as self-leave
+    // (workspace vanishes from the caller's list), anything else as a roster
+    // removal (row flips to 'removed').
+    if (body?.UserId === 1) {
+      workspaceFixture.list = workspaceFixture.list.filter(
+        (w) => w.Id !== body?.WorkspaceId,
+      );
+    }
+    const row = (workspaceFixture.members ?? []).find(
+      (m) => m.UserId === body?.UserId,
+    );
+    if (row) {
+      row.InviteStatus = "removed";
+      row.IsActive = 0;
+    }
+    return HttpResponse.json({
+      success: true,
+      message: "Member removed",
+      responseCode: 200,
+      data: { workspaceId: body?.WorkspaceId, userId: body?.UserId },
+    });
+  }),
+
+  http.post(`*/api/workspaces/syncProjectWorkspaceMembers`, async ({ request }) => {
+    const body = await request.json();
+    const result = workspaceFixture.syncResult ?? {
+      membersAddedOrRestored: 2,
+      membersDeactivated: 1,
+    };
+    return HttpResponse.json({
+      success: true,
+      message: "Members synced",
+      responseCode: 200,
+      data: { workspaceId: body?.WorkspaceId, ...result },
     });
   }),
 

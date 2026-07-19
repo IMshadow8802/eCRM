@@ -22,7 +22,11 @@ const queryClient = new QueryClient({
       networkMode: "online",
     },
     mutations: {
-      retry: 1,
+      // NEVER retry mutations: POSTs here are not idempotent. A retried
+      // "failure" that actually committed server-side double-creates records
+      // and surfaces phantom 409s (an accepted invite got re-accepted by the
+      // retry and errored while the DB was already updated).
+      retry: 0,
       networkMode: "online",
     },
   },

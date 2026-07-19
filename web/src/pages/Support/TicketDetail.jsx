@@ -178,6 +178,9 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
       await saveMutation.mutateAsync({
         Id: ticket?.Id ?? ticketId,
         CustomerName: ticket?.CustomerName,
+        // Explicit field list: omitting ContactPerson here would NULL it on
+        // every custom-field save (the SP writes all columns).
+        ContactPerson: ticket?.ContactPerson,
         Contact: ticket?.Contact,
         Channel: ticket?.Channel,
         CategoryId: ticket?.CategoryId,
@@ -314,6 +317,7 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
                   gap: 16,
                 }}
               >
+                <InfoItem label="Contact person" value={ticket.ContactPerson} />
                 <InfoItem label="Contact" value={ticket.Contact} />
                 <InfoItem label="Channel" value={titleCase(ticket.Channel)} chip tone="info" />
                 <InfoItem label="Category" value={categoryName} chip tone="primary" />

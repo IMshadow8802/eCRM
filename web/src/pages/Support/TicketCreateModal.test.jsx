@@ -70,6 +70,7 @@ const pickOption = async (user, testId, optionName) => {
 // Description). Individual tests then poke holes in it.
 const fillRequired = async (user) => {
   await user.type(screen.getByTestId("ticket-customer"), "Acme Corp");
+  await user.type(screen.getByTestId("ticket-contact-person"), "Gurpreet");
   await user.type(screen.getByTestId("ticket-contact"), "9990001111");
   await pickOption(user, "ticket-channel", "Email");
   await pickOption(user, "ticket-category", "Billing");
@@ -113,6 +114,7 @@ describe("TicketCreateModal", () => {
     expect(payload).toMatchObject({
       Id: 0,
       CustomerName: "Acme Corp",
+      ContactPerson: "Gurpreet",
       Contact: "9990001111",
       Channel: "email",
       CategoryId: 5,
@@ -148,6 +150,7 @@ describe("TicketCreateModal", () => {
     await user.type(screen.getByTestId("ticket-customer"), "Acme");
     expect(submit).toBeDisabled(); // customer alone is not enough any more
 
+    await user.type(screen.getByTestId("ticket-contact-person"), "Gurpreet");
     await user.type(screen.getByTestId("ticket-contact"), "9990001111");
     await pickOption(user, "ticket-channel", "Email");
     await pickOption(user, "ticket-category", "Billing");

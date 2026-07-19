@@ -1,6 +1,19 @@
+const path = require("path");
+const fs = require("fs");
 const database = require("../config/database");
 const { logActivity, ACTIONS } = require("../utils/activityLogger");
 const { cleanSpRows } = require("../utils/spHelpers");
+const { UPLOAD_ROOT } = require("../middleware/upload");
+
+// Best-effort unlink — a missing file must never block the DB operation.
+// (Same pattern as attachmentController.)
+function unlinkQuiet(p) {
+  fs.unlink(p, (err) => {
+    if (err && err.code !== "ENOENT") {
+      console.error("Workspace attachment unlink failed:", p, err.message);
+    }
+  });
+}
 
 class WorkspaceController {
   async save(req, res) {
@@ -33,6 +46,8 @@ class WorkspaceController {
         MembersJson: membersJson,
         CompId: req.user.CompId,
         BranchId: req.user.BranchId,
+        ActingUserId: req.user.UserId,
+        IsAdmin: req.user.IsAdmin ? 1 : 0,
       });
 
       const spResponse = result.recordsets[0][0];
@@ -149,6 +164,63 @@ class WorkspaceController {
         success: false,
         message: "Failed to fetch workspaces",
         code: "WORKSPACE_FETCH_ERROR",
+        responseCode: 500,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  async fetchMembers(req, res) {
+    try {
+      const { WorkspaceId } = req.body;
+      if (!WorkspaceId) {
+        return res.status(400).json({
+          success: false,
+          message: "WorkspaceId is required",
+          code: "VALIDATION_ERROR",
+          responseCode: 400,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const result = await database.executeStoredProcedure(
+        "sp_FetchWorkspaceMembers",
+        {
+          WorkspaceId,
+          ActingUserId: req.user.UserId,
+          IsAdmin: req.user.IsAdmin ? 1 : 0,
+          CompId: req.user.CompId,
+        },
+      );
+
+      // Status columns ride the data rows; a permission refusal comes back as
+      // a single status-only row.
+      const spResponse = result.recordsets[0]?.[0] ?? {
+        ResponseCode: 200,
+        ResponseMess: "Members retrieved",
+      };
+      if (spResponse.ResponseCode !== 200) {
+        return res.status(spResponse.ResponseCode).json({
+          success: false,
+          message: spResponse.ResponseMess,
+          responseCode: spResponse.ResponseCode,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: spResponse.ResponseMess,
+        responseCode: 200,
+        data: { members: cleanSpRows(result.recordsets[0] || [], "UserId") },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("Fetch workspace members error:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to fetch workspace members",
+        code: "WORKSPACE_MEMBERS_ERROR",
         responseCode: 500,
         timestamp: new Date().toISOString(),
       });
@@ -418,6 +490,273 @@ class WorkspaceController {
         success: false,
         message: "Failed to archive workspace",
         code: "WORKSPACE_ARCHIVE_ERROR",
+        responseCode: 500,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  // POST /convertWorkspaceToShared — one-way personal -> shared (owner-only,
+  // enforced by the SP; controller just passes acting identity faithfully).
+  async convertToShared(req, res) {
+    try {
+      const { WorkspaceId, MemberIds } = req.body;
+
+      if (!WorkspaceId) {
+        return res.status(400).json({
+          success: false,
+          message: "WorkspaceId is required",
+          code: "VALIDATION_ERROR",
+          responseCode: 400,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const result = await database.executeStoredProcedure(
+        "sp_ConvertWorkspaceToShared",
+        {
+          WorkspaceId,
+          ActingUserId: req.user.UserId,
+          MembersJson: JSON.stringify(MemberIds || []),
+          CompId: req.user.CompId,
+        },
+      );
+
+      const spResponse = result.recordsets[0][0];
+
+      if (spResponse.ResponseCode === 200) {
+        await logActivity({
+          entityType: "Workspace",
+          entityId: WorkspaceId,
+          action: ACTIONS.UPDATED,
+          description: "Workspace shared (personal -> shared)",
+          req,
+        });
+      }
+
+      return res.status(spResponse.ResponseCode).json({
+        success: spResponse.ResponseCode === 200,
+        message: spResponse.ResponseMess,
+        responseCode: spResponse.ResponseCode,
+        data:
+          spResponse.ResponseCode === 200
+            ? { workspaceId: spResponse.WorkspaceId }
+            : null,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("Convert workspace error:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to share workspace",
+        code: "WORKSPACE_CONVERT_ERROR",
+        responseCode: 500,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  // POST /deleteWorkspace — archived-only cascade delete. DryRun=1 returns the
+  // blast-radius counts only (no writes, no unlink, no audit).
+  async delete(req, res) {
+    try {
+      const { WorkspaceId, DryRun } = req.body;
+
+      if (!WorkspaceId) {
+        return res.status(400).json({
+          success: false,
+          message: "WorkspaceId is required",
+          code: "VALIDATION_ERROR",
+          responseCode: 400,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const isDryRun = DryRun ? 1 : 0;
+      const result = await database.executeStoredProcedure(
+        "sp_DeleteWorkspace",
+        {
+          WorkspaceId,
+          ActingUserId: req.user.UserId,
+          IsAdmin: req.user.IsAdmin ? 1 : 0,
+          CompId: req.user.CompId,
+          DryRun: isDryRun,
+        },
+      );
+
+      const spResponse = result.recordsets[0][0];
+      const counts = {
+        taskCount: spResponse.TaskCount ?? 0,
+        commentCount: spResponse.CommentCount ?? 0,
+        attachmentCount: spResponse.AttachmentCount ?? 0,
+        memberCount: spResponse.MemberCount ?? 0,
+      };
+
+      if (spResponse.ResponseCode === 200 && !isDryRun) {
+        // Rows are gone (committed) — remove the files, best-effort. DB is the
+        // source of truth; a missing file never fails the request.
+        const files = result.recordsets[1] || [];
+        files.forEach((f) =>
+          unlinkQuiet(path.join(UPLOAD_ROOT, f.Entity, f.StoredName)),
+        );
+
+        await logActivity({
+          entityType: "Workspace",
+          entityId: WorkspaceId,
+          action: ACTIONS.DELETED,
+          description:
+            `Workspace deleted (${counts.taskCount} tasks, ` +
+            `${counts.commentCount} comments, ${counts.attachmentCount} attachments, ` +
+            `${counts.memberCount} members)`,
+          req,
+        });
+      }
+
+      return res.status(spResponse.ResponseCode).json({
+        success: spResponse.ResponseCode === 200,
+        message: spResponse.ResponseMess,
+        responseCode: spResponse.ResponseCode,
+        data:
+          spResponse.ResponseCode === 200
+            ? { workspaceId: spResponse.WorkspaceId, dryRun: !!isDryRun, ...counts }
+            : null,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("Delete workspace error:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to delete workspace",
+        code: "WORKSPACE_DELETE_ERROR",
+        responseCode: 500,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  // POST /transferWorkspaceOwnership — shared/project only (SP-enforced).
+  async transferOwnership(req, res) {
+    try {
+      const { WorkspaceId, NewOwnerUserId } = req.body;
+
+      if (!WorkspaceId || !NewOwnerUserId) {
+        return res.status(400).json({
+          success: false,
+          message: "WorkspaceId and NewOwnerUserId are required",
+          code: "VALIDATION_ERROR",
+          responseCode: 400,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const result = await database.executeStoredProcedure(
+        "sp_TransferWorkspaceOwnership",
+        {
+          WorkspaceId,
+          NewOwnerUserId,
+          ActingUserId: req.user.UserId,
+          IsAdmin: req.user.IsAdmin ? 1 : 0,
+          CompId: req.user.CompId,
+        },
+      );
+
+      const spResponse = result.recordsets[0][0];
+
+      if (spResponse.ResponseCode === 200) {
+        await logActivity({
+          entityType: "Workspace",
+          entityId: WorkspaceId,
+          action: ACTIONS.UPDATED,
+          description: `Ownership transferred to user ${NewOwnerUserId}`,
+          req,
+        });
+      }
+
+      return res.status(spResponse.ResponseCode).json({
+        success: spResponse.ResponseCode === 200,
+        message: spResponse.ResponseMess,
+        responseCode: spResponse.ResponseCode,
+        data:
+          spResponse.ResponseCode === 200
+            ? {
+                workspaceId: spResponse.WorkspaceId,
+                newOwnerUserId: spResponse.NewOwnerUserId,
+              }
+            : null,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("Transfer ownership error:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to transfer ownership",
+        code: "WORKSPACE_TRANSFER_ERROR",
+        responseCode: 500,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  // POST /syncProjectWorkspaceMembers — explicit "sync from team" refresh.
+  async syncProjectMembers(req, res) {
+    try {
+      const { WorkspaceId } = req.body;
+
+      if (!WorkspaceId) {
+        return res.status(400).json({
+          success: false,
+          message: "WorkspaceId is required",
+          code: "VALIDATION_ERROR",
+          responseCode: 400,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const result = await database.executeStoredProcedure(
+        "sp_SyncProjectWorkspaceMembers",
+        {
+          WorkspaceId,
+          ActingUserId: req.user.UserId,
+          IsAdmin: req.user.IsAdmin ? 1 : 0,
+          CompId: req.user.CompId,
+        },
+      );
+
+      const spResponse = result.recordsets[0][0];
+
+      if (spResponse.ResponseCode === 200) {
+        await logActivity({
+          entityType: "Workspace",
+          entityId: WorkspaceId,
+          action: ACTIONS.UPDATED,
+          description:
+            `Members synced from team ` +
+            `(${spResponse.MembersAddedOrRestored ?? 0} added/restored, ` +
+            `${spResponse.MembersDeactivated ?? 0} deactivated)`,
+          req,
+        });
+      }
+
+      return res.status(spResponse.ResponseCode).json({
+        success: spResponse.ResponseCode === 200,
+        message: spResponse.ResponseMess,
+        responseCode: spResponse.ResponseCode,
+        data:
+          spResponse.ResponseCode === 200
+            ? {
+                workspaceId: spResponse.WorkspaceId,
+                membersAddedOrRestored: spResponse.MembersAddedOrRestored ?? 0,
+                membersDeactivated: spResponse.MembersDeactivated ?? 0,
+              }
+            : null,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("Sync project members error:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to sync members",
+        code: "WORKSPACE_SYNC_ERROR",
         responseCode: 500,
         timestamp: new Date().toISOString(),
       });

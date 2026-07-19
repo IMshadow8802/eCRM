@@ -9,6 +9,7 @@ vi.mock("../api/attachmentQueries", () => ({
   uploadAttachment: vi.fn(),
   downloadAttachment: vi.fn(),
   deleteAttachment: vi.fn(),
+  fetchAttachmentBlob: vi.fn(),
 }));
 vi.mock("notistack", () => ({ enqueueSnackbar: vi.fn() }));
 
@@ -18,6 +19,7 @@ import {
   uploadAttachment,
   downloadAttachment,
   deleteAttachment,
+  fetchAttachmentBlob,
 } from "../api/attachmentQueries";
 import { enqueueSnackbar } from "notistack";
 
@@ -43,6 +45,10 @@ beforeEach(() => {
   uploadAttachment.mockResolvedValue({ data: { data: { attachmentId: 1 } } });
   deleteAttachment.mockResolvedValue({ data: { success: true } });
   downloadAttachment.mockResolvedValue({});
+  fetchAttachmentBlob.mockResolvedValue({ blob: new Blob(), url: "blob:remote" });
+  // jsdom has no object URL implementation
+  URL.createObjectURL = vi.fn(() => "blob:staged");
+  URL.revokeObjectURL = vi.fn();
 });
 
 describe("Attachments — LIVE mode", () => {
@@ -220,5 +226,126 @@ describe("Attachments — STAGED mode", () => {
       result = await ref.current.uploadStaged(42);
     });
     expect(result).toEqual({ uploaded: 1, failed: 1 });
+  });
+});
+
+describe("Attachments — inline previews", () => {
+  it("renders a live image as a thumbnail and opens the lightbox with Download", async () => {
+    fetchAttachments.mockResolvedValueOnce(
+      listResponse([{ Id: 1, FileName: "pic.png", FileSize: 100, MimeType: "image/png" }]),
+    );
+    fetchAttachmentBlob.mockResolvedValue({ blob: new Blob(), url: "blob:pic" });
+    wrap(<Attachments entity="lead" entityId={5} />);
+
+    const thumb = await screen.findByRole("img", { name: "pic.png" });
+    expect(thumb).toHaveAttribute("src", "blob:pic");
+    expect(fetchAttachmentBlob).toHaveBeenCalledWith({ Id: 1 });
+    expect(screen.queryByTestId("attachment-row")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview pic.png" }));
+    const modal = await screen.findByTestId("attachment-preview");
+    expect(within(modal).getByRole("img", { name: "pic.png" })).toHaveAttribute("src", "blob:pic");
+
+    fireEvent.click(within(modal).getByRole("button", { name: "Download" }));
+    await waitFor(() =>
+      expect(downloadAttachment).toHaveBeenCalledWith({ Id: 1, FileName: "pic.png" }),
+    );
+  });
+
+  it("shows a skeleton while a thumbnail blob loads", async () => {
+    fetchAttachments.mockResolvedValueOnce(
+      listResponse([{ Id: 1, FileName: "pic.png", FileSize: 100, MimeType: "image/png" }]),
+    );
+    fetchAttachmentBlob.mockReturnValue(new Promise(() => {})); // never resolves
+    wrap(<Attachments entity="lead" entityId={5} />);
+
+    expect(await screen.findByTestId("attachment-thumb-skeleton")).toBeInTheDocument();
+  });
+
+  it("falls back to the plain row when the thumbnail blob fails", async () => {
+    fetchAttachments.mockResolvedValueOnce(
+      listResponse([{ Id: 1, FileName: "pic.png", FileSize: 9, MimeType: "image/png" }]),
+    );
+    fetchAttachmentBlob.mockRejectedValue(new Error("boom"));
+    wrap(<Attachments entity="lead" entityId={5} />);
+
+    expect(await screen.findByTestId("attachment-row")).toHaveTextContent("pic.png");
+    expect(screen.queryByTestId("attachment-tile")).not.toBeInTheDocument();
+    // download still works from the fallback row
+    fireEvent.click(screen.getByRole("button", { name: /Download pic.png/i }));
+    await waitFor(() =>
+      expect(downloadAttachment).toHaveBeenCalledWith({ Id: 1, FileName: "pic.png" }),
+    );
+  });
+
+  it("renders a live video as a play tile and opens the player modal on demand", async () => {
+    fetchAttachments.mockResolvedValueOnce(
+      listResponse([{ Id: 2, FileName: "clip.mp4", FileSize: 100, MimeType: "video/mp4" }]),
+    );
+    fetchAttachmentBlob.mockResolvedValue({ blob: new Blob(), url: "blob:clip" });
+    wrap(<Attachments entity="ticket" entityId={3} />);
+
+    const tile = await screen.findByRole("button", { name: "Preview clip.mp4" });
+    expect(fetchAttachmentBlob).not.toHaveBeenCalled(); // video blobs load on open
+    fireEvent.click(tile);
+
+    const modal = await screen.findByTestId("attachment-preview");
+    await waitFor(() => expect(fetchAttachmentBlob).toHaveBeenCalledWith({ Id: 2 }));
+    const video = await within(modal).findByTestId("attachment-video");
+    expect(video).toHaveAttribute("src", "blob:clip");
+    expect(video).toHaveAttribute("controls");
+    expect(within(modal).getByRole("button", { name: "Download" })).toBeInTheDocument();
+  });
+
+  it("keeps documents as download-only rows with no preview tile", async () => {
+    fetchAttachments.mockResolvedValueOnce(
+      listResponse([{ Id: 3, FileName: "report.pdf", FileSize: 100, MimeType: "application/pdf" }]),
+    );
+    wrap(<Attachments entity="lead" entityId={5} />);
+
+    expect(await screen.findByTestId("attachment-row")).toHaveTextContent("report.pdf");
+    expect(screen.queryByTestId("attachment-tile")).not.toBeInTheDocument();
+    expect(fetchAttachmentBlob).not.toHaveBeenCalled();
+  });
+
+  it("previews a staged local image without any network call", async () => {
+    wrap(<Attachments entity="lead" entityId={null} />);
+    const file = makeFile("a.png", { type: "image/png" });
+    setInputFiles([file]);
+
+    const thumb = await screen.findByRole("img", { name: "a.png" });
+    expect(thumb).toHaveAttribute("src", "blob:staged");
+    expect(URL.createObjectURL).toHaveBeenCalledWith(file);
+    expect(fetchAttachmentBlob).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview a.png" }));
+    const modal = await screen.findByTestId("attachment-preview");
+    expect(within(modal).getByRole("img", { name: "a.png" })).toBeInTheDocument();
+    // staged files are already local — no Download button
+    expect(within(modal).queryByRole("button", { name: "Download" })).not.toBeInTheDocument();
+  });
+
+  it("removes a staged media tile without uploading", async () => {
+    wrap(<Attachments entity="lead" entityId={null} />);
+    setInputFiles([makeFile("a.png", { type: "image/png" })]);
+    await screen.findByRole("img", { name: "a.png" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove a.png" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("img", { name: "a.png" })).not.toBeInTheDocument(),
+    );
+    expect(uploadAttachment).not.toHaveBeenCalled();
+  });
+
+  it("revokes object URLs on unmount", async () => {
+    fetchAttachments.mockResolvedValueOnce(
+      listResponse([{ Id: 1, FileName: "pic.png", FileSize: 100, MimeType: "image/png" }]),
+    );
+    fetchAttachmentBlob.mockResolvedValue({ blob: new Blob(), url: "blob:pic" });
+    const { unmount } = wrap(<Attachments entity="lead" entityId={5} />);
+    await screen.findByRole("img", { name: "pic.png" });
+
+    unmount();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:pic");
   });
 });

@@ -28,8 +28,9 @@ export default function InviteResponseModal({ workspace, onClose, onResponded })
         Action === "accept" ? "Invite accepted" : "Invite declined",
         { variant: "success" },
       );
+      // Parent decides what happens next (it may chain straight into the
+      // next pending invite) — calling onClose here would wipe that state.
       onResponded?.(workspace, Action);
-      onClose?.();
     } catch {
       // error toast from hook
     }

@@ -112,6 +112,7 @@ const Tickets = () => {
       },
       { accessorKey: "TicketNo", header: "Ticket #", enableSorting: true },
       { accessorKey: "CustomerName", header: "Customer", enableSorting: true },
+      { accessorKey: "ContactPerson", header: "Contact person", enableSorting: false },
       { accessorKey: "Contact", header: "Contact", enableSorting: false },
       {
         accessorKey: "Priority",

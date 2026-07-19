@@ -20,6 +20,7 @@ import { useTheme } from "@mui/material/styles";
 import { enqueueSnackbar } from "notistack";
 import {
   Paperclip,
+  Play,
   Plus,
   Download,
   Trash2,
@@ -31,7 +32,7 @@ import {
   FileSpreadsheet,
 } from "lucide-react";
 
-import { Button, IconButton, EmptyState } from "./ui";
+import { Button, IconButton, EmptyState, Modal, Skeleton } from "./ui";
 import ConfirmationDialog from "./ConfirmationDialog";
 import { useConfirmation } from "../hooks";
 import {
@@ -39,6 +40,7 @@ import {
   uploadAttachment,
   downloadAttachment,
   deleteAttachment,
+  fetchAttachmentBlob,
 } from "../api/attachmentQueries";
 
 const MAX_BYTES = 50 * 1024 * 1024; // 50MB
@@ -61,6 +63,14 @@ const ICONS = {
 };
 
 const extOf = (name = "") => name.split(".").pop().toLowerCase();
+
+// Preview class from the MimeType field (server rows) / File.type (staged).
+const mimeClass = (m) => {
+  const mime = m || "";
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("video/")) return "video";
+  return "doc";
+};
 
 function humanSize(bytes) {
   if (bytes == null || Number.isNaN(bytes)) return "";
@@ -100,6 +110,9 @@ const Attachments = forwardRef(function Attachments(
   const [staged, setStaged] = useState([]); // STAGED: File objects
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false); // upload in flight
+  const [media, setMedia] = useState({}); // key -> { url } | { error: true }
+  const [preview, setPreview] = useState(null); // item open in the lightbox
+  const createdUrls = useRef([]); // every object URL we made, for revocation
   const inputRef = useRef(null);
   const confirmation = useConfirmation();
 
@@ -119,6 +132,44 @@ const Attachments = forwardRef(function Attachments(
   useEffect(() => {
     load();
   }, [load]);
+
+  // Build object URLs for previewable files. Staged files preview locally via
+  // URL.createObjectURL; live images fetch their blob when the list renders
+  // (records hold a handful of files — no caching layer). Live videos fetch
+  // lazily on open (see openPreview). Cleanup revokes everything.
+  useEffect(() => {
+    let cancelled = false;
+    if (live) {
+      rows.forEach((r) => {
+        if (mimeClass(r.MimeType) !== "image") return;
+        fetchAttachmentBlob({ Id: r.Id })
+          .then(({ url }) => {
+            if (cancelled) return URL.revokeObjectURL(url);
+            createdUrls.current.push(url);
+            setMedia((m) => ({ ...m, [r.Id]: { url } }));
+          })
+          .catch(() => {
+            if (!cancelled) setMedia((m) => ({ ...m, [r.Id]: { error: true } }));
+          });
+      });
+    } else {
+      const next = {};
+      staged.forEach((f, i) => {
+        if (mimeClass(f.type) === "doc") return;
+        const url = URL.createObjectURL(f);
+        createdUrls.current.push(url);
+        next[`staged-${i}`] = { url };
+      });
+      setMedia(next);
+    }
+    return () => {
+      cancelled = true;
+      createdUrls.current.forEach((u) => URL.revokeObjectURL(u));
+      createdUrls.current = [];
+      setMedia({});
+      setPreview(null);
+    };
+  }, [live, rows, staged]);
 
   // Split incoming files into valid ones + surface rejections.
   const accept = useCallback((fileList) => {
@@ -190,6 +241,25 @@ const Attachments = forwardRef(function Attachments(
     }
   }, []);
 
+  // Open the lightbox/player. Live video blobs are fetched on demand here;
+  // image blobs are already loading via the list effect.
+  const openPreview = useCallback(
+    async (it) => {
+      setPreview(it);
+      if (it.kind === "video" && live && !media[it.key]?.url) {
+        try {
+          const { url } = await fetchAttachmentBlob({ Id: it.row.Id });
+          createdUrls.current.push(url);
+          setMedia((m) => ({ ...m, [it.key]: { url } }));
+        } catch {
+          enqueueSnackbar("Preview failed", { variant: "error" });
+          setPreview(null);
+        }
+      }
+    },
+    [live, media],
+  );
+
   // Imperative API for create-modal callers (STAGED mode).
   useImperativeHandle(
     ref,
@@ -216,8 +286,17 @@ const Attachments = forwardRef(function Attachments(
   );
 
   const items = live
-    ? rows.map((r) => ({ key: r.Id, name: r.FileName, size: r.FileSize, row: r }))
-    : staged.map((f, i) => ({ key: `staged-${i}`, name: f.name, size: f.size, file: f, idx: i }));
+    ? rows.map((r) => ({ key: r.Id, name: r.FileName, size: r.FileSize, row: r, kind: mimeClass(r.MimeType) }))
+    : staged.map((f, i) => ({ key: `staged-${i}`, name: f.name, size: f.size, file: f, idx: i, kind: mimeClass(f.type) }));
+
+  // A media item whose blob fetch failed falls back to the plain doc row.
+  const kindOf = (it) => (media[it.key]?.error ? "doc" : it.kind);
+  const mediaItems = items.filter((it) => kindOf(it) !== "doc");
+  const docItems = items.filter((it) => kindOf(it) === "doc");
+  const previewUrl = preview ? media[preview.key]?.url : null;
+
+  const removeItem = (it) =>
+    it.row ? handleRemove(it.row) : setStaged((prev) => prev.filter((_, i) => i !== it.idx));
 
   return (
     <div>
@@ -274,8 +353,67 @@ const Attachments = forwardRef(function Attachments(
             description="Files you add appear here."
           />
         ) : (
-          <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
-            {items.map((it) => (
+          <>
+            {mediaItems.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: docItems.length ? 10 : 0 }}>
+                {mediaItems.map((it) => {
+                  const url = media[it.key]?.url;
+                  return (
+                    <div key={it.key} data-testid="attachment-tile" style={{ position: "relative", width: 84 }}>
+                      <button
+                        type="button"
+                        aria-label={`Preview ${it.name}`}
+                        onClick={() => openPreview(it)}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          width: 84,
+                          height: 84,
+                          padding: 0,
+                          border: `1px solid ${p.border.default}`,
+                          borderRadius: theme.radii.md,
+                          overflow: "hidden",
+                          cursor: "pointer",
+                          background: p.surface.subtle ?? "transparent",
+                          color: p.text.secondary,
+                        }}
+                      >
+                        {it.kind === "image" ? (
+                          url ? (
+                            <img src={url} alt={it.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          ) : (
+                            <Skeleton width={84} height={84} data-testid="attachment-thumb-skeleton" />
+                          )
+                        ) : (
+                          <Play size={28} />
+                        )}
+                      </button>
+                      <span style={{ position: "absolute", top: 2, right: 2 }}>
+                        <IconButton
+                          size="sm"
+                          variant="destructive"
+                          tooltip="Remove"
+                          aria-label={`Remove ${it.name}`}
+                          disabled={disabled}
+                          onClick={() => removeItem(it)}
+                        >
+                          {it.row ? <Trash2 size={14} /> : <X size={14} />}
+                        </IconButton>
+                      </span>
+                      <div
+                        title={it.name}
+                        style={{ width: 84, marginTop: 2, fontSize: 11, color: p.text.secondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                      >
+                        {it.name}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+            {docItems.map((it) => (
               <li
                 key={it.key}
                 data-testid="attachment-row"
@@ -332,9 +470,53 @@ const Attachments = forwardRef(function Attachments(
                 )}
               </li>
             ))}
-          </ul>
+            </ul>
+          </>
         )}
       </div>
+
+      <Modal
+        open={Boolean(preview)}
+        onClose={() => setPreview(null)}
+        size="lg"
+        data-testid="attachment-preview"
+        aria-label={preview ? `Preview ${preview.name}` : "Preview"}
+      >
+        <Modal.Header title={preview?.name} onClose={() => setPreview(null)} />
+        <Modal.Body>
+          {preview &&
+            (previewUrl ? (
+              preview.kind === "video" ? (
+                <video
+                  src={previewUrl}
+                  controls
+                  data-testid="attachment-video"
+                  style={{ display: "block", width: "100%", maxHeight: "70vh", borderRadius: theme.radii.md }}
+                />
+              ) : (
+                <img
+                  src={previewUrl}
+                  alt={preview.name}
+                  style={{ display: "block", width: "100%", maxHeight: "70vh", objectFit: "contain", borderRadius: theme.radii.md }}
+                />
+              )
+            ) : (
+              <Skeleton width="100%" height={240} data-testid="attachment-preview-skeleton" />
+            ))}
+        </Modal.Body>
+        {preview?.row && (
+          <Modal.Footer>
+            <Button
+              variant="tonal"
+              size="sm"
+              leftIcon={<Download size={16} />}
+              onClick={() => handleDownload(preview.row)}
+            >
+              Download
+            </Button>
+          </Modal.Footer>
+        )}
+      </Modal>
 
       <ConfirmationDialog
         open={confirmation.confirmationState.open}

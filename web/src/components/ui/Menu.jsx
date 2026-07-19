@@ -69,7 +69,11 @@ export default function Menu({
                   gap: 1.25,
                   fontSize: 14,
                   fontWeight: 500,
-                  color: item.destructive ? p.error.main : p.text.primary,
+                  color: item.destructive
+                    ? p.error.main
+                    : item.muted
+                      ? p.text.tertiary
+                      : p.text.primary,
                   "&:hover": {
                     backgroundColor: item.destructive
                       ? p.error.subtle
@@ -110,9 +114,11 @@ export default function Menu({
                       }
                     }}
                     data-testid={
-                      testId && item.id ? `${testId}-${item.id}-settings` : undefined
+                      testId && item.id
+                        ? `${testId}-${item.id}-${item.secondaryKey ?? "settings"}`
+                        : undefined
                     }
-                    aria-label="Workspace settings"
+                    aria-label={item.secondaryLabel ?? "Workspace settings"}
                     style={{
                       display: "inline-flex",
                       alignItems: "center",

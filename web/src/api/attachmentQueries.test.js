@@ -10,6 +10,7 @@ import {
   uploadAttachment,
   deleteAttachment,
   downloadAttachment,
+  fetchAttachmentBlob,
 } from "./attachmentQueries";
 
 beforeEach(() => vi.clearAllMocks());
@@ -79,6 +80,26 @@ describe("attachmentQueries", () => {
     expect(createURL).toHaveBeenCalledWith(blob);
     expect(clickSpy).toHaveBeenCalled();
     expect(revokeURL).toHaveBeenCalledWith("blob:url");
+    clickSpy.mockRestore();
+  });
+
+  it("fetchAttachmentBlob returns blob + object URL without triggering a download", async () => {
+    const blob = new Blob(["data"]);
+    apiClient.post.mockResolvedValue({ data: blob });
+    URL.createObjectURL = vi.fn(() => "blob:preview");
+    URL.revokeObjectURL = vi.fn();
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
+    const res = await fetchAttachmentBlob({ Id: 7 });
+
+    expect(apiClient.post).toHaveBeenCalledWith(
+      "/api/attachments/download",
+      { Id: 7 },
+      { responseType: "blob" },
+    );
+    expect(res).toEqual({ blob, url: "blob:preview" });
+    expect(clickSpy).not.toHaveBeenCalled();
+    expect(URL.revokeObjectURL).not.toHaveBeenCalled(); // caller owns the URL
     clickSpy.mockRestore();
   });
 });
