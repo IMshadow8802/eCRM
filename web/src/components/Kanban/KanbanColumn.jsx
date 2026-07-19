@@ -79,6 +79,7 @@ export default function KanbanColumn({
       await deleteColumnMutation.mutateAsync({
         Id: column.Id,
         ReassignToColumnId: reassignTarget?.value ?? null,
+        WorkspaceId: column.WorkspaceId, // realtime emit-routing hint
       });
       setDeleteOpen(false);
       onColumnUpdated?.();

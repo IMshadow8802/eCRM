@@ -6,6 +6,19 @@ const compression = require("compression");
 const express = require("express");
 const { error, serverErrors } = require("../utils/responseHelper");
 
+// Shared CORS allowlist — the socket.io server (src/realtime/socket.js)
+// mirrors exactly what Express allows.
+const CORS_ORIGINS = [
+  "http://localhost:3000",
+  "http://localhost:19006",
+  "http://localhost:3001",
+  "http://localhost:4000",
+  "http://localhost:8080",
+  "http://localhost:5001",
+  "https://prdinfotech.in", // ADD THIS
+  "http://prdinfotech.in", // AND THIS
+];
+
 function setupMiddleware(app) {
   // 1. Security headers
   app.use(helmet());
@@ -14,16 +27,7 @@ function setupMiddleware(app) {
   // 2. CORS
   app.use(
     cors({
-      origin: [
-        "http://localhost:3000",
-        "http://localhost:19006",
-        "http://localhost:3001",
-        "http://localhost:4000",
-        "http://localhost:8080",
-        "http://localhost:5001",
-        "https://prdinfotech.in", // ADD THIS
-        "http://prdinfotech.in", // AND THIS
-      ],
+      origin: CORS_ORIGINS,
       credentials: true,
       methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
       allowedHeaders: ["Content-Type", "Authorization", "x-requested-with"],
@@ -74,4 +78,4 @@ function setupMiddleware(app) {
   console.log("✅ Request timeout enabled (30s)");
 }
 
-module.exports = { setupMiddleware };
+module.exports = { setupMiddleware, CORS_ORIGINS };

@@ -14,7 +14,7 @@ import useThemeStore from "./stores/useThemeStore";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      refetchOnWindowFocus: false,
+      refetchOnWindowFocus: true, // tab focus = cheap catch-up for missed realtime events
       retry: 1,
       staleTime: 5 * 60 * 1000,
       gcTime: 10 * 60 * 1000,

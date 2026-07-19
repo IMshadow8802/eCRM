@@ -295,6 +295,7 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
         ItemText: text,
         IsCompleted: false,
         SortOrder: 0,
+        WorkspaceId: task.WorkspaceId, // realtime emit-routing hint
       });
       setNewChecklistItem("");
       refetchChecklist();
@@ -308,13 +309,14 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
         ItemText: item.ItemText,
         IsCompleted: !item.IsCompleted,
         SortOrder: item.SortOrder ?? 0,
+        WorkspaceId: task.WorkspaceId, // realtime emit-routing hint
       });
       refetchChecklist();
     } catch {}
   };
   const removeChecklistItem = async (item) => {
     try {
-      await deleteChecklistMutation.mutateAsync({ Id: item.Id });
+      await deleteChecklistMutation.mutateAsync({ Id: item.Id, WorkspaceId: task.WorkspaceId });
       refetchChecklist();
     } catch {}
   };
@@ -329,6 +331,7 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
         TaskId: task.Id,
         DependsOnTaskId: blockerPick.value,
         Type: "blocks",
+        WorkspaceId: task.WorkspaceId, // realtime emit-routing hint
       });
       setBlockerPick(null);
       refetchDeps();
@@ -342,6 +345,7 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
         TaskId: dependentPick.value,
         DependsOnTaskId: task.Id,
         Type: "blocks",
+        WorkspaceId: task.WorkspaceId, // realtime emit-routing hint
       });
       setDependentPick(null);
       refetchDeps();
@@ -353,6 +357,7 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
       await removeDependencyMutation.mutateAsync({
         TaskId: taskId,
         DependsOnTaskId: dependsOnId,
+        WorkspaceId: task.WorkspaceId, // realtime emit-routing hint
       });
       refetchDeps();
     } catch {}
@@ -374,6 +379,7 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
         Hours: hours,
         Description: logNote || null,
         LogDate: dayjs().format("YYYY-MM-DD"),
+        WorkspaceId: task.WorkspaceId, // realtime emit-routing hint
       });
       setLogOpen(false);
       setLogHours(0);
@@ -398,6 +404,7 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
         TaskId: taskId,
         Comment: text,
         ParentCommentId: replyTo || null,
+        WorkspaceId: task?.WorkspaceId, // realtime emit-routing hint
       });
       setNewComment("");
       setReplyTo(null);
@@ -817,7 +824,11 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
                         onReply={() => setReplyTo(c.Id)}
                         onDelete={() =>
                           deleteCommentMutation
-                            .mutateAsync({ Id: c.Id })
+                            .mutateAsync({
+                              Id: c.Id,
+                              TaskId: task.Id, // realtime emit-routing hints
+                              WorkspaceId: task.WorkspaceId,
+                            })
                             .then(refetchComments)
                         }
                         onTogglePin={() =>

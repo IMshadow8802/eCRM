@@ -1,6 +1,8 @@
 const database = require("../config/database");
 const { cleanSpRows } = require("../utils/spHelpers");
 const { logActivity, ACTIONS } = require("../utils/activityLogger");
+const { emitToWorkspace } = require("../realtime/events");
+const { SCOPES } = require("../realtime/contract");
 
 class KanbanController {
   async fetch(req, res) {
@@ -109,6 +111,11 @@ class KanbanController {
           description: `Column "${Title}" ${Id === 0 ? "created" : "updated"} in workspace ${WorkspaceId}`,
           req,
         });
+
+        // Columns shape the board — invalidate the task list.
+        emitToWorkspace(WorkspaceId, SCOPES.TASK_LIST, {
+          workspaceId: WorkspaceId,
+        });
       }
 
       return res.status(spResponse.ResponseCode).json({
@@ -135,7 +142,8 @@ class KanbanController {
 
   async delete(req, res) {
     try {
-      const { Id, ReassignToColumnId = null } = req.body;
+      // WorkspaceId is an emit-routing hint only; not passed to the SP.
+      const { Id, ReassignToColumnId = null, WorkspaceId = null } = req.body;
 
       if (!Id || Id <= 0) {
         return res.status(400).json({
@@ -169,6 +177,14 @@ class KanbanController {
           description: `Column deleted (${spResponse.TasksMoved ?? 0} task(s) reassigned)`,
           req,
         });
+
+        // sp_DeleteKanbanColumn doesn't return WorkspaceId — client hint or
+        // skip.
+        if (WorkspaceId) {
+          emitToWorkspace(WorkspaceId, SCOPES.TASK_LIST, {
+            workspaceId: WorkspaceId,
+          });
+        }
       }
 
       return res.status(spResponse.ResponseCode).json({

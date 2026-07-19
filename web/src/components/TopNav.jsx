@@ -22,6 +22,7 @@ import useThemeStore from "../stores/useThemeStore";
 import useApi from "../hooks/useApi";
 import Profile from "../assets/profile.png";
 import NotificationBell from "./Notifications/NotificationBell";
+import { ConnectionStatus } from "../realtime/SocketProvider";
 import { getUserId, getUserName, getUserJobTitle } from "../utils/userShape";
 
 /**
@@ -136,6 +137,8 @@ const TopNav = ({ onOpenMobileSidebar }) => {
         </Typography>
 
         <Box sx={{ flexGrow: 1 }} />
+
+        <ConnectionStatus />
 
         <NotificationBell
           onOpenEntity={(n) => {

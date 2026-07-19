@@ -63,6 +63,32 @@ describe("kanbanController.fetch", () => {
     await kanbanController.fetch(req, res);
     expect(res.status).toHaveBeenCalledWith(500);
   });
+
+  it("defaults everything with no body and an empty result set", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(spResult([]));
+    const req = baseReq({ body: undefined, scope: undefined });
+    const res = mockRes();
+    await kanbanController.fetch(req, res);
+
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
+      "sp_FetchKanbanColumn",
+      expect.objectContaining({
+        Id: 0,
+        WorkspaceId: null,
+        AccessibleBranchIdsJson: null,
+      }),
+    );
+    expect(res.status).toHaveBeenCalledWith(200);
+    const json = res.json.mock.calls[0][0];
+    expect(json.success).toBe(true);
+    expect(json.data.columns).toHaveLength(0);
+    expect(json.data.pagination).toEqual({
+      currentPage: 1,
+      pageSize: 200,
+      totalRecords: 0,
+      totalPages: 1,
+    });
+  });
 });
 
 describe("kanbanController.save", () => {
@@ -117,6 +143,29 @@ describe("kanbanController.save", () => {
     await kanbanController.save(req, res);
     expect(res.status).toHaveBeenCalledWith(500);
   });
+
+  it("update without ColumnId in the SP row logs against the body Id", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "Updated" }]),
+    );
+    const req = baseReq({ body: { Id: 9, WorkspaceId: 100, Title: "Ren" } });
+    const res = mockRes();
+    await kanbanController.save(req, res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    const json = res.json.mock.calls[0][0];
+    expect(json.data).toEqual({ columnId: undefined });
+  });
+
+  it("surfaces an SP error row without data", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 403, ResponseMess: "Permission denied" }]),
+    );
+    const req = baseReq({ body: { WorkspaceId: 100, Title: "x" } });
+    const res = mockRes();
+    await kanbanController.save(req, res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json.mock.calls[0][0].data).toBeNull();
+  });
 });
 
 describe("kanbanController.delete", () => {
@@ -156,5 +205,30 @@ describe("kanbanController.delete", () => {
     const res = mockRes();
     await kanbanController.delete(req, res);
     expect(res.status).toHaveBeenCalledWith(500);
+  });
+
+  it("defaults TasksMoved/ReassignedTo when the SP row omits them", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "Deleted" }]),
+    );
+    const req = baseReq({ body: { Id: 9 } });
+    const res = mockRes();
+    await kanbanController.delete(req, res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json.mock.calls[0][0].data).toEqual({
+      tasksMoved: 0,
+      reassignedTo: null,
+    });
+  });
+
+  it("surfaces an SP error row without data", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 404, ResponseMess: "Column not found" }]),
+    );
+    const req = baseReq({ body: { Id: 9 } });
+    const res = mockRes();
+    await kanbanController.delete(req, res);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json.mock.calls[0][0].data).toBeNull();
   });
 });

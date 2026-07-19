@@ -8,6 +8,7 @@ const { setupMiddleware } = require("./config/middleware");
 const { setupRoutes } = require("./config/routes");
 const { setupErrorHandlers } = require("./config/errorHandlers");
 const database = require("./config/database");
+const { init: initRealtime } = require("./realtime/socket");
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -61,6 +62,9 @@ async function startServer() {
       console.log(`🗄️  DB: ${process.env.DB_NAME} on ${process.env.DB_SERVER}`);
       console.log(`🔧 Port: ${PORT}`);
     });
+
+    // Realtime (socket.io) rides the same http.Server/port.
+    initRealtime(server);
 
     // Graceful shutdown
     const gracefulShutdown = () => {

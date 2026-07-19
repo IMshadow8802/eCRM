@@ -208,7 +208,10 @@ export default function TaskBoard() {
   const handleBulkDelete = async () => {
     if (selectedIds.length === 0) return;
     try {
-      await bulkDeleteMutation.mutateAsync({ TaskIds: selectedIds });
+      await bulkDeleteMutation.mutateAsync({
+        TaskIds: selectedIds,
+        WorkspaceId: workspaceId, // realtime emit-routing hint
+      });
       enqueueSnackbar(`Deleted ${selectedIds.length} tasks`, { variant: "success" });
       setSelectedIds([]);
       refetchTasks();

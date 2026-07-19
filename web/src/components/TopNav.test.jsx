@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 vi.mock("../stores/useAuthStore", () => {
@@ -41,6 +41,7 @@ vi.mock("./Notifications/NotificationBell", () => ({
 }));
 
 import TopNav from "./TopNav";
+import { useSocketStatus } from "../realtime/SocketProvider";
 
 const renderTopNav = (onOpenMobileSidebar = vi.fn()) =>
   render(
@@ -68,6 +69,14 @@ describe("TopNav", () => {
     mockThemeMode = "light";
     mockApiPost = vi.fn().mockResolvedValue({ data: {} });
     localStorage.clear();
+  });
+
+  it("mounts the realtime status pill (hidden until first connect, Live after)", () => {
+    renderTopNav();
+    expect(screen.queryByTestId("socket-status")).not.toBeInTheDocument();
+    act(() => useSocketStatus.setState({ status: "live" }));
+    expect(screen.getByTestId("socket-status")).toHaveTextContent("Live");
+    act(() => useSocketStatus.setState({ status: "idle" }));
   });
 
   it("shows a page title derived from the route", () => {

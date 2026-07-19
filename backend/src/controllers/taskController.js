@@ -2,6 +2,8 @@ const database = require("../config/database");
 const { logActivity, ACTIONS } = require("../utils/activityLogger");
 const { cleanSpRows } = require("../utils/spHelpers");
 const attachmentController = require("./attachmentController");
+const { emitToWorkspace } = require("../realtime/events");
+const { SCOPES } = require("../realtime/contract");
 
 class TaskController {
   // ================================
@@ -90,6 +92,21 @@ class TaskController {
               ActorUserId: req.user.UserId,
             })
             .catch((e) => console.error("sp_NotifyTaskAssigned failed:", e.message));
+        }
+
+        // sp_SaveTask returns only TaskId — updates that omit WorkspaceId in
+        // the body can't be routed to a room (no extra DB round-trip for an
+        // emit), so this is skipped when WorkspaceId is unknown.
+        if (WorkspaceId) {
+          emitToWorkspace(WorkspaceId, SCOPES.TASK_LIST, {
+            workspaceId: WorkspaceId,
+          });
+          if (Id > 0) {
+            emitToWorkspace(WorkspaceId, SCOPES.TASK_DETAIL, {
+              workspaceId: WorkspaceId,
+              taskId: spResponse.TaskId,
+            });
+          }
         }
       }
 
@@ -181,7 +198,7 @@ class TaskController {
 
   async delete(req, res) {
     try {
-      const { Id } = req.body;
+      const { Id, WorkspaceId = null } = req.body;
 
       if (!Id || Id <= 0) {
         return res.status(400).json({
@@ -212,6 +229,15 @@ class TaskController {
           description: "Task deleted",
           req,
         });
+
+        // WorkspaceId is an optional client hint — sp_DeleteTask doesn't
+        // return it and we won't add a DB round-trip for an emit; skip if
+        // unknown.
+        if (WorkspaceId) {
+          emitToWorkspace(WorkspaceId, SCOPES.TASK_LIST, {
+            workspaceId: WorkspaceId,
+          });
+        }
       }
 
       return res.status(spResponse.ResponseCode).json({
@@ -234,7 +260,8 @@ class TaskController {
 
   async bulkDelete(req, res) {
     try {
-      const { TaskIds } = req.body;
+      // WorkspaceId is an emit-routing hint only; not passed to the SP.
+      const { TaskIds, WorkspaceId = null } = req.body;
 
       if (!TaskIds || TaskIds.length === 0) {
         return res.status(400).json({
@@ -278,6 +305,12 @@ class TaskController {
             })
           )
         );
+
+        if (WorkspaceId) {
+          emitToWorkspace(WorkspaceId, SCOPES.TASK_LIST, {
+            workspaceId: WorkspaceId,
+          });
+        }
       }
 
       return res.status(spResponse.ResponseCode).json({
@@ -311,7 +344,13 @@ class TaskController {
 
   async addComment(req, res) {
     try {
-      const { Id = 0, TaskId, Comment, ParentCommentId = null } = req.body;
+      const {
+        Id = 0,
+        TaskId,
+        Comment,
+        ParentCommentId = null,
+        WorkspaceId = null, // emit-routing hint only; not passed to the SP
+      } = req.body;
 
       const result = await database.executeStoredProcedure(
         "sp_SaveTaskComment",
@@ -345,6 +384,15 @@ class TaskController {
               ActorUserId: req.user.UserId,
             })
             .catch((e) => console.error("sp_NotifyCommentAdded failed:", e.message));
+        }
+
+        // sp_SaveTaskComment doesn't return WorkspaceId; without the client
+        // hint we can't route to a room, so skip (no extra DB round-trips).
+        if (WorkspaceId) {
+          emitToWorkspace(WorkspaceId, SCOPES.TASK_COMMENTS, {
+            workspaceId: WorkspaceId,
+            taskId: TaskId,
+          });
         }
       }
 
@@ -420,7 +468,8 @@ class TaskController {
 
   async deleteComment(req, res) {
     try {
-      const { Id } = req.body;
+      // TaskId/WorkspaceId are emit-routing hints only; not passed to the SP.
+      const { Id, TaskId = null, WorkspaceId = null } = req.body;
 
       if (!Id || Id <= 0) {
         return res.status(400).json({
@@ -453,6 +502,15 @@ class TaskController {
           description: "Comment deleted",
           req,
         });
+
+        // sp_DeleteTaskComment returns neither TaskId nor WorkspaceId —
+        // emit only when the client supplied both hints.
+        if (WorkspaceId && TaskId) {
+          emitToWorkspace(WorkspaceId, SCOPES.TASK_COMMENTS, {
+            workspaceId: WorkspaceId,
+            taskId: TaskId,
+          });
+        }
       }
 
       return res.status(spResponse.ResponseCode).json({
@@ -479,7 +537,9 @@ class TaskController {
 
   async logTime(req, res) {
     try {
-      const { TaskId, Hours, Description, WorkDate } = req.body;
+      // WorkspaceId is an emit-routing hint only; not passed to the SP.
+      const { TaskId, Hours, Description, WorkDate, WorkspaceId = null } =
+        req.body;
 
       const result = await database.executeStoredProcedure("sp_SaveTimeEntry", {
         Id: 0,
@@ -504,6 +564,14 @@ class TaskController {
           description: `Logged ${Hours} hours`,
           req,
         });
+
+        // sp_SaveTimeEntry doesn't return WorkspaceId — client hint or skip.
+        if (WorkspaceId) {
+          emitToWorkspace(WorkspaceId, SCOPES.TASK_DETAIL, {
+            workspaceId: WorkspaceId,
+            taskId: TaskId,
+          });
+        }
       }
 
       return res.status(spResponse.ResponseCode).json({
@@ -659,6 +727,7 @@ class TaskController {
         SortOrder = 0,
         CompId,
         BranchId,
+        WorkspaceId = null, // emit-routing hint only; not passed to the SP
       } = req.body;
 
       const result = await database.executeStoredProcedure(
@@ -690,6 +759,19 @@ class TaskController {
               : `Checklist item updated`,
           req,
         });
+
+        // Checklist drives completion — board cards change too, so both
+        // detail and list invalidate. Needs the client WorkspaceId hint
+        // (the SP doesn't return it); skip when unknown.
+        if (WorkspaceId) {
+          emitToWorkspace(WorkspaceId, SCOPES.TASK_DETAIL, {
+            workspaceId: WorkspaceId,
+            taskId: TaskId,
+          });
+          emitToWorkspace(WorkspaceId, SCOPES.TASK_LIST, {
+            workspaceId: WorkspaceId,
+          });
+        }
       }
 
       return res.status(spResponse.ResponseCode).json({
@@ -763,7 +845,7 @@ class TaskController {
 
   async deleteChecklist(req, res) {
     try {
-      const { Id } = req.body;
+      const { Id, WorkspaceId = null } = req.body;
 
       if (!Id || Id <= 0) {
         return res.status(400).json({
@@ -795,6 +877,18 @@ class TaskController {
           description: "Checklist item deleted",
           req,
         });
+
+        // sp_DeleteTaskChecklist returns TaskId; WorkspaceId is a client
+        // hint (not returned by the SP) — skip the emit when unknown.
+        if (WorkspaceId) {
+          emitToWorkspace(WorkspaceId, SCOPES.TASK_DETAIL, {
+            workspaceId: WorkspaceId,
+            taskId: spResponse.TaskId,
+          });
+          emitToWorkspace(WorkspaceId, SCOPES.TASK_LIST, {
+            workspaceId: WorkspaceId,
+          });
+        }
       }
 
       return res.status(spResponse.ResponseCode).json({
@@ -903,7 +997,9 @@ class TaskController {
 
   async addDependency(req, res) {
     try {
-      const { TaskId, DependsOnTaskId, Type = "blocks" } = req.body;
+      // WorkspaceId is an emit-routing hint only; not passed to the SP.
+      const { TaskId, DependsOnTaskId, Type = "blocks", WorkspaceId = null } =
+        req.body;
       if (!TaskId || !DependsOnTaskId) {
         return res.status(400).json({
           success: false,
@@ -936,6 +1032,15 @@ class TaskController {
           description: `Dependency added`,
           req,
         });
+
+        // sp_AddTaskDependency doesn't return WorkspaceId — client hint or
+        // skip.
+        if (WorkspaceId) {
+          emitToWorkspace(WorkspaceId, SCOPES.TASK_DETAIL, {
+            workspaceId: WorkspaceId,
+            taskId: TaskId,
+          });
+        }
       }
 
       return res.status(spResponse.ResponseCode).json({
@@ -958,7 +1063,8 @@ class TaskController {
 
   async removeDependency(req, res) {
     try {
-      const { TaskId, DependsOnTaskId } = req.body;
+      // WorkspaceId is an emit-routing hint only; not passed to the SP.
+      const { TaskId, DependsOnTaskId, WorkspaceId = null } = req.body;
       if (!TaskId || !DependsOnTaskId) {
         return res.status(400).json({
           success: false,
@@ -979,6 +1085,15 @@ class TaskController {
         }
       );
       const spResponse = result.recordsets[0][0];
+
+      // sp_RemoveTaskDependency doesn't return WorkspaceId — client hint or
+      // skip.
+      if (spResponse.ResponseCode === 200 && WorkspaceId) {
+        emitToWorkspace(WorkspaceId, SCOPES.TASK_DETAIL, {
+          workspaceId: WorkspaceId,
+          taskId: TaskId,
+        });
+      }
 
       return res.status(spResponse.ResponseCode).json({
         success: spResponse.ResponseCode === 200,

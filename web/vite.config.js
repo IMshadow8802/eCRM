@@ -35,6 +35,13 @@ export default defineConfig(({ command, mode }) => {
           target: "http://localhost:5001",
           changeOrigin: true,
         },
+        // Realtime websocket — SocketProvider connects to the window origin
+        // in dev and this forwards the handshake + ws upgrade to Express.
+        "/socket.io": {
+          target: "http://localhost:5001",
+          changeOrigin: true,
+          ws: true,
+        },
       },
       // ADD THIS 👇 - This fixes SPA routing in development
       historyApiFallback: {

@@ -4,6 +4,8 @@ const database = require("../config/database");
 const { logActivity, ACTIONS } = require("../utils/activityLogger");
 const { cleanSpRows } = require("../utils/spHelpers");
 const { UPLOAD_ROOT } = require("../middleware/upload");
+const { emitToWorkspace, emitToUser } = require("../realtime/events");
+const { SCOPES } = require("../realtime/contract");
 
 // Best-effort unlink — a missing file must never block the DB operation.
 // (Same pattern as attachmentController.)
@@ -87,6 +89,11 @@ class WorkspaceController {
           description: `Workspace ${Name || ""} ${Id === 0 ? "created" : "updated"}`,
           req,
         });
+
+        // Update only — a freshly created workspace has no room yet.
+        if (Id > 0) {
+          emitToWorkspace(newWorkspaceId, SCOPES.WORKSPACES);
+        }
       }
 
       return res.status(spResponse.ResponseCode).json({
@@ -263,6 +270,14 @@ class WorkspaceController {
           description: `Added user ${UserId} as ${Role}`,
           req,
         });
+
+        emitToWorkspace(WorkspaceId, SCOPES.WORKSPACE_MEMBERS, {
+          workspaceId: WorkspaceId,
+        });
+        // The invitee isn't in the workspace room yet — target their user
+        // room so their switcher list and bell update.
+        emitToUser(UserId, SCOPES.WORKSPACES);
+        emitToUser(UserId, SCOPES.NOTIFICATIONS);
       }
 
       return res.status(spResponse.ResponseCode).json({
@@ -326,6 +341,15 @@ class WorkspaceController {
           description: `Removed user ${UserId}`,
           req,
         });
+
+        emitToWorkspace(WorkspaceId, SCOPES.WORKSPACE_MEMBERS, {
+          workspaceId: WorkspaceId,
+        });
+        // Leave/removal creates notifications for members.
+        emitToWorkspace(WorkspaceId, SCOPES.NOTIFICATIONS);
+        // The removed user loses the workspace — hit their user room.
+        emitToUser(UserId, SCOPES.WORKSPACES);
+        emitToUser(UserId, SCOPES.NOTIFICATIONS);
       }
 
       return res.status(spResponse.ResponseCode).json({
@@ -476,6 +500,8 @@ class WorkspaceController {
           description: IsArchived ? "Workspace archived" : "Workspace unarchived",
           req,
         });
+
+        emitToWorkspace(WorkspaceId, SCOPES.WORKSPACES);
       }
 
       return res.status(spResponse.ResponseCode).json({
@@ -531,6 +557,11 @@ class WorkspaceController {
           action: ACTIONS.UPDATED,
           description: "Workspace shared (personal -> shared)",
           req,
+        });
+
+        emitToWorkspace(WorkspaceId, SCOPES.WORKSPACES);
+        emitToWorkspace(WorkspaceId, SCOPES.WORKSPACE_MEMBERS, {
+          workspaceId: WorkspaceId,
         });
       }
 
@@ -610,6 +641,9 @@ class WorkspaceController {
             `${counts.memberCount} members)`,
           req,
         });
+
+        // Real delete only — never on dry-run.
+        emitToWorkspace(WorkspaceId, SCOPES.WORKSPACES);
       }
 
       return res.status(spResponse.ResponseCode).json({
@@ -670,6 +704,13 @@ class WorkspaceController {
           description: `Ownership transferred to user ${NewOwnerUserId}`,
           req,
         });
+
+        emitToWorkspace(WorkspaceId, SCOPES.WORKSPACES);
+        emitToWorkspace(WorkspaceId, SCOPES.WORKSPACE_MEMBERS, {
+          workspaceId: WorkspaceId,
+        });
+        // Transfer creates notifications for members.
+        emitToWorkspace(WorkspaceId, SCOPES.NOTIFICATIONS);
       }
 
       return res.status(spResponse.ResponseCode).json({
@@ -735,6 +776,11 @@ class WorkspaceController {
             `${spResponse.MembersDeactivated ?? 0} deactivated)`,
           req,
         });
+
+        emitToWorkspace(WorkspaceId, SCOPES.WORKSPACE_MEMBERS, {
+          workspaceId: WorkspaceId,
+        });
+        emitToWorkspace(WorkspaceId, SCOPES.WORKSPACES);
       }
 
       return res.status(spResponse.ResponseCode).json({
@@ -798,6 +844,15 @@ class WorkspaceController {
           description: `Invite ${Action}ed`,
           req,
         });
+
+        emitToWorkspace(WorkspaceId, SCOPES.WORKSPACE_MEMBERS, {
+          workspaceId: WorkspaceId,
+        });
+        // Responding creates notifications for members.
+        emitToWorkspace(WorkspaceId, SCOPES.NOTIFICATIONS);
+        // The responder's own switcher list and bell change too.
+        emitToUser(req.user.UserId, SCOPES.WORKSPACES);
+        emitToUser(req.user.UserId, SCOPES.NOTIFICATIONS);
       }
 
       return res.status(spResponse.ResponseCode).json({

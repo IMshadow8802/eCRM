@@ -4,6 +4,7 @@ import { useLocation } from "react-router-dom";
 import TopNav from "./TopNav";
 import Sidebar from "./Sidebar";
 import useAuthStore from "../stores/useAuthStore";
+import SocketProvider from "../realtime/SocketProvider";
 
 const COLLAPSED_KEY = "sidebarCollapsed";
 
@@ -55,6 +56,8 @@ function RootLayout({ children }) {
         backgroundColor: "background.default",
       }}
     >
+      {/* Realtime invalidations — authed tree only; renders nothing. */}
+      {isAuthenticated && <SocketProvider />}
       {isAuthenticated && (
         <Sidebar
           collapsed={collapsed}
