@@ -15,11 +15,8 @@ export const SUPPORT_ENDPOINTS = {
     closeTicket: "/api/tickets/closeTicket",
     reopenTicket: "/api/tickets/reopenTicket",
     deleteTicket: "/api/tickets/deleteTicket",
-    saveSLARule: "/api/tickets/saveSLARule",
-    fetchSLARules: "/api/tickets/fetchSLARules",
   },
   reports: {
-    slaBreachSummary: "/api/reports/slaBreachSummary",
     ticketsByCategory: "/api/reports/ticketsByCategory",
     resolutionSummary: "/api/reports/resolutionSummary",
   },
@@ -39,10 +36,7 @@ export const resolveTicket = post(SUPPORT_ENDPOINTS.tickets.resolveTicket);
 export const closeTicket = post(SUPPORT_ENDPOINTS.tickets.closeTicket);
 export const reopenTicket = post(SUPPORT_ENDPOINTS.tickets.reopenTicket);
 export const deleteTicket = post(SUPPORT_ENDPOINTS.tickets.deleteTicket);
-export const saveSLARule = post(SUPPORT_ENDPOINTS.tickets.saveSLARule);
-export const fetchSLARules = post(SUPPORT_ENDPOINTS.tickets.fetchSLARules);
 
 // Reports
-export const slaBreachSummary = post(SUPPORT_ENDPOINTS.reports.slaBreachSummary);
 export const ticketsByCategory = post(SUPPORT_ENDPOINTS.reports.ticketsByCategory);
 export const resolutionSummary = post(SUPPORT_ENDPOINTS.reports.resolutionSummary);

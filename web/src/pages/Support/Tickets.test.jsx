@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -23,15 +23,8 @@ const FIXTURE_TICKETS = [
     CategoryId: 5,
     StageId: 3,
     AssignedTo: 2,
-    IsBreached: true,
   },
 ];
-
-const mockNavigate = vi.fn();
-vi.mock("react-router-dom", async () => {
-  const actual = await vi.importActual("react-router-dom");
-  return { ...actual, useNavigate: () => mockNavigate };
-});
 
 vi.mock("../../hooks/useServerTable", () => ({
   __esModule: true,
@@ -50,6 +43,12 @@ vi.mock("../../hooks", () => ({
   useUsers: vi.fn(() => ({ data: { users: FIXTURE_USERS } })),
 }));
 
+vi.mock("./TicketDetailModal", () => ({
+  __esModule: true,
+  default: ({ open, ticketId }) =>
+    open ? <div data-testid="ticket-detail-modal">ticket:{ticketId}</div> : null,
+}));
+
 vi.mock("../../hooks/useApiQuery", () => ({
   useApiQuery: vi.fn((cfg) => {
     if (cfg?.endpoint === "/api/config/fetchPipelines") {
@@ -57,8 +56,8 @@ vi.mock("../../hooks/useApiQuery", () => ({
         data: {
           pipelines: [{ Id: 9, Name: "Support", IsDefault: true }],
           stages: [
-            { Id: 3, PipelineId: 9, Name: "Open" },
-            { Id: 4, PipelineId: 9, Name: "Resolved" },
+            { Id: 3, PipelineId: 9, Name: "Open", StageType: "open" },
+            { Id: 4, PipelineId: 9, Name: "Resolved", StageType: "won" },
           ],
         },
       };
@@ -103,6 +102,9 @@ import useServerTable from "../../hooks/useServerTable";
 import { useUsers } from "../../hooks";
 import { useApiQuery } from "../../hooks/useApiQuery";
 
+const renderCell = (node) =>
+  render(<ThemeProvider theme={buildTheme("light")}>{node}</ThemeProvider>);
+
 const renderPage = () =>
   render(
     <ThemeProvider theme={buildTheme("light")}>
@@ -119,7 +121,6 @@ describe("Support Tickets page", () => {
     useServerTable.mockClear();
     useUsers.mockClear();
     useApiQuery.mockClear();
-    mockNavigate.mockClear();
   });
 
   it("wires useServerTable to /api/tickets/fetchTickets with dataKey=tickets", () => {
@@ -134,6 +135,7 @@ describe("Support Tickets page", () => {
     const cfg = useServerTable.mock.calls.at(-1)[0];
     const keys = cfg.columns.map((c) => c.accessorKey);
     expect(keys).toEqual([
+      undefined, // action column (id: "open", eye icon) leads — no accessorKey
       "TicketNo",
       "CustomerName",
       "Contact",
@@ -141,7 +143,6 @@ describe("Support Tickets page", () => {
       "CategoryId",
       "StageId",
       "AssignedTo",
-      "IsBreached",
     ]);
   });
 
@@ -151,28 +152,47 @@ describe("Support Tickets page", () => {
     expect(screen.getByText("TKT-001")).toBeInTheDocument();
   });
 
-  it("resolves the Priority column to its name and falls back to a dash", () => {
+  // Status-ish columns render as pills so the state is scannable at a glance.
+  it("renders the Priority column as a pill and falls back to a dash", () => {
     renderPage();
     const cfg = useServerTable.mock.calls.at(-1)[0];
     const col = cfg.columns.find((c) => c.accessorKey === "Priority");
-    expect(col.Cell({ cell: { getValue: () => 7 } })).toBe("High");
+    const { getByText } = renderCell(col.Cell({ cell: { getValue: () => 7 } }));
+    expect(getByText("High")).toBeInTheDocument();
     expect(col.Cell({ cell: { getValue: () => null } })).toBe("—");
   });
 
-  it("resolves the Category column to its name and falls back to a dash", () => {
+  it("renders the Category column as a pill and falls back to a dash", () => {
     renderPage();
     const cfg = useServerTable.mock.calls.at(-1)[0];
     const col = cfg.columns.find((c) => c.accessorKey === "CategoryId");
-    expect(col.Cell({ cell: { getValue: () => 5 } })).toBe("Billing");
+    const { getByText } = renderCell(col.Cell({ cell: { getValue: () => 5 } }));
+    expect(getByText("Billing")).toBeInTheDocument();
     expect(col.Cell({ cell: { getValue: () => null } })).toBe("—");
   });
 
-  it("resolves the Stage column to its name and falls back to a dash", () => {
+  it("renders the Status column as a stage-type-toned pill and falls back to a dash", () => {
     renderPage();
     const cfg = useServerTable.mock.calls.at(-1)[0];
     const col = cfg.columns.find((c) => c.accessorKey === "StageId");
-    expect(col.Cell({ cell: { getValue: () => 3 } })).toBe("Open");
+    const { getByText } = renderCell(col.Cell({ cell: { getValue: () => 3 } }));
+    expect(getByText("Open")).toBeInTheDocument();
     expect(col.Cell({ cell: { getValue: () => null } })).toBe("—");
+  });
+
+  it("has an explicit open-icon column that opens the detail modal", async () => {
+    renderPage();
+    const cfg = useServerTable.mock.calls.at(-1)[0];
+    const col = cfg.columns.find((c) => c.id === "open");
+    expect(col).toBeTruthy();
+
+    const { getByTestId } = renderCell(
+      col.Cell({ row: { original: { Id: 42, TicketNo: "TKT-042" } } })
+    );
+    act(() => {
+      getByTestId("ticket-open-42").click();
+    });
+    expect(await screen.findByTestId("ticket-detail-modal")).toBeInTheDocument();
   });
 
   it("resolves the Assignee column against the bulk-loaded users list", () => {
@@ -181,15 +201,6 @@ describe("Support Tickets page", () => {
     const col = cfg.columns.find((c) => c.accessorKey === "AssignedTo");
     expect(col.Cell({ cell: { getValue: () => 2 } })).toBe("Bob");
     expect(col.Cell({ cell: { getValue: () => null } })).toBe("—");
-  });
-
-  it("renders a Breached chip when IsBreached is truthy and a dash otherwise", () => {
-    renderPage();
-    const cfg = useServerTable.mock.calls.at(-1)[0];
-    const col = cfg.columns.find((c) => c.accessorKey === "IsBreached");
-    const { getByText } = render(col.Cell({ cell: { getValue: () => true } }));
-    expect(getByText("Breached")).toBeInTheDocument();
-    expect(col.Cell({ cell: { getValue: () => false } })).toBe("—");
   });
 
   it("bulk-loads users, priority + category lookups, and ticket pipelines", () => {
@@ -224,7 +235,6 @@ describe("Support Tickets page", () => {
       Priority: null,
       CategoryId: null,
       AssignedTo: null,
-      BreachedOnly: 0,
     });
   });
 
@@ -237,7 +247,6 @@ describe("Support Tickets page", () => {
       Priority: 7,
       CategoryId: null,
       AssignedTo: null,
-      BreachedOnly: 0,
     });
   });
 
@@ -250,7 +259,6 @@ describe("Support Tickets page", () => {
       Priority: null,
       CategoryId: 5,
       AssignedTo: null,
-      BreachedOnly: 0,
     });
   });
 
@@ -263,28 +271,18 @@ describe("Support Tickets page", () => {
       Priority: null,
       CategoryId: null,
       AssignedTo: 2,
-      BreachedOnly: 0,
     });
   });
 
-  it("forwards BreachedOnly=1 when the SLA filter is set", async () => {
-    renderPage();
-    await pickOption("filter-sla", "Breached only");
-    const cfg = useServerTable.mock.calls.at(-1)[0];
-    expect(cfg.extraParams).toEqual({
-      StageId: null,
-      Priority: null,
-      CategoryId: null,
-      AssignedTo: null,
-      BreachedOnly: 1,
-    });
-  });
-
-  it("navigates to the ticket detail route when a row is clicked", () => {
+  // Row click opens the detail in a modal (table position preserved) instead
+  // of navigating away to the full page.
+  it("opens the detail modal when a row is clicked", async () => {
     renderPage();
     const cfg = useServerTable.mock.calls.at(-1)[0];
     const rowProps = cfg.muiTableBodyRowProps({ row: { original: { Id: 42 } } });
-    rowProps.onClick();
-    expect(mockNavigate).toHaveBeenCalledWith("/support/tickets/42");
+
+    expect(screen.queryByTestId("ticket-detail-modal")).not.toBeInTheDocument();
+    act(() => rowProps.onClick());
+    expect(await screen.findByTestId("ticket-detail-modal")).toBeInTheDocument();
   });
 });

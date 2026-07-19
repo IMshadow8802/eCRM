@@ -202,10 +202,37 @@ describe("taskController.fetch", () => {
         PageNumber: 1,
         IsAdmin: 0,
         AccessibleBranchIdsJson: JSON.stringify([1, 2, 3]),
+        // REGRESSION: @BranchId is an optional narrowing filter in
+        // sp_FetchTask, not a scope gate. Passing req.user.BranchId here hid
+        // every cross-branch workspace from its own members (a branch-1 user
+        // who was a member of a branch-2 shared workspace saw zero tasks).
+        BranchId: null,
       }),
     );
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json.mock.calls[0][0].data.tasks).toHaveLength(1);
+  });
+
+  it("forwards a BranchId filter from the body when the user picks one", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([
+        {
+          ResponseCode: 200,
+          ResponseMess: "No tasks found",
+          TotalRecords: 0,
+          TotalPages: 0,
+          CurrentPage: 1,
+          PageSize: 25,
+        },
+      ]),
+    );
+    const req = baseReq({ body: { BranchId: 3 } });
+    const res = mockRes();
+    await taskController.fetch(req, res);
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
+      "sp_FetchTask",
+      expect.objectContaining({ BranchId: 3 }),
+    );
   });
 
   it("returns 500 when DB throws", async () => {
@@ -581,6 +608,19 @@ describe("taskController.fetchDependencies", () => {
     expect(json.data.dependents).toHaveLength(1);
   });
 
+  // REGRESSION: the SP carries status columns on the data rows, so a task
+  // with no dependencies returns ZERO rows — the controller crashed reading
+  // [0].ResponseCode off undefined and 500'd every dependency-free task.
+  it("returns 200 with empty lists when the task has no dependencies", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(spResult([]));
+    const res = mockRes();
+    await taskController.fetchDependencies(baseReq({ body: { TaskId: 5 } }), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    const json = res.json.mock.calls[0][0];
+    expect(json.data.blockers).toEqual([]);
+    expect(json.data.dependents).toEqual([]);
+  });
+
   it("returns 500 when DB throws", async () => {
     database.executeStoredProcedure.mockRejectedValueOnce(new Error("x"));
     const spy = jest.spyOn(console, "error").mockImplementation(() => {});
@@ -654,6 +694,18 @@ describe("taskController time-tracking + checklist + activity", () => {
       mockRes(),
     );
     expect(database.executeStoredProcedure.mock.calls[0][1].UserId).toBeNull();
+  });
+
+  // REGRESSION: same zero-rows crash as fetchDependencies — a task with no
+  // time entries 500'd instead of returning an empty page.
+  it("getTimeEntries returns 200 with an empty page when there are no entries", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(spResult([]));
+    const res = mockRes();
+    await taskController.getTimeEntries(baseReq({ body: { TaskId: 5 } }), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    const json = res.json.mock.calls[0][0];
+    expect(json.data.timeEntries).toEqual([]);
+    expect(json.data.pagination.totalRecords).toBe(0);
   });
 
   it("getTimeEntries returns 500 on DB throw", async () => {

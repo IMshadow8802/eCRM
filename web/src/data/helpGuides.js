@@ -137,16 +137,16 @@ export const HELP_GUIDES = {
         en: "Raise a ticket for a customer complaint with customer name, priority and category.",
       },
       {
-        hi: "Stage / Priority / Category / Assignee / SLA फ़िल्टर से टिकट ढूँढें।",
-        en: "Use the Stage / Priority / Category / Assignee / SLA filters to find tickets.",
+        hi: "Stage / Priority / Category / Assignee फ़िल्टर से टिकट ढूँढें।",
+        en: "Use the Stage / Priority / Category / Assignee filters to find tickets.",
       },
       {
-        hi: "किसी टिकट पर क्लिक करके उसे खोलें — कॉल लॉग करें, fields एडिट करें, और Resolve/Close/Reopen करें।",
-        en: "Click a ticket to open it — log calls, edit fields, and Resolve/Close/Reopen.",
+        hi: "किसी टिकट पर क्लिक करके उसे खोलें — कॉल लॉग करें, fields एडिट करें, और Resolve करें।",
+        en: "Click a ticket to open it — log calls, edit fields, and Resolve it.",
       },
       {
-        hi: "लाल 'Breached' चिप का मतलब है कि टिकट अपने SLA की तय समय-सीमा पार कर चुका है।",
-        en: "A red 'Breached' chip means the ticket has passed its SLA due time.",
+        hi: "पहले Resolve करें (कैसे ठीक हुआ चुनें), फिर ग्राहक की पुष्टि के बाद Close करें। ज़रूरत पड़ने पर Reopen करें।",
+        en: "Resolve first (pick how it was fixed), then Close once the customer confirms. Reopen if it comes back.",
       },
       {
         hi: "टिकट को stages में खींचने के लिए Ticket Board का उपयोग करें।",

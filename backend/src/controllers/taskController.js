@@ -119,6 +119,12 @@ class TaskController {
         Id = 0,
         WorkspaceId = null,
         ProjectId = null,
+        // Optional UI filter. Tasks are membership-governed; sp_FetchTask
+        // treats @BranchId as a narrowing filter, NOT a scope gate. Passing
+        // req.user.BranchId here silently hid every cross-branch workspace
+        // from its own members (e.g. a branch-1 member of a branch-2 shared
+        // workspace saw zero tasks).
+        BranchId = null,
         PageNumber = 1,
         PageSize = 25,
         SearchTerm = null,
@@ -134,7 +140,7 @@ class TaskController {
         ProjectId,
         UserId: req.user.UserId,
         CompId: req.user.CompId,
-        BranchId: req.user.BranchId,
+        BranchId,
         IsAdmin: req.user.IsAdmin ? 1 : 0,
         AccessibleBranchIdsJson: accessibleBranchIdsJson,
         PageNumber,
@@ -544,9 +550,18 @@ class TaskController {
         }
       );
 
-      const spResponse = result.recordsets[0][0];
+      // Status columns ride on the data rows — zero time entries means zero
+      // rows, so default the response instead of crashing on undefined.
+      const spResponse = result.recordsets[0]?.[0] ?? {
+        ResponseCode: 200,
+        ResponseMess: "Time entries retrieved",
+        CurrentPage: PageNumber,
+        PageSize,
+        TotalRecords: 0,
+        TotalPages: 0,
+      };
 
-      const timeEntries = cleanSpRows(result.recordsets[0]);
+      const timeEntries = cleanSpRows(result.recordsets[0] || []);
 
       return res.status(spResponse.ResponseCode).json({
         success: spResponse.ResponseCode === 200,
@@ -1004,8 +1019,14 @@ class TaskController {
           CompId: req.user.CompId,
         }
       );
-      const spResponse = result.recordsets[0][0];
-      const rows = cleanSpRows(result.recordsets[0], "TaskId");
+      // The SP carries its status columns on the data rows, so a task with
+      // zero dependencies returns ZERO rows — reading [0].ResponseCode blind
+      // was a TypeError -> 500 on every dependency-free task.
+      const spResponse = result.recordsets[0]?.[0] ?? {
+        ResponseCode: 200,
+        ResponseMess: "Dependencies retrieved",
+      };
+      const rows = cleanSpRows(result.recordsets[0] || [], "TaskId");
       return res.status(spResponse.ResponseCode).json({
         success: spResponse.ResponseCode === 200,
         message: spResponse.ResponseMess,

@@ -231,36 +231,31 @@ export default function LeadDetail({ leadId: leadIdProp }) {
               </div>
             </Card>
 
-            <Card>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  marginBottom: 16,
-                }}
-              >
-                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Custom fields</h3>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  leftIcon={<SaveIcon size={14} />}
-                  onClick={saveCustomFields}
-                  disabled={!isDirty}
-                  loading={saveMutation.isPending}
-                  data-testid="save-custom-fields-btn"
+            {/* An unconfigured optional feature earns no screen space — the
+                card only exists once the company defines a field. */}
+            {fields.length > 0 && (
+              <Card>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginBottom: 16,
+                  }}
                 >
-                  Save changes
-                </Button>
-              </div>
-              {fields.length === 0 ? (
-                <EmptyState
-                  title="No custom fields"
-                  description="This company hasn't configured any custom fields for leads yet."
-                  size="sm"
-                  data-testid="custom-fields-empty"
-                />
-              ) : (
+                  <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Custom fields</h3>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    leftIcon={<SaveIcon size={14} />}
+                    onClick={saveCustomFields}
+                    disabled={!isDirty}
+                    loading={saveMutation.isPending}
+                    data-testid="save-custom-fields-btn"
+                  >
+                    Save changes
+                  </Button>
+                </div>
                 <div
                   style={{
                     display: "grid",
@@ -279,8 +274,8 @@ export default function LeadDetail({ leadId: leadIdProp }) {
                     />
                   ))}
                 </div>
-              )}
-            </Card>
+              </Card>
+            )}
 
             <Card>
               <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Attachments</h3>

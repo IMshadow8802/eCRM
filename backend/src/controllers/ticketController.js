@@ -1,6 +1,7 @@
 const database = require("../config/database");
 const responseHelper = require("../utils/responseHelper");
 const attachmentController = require("./attachmentController");
+const { scopeParams, canSeeRecord } = require("../middleware/permission");
 
 // Mutating SPs log their own activity server-side and return one status row.
 async function runSp(res, spName, params, failMessage) {
@@ -33,8 +34,12 @@ const ticketController = {
 
   async fetch(req, res) {
     try {
-      const { CompId, BranchId } = req.user;
+      const { CompId } = req.user;
       const {
+        // BranchId is an optional UI filter now — it narrows within scope and
+        // never widens it. Visibility comes from req.scope; passing
+        // req.user.BranchId here is what hid every out-of-branch row.
+        BranchId = null,
         PageNumber = 1,
         PageSize = 10,
         SearchTerm = null,
@@ -42,7 +47,6 @@ const ticketController = {
         Priority = null,
         CategoryId = null,
         AssignedTo = null,
-        BreachedOnly = 0,
       } = req.body;
 
       const result = await database.executeStoredProcedure("sp_FetchTickets", {
@@ -55,7 +59,7 @@ const ticketController = {
         Priority,
         CategoryId,
         AssignedTo,
-        BreachedOnly,
+        ...scopeParams(req),
       });
 
       const tickets = result.recordsets[0] || [];
@@ -87,6 +91,18 @@ const ticketController = {
       });
 
       const ticket = (result.recordsets[0] && result.recordsets[0][0]) || null;
+
+      // The detail SP is CompId-scoped only, so gate the row here. 404 rather
+      // than 403: a user who cannot see a ticket should not learn it exists.
+      if (!canSeeRecord(req, ticket, "AssignedTo")) {
+        return responseHelper.error(
+          res,
+          "Ticket not found",
+          "NOT_FOUND",
+          404,
+        );
+      }
+
       const fields = result.recordsets[1] || [];
       const activity = result.recordsets[2] || [];
       const linkedLead = (result.recordsets[3] && result.recordsets[3][0]) || null;
@@ -105,11 +121,13 @@ const ticketController = {
 
   moveStage(req, res) {
     const { CompId, UserId } = req.user;
-    const { TicketId, StageId } = req.body;
+    // ResolutionId rides along for drags into a won stage — the SP requires a
+    // resolution on first entry (stage is the lifecycle's source of truth).
+    const { TicketId, StageId, ResolutionId = null } = req.body;
     return runSp(
       res,
       "sp_MoveTicketStage",
-      { CompId, TicketId, StageId, UserId },
+      { CompId, TicketId, StageId, UserId, ResolutionId },
       "Failed to move ticket stage",
     );
   },
@@ -155,29 +173,6 @@ const ticketController = {
     }
   },
 
-  saveSLARule(req, res) {
-    const { CompId, UserId } = req.user;
-    const { Id = 0 } = req.body;
-    return runSp(
-      res,
-      "sp_SaveSLARule",
-      { ...req.body, Id, CompId, UserId },
-      "Failed to save SLA rule",
-    );
-  },
-
-  async fetchSLARules(req, res) {
-    try {
-      const { CompId } = req.user;
-      const result = await database.executeStoredProcedure("sp_FetchSLARules", { CompId });
-      return responseHelper.success(res, "SLA rules fetched successfully", {
-        slaRules: result.recordset || [],
-      });
-    } catch (err) {
-      console.error("sp_FetchSLARules error:", err);
-      return responseHelper.error(res, "Failed to fetch SLA rules");
-    }
-  },
 };
 
 module.exports = ticketController;

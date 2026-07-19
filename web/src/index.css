@@ -257,3 +257,13 @@
   from { opacity: 0; }
   to { opacity: 1; }
 }
+
+/* Toasts must clear every overlay: our Modal renders at z-index 1400
+   (tokens.zIndex.modal) and notistack's container also defaults to 1400,
+   so DOM order buried notifications behind open modals. tokens.zIndex.toast
+   (1700) is the intended layer — enforce it on the container, since the
+   zIndex passed via SnackbarProvider's style prop only styles the items
+   INSIDE the container and cannot lift them out of its stacking context. */
+.notistack-SnackbarContainer {
+  z-index: 1700 !important;
+}

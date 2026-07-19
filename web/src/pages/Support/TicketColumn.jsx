@@ -3,7 +3,7 @@ import { useTheme } from "@mui/material/styles";
 
 import TicketCard from "./TicketCard";
 
-export default function TicketColumn({ stage, tickets, priorityById, users }) {
+export default function TicketColumn({ stage, tickets, priorityById, users, onOpen }) {
   const theme = useTheme();
   const p = theme.tokens;
   const { ref: dropRef, isDropTarget } = useDroppable({
@@ -72,6 +72,7 @@ export default function TicketColumn({ stage, tickets, priorityById, users }) {
             stageId={stage.Id}
             priorityById={priorityById}
             users={users}
+            onOpen={onOpen}
           />
         ))}
       </div>

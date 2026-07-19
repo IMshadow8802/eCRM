@@ -204,32 +204,6 @@ class ReportController {
 
   // --- Ticket reports (Spec 2) ---
 
-  async slaBreachSummary(req, res) {
-    try {
-      const { CompId, BranchId } = req.user;
-      const result = await database.executeStoredProcedure("sp_SLABreachSummary", {
-        CompId,
-        BranchId,
-      });
-      return res.status(200).json({
-        success: true,
-        message: "SLA breach summary fetched successfully",
-        responseCode: 200,
-        data: { breach: result.recordsets[0] },
-        timestamp: new Date().toISOString(),
-      });
-    } catch (err) {
-      console.error("SLA breach summary error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to fetch SLA breach summary",
-        code: "SLA_BREACH_SUMMARY_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
-
   async ticketsByCategory(req, res) {
     try {
       const { CompId, BranchId } = req.user;

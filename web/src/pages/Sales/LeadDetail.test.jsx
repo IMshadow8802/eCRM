@@ -170,11 +170,14 @@ describe("LeadDetail", () => {
     expect(screen.getByLabelText("Priority")).toBeInTheDocument();
   });
 
-  it("shows an empty state when the lead has no custom fields configured", async () => {
+  // An unconfigured optional feature earns no screen space: with zero field
+  // definitions the whole card (heading + dead Save button) must not render.
+  it("hides the custom-fields card entirely when none are configured", async () => {
     mockDetail({ fields: [] });
     renderWithProviders(<LeadDetail leadId={9} />, { router: false });
     await screen.findByText("Acme Corp");
-    expect(screen.getByTestId("custom-fields-empty")).toBeInTheDocument();
+    expect(screen.queryByText("Custom fields")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("save-custom-fields-btn")).not.toBeInTheDocument();
   });
 
   it("Timeline tab lists activity chronologically", async () => {

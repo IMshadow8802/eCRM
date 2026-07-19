@@ -6,9 +6,21 @@ const database = require("../../../src/config/database");
 const leadController = require("../../../src/controllers/leadController");
 const { mockRes } = require("../../helpers/mockRes");
 
+// Routes always run loadScope, so req.scope is present on every real request.
+// Default here mirrors a Branch-scoped user (sees their branch, no ownership
+// filter).
 function baseReq(overrides = {}) {
   return {
     user: { UserId: 7, CompId: 5, BranchId: 2, IsAdmin: false },
+    scope: {
+      hierarchyLevel: 3,
+      dataScope: "Branch",
+      primaryBranchId: 2,
+      branchIds: [2],
+      ownerIds: null,
+      canWriteBranchIds: [2],
+      isAdmin: false,
+    },
     body: {},
     ...overrides,
   };
@@ -74,7 +86,40 @@ describe("leadController.save", () => {
 });
 
 describe("leadController.fetch", () => {
-  it("forwards CompId/BranchId + optional filters and maps rows + pagination recordsets", async () => {
+  // REGRESSION: fetch used to pass req.user.BranchId as the visibility filter,
+  // so a sales lead raised in another branch was invisible to everyone outside
+  // it. Visibility must come from req.scope instead.
+  it("passes scope (not the caller's own BranchId) as the visibility filter", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[], []] });
+    const req = baseReq({ scope: { branchIds: [1, 2, 3, 4, 5], ownerIds: null }, body: {} });
+    const res = mockRes();
+    await leadController.fetch(req, res);
+
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
+      "sp_FetchLeads",
+      expect.objectContaining({
+        UserId: 7,
+        AccessibleBranchIdsJson: "[1,2,3,4,5]",
+        OwnerIdsJson: null, // wide scope -> no ownership filter
+        BranchId: null, // not the caller's branch
+      }),
+    );
+  });
+
+  // A sales exec must not see a colleague's pipeline.
+  it("sends an ownership filter for a Self-scoped sales executive", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[], []] });
+    const req = baseReq({ scope: { branchIds: [2], ownerIds: [7] }, body: {} });
+    const res = mockRes();
+    await leadController.fetch(req, res);
+
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
+      "sp_FetchLeads",
+      expect.objectContaining({ AccessibleBranchIdsJson: "[2]", OwnerIdsJson: "[7]" }),
+    );
+  });
+
+  it("forwards CompId + optional filters and maps rows + pagination recordsets", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [
         [{ Id: 1, Name: "Acme" }, { Id: 2, Name: "Beta" }],
@@ -91,7 +136,6 @@ describe("leadController.fetch", () => {
       "sp_FetchLeads",
       expect.objectContaining({
         CompId: 5,
-        BranchId: 2,
         PageNumber: 1,
         PageSize: 10,
         StageId: 2,
@@ -143,7 +187,7 @@ describe("leadController.detail", () => {
   it("maps the 3 recordsets to {lead, fields, activity}", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [
-        [{ Id: 9, Name: "Acme" }],
+        [{ Id: 9, Name: "Acme", BranchId: 2, OwnerId: 3, CreatedBy: 3 }],
         [{ FieldId: 1, Label: "Budget", ValueNumber: 5000 }],
         [{ Action: "created", CreatedAt: "2026-01-01" }],
       ],
@@ -157,9 +201,55 @@ describe("leadController.detail", () => {
       expect.objectContaining({ CompId: 5, LeadId: 9 }),
     );
     const json = res.json.mock.calls[0][0];
-    expect(json.data.lead).toEqual({ Id: 9, Name: "Acme" });
+    expect(json.data.lead).toEqual({
+      Id: 9,
+      Name: "Acme",
+      BranchId: 2,
+      OwnerId: 3,
+      CreatedBy: 3,
+    });
     expect(json.data.fields).toEqual([{ FieldId: 1, Label: "Budget", ValueNumber: 5000 }]);
     expect(json.data.activity).toEqual([{ Action: "created", CreatedAt: "2026-01-01" }]);
+  });
+
+  // Without this the Self scope only fenced the *list*: a sales exec could post
+  // any Id here and read a colleague's lead.
+  it("404s a lead owned by someone else when the caller is Self-scoped", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[{ Id: 9, BranchId: 2, OwnerId: 3, CreatedBy: 3 }], [], []],
+    });
+    const req = baseReq({ scope: { branchIds: [2], ownerIds: [7] }, body: { LeadId: 9 } });
+    const res = mockRes();
+    await leadController.detail(req, res);
+    expect(res.status).toHaveBeenCalledWith(404);
+  });
+
+  it("404s a lead from a branch outside the caller's scope", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[{ Id: 9, BranchId: 9, OwnerId: 3, CreatedBy: 3 }], [], []],
+    });
+    const req = baseReq({ scope: { branchIds: [2], ownerIds: null }, body: { LeadId: 9 } });
+    const res = mockRes();
+    await leadController.detail(req, res);
+    expect(res.status).toHaveBeenCalledWith(404);
+  });
+
+  it("shows a lead owned by the caller even from an out-of-scope branch", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[{ Id: 9, BranchId: 9, OwnerId: 7, CreatedBy: 3 }], [], []],
+    });
+    const req = baseReq({ scope: { branchIds: [2], ownerIds: [7] }, body: { LeadId: 9 } });
+    const res = mockRes();
+    await leadController.detail(req, res);
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it("404s when the lead does not exist", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[], [], []] });
+    const req = baseReq({ body: { LeadId: 9 } });
+    const res = mockRes();
+    await leadController.detail(req, res);
+    expect(res.status).toHaveBeenCalledWith(404);
   });
 
   it("handles DB error as 500", async () => {

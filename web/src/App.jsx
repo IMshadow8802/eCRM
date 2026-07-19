@@ -46,8 +46,6 @@ const Tickets = lazy(() => import("./pages/Support/Tickets"));
 const TicketDetail = lazy(() => import("./pages/Support/TicketDetail"));
 const TicketCategories = lazy(() => import("./pages/Settings/TicketCategories"));
 const Priorities = lazy(() => import("./pages/Settings/Priorities"));
-const SLA = lazy(() => import("./pages/Settings/SLA"));
-const SLABreach = lazy(() => import("./pages/Reports/SLABreach"));
 const TicketsByCategory = lazy(() => import("./pages/Reports/TicketsByCategory"));
 const ResolutionSummary = lazy(() => import("./pages/Reports/ResolutionSummary"));
 
@@ -86,8 +84,6 @@ export const routesConfig = [
   { path: "/support/tickets/:ticketId", element: <ProtectedRoute element={<TicketDetail />} /> },
   { path: "/settings/ticket-categories", element: <ProtectedRoute element={<TicketCategories />} /> },
   { path: "/settings/priorities", element: <ProtectedRoute element={<Priorities />} /> },
-  { path: "/settings/sla", element: <ProtectedRoute element={<SLA />} /> },
-  { path: "/reports/sla-breach", element: <ProtectedRoute element={<SLABreach />} /> },
   { path: "/reports/tickets-by-category", element: <ProtectedRoute element={<TicketsByCategory />} /> },
   { path: "/reports/resolution-summary", element: <ProtectedRoute element={<ResolutionSummary />} /> },
 ];
@@ -121,7 +117,7 @@ const App = () => {
       <BrowserRouter basename="/prdcrm/">
         <SnackbarProvider
           maxSnack={3}
-          style={{ maxWidth: "400px", zIndex: 1800 }}
+          style={{ maxWidth: "400px" }}
           anchorOrigin={{ vertical: "top", horizontal: "center" }}
           dense
           preventDuplicate

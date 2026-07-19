@@ -16,7 +16,5 @@ router.post("/resolveTicket", requirePayload, ticketController.resolve);
 router.post("/closeTicket", requirePayload, ticketController.close);
 router.post("/reopenTicket", requirePayload, ticketController.reopen);
 router.post("/deleteTicket", requirePayload, ticketController.delete);
-router.post("/saveSLARule", requirePayload, ticketController.saveSLARule);
-router.post("/fetchSLARules", allowEmptyPayload, ticketController.fetchSLARules);
 
 module.exports = router;

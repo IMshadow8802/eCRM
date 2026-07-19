@@ -10,7 +10,6 @@ import {
   Chip,
   Button,
   Tabs,
-  EmptyState,
   Skeleton,
   Modal,
   Combobox,
@@ -46,18 +45,21 @@ const fieldValue = (def, valueRow) => {
   }
 };
 
-function InfoItem({ label, value }) {
+function InfoItem({ label, value, chip, tone = "default" }) {
   const theme = useTheme();
   const p = theme.tokens;
   return (
     <div>
       <div style={{ fontSize: 12, fontWeight: 500, color: p.text.tertiary }}>{label}</div>
-      <div style={{ fontSize: 14, fontWeight: 600, marginTop: 2, color: p.text.primary }}>
-        {value || "—"}
+      <div style={{ fontSize: 14, fontWeight: 600, marginTop: 4, color: p.text.primary }}>
+        {chip && value ? <Chip label={value} tone={tone} size="sm" variant="tonal" /> : value || "—"}
       </div>
     </div>
   );
 }
+
+// "phone" -> "Phone" for the channel pill.
+const titleCase = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 export default function TicketDetail({ ticketId: ticketIdProp }) {
   const { ticketId: ticketIdParam } = useParams();
@@ -125,7 +127,11 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
   const priorityName = priorities.find((l) => l.Id === ticket?.Priority)?.Value;
   const categoryName = categories.find((l) => l.Id === ticket?.CategoryId)?.Value;
   const assigneeName = getUserName(findUserById(users, ticket?.AssignedTo));
-  const isClosedOrResolved = Boolean(ticket?.ResolvedAt || ticket?.ClosedAt);
+  // Two-step lifecycle: open -> Resolved (awaiting customer confirmation) ->
+  // Closed. The stage is the source of truth server-side; the timestamps here
+  // mirror it, so they are safe to derive the button set from.
+  const isResolved = Boolean(ticket?.ResolvedAt);
+  const isClosed = Boolean(ticket?.ClosedAt);
 
   // Merge field definitions (Options/IsRequired/order) with stored values
   // keyed by FieldId. Definitions drive rendering so blank fields still show.
@@ -214,17 +220,6 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
     );
   }
 
-  const slaChip = ticket.IsBreached ? (
-    <Chip label="Breached" tone="error" variant="solid" size="sm" data-testid="ticket-sla-chip" />
-  ) : (
-    <Chip
-      label={ticket.SLADueAt ? `SLA ${dayjs(ticket.SLADueAt).format("DD-MM-YYYY")}` : "No SLA"}
-      tone="warning"
-      size="sm"
-      data-testid="ticket-sla-chip"
-    />
-  );
-
   return (
     <div data-testid="ticket-detail">
       <PageHeader
@@ -233,7 +228,6 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
         titleSuffix={
           <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
             <Chip label={stageName || "No stage"} tone="primary" size="sm" data-testid="ticket-stage-chip" />
-            {slaChip}
             {priorityName && (
               <Chip label={priorityName} tone="accent" size="sm" data-testid="ticket-priority-chip" />
             )}
@@ -249,7 +243,30 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
             >
               Log Call
             </Button>
-            {isClosedOrResolved ? (
+            {/* Two-step: Resolve while open; Close once resolved (customer
+                confirmed); Reopen from either terminal state. */}
+            {!isResolved && !isClosed && (
+              <Button
+                variant="primary"
+                leftIcon={<CheckCircle size={14} />}
+                onClick={() => setResolveOpen(true)}
+                data-testid="resolve-btn"
+              >
+                Resolve
+              </Button>
+            )}
+            {isResolved && !isClosed && (
+              <Button
+                variant="primary"
+                leftIcon={<XCircle size={14} />}
+                onClick={() => runAction(closeMutation)}
+                loading={closeMutation.isPending}
+                data-testid="close-btn"
+              >
+                Close
+              </Button>
+            )}
+            {(isResolved || isClosed) && (
               <Button
                 variant="secondary"
                 leftIcon={<RotateCcw size={14} />}
@@ -259,26 +276,6 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
               >
                 Reopen
               </Button>
-            ) : (
-              <>
-                <Button
-                  variant="secondary"
-                  leftIcon={<XCircle size={14} />}
-                  onClick={() => runAction(closeMutation)}
-                  loading={closeMutation.isPending}
-                  data-testid="close-btn"
-                >
-                  Close
-                </Button>
-                <Button
-                  variant="primary"
-                  leftIcon={<CheckCircle size={14} />}
-                  onClick={() => setResolveOpen(true)}
-                  data-testid="resolve-btn"
-                >
-                  Resolve
-                </Button>
-              </>
             )}
           </div>
         }
@@ -318,13 +315,15 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
                 }}
               >
                 <InfoItem label="Contact" value={ticket.Contact} />
-                <InfoItem label="Channel" value={ticket.Channel} />
-                <InfoItem label="Category" value={categoryName} />
-                <InfoItem label="Priority" value={priorityName} />
+                <InfoItem label="Channel" value={titleCase(ticket.Channel)} chip tone="info" />
+                <InfoItem label="Category" value={categoryName} chip tone="primary" />
+                <InfoItem label="Priority" value={priorityName} chip tone="warning" />
                 <InfoItem label="Assignee" value={assigneeName} />
                 <InfoItem
-                  label="SLA due"
-                  value={ticket.SLADueAt ? dayjs(ticket.SLADueAt).format("DD-MM-YYYY HH:mm") : null}
+                  label="Resolution"
+                  value={resolutions.find((l) => l.Id === ticket.ResolutionId)?.Value}
+                  chip
+                  tone="success"
                 />
                 <InfoItem
                   label="Resolved"
@@ -334,40 +333,51 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
                   label="Closed"
                   value={ticket.ClosedAt ? dayjs(ticket.ClosedAt).format("DD-MM-YYYY") : null}
                 />
-                <InfoItem label="Description" value={ticket.Description} />
               </div>
+              {ticket.Description && (
+                <div style={{ marginTop: 16 }}>
+                  <div style={{ fontSize: 12, fontWeight: 500, opacity: 0.65 }}>Description</div>
+                  <div
+                    data-testid="ticket-description-block"
+                    style={{
+                      fontSize: 14,
+                      lineHeight: 1.6,
+                      marginTop: 6,
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    {ticket.Description}
+                  </div>
+                </div>
+              )}
             </Card>
 
-            <Card>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  marginBottom: 16,
-                }}
-              >
-                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Custom fields</h3>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  leftIcon={<SaveIcon size={14} />}
-                  onClick={saveCustomFields}
-                  disabled={!isDirty}
-                  loading={saveMutation.isPending}
-                  data-testid="save-custom-fields-btn"
+            {/* An unconfigured optional feature earns no screen space — the
+                card only exists once the company defines a field. */}
+            {fields.length > 0 && (
+              <Card>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginBottom: 16,
+                  }}
                 >
-                  Save changes
-                </Button>
-              </div>
-              {fields.length === 0 ? (
-                <EmptyState
-                  title="No custom fields"
-                  description="This company hasn't configured any custom fields for tickets yet."
-                  size="sm"
-                  data-testid="custom-fields-empty"
-                />
-              ) : (
+                  <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Custom fields</h3>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    leftIcon={<SaveIcon size={14} />}
+                    onClick={saveCustomFields}
+                    disabled={!isDirty}
+                    loading={saveMutation.isPending}
+                    data-testid="save-custom-fields-btn"
+                  >
+                    Save changes
+                  </Button>
+                </div>
                 <div
                   style={{
                     display: "grid",
@@ -384,8 +394,8 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
                     />
                   ))}
                 </div>
-              )}
-            </Card>
+              </Card>
+            )}
 
             <Card>
               <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Attachments</h3>

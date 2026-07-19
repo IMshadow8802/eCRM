@@ -7,6 +7,8 @@ const {
   HIERARCHY,
   loadScope,
   requireMinLevel,
+  scopeParams,
+  canSeeRecord,
   canWriteBranch,
   canReadBranch,
 } = require("../../../src/middleware/permission");
@@ -85,6 +87,81 @@ describe("permission middleware", () => {
     });
   });
 
+  describe("scopeParams", () => {
+    it("serialises branch + owner scope and the caller's UserId", () => {
+      const req = {
+        user: { UserId: 7 },
+        scope: { branchIds: [1, 2], ownerIds: [7] },
+      };
+      expect(scopeParams(req)).toEqual({
+        UserId: 7,
+        AccessibleBranchIdsJson: "[1,2]",
+        OwnerIdsJson: "[7]",
+      });
+    });
+
+    it("sends null for ownerIds on a wide scope (no ownership filter)", () => {
+      const req = { user: { UserId: 7 }, scope: { branchIds: [1], ownerIds: null } };
+      expect(scopeParams(req).OwnerIdsJson).toBeNull();
+    });
+
+    // The [] vs null distinction is load-bearing: serialising an empty scope to
+    // null would mean "no filter" and fail OPEN, showing every row.
+    it("serialises an empty scope to [] so it matches nothing, not everything", () => {
+      const req = { user: { UserId: 7 }, scope: { branchIds: [], ownerIds: [] } };
+      expect(scopeParams(req)).toEqual({
+        UserId: 7,
+        AccessibleBranchIdsJson: "[]",
+        OwnerIdsJson: "[]",
+      });
+    });
+  });
+
+  describe("canSeeRecord", () => {
+    const selfScoped = {
+      user: { UserId: 7 },
+      scope: { branchIds: [2], ownerIds: [7] },
+    };
+    const branchScoped = {
+      user: { UserId: 7 },
+      scope: { branchIds: [2], ownerIds: null },
+    };
+
+    it("allows a record the caller owns", () => {
+      expect(canSeeRecord(selfScoped, { BranchId: 2, OwnerId: 7, CreatedBy: 3 }, "OwnerId")).toBe(true);
+    });
+
+    it("allows a record the caller created but does not own", () => {
+      expect(canSeeRecord(selfScoped, { BranchId: 2, OwnerId: 3, CreatedBy: 7 }, "OwnerId")).toBe(true);
+    });
+
+    // Assignment is an explicit act of sharing — it beats branch scope.
+    it("allows a record assigned to the caller from an out-of-scope branch", () => {
+      expect(canSeeRecord(selfScoped, { BranchId: 9, OwnerId: 7, CreatedBy: 3 }, "OwnerId")).toBe(true);
+    });
+
+    it("denies a colleague's record under Self scope", () => {
+      expect(canSeeRecord(selfScoped, { BranchId: 2, OwnerId: 3, CreatedBy: 3 }, "OwnerId")).toBe(false);
+    });
+
+    it("denies a record from a branch outside scope", () => {
+      expect(canSeeRecord(branchScoped, { BranchId: 9, OwnerId: 3, CreatedBy: 3 }, "OwnerId")).toBe(false);
+    });
+
+    it("allows any in-branch record when there is no ownership filter", () => {
+      expect(canSeeRecord(branchScoped, { BranchId: 2, OwnerId: 3, CreatedBy: 3 }, "OwnerId")).toBe(true);
+    });
+
+    it("denies a null record", () => {
+      expect(canSeeRecord(branchScoped, null, "OwnerId")).toBe(false);
+    });
+
+    it("reads the owner from the named field (tickets use AssignedTo)", () => {
+      expect(canSeeRecord(selfScoped, { BranchId: 9, AssignedTo: 7, CreatedBy: 3 }, "AssignedTo")).toBe(true);
+      expect(canSeeRecord(selfScoped, { BranchId: 2, AssignedTo: 3, CreatedBy: 3 }, "AssignedTo")).toBe(false);
+    });
+  });
+
   describe("loadScope", () => {
     beforeEach(() => {
       database.executeStoredProcedure.mockReset();
@@ -113,8 +190,45 @@ describe("permission middleware", () => {
         primaryBranchId: 1,
         branchIds: [1, 2, 3],
         canWriteBranchIds: [1, 2],
+        ownerIds: null, // wide scope -> no ownership filter
+        isAdmin: false,
       });
       expect(next).toHaveBeenCalled();
+    });
+
+    it("reads ownerIds + isAdmin from the SP's third result set", async () => {
+      database.executeStoredProcedure.mockResolvedValue({
+        recordsets: [
+          [{ HierarchyLevel: 4, DataScope: "Self", PrimaryBranchId: 2, IsAdmin: false }],
+          [{ BranchId: 2, CanWrite: true }],
+          [{ OwnerId: 5 }],
+        ],
+      });
+
+      const req = { user: { UserId: 5, CompId: 1 } };
+      await loadScope(req, mockRes(), jest.fn());
+
+      expect(req.scope.dataScope).toBe("Self");
+      expect(req.scope.ownerIds).toEqual([5]);
+      expect(req.scope.isAdmin).toBe(false);
+    });
+
+    it("marks isAdmin from the group, not from the hierarchy level", async () => {
+      // A level-2 head (Sales/Support/HR) must NOT get the admin bypass —
+      // deriving IsAdmin from `level <= 2` would hand them every workspace.
+      database.executeStoredProcedure.mockResolvedValue({
+        recordsets: [
+          [{ HierarchyLevel: 2, DataScope: "Company", PrimaryBranchId: 1, IsAdmin: false }],
+          [{ BranchId: 1, CanWrite: true }],
+          [],
+        ],
+      });
+
+      const req = { user: { UserId: 5, CompId: 1 } };
+      await loadScope(req, mockRes(), jest.fn());
+
+      expect(req.scope.hierarchyLevel).toBe(2);
+      expect(req.scope.isAdmin).toBe(false);
     });
 
     it("fails closed when the SP throws", async () => {
@@ -127,6 +241,10 @@ describe("permission middleware", () => {
       expect(req.scope.hierarchyLevel).toBe(HIERARCHY.EMPLOYEE);
       expect(req.scope.dataScope).toBe("Self");
       expect(req.scope.branchIds).toEqual([7]);
+      // Self scope means an ownership filter too — without it the fallback
+      // would quietly widen to the caller's whole branch.
+      expect(req.scope.ownerIds).toEqual([5]);
+      expect(req.scope.isAdmin).toBe(false);
       expect(next).toHaveBeenCalled();
     });
 

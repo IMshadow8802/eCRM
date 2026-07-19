@@ -20,12 +20,10 @@ const TICKET = {
   StageId: 3,
   AssignedTo: 2,
   LinkedLeadId: 11,
-  SLADueAt: "2026-07-10T10:00:00Z",
   ResolvedAt: null,
   ClosedAt: null,
   ResolutionId: null,
   Description: "Login broken",
-  IsBreached: false,
   CreatedAt: "2026-07-01T10:00:00Z",
   UpdatedAt: "2026-07-01T10:00:00Z",
 };
@@ -171,20 +169,13 @@ describe("TicketDetail", () => {
     mockSaveTicket();
   });
 
-  it("renders the ticket header with number, customer, resolved stage and SLA due date", async () => {
+  it("renders the ticket header with number, customer and stage (no SLA chip — SLA removed)", async () => {
     mockDetail();
     renderWithProviders(<TicketDetail ticketId={7} />, { router: false });
     expect(await screen.findByText("TKT-0007")).toBeInTheDocument();
     expect(screen.getByText("Acme Corp")).toBeInTheDocument();
     expect(screen.getByTestId("ticket-stage-chip")).toHaveTextContent("In Progress");
-    expect(screen.getByTestId("ticket-sla-chip")).toHaveTextContent("10-07-2026");
-  });
-
-  it("shows a red Breached SLA chip when the ticket is breached", async () => {
-    mockDetail({ ticket: { ...TICKET, IsBreached: true } });
-    renderWithProviders(<TicketDetail ticketId={7} />, { router: false });
-    await screen.findByText("TKT-0007");
-    expect(screen.getByTestId("ticket-sla-chip")).toHaveTextContent("Breached");
+    expect(screen.queryByTestId("ticket-sla-chip")).not.toBeInTheDocument();
   });
 
   it("renders custom fields via DynamicField populated with their current values", async () => {
@@ -222,21 +213,35 @@ describe("TicketDetail", () => {
     expect(items[1]).toHaveTextContent("Stage changed");
   });
 
-  it("shows Resolve/Close when the ticket is open and Reopen is hidden", async () => {
+  // Two-step lifecycle: open -> Resolve; resolved -> Close (customer
+  // confirmed) or Reopen; closed -> Reopen only.
+  it("open ticket: only Resolve is offered (Close needs a resolution first)", async () => {
     mockDetail();
     renderWithProviders(<TicketDetail ticketId={7} />, { router: false });
     await screen.findByText("TKT-0007");
     expect(screen.getByTestId("resolve-btn")).toBeInTheDocument();
-    expect(screen.getByTestId("close-btn")).toBeInTheDocument();
+    expect(screen.queryByTestId("close-btn")).not.toBeInTheDocument();
     expect(screen.queryByTestId("reopen-btn")).not.toBeInTheDocument();
   });
 
-  it("shows Reopen when the ticket has been resolved", async () => {
-    mockDetail({ ticket: { ...TICKET, ResolvedAt: "2026-07-05T10:00:00Z" } });
+  it("resolved ticket: Close and Reopen are offered, Resolve is gone", async () => {
+    mockDetail({ ticket: { ...TICKET, ResolvedAt: "2026-07-05T10:00:00Z", ResolutionId: 5 } });
+    renderWithProviders(<TicketDetail ticketId={7} />, { router: false });
+    await screen.findByText("TKT-0007");
+    expect(screen.getByTestId("close-btn")).toBeInTheDocument();
+    expect(screen.getByTestId("reopen-btn")).toBeInTheDocument();
+    expect(screen.queryByTestId("resolve-btn")).not.toBeInTheDocument();
+  });
+
+  it("closed ticket: only Reopen is offered", async () => {
+    mockDetail({
+      ticket: { ...TICKET, ResolvedAt: "2026-07-05T10:00:00Z", ClosedAt: "2026-07-06T10:00:00Z" },
+    });
     renderWithProviders(<TicketDetail ticketId={7} />, { router: false });
     await screen.findByText("TKT-0007");
     expect(screen.getByTestId("reopen-btn")).toBeInTheDocument();
     expect(screen.queryByTestId("resolve-btn")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("close-btn")).not.toBeInTheDocument();
   });
 
   it("Resolve modal requires a resolution and submits resolveTicket with the picked ResolutionId", async () => {
@@ -266,7 +271,7 @@ describe("TicketDetail", () => {
 
   it("Close action submits closeTicket with the ticket id", async () => {
     let captured;
-    mockDetail();
+    mockDetail({ ticket: { ...TICKET, ResolvedAt: "2026-07-05T10:00:00Z", ResolutionId: 5 } });
     mockAction("/api/tickets/closeTicket", (body) => {
       captured = body;
     });

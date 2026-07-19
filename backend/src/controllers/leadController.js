@@ -1,6 +1,7 @@
 const database = require("../config/database");
 const responseHelper = require("../utils/responseHelper");
 const attachmentController = require("./attachmentController");
+const { scopeParams, canSeeRecord } = require("../middleware/permission");
 
 // Mutating SPs (sp_SaveLead, sp_MoveLeadStage, sp_TransferLead, sp_DeleteLead)
 // log their own activity server-side and swallow that logger's result set,
@@ -35,8 +36,11 @@ const leadController = {
 
   async fetch(req, res) {
     try {
-      const { CompId, BranchId } = req.user;
+      const { CompId } = req.user;
       const {
+        // Optional UI filters — they narrow within scope, never widen it.
+        // Visibility comes from req.scope, not from the caller's own BranchId.
+        BranchId = null,
         PageNumber = 1,
         PageSize = 10,
         SearchTerm = null,
@@ -54,6 +58,7 @@ const leadController = {
         StageId,
         OwnerId,
         SourceId,
+        ...scopeParams(req),
       });
 
       const leads = result.recordsets[0] || [];
@@ -85,6 +90,13 @@ const leadController = {
       });
 
       const lead = (result.recordsets[0] && result.recordsets[0][0]) || null;
+
+      // The detail SP is CompId-scoped only, so gate the row here. 404 rather
+      // than 403: a user who cannot see a lead should not learn it exists.
+      if (!canSeeRecord(req, lead, "OwnerId")) {
+        return responseHelper.error(res, "Lead not found", "NOT_FOUND", 404);
+      }
+
       const fields = result.recordsets[1] || [];
       const activity = result.recordsets[2] || [];
 

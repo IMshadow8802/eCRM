@@ -25,7 +25,6 @@ describe("section landing redirects", () => {
         "/support/tickets",
         "/support/tickets/:ticketId",
         "/settings/ticket-categories",
-        "/reports/sla-breach",
       ]),
     );
   });

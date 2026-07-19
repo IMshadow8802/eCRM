@@ -30,13 +30,28 @@ describe("attachmentQueries", () => {
     const file = new File(["x"], "a.png", { type: "image/png" });
     uploadAttachment({ Entity: "ticket", EntityId: 9, file });
 
-    const [url, body] = apiClient.post.mock.calls[0];
+    const [url, body, config] = apiClient.post.mock.calls[0];
     expect(url).toBe("/api/attachments/save");
     expect(body).toBeInstanceOf(FormData);
     expect([...body.keys()]).toEqual(["Entity", "EntityId", "file"]);
     expect(body.get("Entity")).toBe("ticket");
     expect(body.get("EntityId")).toBe("9");
     expect(body.get("file")).toBe(file);
+  });
+
+  // REGRESSION: the apiClient instance defaults Content-Type to
+  // application/json, which overrides the multipart boundary for FormData —
+  // the server then sees zero parts and answers NO_FILE. The upload call must
+  // explicitly declare multipart/form-data so axios generates the boundary.
+  it("upload overrides the instance's JSON content-type with multipart", () => {
+    apiClient.post.mockResolvedValue({});
+    uploadAttachment({
+      Entity: "ticket",
+      EntityId: 9,
+      file: new File(["x"], "a.png", { type: "image/png" }),
+    });
+    const [, , config] = apiClient.post.mock.calls[0];
+    expect(config).toEqual({ headers: { "Content-Type": "multipart/form-data" } });
   });
 
   it("delete posts the Id", () => {

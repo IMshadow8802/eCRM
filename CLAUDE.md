@@ -134,6 +134,17 @@ On the web, extract `data?.resourceName` (key matches the endpoint).
 3. **Menus are DB-driven**: `tblMenu.Route` gives each row its SPA path (legacy rows fall back to a title-slug). `menuBuilder.buildDynamicMenu(menuRights)` builds the sidebar tree; there are no hardcoded menus. Sidebar visibility = the group's `CanView` grant in `tblGroupAccess`.
 4. **Task/workspace permissions** are a separate model from menu rights — see §6.
 
+### Roles, permissions & data scope
+Full reference: **`backend/ROLES.md`**. The essentials — do not violate these:
+- **Group = role.** Access is a **matrix of two independent axes**, both keyed to the group: `tblUserGroups.DataScope` decides *which rows*; `tblGroupAccess` (per menu) decides *which screens* + Add/Edit/Delete. Never collapse them into one seniority number — an HR Manager is senior but must see zero Sales/Support rows, which one ladder cannot express.
+- **Stock roles**: Owner (All) · Admin (Company) · Sales Head / Support Head / HR Manager (Company) · Regional Manager (MultiBranch) · Branch Manager / Support Manager (Branch) · Sales Team Lead (Team) · Sales Executive / Support Agent (Self). `DataScope` resolves **relative to the user's own branch**, so one role row serves every branch.
+- **`DataScope` → `req.scope`** via `loadScope` → `sp_FetchAccessibleBranchIds`, which returns `branchIds` **and** `ownerIds` (`ownerIds` only for `Self`/`Team`; empty = no ownership filter). **Controllers must read `req.scope` — never pass `req.user.BranchId` as a visibility filter.** That bug hid every Sales/Support row from users outside the creator's branch.
+- **Universal rule, every fetch:** a record `AssignedTo`/`OwnerId`/`CreatedBy` = the caller is **always visible**, `OR`-ed against scope (never `AND`). Assignment is an explicit act of sharing and outranks scope.
+- Optional filters (`@BranchId`, `@OwnerId`, `@AssignedTo`) **narrow within** scope; a filter must never widen visibility.
+- **`IsAdmin` is a role property, not a level** — it lives on `tblUserGroups` and only Owner + Admin have it. **Never derive it from `HierarchyLevel <= 2`**: the level-2 heads (Sales/Support/HR) would gain the `sp_CheckTaskPermission` admin bypass, i.e. read/write on every task in every workspace.
+- **Tasks are membership-governed, not scope-governed** (see §6) — branch is an optional *filter* there, never a *gate*. `sp_FetchTask` once `AND`-ed branch scope with membership, which blinded cross-branch workspace members. Don't reintroduce it.
+- **Known-open** (tracked in `ROLES.md`): the write path (`moveStage`/`transfer`/`delete`/`resolve`/`close`/`reopen`) does not check ownership; menu rights are **not enforced server-side** (sidebar-only) — the department axis is advisory until that lands.
+
 ### Database conventions (SQL Server)
 - All CRUD via stored procedures. Naming: `sp_[Action][Entity]` (`sp_SaveLead`, `sp_FetchTickets`, `sp_DeleteTask`).
 - CRUD pattern: `@Id = 0` → insert, `@Id > 0` → update.
@@ -195,7 +206,9 @@ sql/              # NNN_*.sql — pending, user-applied scripts only (see §0.2)
 - Leads (`tblLeads`), manual call logging (`tblCall`), follow-ups (`tblFollowUp`), unified activity timeline (`tblLeadActivity`). Pipeline board, leads table, lead detail, Settings, reports.
 
 ### Support (ticketing)
-- Reuses the config engine via `Entity='ticket'`. `tblTicket` + `tblTicketActivity` + SLA (`tblSLARule`, breach computed on read). `tblCall.TicketId` links calls to tickets. Ticket board, table, detail (resolve/close/reopen), Settings, reports.
+- Reuses the config engine via `Entity='ticket'`. `tblTicket` + `tblTicketActivity`. `tblCall.TicketId` links calls to tickets. Ticket board, table, detail, Settings, reports.
+- **Stage is the single source of truth for the ticket lifecycle** (mirrors leads' `sp_MoveLeadStage`). Two-step terminal flow: first `won` stage = **Resolved** (awaiting customer confirmation, requires a `ResolutionId`), final `won` stage (highest SortOrder) = **Closed**, `lost` = **Rejected** (`ClosedAt` stamped, no resolution — never solved). Moving back to an `open` stage clears `ResolvedAt`/`ClosedAt`/`ResolutionId` = reopen. All transitions go through `sp_MoveTicketStage`; `sp_ResolveTicket`/`sp_CloseTicket`/`sp_ReopenTicket` are shortcuts into it — **never write those timestamps directly**.
+- **SLA was removed entirely** (2026-07-16): no `tblSLARule`, no `SLADueAt`, no breach chips/filters/report. Speed is measured instead via `sp_ResolutionSummary.AvgResolutionMins`. Do not reintroduce SLA plumbing.
 
 ---
 

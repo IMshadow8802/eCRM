@@ -20,8 +20,13 @@ export const uploadAttachment = ({ Entity, EntityId, file }) => {
   form.append("Entity", Entity);
   form.append("EntityId", EntityId);
   form.append("file", file);
-  // axios sets the multipart boundary header automatically for a FormData body.
-  return apiClient.post(ATTACHMENT_ENDPOINTS.save, form);
+  // The apiClient instance defaults Content-Type to application/json, which
+  // silently overrides the multipart boundary for FormData bodies — multer
+  // then parses zero parts and the server answers NO_FILE. Declaring
+  // multipart/form-data makes axios (re)generate the boundary itself.
+  return apiClient.post(ATTACHMENT_ENDPOINTS.save, form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
 };
 
 export const deleteAttachment = ({ Id }) =>

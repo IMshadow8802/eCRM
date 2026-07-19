@@ -22,7 +22,6 @@ import {
   FilterAltOutlined,
   InsightsOutlined,
   DoneAllOutlined,
-  TimerOutlined,
   CategoryOutlined,
   FlagOutlined,
   PhoneOutlined,
@@ -51,7 +50,6 @@ export function getMenuIcon(menuTitle) {
   if (title.includes("funnel")) return FilterAltOutlined;
   if (title.includes("conversion")) return InsightsOutlined;
   if (title.includes("resolution")) return DoneAllOutlined;
-  if (title.includes("sla")) return TimerOutlined;
   if (title.includes("categor")) return CategoryOutlined;
   if (title.includes("priorit")) return FlagOutlined;
   if (title.includes("call")) return PhoneOutlined;

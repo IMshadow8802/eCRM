@@ -1,16 +1,17 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DragDropProvider } from "@dnd-kit/react";
-import { LifeBuoy } from "lucide-react";
+import { CheckCircle, LifeBuoy } from "lucide-react";
 
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { useApiMutation } from "../../hooks/useApiMutation";
 import { useUsers } from "../../hooks";
 import { SUPPORT_ENDPOINTS } from "../../api/supportQueries";
-import { PageHeader, EmptyState } from "../../components/ui";
+import { PageHeader, EmptyState, Modal, Combobox, Button } from "../../components/ui";
 import HelpGuide from "../../components/HelpGuide";
 import { HELP_GUIDES } from "../../data/helpGuides";
 import TicketColumn from "./TicketColumn";
+import TicketDetailModal from "./TicketDetailModal";
 
 const PIPELINE_ENTITY = "ticket";
 const TICKETS_QUERY_KEY = ["support-tickets"];
@@ -73,6 +74,24 @@ export default function TicketBoard() {
   const { data: usersData } = useUsers({ PageSize: 1000 });
   const users = usersData?.users ?? [];
 
+  // Resolutions for the drag-into-won prompt (stage is the lifecycle's source
+  // of truth: entering a won stage requires a resolution, like the lead board
+  // requires a lost reason).
+  const { data: resolutionsPayload } = useApiQuery({
+    queryKey: ["support-resolutions"],
+    endpoint: SUPPORT_ENDPOINTS.config.fetchLookups,
+    params: { Kind: "resolution" },
+    showErrorMessage: false,
+  });
+  const resolutions = resolutionsPayload?.lookups ?? [];
+
+  // A drag into a won stage parks here until the user picks a resolution.
+  const [pendingMove, setPendingMove] = useState(null); // { ticketId, targetStageId }
+  const [resolution, setResolution] = useState(null);
+
+  // Card "open" button -> full detail in a modal, board position preserved.
+  const [detailTicketId, setDetailTicketId] = useState(null);
+
   const moveStageMutation = useApiMutation({
     endpoint: SUPPORT_ENDPOINTS.tickets.moveTicketStage,
     showSuccessMessage: false,
@@ -83,18 +102,7 @@ export default function TicketBoard() {
     [stages, tickets],
   );
 
-  const handleDragEnd = async (event) => {
-    if (event.canceled) return;
-    const { source, target } = event.operation || {};
-    if (!source || !target || source.type !== "ticket") return;
-
-    const ticketId = source.data?.ticketId;
-    const ticket = tickets.find((t) => t.Id === ticketId);
-    if (!ticket) return;
-
-    const targetStageId = target.data?.stageId;
-    if (!targetStageId || targetStageId === ticket.StageId) return;
-
+  const commitMove = async (ticketId, targetStageId, resolutionId = null) => {
     // Optimistic: patch the cache so the card jumps to the target column
     // immediately, before the save round-trip completes.
     const previousPayload = queryClient.getQueryData(TICKETS_QUERY_KEY);
@@ -109,7 +117,11 @@ export default function TicketBoard() {
     });
 
     try {
-      await moveStageMutation.mutateAsync({ TicketId: ticketId, StageId: targetStageId });
+      await moveStageMutation.mutateAsync({
+        TicketId: ticketId,
+        StageId: targetStageId,
+        ResolutionId: resolutionId,
+      });
       queryClient.invalidateQueries({ queryKey: TICKETS_QUERY_KEY, refetchType: "none" });
     } catch {
       // Rollback on failure
@@ -118,6 +130,37 @@ export default function TicketBoard() {
       }
       refetchTickets();
     }
+  };
+
+  const handleDragEnd = async (event) => {
+    if (event.canceled) return;
+    const { source, target } = event.operation || {};
+    if (!source || !target || source.type !== "ticket") return;
+
+    const ticketId = source.data?.ticketId;
+    const ticket = tickets.find((t) => t.Id === ticketId);
+    if (!ticket) return;
+
+    const targetStageId = target.data?.stageId;
+    if (!targetStageId || targetStageId === ticket.StageId) return;
+
+    // First entry into a won stage needs a resolution — hold the move and ask.
+    // (Resolved -> Closed drags sail through: the resolution already exists.)
+    const targetStage = stages.find((s) => s.Id === targetStageId);
+    if (targetStage?.StageType === "won" && !ticket.ResolutionId) {
+      setPendingMove({ ticketId, targetStageId });
+      return;
+    }
+
+    await commitMove(ticketId, targetStageId);
+  };
+
+  const submitPendingMove = async () => {
+    if (!pendingMove || !resolution) return;
+    const { ticketId, targetStageId } = pendingMove;
+    setPendingMove(null);
+    setResolution(null);
+    await commitMove(ticketId, targetStageId, resolution.value);
   };
 
   // Don't flash the empty state while the pipeline query is still in flight.
@@ -172,10 +215,69 @@ export default function TicketBoard() {
               tickets={ticketsByStage[stage.Id] || []}
               priorityById={priorityById}
               users={users}
+              onOpen={setDetailTicketId}
             />
           ))}
         </div>
       </DragDropProvider>
+
+      <TicketDetailModal
+        ticketId={detailTicketId}
+        open={Boolean(detailTicketId)}
+        onClose={() => {
+          setDetailTicketId(null);
+          refetchTickets(); // resolve/close in the modal must reflect on the board
+        }}
+      />
+
+      <Modal
+        open={Boolean(pendingMove)}
+        onClose={() => {
+          setPendingMove(null);
+          setResolution(null);
+        }}
+        size="sm"
+        data-testid="board-resolve-modal"
+      >
+        <Modal.Header
+          title="How was it resolved?"
+          icon={<CheckCircle size={18} />}
+          onClose={() => {
+            setPendingMove(null);
+            setResolution(null);
+          }}
+        />
+        <Modal.Body>
+          <Combobox
+            label="Resolution"
+            required
+            options={resolutions.map((l) => ({ value: l.Id, label: l.Value }))}
+            value={resolution}
+            onChange={setResolution}
+            placeholder="Pick a resolution"
+            data-testid="board-resolution-combobox"
+          />
+        </Modal.Body>
+        <Modal.Footer>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setPendingMove(null);
+              setResolution(null);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            onClick={submitPendingMove}
+            disabled={!resolution}
+            data-testid="board-resolve-submit"
+          >
+            Move ticket
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </div>
   );
 }

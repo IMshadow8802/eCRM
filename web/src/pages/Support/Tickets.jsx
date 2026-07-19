@@ -1,15 +1,15 @@
 // src/pages/Support/Tickets.jsx
 import { useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";
-import { Box, Chip } from "@mui/material";
+import { Box, IconButton } from "@mui/material";
 import { MaterialReactTable } from "material-react-table";
-import { useNavigate } from "react-router-dom";
-import { Plus } from "lucide-react";
+import { Plus, Eye } from "lucide-react";
 
-import { Combobox, Button } from "../../components/ui";
+import { Combobox, Button, Chip } from "../../components/ui";
 import PageHeader from "../../components/ui/PageHeader";
 import HelpGuide from "../../components/HelpGuide";
 import TicketCreateModal from "./TicketCreateModal";
+import TicketDetailModal from "./TicketDetailModal";
 import { HELP_GUIDES } from "../../data/helpGuides";
 import useServerTable from "../../hooks/useServerTable";
 import { useApiQuery } from "../../hooks/useApiQuery";
@@ -18,17 +18,16 @@ import { SUPPORT_ENDPOINTS } from "../../api/supportQueries";
 import { findUserById, getUserName } from "../../utils/userShape";
 
 const Tickets = () => {
-  const navigate = useNavigate();
   const [createOpen, setCreateOpen] = useState(false);
+  // Row click opens the detail in a modal so the table position is preserved.
+  const [detailTicketId, setDetailTicketId] = useState(null);
 
   // Filters forwarded verbatim as exact-match params (null = no filter).
-  // BreachedOnly is a toggle sent as 1/0. sp_FetchTickets accepts these names.
   const [filters, setFilters] = useState({
     StageId: "",
     Priority: "",
     CategoryId: "",
     AssignedTo: "",
-    BreachedOnly: false,
   });
   // Combobox hands back the selected option (or null when cleared); store its
   // value ("" = no filter, matching extraParams below).
@@ -68,10 +67,15 @@ const Tickets = () => {
     params: { Entity: "ticket" },
   });
   const stages = pipelinesData?.stages || [];
+  // Keep the whole stage row: the column pill colors by StageType.
   const stageById = useMemo(
-    () => new Map(stages.map((s) => [s.Id, s.Name])),
+    () => new Map(stages.map((s) => [s.Id, s])),
     [stages]
   );
+
+  // Lifecycle color language: open = blue, won (resolved/closed) = green,
+  // lost (rejected) = red — same meaning everywhere in the app.
+  const stageTone = { open: "info", won: "success", lost: "error" };
 
   // Filter option lists ({value,label}) for the Combobox filters.
   const stageOpts = useMemo(() => stages.map((s) => ({ value: s.Id, label: s.Name })), [stages]);
@@ -81,11 +85,31 @@ const Tickets = () => {
     () => users.map((u) => ({ value: u.Id, label: getUserName(u) || u.Username })),
     [users]
   );
-  const breachedOpts = [{ value: "1", label: "Breached only" }];
   const optById = (opts, v) => opts.find((o) => o.value === v) ?? null;
 
   const columns = useMemo(
     () => [
+      {
+        // First column: explicit open affordance. The row is clickable too,
+        // but a visible eye says so — users shouldn't discover it by accident.
+        id: "open",
+        header: "",
+        size: 48,
+        enableSorting: false,
+        Cell: ({ row }) => (
+          <IconButton
+            size="small"
+            aria-label={`Open ${row.original.TicketNo}`}
+            data-testid={`ticket-open-${row.original.Id}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              setDetailTicketId(row.original.Id);
+            }}
+          >
+            <Eye size={15} />
+          </IconButton>
+        ),
+      },
       { accessorKey: "TicketNo", header: "Ticket #", enableSorting: true },
       { accessorKey: "CustomerName", header: "Customer", enableSorting: true },
       { accessorKey: "Contact", header: "Contact", enableSorting: false },
@@ -94,8 +118,8 @@ const Tickets = () => {
         header: "Priority",
         enableSorting: false,
         Cell: ({ cell }) => {
-          const value = cell.getValue();
-          return priorityById.get(value) || (value ? `Priority #${value}` : "—");
+          const name = priorityById.get(cell.getValue());
+          return name ? <Chip label={name} tone="warning" size="sm" variant="tonal" /> : "—";
         },
       },
       {
@@ -103,17 +127,25 @@ const Tickets = () => {
         header: "Category",
         enableSorting: false,
         Cell: ({ cell }) => {
-          const value = cell.getValue();
-          return categoryById.get(value) || (value ? `Category #${value}` : "—");
+          const name = categoryById.get(cell.getValue());
+          return name ? <Chip label={name} tone="primary" size="sm" variant="tonal" /> : "—";
         },
       },
       {
         accessorKey: "StageId",
-        header: "Stage",
+        header: "Status",
         enableSorting: false,
         Cell: ({ cell }) => {
-          const value = cell.getValue();
-          return stageById.get(value) || (value ? `Stage #${value}` : "—");
+          const stage = stageById.get(cell.getValue());
+          if (!stage) return "—";
+          return (
+            <Chip
+              label={stage.Name}
+              tone={stageTone[stage.StageType] ?? "default"}
+              size="sm"
+              variant="tonal"
+            />
+          );
         },
       },
       {
@@ -125,17 +157,6 @@ const Tickets = () => {
           return user ? getUserName(user) || "—" : "—";
         },
       },
-      {
-        accessorKey: "IsBreached",
-        header: "SLA",
-        enableSorting: false,
-        Cell: ({ cell }) =>
-          cell.getValue() ? (
-            <Chip label="Breached" color="error" size="small" />
-          ) : (
-            "—"
-          ),
-      },
     ],
     [users, priorityById, categoryById, stageById]
   );
@@ -146,12 +167,11 @@ const Tickets = () => {
       Priority: filters.Priority === "" ? null : Number(filters.Priority),
       CategoryId: filters.CategoryId === "" ? null : Number(filters.CategoryId),
       AssignedTo: filters.AssignedTo === "" ? null : Number(filters.AssignedTo),
-      BreachedOnly: filters.BreachedOnly ? 1 : 0,
     }),
     [filters]
   );
 
-  const { table } = useServerTable({
+  const { table, refetch } = useServerTable({
     columns,
     queryKey: "tickets",
     endpoint: SUPPORT_ENDPOINTS.tickets.fetchTickets,
@@ -163,7 +183,7 @@ const Tickets = () => {
     muiTableBodyRowProps: ({ row }) => ({
       hover: true,
       sx: { cursor: "pointer" },
-      onClick: () => navigate(`/support/tickets/${row.original.Id}`),
+      onClick: () => setDetailTicketId(row.original.Id),
     }),
     muiTableContainerProps: { sx: { maxHeight: "500px" } },
   });
@@ -191,7 +211,15 @@ const Tickets = () => {
       <TicketCreateModal
         open={createOpen}
         onClose={() => setCreateOpen(false)}
-        onCreated={(res) => res?.Id && navigate(`/support/tickets/${res.Id}`)}
+        onCreated={(res) => res?.Id && setDetailTicketId(res.Id)}
+      />
+      <TicketDetailModal
+        ticketId={detailTicketId}
+        open={Boolean(detailTicketId)}
+        onClose={() => {
+          setDetailTicketId(null);
+          refetch(); // resolve/close in the modal must reflect in the table
+        }}
       />
       <Helmet>
         <title>PRD Infotech | Tickets</title>
@@ -235,18 +263,6 @@ const Tickets = () => {
             value={optById(assigneeOpts, filters.AssignedTo)}
             onChange={setFilterValue("AssignedTo")}
             data-testid="filter-assignee"
-          />
-        </Box>
-        <Box sx={{ width: 160 }}>
-          <Combobox
-            size="sm"
-            placeholder="All tickets"
-            options={breachedOpts}
-            value={filters.BreachedOnly ? breachedOpts[0] : null}
-            onChange={(opt) =>
-              setFilters((prev) => ({ ...prev, BreachedOnly: opt?.value === "1" }))
-            }
-            data-testid="filter-sla"
           />
         </Box>
       </Box>

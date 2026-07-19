@@ -252,19 +252,6 @@ describe("reportController.conversionBySource", () => {
 });
 
 describe("reportController ticket reports", () => {
-  it("slaBreachSummary calls sp_SLABreachSummary and returns breach rows", async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce({
-      recordsets: [[{ Priority: 4, PriorityName: "urgent", TotalOpen: 5, Breached: 2 }]],
-    });
-    const res = mockRes();
-    await reportController.slaBreachSummary(baseReq(), res);
-    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_SLABreachSummary", {
-      CompId: 5,
-      BranchId: 2,
-    });
-    expect(res.json.mock.calls[0][0].data.breach).toHaveLength(1);
-  });
-
   it("ticketsByCategory calls sp_TicketsByCategory and returns category rows", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [[{ CategoryId: 1, CategoryName: "Billing", TicketCount: 3 }]],
@@ -278,9 +265,9 @@ describe("reportController ticket reports", () => {
     expect(res.json.mock.calls[0][0].data.categories).toHaveLength(1);
   });
 
-  it("resolutionSummary calls sp_ResolutionSummary and returns resolution rows", async () => {
+  it("resolutionSummary returns resolution rows incl. the avg-resolution speed metric", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
-      recordsets: [[{ ResolutionId: 1, ResolutionName: "Fixed", TicketCount: 4 }]],
+      recordsets: [[{ ResolutionId: 1, ResolutionName: "Fixed", TicketCount: 4, AvgResolutionMins: 95 }]],
     });
     const res = mockRes();
     await reportController.resolutionSummary(baseReq(), res);
@@ -288,13 +275,15 @@ describe("reportController ticket reports", () => {
       CompId: 5,
       BranchId: 2,
     });
-    expect(res.json.mock.calls[0][0].data.resolutions).toHaveLength(1);
+    const rows = res.json.mock.calls[0][0].data.resolutions;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].AvgResolutionMins).toBe(95);
   });
 
   it("handles DB error as 500 on a ticket report", async () => {
     database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
     const res = mockRes();
-    await reportController.slaBreachSummary(baseReq(), res);
+    await reportController.ticketsByCategory(baseReq(), res);
     expect(res.status).toHaveBeenCalledWith(500);
   });
 });

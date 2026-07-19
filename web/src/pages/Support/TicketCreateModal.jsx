@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
 import { Plus } from "lucide-react";
@@ -38,8 +38,6 @@ export default function TicketCreateModal({ open, onClose, onCreated }) {
   const [channel, setChannel] = useState(null);
   const [category, setCategory] = useState(null);
   const [priority, setPriority] = useState(null);
-  const [pipeline, setPipeline] = useState(null);
-  const [stage, setStage] = useState(null);
   const [assignee, setAssignee] = useState(null);
   const [description, setDescription] = useState("");
   const [draft, setDraft] = useState({});
@@ -64,13 +62,6 @@ export default function TicketCreateModal({ open, onClose, onCreated }) {
     enabled: open,
     showErrorMessage: false,
   });
-  const { data: pipelinesData } = useApiQuery({
-    queryKey: ["support-pipelines", "ticket"],
-    endpoint: SUPPORT_ENDPOINTS.config.fetchPipelines,
-    params: { Entity: "ticket" },
-    enabled: open,
-    showErrorMessage: false,
-  });
   const { data: defsData } = useApiQuery({
     queryKey: ["custom-field-defs", "ticket"],
     endpoint: SUPPORT_ENDPOINTS.config.fetchCustomFields,
@@ -81,32 +72,8 @@ export default function TicketCreateModal({ open, onClose, onCreated }) {
 
   const categoryOpts = (categoriesData?.lookups || []).map((l) => ({ value: l.Id, label: l.Value }));
   const priorityOpts = (prioritiesData?.lookups || []).map((l) => ({ value: l.Id, label: l.Value }));
-  const pipelines = pipelinesData?.pipelines || [];
-  const allStages = pipelinesData?.stages || [];
-  const pipelineOpts = pipelines.map((p) => ({ value: p.Id, label: p.Name }));
-  const stageOpts = useMemo(
-    () =>
-      allStages
-        .filter((s) => s.PipelineId === pipeline?.value)
-        .sort((a, b) => (a.SortOrder ?? 0) - (b.SortOrder ?? 0))
-        .map((s) => ({ value: s.Id, label: s.Name })),
-    [allStages, pipeline]
-  );
   const assigneeOpts = users.map((u) => ({ value: u.Id, label: getUserName(u) || u.Username }));
   const defs = defsData?.customFields || [];
-
-  // Default to the company's default pipeline (or the first) once loaded.
-  useEffect(() => {
-    if (!open || pipeline || pipelines.length === 0) return;
-    const def = pipelines.find((p) => p.IsDefault) || pipelines[0];
-    setPipeline({ value: def.Id, label: def.Name });
-  }, [open, pipeline, pipelines]);
-
-  // Default the stage to the first stage of the selected pipeline.
-  useEffect(() => {
-    if (!pipeline || stageOpts.length === 0) return;
-    setStage((cur) => cur ?? stageOpts[0]);
-  }, [pipeline, stageOpts]);
 
   // Seed a blank draft entry per custom-field definition.
   useEffect(() => {
@@ -131,8 +98,6 @@ export default function TicketCreateModal({ open, onClose, onCreated }) {
     setChannel(null);
     setCategory(null);
     setPriority(null);
-    setPipeline(null);
-    setStage(null);
     setAssignee(null);
     setDescription("");
     setDraft({});
@@ -144,7 +109,13 @@ export default function TicketCreateModal({ open, onClose, onCreated }) {
     onClose?.();
   };
 
-  const canSubmit = customerName.trim().length > 0;
+  const canSubmit =
+    customerName.trim().length > 0 &&
+    contact.trim().length > 0 &&
+    Boolean(channel) &&
+    Boolean(category) &&
+    Boolean(priority) &&
+    description.trim().length > 0;
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -153,15 +124,15 @@ export default function TicketCreateModal({ open, onClose, onCreated }) {
       const res = await saveMutation.mutateAsync({
         Id: 0,
         CustomerName: customerName.trim(),
-        Contact: contact.trim() || null,
-        Channel: channel?.value ?? null,
-        CategoryId: category?.value ?? null,
-        Priority: priority?.value ?? null,
-        PipelineId: pipeline?.value ?? null,
-        StageId: stage?.value ?? null,
+        Contact: contact.trim(),
+        Channel: channel.value,
+        CategoryId: category.value,
+        Priority: priority.value,
+        PipelineId: null,
+        StageId: null,
         AssignedTo: assignee?.value ?? null,
         LinkedLeadId: null,
-        Description: description.trim() || null,
+        Description: description.trim(),
         CustomJSON: JSON.stringify(customJson),
       });
       const newId = res?.Id;
@@ -182,15 +153,23 @@ export default function TicketCreateModal({ open, onClose, onCreated }) {
   };
 
   return (
-    <Modal open={open} onClose={handleClose} size="md" data-testid="create-ticket-modal">
+    <Modal open={open} onClose={handleClose} size="lg" data-testid="create-ticket-modal">
       <Modal.Header
         title="New ticket"
-        subtitle="Log a support request. It enters the pipeline at the first stage."
+        subtitle="Log a customer complaint — it starts in the first column of the board."
         icon={<Plus size={18} />}
         onClose={handleClose}
       />
       <Modal.Body>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {/* Wide 2-column grid: 3 input rows instead of a 6-row tower. */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            columnGap: 16,
+            rowGap: 14,
+          }}
+        >
           <TextInput
             label="Customer"
             value={customerName}
@@ -200,74 +179,41 @@ export default function TicketCreateModal({ open, onClose, onCreated }) {
             placeholder="e.g. Acme Corp"
             data-testid="ticket-customer"
           />
-          <div style={{ display: "flex", gap: 12 }}>
-            <div style={{ flex: 1 }}>
-              <TextInput
-                label="Contact"
-                value={contact}
-                onChange={(e) => setContact(e.target.value)}
-                placeholder="Phone or email"
-                data-testid="ticket-contact"
-              />
-            </div>
-            <div style={{ flex: 1 }}>
-              <Combobox
-                label="Channel"
-                options={CHANNEL_OPTIONS}
-                value={channel}
-                onChange={setChannel}
-                placeholder="How it came in"
-                data-testid="ticket-channel"
-              />
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 12 }}>
-            <div style={{ flex: 1 }}>
-              <Combobox
-                label="Category"
-                options={categoryOpts}
-                value={category}
-                onChange={setCategory}
-                placeholder="Pick a category"
-                data-testid="ticket-category"
-              />
-            </div>
-            <div style={{ flex: 1 }}>
-              <Combobox
-                label="Priority"
-                options={priorityOpts}
-                value={priority}
-                onChange={setPriority}
-                placeholder="Pick a priority"
-                data-testid="ticket-priority"
-              />
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 12 }}>
-            <div style={{ flex: 1 }}>
-              <Combobox
-                label="Pipeline"
-                options={pipelineOpts}
-                value={pipeline}
-                onChange={(opt) => {
-                  setPipeline(opt);
-                  setStage(null);
-                }}
-                placeholder="Pick a pipeline"
-                data-testid="ticket-pipeline"
-              />
-            </div>
-            <div style={{ flex: 1 }}>
-              <Combobox
-                label="Stage"
-                options={stageOpts}
-                value={stage}
-                onChange={setStage}
-                placeholder="Pick a stage"
-                data-testid="ticket-stage"
-              />
-            </div>
-          </div>
+          <TextInput
+            label="Contact"
+            value={contact}
+            onChange={(e) => setContact(e.target.value)}
+            required
+            placeholder="Phone or email"
+            data-testid="ticket-contact"
+          />
+          <Combobox
+            label="Channel"
+            options={CHANNEL_OPTIONS}
+            value={channel}
+            onChange={setChannel}
+            required
+            placeholder="How it came in"
+            data-testid="ticket-channel"
+          />
+          <Combobox
+            label="Category"
+            options={categoryOpts}
+            value={category}
+            onChange={setCategory}
+            required
+            placeholder="Pick a category"
+            data-testid="ticket-category"
+          />
+          <Combobox
+            label="Priority"
+            options={priorityOpts}
+            value={priority}
+            onChange={setPriority}
+            required
+            placeholder="Pick a priority"
+            data-testid="ticket-priority"
+          />
           <Combobox
             label="Assignee"
             options={assigneeOpts}
@@ -276,33 +222,27 @@ export default function TicketCreateModal({ open, onClose, onCreated }) {
             placeholder="Unassigned"
             data-testid="ticket-assignee"
           />
-          <TextArea
-            label="Description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={3}
-            placeholder="What is the customer reporting?"
-            data-testid="ticket-description"
-          />
-          {defs.length > 0 && (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-                gap: 16,
-              }}
-            >
-              {defs.map((def) => (
-                <DynamicField
-                  key={def.Id}
-                  field={def}
-                  value={draft[def.Id]}
-                  onChange={(v) => setDraft((d) => ({ ...d, [def.Id]: v }))}
-                />
-              ))}
-            </div>
-          )}
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ gridColumn: "1 / -1" }}>
+            <TextArea
+              label="Description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              required
+              rows={4}
+              placeholder="What is the customer reporting?"
+              data-testid="ticket-description"
+            />
+          </div>
+          {defs.length > 0 &&
+            defs.map((def) => (
+              <DynamicField
+                key={def.Id}
+                field={def}
+                value={draft[def.Id]}
+                onChange={(v) => setDraft((d) => ({ ...d, [def.Id]: v }))}
+              />
+            ))}
+          <div style={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: 10 }}>
             <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Attachments</h3>
             <Attachments ref={attachmentsRef} entity="ticket" entityId={null} />
           </div>
