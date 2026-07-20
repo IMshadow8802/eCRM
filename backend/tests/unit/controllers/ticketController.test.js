@@ -289,7 +289,17 @@ describe("ticketController.detail", () => {
 describe("ticketController stage/resolve/close/reopen/delete", () => {
   const okRow = { recordset: [{ ResponseCode: 200, ResponseMess: "ok", Id: 1 }] };
 
+  // Guard lookup: mutations now fetch the ticket (sp_FetchTicketDetail) and
+  // apply canSeeRecord before running the mutating SP.
+  const visibleTicket = { Id: 1, BranchId: 2, AssignedTo: 7, CreatedBy: 7 };
+  function mockTicketLookup(ticket) {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [ticket ? [ticket] : [], [], [], []],
+    });
+  }
+
   it("moveStage forwards CompId/TicketId/StageId/UserId (ResolutionId defaults null)", async () => {
+    mockTicketLookup(visibleTicket);
     database.executeStoredProcedure.mockResolvedValueOnce(okRow);
     const req = baseReq({ body: { TicketId: 1, StageId: 3 } });
     const res = mockRes();
@@ -303,6 +313,7 @@ describe("ticketController stage/resolve/close/reopen/delete", () => {
   // Stage is the lifecycle's source of truth: a drag into a won stage carries
   // the resolution with it instead of a separate resolve step.
   it("moveStage forwards ResolutionId for drags into a won stage", async () => {
+    mockTicketLookup(visibleTicket);
     database.executeStoredProcedure.mockResolvedValueOnce(okRow);
     const req = baseReq({ body: { TicketId: 1, StageId: 4, ResolutionId: 2 } });
     const res = mockRes();
@@ -314,6 +325,7 @@ describe("ticketController stage/resolve/close/reopen/delete", () => {
   });
 
   it("moveStage surfaces the SP's 400 when a won stage needs a resolution", async () => {
+    mockTicketLookup(visibleTicket);
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordset: [{ ResponseCode: 400, ResponseMess: "Resolution required", Id: 1 }],
     });
@@ -322,7 +334,28 @@ describe("ticketController stage/resolve/close/reopen/delete", () => {
     expect(res.status).toHaveBeenCalledWith(400);
   });
 
+  // REGRESSION: the write path used to trust the client-supplied TicketId — a
+  // Self-scoped agent could move/close any colleague's ticket by posting its Id.
+  it("403s a mutation on a ticket the caller cannot see, without running the SP", async () => {
+    mockTicketLookup({ Id: 1, BranchId: 9, AssignedTo: 3, CreatedBy: 3 });
+    const req = baseReq({ scope: { branchIds: [2], ownerIds: [7] }, body: { TicketId: 1, StageId: 3 } });
+    const res = mockRes();
+    await ticketController.moveStage(req, res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1); // lookup only
+  });
+
+  it("allows a mutation on a ticket assigned to the caller from an out-of-scope branch", async () => {
+    mockTicketLookup({ Id: 1, BranchId: 9, AssignedTo: 7, CreatedBy: 3 });
+    database.executeStoredProcedure.mockResolvedValueOnce(okRow);
+    const req = baseReq({ scope: { branchIds: [2], ownerIds: [7] }, body: { TicketId: 1 } });
+    const res = mockRes();
+    await ticketController.close(req, res);
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
   it("resolve forwards ResolutionId and surfaces a 400 when the SP requires it", async () => {
+    mockTicketLookup(visibleTicket);
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordset: [{ ResponseCode: 400, ResponseMess: "Resolution is required", Id: 1 }],
     });
@@ -336,20 +369,49 @@ describe("ticketController stage/resolve/close/reopen/delete", () => {
     expect(res.status).toHaveBeenCalledWith(400);
   });
 
+  it("resolve 403s a ticket outside the caller's scope", async () => {
+    mockTicketLookup({ Id: 1, BranchId: 9, AssignedTo: 3, CreatedBy: 3 });
+    const res = mockRes();
+    await ticketController.resolve(baseReq({ body: { TicketId: 1, ResolutionId: 2 } }), res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
+  });
+
+  it("reopen 403s a ticket outside the caller's scope", async () => {
+    mockTicketLookup({ Id: 1, BranchId: 9, AssignedTo: 3, CreatedBy: 3 });
+    const res = mockRes();
+    await ticketController.reopen(baseReq({ body: { TicketId: 1 } }), res);
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+
+  it("delete 403s a ticket outside the caller's scope", async () => {
+    mockTicketLookup({ Id: 1, BranchId: 9, AssignedTo: 3, CreatedBy: 3 });
+    const res = mockRes();
+    await ticketController.delete(baseReq({ body: { Id: 1 } }), res);
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+
   it("close/reopen/delete map to their SPs", async () => {
-    database.executeStoredProcedure.mockResolvedValue(okRow);
+    mockTicketLookup(visibleTicket);
+    database.executeStoredProcedure.mockResolvedValueOnce(okRow);
     const res1 = mockRes();
     await ticketController.close(baseReq({ body: { TicketId: 1 } }), res1);
     expect(database.executeStoredProcedure).toHaveBeenCalledWith(
       "sp_CloseTicket",
       { CompId: 5, TicketId: 1, UserId: 7 },
     );
+
+    mockTicketLookup(visibleTicket);
+    database.executeStoredProcedure.mockResolvedValueOnce(okRow);
     const res2 = mockRes();
     await ticketController.reopen(baseReq({ body: { TicketId: 1 } }), res2);
     expect(database.executeStoredProcedure).toHaveBeenCalledWith(
       "sp_ReopenTicket",
       { CompId: 5, TicketId: 1, UserId: 7 },
     );
+
+    mockTicketLookup(visibleTicket);
+    database.executeStoredProcedure.mockResolvedValue(okRow);
     const res3 = mockRes();
     await ticketController.delete(baseReq({ body: { Id: 1 } }), res3);
     expect(database.executeStoredProcedure).toHaveBeenCalledWith(

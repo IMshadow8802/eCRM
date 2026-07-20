@@ -42,14 +42,22 @@ export function deriveSocketTarget(apiBaseUrl, isDev = import.meta.env.DEV) {
   return { url: parsed.origin, path: `${prefix}/socket.io` };
 }
 
-// Scope → queryKey prefixes to invalidate (TanStack prefix-matches, so
-// ["task", taskId] also catches its "comments"/"deps"/"checklist"/"time"
-// children). Keys mirror the ones actually used by TaskBoard,
-// TaskDetailModal, WorkspaceSwitcher/SettingsModal and NotificationBell.
+// Scope → queryKey prefixes to invalidate. Two key families coexist:
+// TaskDetailModal nests under ["task", taskId, ...] (covered by the
+// ["task", taskId] prefix — TanStack prefix-matches), while the
+// useTaskData.jsx hooks use FLAT keys ("taskComments"/"taskChecklist"/
+// "taskTimeEntries") that a nested prefix never matches — list both.
 export const SCOPE_INVALIDATIONS = {
   [SCOPES.TASK_LIST]: () => [["tasks"], ["tasks-all"], ["kanban-columns"]],
-  [SCOPES.TASK_DETAIL]: ({ taskId }) => [["task", taskId]],
-  [SCOPES.TASK_COMMENTS]: ({ taskId }) => [["task", taskId, "comments"]],
+  [SCOPES.TASK_DETAIL]: ({ taskId }) => [
+    ["task", taskId],
+    ["taskChecklist", taskId],
+    ["taskTimeEntries", taskId],
+  ],
+  [SCOPES.TASK_COMMENTS]: ({ taskId }) => [
+    ["taskComments", taskId],
+    ["task", taskId, "comments"],
+  ],
   [SCOPES.WORKSPACE_MEMBERS]: () => [["workspace-members"]],
   [SCOPES.WORKSPACES]: () => [["workspaces"]],
   [SCOPES.NOTIFICATIONS]: () => [["notifications"]],

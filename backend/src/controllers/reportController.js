@@ -12,11 +12,20 @@ class ReportController {
         AccessibleBranchIdsJson: scopeJson(req),
       });
 
+      // ponytail: extra recordsets ship in sql/055 — guard so the old SP (KPIs only) doesn't 500
+      const rs = result.recordsets ?? [];
       return res.status(200).json({
         success: true,
         message: "Dashboard data fetched successfully",
         responseCode: 200,
-        data: { dashboard: result.recordsets[0] },
+        data: {
+          dashboard: rs[0] ?? [],
+          leadsTrend: rs[1] ?? [],
+          leadsBySource: rs[2] ?? [],
+          funnel: rs[3] ?? [],
+          teamLoad: rs[4] ?? [],
+          quarterlyActivity: rs[5] ?? [],
+        },
         timestamp: new Date().toISOString(),
       });
     } catch (err) {

@@ -49,7 +49,7 @@ class WorkspaceController {
         CompId: req.user.CompId,
         BranchId: req.user.BranchId,
         ActingUserId: req.user.UserId,
-        IsAdmin: req.user.IsAdmin ? 1 : 0,
+        IsAdmin: req.scope?.isAdmin ? 1 : 0,
       });
 
       const spResponse = result.recordsets[0][0];
@@ -138,7 +138,7 @@ class WorkspaceController {
         UserId: req.user.UserId,
         CompId: req.user.CompId,
         BranchId: req.user.BranchId,
-        IsAdmin: req.user.IsAdmin,
+        IsAdmin: req.scope?.isAdmin ? 1 : 0,
         AccessibleBranchIdsJson: accessibleBranchIdsJson,
         Type,
         IncludeArchived,
@@ -195,7 +195,7 @@ class WorkspaceController {
         {
           WorkspaceId,
           ActingUserId: req.user.UserId,
-          IsAdmin: req.user.IsAdmin ? 1 : 0,
+          IsAdmin: req.scope?.isAdmin ? 1 : 0,
           CompId: req.user.CompId,
         },
       );
@@ -255,7 +255,7 @@ class WorkspaceController {
           UserId,
           Role,
           ActingUserId: req.user.UserId,
-          IsAdmin: req.user.IsAdmin,
+          IsAdmin: req.scope?.isAdmin ? 1 : 0,
           CompId: req.user.CompId,
         },
       );
@@ -326,7 +326,7 @@ class WorkspaceController {
           WorkspaceId,
           UserId,
           ActingUserId: req.user.UserId,
-          IsAdmin: req.user.IsAdmin,
+          IsAdmin: req.scope?.isAdmin ? 1 : 0,
           CompId: req.user.CompId,
         },
       );
@@ -485,7 +485,7 @@ class WorkspaceController {
           WorkspaceId,
           IsArchived: IsArchived ? 1 : 0,
           ActingUserId: req.user.UserId,
-          IsAdmin: req.user.IsAdmin,
+          IsAdmin: req.scope?.isAdmin ? 1 : 0,
           CompId: req.user.CompId,
         },
       );
@@ -609,7 +609,7 @@ class WorkspaceController {
         {
           WorkspaceId,
           ActingUserId: req.user.UserId,
-          IsAdmin: req.user.IsAdmin ? 1 : 0,
+          IsAdmin: req.scope?.isAdmin ? 1 : 0,
           CompId: req.user.CompId,
           DryRun: isDryRun,
         },
@@ -689,7 +689,7 @@ class WorkspaceController {
           WorkspaceId,
           NewOwnerUserId,
           ActingUserId: req.user.UserId,
-          IsAdmin: req.user.IsAdmin ? 1 : 0,
+          IsAdmin: req.scope?.isAdmin ? 1 : 0,
           CompId: req.user.CompId,
         },
       );
@@ -758,7 +758,7 @@ class WorkspaceController {
         {
           WorkspaceId,
           ActingUserId: req.user.UserId,
-          IsAdmin: req.user.IsAdmin ? 1 : 0,
+          IsAdmin: req.scope?.isAdmin ? 1 : 0,
           CompId: req.user.CompId,
         },
       );

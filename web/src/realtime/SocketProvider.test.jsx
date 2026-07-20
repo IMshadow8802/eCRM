@@ -225,9 +225,18 @@ describe("SocketProvider", () => {
       ["tasks-all"],
       ["kanban-columns"],
     ]);
-    expect(SCOPE_INVALIDATIONS[SCOPES.TASK_DETAIL](p)).toEqual([["task", 42]]);
+    // Regression: useTaskData.jsx uses FLAT keys ("taskComments",
+    // "taskChecklist", "taskTimeEntries") — the old nested-only keys
+    // (["task", id, "comments"]) never matched them, so live comment/
+    // checklist/time updates were dead for those hooks.
+    expect(SCOPE_INVALIDATIONS[SCOPES.TASK_DETAIL](p)).toEqual([
+      ["task", 42],
+      ["taskChecklist", 42],
+      ["taskTimeEntries", 42],
+    ]);
     expect(SCOPE_INVALIDATIONS[SCOPES.TASK_COMMENTS](p)).toEqual([
-      ["task", 42, "comments"],
+      ["taskComments", 42],
+      ["task", 42, "comments"], // TaskDetailModal's nested comments key
     ]);
     expect(SCOPE_INVALIDATIONS[SCOPES.WORKSPACE_MEMBERS](p)).toEqual([
       ["workspace-members"],
@@ -236,6 +245,13 @@ describe("SocketProvider", () => {
     expect(SCOPE_INVALIDATIONS[SCOPES.NOTIFICATIONS](p)).toEqual([
       ["notifications"],
     ]);
+  });
+
+  it("TASK_COMMENTS prefix-matches the flat useTaskData key (regression)", () => {
+    // With the old map, invalidateQueries(["task", 42, "comments"]) could
+    // never touch a query cached under ["taskComments", 42].
+    const keys = SCOPE_INVALIDATIONS[SCOPES.TASK_COMMENTS]({ taskId: 42 });
+    expect(keys).toContainEqual(["taskComments", 42]);
   });
 
   it("ignores unknown scopes and malformed payloads", () => {

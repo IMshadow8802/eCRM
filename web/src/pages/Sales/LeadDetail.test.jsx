@@ -258,6 +258,62 @@ describe("LeadDetail", () => {
     expect(await screen.findByTestId("log-call-modal")).toBeInTheDocument();
   });
 
+  it("Edit button opens the edit modal prefilled; saving posts the lead's Id with null CustomJSON", async () => {
+    let captured;
+    mockDetail();
+    mockSaveLeads((body) => {
+      captured = body;
+    });
+    renderWithProviders(<LeadDetail leadId={9} />, { router: false });
+    await screen.findByText("Acme Corp");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("edit-lead-btn"));
+    expect(await screen.findByTestId("lead-create-modal")).toBeInTheDocument();
+    expect(screen.getByTestId("lead-name")).toHaveValue("Acme Corp");
+
+    await user.clear(screen.getByTestId("lead-name"));
+    await user.type(screen.getByTestId("lead-name"), "Acme Renamed");
+    await user.click(screen.getByTestId("lead-create-submit"));
+
+    await waitFor(() => expect(captured).toBeTruthy());
+    expect(captured.Id).toBe(9);
+    expect(captured.Name).toBe("Acme Renamed");
+    // Base-field edit must not wipe custom-field values.
+    expect(captured.CustomJSON).toBeNull();
+  }, 15000);
+
+  it("shows the lost reason on a lost lead, resolved from the lost_reason lookups", async () => {
+    mockDetail({ lead: { ...LEAD, LostReasonId: 77 } });
+    server.use(
+      http.post("*/api/config/fetchLookups", async ({ request }) => {
+        const { Kind } = await request.json();
+        return HttpResponse.json({
+          success: true,
+          message: "ok",
+          responseCode: 200,
+          data: {
+            lookups:
+              Kind === "lost_reason"
+                ? [{ Id: 77, Value: "Price too high" }]
+                : [{ Id: 5, Value: "Web" }],
+          },
+        });
+      }),
+    );
+    renderWithProviders(<LeadDetail leadId={9} />, { router: false });
+    await screen.findByText("Acme Corp");
+    expect(await screen.findByText("Lost reason")).toBeInTheDocument();
+    expect(await screen.findByText("Price too high")).toBeInTheDocument();
+  });
+
+  it("hides the lost-reason field on a lead that is not lost", async () => {
+    mockDetail();
+    renderWithProviders(<LeadDetail leadId={9} />, { router: false });
+    await screen.findByText("Acme Corp");
+    expect(screen.queryByText("Lost reason")).not.toBeInTheDocument();
+  });
+
   it("renders a loading skeleton before the lead has loaded", () => {
     mockDetail();
     renderWithProviders(<LeadDetail leadId={9} />, { router: false });

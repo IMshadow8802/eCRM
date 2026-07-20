@@ -20,6 +20,7 @@
 // sp_SaveUserBranchAccess).
 
 const database = require("../config/database");
+const responseHelper = require("../utils/responseHelper");
 
 const HIERARCHY = {
   SUPER: 1,
@@ -66,6 +67,9 @@ async function computeScope(req) {
     canWriteBranchIds,
     ownerIds,
     isAdmin: header.IsAdmin === true || header.IsAdmin === 1,
+    // Only explicitly-inactive blocks: until 052 adds IsActive to the SP's
+    // header row the column is undefined, and that must not lock everyone out.
+    isActive: !(header.IsActive === false || header.IsActive === 0),
   };
 }
 
@@ -73,6 +77,17 @@ const loadScope = async (req, res, next) => {
   try {
     if (!req.user) return next();
     req.scope = await computeScope(req);
+    // A deactivated user keeps a valid JWT until it expires; this round-trip
+    // already hits the DB every request, so enforce IsActive here.
+    if (req.scope && req.scope.isActive === false) {
+      return res.status(403).json({
+        success: false,
+        message: "Account is inactive",
+        code: "USER_INACTIVE",
+        responseCode: 403,
+        timestamp: new Date().toISOString(),
+      });
+    }
     next();
   } catch (err) {
     console.error("loadScope failed:", err.message);
@@ -169,6 +184,64 @@ const canWriteBranch = (req, branchId) =>
 const canReadBranch = (req, branchId) =>
   req.scope?.branchIds?.includes(Number(branchId)) || false;
 
+// Record-level guard for WRITE endpoints (and attachment reads). The read
+// paths already gate single records via canSeeRecord; write paths used to
+// trust the client-supplied id blindly. This fetches the record and applies
+// the same rule — assigned/created-by-caller always wins, OR-ed with scope.
+//
+// Tasks route through sp_CheckTaskPermission (workspace membership), which
+// also keeps personal workspaces private from admins — deliberately no
+// isAdmin shortcut around it here.
+//
+// Sends the 403 (or 500 on lookup failure) itself and returns false;
+// true = proceed. `level` only matters for tasks: 'view' vs 'write'.
+const ENTITY_LOOKUP = {
+  lead: { sp: "sp_FetchLeadDetail", idParam: "LeadId", ownerField: "OwnerId" },
+  ticket: { sp: "sp_FetchTicketDetail", idParam: "TicketId", ownerField: "AssignedTo" },
+};
+
+async function assertRecordAccess(req, res, entity, entityId, level = "view") {
+  try {
+    let allowed = false;
+
+    if (entity === "task") {
+      const result = await database.executeStoredProcedure(
+        "sp_CheckTaskPermission",
+        {
+          TaskId: Number(entityId) || 0,
+          UserId: req.user.UserId,
+          Action: level === "write" ? "edit_fields" : "view_task",
+          IsAdmin: req.scope?.isAdmin ? 1 : 0,
+          CompId: req.user.CompId,
+        },
+      );
+      const row = result.recordsets?.[0]?.[0] ?? result.recordset?.[0];
+      allowed = row?.Allowed === true || row?.Allowed === 1;
+    } else if (ENTITY_LOOKUP[entity]) {
+      const { sp, idParam, ownerField } = ENTITY_LOOKUP[entity];
+      const result = await database.executeStoredProcedure(sp, {
+        CompId: req.user.CompId,
+        [idParam]: Number(entityId) || 0,
+      });
+      const record = result.recordsets?.[0]?.[0] || null;
+      allowed = canSeeRecord(req, record, ownerField);
+    }
+
+    if (allowed) return true;
+    responseHelper.error(
+      res,
+      `You do not have access to this ${entity}`,
+      "FORBIDDEN",
+      403,
+    );
+    return false;
+  } catch (err) {
+    console.error("assertRecordAccess failed:", entity, entityId, err.message);
+    responseHelper.error(res, "Failed to verify record access");
+    return false;
+  }
+}
+
 module.exports = {
   HIERARCHY,
   loadScope,
@@ -177,4 +250,5 @@ module.exports = {
   canSeeRecord,
   canWriteBranch,
   canReadBranch,
+  assertRecordAccess,
 };

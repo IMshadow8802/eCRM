@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useTheme } from "@mui/material/styles";
-import { PhoneCall, Save as SaveIcon } from "lucide-react";
+import { Pencil, PhoneCall, Save as SaveIcon } from "lucide-react";
 import dayjs from "dayjs";
 
 import { PageHeader, Card, Chip, Button, Tabs, EmptyState, Skeleton } from "../../components/ui";
@@ -14,6 +14,7 @@ import { findUserById, getUserName } from "../../utils/userShape";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
 import Timeline from "./Timeline";
 import LogCallModal from "./LogCallModal";
+import LeadCreateModal from "./LeadCreateModal";
 
 // fetchLeadDetail's `fields` recordset only carries the stored value columns
 // (ValueText/ValueNumber/ValueDate) for fields that HAVE a value — it has no
@@ -55,6 +56,7 @@ export default function LeadDetail({ leadId: leadIdProp }) {
 
   const [tab, setTab] = useState("details");
   const [callModalOpen, setCallModalOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [draft, setDraft] = useState({});
 
   const { data, isLoading, refetch } = useApiQuery({
@@ -103,9 +105,20 @@ export default function LeadDetail({ leadId: leadIdProp }) {
   const lead = data?.lead ?? null;
   const activity = data?.activity ?? [];
 
+  // Lost-reason lookup, only worth a request once the lead is actually lost.
+  const { data: lostReasonsData } = useApiQuery({
+    queryKey: ["lost-reasons"],
+    endpoint: SALES_ENDPOINTS.config.fetchLookups,
+    params: { Kind: "lost_reason" },
+    enabled: Boolean(lead?.LostReasonId),
+    showErrorMessage: false,
+  });
+  const lostReasons = lostReasonsData?.lookups || [];
+
   const stageName = stages.find((s) => s.Id === lead?.StageId)?.Name;
   const ownerName = getUserName(findUserById(users, lead?.OwnerId));
   const sourceName = sources.find((s) => s.Id === lead?.SourceId)?.Value;
+  const lostReasonName = lostReasons.find((r) => r.Id === lead?.LostReasonId)?.Value;
 
   // Merge field definitions (Options/IsRequired/order) with the lead's stored
   // values (keyed by FieldId). Definitions drive rendering so blank fields
@@ -182,14 +195,24 @@ export default function LeadDetail({ leadId: leadIdProp }) {
           />
         }
         actions={
-          <Button
-            variant="primary"
-            leftIcon={<PhoneCall size={14} />}
-            onClick={() => setCallModalOpen(true)}
-            data-testid="log-call-btn"
-          >
-            Log Call
-          </Button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Button
+              variant="tonal"
+              leftIcon={<Pencil size={14} />}
+              onClick={() => setEditOpen(true)}
+              data-testid="edit-lead-btn"
+            >
+              Edit
+            </Button>
+            <Button
+              variant="primary"
+              leftIcon={<PhoneCall size={14} />}
+              onClick={() => setCallModalOpen(true)}
+              data-testid="log-call-btn"
+            >
+              Log Call
+            </Button>
+          </div>
         }
       />
 
@@ -228,6 +251,12 @@ export default function LeadDetail({ leadId: leadIdProp }) {
                       : null
                   }
                 />
+                {Boolean(lead.LostReasonId) && (
+                  <InfoItem
+                    label="Lost reason"
+                    value={lostReasonName || `Reason #${lead.LostReasonId}`}
+                  />
+                )}
               </div>
             </Card>
 
@@ -326,6 +355,13 @@ export default function LeadDetail({ leadId: leadIdProp }) {
         onClose={() => setCallModalOpen(false)}
         leadId={leadId}
         onLogged={refetch}
+      />
+
+      <LeadCreateModal
+        open={editOpen}
+        lead={lead}
+        onClose={() => setEditOpen(false)}
+        onSaved={refetch}
       />
     </div>
   );

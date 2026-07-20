@@ -31,6 +31,8 @@ export const SALES_ENDPOINTS = {
   },
   followups: {
     fetchFollowups: "/api/followups/fetchFollowups",
+    saveFollowup: "/api/followups/saveFollowup",
+    deleteFollowup: "/api/followups/deleteFollowup",
   },
   reports: {
     pipelineFunnel: "/api/reports/pipelineFunnel",
@@ -69,6 +71,8 @@ export const fetchCalls = post(SALES_ENDPOINTS.calls.fetchCalls);
 
 // Follow-ups
 export const fetchFollowups = post(SALES_ENDPOINTS.followups.fetchFollowups);
+export const saveFollowup = post(SALES_ENDPOINTS.followups.saveFollowup);
+export const deleteFollowup = post(SALES_ENDPOINTS.followups.deleteFollowup);
 
 // Reports
 export const pipelineFunnel = post(SALES_ENDPOINTS.reports.pipelineFunnel);

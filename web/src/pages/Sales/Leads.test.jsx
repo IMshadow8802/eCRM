@@ -229,7 +229,7 @@ describe("Sales Leads page", () => {
     expect(await screen.findByTestId("lead-create-modal")).toBeInTheDocument();
   });
 
-  it("enables per-row Transfer and Delete actions", () => {
+  it("enables per-row Edit, Transfer and Delete actions", () => {
     renderPage();
     const cfg = useServerTable.mock.calls.at(-1)[0];
     expect(cfg.enableRowActions).toBe(true);
@@ -238,7 +238,23 @@ describe("Sales Leads page", () => {
         {cfg.renderRowActions({ row: { original: { Id: 101, Name: "Acme" } } })}
       </ThemeProvider>
     );
+    expect(screen.getByTestId("edit-lead-101")).toBeInTheDocument();
     expect(screen.getByTestId("transfer-lead-101")).toBeInTheDocument();
     expect(screen.getByTestId("delete-lead-101")).toBeInTheDocument();
+  });
+
+  it("row Edit action opens the modal in edit mode, prefilled with the lead", async () => {
+    renderPage();
+    const cfg = useServerTable.mock.calls.at(-1)[0];
+    render(
+      <ThemeProvider theme={buildTheme("light")}>
+        {cfg.renderRowActions({ row: { original: FIXTURE_LEADS[0] } })}
+      </ThemeProvider>
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("edit-lead-101"));
+    expect(await screen.findByTestId("lead-create-modal")).toBeInTheDocument();
+    expect(screen.getByText("Edit Lead")).toBeInTheDocument();
+    expect(screen.getByTestId("lead-name")).toHaveValue("Acme Corp");
   });
 });

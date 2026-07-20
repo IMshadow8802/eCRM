@@ -1,7 +1,11 @@
 const database = require("../config/database");
 const responseHelper = require("../utils/responseHelper");
 const attachmentController = require("./attachmentController");
-const { scopeParams, canSeeRecord } = require("../middleware/permission");
+const {
+  scopeParams,
+  canSeeRecord,
+  assertRecordAccess,
+} = require("../middleware/permission");
 
 // Mutating SPs log their own activity server-side and return one status row.
 async function runSp(res, spName, params, failMessage) {
@@ -119,11 +123,12 @@ const ticketController = {
     }
   },
 
-  moveStage(req, res) {
+  async moveStage(req, res) {
     const { CompId, UserId } = req.user;
     // ResolutionId rides along for drags into a won stage — the SP requires a
     // resolution on first entry (stage is the lifecycle's source of truth).
     const { TicketId, StageId, ResolutionId = null } = req.body;
+    if (!(await assertRecordAccess(req, res, "ticket", TicketId))) return;
     return runSp(
       res,
       "sp_MoveTicketStage",
@@ -132,9 +137,10 @@ const ticketController = {
     );
   },
 
-  resolve(req, res) {
+  async resolve(req, res) {
     const { CompId, UserId } = req.user;
     const { TicketId, ResolutionId } = req.body;
+    if (!(await assertRecordAccess(req, res, "ticket", TicketId))) return;
     return runSp(
       res,
       "sp_ResolveTicket",
@@ -143,21 +149,24 @@ const ticketController = {
     );
   },
 
-  close(req, res) {
+  async close(req, res) {
     const { CompId, UserId } = req.user;
     const { TicketId } = req.body;
+    if (!(await assertRecordAccess(req, res, "ticket", TicketId))) return;
     return runSp(res, "sp_CloseTicket", { CompId, TicketId, UserId }, "Failed to close ticket");
   },
 
-  reopen(req, res) {
+  async reopen(req, res) {
     const { CompId, UserId } = req.user;
     const { TicketId } = req.body;
+    if (!(await assertRecordAccess(req, res, "ticket", TicketId))) return;
     return runSp(res, "sp_ReopenTicket", { CompId, TicketId, UserId }, "Failed to reopen ticket");
   },
 
   async delete(req, res) {
     const { CompId } = req.user;
     const { Id } = req.body;
+    if (!(await assertRecordAccess(req, res, "ticket", Id))) return;
     try {
       const result = await database.executeStoredProcedure("sp_DeleteTicket", { Id, CompId });
       const spResponse = result.recordset[0];

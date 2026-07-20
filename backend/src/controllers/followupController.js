@@ -1,6 +1,7 @@
 const database = require("../config/database");
 const { logActivity, ACTIONS } = require("../utils/activityLogger");
 const { cleanSpRows } = require("../utils/spHelpers");
+const { assertRecordAccess } = require("../middleware/permission");
 
 class FollowupController {
   async save(req, res) {
@@ -16,6 +17,9 @@ class FollowupController {
         Status = null,
         SourceCallId = null,
       } = req.body;
+
+      // The caller must be able to see the lead they attach a follow-up to.
+      if (!(await assertRecordAccess(req, res, "lead", LeadId ?? LeadID))) return;
 
       const result = await database.executeStoredProcedure("sp_SaveFollowUp", {
         Id,
@@ -77,6 +81,7 @@ class FollowupController {
         PageNumber = 1,
         PageSize = 10,
         SearchTerm = null,
+        Status = null,
       } = req.body;
 
       const accessibleBranchIdsJson = req.scope?.branchIds?.length
@@ -90,6 +95,7 @@ class FollowupController {
         PageNumber,
         PageSize,
         SearchTerm,
+        Status,
       });
 
       const spResponse = result.recordsets[0][0];
@@ -126,8 +132,27 @@ class FollowupController {
     try {
       const { Id } = req.body;
 
+      // The delete SP takes only an Id, so resolve the follow-up's lead first
+      // and check the caller may see it. Controller-level guard only — the SP
+      // hardening ships separately.
+      const lookup = await database.executeStoredProcedure("sp_FetchFollowUp", {
+        Id,
+      });
+      const followup = lookup.recordsets?.[0]?.[0];
+      if (!followup || followup.ResponseCode !== 200) {
+        return res.status(404).json({
+          success: false,
+          message: "Follow-up not found",
+          code: "NOT_FOUND",
+          responseCode: 404,
+          timestamp: new Date().toISOString(),
+        });
+      }
+      if (!(await assertRecordAccess(req, res, "lead", followup.LeadId))) return;
+
       const result = await database.executeStoredProcedure("sp_DeleteFollowUp", {
         Id,
+        CompId: req.user.CompId, // tenant gate — sp_DeleteFollowUp (054) requires it
       });
 
       const spResponse = result.recordsets[0][0];

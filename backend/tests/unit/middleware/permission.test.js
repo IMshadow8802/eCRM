@@ -11,6 +11,7 @@ const {
   canSeeRecord,
   canWriteBranch,
   canReadBranch,
+  assertRecordAccess,
 } = require("../../../src/middleware/permission");
 const { mockRes } = require("../../helpers/mockRes");
 
@@ -192,7 +193,45 @@ describe("permission middleware", () => {
         canWriteBranchIds: [1, 2],
         ownerIds: null, // wide scope -> no ownership filter
         isAdmin: false,
+        // Header has no IsActive column until 052 is applied — treated active.
+        isActive: true,
       });
+      expect(next).toHaveBeenCalled();
+    });
+
+    // Deactivation must take effect immediately, not when the JWT expires.
+    it("403s USER_INACTIVE when the header row reports IsActive=0", async () => {
+      database.executeStoredProcedure.mockResolvedValue({
+        recordsets: [
+          [{ HierarchyLevel: 4, DataScope: "Self", PrimaryBranchId: 2, IsAdmin: false, IsActive: false }],
+          [{ BranchId: 2, CanWrite: true }],
+          [{ OwnerId: 5 }],
+        ],
+      });
+      const req = { user: { UserId: 5, CompId: 1 } };
+      const res = mockRes();
+      const next = jest.fn();
+      await loadScope(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ code: "USER_INACTIVE", success: false }),
+      );
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it("passes through an active user when IsActive=1", async () => {
+      database.executeStoredProcedure.mockResolvedValue({
+        recordsets: [
+          [{ HierarchyLevel: 4, DataScope: "Self", PrimaryBranchId: 2, IsAdmin: false, IsActive: true }],
+          [{ BranchId: 2, CanWrite: true }],
+          [{ OwnerId: 5 }],
+        ],
+      });
+      const req = { user: { UserId: 5, CompId: 1 } };
+      const next = jest.fn();
+      await loadScope(req, mockRes(), next);
+      expect(req.scope.isActive).toBe(true);
       expect(next).toHaveBeenCalled();
     });
 
@@ -255,6 +294,102 @@ describe("permission middleware", () => {
       await loadScope(req, res, next);
       expect(req.scope).toBeUndefined();
       expect(next).toHaveBeenCalled();
+    });
+  });
+
+  describe("assertRecordAccess", () => {
+    beforeEach(() => {
+      database.executeStoredProcedure.mockReset();
+    });
+
+    const selfReq = {
+      user: { UserId: 7, CompId: 5 },
+      scope: { branchIds: [2], ownerIds: [7], isAdmin: false },
+    };
+
+    it("allows a lead the caller owns and fetches it via sp_FetchLeadDetail", async () => {
+      database.executeStoredProcedure.mockResolvedValueOnce({
+        recordsets: [[{ Id: 9, BranchId: 2, OwnerId: 7, CreatedBy: 3 }], [], []],
+      });
+      const res = mockRes();
+      await expect(assertRecordAccess(selfReq, res, "lead", 9)).resolves.toBe(true);
+      expect(database.executeStoredProcedure).toHaveBeenCalledWith(
+        "sp_FetchLeadDetail",
+        { CompId: 5, LeadId: 9 },
+      );
+      expect(res.status).not.toHaveBeenCalled();
+    });
+
+    it("403s a colleague's lead under Self scope", async () => {
+      database.executeStoredProcedure.mockResolvedValueOnce({
+        recordsets: [[{ Id: 9, BranchId: 2, OwnerId: 3, CreatedBy: 3 }], [], []],
+      });
+      const res = mockRes();
+      await expect(assertRecordAccess(selfReq, res, "lead", 9)).resolves.toBe(false);
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: "FORBIDDEN" }));
+    });
+
+    it("403s a missing record (mutation on a nonexistent id is denied)", async () => {
+      database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[], [], []] });
+      const res = mockRes();
+      await expect(assertRecordAccess(selfReq, res, "lead", 999)).resolves.toBe(false);
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+
+    it("reads tickets via sp_FetchTicketDetail using AssignedTo as the owner field", async () => {
+      database.executeStoredProcedure.mockResolvedValueOnce({
+        recordsets: [[{ Id: 4, BranchId: 9, AssignedTo: 7, CreatedBy: 3 }], [], [], []],
+      });
+      const res = mockRes();
+      // Assigned to caller from an out-of-scope branch: assignment beats scope.
+      await expect(assertRecordAccess(selfReq, res, "ticket", 4)).resolves.toBe(true);
+      expect(database.executeStoredProcedure).toHaveBeenCalledWith(
+        "sp_FetchTicketDetail",
+        { CompId: 5, TicketId: 4 },
+      );
+    });
+
+    it("routes tasks through sp_CheckTaskPermission and honours a denial even for admins", async () => {
+      // Personal-workspace privacy: the SP says no, and there is no isAdmin
+      // bypass around it in the middleware.
+      database.executeStoredProcedure.mockResolvedValueOnce({
+        recordsets: [[{ Allowed: false, Reason: "personal workspaces are private" }]],
+      });
+      const adminReq = { user: { UserId: 7, CompId: 5 }, scope: { isAdmin: true } };
+      const res = mockRes();
+      await expect(assertRecordAccess(adminReq, res, "task", 12, "write")).resolves.toBe(false);
+      expect(database.executeStoredProcedure).toHaveBeenCalledWith(
+        "sp_CheckTaskPermission",
+        { TaskId: 12, UserId: 7, Action: "edit_fields", IsAdmin: 1, CompId: 5 },
+      );
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+
+    it("passes view-level task checks as view_task and allows when the SP allows", async () => {
+      database.executeStoredProcedure.mockResolvedValueOnce({
+        recordsets: [[{ Allowed: true, Reason: "role=member action=view_task" }]],
+      });
+      const res = mockRes();
+      await expect(assertRecordAccess(selfReq, res, "task", 12)).resolves.toBe(true);
+      expect(database.executeStoredProcedure).toHaveBeenCalledWith(
+        "sp_CheckTaskPermission",
+        expect.objectContaining({ Action: "view_task", IsAdmin: 0 }),
+      );
+    });
+
+    it("403s an unknown entity without touching the DB", async () => {
+      const res = mockRes();
+      await expect(assertRecordAccess(selfReq, res, "misc", 1)).resolves.toBe(false);
+      expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+
+    it("500s (fail closed) when the lookup throws", async () => {
+      database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
+      const res = mockRes();
+      await expect(assertRecordAccess(selfReq, res, "lead", 9)).resolves.toBe(false);
+      expect(res.status).toHaveBeenCalledWith(500);
     });
   });
 });

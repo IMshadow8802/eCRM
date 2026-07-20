@@ -4,6 +4,7 @@ const database = require("../config/database");
 const { cleanSpRows } = require("../utils/spHelpers");
 const { UPLOAD_ROOT, ENTITIES } = require("../middleware/upload");
 const { logActivity, ACTIONS } = require("../utils/activityLogger");
+const { assertRecordAccess } = require("../middleware/permission");
 
 // Absolute path to a stored file.
 function filePath(entity, storedName) {
@@ -39,6 +40,13 @@ class AttachmentController {
           success: false, message: "Valid Entity and EntityId are required",
           code: "VALIDATION_ERROR", responseCode: 400, timestamp: new Date().toISOString(),
         });
+      }
+
+      // The caller must have write access to the parent record — lead/ticket
+      // via scope, task via workspace membership (personal stays private).
+      if (!(await assertRecordAccess(req, res, String(Entity), Number(EntityId), "write"))) {
+        unlinkQuiet(file.path); // 403 already sent → clean the just-written file
+        return;
       }
 
       let result;
@@ -108,13 +116,22 @@ class AttachmentController {
         });
       }
 
+      // Listing by (Entity, EntityId): check the parent record up front.
+      if (Entity && EntityId
+          && !(await assertRecordAccess(req, res, String(Entity), Number(EntityId)))) return;
+
       const result = await database.executeStoredProcedure("sp_FetchAttachments", {
         Id, CompId: req.user.CompId, Entity, EntityId,
       });
+      const attachments = cleanSpRows(result.recordsets[0]);
+
+      // Id-only fetch: the entity comes from the DB row, never the client.
+      if (Id > 0 && attachments[0]
+          && !(await assertRecordAccess(req, res, attachments[0].Entity, attachments[0].EntityId))) return;
 
       return res.status(200).json({
         success: true, message: "Attachments fetched", responseCode: 200,
-        data: { attachments: cleanSpRows(result.recordsets[0]) },
+        data: { attachments },
         timestamp: new Date().toISOString(),
       });
     } catch (err) {
@@ -136,9 +153,6 @@ class AttachmentController {
 
       // CompId-scoped fetch is the hard multi-tenant boundary — a user can only
       // ever reach their own company's rows.
-      // TODO(v2): finer per-task gating (workspace membership) via
-      // sp_CheckTaskPermission; today within a company this mirrors how the
-      // parent lead/ticket/task is already visible to staff.
       const result = await database.executeStoredProcedure("sp_FetchAttachments", {
         Id, CompId: req.user.CompId, Entity: null, EntityId: null,
       });
@@ -147,6 +161,10 @@ class AttachmentController {
       if (!row) {
         return res.status(404).json({ success: false, message: "Attachment not found", responseCode: 404 });
       }
+
+      // Entity/EntityId come from the DB row, never the client. Lead/ticket
+      // via scope, task via workspace membership (personal beats admin).
+      if (!(await assertRecordAccess(req, res, row.Entity, row.EntityId))) return;
 
       const abs = filePath(row.Entity, row.StoredName);
       if (!fs.existsSync(abs)) {
@@ -175,6 +193,20 @@ class AttachmentController {
           code: "VALIDATION_ERROR", responseCode: 400, timestamp: new Date().toISOString(),
         });
       }
+
+      // Fetch the row first: the access check must run BEFORE the delete, and
+      // Entity/EntityId must come from the DB row, never the client.
+      const lookup = await database.executeStoredProcedure("sp_FetchAttachments", {
+        Id, CompId: req.user.CompId, Entity: null, EntityId: null,
+      });
+      const row = cleanSpRows(lookup.recordsets[0], "Id")[0];
+      if (!row) {
+        return res.status(404).json({
+          success: false, message: "Attachment not found",
+          code: "NOT_FOUND", responseCode: 404, timestamp: new Date().toISOString(),
+        });
+      }
+      if (!(await assertRecordAccess(req, res, row.Entity, row.EntityId, "write"))) return;
 
       const result = await database.executeStoredProcedure("sp_DeleteAttachment", {
         Id, CompId: req.user.CompId,

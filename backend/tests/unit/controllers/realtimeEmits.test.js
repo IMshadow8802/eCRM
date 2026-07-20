@@ -33,7 +33,7 @@ const { mockRes } = require("../../helpers/mockRes");
 
 const baseReq = (body = {}, user = {}) => ({
   user: { UserId: 7, CompId: 1, BranchId: 2, IsAdmin: false, ...user },
-  scope: { branchIds: [1, 2] },
+  scope: { branchIds: [1, 2], isAdmin: false },
   body,
   ip: "10.0.0.1",
   headers: { "user-agent": "jest" },
@@ -60,6 +60,30 @@ describe("taskController.save emits", () => {
     });
     // create — no TASK_DETAIL emit
     expect(emitToWorkspace).toHaveBeenCalledTimes(1);
+  });
+
+  it("assigning someone else pings the assignee's user room (NOTIFICATIONS)", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 201, ResponseMess: "Task created", TaskId: 11 }]),
+    );
+    const res = mockRes();
+    await taskController.save(
+      baseReq({ Title: "T", WorkspaceId: 5, AssignedToUserId: 9 }),
+      res,
+    );
+    expect(emitToUser).toHaveBeenCalledWith(9, SCOPES.NOTIFICATIONS);
+  });
+
+  it("self-assignment does NOT ping the user room", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 201, ResponseMess: "Task created", TaskId: 11 }]),
+    );
+    const res = mockRes();
+    await taskController.save(
+      baseReq({ Title: "T", WorkspaceId: 5, AssignedToUserId: 7 }), // == caller
+      res,
+    );
+    expect(emitToUser).not.toHaveBeenCalled();
   });
 
   it("update emits TASK_LIST and TASK_DETAIL", async () => {
@@ -136,6 +160,12 @@ describe("taskController.addComment emits", () => {
       workspaceId: 5,
       taskId: 11,
     });
+    // comment-count badges on board cards
+    expect(emitToWorkspace).toHaveBeenCalledWith(5, SCOPES.TASK_LIST, {
+      workspaceId: 5,
+    });
+    // watcher ids unknown in the controller — bell broadcast to the room
+    expect(emitToWorkspace).toHaveBeenCalledWith(5, SCOPES.NOTIFICATIONS);
   });
 
   it("does NOT emit when the SP returns an error row", async () => {
@@ -238,6 +268,84 @@ describe("taskController time + dependency emits", () => {
       workspaceId: 5,
       taskId: 11,
     });
+  });
+
+  it("deleteTimeEntry emits TASK_DETAIL with both client hints, skips without", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "ok" }]),
+    );
+    let res = mockRes();
+    await taskController.deleteTimeEntry(
+      baseReq({ Id: 9, TaskId: 11, WorkspaceId: 5 }),
+      res,
+    );
+    expect(emitToWorkspace).toHaveBeenCalledWith(5, SCOPES.TASK_DETAIL, {
+      workspaceId: 5,
+      taskId: 11,
+    });
+
+    emitToWorkspace.mockClear();
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "ok" }]),
+    );
+    res = mockRes();
+    await taskController.deleteTimeEntry(baseReq({ Id: 9 }), res);
+    expect(emitToWorkspace).not.toHaveBeenCalled();
+  });
+});
+
+describe("taskController pin + mark-read emits", () => {
+  it("pinComment emits TASK_COMMENTS (pins render in the comment list)", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "ok" }]),
+    );
+    const res = mockRes();
+    await taskController.pinComment(
+      baseReq({ CommentId: 3, IsPinned: true, TaskId: 11, WorkspaceId: 5 }),
+      res,
+    );
+    expect(emitToWorkspace).toHaveBeenCalledWith(5, SCOPES.TASK_COMMENTS, {
+      workspaceId: 5,
+      taskId: 11,
+    });
+  });
+
+  it("pinComment does NOT emit on SP error or without hints", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 403, ResponseMess: "denied" }]),
+    );
+    let res = mockRes();
+    await taskController.pinComment(
+      baseReq({ CommentId: 3, TaskId: 11, WorkspaceId: 5 }),
+      res,
+    );
+    expect(emitToWorkspace).not.toHaveBeenCalled();
+
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "ok" }]),
+    );
+    res = mockRes();
+    await taskController.pinComment(baseReq({ CommentId: 3 }), res);
+    expect(emitToWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("markCommentRead pings the CALLER's user room so other tabs clear badges", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "ok" }]),
+    );
+    const res = mockRes();
+    await taskController.markCommentRead(baseReq({ CommentId: 3 }), res);
+    expect(emitToUser).toHaveBeenCalledWith(7, SCOPES.NOTIFICATIONS); // req.user
+    expect(emitToWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("markCommentRead does NOT emit on SP error", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 404, ResponseMess: "not found" }]),
+    );
+    const res = mockRes();
+    await taskController.markCommentRead(baseReq({ CommentId: 3 }), res);
+    expect(emitToUser).not.toHaveBeenCalled();
   });
 });
 

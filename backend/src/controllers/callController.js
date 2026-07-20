@@ -1,6 +1,7 @@
 const database = require("../config/database");
 const responseHelper = require("../utils/responseHelper");
 const { logActivity, ACTIONS } = require("../utils/activityLogger");
+const { assertRecordAccess } = require("../middleware/permission");
 
 // Save-type SP: returns a single row with ResponseCode/ResponseMess.
 // Optional (req, log) fire an audit entry to tblActivityLog on success.
@@ -23,7 +24,7 @@ async function runSp(res, spName, params, failMessage, req, log) {
 
 const callController = {
   // Logs a call against a lead OR a ticket (exactly one of LeadId/TicketId set).
-  logCall(req, res) {
+  async logCall(req, res) {
     const { CompId, UserId } = req.user;
     const {
       LeadId = null,
@@ -35,6 +36,12 @@ const callController = {
       NextFollowupDate = null,
       FollowupRemarks = null,
     } = req.body;
+    if (!LeadId && !TicketId) {
+      return responseHelper.validationError(res, "LeadId or TicketId is required");
+    }
+    // The caller must be able to see the record they log a call against.
+    const entity = LeadId ? "lead" : "ticket";
+    if (!(await assertRecordAccess(req, res, entity, LeadId ?? TicketId))) return;
     return runSp(
       res,
       "sp_LogCall",

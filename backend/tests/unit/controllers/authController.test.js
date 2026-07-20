@@ -3,7 +3,6 @@ jest.mock("../../../src/config/database", () => ({
 }));
 jest.mock("../../../src/utils/encryption", () => ({
   comparePassword: jest.fn(),
-  hashPassword: jest.fn(),
 }));
 jest.mock("jsonwebtoken", () => ({
   sign: jest.fn(() => "fake.jwt.token"),
@@ -223,5 +222,98 @@ describe("authController.login response shape", () => {
     await authController.login({ body: {} }, res);
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json.mock.calls[0][0].code).toBe("VALIDATION_ERROR");
+  });
+
+  it("falls back to INVALID_CREDENTIALS for unmapped SP response codes", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[{ ResponseCode: 401, ResponseMess: "Nope" }], []],
+    });
+    const res = mockRes();
+    await authController.login({ body: { username: "x", password: "y" } }, res);
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json.mock.calls[0][0].code).toBe("INVALID_CREDENTIALS");
+  });
+
+  it("500s with LOGIN_ERROR when the DB throws", async () => {
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
+    const res = mockRes();
+    await authController.login({ body: { username: "x", password: "y" } }, res);
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json.mock.calls[0][0].code).toBe("LOGIN_ERROR");
+  });
+});
+
+// The public hashPassword endpoint (bcrypt oracle + SQL snippet echo) is gone.
+describe("authController hashPassword removal", () => {
+  it("no longer exposes a hashPassword handler", () => {
+    expect(authController.hashPassword).toBeUndefined();
+  });
+});
+
+describe("authController.getUserPermissions", () => {
+  const baseReq = (overrides = {}) => ({
+    params: { userId: "7" },
+    user: { UserId: 7, IsAdmin: false },
+    ...overrides,
+  });
+
+  it("400s without a userId param", async () => {
+    const res = mockRes();
+    await authController.getUserPermissions(baseReq({ params: {} }), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  it("403s a non-admin asking for someone else's permissions", async () => {
+    const res = mockRes();
+    await authController.getUserPermissions(
+      baseReq({ params: { userId: "9" } }),
+      res,
+    );
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json.mock.calls[0][0].code).toBe("ACCESS_DENIED");
+  });
+
+  it("returns the mapped menu tree for the caller's own permissions", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [
+        [
+          { ResponseCode: 200, MenuId: 1, ParentId: 0, Description: "Sales", Route: "/sales", CanView: 1 },
+          { ResponseCode: 200, MenuId: 2, ParentId: 1, Description: "Leads", Route: "/sales/leads", CanView: 1 },
+        ],
+      ],
+    });
+    const res = mockRes();
+    await authController.getUserPermissions(baseReq(), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    const data = res.json.mock.calls[0][0].data;
+    expect(data.userId).toBe(7);
+    expect(data.totalItems).toBe(2);
+    expect(data.menuItems[0].children).toHaveLength(1);
+  });
+
+  it("404s when the SP reports no permissions", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[{ ResponseCode: 404, MenuId: null }]],
+    });
+    const res = mockRes();
+    await authController.getUserPermissions(baseReq(), res);
+    expect(res.status).toHaveBeenCalledWith(404);
+  });
+
+  it("500s when the DB throws", async () => {
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
+    const res = mockRes();
+    await authController.getUserPermissions(baseReq(), res);
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json.mock.calls[0][0].code).toBe("PERMISSIONS_ERROR");
+  });
+});
+
+describe("authController.logout", () => {
+  it("returns 200 with a client-side invalidation message", async () => {
+    const res = mockRes();
+    await authController.logout({}, res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json.mock.calls[0][0].success).toBe(true);
   });
 });

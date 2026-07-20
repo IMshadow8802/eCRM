@@ -2,9 +2,12 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+import { http, HttpResponse } from "msw";
+
 import TaskDetailModal from "./TaskDetailModal";
 import useAuthStore from "../../../stores/useAuthStore";
 import { taskFixture } from "../../../test/mocks/handlers";
+import { server } from "../../../test/mocks/server";
 import renderWithProviders from "../../../test/renderWithProviders";
 
 const renderModal = (taskId, props = {}) =>
@@ -209,6 +212,108 @@ describe("TaskDetailModal", () => {
     const logBtns = screen.getAllByRole("button", { name: /Log time/i });
     await user.click(logBtns[0]);
     expect(await screen.findByTestId("log-time-modal")).toBeInTheDocument();
+  });
+
+  it("pin toggle sends TaskId + WorkspaceId emit-routing hints", async () => {
+    let pinBody;
+    server.use(
+      http.post(`*/api/tasks/getTaskComments`, async () =>
+        HttpResponse.json({
+          success: true,
+          message: "ok",
+          responseCode: 200,
+          data: {
+            comments: [
+              {
+                Id: 71,
+                TaskId: 501,
+                UserId: 1,
+                UserName: "Alice",
+                Comment: "pin me",
+                IsPinned: false,
+                CreatedDate: new Date().toISOString(),
+              },
+            ],
+            pagination: { currentPage: 1, pageSize: 100, totalRecords: 1, totalPages: 1 },
+          },
+        }),
+      ),
+      http.post(`*/api/tasks/pinTaskComment`, async ({ request }) => {
+        pinBody = await request.json();
+        return HttpResponse.json({ success: true, message: "ok", responseCode: 200 });
+      }),
+    );
+    renderModal(501);
+    await screen.findByText("Task 501");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: /Comments/i }));
+    await user.click(await screen.findByTestId("pin-71"));
+    await waitFor(() => {
+      expect(pinBody).toMatchObject({
+        CommentId: 71,
+        IsPinned: true,
+        TaskId: 501,
+        WorkspaceId: 100,
+      });
+    });
+  });
+
+  it("time entry delete sends TaskId + WorkspaceId emit-routing hints", async () => {
+    let deleteBody;
+    server.use(
+      http.post(`*/api/tasks/getTaskTimeEntries`, async () =>
+        HttpResponse.json({
+          success: true,
+          message: "ok",
+          responseCode: 200,
+          data: {
+            timeEntries: [
+              { Id: 81, TaskId: 501, UserId: 1, Hours: 2, LogDate: "2026-07-01" },
+            ],
+          },
+        }),
+      ),
+      http.post(`*/api/tasks/deleteTaskTimeEntry`, async ({ request }) => {
+        deleteBody = await request.json();
+        return HttpResponse.json({ success: true, message: "ok", responseCode: 200 });
+      }),
+    );
+    renderModal(501);
+    await screen.findByText("Task 501");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: /Time/i }));
+    await user.click(
+      await screen.findByRole("button", { name: /Delete time entry/i }),
+    );
+    await waitFor(() => {
+      expect(deleteBody).toMatchObject({
+        Id: 81,
+        TaskId: 501,
+        WorkspaceId: 100,
+      });
+    });
+  });
+
+  it("checklist add sends the WorkspaceId emit-routing hint", async () => {
+    let checklistBody;
+    server.use(
+      http.post(`*/api/tasks/saveTaskChecklist`, async ({ request }) => {
+        checklistBody = await request.json();
+        return HttpResponse.json({ success: true, message: "ok", responseCode: 201 });
+      }),
+    );
+    renderModal(501);
+    await screen.findByText("Task 501");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: /Checklist/i }));
+    await user.type(await screen.findByPlaceholderText(/Add a step/i), "step one{Enter}");
+    await waitFor(() => {
+      expect(checklistBody).toMatchObject({
+        TaskId: 501,
+        ItemText: "step one",
+        WorkspaceId: 100,
+      });
+    });
   });
 
   it("description edit + Save dispatches save mutation", async () => {

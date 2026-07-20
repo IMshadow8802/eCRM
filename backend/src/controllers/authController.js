@@ -1,7 +1,7 @@
 // src/controllers/authController.js
 const database = require("../config/database");
 const jwt = require("jsonwebtoken");
-const { comparePassword, hashPassword } = require("../utils/encryption");
+const { comparePassword } = require("../utils/encryption");
 
 // SP returns menu rows in PascalCase (MenuId, ParentId, CanAdd, ...).
 // We re-map to the camelCase shape the frontend already expects.
@@ -235,45 +235,6 @@ class AuthController {
         success: false,
         message: "Failed to retrieve permissions",
         code: "PERMISSIONS_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
-
-  async hashPassword(req, res) {
-    try {
-      const { password } = req.body;
-
-      if (!password) {
-        return res.status(400).json({
-          success: false,
-          message: "Password is required",
-          code: "VALIDATION_ERROR",
-          responseCode: 400,
-          timestamp: new Date().toISOString(),
-        });
-      }
-
-      const hashedPassword = await hashPassword(password);
-
-      return res.status(200).json({
-        success: true,
-        message: "Password hashed successfully",
-        responseCode: 200,
-        data: {
-          originalPassword: password,
-          hashedPassword,
-          usage: `UPDATE tblUser SET password = '${hashedPassword}' WHERE userid = YOUR_USER_ID;`,
-        },
-        timestamp: new Date().toISOString(),
-      });
-    } catch (err) {
-      console.error("Hash password error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Password hashing failed",
-        code: "HASH_ERROR",
         responseCode: 500,
         timestamp: new Date().toISOString(),
       });

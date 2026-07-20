@@ -21,8 +21,18 @@ beforeEach(() => {
   database.executeStoredProcedure.mockReset();
 });
 
+// Guard lookup: save/delete now verify the caller can see the follow-up's
+// lead (sp_FetchLeadDetail + canSeeRecord) before mutating.
+function mockLeadLookup(lead) {
+  database.executeStoredProcedure.mockResolvedValueOnce({
+    recordsets: [lead ? [lead] : [], [], []],
+  });
+}
+const visibleLead = { Id: 9, BranchId: 2, OwnerId: 7, CreatedBy: 7 };
+
 describe("followupController.save", () => {
   it("passes SourceCallId through to sp_SaveFollowUp when provided", async () => {
+    mockLeadLookup(visibleLead);
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [[{ ResponseCode: 200, ResponseMess: "Saved", FollowUpId: 12 }]],
     });
@@ -38,7 +48,7 @@ describe("followupController.save", () => {
     await followupController.save(req, res);
 
     expect(database.executeStoredProcedure).toHaveBeenNthCalledWith(
-      1,
+      2,
       "sp_SaveFollowUp",
       expect.objectContaining({
         LeadId: 9,
@@ -56,6 +66,7 @@ describe("followupController.save", () => {
   });
 
   it("defaults SourceCallId to null when absent from body", async () => {
+    mockLeadLookup(visibleLead);
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [[{ ResponseCode: 200, ResponseMess: "Saved", FollowUpId: 13 }]],
     });
@@ -64,13 +75,14 @@ describe("followupController.save", () => {
     await followupController.save(req, res);
 
     expect(database.executeStoredProcedure).toHaveBeenNthCalledWith(
-      1,
+      2,
       "sp_SaveFollowUp",
       expect.objectContaining({ SourceCallId: null }),
     );
   });
 
   it("accepts legacy LeadID field name", async () => {
+    mockLeadLookup({ Id: 21, BranchId: 2, OwnerId: 7, CreatedBy: 7 });
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [[{ ResponseCode: 200, ResponseMess: "Saved", FollowUpId: 14 }]],
     });
@@ -79,17 +91,18 @@ describe("followupController.save", () => {
     await followupController.save(req, res);
 
     expect(database.executeStoredProcedure).toHaveBeenNthCalledWith(
-      1,
+      2,
       "sp_SaveFollowUp",
       expect.objectContaining({ LeadId: 21 }),
     );
   });
 
   it("returns error status when SP rejects", async () => {
+    mockLeadLookup(visibleLead);
     database.executeStoredProcedure.mockResolvedValueOnce({
-      recordsets: [[{ ResponseCode: 400, ResponseMess: "LeadId required" }]],
+      recordsets: [[{ ResponseCode: 400, ResponseMess: "NextFollowupDate required" }]],
     });
-    const req = baseReq({ body: { Id: 0 } });
+    const req = baseReq({ body: { Id: 0, LeadId: 9 } });
     const res = mockRes();
     await followupController.save(req, res);
     expect(res.status).toHaveBeenCalledWith(400);
@@ -97,7 +110,22 @@ describe("followupController.save", () => {
     expect(res.json.mock.calls[0][0].data).toBeNull();
   });
 
+  // REGRESSION: save used to trust the client-supplied LeadId — a Self-scoped
+  // exec could attach follow-ups to any colleague's lead.
+  it("403s saving a follow-up on a lead the caller cannot see", async () => {
+    mockLeadLookup({ Id: 9, BranchId: 2, OwnerId: 3, CreatedBy: 3 });
+    const req = baseReq({
+      scope: { branchIds: [2], ownerIds: [7] },
+      body: { Id: 0, LeadId: 9 },
+    });
+    const res = mockRes();
+    await followupController.save(req, res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1); // lookup only
+  });
+
   it("handles DB error as 500", async () => {
+    mockLeadLookup(visibleLead);
     database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
     const req = baseReq({ body: { Id: 0, LeadId: 9 } });
     const res = mockRes();
@@ -165,6 +193,34 @@ describe("followupController.fetch", () => {
     );
   });
 
+  it("forwards the Status filter to sp_FetchFollowUp", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[{ ResponseCode: 200, ResponseMess: "Fetched", TotalRecords: 0, TotalPages: 0, CurrentPage: 1, PageSize: 10 }]],
+    });
+    const req = baseReq({ body: { Status: "Pending" } });
+    const res = mockRes();
+    await followupController.fetch(req, res);
+
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
+      "sp_FetchFollowUp",
+      expect.objectContaining({ Status: "Pending" }),
+    );
+  });
+
+  it("defaults Status to null (no filter) when absent", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[{ ResponseCode: 200, ResponseMess: "Fetched", TotalRecords: 0, TotalPages: 0, CurrentPage: 1, PageSize: 10 }]],
+    });
+    const req = baseReq();
+    const res = mockRes();
+    await followupController.fetch(req, res);
+
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
+      "sp_FetchFollowUp",
+      expect.objectContaining({ Status: null }),
+    );
+  });
+
   it("handles DB error as 500", async () => {
     database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
     const req = baseReq();
@@ -176,7 +232,17 @@ describe("followupController.fetch", () => {
 });
 
 describe("followupController.delete", () => {
-  it("deletes by Id and returns success", async () => {
+  // Delete resolves the follow-up's lead first (sp_FetchFollowUp by Id), then
+  // guards the lead, then deletes.
+  function mockFollowupLookup(row) {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[row]],
+    });
+  }
+
+  it("deletes by Id after verifying the follow-up's lead is visible", async () => {
+    mockFollowupLookup({ ResponseCode: 200, Id: 12, LeadId: 9 });
+    mockLeadLookup(visibleLead);
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [[{ ResponseCode: 200, ResponseMess: "Deleted" }]],
     });
@@ -184,9 +250,33 @@ describe("followupController.delete", () => {
     const res = mockRes();
     await followupController.delete(req, res);
 
-    expect(database.executeStoredProcedure).toHaveBeenNthCalledWith(1, "sp_DeleteFollowUp", { Id: 12 });
+    expect(database.executeStoredProcedure).toHaveBeenNthCalledWith(1, "sp_FetchFollowUp", { Id: 12 });
+    expect(database.executeStoredProcedure).toHaveBeenNthCalledWith(3, "sp_DeleteFollowUp", { Id: 12, CompId: 5 });
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json.mock.calls[0][0].success).toBe(true);
+  });
+
+  it("404s when the follow-up does not exist", async () => {
+    mockFollowupLookup({ ResponseCode: 404, ResponseMess: "Follow-up not found" });
+    const req = baseReq({ body: { Id: 99 } });
+    const res = mockRes();
+    await followupController.delete(req, res);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
+  });
+
+  // REGRESSION: delete used to take any Id with no ownership check at all.
+  it("403s deleting a follow-up whose lead the caller cannot see", async () => {
+    mockFollowupLookup({ ResponseCode: 200, Id: 12, LeadId: 9 });
+    mockLeadLookup({ Id: 9, BranchId: 9, OwnerId: 3, CreatedBy: 3 });
+    const req = baseReq({
+      scope: { branchIds: [2], ownerIds: [7] },
+      body: { Id: 12 },
+    });
+    const res = mockRes();
+    await followupController.delete(req, res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(2); // no delete call
   });
 
   it("handles DB error as 500", async () => {

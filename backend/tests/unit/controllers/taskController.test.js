@@ -19,7 +19,7 @@ const { mockRes } = require("../../helpers/mockRes");
 
 const baseReq = (overrides = {}) => ({
   user: { UserId: 7, CompId: 1, BranchId: 2, IsAdmin: false },
-  scope: { branchIds: [1, 2, 3] },
+  scope: { branchIds: [1, 2, 3], isAdmin: false },
   body: {},
   ip: "10.0.0.1",
   headers: { "user-agent": "jest" },
@@ -402,7 +402,8 @@ describe("taskController.deleteComment", () => {
     await taskController.deleteComment(
       baseReq({
         body: { Id: 9 },
-        user: { UserId: 7, CompId: 1, BranchId: 2, IsAdmin: true },
+        // Admin bypasses come from the per-request scope, not the JWT bit.
+        scope: { branchIds: [1, 2, 3], isAdmin: true },
       }),
       mockRes(),
     );
@@ -411,6 +412,26 @@ describe("taskController.deleteComment", () => {
       IsAdmin: 1,
     });
     expect(logActivity).toHaveBeenCalled();
+  });
+
+  // REGRESSION (stale-admin): a JWT minted while the user was admin must NOT
+  // grant a bypass once loadScope says they no longer are — before the fix,
+  // req.user.IsAdmin (the login-time bit) fed the SP and this received 1.
+  it("token IsAdmin=1 but scope isAdmin=false gets NO admin bypass", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "ok" }]),
+    );
+    await taskController.deleteComment(
+      baseReq({
+        body: { Id: 9 },
+        user: { UserId: 7, CompId: 1, BranchId: 2, IsAdmin: true }, // stale JWT
+        scope: { branchIds: [1, 2, 3], isAdmin: false }, // fresh truth
+      }),
+      mockRes(),
+    );
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({
+      IsAdmin: 0,
+    });
   });
 
   it("returns 500 when DB throws", async () => {
@@ -688,7 +709,7 @@ describe("taskController time-tracking + checklist + activity", () => {
     );
     await taskController.getTimeEntries(
       baseReq({
-        user: { UserId: 7, CompId: 1, BranchId: 2, IsAdmin: true },
+        scope: { branchIds: [1, 2, 3], isAdmin: true },
         body: { TaskId: 1 },
       }),
       mockRes(),

@@ -2,7 +2,7 @@ const database = require("../config/database");
 const { logActivity, ACTIONS } = require("../utils/activityLogger");
 const { cleanSpRows } = require("../utils/spHelpers");
 const attachmentController = require("./attachmentController");
-const { emitToWorkspace } = require("../realtime/events");
+const { emitToWorkspace, emitToUser } = require("../realtime/events");
 const { SCOPES } = require("../realtime/contract");
 
 class TaskController {
@@ -69,7 +69,7 @@ class TaskController {
         Watchers:
           typeof Watchers === "object" ? JSON.stringify(Watchers) : Watchers,
         ChecklistItemsJson: checklistItemsJson,
-        IsAdmin: req.user.IsAdmin ? 1 : 0,
+        IsAdmin: req.scope?.isAdmin ? 1 : 0,
         CompId: req.user.CompId,
         BranchId: req.user.BranchId,
       });
@@ -92,6 +92,8 @@ class TaskController {
               ActorUserId: req.user.UserId,
             })
             .catch((e) => console.error("sp_NotifyTaskAssigned failed:", e.message));
+          // Bell goes realtime: target the assignee's user room directly.
+          emitToUser(AssignedToUserId, SCOPES.NOTIFICATIONS);
         }
 
         // sp_SaveTask returns only TaskId — updates that omit WorkspaceId in
@@ -158,7 +160,7 @@ class TaskController {
         UserId: req.user.UserId,
         CompId: req.user.CompId,
         BranchId,
-        IsAdmin: req.user.IsAdmin ? 1 : 0,
+        IsAdmin: req.scope?.isAdmin ? 1 : 0,
         AccessibleBranchIdsJson: accessibleBranchIdsJson,
         PageNumber,
         PageSize,
@@ -215,7 +217,7 @@ class TaskController {
         UserId: req.user.UserId,
         CompId: req.user.CompId,
         BranchId: req.user.BranchId,
-        IsAdmin: req.user.IsAdmin,
+        IsAdmin: req.scope?.isAdmin ? 1 : 0,
       });
 
       const spResponse = result.recordsets[0][0];
@@ -284,7 +286,7 @@ class TaskController {
           UserId: req.user.UserId,
           CompId: req.user.CompId,
           BranchId: req.user.BranchId,
-          IsAdmin: req.user.IsAdmin,
+          IsAdmin: req.scope?.isAdmin ? 1 : 0,
         }
       );
 
@@ -360,7 +362,7 @@ class TaskController {
           UserId: req.user.UserId,
           Comment,
           ParentCommentId,
-          IsAdmin: req.user.IsAdmin ? 1 : 0,
+          IsAdmin: req.scope?.isAdmin ? 1 : 0,
           CompId: req.user.CompId,
           BranchId: req.user.BranchId,
         }
@@ -393,6 +395,14 @@ class TaskController {
             workspaceId: WorkspaceId,
             taskId: TaskId,
           });
+          // Comment-count badges on board cards.
+          emitToWorkspace(WorkspaceId, SCOPES.TASK_LIST, {
+            workspaceId: WorkspaceId,
+          });
+          // Watcher ids aren't known here — broadcast NOTIFICATIONS to the
+          // room; payloads are invalidation-only, non-watchers just refetch
+          // a cheap bell count.
+          emitToWorkspace(WorkspaceId, SCOPES.NOTIFICATIONS);
         }
       }
 
@@ -486,7 +496,7 @@ class TaskController {
         {
           Id,
           UserId: req.user.UserId,
-          IsAdmin: req.user.IsAdmin ? 1 : 0,
+          IsAdmin: req.scope?.isAdmin ? 1 : 0,
           CompId: req.user.CompId,
           BranchId: req.user.BranchId,
         }
@@ -610,7 +620,7 @@ class TaskController {
         {
           Id: 0,
           TaskId,
-          UserId: UserId || (req.user.IsAdmin ? null : req.user.UserId),
+          UserId: UserId || (req.scope?.isAdmin ? null : req.user.UserId),
           CompId: req.user.CompId,
           BranchId: req.user.BranchId,
           PageNumber,
@@ -660,7 +670,8 @@ class TaskController {
 
   async deleteTimeEntry(req, res) {
     try {
-      const { Id } = req.body;
+      // TaskId/WorkspaceId are emit-routing hints only; not passed to the SP.
+      const { Id, TaskId = null, WorkspaceId = null } = req.body;
 
       if (!Id || Id <= 0) {
         return res.status(400).json({
@@ -679,7 +690,7 @@ class TaskController {
           UserId: req.user.UserId,
           CompId: req.user.CompId,
           BranchId: req.user.BranchId,
-          IsAdmin: req.user.IsAdmin,
+          IsAdmin: req.scope?.isAdmin ? 1 : 0,
         }
       );
 
@@ -693,6 +704,15 @@ class TaskController {
           description: "Time entry deleted",
           req,
         });
+
+        // sp_DeleteTimeEntry doesn't return TaskId/WorkspaceId — emit only
+        // when the client supplied both hints.
+        if (WorkspaceId && TaskId) {
+          emitToWorkspace(WorkspaceId, SCOPES.TASK_DETAIL, {
+            workspaceId: WorkspaceId,
+            taskId: TaskId,
+          });
+        }
       }
 
       return res.status(spResponse.ResponseCode).json({
@@ -915,7 +935,9 @@ class TaskController {
 
   async pinComment(req, res) {
     try {
-      const { CommentId, IsPinned = true } = req.body;
+      // TaskId/WorkspaceId are emit-routing hints only; not passed to the SP.
+      const { CommentId, IsPinned = true, TaskId = null, WorkspaceId = null } =
+        req.body;
       if (!CommentId) {
         return res.status(400).json({
           success: false,
@@ -932,11 +954,19 @@ class TaskController {
           CommentId,
           IsPinned: IsPinned ? 1 : 0,
           UserId: req.user.UserId,
-          IsAdmin: req.user.IsAdmin ? 1 : 0,
+          IsAdmin: req.scope?.isAdmin ? 1 : 0,
           CompId: req.user.CompId,
         }
       );
       const spResponse = result.recordsets[0][0];
+
+      // Pins render inside the comments list — TASK_COMMENTS covers it.
+      if (spResponse.ResponseCode === 200 && WorkspaceId && TaskId) {
+        emitToWorkspace(WorkspaceId, SCOPES.TASK_COMMENTS, {
+          workspaceId: WorkspaceId,
+          taskId: TaskId,
+        });
+      }
 
       return res.status(spResponse.ResponseCode).json({
         success: spResponse.ResponseCode === 200,
@@ -973,6 +1003,12 @@ class TaskController {
         { CommentId, UserId: req.user.UserId }
       );
       const spResponse = result.recordsets[0][0];
+
+      // Reader's own bell count changed — sync their OTHER tabs/devices.
+      if (spResponse.ResponseCode === 200) {
+        emitToUser(req.user.UserId, SCOPES.NOTIFICATIONS);
+      }
+
       return res.status(spResponse.ResponseCode).json({
         success: spResponse.ResponseCode === 200,
         message: spResponse.ResponseMess,
@@ -1016,7 +1052,7 @@ class TaskController {
           DependsOnTaskId,
           Type,
           ActingUserId: req.user.UserId,
-          IsAdmin: req.user.IsAdmin ? 1 : 0,
+          IsAdmin: req.scope?.isAdmin ? 1 : 0,
           CompId: req.user.CompId,
         }
       );
@@ -1080,7 +1116,7 @@ class TaskController {
           TaskId,
           DependsOnTaskId,
           ActingUserId: req.user.UserId,
-          IsAdmin: req.user.IsAdmin ? 1 : 0,
+          IsAdmin: req.scope?.isAdmin ? 1 : 0,
           CompId: req.user.CompId,
         }
       );
@@ -1130,7 +1166,7 @@ class TaskController {
         {
           TaskId,
           UserId: req.user.UserId,
-          IsAdmin: req.user.IsAdmin ? 1 : 0,
+          IsAdmin: req.scope?.isAdmin ? 1 : 0,
           CompId: req.user.CompId,
         }
       );

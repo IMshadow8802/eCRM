@@ -12,6 +12,7 @@ const renderPage = () => renderWithProviders(<Pipelines />);
 
 let pipelines;
 let stages;
+let lastFetchBody;
 let lastSaveStageBody;
 let lastSavePipelineBody;
 
@@ -25,14 +26,17 @@ const seedPipelines = (initial = []) => {
     (p.Stages || []).map((s) => ({ ...s, PipelineId: p.Id })),
   );
   server.use(
-    http.post("*/api/config/fetchPipelines", async () =>
-      HttpResponse.json({
+    // The page fetches per-Entity — the handler filters like sp_FetchPipelines.
+    http.post("*/api/config/fetchPipelines", async ({ request }) => {
+      const body = await request.json();
+      lastFetchBody = body;
+      return HttpResponse.json({
         success: true,
         message: "ok",
         responseCode: 200,
-        data: { pipelines, stages },
-      }),
-    ),
+        data: { pipelines: pipelines.filter((p) => p.Entity === body.Entity), stages },
+      });
+    }),
     http.post("*/api/config/savePipeline", async ({ request }) => {
       const body = await request.json();
       lastSavePipelineBody = body;
@@ -71,6 +75,7 @@ const seedPipelines = (initial = []) => {
 
 describe("Pipelines page", () => {
   beforeEach(() => {
+    lastFetchBody = undefined;
     lastSaveStageBody = undefined;
     lastSavePipelineBody = undefined;
     useAuthStore.setState({
@@ -90,12 +95,51 @@ describe("Pipelines page", () => {
           { Id: 42, Name: "Qualified", SortOrder: 2, StageType: "open", Color: "#F59E0B" },
         ],
       },
+      {
+        Id: 10,
+        Entity: "ticket",
+        Name: "Support",
+        IsDefault: true,
+        Stages: [{ Id: 51, Name: "Open", SortOrder: 1, StageType: "open", Color: "#3B82F6" }],
+      },
     ]);
   });
 
-  it("lists pipelines for Entity='lead'", async () => {
+  it("lists pipelines for Entity='lead' by default", async () => {
     renderPage();
     expect(await screen.findByText("Sales Pipeline")).toBeInTheDocument();
+    expect(screen.queryByText("Support")).not.toBeInTheDocument();
+    await waitFor(() => expect(lastFetchBody).toEqual({ Entity: "lead" }));
+  });
+
+  it("switches to the Tickets tab and fetches with Entity='ticket'", async () => {
+    renderPage();
+    await screen.findByText("Sales Pipeline");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("pipeline-entity-tabs-ticket"));
+
+    expect(await screen.findByText("Support")).toBeInTheDocument();
+    expect(screen.queryByText("Sales Pipeline")).not.toBeInTheDocument();
+    await waitFor(() => expect(lastFetchBody).toEqual({ Entity: "ticket" }));
+  });
+
+  it("creates a pipeline under the active entity (Entity='ticket')", async () => {
+    renderPage();
+    await screen.findByText("Sales Pipeline");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("pipeline-entity-tabs-ticket"));
+    await screen.findByText("Support");
+
+    await user.click(screen.getByTestId("master-grid-create"));
+    await user.type(await screen.findByLabelText(/Pipeline Name/), "Escalations");
+    await user.click(screen.getByRole("button", { name: /create pipeline/i }));
+
+    await waitFor(() => {
+      expect(lastSavePipelineBody).toMatchObject({ Id: 0, Entity: "ticket", Name: "Escalations" });
+    });
+    expect(await screen.findByText("Escalations")).toBeInTheDocument();
   });
 
   it("drills into a pipeline and lists its stages", async () => {
@@ -204,6 +248,119 @@ describe("Pipelines page", () => {
       expect(lastSavePipelineBody).toMatchObject({ Id: 0, Entity: "lead", Name: "Support Pipeline" });
     });
     expect(await screen.findByText("Support Pipeline")).toBeInTheDocument();
+  });
+
+  it("requires a pipeline name before saving", async () => {
+    renderPage();
+    await screen.findByText("Sales Pipeline");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("master-grid-create"));
+    await user.click(screen.getByRole("button", { name: /create pipeline/i }));
+
+    expect(await screen.findByText("Pipeline name is required")).toBeInTheDocument();
+    expect(lastSavePipelineBody).toBeUndefined();
+  });
+
+  it("surfaces the API error when savePipeline fails", async () => {
+    server.use(
+      http.post("*/api/config/savePipeline", () =>
+        HttpResponse.json({ success: false, message: "Duplicate pipeline", responseCode: 400 }),
+      ),
+    );
+    renderPage();
+    await screen.findByText("Sales Pipeline");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("master-grid-create"));
+    await user.type(await screen.findByLabelText(/Pipeline Name/), "Sales Pipeline");
+    await user.click(screen.getByRole("button", { name: /create pipeline/i }));
+
+    expect(await screen.findByText("Duplicate pipeline")).toBeInTheDocument();
+  });
+
+  it("surfaces the API error when saveStage fails", async () => {
+    server.use(
+      http.post("*/api/config/saveStage", () =>
+        HttpResponse.json({ success: false, message: "Duplicate stage", responseCode: 400 }),
+      ),
+    );
+    renderPage();
+    await screen.findByText("Sales Pipeline");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("master-grid-edit-9"));
+    await screen.findByText("New");
+
+    await user.click(screen.getByTestId("master-grid-create"));
+    await user.type(await screen.findByLabelText(/Stage Name/), "Won");
+    await user.click(screen.getByRole("button", { name: /create stage/i }));
+
+    expect(await screen.findByText("Duplicate stage")).toBeInTheDocument();
+  });
+
+  it("surfaces the API error when deleteStage fails", async () => {
+    server.use(
+      http.post("*/api/config/deleteStage", () =>
+        HttpResponse.json({ success: false, message: "Stage has leads", responseCode: 400 }),
+      ),
+    );
+    renderPage();
+    await screen.findByText("Sales Pipeline");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("master-grid-edit-9"));
+    await screen.findByText("New");
+
+    await user.click(screen.getByTestId("master-grid-delete-41"));
+    const dialog = await screen.findByTestId("confirmation-dialog");
+    await user.click(within(dialog).getByRole("button", { name: /delete stage/i }));
+
+    expect(await screen.findByText("Stage has leads")).toBeInTheDocument();
+  });
+
+  it("requires a stage name before saving", async () => {
+    renderPage();
+    await screen.findByText("Sales Pipeline");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("master-grid-edit-9"));
+    await screen.findByText("New");
+
+    await user.click(screen.getByTestId("master-grid-create"));
+    await user.click(screen.getByRole("button", { name: /create stage/i }));
+
+    expect(await screen.findByText("Stage name is required")).toBeInTheDocument();
+    expect(lastSaveStageBody).toBeUndefined();
+  });
+
+  it("falls back to a generic error when the savePipeline request errors", async () => {
+    server.use(http.post("*/api/config/savePipeline", () => HttpResponse.error()));
+    renderPage();
+    await screen.findByText("Sales Pipeline");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("master-grid-create"));
+    await user.type(await screen.findByLabelText(/Pipeline Name/), "Escalations");
+    await user.click(screen.getByRole("button", { name: /create pipeline/i }));
+
+    expect(await screen.findByText("Failed to create pipeline")).toBeInTheDocument();
+  });
+
+  it("falls back to a generic error when the deleteStage request errors", async () => {
+    server.use(http.post("*/api/config/deleteStage", () => HttpResponse.error()));
+    renderPage();
+    await screen.findByText("Sales Pipeline");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("master-grid-edit-9"));
+    await screen.findByText("New");
+
+    await user.click(screen.getByTestId("master-grid-delete-41"));
+    const dialog = await screen.findByTestId("confirmation-dialog");
+    await user.click(within(dialog).getByRole("button", { name: /delete stage/i }));
+
+    expect(await screen.findByText("Failed to delete stage!")).toBeInTheDocument();
   });
 
   it("shows an empty state when there are no pipelines", async () => {

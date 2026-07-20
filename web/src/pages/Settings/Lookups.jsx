@@ -29,6 +29,9 @@ const KIND_OPTIONS = [
   { value: "lead_source", label: "Lead Sources" },
   { value: "call_outcome", label: "Call Outcomes" },
   { value: "lost_reason", label: "Lost Reasons" },
+  // tblTicket.ResolutionId points at Kind='resolution' (required to resolve
+  // a ticket — sp_ResolveTicket rejects without one).
+  { value: "resolution", label: "Ticket Resolutions" },
 ];
 
 const emptyForm = { Value: "", SortOrder: "0" };
@@ -168,7 +171,10 @@ const Lookups = () => {
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", flexGrow: 1 }}>
-      <PageHeader title="Lookups" subtitle="Manage lead source, call outcome and lost-reason lists." />
+      <PageHeader
+        title="Lookups"
+        subtitle="Manage lead source, call outcome, lost-reason and ticket-resolution lists."
+      />
       <Helmet>
         <title>PRD Infotech | Lookups</title>
       </Helmet>

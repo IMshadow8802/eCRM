@@ -119,6 +119,60 @@ describe("LeadCreateModal", () => {
     expect(captured).toMatchObject({ OwnerId: 2, StageId: 4 });
   }, 15000);
 
+  it("edit mode: prefills the form from the lead and posts its Id with null CustomJSON", async () => {
+    const LEAD = {
+      Id: 55,
+      Name: "Acme Corp",
+      MobileNo: "9990001111",
+      AltMobile: "8880002222",
+      Email: "acme@example.com",
+      SourceId: 5,
+      PipelineId: 9,
+      StageId: 3,
+      OwnerId: 1,
+      EstValue: 15000,
+      NextFollowupDate: "2026-07-10T00:00:00.000Z",
+    };
+    let captured;
+    // Custom fields ARE configured — edit mode must still not touch them.
+    mockReads([{ Id: 71, Label: "Region", Type: "text", IsRequired: false }]);
+    mockSave((body) => {
+      captured = body;
+    });
+    const onClose = vi.fn();
+    renderWithProviders(<LeadCreateModal open lead={LEAD} onClose={onClose} />, {
+      router: false,
+    });
+    const user = userEvent.setup();
+
+    expect(screen.getByText("Edit Lead")).toBeInTheDocument();
+    expect(screen.getByTestId("lead-name")).toHaveValue("Acme Corp");
+    expect(screen.getByTestId("lead-mobile")).toHaveValue("9990001111");
+    expect(screen.getByTestId("lead-alt-mobile")).toHaveValue("8880002222");
+    expect(screen.getByTestId("lead-email")).toHaveValue("acme@example.com");
+    // Custom fields and attachments belong to the detail page in edit mode.
+    expect(screen.queryByText("Custom fields")).not.toBeInTheDocument();
+    expect(screen.queryByText("Attachments")).not.toBeInTheDocument();
+
+    await user.clear(screen.getByTestId("lead-name"));
+    await user.type(screen.getByTestId("lead-name"), "Acme Renamed");
+    await user.click(screen.getByTestId("lead-create-submit"));
+
+    await waitFor(() => expect(captured).toBeTruthy());
+    expect(captured).toMatchObject({
+      Id: 55,
+      Name: "Acme Renamed",
+      MobileNo: "9990001111",
+      OwnerId: 1,
+      PipelineId: 9,
+      StageId: 3,
+      EstValue: 15000,
+    });
+    // null CustomJSON = sp_SaveLead skips the merge, stored values survive.
+    expect(captured.CustomJSON).toBeNull();
+    expect(onClose).toHaveBeenCalled();
+  }, 15000);
+
   it("blocks submit and skips saveLeads when required fields are empty", async () => {
     const saveSpy = vi.fn();
     mockSave(saveSpy);

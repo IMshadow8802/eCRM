@@ -3,7 +3,8 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { enqueueSnackbar } from "notistack";
-import { UserPlus } from "lucide-react";
+import { Pencil, UserPlus } from "lucide-react";
+import dayjs from "dayjs";
 
 import { Modal, Button, TextInput, NumberInput, DateField, Combobox } from "../../components/ui";
 import DynamicField from "../../components/DynamicField";
@@ -50,12 +51,32 @@ const EMPTY = {
   NextFollowupDate: "",
 };
 
+// Map a fetched lead row (sp_FetchLeads / sp_FetchLeadDetail shape) onto the
+// form's value shape.
+const leadToForm = (lead) => ({
+  Name: lead.Name ?? "",
+  MobileNo: lead.MobileNo ?? "",
+  AltMobile: lead.AltMobile ?? "",
+  Email: lead.Email ?? "",
+  SourceId: lead.SourceId ?? null,
+  PipelineId: lead.PipelineId ?? null,
+  StageId: lead.StageId ?? null,
+  OwnerId: lead.OwnerId ?? null,
+  EstValue: lead.EstValue == null ? "" : String(lead.EstValue),
+  NextFollowupDate: lead.NextFollowupDate
+    ? dayjs(lead.NextFollowupDate).format("YYYY-MM-DD")
+    : "",
+});
+
 /**
- * Creates a lead via the config-engine sp_SaveLead (Id=0 insert). Core lead
- * fields go through RHF + Zod; per-company custom fields (Entity='lead') render
- * exactly like LeadDetail via DynamicField and ship in CustomJSON.
+ * Creates or edits a lead via the config-engine sp_SaveLead (@Id=0 insert,
+ * @Id>0 update). Pass a `lead` row to edit it. Core lead fields go through
+ * RHF + Zod; per-company custom fields (Entity='lead') render via DynamicField
+ * and ship in CustomJSON on create only — in edit mode CustomJSON is null so
+ * the SP leaves stored custom values untouched (they're edited on LeadDetail).
  */
-export default function LeadCreateModal({ open, onClose, onCreated }) {
+export default function LeadCreateModal({ open, onClose, onSaved, lead = null }) {
+  const isEdit = Boolean(lead?.Id);
   const {
     control,
     handleSubmit,
@@ -122,6 +143,13 @@ export default function LeadCreateModal({ open, onClose, onCreated }) {
     [users]
   );
 
+  // Prefill from the lead being edited (or clear back to blank for create).
+  useEffect(() => {
+    if (!open) return;
+    reset(lead?.Id ? leadToForm(lead) : EMPTY);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, lead?.Id, reset]);
+
   // Default to the company's default pipeline once pipelines load.
   useEffect(() => {
     if (!open || pipelineId != null || pipelines.length === 0) return;
@@ -147,8 +175,8 @@ export default function LeadCreateModal({ open, onClose, onCreated }) {
 
   const saveMutation = useApiMutation({
     endpoint: SALES_ENDPOINTS.leads.saveLeads,
-    successMessage: "Lead created",
-    invalidateQueries: [["leads"]],
+    successMessage: isEdit ? "Lead updated" : "Lead created",
+    invalidateQueries: [["leads"], ["sales-leads"], ["lead-detail"]],
   });
 
   const handleClose = () => {
@@ -165,7 +193,7 @@ export default function LeadCreateModal({ open, onClose, onCreated }) {
     }));
     try {
       const saved = await saveMutation.mutateAsync({
-        Id: 0,
+        Id: lead?.Id ?? 0,
         Name: values.Name.trim(),
         MobileNo: values.MobileNo.trim(),
         AltMobile: values.AltMobile?.trim() || null,
@@ -176,10 +204,12 @@ export default function LeadCreateModal({ open, onClose, onCreated }) {
         OwnerId: values.OwnerId,
         EstValue: values.EstValue === "" ? null : Number(values.EstValue),
         NextFollowupDate: values.NextFollowupDate || null,
-        CustomJSON: JSON.stringify(customJson),
+        // Edit touches base fields only — null CustomJSON makes sp_SaveLead
+        // skip the custom-value merge, so stored custom fields survive.
+        CustomJSON: isEdit ? null : JSON.stringify(customJson),
       });
       const newId = saved?.Id;
-      if (newId && attachmentsRef.current?.stagedCount) {
+      if (!isEdit && newId && attachmentsRef.current?.stagedCount) {
         const { failed } = await attachmentsRef.current.uploadStaged(newId);
         if (failed)
           enqueueSnackbar(`${failed} file(s) failed to upload — add them from the record`, {
@@ -188,7 +218,7 @@ export default function LeadCreateModal({ open, onClose, onCreated }) {
       }
       reset(EMPTY);
       setCustom({});
-      onCreated?.();
+      onSaved?.();
       onClose?.();
     } catch {
       // useApiMutation already surfaced an error toast.
@@ -197,7 +227,11 @@ export default function LeadCreateModal({ open, onClose, onCreated }) {
 
   return (
     <Modal open={open} onClose={handleClose} size="lg" data-testid="lead-create-modal">
-      <Modal.Header title="New Lead" icon={<UserPlus size={18} />} onClose={handleClose} />
+      <Modal.Header
+        title={isEdit ? "Edit Lead" : "New Lead"}
+        icon={isEdit ? <Pencil size={18} /> : <UserPlus size={18} />}
+        onClose={handleClose}
+      />
       <Modal.Body>
         <form
           id="lead-create-form"
@@ -360,7 +394,7 @@ export default function LeadCreateModal({ open, onClose, onCreated }) {
             />
           </div>
 
-          {fieldDefs.length > 0 && (
+          {!isEdit && fieldDefs.length > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Custom fields</h3>
               <div
@@ -382,10 +416,14 @@ export default function LeadCreateModal({ open, onClose, onCreated }) {
             </div>
           )}
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Attachments</h3>
-            <Attachments ref={attachmentsRef} entity="lead" entityId={null} />
-          </div>
+          {/* Custom fields + attachments already live on the lead's detail
+              page — the edit modal only handles the base fields. */}
+          {!isEdit && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Attachments</h3>
+              <Attachments ref={attachmentsRef} entity="lead" entityId={null} />
+            </div>
+          )}
         </form>
       </Modal.Body>
       <Modal.Footer>
@@ -398,7 +436,7 @@ export default function LeadCreateModal({ open, onClose, onCreated }) {
           loading={saveMutation.isPending}
           data-testid="lead-create-submit"
         >
-          Create Lead
+          {isEdit ? "Save Changes" : "Create Lead"}
         </Button>
       </Modal.Footer>
     </Modal>

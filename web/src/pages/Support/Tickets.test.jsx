@@ -49,6 +49,16 @@ vi.mock("./TicketDetailModal", () => ({
     open ? <div data-testid="ticket-detail-modal">ticket:{ticketId}</div> : null,
 }));
 
+vi.mock("./DeleteTicketModal", () => ({
+  __esModule: true,
+  default: ({ open, ticketId, ticketNo }) =>
+    open ? (
+      <div data-testid="delete-ticket-modal">
+        delete:{ticketId}:{ticketNo}
+      </div>
+    ) : null,
+}));
+
 vi.mock("../../hooks/useApiQuery", () => ({
   useApiQuery: vi.fn((cfg) => {
     if (cfg?.endpoint === "/api/config/fetchPipelines") {
@@ -194,6 +204,22 @@ describe("Support Tickets page", () => {
       getByTestId("ticket-open-42").click();
     });
     expect(await screen.findByTestId("ticket-detail-modal")).toBeInTheDocument();
+  });
+
+  it("has a delete icon in the action column that opens the confirm modal", async () => {
+    renderPage();
+    const cfg = useServerTable.mock.calls.at(-1)[0];
+    const col = cfg.columns.find((c) => c.id === "open");
+
+    const { getByTestId } = renderCell(
+      col.Cell({ row: { original: { Id: 42, TicketNo: "TKT-042" } } })
+    );
+    expect(screen.queryByTestId("delete-ticket-modal")).not.toBeInTheDocument();
+    act(() => {
+      getByTestId("ticket-delete-42").click();
+    });
+    const modal = await screen.findByTestId("delete-ticket-modal");
+    expect(modal).toHaveTextContent("delete:42:TKT-042");
   });
 
   it("resolves the Assignee column against the bulk-loaded users list", () => {

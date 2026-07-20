@@ -15,6 +15,7 @@ import { useSnackbar } from "notistack";
 import PageHeader from "../../components/PageHeader";
 import MasterChipGrid from "../../components/MasterChipGrid";
 import ConfirmationDialog from "../../components/ConfirmationDialog";
+import Tabs from "../../components/ui/Tabs";
 import {
   FormModal,
   FormContainer,
@@ -34,7 +35,11 @@ import {
   deleteStage,
 } from "../../api/salesQueries";
 
-const ENTITY = "lead";
+// Same config engine serves both modules; the tab switches the Entity key.
+const ENTITY_OPTIONS = [
+  { value: "lead", label: "Leads" },
+  { value: "ticket", label: "Tickets" },
+];
 
 const STAGE_TYPE_OPTIONS = [
   { value: "open", label: "Open" },
@@ -49,6 +54,7 @@ const Pipelines = () => {
   const { enqueueSnackbar } = useSnackbar();
   const confirmation = useConfirmation();
 
+  const [entity, setEntity] = useState(ENTITY_OPTIONS[0].value);
   const [view, setView] = useState("pipelines"); // 'pipelines' | 'stages'
   const [selectedPipelineId, setSelectedPipelineId] = useState(null);
 
@@ -66,10 +72,20 @@ const Pipelines = () => {
   const [isSavingStage, setIsSavingStage] = useState(false);
 
   const query = useApiQuery({
-    queryKey: ["pipelines", ENTITY],
+    queryKey: ["pipelines", entity],
     endpoint: SALES_ENDPOINTS.config.fetchPipelines,
-    params: { Entity: ENTITY },
+    params: { Entity: entity },
   });
+
+  // Switching entity always lands back on the pipeline list — the drilled-in
+  // pipeline belongs to the other entity.
+  const handleEntityChange = (next) => {
+    setEntity(next);
+    setView("pipelines");
+    setSelectedPipelineId(null);
+    setPipelineSearch("");
+    setStageSearch("");
+  };
 
   const pipelines = query.data?.pipelines || [];
   const pipelineItems = useMemo(() => {
@@ -111,7 +127,7 @@ const Pipelines = () => {
     }
     setIsSavingPipeline(true);
     try {
-      const response = await savePipeline({ Id: 0, Entity: ENTITY, Name: pipelineForm.Name.trim() });
+      const response = await savePipeline({ Id: 0, Entity: entity, Name: pipelineForm.Name.trim() });
       if (response.data.success) {
         enqueueSnackbar("Pipeline created successfully!", { variant: "success" });
         closePipelineModal();
@@ -242,13 +258,22 @@ const Pipelines = () => {
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", flexGrow: 1 }}>
-      <PageHeader title="Pipelines" subtitle="Configure the pipelines and stages leads move through." />
+      <PageHeader
+        title="Pipelines"
+        subtitle="Configure the pipelines and stages your leads and tickets move through."
+      />
       <Helmet>
         <title>PRD Infotech | Pipelines</title>
       </Helmet>
 
       {view === "pipelines" ? (
-        <Box sx={{ mt: 1.5 }}>
+        <Box sx={{ mt: 1.5, display: "flex", flexDirection: "column", gap: 1.5 }}>
+          <Tabs
+            value={entity}
+            onChange={handleEntityChange}
+            items={ENTITY_OPTIONS}
+            data-testid="pipeline-entity-tabs"
+          />
           <MasterChipGrid
             items={pipelineItems}
             nameKey="Name"

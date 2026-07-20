@@ -9,6 +9,7 @@ const { mockRes } = require("../../helpers/mockRes");
 function baseReq(overrides = {}) {
   return {
     user: { UserId: 7, CompId: 5, BranchId: 2, IsAdmin: false },
+    scope: { branchIds: [2], ownerIds: null, isAdmin: false },
     body: {},
     ...overrides,
   };
@@ -18,8 +19,22 @@ beforeEach(() => {
   database.executeStoredProcedure.mockReset();
 });
 
+// Guard lookup: logCall now verifies the caller can see the lead/ticket the
+// call is logged against (sp_FetchLeadDetail / sp_FetchTicketDetail).
+function mockLeadLookup(lead) {
+  database.executeStoredProcedure.mockResolvedValueOnce({
+    recordsets: [lead ? [lead] : [], [], []],
+  });
+}
+function mockTicketLookup(ticket) {
+  database.executeStoredProcedure.mockResolvedValueOnce({
+    recordsets: [ticket ? [ticket] : [], [], [], []],
+  });
+}
+
 describe("callController.logCall", () => {
   it("logs a ticket call (TicketId set, LeadId null)", async () => {
+    mockTicketLookup({ Id: 4, BranchId: 2, AssignedTo: 3, CreatedBy: 3 });
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordset: [{ ResponseCode: 200, ResponseMess: "Logged", Id: 60 }],
     });
@@ -34,6 +49,7 @@ describe("callController.logCall", () => {
   });
 
   it("injects CompId/UserId and forwards a lead call with NextFollowupDate", async () => {
+    mockLeadLookup({ Id: 9, BranchId: 2, OwnerId: 3, CreatedBy: 3 });
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordset: [{ ResponseCode: 200, ResponseMess: "Logged", Id: 55 }],
     });
@@ -72,6 +88,7 @@ describe("callController.logCall", () => {
   });
 
   it("defaults optional fields to null when absent from body", async () => {
+    mockLeadLookup({ Id: 9, BranchId: 2, OwnerId: 3, CreatedBy: 3 });
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordset: [{ ResponseCode: 200, ResponseMess: "Logged", Id: 56 }],
     });
@@ -92,15 +109,51 @@ describe("callController.logCall", () => {
     );
   });
 
-  it("returns error status when SP rejects", async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce({
-      recordset: [{ ResponseCode: 400, ResponseMess: "LeadId required" }],
-    });
+  it("400s when neither LeadId nor TicketId is provided, without touching the DB", async () => {
     const req = baseReq({ body: { Direction: "Outbound" } });
     const res = mockRes();
     await callController.logCall(req, res);
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json.mock.calls[0][0].success).toBe(false);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  it("returns error status when SP rejects", async () => {
+    mockLeadLookup({ Id: 9, BranchId: 2, OwnerId: 7, CreatedBy: 7 });
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordset: [{ ResponseCode: 400, ResponseMess: "Direction required" }],
+    });
+    const req = baseReq({ body: { LeadId: 9 } });
+    const res = mockRes();
+    await callController.logCall(req, res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json.mock.calls[0][0].success).toBe(false);
+  });
+
+  // REGRESSION: logCall used to trust the client-supplied LeadId/TicketId — a
+  // Self-scoped user could pollute any record's timeline (and reschedule its
+  // follow-up) by posting a foreign Id.
+  it("403s logging a call against a lead the caller cannot see", async () => {
+    mockLeadLookup({ Id: 9, BranchId: 9, OwnerId: 3, CreatedBy: 3 });
+    const req = baseReq({
+      scope: { branchIds: [2], ownerIds: [7] },
+      body: { LeadId: 9, Direction: "Outbound" },
+    });
+    const res = mockRes();
+    await callController.logCall(req, res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1); // lookup only
+  });
+
+  it("403s logging a call against a ticket outside the caller's scope", async () => {
+    mockTicketLookup({ Id: 4, BranchId: 9, AssignedTo: 3, CreatedBy: 3 });
+    const req = baseReq({
+      scope: { branchIds: [2], ownerIds: [7] },
+      body: { TicketId: 4, Direction: "in" },
+    });
+    const res = mockRes();
+    await callController.logCall(req, res);
+    expect(res.status).toHaveBeenCalledWith(403);
   });
 
   it("handles DB error as 500", async () => {

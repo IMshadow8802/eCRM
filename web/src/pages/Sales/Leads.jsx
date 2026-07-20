@@ -4,7 +4,7 @@ import { Helmet } from "react-helmet-async";
 import { Box } from "@mui/material";
 import { MaterialReactTable } from "material-react-table";
 import { useNavigate } from "react-router-dom";
-import { ArrowRightLeft, Plus, Trash2 } from "lucide-react";
+import { ArrowRightLeft, Pencil, Plus, Trash2 } from "lucide-react";
 import dayjs from "dayjs";
 
 import { Button, Combobox, IconButton, Tooltip } from "../../components/ui";
@@ -34,8 +34,9 @@ const formatDate = (value) => (value ? dayjs(value).format("DD-MMM-YYYY") : "—
 const Leads = () => {
   const navigate = useNavigate();
 
-  // Create modal + per-row transfer/delete targets (null = closed).
+  // Create modal + per-row edit/transfer/delete targets (null = closed).
   const [createOpen, setCreateOpen] = useState(false);
+  const [editLead, setEditLead] = useState(null);
   const [transferLead, setTransferLead] = useState(null);
   const [deleteLead, setDeleteLead] = useState(null);
 
@@ -148,6 +149,17 @@ const Leads = () => {
     // propagation to avoid also navigating to the lead detail.
     renderRowActions: ({ row }) => (
       <Box sx={{ display: "flex", gap: 0.5 }} onClick={(e) => e.stopPropagation()}>
+        <Tooltip title="Edit">
+          <IconButton
+            size="sm"
+            variant="ghost"
+            aria-label="Edit lead"
+            data-testid={`edit-lead-${row.original.Id}`}
+            onClick={() => setEditLead(row.original)}
+          >
+            <Pencil size={16} />
+          </IconButton>
+        </Tooltip>
         <Tooltip title="Transfer">
           <IconButton
             size="sm"
@@ -234,7 +246,14 @@ const Leads = () => {
         <MaterialReactTable table={table} />
       </Box>
 
-      <LeadCreateModal open={createOpen} onClose={() => setCreateOpen(false)} />
+      <LeadCreateModal
+        open={createOpen || Boolean(editLead)}
+        lead={editLead}
+        onClose={() => {
+          setCreateOpen(false);
+          setEditLead(null);
+        }}
+      />
 
       <TransferLeadModal
         open={Boolean(transferLead)}

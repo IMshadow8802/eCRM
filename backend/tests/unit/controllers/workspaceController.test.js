@@ -29,7 +29,7 @@ const { mockRes } = require("../../helpers/mockRes");
 function baseReq(overrides = {}) {
   return {
     user: { UserId: 7, CompId: 1, BranchId: 2, IsAdmin: false },
-    scope: { branchIds: [1, 2, 3] },
+    scope: { branchIds: [1, 2, 3], isAdmin: false },
     body: {},
     ip: "10.0.0.1",
     headers: { "user-agent": "jest" },
@@ -271,7 +271,7 @@ describe("workspaceController.fetch", () => {
         UserId: 7,
         CompId: 1,
         BranchId: 2,
-        IsAdmin: false,
+        IsAdmin: 0,
         AccessibleBranchIdsJson: JSON.stringify([1, 2, 3]),
         PageNumber: 1,
         PageSize: 25,
@@ -428,7 +428,7 @@ describe("workspaceController.addMember", () => {
         UserId: 9,
         Role: "member",
         ActingUserId: 7,
-        IsAdmin: false,
+        IsAdmin: 0,
         CompId: 1,
       }),
     );
@@ -769,12 +769,32 @@ describe("workspaceController.save — acting identity (lifecycle contract)", ()
     );
     const req = baseReq({
       user: { UserId: 2, CompId: 1, BranchId: 2, IsAdmin: true },
+      scope: { branchIds: [1, 2, 3], isAdmin: true },
       body: { Id: 5, Name: "Renamed", Type: "shared" },
     });
     await workspaceController.save(req, mockRes());
 
     expect(database.executeStoredProcedure.mock.calls[0][1]).toEqual(
       expect.objectContaining({ ActingUserId: 2, IsAdmin: 1 }),
+    );
+  });
+
+  // REGRESSION (stale-admin): the JWT's login-time IsAdmin bit must not win
+  // over the per-request scope computed by loadScope. Before the fix this
+  // passed IsAdmin: 1 to the SP off the stale token.
+  it("token IsAdmin=1 but scope isAdmin=false gets NO admin bypass", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "Workspace updated", WorkspaceId: 5 }]),
+    );
+    const req = baseReq({
+      user: { UserId: 2, CompId: 1, BranchId: 2, IsAdmin: true }, // stale JWT
+      scope: { branchIds: [1, 2, 3], isAdmin: false }, // fresh truth
+      body: { Id: 5, Name: "Renamed", Type: "shared" },
+    });
+    await workspaceController.save(req, mockRes());
+
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toEqual(
+      expect.objectContaining({ ActingUserId: 2, IsAdmin: 0 }),
     );
   });
 
@@ -992,6 +1012,7 @@ describe("workspaceController.delete", () => {
     );
     const req = baseReq({
       user: { UserId: 2, CompId: 1, BranchId: 2, IsAdmin: true },
+      scope: { branchIds: [1, 2, 3], isAdmin: true },
       body: { WorkspaceId: 10007 },
     });
     const res = mockRes();

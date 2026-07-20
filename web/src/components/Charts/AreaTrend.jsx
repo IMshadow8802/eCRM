@@ -1,6 +1,7 @@
 import { useTheme } from "@mui/material/styles";
 import { Box, Typography } from "@mui/material";
 import { ArrowUpRight, ArrowDownRight } from "lucide-react";
+import SampleBadge from "./SampleBadge";
 import {
   Area,
   AreaChart,
@@ -64,7 +65,8 @@ const LegendDot = ({ color, label, value }) => (
 export default function AreaTrend({ data, height = 240 }) {
   const theme = useTheme();
   const p = theme.tokens;
-  const rows = Array.isArray(data) && data.length ? data : FALLBACK;
+  const hasData = Array.isArray(data) && data.length > 0;
+  const rows = hasData ? data : FALLBACK;
 
   const totalLeads = rows.reduce((s, r) => s + (r.leads ?? 0), 0);
   const totalConv = rows.reduce((s, r) => s + (r.converted ?? 0), 0);
@@ -119,7 +121,8 @@ export default function AreaTrend({ data, height = 240 }) {
             </Typography>
           </Box>
         </Box>
-        <Box sx={{ display: "flex", gap: 2 }}>
+        <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
+          {!hasData && <SampleBadge inline />}
           <LegendDot color={p.primary.main} label="Leads" value={totalLeads} />
           <LegendDot color={p.accent.main} label="Converted" value={totalConv} />
         </Box>

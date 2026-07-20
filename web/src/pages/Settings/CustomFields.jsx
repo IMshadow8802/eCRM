@@ -1,8 +1,8 @@
 // src/pages/Settings/CustomFields.jsx
 //
-// Company-admin page to manage lead custom-field definitions
-// (tblCustomFieldDef, Entity='lead'). Uses the MasterChipGrid +
-// Design/FormComponents CRUD-master pattern.
+// Company-admin page to manage custom-field definitions (tblCustomFieldDef)
+// for leads and tickets — an entity tab switches which set is edited. Uses
+// the MasterChipGrid + Design/FormComponents CRUD-master pattern.
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { Box } from "@mui/material";
@@ -11,6 +11,7 @@ import { useSnackbar } from "notistack";
 import PageHeader from "../../components/PageHeader";
 import MasterChipGrid from "../../components/MasterChipGrid";
 import ConfirmationDialog from "../../components/ConfirmationDialog";
+import Tabs from "../../components/ui/Tabs";
 import {
   FormModal,
   FormContainer,
@@ -26,7 +27,10 @@ import { useApiQuery } from "../../hooks/useApiQuery";
 import { useConfirmation } from "../../hooks";
 import { SALES_ENDPOINTS, saveCustomField, deleteCustomField } from "../../api/salesQueries";
 
-const ENTITY = "lead";
+const ENTITY_OPTIONS = [
+  { value: "lead", label: "Leads" },
+  { value: "ticket", label: "Tickets" },
+];
 
 const TYPE_OPTIONS = [
   { value: "text", label: "Text" },
@@ -71,6 +75,7 @@ const CustomFields = () => {
   const { enqueueSnackbar } = useSnackbar();
   const confirmation = useConfirmation();
 
+  const [entity, setEntity] = useState(ENTITY_OPTIONS[0].value);
   const [search, setSearch] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingField, setEditingField] = useState(null);
@@ -79,10 +84,15 @@ const CustomFields = () => {
   const [isSaving, setIsSaving] = useState(false);
 
   const query = useApiQuery({
-    queryKey: ["customFields", ENTITY],
+    queryKey: ["customFields", entity],
     endpoint: SALES_ENDPOINTS.config.fetchCustomFields,
-    params: { Entity: ENTITY },
+    params: { Entity: entity },
   });
+
+  const handleEntityChange = (next) => {
+    setEntity(next);
+    setSearch("");
+  };
 
   const allFields = query.data?.customFields || [];
   const items = useMemo(() => {
@@ -144,7 +154,7 @@ const CustomFields = () => {
     try {
       const payload = {
         Id: editingField?.Id || 0,
-        Entity: ENTITY,
+        Entity: entity,
         FieldKey: editingField?.FieldKey || slugify(formData.Label),
         Label: formData.Label.trim(),
         Type: formData.Type,
@@ -211,11 +221,19 @@ const CustomFields = () => {
     <Box sx={{ display: "flex", flexDirection: "column", flexGrow: 1 }}>
       <PageHeader
         title="Custom Fields"
-        subtitle="Configure extra fields captured on every lead."
+        subtitle="Configure extra fields captured on every lead and ticket."
       />
       <Helmet>
         <title>PRD Infotech | Custom Fields</title>
       </Helmet>
+      <Box sx={{ mt: 1.5 }}>
+        <Tabs
+          value={entity}
+          onChange={handleEntityChange}
+          items={ENTITY_OPTIONS}
+          data-testid="customfield-entity-tabs"
+        />
+      </Box>
       <Box sx={{ mt: 1.5 }}>
         <MasterChipGrid
           items={items}

@@ -47,6 +47,44 @@ describe("reportController.getDashboard", () => {
     );
   });
 
+  it("maps the chart series recordsets into named keys", async () => {
+    const kpis = [{ Type: "TotalLeads", Number: 10 }];
+    const trend = [{ Name: "Mon", Leads: 3, Converted: 1 }];
+    const source = [{ Name: "Google", Value: 5 }];
+    const funnel = [{ Name: "New", Value: 4, SortOrder: 1 }];
+    const teamLoad = [{ Name: "Asha", Value: 7 }];
+    const quarters = [{ Name: "Q1", Leads: 9, Calls: 12, Tickets: 2 }];
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [kpis, trend, source, funnel, teamLoad, quarters],
+    });
+    const res = mockRes();
+    await reportController.getDashboard(baseReq(), res);
+
+    const data = res.json.mock.calls[0][0].data;
+    expect(data.dashboard).toEqual(kpis);
+    expect(data.leadsTrend).toEqual(trend);
+    expect(data.leadsBySource).toEqual(source);
+    expect(data.funnel).toEqual(funnel);
+    expect(data.teamLoad).toEqual(teamLoad);
+    expect(data.quarterlyActivity).toEqual(quarters);
+  });
+
+  it("returns empty arrays for series when the SP only returns KPIs (sql/055 not yet applied)", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[{ Type: "TotalLeads", Number: 10 }]],
+    });
+    const res = mockRes();
+    await reportController.getDashboard(baseReq(), res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    const data = res.json.mock.calls[0][0].data;
+    expect(data.leadsTrend).toEqual([]);
+    expect(data.leadsBySource).toEqual([]);
+    expect(data.funnel).toEqual([]);
+    expect(data.teamLoad).toEqual([]);
+    expect(data.quarterlyActivity).toEqual([]);
+  });
+
   it("handles DB error as 500", async () => {
     database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
     const req = baseReq();

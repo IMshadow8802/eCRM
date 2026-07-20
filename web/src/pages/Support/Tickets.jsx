@@ -3,13 +3,14 @@ import { useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { Box, IconButton } from "@mui/material";
 import { MaterialReactTable } from "material-react-table";
-import { Plus, Eye } from "lucide-react";
+import { Plus, Eye, Trash2 } from "lucide-react";
 
 import { Combobox, Button, Chip } from "../../components/ui";
 import PageHeader from "../../components/ui/PageHeader";
 import HelpGuide from "../../components/HelpGuide";
 import TicketCreateModal from "./TicketCreateModal";
 import TicketDetailModal from "./TicketDetailModal";
+import DeleteTicketModal from "./DeleteTicketModal";
 import { HELP_GUIDES } from "../../data/helpGuides";
 import useServerTable from "../../hooks/useServerTable";
 import { useApiQuery } from "../../hooks/useApiQuery";
@@ -21,6 +22,8 @@ const Tickets = () => {
   const [createOpen, setCreateOpen] = useState(false);
   // Row click opens the detail in a modal so the table position is preserved.
   const [detailTicketId, setDetailTicketId] = useState(null);
+  // { Id, TicketNo } of the ticket awaiting delete confirmation.
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   // Filters forwarded verbatim as exact-match params (null = no filter).
   const [filters, setFilters] = useState({
@@ -90,24 +93,39 @@ const Tickets = () => {
   const columns = useMemo(
     () => [
       {
-        // First column: explicit open affordance. The row is clickable too,
-        // but a visible eye says so — users shouldn't discover it by accident.
+        // First column: explicit open + delete affordances. The row is
+        // clickable too, but visible icons say so — users shouldn't discover
+        // it by accident.
         id: "open",
         header: "",
-        size: 48,
+        size: 84,
         enableSorting: false,
         Cell: ({ row }) => (
-          <IconButton
-            size="small"
-            aria-label={`Open ${row.original.TicketNo}`}
-            data-testid={`ticket-open-${row.original.Id}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              setDetailTicketId(row.original.Id);
-            }}
-          >
-            <Eye size={15} />
-          </IconButton>
+          <>
+            <IconButton
+              size="small"
+              aria-label={`Open ${row.original.TicketNo}`}
+              data-testid={`ticket-open-${row.original.Id}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setDetailTicketId(row.original.Id);
+              }}
+            >
+              <Eye size={15} />
+            </IconButton>
+            <IconButton
+              size="small"
+              color="error"
+              aria-label={`Delete ${row.original.TicketNo}`}
+              data-testid={`ticket-delete-${row.original.Id}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setDeleteTarget({ Id: row.original.Id, TicketNo: row.original.TicketNo });
+              }}
+            >
+              <Trash2 size={15} />
+            </IconButton>
+          </>
         ),
       },
       { accessorKey: "TicketNo", header: "Ticket #", enableSorting: true },
@@ -221,6 +239,13 @@ const Tickets = () => {
           setDetailTicketId(null);
           refetch(); // resolve/close in the modal must reflect in the table
         }}
+      />
+      <DeleteTicketModal
+        open={Boolean(deleteTarget)}
+        ticketId={deleteTarget?.Id}
+        ticketNo={deleteTarget?.TicketNo}
+        onClose={() => setDeleteTarget(null)}
+        onDeleted={refetch}
       />
       <Helmet>
         <title>PRD Infotech | Tickets</title>

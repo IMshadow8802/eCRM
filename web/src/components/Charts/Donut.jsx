@@ -1,4 +1,6 @@
 import { useTheme } from "@mui/material/styles";
+import { Box } from "@mui/material";
+import SampleBadge from "./SampleBadge";
 import {
   Cell,
   Legend,
@@ -23,7 +25,8 @@ const FALLBACK = [
 export default function Donut({ data, height = 240, variant = "donut" }) {
   const theme = useTheme();
   const p = theme.tokens;
-  const rows = Array.isArray(data) && data.length ? data : FALLBACK;
+  const hasData = Array.isArray(data) && data.length > 0;
+  const rows = hasData ? data : FALLBACK;
 
   const palette = [
     p.primary.main,
@@ -35,7 +38,9 @@ export default function Donut({ data, height = 240, variant = "donut" }) {
   ];
 
   return (
-    <ResponsiveContainer width="100%" height={height}>
+    <Box sx={{ position: "relative" }}>
+      {!hasData && <SampleBadge />}
+      <ResponsiveContainer width="100%" height={height}>
       <RechartsPie>
         <Pie
           data={rows}
@@ -70,6 +75,7 @@ export default function Donut({ data, height = 240, variant = "donut" }) {
           wrapperStyle={{ fontSize: 11, color: p.text.secondary }}
         />
       </RechartsPie>
-    </ResponsiveContainer>
+      </ResponsiveContainer>
+    </Box>
   );
 }

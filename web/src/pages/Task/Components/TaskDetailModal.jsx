@@ -390,7 +390,11 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
   };
   const removeTimeEntry = async (entry) => {
     try {
-      await deleteTimeMutation.mutateAsync({ Id: entry.Id });
+      await deleteTimeMutation.mutateAsync({
+        Id: entry.Id,
+        TaskId: task.Id, // realtime emit-routing hints
+        WorkspaceId: task.WorkspaceId,
+      });
       refetchTimeEntries();
     } catch {}
   };
@@ -836,6 +840,8 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
                             .mutateAsync({
                               CommentId: c.Id,
                               IsPinned: !c.IsPinned,
+                              TaskId: task.Id, // realtime emit-routing hints
+                              WorkspaceId: task.WorkspaceId,
                             })
                             .then(refetchComments)
                         }

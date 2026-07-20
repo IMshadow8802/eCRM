@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { screen, waitFor, configure } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 
 // Cold-start module transform makes the first render in this file slow;
@@ -40,6 +41,8 @@ const PIPELINE = {
 const STAGES = [
   { Id: 10, CompId: 5, PipelineId: 1, Name: "New", SortOrder: 1, StageType: "open", Color: "#3B82F6", IsActive: true },
   { Id: 20, CompId: 5, PipelineId: 1, Name: "Qualified", SortOrder: 2, StageType: "open", Color: "#8B5CF6", IsActive: true },
+  { Id: 30, CompId: 5, PipelineId: 1, Name: "Won", SortOrder: 3, StageType: "won", Color: "#10B981", IsActive: true },
+  { Id: 40, CompId: 5, PipelineId: 1, Name: "Lost", SortOrder: 4, StageType: "lost", Color: "#EF4444", IsActive: true },
 ];
 const LEADS = [
   { Id: 100, Name: "Acme Corp", StageId: 10, EstValue: 15000, NextFollowupDate: "2026-07-10", OwnerId: 3 },
@@ -75,6 +78,19 @@ function mockLeads(leads = LEADS) {
   );
 }
 
+function mockLostReasons(lookups = [{ Id: 71, Value: "Price too high" }]) {
+  server.use(
+    http.post("*/api/config/fetchLookups", async () =>
+      HttpResponse.json({
+        success: true,
+        message: "ok",
+        responseCode: 200,
+        data: { lookups },
+      }),
+    ),
+  );
+}
+
 const renderBoard = () => renderWithProviders(<Pipeline />);
 
 describe("Pipeline", () => {
@@ -82,6 +98,7 @@ describe("Pipeline", () => {
     dnd.onDragEnd = null;
     mockPipelines();
     mockLeads();
+    mockLostReasons();
   });
 
   it("renders stage columns from the default pipeline", async () => {
@@ -184,6 +201,103 @@ describe("Pipeline", () => {
     await expect(
       dnd.onDragEnd({ canceled: true, operation: {} }),
     ).resolves.toBeUndefined();
+  });
+
+  it("dragging into a won stage passes straight through without any prompt", async () => {
+    let capturedBody = null;
+    server.use(
+      http.post("*/api/leads/moveLeadStage", async ({ request }) => {
+        capturedBody = await request.json();
+        return HttpResponse.json({
+          success: true,
+          message: "ok",
+          responseCode: 200,
+          data: { Id: capturedBody.LeadId, ResponseCode: 200, ResponseMess: "ok" },
+        });
+      }),
+    );
+    renderBoard();
+    await screen.findByTestId("pipeline-card-100");
+
+    await dnd.onDragEnd({
+      canceled: false,
+      operation: {
+        source: { type: "lead", data: { leadId: 100, stageId: 10 } },
+        target: { data: { stageId: 30 } },
+      },
+    });
+
+    await waitFor(() => expect(capturedBody).toEqual({ LeadId: 100, StageId: 30 }));
+    expect(screen.queryByTestId("board-lost-modal")).not.toBeInTheDocument();
+  });
+
+  it("dragging into a lost stage parks the move behind a lost-reason prompt, then sends LostReasonId", async () => {
+    let capturedBody = null;
+    server.use(
+      http.post("*/api/leads/moveLeadStage", async ({ request }) => {
+        capturedBody = await request.json();
+        return HttpResponse.json({
+          success: true,
+          message: "ok",
+          responseCode: 200,
+          data: { Id: capturedBody.LeadId, ResponseCode: 200, ResponseMess: "ok" },
+        });
+      }),
+    );
+    renderBoard();
+    await screen.findByTestId("pipeline-card-100");
+
+    await dnd.onDragEnd({
+      canceled: false,
+      operation: {
+        source: { type: "lead", data: { leadId: 100, stageId: 10 } },
+        target: { data: { stageId: 40 } },
+      },
+    });
+
+    // The move is held: no mutation until a reason is picked.
+    expect(await screen.findByTestId("board-lost-modal")).toBeInTheDocument();
+    expect(capturedBody).toBeNull();
+    expect(screen.getByTestId("board-lost-submit")).toBeDisabled();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("board-lost-reason-combobox-input"));
+    await user.click(await screen.findByRole("option", { name: "Price too high" }));
+    await user.click(screen.getByTestId("board-lost-submit"));
+
+    await waitFor(() =>
+      expect(capturedBody).toEqual({ LeadId: 100, StageId: 40, LostReasonId: 71 }),
+    );
+  }, 15000);
+
+  it("cancelling the lost-reason prompt abandons the move (card stays, no mutation)", async () => {
+    let called = false;
+    server.use(
+      http.post("*/api/leads/moveLeadStage", async () => {
+        called = true;
+        return HttpResponse.json({ success: true, message: "ok", responseCode: 200, data: {} });
+      }),
+    );
+    renderBoard();
+    await screen.findByTestId("pipeline-card-100");
+
+    await dnd.onDragEnd({
+      canceled: false,
+      operation: {
+        source: { type: "lead", data: { leadId: 100, stageId: 10 } },
+        target: { data: { stageId: 40 } },
+      },
+    });
+
+    await screen.findByTestId("board-lost-modal");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(called).toBe(false);
+    // Card never moved — the optimistic patch only happens on commit.
+    expect(screen.getByTestId("pipeline-stage-10")).toContainElement(
+      screen.getByTestId("pipeline-card-100"),
+    );
   });
 
   it("rolls back the optimistic move when the mutation fails", async () => {

@@ -1,7 +1,11 @@
 const database = require("../config/database");
 const responseHelper = require("../utils/responseHelper");
 const attachmentController = require("./attachmentController");
-const { scopeParams, canSeeRecord } = require("../middleware/permission");
+const {
+  scopeParams,
+  canSeeRecord,
+  assertRecordAccess,
+} = require("../middleware/permission");
 
 // Mutating SPs (sp_SaveLead, sp_MoveLeadStage, sp_TransferLead, sp_DeleteLead)
 // log their own activity server-side and swallow that logger's result set,
@@ -111,9 +115,10 @@ const leadController = {
     }
   },
 
-  moveStage(req, res) {
+  async moveStage(req, res) {
     const { CompId, UserId } = req.user;
     const { LeadId, StageId, LostReasonId = null } = req.body;
+    if (!(await assertRecordAccess(req, res, "lead", LeadId))) return;
     return runSp(
       res,
       "sp_MoveLeadStage",
@@ -122,9 +127,10 @@ const leadController = {
     );
   },
 
-  transfer(req, res) {
+  async transfer(req, res) {
     const { CompId, UserId } = req.user;
     const { LeadId, OwnerId } = req.body;
+    if (!(await assertRecordAccess(req, res, "lead", LeadId))) return;
     return runSp(
       res,
       "sp_TransferLead",
@@ -136,6 +142,7 @@ const leadController = {
   async delete(req, res) {
     const { CompId } = req.user;
     const { Id } = req.body;
+    if (!(await assertRecordAccess(req, res, "lead", Id))) return;
     try {
       const result = await database.executeStoredProcedure("sp_DeleteLead", { Id, CompId });
       const spResponse = result.recordset[0];
