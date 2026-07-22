@@ -22,6 +22,12 @@ jest.mock("../../../src/realtime/events", () => ({
 jest.mock("../../../src/controllers/attachmentController", () => ({
   cascadeDelete: jest.fn().mockResolvedValue(undefined),
 }));
+// Record guard stubbed to allow: this suite is about emits, and the real guard
+// would otherwise consume the SP mocks. Its own behaviour is covered in
+// middleware/permission.test.js and controllers/taskController.test.js.
+jest.mock("../../../src/middleware/permission", () => ({
+  assertRecordAccess: jest.fn().mockResolvedValue(true),
+}));
 
 const database = require("../../../src/config/database");
 const { emitToWorkspace, emitToUser } = require("../../../src/realtime/events");

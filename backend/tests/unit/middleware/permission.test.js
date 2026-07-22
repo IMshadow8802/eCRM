@@ -378,6 +378,22 @@ describe("permission middleware", () => {
       );
     });
 
+    it("passes a raw task action straight through (change_status for a checklist tick)", async () => {
+      // 'view'/'write' don't cover ticking a checklist: that is change_status,
+      // which the SP grants an assignee but edit_fields would refuse.
+      database.executeStoredProcedure.mockResolvedValueOnce({
+        recordsets: [[{ Allowed: true, Reason: "role=member action=change_status" }]],
+      });
+      const res = mockRes();
+      await expect(
+        assertRecordAccess(selfReq, res, "task", 12, "change_status"),
+      ).resolves.toBe(true);
+      expect(database.executeStoredProcedure).toHaveBeenCalledWith(
+        "sp_CheckTaskPermission",
+        expect.objectContaining({ Action: "change_status" }),
+      );
+    });
+
     it("403s an unknown entity without touching the DB", async () => {
       const res = mockRes();
       await expect(assertRecordAccess(selfReq, res, "misc", 1)).resolves.toBe(false);

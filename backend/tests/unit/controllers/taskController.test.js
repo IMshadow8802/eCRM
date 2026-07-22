@@ -12,8 +12,16 @@ jest.mock("../../../src/utils/activityLogger", () => ({
   },
 }));
 
+// The record guard is exercised for real in middleware/permission.test.js;
+// here it is stubbed so the checklist tests keep asserting controller wiring
+// on their own SP mocks (allow by default, flipped per-test to check the gate).
+jest.mock("../../../src/middleware/permission", () => ({
+  assertRecordAccess: jest.fn().mockResolvedValue(true),
+}));
+
 const database = require("../../../src/config/database");
 const { logActivity } = require("../../../src/utils/activityLogger");
+const { assertRecordAccess } = require("../../../src/middleware/permission");
 const taskController = require("../../../src/controllers/taskController");
 const { mockRes } = require("../../helpers/mockRes");
 
@@ -31,6 +39,8 @@ const spResult = (rows) => ({ recordsets: [rows] });
 beforeEach(() => {
   database.executeStoredProcedure.mockReset();
   logActivity.mockClear();
+  assertRecordAccess.mockClear();
+  assertRecordAccess.mockResolvedValue(true);
 });
 
 // Helper: sequence SP mocks for primary call + any fire-and-forget notify
@@ -786,6 +796,66 @@ describe("taskController time-tracking + checklist + activity", () => {
     expect(logActivity).toHaveBeenCalledWith(
       expect.objectContaining({ action: "Updated" }),
     );
+  });
+
+  it("saveChecklist asks for change_status when ticking an existing item", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "ok", ChecklistId: 7 }]),
+    );
+    await taskController.saveChecklist(
+      baseReq({ body: { Id: 7, TaskId: 1, ItemText: "do", IsCompleted: true } }),
+      mockRes(),
+    );
+    expect(assertRecordAccess).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      "task",
+      1,
+      "change_status",
+    );
+  });
+
+  it("saveChecklist asks for edit_fields when adding a new item", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 201, ResponseMess: "ok", ChecklistId: 7 }]),
+    );
+    await taskController.saveChecklist(
+      baseReq({ body: { TaskId: 1, ItemText: "do" } }),
+      mockRes(),
+    );
+    expect(assertRecordAccess).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      "task",
+      1,
+      "edit_fields",
+    );
+  });
+
+  it("saveChecklist never touches the SP when the guard refuses", async () => {
+    assertRecordAccess.mockResolvedValue(false);
+    await taskController.saveChecklist(
+      baseReq({ body: { Id: 7, TaskId: 1, ItemText: "do" } }),
+      mockRes(),
+    );
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+    expect(logActivity).not.toHaveBeenCalled();
+  });
+
+  it("deleteChecklist asks for edit_fields and stops when refused", async () => {
+    assertRecordAccess.mockResolvedValue(false);
+    await taskController.deleteChecklist(
+      baseReq({ body: { Id: 7, TaskId: 1 } }),
+      mockRes(),
+    );
+    expect(assertRecordAccess).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      "task",
+      1,
+      "edit_fields",
+    );
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
   });
 
   it("saveChecklist returns 500 on DB throw", async () => {

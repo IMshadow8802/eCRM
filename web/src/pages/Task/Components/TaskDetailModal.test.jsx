@@ -316,6 +316,117 @@ describe("TaskDetailModal", () => {
     });
   });
 
+  // Regression: the gate used to be creator-only, so a member assigned a task
+  // by their manager saw a dead checklist on work they were told to do — the
+  // server allows it (change_status grants creator OR assignee).
+  const seedAssignedToMe = () => {
+    taskFixture.reset(); // beforeEach already seeded a 501 created by me
+    taskFixture.seed({
+      Id: 501,
+      Title: "Task 501",
+      WorkspaceId: 100,
+      ColumnId: 1,
+      ColumnTitle: "To Do",
+      Priority: "high",
+      CreatedByUserId: 99, // someone else made it
+      AssignedToUserId: 1, // ...and handed it to me
+      ChecklistTotal: 1,
+      ChecklistDone: 0,
+    });
+  };
+
+  const openChecklistTab = async () => {
+    renderModal(501);
+    await screen.findByText("Task 501");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: /Checklist/i }));
+    return user;
+  };
+
+  it("lets the assignee tick a checklist item on a task someone else created", async () => {
+    seedAssignedToMe();
+    server.use(
+      http.post(`*/api/tasks/getTaskChecklist`, async () =>
+        HttpResponse.json({
+          success: true,
+          message: "ok",
+          responseCode: 200,
+          data: { checklist: [{ Id: 900, ItemText: "step one", IsCompleted: false }] },
+        }),
+      ),
+    );
+    await openChecklistTab();
+    expect(await screen.findByTestId("checklist-toggle-900")).not.toBeDisabled();
+  });
+
+  it("does not let the assignee delete checklist items (that stays edit_fields)", async () => {
+    seedAssignedToMe();
+    server.use(
+      http.post(`*/api/tasks/getTaskChecklist`, async () =>
+        HttpResponse.json({
+          success: true,
+          message: "ok",
+          responseCode: 200,
+          data: { checklist: [{ Id: 900, ItemText: "step one", IsCompleted: false }] },
+        }),
+      ),
+    );
+    await openChecklistTab();
+    await screen.findByTestId("checklist-toggle-900");
+    expect(screen.queryByRole("button", { name: /Remove item/i })).not.toBeInTheDocument();
+  });
+
+  it("leaves the checklist read-only for a member who is neither creator nor assignee", async () => {
+    taskFixture.reset();
+    taskFixture.seed({
+      Id: 501,
+      Title: "Task 501",
+      WorkspaceId: 100,
+      ColumnId: 1,
+      ColumnTitle: "To Do",
+      Priority: "high",
+      CreatedByUserId: 99,
+      AssignedToUserId: 98,
+      ChecklistTotal: 1,
+      ChecklistDone: 0,
+    });
+    server.use(
+      http.post(`*/api/tasks/getTaskChecklist`, async () =>
+        HttpResponse.json({
+          success: true,
+          message: "ok",
+          responseCode: 200,
+          data: { checklist: [{ Id: 900, ItemText: "step one", IsCompleted: false }] },
+        }),
+      ),
+    );
+    await openChecklistTab();
+    expect(await screen.findByTestId("checklist-toggle-900")).toBeDisabled();
+  });
+
+  it("checklist delete sends TaskId so the server can authorize it", async () => {
+    let deleteBody;
+    server.use(
+      http.post(`*/api/tasks/getTaskChecklist`, async () =>
+        HttpResponse.json({
+          success: true,
+          message: "ok",
+          responseCode: 200,
+          data: { checklist: [{ Id: 900, ItemText: "step one", IsCompleted: false }] },
+        }),
+      ),
+      http.post(`*/api/tasks/deleteTaskChecklist`, async ({ request }) => {
+        deleteBody = await request.json();
+        return HttpResponse.json({ success: true, message: "ok", responseCode: 200 });
+      }),
+    );
+    const user = await openChecklistTab();
+    await user.click(await screen.findByRole("button", { name: /Remove item/i }));
+    await waitFor(() => {
+      expect(deleteBody).toMatchObject({ Id: 900, TaskId: 501, WorkspaceId: 100 });
+    });
+  });
+
   it("description edit + Save dispatches save mutation", async () => {
     renderModal(501);
     await screen.findByText("Task 501");

@@ -123,6 +123,12 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
   const canEditThisTask =
     task && (canEditOthers || task.CreatedByUserId === currentUserId);
 
+  // Doing the work you were handed is change_status, which the server grants a
+  // member who is the creator OR the assignee. This gate used to check the
+  // creator only, so an assigned member saw a dead checklist on their own task.
+  const canProgressThisTask =
+    canEditThisTask || (task && task.AssignedToUserId === currentUserId);
+
   const isDirty = draft && task && (
     draft.Title !== (task.Title ?? "") ||
     draft.Description !== (task.Description ?? "") ||
@@ -316,7 +322,11 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
   };
   const removeChecklistItem = async (item) => {
     try {
-      await deleteChecklistMutation.mutateAsync({ Id: item.Id, WorkspaceId: task.WorkspaceId });
+      await deleteChecklistMutation.mutateAsync({
+        Id: item.Id,
+        TaskId: task.Id, // server needs it to authorize; the SP only returns it after deleting
+        WorkspaceId: task.WorkspaceId,
+      });
       refetchChecklist();
     } catch {}
   };
@@ -720,7 +730,8 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
                       <ChecklistRow
                         key={it.Id}
                         item={it}
-                        canEdit={canEditThisTask}
+                        canToggle={canProgressThisTask}
+                        canDelete={canEditThisTask}
                         onToggle={() => toggleChecklistItem(it)}
                         onDelete={() => removeChecklistItem(it)}
                       />
@@ -1222,7 +1233,10 @@ function DepSection({ title, items, emptyText, tone, canEdit, onRemove }) {
   );
 }
 
-function ChecklistRow({ item, canEdit, onToggle, onDelete }) {
+// canToggle and canDelete are separate on purpose: the assignee may tick items
+// (change_status) but not add or remove them (edit_fields) — mirrors the server.
+function ChecklistRow({ item, canToggle, canDelete, onToggle, onDelete }) {
+  const canEdit = canToggle;
   return (
     <div
       style={{
@@ -1262,7 +1276,7 @@ function ChecklistRow({ item, canEdit, onToggle, onDelete }) {
       >
         {item.ItemText}
       </span>
-      {canEdit && (
+      {canDelete && (
         <IconButton
           size="sm"
           variant="ghost"

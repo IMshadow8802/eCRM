@@ -4,6 +4,7 @@ const { cleanSpRows } = require("../utils/spHelpers");
 const attachmentController = require("./attachmentController");
 const { emitToWorkspace, emitToUser } = require("../realtime/events");
 const { SCOPES } = require("../realtime/contract");
+const { assertRecordAccess } = require("../middleware/permission");
 
 class TaskController {
   // ================================
@@ -750,6 +751,19 @@ class TaskController {
         WorkspaceId = null, // emit-routing hint only; not passed to the SP
       } = req.body;
 
+      // sp_SaveTaskChecklist has no permission check of its own, so this is
+      // the only gate. Ticking an item is change_status (checklist drives
+      // completion) — that lets the assignee do the work they were given.
+      // Adding a brand-new item redefines the task, so it needs edit_fields.
+      const allowed = await assertRecordAccess(
+        req,
+        res,
+        "task",
+        TaskId,
+        Id > 0 ? "change_status" : "edit_fields",
+      );
+      if (!allowed) return;
+
       const result = await database.executeStoredProcedure(
         "sp_SaveTaskChecklist",
         {
@@ -865,7 +879,7 @@ class TaskController {
 
   async deleteChecklist(req, res) {
     try {
-      const { Id, WorkspaceId = null } = req.body;
+      const { Id, TaskId, WorkspaceId = null } = req.body;
 
       if (!Id || Id <= 0) {
         return res.status(400).json({
@@ -876,6 +890,12 @@ class TaskController {
           timestamp: new Date().toISOString(),
         });
       }
+
+      // Removing an item redefines the task, so edit_fields (not the looser
+      // change_status a tick gets). TaskId comes from the client because the
+      // SP only returns it after the delete has already happened.
+      const allowed = await assertRecordAccess(req, res, "task", TaskId, "edit_fields");
+      if (!allowed) return;
 
       const result = await database.executeStoredProcedure(
         "sp_DeleteTaskChecklist",

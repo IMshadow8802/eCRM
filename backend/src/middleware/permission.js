@@ -194,7 +194,12 @@ const canReadBranch = (req, branchId) =>
 // isAdmin shortcut around it here.
 //
 // Sends the 403 (or 500 on lookup failure) itself and returns false;
-// true = proceed. `level` only matters for tasks: 'view' vs 'write'.
+// true = proceed. `level` only matters for tasks: 'view' | 'write', or any
+// raw sp_CheckTaskPermission action ('change_status', 'log_time', …) when the
+// coarse pair doesn't fit — ticking a checklist is change_status, not
+// edit_fields, because checklist state IS completion state.
+const TASK_ACTION = { view: "view_task", write: "edit_fields" };
+
 const ENTITY_LOOKUP = {
   lead: { sp: "sp_FetchLeadDetail", idParam: "LeadId", ownerField: "OwnerId" },
   ticket: { sp: "sp_FetchTicketDetail", idParam: "TicketId", ownerField: "AssignedTo" },
@@ -210,7 +215,7 @@ async function assertRecordAccess(req, res, entity, entityId, level = "view") {
         {
           TaskId: Number(entityId) || 0,
           UserId: req.user.UserId,
-          Action: level === "write" ? "edit_fields" : "view_task",
+          Action: TASK_ACTION[level] ?? level,
           IsAdmin: req.scope?.isAdmin ? 1 : 0,
           CompId: req.user.CompId,
         },
