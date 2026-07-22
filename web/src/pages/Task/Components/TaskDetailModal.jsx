@@ -18,6 +18,9 @@ import {
   Link2,
   GitBranch,
   CheckCircle2,
+  Pencil,
+  History,
+  X as XIcon,
 } from "lucide-react";
 
 import {
@@ -62,6 +65,9 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
   const [tab, setTab] = useState("details");
   const [newComment, setNewComment] = useState("");
   const [replyTo, setReplyTo] = useState(null);
+  // Comment ids with a delete in flight (lockout) + the comment being edited.
+  const [pendingComments, setPendingComments] = useState(() => new Set());
+  const [editingComment, setEditingComment] = useState(null); // { Id, text }
   const currentUserId = useAuthStore((s) => s.user?.UserId ?? s.UserId);
   const canEditOthers = useWorkspaceStore((s) => s.canEditOthersTasks)();
   const workspaceType = useWorkspaceStore((s) => s.activeWorkspaceType);
@@ -208,6 +214,18 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
   const checklistItems =
     checklistPayload?.checklist ?? checklistPayload?.items ?? [];
 
+  // History tab — the task's audit trail (added/ticked/edited/deleted, by whom,
+  // when), read from the shared activity log. Reuses tblActivityLog; no new
+  // table. Fetch it lazily (only once the tab is opened) to keep the modal light.
+  const { data: activityPayload } = useApiQuery({
+    queryKey: ["task", taskId, "activity"],
+    endpoint: "/api/tasks/getTaskActivity",
+    params: { TaskId: taskId, PageNumber: 1, PageSize: 100 },
+    enabled: Boolean(taskId && open && tab === "history"),
+    showErrorMessage: false,
+  });
+  const activities = activityPayload?.activities ?? [];
+
   // Piggy-back on a workspace-wide fetchTasks to populate the dependency
   // picker. Cheap at expected board size.
   const { data: workspaceTasksPayload } = useApiQuery({
@@ -291,6 +309,28 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
   });
   // Checklist handlers
   const [newChecklistItem, setNewChecklistItem] = useState("");
+  // Ids with a save/delete in flight. Locking the row stops a rapid second
+  // click from firing a duplicate write against an already-changed/removed
+  // item — that double-fire was the "click again, it fails" 404.
+  const [pendingChecklist, setPendingChecklist] = useState(() => new Set());
+  const checklistKey = ["task", taskId, "checklist"];
+  const lockChecklist = (id, on) =>
+    setPendingChecklist((s) => {
+      const n = new Set(s);
+      if (on) n.add(id);
+      else n.delete(id);
+      return n;
+    });
+  // Optimistically patch the cached checklist so the row moves instantly
+  // instead of after the round-trip; returns the previous value for rollback.
+  const patchChecklistCache = (fn) => {
+    const prev = queryClient.getQueryData(checklistKey);
+    queryClient.setQueryData(checklistKey, (old) =>
+      old ? { ...old, checklist: fn(old.checklist ?? old.items ?? []) } : old,
+    );
+    return prev;
+  };
+
   const addChecklistItem = async () => {
     const text = newChecklistItem.trim();
     if (!text || !task) return;
@@ -308,6 +348,13 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
     } catch {}
   };
   const toggleChecklistItem = async (item) => {
+    if (pendingChecklist.has(item.Id)) return; // already in flight
+    lockChecklist(item.Id, true);
+    const prev = patchChecklistCache((list) =>
+      list.map((c) =>
+        c.Id === item.Id ? { ...c, IsCompleted: !c.IsCompleted } : c,
+      ),
+    );
     try {
       await saveChecklistMutation.mutateAsync({
         Id: item.Id,
@@ -318,9 +365,18 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
         WorkspaceId: task.WorkspaceId, // realtime emit-routing hint
       });
       refetchChecklist();
-    } catch {}
+    } catch {
+      queryClient.setQueryData(checklistKey, prev); // rollback
+    } finally {
+      lockChecklist(item.Id, false);
+    }
   };
   const removeChecklistItem = async (item) => {
+    if (pendingChecklist.has(item.Id)) return;
+    lockChecklist(item.Id, true);
+    const prev = patchChecklistCache((list) =>
+      list.filter((c) => c.Id !== item.Id),
+    );
     try {
       await deleteChecklistMutation.mutateAsync({
         Id: item.Id,
@@ -328,7 +384,11 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
         WorkspaceId: task.WorkspaceId,
       });
       refetchChecklist();
-    } catch {}
+    } catch {
+      queryClient.setQueryData(checklistKey, prev); // rollback
+    } finally {
+      lockChecklist(item.Id, false);
+    }
   };
 
   // Dependencies add/remove
@@ -426,6 +486,43 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
     } catch {}
   };
 
+  // Edit reuses addTaskComment with Id>0 (sp_SaveTaskComment updates on Id>0,
+  // guarded by edit_own_comment). No separate endpoint needed.
+  const submitEditComment = async () => {
+    const text = editingComment?.text?.trim();
+    if (!text || !editingComment) return;
+    try {
+      await addCommentMutation.mutateAsync({
+        Id: editingComment.Id,
+        TaskId: taskId,
+        Comment: text,
+        WorkspaceId: task?.WorkspaceId,
+      });
+      setEditingComment(null);
+      refetchComments();
+    } catch {}
+  };
+
+  const deleteCommentById = async (c) => {
+    if (pendingComments.has(c.Id)) return; // in flight — ignore double-tap
+    setPendingComments((s) => new Set(s).add(c.Id));
+    try {
+      await deleteCommentMutation.mutateAsync({
+        Id: c.Id,
+        TaskId: task.Id, // authorize + history log + emit routing
+        WorkspaceId: task.WorkspaceId,
+      });
+      refetchComments();
+    } catch {
+    } finally {
+      setPendingComments((s) => {
+        const n = new Set(s);
+        n.delete(c.Id);
+        return n;
+      });
+    }
+  };
+
   if (!open) return null;
 
   return (
@@ -480,6 +577,50 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
         )}
       </Modal.Header>
 
+      {/* Tab strip lives between the header and the scrolling body — a fixed
+          flex-column sibling, so it never scrolls and content never bleeds
+          past it, while Modal.Body scrolls on its own as before. */}
+      {task && (
+        <div
+          style={{
+            flexShrink: 0,
+            padding: "12px 20px 0",
+            borderBottom: "1px solid var(--color-surface-200)",
+            background: "var(--color-surface-0)",
+          }}
+        >
+          <Tabs
+            value={tab}
+            onChange={setTab}
+            items={[
+              { value: "details", label: "Details" },
+              {
+                value: "checklist",
+                label: "Checklist",
+                badge: checklistItems.length,
+              },
+              {
+                value: "comments",
+                label: "Comments",
+                badge: comments.length,
+              },
+              {
+                value: "deps",
+                label: "Dependencies",
+                badge: blockers.length + dependents.length,
+              },
+              {
+                value: "time",
+                label: "Time",
+                badge: timeEntries.length,
+              },
+              { value: "history", label: "History" },
+            ]}
+            data-testid="task-tabs"
+          />
+        </div>
+      )}
+
       <Modal.Body>
         {!task ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -488,37 +629,7 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
             <Skeleton variant="rect" height={120} />
           </div>
         ) : (
-          <>
-            <Tabs
-              value={tab}
-              onChange={setTab}
-              items={[
-                { value: "details", label: "Details" },
-                {
-                  value: "checklist",
-                  label: "Checklist",
-                  badge: checklistItems.length,
-                },
-                {
-                  value: "comments",
-                  label: "Comments",
-                  badge: comments.length,
-                },
-                {
-                  value: "deps",
-                  label: "Dependencies",
-                  badge: blockers.length + dependents.length,
-                },
-                {
-                  value: "time",
-                  label: "Time",
-                  badge: timeEntries.length,
-                },
-              ]}
-              data-testid="task-tabs"
-            />
-
-            <div style={{ marginTop: 20 }}>
+          <div>
               {tab === "details" && draft && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                   <TextInput
@@ -732,6 +843,7 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
                         item={it}
                         canToggle={canProgressThisTask}
                         canDelete={canEditThisTask}
+                        pending={pendingChecklist.has(it.Id)}
                         onToggle={() => toggleChecklistItem(it)}
                         onDelete={() => removeChecklistItem(it)}
                       />
@@ -836,16 +948,19 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
                         key={c.Id}
                         comment={c}
                         currentUserId={currentUserId}
-                        onReply={() => setReplyTo(c.Id)}
-                        onDelete={() =>
-                          deleteCommentMutation
-                            .mutateAsync({
-                              Id: c.Id,
-                              TaskId: task.Id, // realtime emit-routing hints
-                              WorkspaceId: task.WorkspaceId,
-                            })
-                            .then(refetchComments)
+                        pending={pendingComments.has(c.Id)}
+                        isEditing={editingComment?.Id === c.Id}
+                        editingText={editingComment?.text ?? ""}
+                        onEditText={(v) =>
+                          setEditingComment((e) => ({ ...e, text: v }))
                         }
+                        onStartEdit={() =>
+                          setEditingComment({ Id: c.Id, text: c.Comment })
+                        }
+                        onSaveEdit={submitEditComment}
+                        onCancelEdit={() => setEditingComment(null)}
+                        onReply={() => setReplyTo(c.Id)}
+                        onDelete={() => deleteCommentById(c)}
                         onTogglePin={() =>
                           pinCommentMutation
                             .mutateAsync({
@@ -1011,8 +1126,31 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
                   )}
                 </div>
               )}
+
+              {tab === "history" && (
+                <div
+                  style={{ display: "flex", flexDirection: "column" }}
+                  data-testid="task-history"
+                >
+                  {activities.length === 0 ? (
+                    <EmptyState
+                      icon={<History size={28} />}
+                      title="No history yet"
+                      description="Every change — added, ticked, edited, deleted — shows up here with who did it and when."
+                      size="sm"
+                    />
+                  ) : (
+                    activities.map((a, i) => (
+                      <ActivityRow
+                        key={a.Id}
+                        activity={a}
+                        isLast={i === activities.length - 1}
+                      />
+                    ))
+                  )}
+                </div>
+              )}
             </div>
-          </>
         )}
       </Modal.Body>
       {task && tab === "details" && canEditThisTask && (
@@ -1087,33 +1225,63 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
 function CommentBubble({
   comment: c,
   currentUserId,
+  pending,
+  isEditing,
+  editingText,
+  onEditText,
+  onStartEdit,
+  onSaveEdit,
+  onCancelEdit,
   onReply,
   onDelete,
   onTogglePin,
 }) {
+  const mine = c.UserId === currentUserId;
+  const canModify = mine && !c.IsDeleted;
   return (
     <div
       data-testid={`comment-${c.Id}`}
       style={{
-        padding: 12,
-        borderRadius: 12,
-        backgroundColor: c.IsPinned
-          ? "var(--color-warning-50)"
-          : "var(--color-surface-50)",
-        border: `1px solid ${c.IsPinned ? "var(--color-warning-500)" : "var(--color-surface-200)"}`,
+        display: "flex",
+        gap: 12,
+        padding: "6px 0",
         marginLeft: c.ParentCommentId ? 28 : 0,
       }}
     >
+      <Avatar name={c.UserName} size="sm" />
+      {/* Feed layout: avatar rail + content. Pinned comments keep a subtle
+          tint instead of every comment sitting in its own heavy box. */}
       <div
         style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          marginBottom: 6,
+          flex: 1,
+          minWidth: 0,
+          ...(c.IsPinned
+            ? {
+                background: "var(--color-warning-50)",
+                border: "1px solid var(--color-warning-500)",
+                borderRadius: 10,
+                padding: "8px 10px",
+              }
+            : {}),
         }}
       >
-        <Avatar name={c.UserName} size="sm" />
-        <span style={{ fontSize: 13, fontWeight: 600 }}>{c.UserName}</span>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            marginBottom: 6,
+          }}
+        >
+        <span
+          style={{
+            fontSize: 14,
+            fontWeight: 700,
+            color: "var(--color-surface-900)",
+          }}
+        >
+          {c.UserName}
+        </span>
         {c.IsEdited ? (
           <span style={{ fontSize: 11, color: "var(--color-surface-400)" }}>
             edited
@@ -1149,12 +1317,26 @@ function CommentBubble({
             <Reply size={14} />
           </IconButton>
         </Tooltip>
-        {c.UserId === currentUserId && (
+        {canModify && !isEditing && (
+          <Tooltip title="Edit">
+            <IconButton
+              size="sm"
+              variant="ghost"
+              onClick={onStartEdit}
+              data-testid={`edit-${c.Id}`}
+              aria-label="Edit comment"
+            >
+              <Pencil size={14} />
+            </IconButton>
+          </Tooltip>
+        )}
+        {canModify && (
           <Tooltip title="Delete">
             <IconButton
               size="sm"
               variant="destructive"
               onClick={onDelete}
+              disabled={pending}
               data-testid={`delete-${c.Id}`}
               aria-label="Delete comment"
             >
@@ -1163,17 +1345,51 @@ function CommentBubble({
           </Tooltip>
         )}
       </div>
-      <div
-        style={{
-          fontSize: 14,
-          lineHeight: 1.5,
-          color: c.IsDeleted
-            ? "var(--color-surface-400)"
-            : "var(--color-surface-900)",
-        }}
-      >
-        {c.Comment}
-      </div>
+      {isEditing ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <TextArea
+            value={editingText}
+            onChange={(e) => onEditText(e.target.value)}
+            rows={3}
+            autoGrow
+            data-testid={`edit-input-${c.Id}`}
+          />
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <Button
+              variant="text"
+              size="sm"
+              leftIcon={<XIcon size={14} />}
+              onClick={onCancelEdit}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              leftIcon={<SaveIcon size={14} />}
+              onClick={onSaveEdit}
+              disabled={!editingText.trim()}
+              data-testid={`edit-save-${c.Id}`}
+            >
+              Save
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div
+          style={{
+            fontSize: 14,
+            fontWeight: 400,
+            lineHeight: 1.5,
+            color: c.IsDeleted
+              ? "var(--color-surface-400)"
+              : "var(--color-surface-700)",
+            fontStyle: c.IsDeleted ? "italic" : "normal",
+          }}
+        >
+          {c.Comment}
+        </div>
+      )}
       {c.ReadByUserIds && (
         <div
           style={{
@@ -1185,6 +1401,80 @@ function CommentBubble({
           Seen by {c.ReadByUserIds.split(",").length}
         </div>
       )}
+      </div>
+    </div>
+  );
+}
+
+// One event in the History timeline: avatar + connector rail on the left, then
+// who · what on one line, an optional old→new line, and a muted timestamp.
+function ActivityRow({ activity: a, isLast }) {
+  // Only a genuine transition (both sides present) — a bare NewValue just
+  // repeats the item text already in the description, so skip it.
+  const changed = a.OldValue && a.NewValue && a.OldValue !== a.NewValue;
+  return (
+    <div style={{ display: "flex", gap: 12, alignItems: "stretch" }}>
+      {/* Rail: avatar with a line running down to the next event. */}
+      <div
+        style={{ display: "flex", flexDirection: "column", alignItems: "center" }}
+      >
+        <Avatar name={a.UserName} size="sm" />
+        {!isLast && (
+          <div
+            style={{
+              flex: 1,
+              width: 2,
+              marginTop: 6,
+              borderRadius: 2,
+              background: "var(--color-surface-200)",
+            }}
+          />
+        )}
+      </div>
+
+      <div style={{ flex: 1, minWidth: 0, paddingBottom: isLast ? 2 : 18 }}>
+        {/* One line only — a checklist item can be a whole paragraph; the name
+            plus a snippet is enough to tell which event this was. */}
+        <div
+          style={{
+            fontSize: 13,
+            lineHeight: 1.4,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+          title={`${a.UserName || "Someone"} ${a.Description || a.Action}`}
+        >
+          <span style={{ fontWeight: 600 }}>{a.UserName || "Someone"}</span>{" "}
+          <span style={{ color: "var(--color-surface-600)" }}>
+            {a.Description || a.Action}
+          </span>
+        </div>
+        {changed && (
+          <div
+            style={{
+              fontSize: 12,
+              color: "var(--color-surface-500)",
+              marginTop: 2,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {a.OldValue ? `${a.OldValue} → ` : ""}
+            {a.NewValue}
+          </div>
+        )}
+        <div
+          style={{
+            fontSize: 11,
+            color: "var(--color-surface-400)",
+            marginTop: 3,
+          }}
+        >
+          {a.CreatedDate ? new Date(a.CreatedDate).toLocaleString() : ""}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1235,8 +1525,11 @@ function DepSection({ title, items, emptyText, tone, canEdit, onRemove }) {
 
 // canToggle and canDelete are separate on purpose: the assignee may tick items
 // (change_status) but not add or remove them (edit_fields) — mirrors the server.
-function ChecklistRow({ item, canToggle, canDelete, onToggle, onDelete }) {
-  const canEdit = canToggle;
+// `pending` = a save/delete for this row is in flight. Locking the controls
+// while pending stops the double-tap that fired a duplicate write at an
+// already-changed item.
+function ChecklistRow({ item, canToggle, canDelete, pending, onToggle, onDelete }) {
+  const canTick = canToggle && !pending;
   return (
     <div
       style={{
@@ -1245,19 +1538,20 @@ function ChecklistRow({ item, canToggle, canDelete, onToggle, onDelete }) {
         gap: 10,
         padding: "6px 8px",
         borderRadius: 8,
+        opacity: pending ? 0.6 : 1,
       }}
     >
       <button
         type="button"
-        onClick={canEdit ? onToggle : undefined}
-        disabled={!canEdit}
+        onClick={canTick ? onToggle : undefined}
+        disabled={!canTick}
         style={{
           display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
           border: "none",
           background: "transparent",
-          cursor: canEdit ? "pointer" : "default",
+          cursor: canTick ? "pointer" : "default",
           color: item.IsCompleted ? "#10B981" : "#94A3B8",
           padding: 0,
         }}
@@ -1281,6 +1575,7 @@ function ChecklistRow({ item, canToggle, canDelete, onToggle, onDelete }) {
           size="sm"
           variant="ghost"
           onClick={onDelete}
+          disabled={pending}
           aria-label="Remove item"
         >
           <Trash2 size={14} />

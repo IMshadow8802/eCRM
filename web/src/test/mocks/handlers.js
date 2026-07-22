@@ -550,6 +550,18 @@ export const handlers = [
     HttpResponse.json({ success: true, message: "ok", responseCode: 200 }),
   ),
 
+  http.post(`*/api/tasks/getTaskActivity`, async () =>
+    HttpResponse.json({
+      success: true,
+      message: "ok",
+      responseCode: 200,
+      data: {
+        activities: [],
+        pagination: { currentPage: 1, pageSize: 100, totalRecords: 0, totalPages: 0 },
+      },
+    }),
+  ),
+
   http.post(`*/api/tasks/getTaskTimeEntries`, async () =>
     HttpResponse.json({
       success: true,

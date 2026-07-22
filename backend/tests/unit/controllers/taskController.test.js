@@ -7,6 +7,7 @@ jest.mock("../../../src/utils/activityLogger", () => ({
     CREATED: "Created",
     UPDATED: "Updated",
     DELETED: "Deleted",
+    STATUS_CHANGED: "StatusChanged",
     COMMENTED: "Commented",
     ASSIGNED: "Assigned",
   },
@@ -397,6 +398,20 @@ describe("taskController.getComments", () => {
     await taskController.getComments(baseReq({ body: { TaskId: 1 } }), mockRes());
     spy.mockRestore();
   });
+
+  // REGRESSION (COMMENTS_ERROR 500): the SP folds status into data rows, so a
+  // task with zero comments returns an EMPTY recordset. Must yield a 200 empty
+  // page, not crash on recordsets[0][0].
+  it("returns an empty 200 page when the task has no comments", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(spResult([]));
+    const res = mockRes();
+    await taskController.getComments(baseReq({ body: { TaskId: 1 } }), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    const json = res.json.mock.calls[0][0];
+    expect(json.success).toBe(true);
+    expect(json.data.comments).toHaveLength(0);
+    expect(json.data.pagination.totalRecords).toBe(0);
+  });
 });
 
 describe("taskController.deleteComment", () => {
@@ -452,6 +467,25 @@ describe("taskController.deleteComment", () => {
       mockRes(),
     );
     spy.mockRestore();
+  });
+
+  // History tab filters on EntityType='Task', so a comment deletion must log
+  // under the parent Task (entityId=TaskId), not the comment id.
+  it("logs the deletion under the parent Task so it shows in history", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "ok" }]),
+    );
+    await taskController.deleteComment(
+      baseReq({ body: { Id: 9, TaskId: 55 } }),
+      mockRes(),
+    );
+    expect(logActivity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityType: "Task",
+        entityId: 55,
+        fieldName: "Comment",
+      }),
+    );
   });
 });
 
@@ -751,15 +785,21 @@ describe("taskController time-tracking + checklist + activity", () => {
     expect(database.executeStoredProcedure).not.toHaveBeenCalled();
   });
 
-  it("deleteTimeEntry calls sp + logs", async () => {
+  it("deleteTimeEntry calls sp + logs under the parent Task", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce(
       spResult([{ ResponseCode: 200, ResponseMess: "ok" }]),
     );
     await taskController.deleteTimeEntry(
-      baseReq({ body: { Id: 3 } }),
+      baseReq({ body: { Id: 3, TaskId: 55 } }),
       mockRes(),
     );
-    expect(logActivity).toHaveBeenCalled();
+    expect(logActivity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityType: "Task",
+        entityId: 55,
+        fieldName: "TimeEntry",
+      }),
+    );
   });
 
   it("deleteTimeEntry returns 500 on DB throw", async () => {
@@ -785,16 +825,39 @@ describe("taskController time-tracking + checklist + activity", () => {
     });
   });
 
-  it("saveChecklist update logs UPDATED", async () => {
+  it("saveChecklist tick logs a StatusChanged with a 'ticked' description", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce(
       spResult([{ ResponseCode: 200, ResponseMess: "ok", ChecklistId: 7 }]),
     );
     await taskController.saveChecklist(
-      baseReq({ body: { Id: 7, TaskId: 1, ItemText: "do" } }),
+      baseReq({ body: { Id: 7, TaskId: 1, ItemText: "do", IsCompleted: true } }),
       mockRes(),
     );
     expect(logActivity).toHaveBeenCalledWith(
-      expect.objectContaining({ action: "Updated" }),
+      expect.objectContaining({
+        entityType: "Task",
+        entityId: 1,
+        action: "StatusChanged",
+        description: "Checklist ticked: do",
+        newValue: "done",
+      }),
+    );
+  });
+
+  it("saveChecklist untick logs an 'unticked' description", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "ok", ChecklistId: 7 }]),
+    );
+    await taskController.saveChecklist(
+      baseReq({ body: { Id: 7, TaskId: 1, ItemText: "do", IsCompleted: false } }),
+      mockRes(),
+    );
+    expect(logActivity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "StatusChanged",
+        description: "Checklist unticked: do",
+        newValue: "open",
+      }),
     );
   });
 
@@ -895,6 +958,16 @@ describe("taskController time-tracking + checklist + activity", () => {
     spy.mockRestore();
   });
 
+  // REGRESSION: same empty-recordset trap as comments — a task with no
+  // checklist items must return a 200 empty page, not 500.
+  it("getChecklist returns an empty 200 page when there are no items", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(spResult([]));
+    const res = mockRes();
+    await taskController.getChecklist(baseReq({ body: { TaskId: 1 } }), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json.mock.calls[0][0].data.checklist).toHaveLength(0);
+  });
+
   it("deleteChecklist rejects missing Id", async () => {
     await taskController.deleteChecklist(baseReq({ body: {} }), mockRes());
     expect(database.executeStoredProcedure).not.toHaveBeenCalled();
@@ -905,13 +978,19 @@ describe("taskController time-tracking + checklist + activity", () => {
       spResult([{ ResponseCode: 200, ResponseMess: "ok" }]),
     );
     await taskController.deleteChecklist(
-      baseReq({ body: { Id: 4 } }),
+      baseReq({ body: { Id: 4, TaskId: 55 } }),
       mockRes(),
     );
     expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({
       ActingUserId: 7,
     });
-    expect(logActivity).toHaveBeenCalled();
+    expect(logActivity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityType: "Task",
+        entityId: 55,
+        fieldName: "Checklist",
+      }),
+    );
   });
 
   it("deleteChecklist returns 500 on DB throw", async () => {
@@ -946,5 +1025,32 @@ describe("taskController time-tracking + checklist + activity", () => {
     const spy = jest.spyOn(console, "error").mockImplementation(() => {});
     await taskController.getActivity(baseReq({ body: { TaskId: 1 } }), mockRes());
     spy.mockRestore();
+  });
+
+  // History is gated behind task membership — a non-member is refused and the
+  // SP never runs.
+  it("getActivity is blocked when the record guard refuses", async () => {
+    assertRecordAccess.mockResolvedValue(false);
+    await taskController.getActivity(
+      baseReq({ body: { TaskId: 1 } }),
+      mockRes(),
+    );
+    expect(assertRecordAccess).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      "task",
+      1,
+      "view",
+    );
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  // REGRESSION: a task with no logged activity must return a 200 empty page.
+  it("getActivity returns an empty 200 page when there's no activity", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(spResult([]));
+    const res = mockRes();
+    await taskController.getActivity(baseReq({ body: { TaskId: 1 } }), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json.mock.calls[0][0].data.activities).toHaveLength(0);
   });
 });

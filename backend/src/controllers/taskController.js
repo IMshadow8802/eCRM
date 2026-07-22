@@ -446,9 +446,19 @@ class TaskController {
         }
       );
 
-      const spResponse = result.recordsets[0][0];
+      // Status columns ride on the data rows, so a task with zero comments
+      // returns zero rows — default the response instead of crashing on
+      // undefined (that was the COMMENTS_ERROR 500 on any commentless task).
+      const spResponse = result.recordsets[0]?.[0] ?? {
+        ResponseCode: 200,
+        ResponseMess: "Comments retrieved",
+        CurrentPage: PageNumber,
+        PageSize,
+        TotalRecords: 0,
+        TotalPages: 0,
+      };
 
-      const comments = cleanSpRows(result.recordsets[0]);
+      const comments = cleanSpRows(result.recordsets[0] || []);
 
       return res.status(spResponse.ResponseCode).json({
         success: spResponse.ResponseCode === 200,
@@ -506,10 +516,13 @@ class TaskController {
       const spResponse = result.recordsets[0][0];
 
       if (spResponse.ResponseCode === 200) {
+        // Log under the parent Task (not the comment id) so it surfaces in the
+        // task's History tab, which filters on EntityType='Task'.
         await logActivity({
-          entityType: "TaskComment",
-          entityId: Id,
+          entityType: "Task",
+          entityId: TaskId,
           action: ACTIONS.DELETED,
+          fieldName: "Comment",
           description: "Comment deleted",
           req,
         });
@@ -698,10 +711,12 @@ class TaskController {
       const spResponse = result.recordsets[0][0];
 
       if (spResponse.ResponseCode === 200) {
+        // Log under the parent Task so it shows in the History tab.
         await logActivity({
-          entityType: "TimeEntry",
-          entityId: Id,
+          entityType: "Task",
+          entityId: TaskId,
           action: ACTIONS.DELETED,
+          fieldName: "TimeEntry",
           description: "Time entry deleted",
           req,
         });
@@ -781,16 +796,21 @@ class TaskController {
       const spResponse = result.recordsets[0][0];
 
       if (spResponse.ResponseCode < 300) {
+        // Id>0 always means a tick/untick here (there's no text-edit UI), so
+        // record which way it went — that's the accountability trail: who
+        // ticked what, when.
         await logActivity({
           entityType: "Task",
           entityId: TaskId,
-          action: Id === 0 ? ACTIONS.CREATED : ACTIONS.UPDATED,
+          action: Id === 0 ? ACTIONS.CREATED : ACTIONS.STATUS_CHANGED,
           fieldName: "Checklist",
-          newValue: ItemText,
+          newValue: Id === 0 ? ItemText : IsCompleted ? "done" : "open",
           description:
             Id === 0
               ? `Checklist item added: ${ItemText}`
-              : `Checklist item updated`,
+              : IsCompleted
+                ? `Checklist ticked: ${ItemText}`
+                : `Checklist unticked: ${ItemText}`,
           req,
         });
 
@@ -846,9 +866,18 @@ class TaskController {
         }
       );
 
-      const spResponse = result.recordsets[0][0];
+      // Zero checklist items => zero rows (status rides on the data rows), so
+      // default rather than read undefined.
+      const spResponse = result.recordsets[0]?.[0] ?? {
+        ResponseCode: 200,
+        ResponseMess: "Checklist retrieved",
+        CurrentPage: PageNumber,
+        PageSize,
+        TotalRecords: 0,
+        TotalPages: 0,
+      };
 
-      const checklist = cleanSpRows(result.recordsets[0]);
+      const checklist = cleanSpRows(result.recordsets[0] || []);
 
       return res.status(spResponse.ResponseCode).json({
         success: spResponse.ResponseCode === 200,
@@ -910,11 +939,13 @@ class TaskController {
       const spResponse = result.recordsets[0][0];
 
       if (spResponse.ResponseCode === 200) {
+        // Log under the parent Task so it shows in the History tab.
         await logActivity({
-          entityType: "TaskChecklist",
-          entityId: Id,
+          entityType: "Task",
+          entityId: TaskId,
           action: ACTIONS.DELETED,
-          description: "Checklist item deleted",
+          fieldName: "Checklist",
+          description: "Checklist item removed",
           req,
         });
 
@@ -1228,6 +1259,11 @@ class TaskController {
     try {
       const { TaskId, PageNumber = 1, PageSize = 50 } = req.body;
 
+      // History is task-scoped and can be sensitive (who did what, when) —
+      // gate it behind membership, same as viewing the task.
+      const allowed = await assertRecordAccess(req, res, "task", TaskId, "view");
+      if (!allowed) return;
+
       const result = await database.executeStoredProcedure(
         "sp_FetchTaskActivity",
         {
@@ -1241,9 +1277,18 @@ class TaskController {
         }
       );
 
-      const spResponse = result.recordsets[0][0];
+      // A task with no logged activity returns zero rows — default rather than
+      // crash on undefined.
+      const spResponse = result.recordsets[0]?.[0] ?? {
+        ResponseCode: 200,
+        ResponseMess: "Activity retrieved",
+        CurrentPage: PageNumber,
+        PageSize,
+        TotalRecords: 0,
+        TotalPages: 0,
+      };
 
-      const activities = cleanSpRows(result.recordsets[0]);
+      const activities = cleanSpRows(result.recordsets[0] || []);
 
       return res.status(spResponse.ResponseCode).json({
         success: spResponse.ResponseCode === 200,

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { http, HttpResponse } from "msw";
@@ -439,5 +439,414 @@ describe("TaskDetailModal", () => {
     await waitFor(() => {
       expect(taskFixture.list[0].Description).toBe("New body");
     });
+  });
+
+  const seedOneComment = () =>
+    server.use(
+      http.post(`*/api/tasks/getTaskComments`, async () =>
+        HttpResponse.json({
+          success: true,
+          message: "ok",
+          responseCode: 200,
+          data: {
+            comments: [
+              {
+                Id: 900,
+                TaskId: 501,
+                UserId: 1,
+                UserName: "Alice",
+                Comment: "orig",
+                IsEdited: false,
+                IsPinned: false,
+                IsDeleted: false,
+                CreatedDate: new Date().toISOString(),
+              },
+            ],
+            pagination: { currentPage: 1, pageSize: 100, totalRecords: 1, totalPages: 1 },
+          },
+        }),
+      ),
+    );
+
+  // F3: editing reuses addTaskComment with Id>0 (the SP updates on Id>0).
+  it("editing your own comment posts addTaskComment with the comment Id", async () => {
+    let editBody;
+    seedOneComment();
+    server.use(
+      http.post(`*/api/tasks/addTaskComment`, async ({ request }) => {
+        editBody = await request.json();
+        return HttpResponse.json({
+          success: true,
+          message: "ok",
+          responseCode: 200,
+          data: { commentId: 900 },
+        });
+      }),
+    );
+    renderModal(501);
+    await screen.findByText("Task 501");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: /Comments/i }));
+    await user.click(await screen.findByTestId("edit-900"));
+    const input = await screen.findByTestId("edit-input-900");
+    const inner = input.querySelector("textarea") || input;
+    await user.clear(inner);
+    await user.type(inner, "updated text");
+    await user.click(screen.getByTestId("edit-save-900"));
+    await waitFor(() => {
+      expect(editBody).toMatchObject({
+        Id: 900,
+        TaskId: 501,
+        Comment: "updated text",
+      });
+    });
+  });
+
+  // F4: locking the delete while it's in flight is what stops the double-tap
+  // that fired a second delete at an already-gone comment (the false "failed").
+  it("locks the comment delete button while the delete is in flight", async () => {
+    let release;
+    seedOneComment();
+    server.use(
+      http.post(
+        `*/api/tasks/deleteTaskComment`,
+        async () =>
+          new Promise((resolve) => {
+            release = () =>
+              resolve(
+                HttpResponse.json({ success: true, message: "ok", responseCode: 200 }),
+              );
+          }),
+      ),
+    );
+    renderModal(501);
+    await screen.findByText("Task 501");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: /Comments/i }));
+    await user.click(await screen.findByTestId("delete-900"));
+    await waitFor(() =>
+      expect(screen.getByTestId("delete-900")).toBeDisabled(),
+    );
+    release();
+  });
+
+  const seedOneChecklistItem = () =>
+    server.use(
+      http.post(`*/api/tasks/getTaskChecklist`, async () =>
+        HttpResponse.json({
+          success: true,
+          message: "ok",
+          responseCode: 200,
+          data: { checklist: [{ Id: 900, ItemText: "step one", IsCompleted: false }] },
+        }),
+      ),
+    );
+
+  it("ticking a checklist item sends IsCompleted true", async () => {
+    let body;
+    seedOneChecklistItem();
+    server.use(
+      http.post(`*/api/tasks/saveTaskChecklist`, async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({
+          success: true,
+          message: "ok",
+          responseCode: 200,
+          data: { checklistId: 900 },
+        });
+      }),
+    );
+    const user = await openChecklistTab();
+    await user.click(await screen.findByTestId("checklist-toggle-900"));
+    await waitFor(() => {
+      expect(body).toMatchObject({ Id: 900, TaskId: 501, IsCompleted: true });
+    });
+  });
+
+  it("locks the checklist toggle while its save is in flight", async () => {
+    let release;
+    seedOneChecklistItem();
+    server.use(
+      http.post(
+        `*/api/tasks/saveTaskChecklist`,
+        async () =>
+          new Promise((resolve) => {
+            release = () =>
+              resolve(
+                HttpResponse.json({
+                  success: true,
+                  message: "ok",
+                  responseCode: 200,
+                  data: { checklistId: 900 },
+                }),
+              );
+          }),
+      ),
+    );
+    const user = await openChecklistTab();
+    await user.click(await screen.findByTestId("checklist-toggle-900"));
+    await waitFor(() =>
+      expect(screen.getByTestId("checklist-toggle-900")).toBeDisabled(),
+    );
+    release();
+  });
+
+  it("History tab lists activity from the audit log", async () => {
+    server.use(
+      http.post(`*/api/tasks/getTaskActivity`, async () =>
+        HttpResponse.json({
+          success: true,
+          message: "ok",
+          responseCode: 200,
+          data: {
+            activities: [
+              {
+                Id: 1,
+                UserName: "Alice",
+                Action: "StatusChanged",
+                Description: "Checklist ticked: step one",
+                CreatedDate: new Date().toISOString(),
+              },
+            ],
+            pagination: { currentPage: 1, pageSize: 100, totalRecords: 1, totalPages: 1 },
+          },
+        }),
+      ),
+    );
+    renderModal(501);
+    await screen.findByText("Task 501");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: /History/i }));
+    expect(
+      await screen.findByText(/Checklist ticked: step one/i),
+    ).toBeInTheDocument();
+  });
+
+  it("History tab shows an empty state when there's no activity", async () => {
+    renderModal(501);
+    await screen.findByText("Task 501");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: /History/i }));
+    expect(await screen.findByText(/No history yet/i)).toBeInTheDocument();
+  });
+
+  it("History renders an old→new change line when a value changed", async () => {
+    server.use(
+      http.post(`*/api/tasks/getTaskActivity`, async () =>
+        HttpResponse.json({
+          success: true,
+          message: "ok",
+          responseCode: 200,
+          data: {
+            activities: [
+              {
+                Id: 2,
+                UserName: "Bob",
+                Action: "StatusChanged",
+                Description: "Checklist ticked: deploy",
+                OldValue: "open",
+                NewValue: "done",
+                CreatedDate: new Date().toISOString(),
+              },
+            ],
+            pagination: { currentPage: 1, pageSize: 100, totalRecords: 1, totalPages: 1 },
+          },
+        }),
+      ),
+    );
+    renderModal(501);
+    await screen.findByText("Task 501");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: /History/i }));
+    await screen.findByText(/Checklist ticked: deploy/i);
+    expect(screen.getByTestId("task-history").textContent).toMatch(
+      /open.*→.*done/,
+    );
+  });
+
+  // F4 rollback: a failed tick unwinds the optimistic flip and unlocks the row.
+  it("rolls back and re-enables the checklist toggle when the save fails", async () => {
+    seedOneChecklistItem();
+    server.use(
+      http.post(`*/api/tasks/saveTaskChecklist`, async () =>
+        HttpResponse.json(
+          { success: false, message: "denied", responseCode: 403 },
+          { status: 403 },
+        ),
+      ),
+    );
+    const user = await openChecklistTab();
+    const toggle = await screen.findByTestId("checklist-toggle-900");
+    await user.click(toggle);
+    await waitFor(() =>
+      expect(screen.getByTestId("checklist-toggle-900")).not.toBeDisabled(),
+    );
+  });
+
+  it("re-enables the comment delete button if the delete fails", async () => {
+    seedOneComment();
+    server.use(
+      http.post(`*/api/tasks/deleteTaskComment`, async () =>
+        HttpResponse.json(
+          { success: false, message: "denied", responseCode: 403 },
+          { status: 403 },
+        ),
+      ),
+    );
+    renderModal(501);
+    await screen.findByText("Task 501");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: /Comments/i }));
+    await user.click(await screen.findByTestId("delete-900"));
+    await waitFor(() =>
+      expect(screen.getByTestId("delete-900")).not.toBeDisabled(),
+    );
+  });
+
+  it("hides edit and delete on a comment you don't own", async () => {
+    server.use(
+      http.post(`*/api/tasks/getTaskComments`, async () =>
+        HttpResponse.json({
+          success: true,
+          message: "ok",
+          responseCode: 200,
+          data: {
+            comments: [
+              {
+                Id: 900,
+                TaskId: 501,
+                UserId: 77, // someone else's comment
+                UserName: "Carol",
+                Comment: "not yours",
+                IsDeleted: false,
+                IsPinned: false,
+                CreatedDate: new Date().toISOString(),
+              },
+            ],
+            pagination: { currentPage: 1, pageSize: 100, totalRecords: 1, totalPages: 1 },
+          },
+        }),
+      ),
+    );
+    renderModal(501);
+    await screen.findByText("Task 501");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: /Comments/i }));
+    await screen.findByTestId("comment-900");
+    expect(screen.queryByTestId("edit-900")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("delete-900")).not.toBeInTheDocument();
+  });
+
+  it("cancelling a comment edit restores the original text", async () => {
+    seedOneComment();
+    renderModal(501);
+    await screen.findByText("Task 501");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: /Comments/i }));
+    await user.click(await screen.findByTestId("edit-900"));
+    const input = await screen.findByTestId("edit-input-900");
+    const inner = input.querySelector("textarea") || input;
+    await user.clear(inner);
+    await user.type(inner, "changed my mind");
+    await user.click(screen.getByRole("button", { name: /Cancel/i }));
+    // back to read view showing the original comment
+    expect(await screen.findByText("orig")).toBeInTheDocument();
+    expect(screen.queryByTestId("edit-input-900")).not.toBeInTheDocument();
+  });
+
+  it("renders an edited + pinned comment with its badge and unpin control", async () => {
+    server.use(
+      http.post(`*/api/tasks/getTaskComments`, async () =>
+        HttpResponse.json({
+          success: true,
+          message: "ok",
+          responseCode: 200,
+          data: {
+            comments: [
+              {
+                Id: 900,
+                TaskId: 501,
+                UserId: 1,
+                UserName: "Alice",
+                Comment: "pinned + edited",
+                IsEdited: true,
+                IsPinned: true,
+                IsDeleted: false,
+                ReadByUserIds: "1,2",
+                CreatedDate: new Date().toISOString(),
+              },
+            ],
+            pagination: { currentPage: 1, pageSize: 100, totalRecords: 1, totalPages: 1 },
+          },
+        }),
+      ),
+    );
+    renderModal(501);
+    await screen.findByText("Task 501");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: /Comments/i }));
+    const bubble = await screen.findByTestId("comment-900");
+    expect(within(bubble).getByText(/^edited$/i)).toBeInTheDocument();
+    expect(within(bubble).getByText(/Seen by 2/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Unpin comment/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("Dependencies tab renders blocker and dependent chips", async () => {
+    server.use(
+      http.post(`*/api/tasks/fetchTaskDependencies`, async () =>
+        HttpResponse.json({
+          success: true,
+          message: "ok",
+          responseCode: 200,
+          data: {
+            blockers: [
+              { TaskId: 2, Title: "Blocker A", IsCompleted: 1, ColumnTitle: "Done" },
+            ],
+            dependents: [
+              { TaskId: 3, Title: "Dependent B", IsCompleted: 0, ColumnTitle: "To Do" },
+            ],
+          },
+        }),
+      ),
+    );
+    renderModal(501);
+    await screen.findByText("Task 501");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: /Dependencies/i }));
+    expect(await screen.findByText(/Blocker A/i)).toBeInTheDocument();
+    expect(screen.getByText(/Dependent B/i)).toBeInTheDocument();
+  });
+
+  it("Time tab renders a logged entry with hours and date", async () => {
+    server.use(
+      http.post(`*/api/tasks/getTaskTimeEntries`, async () =>
+        HttpResponse.json({
+          success: true,
+          message: "ok",
+          responseCode: 200,
+          data: {
+            timeEntries: [
+              {
+                Id: 81,
+                TaskId: 501,
+                UserId: 1,
+                UserName: "Alice",
+                Hours: 2.5,
+                Description: "did the thing",
+                LogDate: "2026-07-01",
+              },
+            ],
+          },
+        }),
+      ),
+    );
+    renderModal(501);
+    await screen.findByText("Task 501");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: /Time/i }));
+    expect(await screen.findByText(/did the thing/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/2\.50 h/i).length).toBeGreaterThan(0);
   });
 });
