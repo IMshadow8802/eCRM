@@ -40,14 +40,22 @@ vi.mock("./Notifications/NotificationBell", () => ({
   default: () => null,
 }));
 
+import { ThemeProvider } from "@mui/material/styles";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
 import TopNav from "./TopNav";
+import { buildTheme } from "../theme";
 import { useSocketStatus } from "../realtime/SocketProvider";
 
 const renderTopNav = (onOpenMobileSidebar = vi.fn()) =>
   render(
-    <MemoryRouter initialEntries={["/dashboard"]}>
-      <TopNav onOpenMobileSidebar={onOpenMobileSidebar} />
-    </MemoryRouter>
+    <ThemeProvider theme={buildTheme("light")}>
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/dashboard"]}>
+          <TopNav onOpenMobileSidebar={onOpenMobileSidebar} />
+        </MemoryRouter>
+      </QueryClientProvider>
+    </ThemeProvider>
   );
 
 const setMatchMedia = (matchesByQuery) => {
@@ -95,7 +103,7 @@ describe("TopNav", () => {
     const displayName = screen.getByText("Super");
     fireEvent.click(displayName);
     expect(screen.getByText("Logout")).toBeInTheDocument();
-    expect(screen.getByText("User ID")).toBeInTheDocument();
+    expect(screen.getByText("My Account")).toBeInTheDocument();
   });
 
   it("toggles theme when theme button clicked", () => {
@@ -136,7 +144,7 @@ describe("TopNav", () => {
     // allow async handler to settle
     await new Promise((r) => setTimeout(r, 200));
     // popover should close; Logout text gone from the now-closed popover
-    expect(screen.queryByText("User ID")).not.toBeInTheDocument();
+    expect(screen.queryByText("My Account")).not.toBeInTheDocument();
   });
 
   it("falls back to capitalised FullName/JobTitle fields when present", () => {
@@ -149,16 +157,11 @@ describe("TopNav", () => {
     expect(screen.getByText("Boss")).toBeInTheDocument();
   });
 
-  it("labels role as Administrator when user is admin", () => {
-    localStorage.setItem(
-      "userData",
-      JSON.stringify({
-        user: { Id: 3, FullName: "Root", JobTitle: "Admin", IsAdmin: true },
-      })
-    );
+  it("opens the My Account modal from the profile popover", () => {
     renderTopNav();
-    fireEvent.click(screen.getByText("Root"));
-    expect(screen.getByText("Administrator")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Super"));
+    fireEvent.click(screen.getByTestId("open-account"));
+    expect(screen.getByTestId("account-modal")).toBeInTheDocument();
   });
 
   it("still completes logout even if the API call rejects", async () => {
@@ -167,7 +170,7 @@ describe("TopNav", () => {
     fireEvent.click(screen.getByText("Super"));
     fireEvent.click(screen.getByText("Logout"));
     await new Promise((r) => setTimeout(r, 200));
-    expect(screen.queryByText("User ID")).not.toBeInTheDocument();
+    expect(screen.queryByText("My Account")).not.toBeInTheDocument();
   });
 
   it("renders the hamburger on mobile and forwards the click", () => {

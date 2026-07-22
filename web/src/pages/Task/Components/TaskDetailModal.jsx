@@ -39,6 +39,7 @@ import {
   Skeleton,
   EmptyState,
 } from "../../../components/ui";
+import UserAvatar from "../../../components/ui/UserAvatar";
 import { toUserOptions, getUserId } from "../../../utils/userShape";
 import Attachments from "../../../components/Attachments";
 import { useApiQuery } from "../../../hooks/useApiQuery";
@@ -1248,7 +1249,7 @@ function CommentBubble({
         marginLeft: c.ParentCommentId ? 28 : 0,
       }}
     >
-      <Avatar name={c.UserName} size="sm" />
+      <UserAvatar userId={c.UserId} name={c.UserName} size="sm" />
       {/* Feed layout: avatar rail + content. Pinned comments keep a subtle
           tint instead of every comment sitting in its own heavy box. */}
       <div
@@ -1418,7 +1419,7 @@ function ActivityRow({ activity: a, isLast }) {
       <div
         style={{ display: "flex", flexDirection: "column", alignItems: "center" }}
       >
-        <Avatar name={a.UserName} size="sm" />
+        <UserAvatar userId={a.UserId} name={a.UserName} size="sm" />
         {!isLast && (
           <div
             style={{

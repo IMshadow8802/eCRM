@@ -45,3 +45,32 @@ describe("useAuthStore.hasPermission", () => {
     expect(useAuthStore.getState().hasPermission("Leads", "view")).toBe(false);
   });
 });
+
+describe("useAuthStore.updateUser", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useAuthStore.setState({ user: { Id: 1, FullName: "Old", Avatar: null } });
+  });
+
+  it("merges a patch into the user + persisted localStorage", () => {
+    localStorage.setItem(
+      "userData",
+      JSON.stringify({ user: { Id: 1, FullName: "Old", Avatar: null } }),
+    );
+    useAuthStore.getState().updateUser({ FullName: "New", Avatar: "emoji:🚀" });
+
+    const user = useAuthStore.getState().user;
+    expect(user.FullName).toBe("New");
+    expect(user.Avatar).toBe("emoji:🚀");
+    expect(user.Id).toBe(1); // untouched fields kept
+
+    const stored = JSON.parse(localStorage.getItem("userData"));
+    expect(stored.user.FullName).toBe("New");
+    expect(stored.user.Avatar).toBe("emoji:🚀");
+  });
+
+  it("updates state even when nothing is persisted yet", () => {
+    useAuthStore.getState().updateUser({ FullName: "Solo" });
+    expect(useAuthStore.getState().user.FullName).toBe("Solo");
+  });
+});

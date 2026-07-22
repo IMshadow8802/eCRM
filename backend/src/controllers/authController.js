@@ -47,9 +47,12 @@ function organizeMenuHierarchy(menuItems) {
 class AuthController {
   async login(req, res) {
     try {
-      const { username, password } = req.body;
+      // Accept `identifier` (username / email / mobile); keep `username` for
+      // back-compat with older clients.
+      const { identifier, username, password } = req.body;
+      const loginId = identifier ?? username;
 
-      if (!username || !password) {
+      if (!loginId || !password) {
         return res.status(400).json({
           success: false,
           message: "Username and password are required",
@@ -59,10 +62,10 @@ class AuthController {
         });
       }
 
-      console.log(`🔐 Login attempt for: ${username}`);
+      console.log(`🔐 Login attempt for: ${loginId}`);
 
       const result = await database.executeStoredProcedure("sp_ValidateUser", {
-        username,
+        identifier: loginId,
       });
 
       const spResponse = result.recordsets[0][0];
@@ -115,6 +118,8 @@ class AuthController {
               Username: spResponse.UserName,
               FullName: spResponse.FullName,
               Email: spResponse.Email,
+              Mobile: spResponse.Mobile,
+              Avatar: spResponse.Avatar,
               JobTitle: spResponse.JobTitle,
               HourlyRate: spResponse.HourlyRate,
               BranchId: spResponse.BranchId,

@@ -550,6 +550,23 @@ export const handlers = [
     HttpResponse.json({ success: true, message: "ok", responseCode: 200 }),
   ),
 
+  http.post(`*/api/users/directory`, async () =>
+    HttpResponse.json({
+      success: true,
+      message: "ok",
+      responseCode: 200,
+      data: { users: [] },
+    }),
+  ),
+
+  http.post(`*/api/users/me/updateProfile`, async () =>
+    HttpResponse.json({ success: true, message: "ok", responseCode: 200, data: {} }),
+  ),
+
+  http.post(`*/api/users/me/changePassword`, async () =>
+    HttpResponse.json({ success: true, message: "Password changed", responseCode: 200 }),
+  ),
+
   http.post(`*/api/tasks/getTaskActivity`, async () =>
     HttpResponse.json({
       success: true,

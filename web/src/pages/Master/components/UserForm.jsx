@@ -28,6 +28,7 @@ const userFormSchema = z.object({
     .optional()
     .or(z.literal("")),
   JobTitle: z.string().optional().or(z.literal("")),
+  Mobile: z.string().optional().or(z.literal("")),
   HourlyRate: z.coerce.number().min(0, "Hourly rate must be positive").optional(),
   GroupId: z.number().optional(),
   UserActive: z.boolean().optional(),
@@ -64,6 +65,7 @@ const UserForm = ({
       FullName: "",
       Email: "",
       JobTitle: "",
+      Mobile: "",
       HourlyRate: 0,
       GroupId: Array.isArray(userGroups) && userGroups.length > 0 && userGroups[0]?.Id ? userGroups[0].Id : 0,
       UserActive: true,
@@ -229,6 +231,24 @@ const UserForm = ({
                   onBlur={field.onBlur}
                   placeholder="Enter email address"
                   error={errors.Email?.message}
+                />
+              )}
+            />
+          </div>
+
+          {/* Row: Mobile (a login identifier) */}
+          <div className="grid grid-cols-2 gap-4">
+            <Controller
+              control={control}
+              name="Mobile"
+              render={({ field }) => (
+                <FormInput
+                  label="Mobile"
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  placeholder="Enter mobile number"
+                  error={errors.Mobile?.message}
                 />
               )}
             />

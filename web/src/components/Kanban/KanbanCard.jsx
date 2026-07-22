@@ -10,7 +10,8 @@ import {
 } from "lucide-react";
 import dayjs from "dayjs";
 
-import { Chip, Avatar, Checkbox } from "../ui";
+import { Chip, Checkbox } from "../ui";
+import UserAvatar from "../ui/UserAvatar";
 
 const PRIORITY_TONE = {
   low: "info",
@@ -163,7 +164,11 @@ export default function KanbanCard({
             )}
             {task.AssigneeName && (
               <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                <Avatar name={task.AssigneeName} size="xs" />
+                <UserAvatar
+                  userId={task.AssignedToUserId}
+                  name={task.AssigneeName}
+                  size="xs"
+                />
                 <span
                   style={{
                     fontSize: 11,

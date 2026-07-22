@@ -3,7 +3,6 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useSnackbar } from "notistack";
 import {
   AppBar,
-  Avatar,
   Box,
   Button,
   IconButton,
@@ -14,16 +13,17 @@ import {
   useMediaQuery,
 } from "@mui/material";
 import { MenuRounded, LogoutRounded } from "@mui/icons-material";
-import { Sun, Moon } from "lucide-react";
+import { Sun, Moon, UserCog } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 
 import useAuthStore from "../stores/useAuthStore";
 import useThemeStore from "../stores/useThemeStore";
 import useApi from "../hooks/useApi";
-import Profile from "../assets/profile.png";
+import UiAvatar from "./ui/Avatar";
+import AccountModal from "./AccountModal";
 import NotificationBell from "./Notifications/NotificationBell";
 import { ConnectionStatus } from "../realtime/SocketProvider";
-import { getUserId, getUserName, getUserJobTitle } from "../utils/userShape";
+import { getUserName, getUserJobTitle } from "../utils/userShape";
 
 /**
  * Thin top bar sitting above the main content area.
@@ -51,6 +51,7 @@ const TopNav = ({ onOpenMobileSidebar }) => {
 
   const [profileAnchor, setProfileAnchor] = useState(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
 
   const currentUser = (() => {
     try {
@@ -230,26 +231,12 @@ const TopNav = ({ onOpenMobileSidebar }) => {
               </Typography>
             </Box>
           )}
-          <Box sx={{ position: "relative" }}>
-            <Avatar
-              src={Profile}
-              alt={displayName}
-              sx={{ width: 32, height: 32 }}
-            />
-            <Box
-              sx={{
-                position: "absolute",
-                bottom: -2,
-                right: -2,
-                width: 10,
-                height: 10,
-                borderRadius: "50%",
-                backgroundColor: "success.main",
-                border: "2px solid",
-                borderColor: "background.paper",
-              }}
-            />
-          </Box>
+          <UiAvatar
+            name={displayName}
+            preset={currentUser?.Avatar}
+            size="sm"
+            online
+          />
         </Box>
 
         <Popover
@@ -280,10 +267,10 @@ const TopNav = ({ onOpenMobileSidebar }) => {
                 borderBottom: "1px solid",
                 borderColor: "divider"
               }}>
-              <Avatar
-                src={Profile}
-                alt={displayName}
-                sx={{ width: 48, height: 48 }}
+              <UiAvatar
+                name={displayName}
+                preset={currentUser?.Avatar}
+                size="lg"
               />
               <Box sx={{ minWidth: 0 }}>
                 <Typography
@@ -317,35 +304,19 @@ const TopNav = ({ onOpenMobileSidebar }) => {
                 </Typography>
               </Box>
             </Stack>
-            <Stack spacing={0.75} sx={{ py: 1.5, fontSize: "0.8667rem" }}>
-              <Stack direction="row" sx={{
-                justifyContent: "space-between"
-              }}>
-                <Typography
-                  sx={{ fontSize: "inherit", color: "text.secondary" }}
-                >
-                  User ID
-                </Typography>
-                <Typography sx={{ fontSize: "inherit", fontWeight: 600 }}>
-                  #{getUserId(currentUser) ?? "N/A"}
-                </Typography>
-              </Stack>
-              <Stack direction="row" sx={{
-                justifyContent: "space-between"
-              }}>
-                <Typography
-                  sx={{ fontSize: "inherit", color: "text.secondary" }}
-                >
-                  Role
-                </Typography>
-                <Typography sx={{ fontSize: "inherit", fontWeight: 600 }}>
-                  {currentUser?.IsAdmin
-                    ? "Administrator"
-                    : "User"}
-                </Typography>
-              </Stack>
-            </Stack>
-            <Box sx={{ pt: 1.5, borderTop: "1px solid", borderColor: "divider" }}>
+            <Box sx={{ pt: 1.5 }}>
+              <Button
+                fullWidth
+                startIcon={<UserCog size={16} />}
+                onClick={() => {
+                  setProfileAnchor(null);
+                  setAccountOpen(true);
+                }}
+                data-testid="open-account"
+                sx={{ justifyContent: "flex-start", fontWeight: 600, color: "text.primary" }}
+              >
+                My Account
+              </Button>
               <Button
                 fullWidth
                 color="error"
@@ -360,6 +331,10 @@ const TopNav = ({ onOpenMobileSidebar }) => {
           </Box>
         </Popover>
       </Toolbar>
+
+      {accountOpen && (
+        <AccountModal open onClose={() => setAccountOpen(false)} />
+      )}
     </AppBar>
   );
 };

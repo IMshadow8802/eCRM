@@ -11,7 +11,7 @@ import useApi from "../../hooks/useApi";
 import { Button, TextInput, Checkbox, IconButton } from "../../components/ui";
 
 export default function Login() {
-  const [username, setUsername] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
@@ -27,8 +27,8 @@ export default function Login() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (!username || !password) {
-      enqueueSnackbar("Username or password field is empty", {
+    if (!identifier || !password) {
+      enqueueSnackbar("Enter your username/email/mobile and password", {
         variant: "error",
       });
       return;
@@ -36,7 +36,7 @@ export default function Login() {
     setIsLoading(true);
     try {
       const response = await apiClient.post("/api/auth/loginUser", {
-        username,
+        identifier,
         password,
       });
       const responseData = response.data;
@@ -146,15 +146,15 @@ export default function Login() {
             <Box component="form" onSubmit={handleSubmit}>
               <Stack spacing={2}>
                 <TextInput
-                  label="Username"
-                  name="username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  label="Username / Email / Mobile"
+                  name="identifier"
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
                   disabled={isLoading}
                   required
                   autoComplete="username"
                   autoFocus
-                  placeholder="your.handle"
+                  placeholder="your.handle, email or mobile"
                   leftAdornment={<Mail size={16} />}
                 />
 

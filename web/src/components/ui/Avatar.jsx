@@ -1,7 +1,9 @@
 import { useTheme } from "@mui/material/styles";
+import { parseAvatar } from "../../utils/avatarPresets";
 
 /**
- * Avatar — text initials fallback, optional image src. Online dot + gradient ring optional.
+ * Avatar — text initials fallback, optional image `src`, or a `preset` string
+ * (icon/emoji/color chosen by the user). Online dot + gradient ring optional.
  */
 const SIZE = {
   xs: { box: 20, fz: 9 },
@@ -28,6 +30,7 @@ function hashHue(str) {
 export default function Avatar({
   name,
   src,
+  preset,
   size = "md",
   online,
   ring = false,
@@ -38,6 +41,9 @@ export default function Avatar({
   const p = theme.tokens;
   const s = SIZE[size] ?? SIZE.md;
   const hue = hashHue(String(name || "user"));
+  const av = src ? null : parseAvatar(preset);
+  const presetBg =
+    av?.kind === "icon" || av?.kind === "color" ? av.color : undefined;
 
   return (
     <span
@@ -71,9 +77,11 @@ export default function Avatar({
           overflow: "hidden",
           background: src
             ? undefined
-            : `linear-gradient(135deg, hsl(${hue}, 68%, 60%), hsl(${(hue + 40) % 360}, 68%, 52%))`,
+            : presetBg
+              ? presetBg
+              : `linear-gradient(135deg, hsl(${hue}, 68%, 60%), hsl(${(hue + 40) % 360}, 68%, 52%))`,
           color: "#FFFFFF",
-          fontSize: s.fz,
+          fontSize: av?.kind === "emoji" ? Math.round(s.box * 0.58) : s.fz,
           fontWeight: 700,
           border: `2px solid ${p.surface.card}`,
           cursor: onClick ? "pointer" : "default",
@@ -85,6 +93,10 @@ export default function Avatar({
             alt={name}
             style={{ width: "100%", height: "100%", objectFit: "cover" }}
           />
+        ) : av?.kind === "emoji" ? (
+          <span aria-hidden="true">{av.emoji}</span>
+        ) : av?.kind === "icon" ? (
+          <av.Icon size={Math.round(s.box * 0.52)} strokeWidth={2.4} />
         ) : (
           initials(name)
         )}

@@ -85,6 +85,18 @@ const useAuthStore = create(
           });
         },
 
+        // Merge a partial user patch (e.g. FullName/Avatar after a self-service
+        // profile save) into state + persisted localStorage.
+        updateUser: (patch) => {
+          const user = { ...(get().user || {}), ...patch };
+          const stored = JSON.parse(localStorage.getItem("userData") || "null");
+          if (stored) {
+            stored.user = { ...(stored.user || {}), ...patch };
+            localStorage.setItem("userData", JSON.stringify(stored));
+          }
+          set({ user });
+        },
+
         logout: () => {
           // Clear localStorage
           localStorage.removeItem("userData");

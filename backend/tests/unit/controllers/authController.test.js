@@ -243,6 +243,71 @@ describe("authController.login response shape", () => {
   });
 });
 
+describe("authController.login multi-identifier + profile fields", () => {
+  const userRow = (over = {}) => ({
+    ResponseCode: 200,
+    ResponseMess: "ok",
+    UserId: 5,
+    UserName: "alice",
+    Password: "bcrypt-hash",
+    UserActive: true,
+    CompId: 1,
+    BranchId: 2,
+    ...over,
+  });
+
+  it("accepts an email/mobile identifier and passes it to sp_ValidateUser", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[userRow()], []],
+    });
+    comparePassword.mockResolvedValueOnce(true);
+
+    const res = mockRes();
+    await authController.login(
+      { body: { identifier: "alice@example.com", password: "pw" } },
+      res,
+    );
+
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
+      "sp_ValidateUser",
+      { identifier: "alice@example.com" },
+    );
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it("still accepts the legacy `username` field as the identifier", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[userRow()], []],
+    });
+    comparePassword.mockResolvedValueOnce(true);
+
+    const res = mockRes();
+    await authController.login({ body: { username: "alice", password: "pw" } }, res);
+
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
+      "sp_ValidateUser",
+      { identifier: "alice" },
+    );
+  });
+
+  it("threads Mobile + Avatar into the user payload", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [
+        [userRow({ Mobile: "9998887777", Avatar: "emoji:🚀" })],
+        [],
+      ],
+    });
+    comparePassword.mockResolvedValueOnce(true);
+
+    const res = mockRes();
+    await authController.login({ body: { identifier: "alice", password: "pw" } }, res);
+
+    const user = res.json.mock.calls[0][0].data.user;
+    expect(user.Mobile).toBe("9998887777");
+    expect(user.Avatar).toBe("emoji:🚀");
+  });
+});
+
 // The public hashPassword endpoint (bcrypt oracle + SQL snippet echo) is gone.
 describe("authController hashPassword removal", () => {
   it("no longer exposes a hashPassword handler", () => {
