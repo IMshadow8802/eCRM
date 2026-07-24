@@ -14,6 +14,11 @@ const dbConfig = {
     enableArithAbort: true,
     requestTimeout: 30000,
     connectionTimeout: 30000,
+    // SQL Server stores IST wall-clock (GETDATE() is server-local, +05:30).
+    // useUTC:false makes node-mssql read/write DATETIME in the node process's
+    // local timezone — which we pin to Asia/Kolkata (docker-compose TZ) so the
+    // stored wall-clock is interpreted as IST, not mislabelled UTC (+5:30 bug).
+    useUTC: false,
   },
   pool: {
     max: 10,
@@ -26,6 +31,7 @@ class Database {
   constructor() {
     this.pool = null;
     this.connected = false;
+    this.config = dbConfig; // exposed for inspection/tests
   }
 
   async connect() {

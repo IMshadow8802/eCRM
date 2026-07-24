@@ -1295,7 +1295,7 @@ function CommentBubble({
             marginLeft: "auto",
           }}
         >
-          {new Date(c.CreatedDate).toLocaleString()}
+          {dayjs(c.CreatedDate).format("DD/MM/YYYY, hh:mm A")}
         </span>
         <Tooltip title={c.IsPinned ? "Unpin" : "Pin"}>
           <IconButton
@@ -1473,7 +1473,7 @@ function ActivityRow({ activity: a, isLast }) {
             marginTop: 3,
           }}
         >
-          {a.CreatedDate ? new Date(a.CreatedDate).toLocaleString() : ""}
+          {a.CreatedDate ? dayjs(a.CreatedDate).format("DD/MM/YYYY, hh:mm A") : ""}
         </div>
       </div>
     </div>

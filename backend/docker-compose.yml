@@ -13,6 +13,9 @@ services:
       NODE_ENV: production
       PORT: 5001
       HOST: 0.0.0.0
+      # node:20-alpine defaults to UTC; pin to IST so node-mssql (useUTC:false)
+      # reads SQL Server's IST wall-clock timestamps correctly.
+      TZ: Asia/Kolkata
     env_file:
       - .env.prd
     volumes:
