@@ -297,15 +297,38 @@ describe("Attachments — inline previews", () => {
     expect(within(modal).getByRole("button", { name: "Download" })).toBeInTheDocument();
   });
 
-  it("keeps documents as download-only rows with no preview tile", async () => {
+  it("keeps office documents as download-only rows with no preview tile or view button", async () => {
+    fetchAttachments.mockResolvedValueOnce(
+      listResponse([
+        { Id: 3, FileName: "sheet.xlsx", FileSize: 100, MimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
+      ]),
+    );
+    wrap(<Attachments entity="lead" entityId={5} />);
+
+    expect(await screen.findByTestId("attachment-row")).toHaveTextContent("sheet.xlsx");
+    expect(screen.queryByTestId("attachment-tile")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "View sheet.xlsx" })).not.toBeInTheDocument();
+    expect(fetchAttachmentBlob).not.toHaveBeenCalled();
+  });
+
+  it("renders a live PDF as a doc row and opens an inline iframe viewer on View", async () => {
     fetchAttachments.mockResolvedValueOnce(
       listResponse([{ Id: 3, FileName: "report.pdf", FileSize: 100, MimeType: "application/pdf" }]),
     );
+    fetchAttachmentBlob.mockResolvedValue({ blob: new Blob(), url: "blob:pdf" });
     wrap(<Attachments entity="lead" entityId={5} />);
 
     expect(await screen.findByTestId("attachment-row")).toHaveTextContent("report.pdf");
     expect(screen.queryByTestId("attachment-tile")).not.toBeInTheDocument();
-    expect(fetchAttachmentBlob).not.toHaveBeenCalled();
+    expect(fetchAttachmentBlob).not.toHaveBeenCalled(); // PDF blob loads on View
+
+    fireEvent.click(screen.getByRole("button", { name: "View report.pdf" }));
+
+    const modal = await screen.findByTestId("attachment-preview");
+    await waitFor(() => expect(fetchAttachmentBlob).toHaveBeenCalledWith({ Id: 3 }));
+    const frame = await within(modal).findByTestId("attachment-pdf");
+    expect(frame).toHaveAttribute("src", "blob:pdf");
+    expect(within(modal).getByRole("button", { name: "Download" })).toBeInTheDocument();
   });
 
   it("previews a staged local image without any network call", async () => {

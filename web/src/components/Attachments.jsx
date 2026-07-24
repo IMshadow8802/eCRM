@@ -23,6 +23,7 @@ import {
   Play,
   Plus,
   Download,
+  Eye,
   Trash2,
   X,
   File as FileIcon,
@@ -69,6 +70,7 @@ const mimeClass = (m) => {
   const mime = m || "";
   if (mime.startsWith("image/")) return "image";
   if (mime.startsWith("video/")) return "video";
+  if (mime === "application/pdf") return "pdf";
   return "doc";
 };
 
@@ -246,7 +248,7 @@ const Attachments = forwardRef(function Attachments(
   const openPreview = useCallback(
     async (it) => {
       setPreview(it);
-      if (it.kind === "video" && live && !media[it.key]?.url) {
+      if ((it.kind === "video" || it.kind === "pdf") && live && !media[it.key]?.url) {
         try {
           const { url } = await fetchAttachmentBlob({ Id: it.row.Id });
           createdUrls.current.push(url);
@@ -290,9 +292,12 @@ const Attachments = forwardRef(function Attachments(
     : staged.map((f, i) => ({ key: `staged-${i}`, name: f.name, size: f.size, file: f, idx: i, kind: mimeClass(f.type) }));
 
   // A media item whose blob fetch failed falls back to the plain doc row.
+  // Only images/videos get the thumbnail grid; PDFs live in the doc list with
+  // an inline View button (they carry a name/size, not a visual thumbnail).
   const kindOf = (it) => (media[it.key]?.error ? "doc" : it.kind);
-  const mediaItems = items.filter((it) => kindOf(it) !== "doc");
-  const docItems = items.filter((it) => kindOf(it) === "doc");
+  const isMediaKind = (k) => k === "image" || k === "video";
+  const mediaItems = items.filter((it) => isMediaKind(kindOf(it)));
+  const docItems = items.filter((it) => !isMediaKind(kindOf(it)));
   const previewUrl = preview ? media[preview.key]?.url : null;
 
   const removeItem = (it) =>
@@ -437,6 +442,16 @@ const Attachments = forwardRef(function Attachments(
                 </span>
                 {live ? (
                   <>
+                    {it.kind === "pdf" && (
+                      <IconButton
+                        size="sm"
+                        tooltip="View"
+                        aria-label={`View ${it.name}`}
+                        onClick={() => openPreview(it)}
+                      >
+                        <Eye size={16} />
+                      </IconButton>
+                    )}
                     <IconButton
                       size="sm"
                       tooltip="Download"
@@ -486,7 +501,14 @@ const Attachments = forwardRef(function Attachments(
         <Modal.Body>
           {preview &&
             (previewUrl ? (
-              preview.kind === "video" ? (
+              preview.kind === "pdf" ? (
+                <iframe
+                  src={previewUrl}
+                  title={preview.name}
+                  data-testid="attachment-pdf"
+                  style={{ display: "block", width: "100%", height: "70vh", border: "none", borderRadius: theme.radii.md }}
+                />
+              ) : preview.kind === "video" ? (
                 <video
                   src={previewUrl}
                   controls
