@@ -225,6 +225,22 @@ export const handlers = [
     }),
   ),
 
+  // Role changes are their own endpoint — addWorkspaceMember would re-invite
+  // the member and knock them back to pending (065).
+  http.post(`*/api/workspaces/setWorkspaceMemberRole`, async ({ request }) => {
+    const body = await request.json();
+    const row = (workspaceFixture.members ?? []).find(
+      (m) => m.UserId === body?.UserId,
+    );
+    if (row) row.Role = body?.Role;
+    return HttpResponse.json({
+      success: true,
+      message: "Role updated",
+      responseCode: 200,
+      data: null,
+    });
+  }),
+
   http.post(`*/api/workspaces/addWorkspaceMember`, async ({ request }) => {
     const body = await request.json();
     const roster = workspaceFixture.members ?? (workspaceFixture.members = []);

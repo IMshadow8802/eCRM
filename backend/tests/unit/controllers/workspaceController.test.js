@@ -1171,3 +1171,73 @@ describe("workspaceController.syncProjectMembers", () => {
     spy.mockRestore();
   });
 });
+
+// Making `viewer` reachable. The invite hardcoded Role: "member", so a
+// read-only observer — a client watching progress — could not exist, and the
+// viewer branches in sp_CheckTaskPermission were unreachable.
+describe("workspaceController.setMemberRole", () => {
+  it("rejects a missing field with 400 and runs no query", async () => {
+    for (const body of [
+      { UserId: 9, Role: "viewer" },
+      { WorkspaceId: 4, Role: "viewer" },
+      { WorkspaceId: 4, UserId: 9 },
+    ]) {
+      database.executeStoredProcedure.mockClear();
+      const res = mockRes();
+      await workspaceController.setMemberRole(baseReq({ body }), res);
+      expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(400);
+    }
+  });
+
+  // Deliberately NOT sp_AddWorkspaceMember: its upsert resets InviteStatus to
+  // 'pending', so demoting with it would lock an active member out of the board
+  // until they re-accepted.
+  it("calls sp_SetWorkspaceMemberRole, not sp_AddWorkspaceMember", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "Role updated" }]),
+    );
+    const res = mockRes();
+    await workspaceController.setMemberRole(
+      baseReq({ body: { WorkspaceId: 4, UserId: 9, Role: "viewer" } }),
+      res,
+    );
+
+    const [sp, args] = database.executeStoredProcedure.mock.calls[0];
+    expect(sp).toBe("sp_SetWorkspaceMemberRole");
+    expect(args).toMatchObject({
+      WorkspaceId: 4,
+      UserId: 9,
+      Role: "viewer",
+      ActingUserId: 7,
+      CompId: 1,
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it("does not log when the SP refuses", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 403, ResponseMess: "Only workspace owner/manager" }]),
+    );
+    const res = mockRes();
+    await workspaceController.setMemberRole(
+      baseReq({ body: { WorkspaceId: 4, UserId: 9, Role: "viewer" } }),
+      res,
+    );
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(logActivity).not.toHaveBeenCalled();
+  });
+
+  it("500s when the DB throws", async () => {
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    const res = mockRes();
+    await workspaceController.setMemberRole(
+      baseReq({ body: { WorkspaceId: 4, UserId: 9, Role: "viewer" } }),
+      res,
+    );
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json.mock.calls[0][0].code).toBe("MEMBER_ROLE_ERROR");
+    spy.mockRestore();
+  });
+});

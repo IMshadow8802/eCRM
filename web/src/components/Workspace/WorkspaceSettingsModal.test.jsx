@@ -526,3 +526,85 @@ describe("WorkspaceSettingsModal", () => {
     });
   });
 });
+
+// `viewer` existed in sp_CheckTaskPermission but the invite hardcoded
+// Role: "member", so a read-only observer — a client watching progress —
+// could never be created and every viewer branch was unreachable.
+describe("WorkspaceSettingsModal member roles", () => {
+  const sharedOwned = (over = {}) => ({
+    Id: 60,
+    Name: "Ops",
+    Type: "shared",
+    OwnerUserId: 1,
+    MyRole: "owner",
+    IsArchived: false,
+    ...over,
+  });
+
+  it("invites as the chosen role, not always member", async () => {
+    workspaceFixture.members = [
+      { UserId: 1, FullName: "Me", Username: "me", Role: "owner", InviteStatus: "active", IsActive: 1, IsOwner: 1 },
+    ];
+    renderModal(sharedOwned());
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByLabelText(/invite people/i));
+    await user.click(await screen.findByText("Bob"));
+
+    await user.click(screen.getByLabelText(/^as$/i));
+    await user.click(await screen.findByText(/^Viewer/i));
+
+    await user.click(screen.getByTestId("member-invite-button"));
+
+    await screen.findByText("Invite sent");
+    expect(workspaceFixture.members.find((m) => m.UserId === 2)?.Role).toBe(
+      "viewer",
+    );
+  });
+
+  it("defaults the invite to member", async () => {
+    workspaceFixture.members = [
+      { UserId: 1, FullName: "Me", Username: "me", Role: "owner", InviteStatus: "active", IsActive: 1, IsOwner: 1 },
+    ];
+    renderModal(sharedOwned());
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByLabelText(/invite people/i));
+    await user.click(await screen.findByText("Bob"));
+    await user.click(screen.getByTestId("member-invite-button"));
+
+    await screen.findByText("Invite sent");
+    expect(workspaceFixture.members.find((m) => m.UserId === 2)?.Role).toBe(
+      "member",
+    );
+  });
+
+  // Demoting must not re-invite: a pending member has no access at all (061),
+  // so reusing addWorkspaceMember here would lock them out of the board.
+  it("changes an existing member's role without touching their invite status", async () => {
+    workspaceFixture.members = [
+      { UserId: 1, FullName: "Me", Username: "me", Role: "owner", InviteStatus: "active", IsActive: 1, IsOwner: 1 },
+      { UserId: 3, FullName: "Carol", Username: "carol", Role: "member", InviteStatus: "active", IsActive: 1, IsOwner: 0 },
+    ];
+    renderModal(sharedOwned());
+    const user = userEvent.setup();
+
+    const roleCell = await screen.findByTestId("member-role-3");
+    await user.click(within(roleCell).getByRole("combobox"));
+    await user.click(await screen.findByText(/^Viewer/i));
+
+    await screen.findByText("Role updated");
+    const carol = workspaceFixture.members.find((m) => m.UserId === 3);
+    expect(carol.Role).toBe("viewer");
+    expect(carol.InviteStatus).toBe("active"); // NOT knocked back to pending
+  });
+
+  it("shows the owner as a static chip — ownership moves via transfer", async () => {
+    workspaceFixture.members = [
+      { UserId: 1, FullName: "Me", Username: "me", Role: "owner", InviteStatus: "active", IsActive: 1, IsOwner: 1 },
+    ];
+    renderModal(sharedOwned());
+    await screen.findByTestId("member-row-1");
+    expect(screen.queryByTestId("member-role-1")).toBeNull();
+  });
+});

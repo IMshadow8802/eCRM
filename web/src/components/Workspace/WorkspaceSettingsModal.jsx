@@ -88,6 +88,15 @@ function ConfirmModal({
   );
 }
 
+// Roles an owner/manager may hand out. 'owner' is absent on purpose —
+// ownership moves through the transfer flow, which also demotes the outgoing
+// owner and keeps tblWorkspaces.OwnerUserId in step.
+const ROLE_OPTIONS = [
+  { value: "manager", label: "Manager — runs the board, edits anyone's task" },
+  { value: "member", label: "Member — creates tasks, does work assigned to them" },
+  { value: "viewer", label: "Viewer — reads and comments, cannot change anything" },
+];
+
 function SectionTitle({ children }) {
   const theme = useTheme();
   const p = theme.tokens;
@@ -134,6 +143,10 @@ export default function WorkspaceSettingsModal({
   const [deleteInfo, setDeleteInfo] = useState(null); // blast radius from dry run
   const [deleteName, setDeleteName] = useState("");
   const [invitee, setInvitee] = useState(null);
+  // Invite AS a role. It used to be hardcoded to "member", so `viewer` existed
+  // in the permission model but could never actually be created — the
+  // read-only observer (a client watching progress) had no way to exist.
+  const [inviteRole, setInviteRole] = useState(ROLE_OPTIONS[1]); // member
   const [inviting, setInviting] = useState(false);
 
   useEffect(() => {
@@ -381,13 +394,34 @@ export default function WorkspaceSettingsModal({
 
   // Invite / re-invite. The server upserts (a removed/declined row goes back
   // to pending) and its message says which happened — surface it verbatim.
-  const inviteUser = async (userId) => {
+  // Role change is its own endpoint. addWorkspaceMember also takes a Role, but
+  // its upsert resets InviteStatus to 'pending' — demoting with it would knock
+  // an active member back to pending and lock them out until they re-accepted.
+  const changeRole = async (userId, role) => {
+    setInviting(true);
+    try {
+      const res = await apiClient.post("/api/workspaces/setWorkspaceMemberRole", {
+        WorkspaceId: workspace.Id,
+        UserId: userId,
+        Role: role,
+      });
+      if (!res.data.success) throw new Error(res.data.message);
+      enqueueSnackbar(res.data.message || "Role updated", { variant: "success" });
+      refreshList();
+    } catch (e) {
+      enqueueSnackbar(e.message || "Could not change role", { variant: "error" });
+    } finally {
+      setInviting(false);
+    }
+  };
+
+  const inviteUser = async (userId, role = "member") => {
     setInviting(true);
     try {
       const res = await apiClient.post("/api/workspaces/addWorkspaceMember", {
         WorkspaceId: workspace.Id,
         UserId: userId,
-        Role: "member",
+        Role: role,
       });
       if (!res.data.success) throw new Error(res.data.message);
       enqueueSnackbar(res.data.message || "Invite sent", { variant: "success" });
@@ -542,14 +576,32 @@ export default function WorkspaceSettingsModal({
                         {m.InviteStatus === "pending" ? (
                           <span style={hintStyle}>Waiting for reply</span>
                         ) : (
-                          !gone && (
+                          !gone &&
+                          (canManageMembers && !m.IsOwner ? (
+                            <div style={{ minWidth: 150 }}>
+                              <Combobox
+                                options={ROLE_OPTIONS}
+                                value={
+                                  ROLE_OPTIONS.find((o) => o.value === m.Role) ??
+                                  null
+                                }
+                                onChange={(v) =>
+                                  v && v.value !== m.Role
+                                    ? changeRole(m.UserId, v.value)
+                                    : undefined
+                                }
+                                aria-label={`Role for ${m.FullName || m.Username}`}
+                                data-testid={`member-role-${m.UserId}`}
+                              />
+                            </div>
+                          ) : (
                             <Chip
                               label={m.IsOwner ? "owner" : m.Role}
                               tone={m.IsOwner ? "primary" : "default"}
                               variant="tonal"
                               size="sm"
                             />
-                          )
+                          ))
                         )}
                         {gone && canManageMembers && (
                           <Button
@@ -590,12 +642,19 @@ export default function WorkspaceSettingsModal({
                       placeholder="Pick a teammate"
                       data-testid="member-invite-select"
                     />
+                    <Combobox
+                      label="As"
+                      options={ROLE_OPTIONS}
+                      value={inviteRole}
+                      onChange={(v) => setInviteRole(v ?? ROLE_OPTIONS[1])}
+                      data-testid="member-invite-role"
+                    />
                     <Button
                       variant="secondary"
                       leftIcon={<UserPlus size={14} />}
                       disabled={!invitee}
                       loading={inviting}
-                      onClick={() => inviteUser(invitee.value)}
+                      onClick={() => inviteUser(invitee.value, inviteRole?.value)}
                       data-testid="member-invite-button"
                     >
                       Invite

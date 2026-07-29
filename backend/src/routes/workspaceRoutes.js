@@ -12,6 +12,9 @@ router.post("/saveWorkspace", workspaceController.save);
 router.post("/fetchWorkspaces", workspaceController.fetch);
 router.post("/fetchWorkspaceMembers", workspaceController.fetchMembers);
 router.post("/addWorkspaceMember", workspaceController.addMember);
+// Role changes have their own proc — reusing addWorkspaceMember would re-invite
+// the member and lock them out until they re-accepted (065).
+router.post("/setWorkspaceMemberRole", workspaceController.setMemberRole);
 router.post("/removeWorkspaceMember", workspaceController.removeMember);
 router.post("/archiveWorkspace", workspaceController.archive);
 router.post("/convertWorkspaceToShared", workspaceController.convertToShared);

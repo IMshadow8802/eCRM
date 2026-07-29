@@ -238,6 +238,73 @@ class WorkspaceController {
     }
   }
 
+  // Change an existing member's role. Deliberately NOT sp_AddWorkspaceMember,
+  // whose upsert branch also resets InviteStatus to 'pending' — demoting an
+  // active member with it would knock them back to pending and (since 061) lock
+  // them out of the board until they accepted again.
+  async setMemberRole(req, res) {
+    try {
+      const { WorkspaceId, UserId, Role } = req.body;
+
+      if (!WorkspaceId || !UserId || !Role) {
+        return res.status(400).json({
+          success: false,
+          message: "WorkspaceId, UserId and Role are required",
+          code: "VALIDATION_ERROR",
+          responseCode: 400,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const result = await database.executeStoredProcedure(
+        "sp_SetWorkspaceMemberRole",
+        {
+          WorkspaceId,
+          UserId,
+          Role,
+          ActingUserId: req.user.UserId,
+          IsAdmin: req.scope?.isAdmin ? 1 : 0,
+          CompId: req.user.CompId,
+        },
+      );
+
+      const spResponse = result.recordsets[0][0];
+
+      if (spResponse.ResponseCode === 200) {
+        await logActivity({
+          entityType: "Workspace",
+          entityId: WorkspaceId,
+          action: ACTIONS.UPDATED,
+          description: `Changed user ${UserId} to ${Role}`,
+          req,
+        });
+
+        emitToWorkspace(WorkspaceId, SCOPES.WORKSPACE_MEMBERS, {
+          workspaceId: WorkspaceId,
+        });
+        // Their own sidebar/permissions change, and they may not be in the
+        // workspace room right now — ping their user room too.
+        emitToUser(UserId, SCOPES.WORKSPACES);
+      }
+
+      return res.status(spResponse.ResponseCode).json({
+        success: spResponse.ResponseCode === 200,
+        message: spResponse.ResponseMess,
+        responseCode: spResponse.ResponseCode,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("Set member role error:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to change member role",
+        code: "MEMBER_ROLE_ERROR",
+        responseCode: 500,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
   async addMember(req, res) {
     try {
       const { WorkspaceId, UserId, Role = "member" } = req.body;

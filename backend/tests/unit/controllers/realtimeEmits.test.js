@@ -597,3 +597,34 @@ describe("workspaceController lifecycle emits", () => {
     });
   });
 });
+
+// A role change alters what that person can do, and they may not be sitting in
+// the workspace room — so the room hears about the roster and they hear about
+// it directly.
+describe("workspaceController.setMemberRole emits", () => {
+  it("emits WORKSPACE_MEMBERS to the room and WORKSPACES to the affected user", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "Role updated" }]),
+    );
+    await workspaceController.setMemberRole(
+      baseReq({ WorkspaceId: 5, UserId: 9, Role: "viewer" }),
+      mockRes(),
+    );
+    expect(emitToWorkspace).toHaveBeenCalledWith(5, SCOPES.WORKSPACE_MEMBERS, {
+      workspaceId: 5,
+    });
+    expect(emitToUser).toHaveBeenCalledWith(9, SCOPES.WORKSPACES);
+  });
+
+  it("emits nothing when the SP refuses the change", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 403, ResponseMess: "denied" }]),
+    );
+    await workspaceController.setMemberRole(
+      baseReq({ WorkspaceId: 5, UserId: 9, Role: "viewer" }),
+      mockRes(),
+    );
+    expect(emitToWorkspace).not.toHaveBeenCalled();
+    expect(emitToUser).not.toHaveBeenCalled();
+  });
+});
