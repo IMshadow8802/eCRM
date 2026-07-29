@@ -151,6 +151,61 @@ class TaskController {
     }
   }
 
+  // Moving a card between columns is its own operation, gated as change_status
+  // rather than edit_fields — the assignee is exactly who should be able to
+  // progress their own work. Routing it through saveTask also meant re-sending
+  // the whole task, including the legacy AssignedToUserId alias, which under
+  // 063 would replace the assignee set with one person and silently drop
+  // co-assignees on every drag.
+  async moveColumn(req, res) {
+    try {
+      const { TaskId, ColumnId, WorkspaceId = null } = req.body;
+
+      const result = await database.executeStoredProcedure("sp_MoveTaskColumn", {
+        TaskId,
+        ColumnId,
+        UserId: req.user.UserId,
+        IsAdmin: req.scope?.isAdmin ? 1 : 0,
+        CompId: req.user.CompId,
+      });
+
+      const spResponse = result.recordsets[0][0];
+
+      if (spResponse.ResponseCode === 200) {
+        await logActivity({
+          entityType: "Task",
+          entityId: TaskId,
+          action: ACTIONS.STATUS_CHANGED,
+          fieldName: "ColumnId",
+          newValue: String(ColumnId),
+          description: "Task moved to another column",
+          req,
+        });
+
+        const roomId = WorkspaceId ?? spResponse.WorkspaceId;
+        if (roomId) {
+          emitToWorkspace(roomId, SCOPES.TASK_LIST, { workspaceId: roomId });
+        }
+      }
+
+      return res.status(spResponse.ResponseCode).json({
+        success: spResponse.ResponseCode === 200,
+        message: spResponse.ResponseMess,
+        responseCode: spResponse.ResponseCode,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("Move task error:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to move task",
+        code: "TASK_MOVE_ERROR",
+        responseCode: 500,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
   async fetch(req, res) {
     try {
       const {

@@ -42,6 +42,40 @@ describe("KanbanColumn", () => {
     expect(screen.getByText("T2")).toBeInTheDocument();
   });
 
+  it("canDragCard decides draggability per card", () => {
+    wrap(
+      <KanbanColumn
+        column={baseColumn}
+        tasks={[
+          { Id: 1, Title: "Mine", Priority: "medium" },
+          { Id: 2, Title: "Theirs", Priority: "low" },
+        ]}
+        canDragCard={(task) => task.Id === 1}
+      />,
+    );
+    expect(screen.getByTestId("kanban-card-1")).toHaveAttribute(
+      "aria-disabled",
+      "false",
+    );
+    expect(screen.getByTestId("kanban-card-2")).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  });
+
+  it("cards are draggable when canDragCard is not supplied", () => {
+    wrap(
+      <KanbanColumn
+        column={baseColumn}
+        tasks={[{ Id: 3, Title: "T3", Priority: "low" }]}
+      />,
+    );
+    expect(screen.getByTestId("kanban-card-3")).toHaveAttribute(
+      "aria-disabled",
+      "false",
+    );
+  });
+
   it("Add task button calls onRequestAddTask with the column", async () => {
     const onRequest = vi.fn();
     wrap(

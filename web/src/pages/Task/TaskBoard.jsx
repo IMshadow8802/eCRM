@@ -42,6 +42,7 @@ import {
 } from "../../components/ui";
 import { bucketTasksByColumn, ORPHAN_BUCKET_KEY } from "./taskBucket";
 import useAuthStore from "../../stores/useAuthStore";
+import { isAssignee } from "../../utils/taskAssignees";
 import HelpGuide from "../../components/HelpGuide";
 import { HELP_GUIDES } from "../../data/helpGuides";
 
@@ -68,6 +69,19 @@ export default function TaskBoard() {
   const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace);
   const canCreate = useWorkspaceStore((s) => s.canCreateTasks)();
   const isAdmin = useAuthStore((s) => s.user?.IsAdmin) || false;
+  const currentUserId = useAuthStore((s) => s.user?.UserId ?? s.UserId);
+
+  // Mirrors sp_CheckTaskPermission's change_status rule. Every card used to be
+  // draggable by every role: the board optimistically moved it, the server
+  // 403'd, and it snapped back with a raw error. Now a card you cannot move
+  // does not offer to move.
+  const canDragCard = (task) =>
+    isAdmin ||
+    activeType === "personal" ||
+    activeRole === "owner" ||
+    activeRole === "manager" ||
+    task?.CreatedByUserId === currentUserId ||
+    isAssignee(task, currentUserId);
   const canManageColumns = activeRole === "owner" || activeRole === "manager" || isAdmin;
   const [search, setSearch] = useState("");
   const [openTaskId, setOpenTaskId] = useState(null);
@@ -144,6 +158,14 @@ export default function TaskBoard() {
     endpoint: "/api/tasks/saveTask",
     showSuccessMessage: false,
   });
+  // Dragging is a status change, not an edit of the task — it goes through its
+  // own endpoint so the assignee can move their own work, and so the whole task
+  // (including the legacy AssignedToUserId alias, which would replace the
+  // assignee set with one person) is never re-sent just to change a column.
+  const moveMutation = useApiMutation({
+    endpoint: "/api/tasks/moveTaskColumn",
+    showSuccessMessage: false,
+  });
   const bulkDeleteMutation = useApiMutation({
     endpoint: "/api/tasks/bulkDeleteTasks",
     showSuccessMessage: false,
@@ -197,25 +219,10 @@ export default function TaskBoard() {
     });
 
     try {
-      await saveMutation.mutateAsync({
-        Id: task.Id,
-        Title: task.Title,
-        Description: task.Description,
-        WorkspaceId: task.WorkspaceId,
+      await moveMutation.mutateAsync({
+        TaskId: task.Id,
         ColumnId: targetColumnId,
-        ProjectId: task.ProjectId,
-        ParentTaskId: task.ParentTaskId,
-        AssignedToUserId: task.AssignedToUserId,
-        TeamId: task.TeamId,
-        Priority: task.Priority,
-        Type: task.Type,
-        DueDate: task.DueDate,
-        EstimatedHours: task.EstimatedHours,
-        LoggedHours: task.LoggedHours,
-        Progress: task.Progress,
-        IsBlocked: task.IsBlocked,
-        Labels: task.Labels,
-        Watchers: task.Watchers,
+        WorkspaceId: task.WorkspaceId, // realtime emit-routing hint
       });
       // Don't refetch — optimistic cache is already correct. Invalidate so
       // other screens (detail modal) pick up the change, but no UI flicker here.
@@ -414,6 +421,7 @@ export default function TaskBoard() {
                   onToggleSelect={toggleSelect}
                   canCreate={canCreate}
                   canManage={canManageColumns}
+                  canDragCard={canDragCard}
                   siblingColumns={columns}
                 />
               ))}

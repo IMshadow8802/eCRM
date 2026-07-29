@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { screen, fireEvent } from "@testing-library/react";
 import { DndContext } from "@dnd-kit/core";
-import KanbanCard from "./KanbanCard";
+import KanbanCard, { KanbanCardView } from "./KanbanCard";
 import renderWithProviders from "../../test/renderWithProviders";
 
 function wrap(ui) {
@@ -9,13 +9,14 @@ function wrap(ui) {
 }
 
 describe("KanbanCard", () => {
-  it("renders title, priority, assignee, due date", () => {
+  it("renders title, priority, assignee, due date (legacy scalar task)", () => {
     wrap(
       <KanbanCard
         task={{
           Id: 1,
           Title: "Do X",
           Priority: "high",
+          AssignedToUserId: 7,
           AssigneeName: "Alice",
           DueDate: "2099-01-01",
           Status: "todo",
@@ -25,6 +26,94 @@ describe("KanbanCard", () => {
     expect(screen.getByText("Do X")).toBeInTheDocument();
     expect(screen.getByText("high")).toBeInTheDocument();
     expect(screen.getByText("Alice")).toBeInTheDocument();
+  });
+
+  it("renders one avatar per assignee for a two-assignee task", () => {
+    wrap(
+      <KanbanCard
+        task={{
+          Id: 30,
+          Title: "Pair work",
+          Priority: "medium",
+          AssigneesJson: JSON.stringify([
+            { UserId: 1, FullName: "Alice A" },
+            { UserId: 2, FullName: "Bob B" },
+          ]),
+        }}
+      />,
+    );
+    const stack = screen.getByTestId("card-assignees-30");
+    expect(stack.querySelectorAll('[role="img"]')).toHaveLength(2);
+    expect(screen.getByTitle("Alice A")).toBeInTheDocument();
+    expect(screen.getByTitle("Bob B")).toBeInTheDocument();
+    // Name text is single-assignee only — two faces would overflow the card.
+    expect(screen.queryByText("Alice A")).not.toBeInTheDocument();
+  });
+
+  it("caps the stack at 3 faces and shows +N for the rest", () => {
+    wrap(
+      <KanbanCard
+        task={{
+          Id: 31,
+          Title: "Crowded",
+          Priority: "medium",
+          AssigneesJson: JSON.stringify(
+            [1, 2, 3, 4, 5].map((id) => ({ UserId: id, FullName: `User ${id}` })),
+          ),
+        }}
+      />,
+    );
+    const stack = screen.getByTestId("card-assignees-31");
+    expect(stack.querySelectorAll('[role="img"]')).toHaveLength(3);
+    expect(screen.getByTestId("card-assignees-more-31")).toHaveTextContent("+2");
+  });
+
+  it("shows the name alongside the avatar for a single assignee", () => {
+    wrap(
+      <KanbanCard
+        task={{
+          Id: 32,
+          Title: "Solo",
+          Priority: "low",
+          AssigneesJson: JSON.stringify([{ UserId: 9, FullName: "Carol C" }]),
+        }}
+      />,
+    );
+    expect(screen.getByText("Carol C")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("card-assignees-more-32"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders no assignee block when unassigned", () => {
+    wrap(
+      <KanbanCard
+        task={{ Id: 33, Title: "Nobody", Priority: "low", AssigneesJson: "[]" }}
+      />,
+    );
+    expect(screen.queryByTestId("card-assignees-33")).not.toBeInTheDocument();
+  });
+
+  it("is draggable by default", () => {
+    wrap(<KanbanCard task={{ Id: 34, Title: "Movable", Priority: "low" }} />);
+    const card = screen.getByTestId("kanban-card-34");
+    expect(card).toHaveAttribute("aria-disabled", "false");
+    expect(card).toHaveStyle({ cursor: "grab" });
+  });
+
+  it("is not draggable when canDrag=false", () => {
+    wrap(
+      <KanbanCard
+        task={{ Id: 35, Title: "Locked", Priority: "low" }}
+        canDrag={false}
+      />,
+    );
+    const card = screen.getByTestId("kanban-card-35");
+    expect(card).toHaveAttribute("aria-disabled", "true");
+    expect(card).toHaveStyle({ cursor: "default" });
+    // dnd-kit drops its listeners when disabled, so a pointer press starts nothing.
+    fireEvent.pointerDown(card, { button: 0 });
+    expect(card).not.toHaveAttribute("aria-pressed");
   });
 
   it("shows Blocked chip when IsBlocked=true", () => {
@@ -135,6 +224,48 @@ describe("KanbanCard", () => {
     expect(screen.getByTestId("card-done-21")).toBeInTheDocument();
     const title = screen.getByText("Finished");
     expect(title).toHaveStyle({ textDecoration: "line-through" });
+  });
+
+  it("falls back to initials when an assignee has no name", () => {
+    wrap(
+      <KanbanCard
+        task={{
+          Id: 36,
+          Title: "Anon",
+          Priority: "low",
+          AssigneesJson: JSON.stringify([{ UserId: 4, FullName: null }]),
+        }}
+      />,
+    );
+    const stack = screen.getByTestId("card-assignees-36");
+    expect(stack.querySelectorAll('[role="img"]')).toHaveLength(1);
+    expect(stack.querySelector("[title]")).toBeNull();
+  });
+
+  it("DragOverlay clone renders the view without drag wiring", () => {
+    const onOpen = vi.fn();
+    renderWithProviders(
+      <KanbanCardView
+        task={{
+          Id: 40,
+          Title: "Ghost",
+          Priority: "high",
+          AssigneesJson: JSON.stringify([{ UserId: 1, FullName: "Alice A" }]),
+        }}
+        overlay
+        selected
+        dragging
+        onOpen={onOpen}
+        onToggleSelect={vi.fn()}
+      />,
+      { router: false },
+    );
+    const clone = screen.getByTestId("kanban-card-40");
+    expect(clone).toHaveStyle({ cursor: "grabbing" });
+    // Overlay is inert: no checkbox, and clicking it must not open the task.
+    expect(screen.queryByTestId("card-select-40")).not.toBeInTheDocument();
+    fireEvent.click(clone);
+    expect(onOpen).not.toHaveBeenCalled();
   });
 
   it("renders due date chip with error color when overdue", () => {

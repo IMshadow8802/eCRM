@@ -46,6 +46,8 @@ import { useApiQuery } from "../../../hooks/useApiQuery";
 import { useApiMutation } from "../../../hooks/useApiMutation";
 import useAuthStore from "../../../stores/useAuthStore";
 import useWorkspaceStore from "../../../stores/useWorkspaceStore";
+import useWorkspaceMemberOptions from "../../../hooks/useWorkspaceMemberOptions";
+import { assigneeIdsOf, isAssignee, sameAssignees } from "../../../utils/taskAssignees";
 
 const PRIORITY_TONE = {
   low: "info",
@@ -72,6 +74,8 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
   const currentUserId = useAuthStore((s) => s.user?.UserId ?? s.UserId);
   const canEditOthers = useWorkspaceStore((s) => s.canEditOthersTasks)();
   const canCreateTasks = useWorkspaceStore((s) => s.canCreateTasks)();
+  const workspaceRole = useWorkspaceStore((s) => s.activeWorkspaceRole);
+  const isViewer = workspaceRole === "viewer";
   const workspaceType = useWorkspaceStore((s) => s.activeWorkspaceType);
   const isPersonal = workspaceType === "personal";
 
@@ -98,15 +102,12 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
     label: c.Title,
   }));
 
-  const { data: usersPayload } = useApiQuery({
-    queryKey: ["users", "pick-list"],
-    endpoint: "/api/users/fetchUsers",
-    params: { PageNumber: 1, PageSize: 200 },
-    enabled: Boolean(taskId && open),
-    showErrorMessage: false,
+  // Only ACTIVE workspace members can be assigned — sp_SaveTask rejects anyone
+  // else with a 400, so offering the whole company roster (as this used to)
+  // just produced a confusing error after the fact.
+  const { options: userOptions } = useWorkspaceMemberOptions(task?.WorkspaceId, {
+    enabled: Boolean(taskId && open) && !isPersonal,
   });
-  const userOptions = toUserOptions(usersPayload?.users, { withJobTitle: false })
-    .map((o) => ({ value: Number(o.value), label: o.label }));
 
   // Draft state — mirrors task on load so user can edit + save at once.
   const [draft, setDraft] = useState(null);
@@ -120,7 +121,7 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
       Priority: PRIORITY_OPTIONS.some((o) => o.value === normPriority)
         ? normPriority
         : "medium",
-      AssignedToUserId: task.AssignedToUserId ?? null,
+      AssigneeIds: assigneeIdsOf(task),
       DueDate: task.DueDate ? String(task.DueDate).slice(0, 10) : "",
       EstimatedHours: Number(task.EstimatedHours ?? 0),
       LoggedHours: Number(task.LoggedHours ?? 0),
@@ -131,11 +132,20 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
   const canEditThisTask =
     task && (canEditOthers || task.CreatedByUserId === currentUserId);
 
-  // Doing the work you were handed is change_status, which the server grants a
-  // member who is the creator OR the assignee. This gate used to check the
-  // creator only, so an assigned member saw a dead checklist on their own task.
-  const canProgressThisTask =
-    canEditThisTask || (task && task.AssignedToUserId === currentUserId);
+  // A task holds a SET of assignees now; read it through assigneesOf() rather
+  // than the legacy scalar, which is only a mirror of the first one.
+  const amAssignee = isAssignee(task, currentUserId);
+
+  // Progress — doing the work you were handed (tick, move column, log time).
+  // Any assignee, including a viewer: if you were given the work you can do it.
+  const canProgressThisTask = canEditThisTask || amAssignee;
+
+  // Work artifacts — the checklist steps and the files that evidence them. A
+  // step routinely needs a document against it, so assignees hold both. An
+  // assigned VIEWER is deliberately excluded: viewer stays genuinely limited,
+  // since that is the role an external client gets. Mirrors the server's
+  // manage_checklist / manage_attachments actions.
+  const canManageArtifacts = canEditThisTask || (amAssignee && !isViewer);
 
   // sp_CheckTaskPermission grants log_time to owner/manager/member — the same
   // set as canCreateTasks — and grants the owner everything on a personal
@@ -149,7 +159,7 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
     draft.Description !== (task.Description ?? "") ||
     draft.ColumnId !== (task.ColumnId ?? null) ||
     draft.Priority !== (task.Priority ?? "medium") ||
-    draft.AssignedToUserId !== (task.AssignedToUserId ?? null) ||
+    !sameAssignees(draft.AssigneeIds, assigneeIdsOf(task)) ||
     draft.DueDate !== (task.DueDate ? String(task.DueDate).slice(0, 10) : "") ||
     Number(draft.EstimatedHours) !== Number(task.EstimatedHours ?? 0) ||
     Number(draft.LoggedHours) !== Number(task.LoggedHours ?? 0) ||
@@ -167,7 +177,7 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
         ColumnId: draft.ColumnId,
         ProjectId: task.ProjectId,
         ParentTaskId: task.ParentTaskId,
-        AssignedToUserId: isPersonal ? currentUserId : draft.AssignedToUserId,
+        AssigneeIds: isPersonal ? [currentUserId] : draft.AssigneeIds,
         TeamId: task.TeamId,
         Priority: draft.Priority,
         Type: task.Type,
@@ -700,17 +710,17 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
                     {!isPersonal && (
                       <div style={{ flex: 1 }}>
                         <Combobox
-                          label="Assignee"
+                          label="Assignees"
+                          multiple
                           options={userOptions}
-                          value={
-                            userOptions.find(
-                              (o) => o.value === draft.AssignedToUserId,
-                            ) ?? null
-                          }
+                          value={userOptions.filter((o) =>
+                            (draft.AssigneeIds ?? []).includes(o.value),
+                          )}
                           onChange={(v) =>
                             setDraft((d) => ({
                               ...d,
-                              AssignedToUserId: v?.value ?? null,
+                              AssigneeIds: (Array.isArray(v) ? v : [])
+                                .map((o) => o.value),
                             }))
                           }
                           disabled={!canEditThisTask}
@@ -851,14 +861,14 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
                         key={it.Id}
                         item={it}
                         canToggle={canProgressThisTask}
-                        canDelete={canEditThisTask}
+                        canDelete={canManageArtifacts}
                         pending={pendingChecklist.has(it.Id)}
                         onToggle={() => toggleChecklistItem(it)}
                         onDelete={() => removeChecklistItem(it)}
                       />
                     ))
                   )}
-                  {canEditThisTask && (
+                  {canManageArtifacts && (
                     <div
                       style={{
                         display: "flex",

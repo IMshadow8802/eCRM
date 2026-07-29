@@ -13,6 +13,11 @@ import dayjs from "dayjs";
 
 import { Chip, Checkbox } from "../ui";
 import UserAvatar from "../ui/UserAvatar";
+import { assigneesOf } from "../../utils/taskAssignees";
+
+// Beyond three faces the stack is unreadable at card width — the rest collapse
+// into a +N chip.
+const MAX_FACES = 3;
 
 const PRIORITY_TONE = {
   low: "info",
@@ -34,11 +39,16 @@ export const KanbanCardView = memo(function KanbanCardView({
   onOpen,
   dragging = false,
   overlay = false,
+  canDrag = true,
   dragRef,
   dragHandleProps = {},
 }) {
   const theme = useTheme();
   const p = theme.tokens;
+
+  const assignees = assigneesOf(task);
+  const faces = assignees.slice(0, MAX_FACES);
+  const extraAssignees = assignees.length - faces.length;
 
   const isCompleted = Boolean(task.IsCompleted);
   const overdue =
@@ -61,7 +71,7 @@ export const KanbanCardView = memo(function KanbanCardView({
         borderRadius: theme.radii.md,
         backgroundColor: p.surface.card,
         border: `1px solid ${selected ? p.primary.main : p.border.default}`,
-        cursor: overlay ? "grabbing" : "grab",
+        cursor: overlay ? "grabbing" : canDrag ? "grab" : "default",
         // Dim the real card while its overlay clone follows the cursor.
         opacity: dragging && !overlay ? 0.4 : isCompleted ? 0.72 : 1,
         boxShadow: overlay ? p.shadow.lg : selected ? p.shadow.md : p.shadow.xs,
@@ -153,22 +163,45 @@ export const KanbanCardView = memo(function KanbanCardView({
                 data-testid={`card-steps-${task.Id}`}
               />
             )}
-            {task.AssigneeName && (
-              <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                <UserAvatar
-                  userId={task.AssignedToUserId}
-                  name={task.AssigneeName}
-                  size="xs"
-                />
-                <span
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 500,
-                    color: p.text.secondary,
-                  }}
-                >
-                  {task.AssigneeName}
-                </span>
+            {assignees.length > 0 && (
+              <div
+                style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+                data-testid={`card-assignees-${task.Id}`}
+              >
+                {faces.map((a, i) => (
+                  <span
+                    key={a.UserId ?? i}
+                    // Avatar takes no title prop; the wrapper carries the hover
+                    // name so a face in the stack is still identifiable.
+                    title={a.FullName ?? undefined}
+                    style={{
+                      display: "inline-flex",
+                      marginLeft: i === 0 ? 0 : -6,
+                    }}
+                  >
+                    <UserAvatar userId={a.UserId} name={a.FullName} size="xs" />
+                  </span>
+                ))}
+                {extraAssignees > 0 && (
+                  <Chip
+                    label={`+${extraAssignees}`}
+                    size="sm"
+                    variant="tonal"
+                    data-testid={`card-assignees-more-${task.Id}`}
+                  />
+                )}
+                {/* Solo assignee reads better named than as a lone face. */}
+                {assignees.length === 1 && faces[0].FullName && (
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 500,
+                      color: p.text.secondary,
+                    }}
+                  >
+                    {faces[0].FullName}
+                  </span>
+                )}
               </div>
             )}
             {task.DueDate && (
@@ -212,10 +245,14 @@ export default function KanbanCard({
   onOpen,
   selected = false,
   onToggleSelect,
+  canDrag = true,
 }) {
+  // Hook stays unconditional (rules of hooks) — dnd-kit's own `disabled` drops
+  // the listeners, so a card the user may not move can't start a drag.
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `task-${task.Id}`,
     data: { taskId: task.Id, columnId: columnId ?? task.ColumnId ?? null, task },
+    disabled: !canDrag,
   });
 
   // Stable ref so the memoized view bails out of re-render while other cards
@@ -232,6 +269,7 @@ export default function KanbanCard({
       onToggleSelect={onToggleSelect}
       onOpen={onOpen}
       dragging={isDragging}
+      canDrag={canDrag}
       dragRef={setNodeRef}
       dragHandleProps={dragHandleProps}
     />

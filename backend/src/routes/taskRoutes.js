@@ -10,6 +10,8 @@ router.use(verifyToken, loadScope);
 
 // Main task operations
 router.post("/saveTask", taskController.save);
+// Column moves are change_status, not edit_fields — see sp_MoveTaskColumn (064).
+router.post("/moveTaskColumn", taskController.moveColumn);
 router.post("/fetchTasks", taskController.fetch);
 router.post("/deleteTask", taskController.delete);
 router.post("/bulkDeleteTasks", taskController.bulkDelete);

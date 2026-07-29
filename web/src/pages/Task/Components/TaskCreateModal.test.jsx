@@ -4,8 +4,23 @@ import userEvent from "@testing-library/user-event";
 
 import TaskCreateModal from "./TaskCreateModal";
 import useAuthStore from "../../../stores/useAuthStore";
-import { taskFixture } from "../../../test/mocks/handlers";
+import useWorkspaceStore from "../../../stores/useWorkspaceStore";
+import { taskFixture, workspaceFixture } from "../../../test/mocks/handlers";
 import renderWithProviders from "../../../test/renderWithProviders";
+
+const member = (UserId, FullName) => ({
+  UserId,
+  FullName,
+  Username: FullName.toLowerCase(),
+  Role: "member",
+  InviteStatus: "active",
+  IsActive: 1,
+});
+
+const pickAssignee = async (user, name) => {
+  await user.click(screen.getByTestId("create-task-assignees-input"));
+  await user.click(await screen.findByRole("option", { name }));
+};
 
 const renderModal = (props = {}) =>
   renderWithProviders(
@@ -23,10 +38,12 @@ const fillFirstStep = async (user, text = "Do the thing") => {
 describe("TaskCreateModal", () => {
   beforeEach(() => {
     taskFixture.reset();
+    workspaceFixture.reset();
+    useWorkspaceStore.setState({ activeWorkspaceType: "shared" });
     useAuthStore.setState({
       isAuthenticated: true,
       token: null,
-      user: { UserId: 1 },
+      user: { Id: 1, UserId: 1 },
       API_BASE_URL: "https://prdinfotech.in/CRM",
     });
   });
@@ -104,5 +121,51 @@ describe("TaskCreateModal", () => {
     const user = userEvent.setup();
     await user.click(screen.getByTestId("create-task-add-step"));
     expect(screen.getByTestId("create-task-step-1")).toBeInTheDocument();
+  });
+
+  it("submits every picked assignee as AssigneeIds", async () => {
+    workspaceFixture.members = [member(7, "Carol"), member(8, "Dave")];
+    renderModal();
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/title/i), "Pair up");
+    await fillFirstStep(user, "Kick off");
+    await pickAssignee(user, "Carol");
+    await pickAssignee(user, "Dave");
+    await user.click(screen.getByTestId("create-task-submit"));
+    await waitFor(() => {
+      expect(taskFixture.list).toHaveLength(1);
+    });
+    expect(taskFixture.list[0].AssigneeIds).toEqual([7, 8]);
+    expect(taskFixture.list[0].AssignedToUserId).toBeNull();
+  });
+
+  it("offers workspace members, not every company user", async () => {
+    workspaceFixture.members = [
+      member(7, "Carol"),
+      member(8, "Dave"),
+      { ...member(9, "Pending Pete"), InviteStatus: "pending" },
+    ];
+    renderModal();
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("create-task-assignees-input"));
+    expect(await screen.findByRole("option", { name: "Carol" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Dave" })).toBeInTheDocument();
+    // Alice/Bob come from /api/users/fetchUsers — the picker must not use it.
+    expect(screen.queryByRole("option", { name: "Alice" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Pending Pete" })).not.toBeInTheDocument();
+  });
+
+  it("personal workspace hides the picker and assigns the owner", async () => {
+    useWorkspaceStore.setState({ activeWorkspaceType: "personal" });
+    renderModal();
+    const user = userEvent.setup();
+    expect(screen.queryByTestId("create-task-assignees")).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText(/title/i), "Mine alone");
+    await fillFirstStep(user, "Just do it");
+    await user.click(screen.getByTestId("create-task-submit"));
+    await waitFor(() => {
+      expect(taskFixture.list).toHaveLength(1);
+    });
+    expect(taskFixture.list[0].AssigneeIds).toEqual([1]);
   });
 });

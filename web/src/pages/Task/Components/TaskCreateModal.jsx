@@ -13,7 +13,7 @@ import {
 } from "../../../components/ui";
 import Attachments from "../../../components/Attachments";
 import { useApiMutation } from "../../../hooks/useApiMutation";
-import { useApiQuery } from "../../../hooks/useApiQuery";
+import useWorkspaceMemberOptions from "../../../hooks/useWorkspaceMemberOptions";
 import useWorkspaceStore from "../../../stores/useWorkspaceStore";
 import useAuthStore from "../../../stores/useAuthStore";
 
@@ -38,23 +38,17 @@ export default function TaskCreateModal({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState("medium");
-  const [assignee, setAssignee] = useState(null);
+  const [assignees, setAssignees] = useState([]);
   const [dueDate, setDueDate] = useState("");
   const [steps, setSteps] = useState([""]);
   const [submitting, setSubmitting] = useState(false);
   const attachmentsRef = useRef(null);
 
-  const { data: usersPayload } = useApiQuery({
-    queryKey: ["users", "pick-list"],
-    endpoint: "/api/users/fetchUsers",
-    params: { PageNumber: 1, PageSize: 200 },
-    enabled: open,
-    showErrorMessage: false,
+  // Only workspace members can be assigned — the server rejects anyone else, so
+  // offering the whole company would just produce a confusing 400.
+  const { options: memberOptions } = useWorkspaceMemberOptions(workspaceId, {
+    enabled: open && !isPersonal,
   });
-  const userOptions = (usersPayload?.users ?? []).map((u) => ({
-    value: u.Id,
-    label: u.FullName || u.Username,
-  }));
 
   const saveMutation = useApiMutation({
     endpoint: "/api/tasks/saveTask",
@@ -65,7 +59,7 @@ export default function TaskCreateModal({
     setTitle("");
     setDescription("");
     setPriority("medium");
-    setAssignee(null);
+    setAssignees([]);
     setDueDate("");
     setSteps([""]);
     setSubmitting(false);
@@ -99,9 +93,11 @@ export default function TaskCreateModal({
         WorkspaceId: workspaceId,
         ColumnId: columnId,
         Priority: priority,
-        AssignedToUserId: isPersonal
-          ? currentUserId
-          : assignee?.value || null,
+        // Personal workspaces have no member rows — the owner is the only
+        // possible assignee, so assign them implicitly instead of asking.
+        AssigneeIds: isPersonal
+          ? [currentUserId].filter(Boolean)
+          : assignees.map((a) => a.value),
         DueDate: dueDate || null,
         ChecklistItems: trimmedSteps,
       });
@@ -234,11 +230,13 @@ export default function TaskCreateModal({
             {!isPersonal && (
               <div style={{ flex: 1 }}>
                 <Combobox
-                  label="Assignee"
-                  options={userOptions}
-                  value={assignee}
-                  onChange={setAssignee}
-                  placeholder="Unassigned"
+                  label="Assignees"
+                  options={memberOptions}
+                  value={assignees}
+                  onChange={(arr) => setAssignees(arr || [])}
+                  multiple
+                  placeholder={assignees.length ? "" : "Unassigned"}
+                  data-testid="create-task-assignees"
                 />
               </div>
             )}

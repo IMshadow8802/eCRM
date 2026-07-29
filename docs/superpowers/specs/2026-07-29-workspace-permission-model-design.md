@@ -204,7 +204,7 @@ These hold for every workspace type. Each is currently violated.
 | Change | Why |
 |---|---|
 | **New `tblTaskAssignee`** (`TaskId`, `UserId`, `AssignedAt`, `AssignedByUserId`; unique on `TaskId,UserId`) | multi-assignee |
-| Migrate existing `tblTasks.AssignedToUserId` rows into it, then retire the column | one source of truth; a kept column drifts |
+| Backfill from `tblTasks.AssignedToUserId`, then keep that column as a **derived mirror of the first assignee** — written from the set, read by nothing that decides anything. Dropped in a follow-up. | see below |
 | `sp_CheckTaskPermission`: new actions `manage_checklist` and `manage_attachments`; they and `change_status` consult the assignee **set** | §2, §4 |
 | `attachmentController` save/delete pass `manage_attachments` for `Entity='task'` instead of `"write"` | assignees hold the evidence. Lead/ticket attachments are unaffected — `assertRecordAccess` ignores `level` for those entities |
 | Membership lookups gain `AND InviteStatus = 'active'` | invariant 1 |
@@ -214,10 +214,35 @@ These hold for every workspace type. Each is currently violated.
 | `sp_RecomputeTaskCompletion`: stop NULLing the completion audit columns | invariant 6 |
 | `tblTasks.WorkspaceId` → `NOT NULL` | kills a dead orphan-fallback branch that yields permanently read-only ghost tasks |
 
-Retiring `AssignedToUserId` touches `sp_FetchTask`, `sp_SaveTask`, filters,
-notification SPs, kanban card payloads and reports. That cost is accepted: the
-alternative (keep the column as "primary assignee" plus a table for the rest)
-means two sources of truth and every future query must remember to check both.
+### 6.1 Why the column survives this migration (revised 2026-07-29)
+
+The original plan was a straight replacement. A full inventory of every
+assignee reference changed that, for three reasons:
+
+1. **The row shape is contractual.** `sp_FetchTask` returns `AssignedToUserId`
+   and `AssigneeName` as scalars, and the whole web tree reads them directly.
+   Changing the shape and the storage in one step means every consumer breaks
+   at once, with no way to bisect which change caused it.
+2. **`LEFT JOIN tblUser assignee ON assignee.Id = t.AssignedToUserId` fans out
+   under M2M.** A task with two assignees would return twice — and because the
+   join appears in both the count query and the page query, pagination would
+   quietly disagree with itself rather than fail loudly.
+3. **`IX_tblTasks_WorkspaceId_ColumnId` INCLUDEs the column**, so the drop
+   fails until the index is rebuilt, and the FK name is system-generated
+   (`FK__tblTasks__Assign__6754599E`) so it differs per environment — a
+   hardcoded drop passes on dev and fails on prod.
+
+So: `tblTaskAssignee` is authoritative for every decision — permission,
+visibility, notification fan-out, writes. `AssignedToUserId` is reduced to a
+mirror of the first assignee, maintained by `sp_SaveTask`, consulted by nothing
+that branches. `sp_FetchTask` keeps the scalar columns *and* adds an
+`AssigneesJson` array plus `AssigneeCount`, so old consumers keep working while
+new UI renders the full set.
+
+This is not the two-sources-of-truth trap: nothing reads the mirror to make a
+choice, and the migration ships a verify query asserting mirror == set. The
+column, its FK and its dedicated index are dropped in a follow-up once the web
+side no longer reads them.
 
 ---
 

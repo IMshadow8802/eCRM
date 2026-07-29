@@ -329,7 +329,8 @@ describe("TaskDetailModal", () => {
       ColumnTitle: "To Do",
       Priority: "high",
       CreatedByUserId: 99, // someone else made it
-      AssignedToUserId: 1, // ...and handed it to me
+      AssignedToUserId: 1, // ...and handed it to me (legacy mirror)
+      AssigneesJson: JSON.stringify([{ UserId: 1, FullName: "Me" }]),
       ChecklistTotal: 1,
       ChecklistDone: 0,
     });
@@ -359,7 +360,10 @@ describe("TaskDetailModal", () => {
     expect(await screen.findByTestId("checklist-toggle-900")).not.toBeDisabled();
   });
 
-  it("does not let the assignee delete checklist items (that stays edit_fields)", async () => {
+  // CHANGED in 063: adding/removing checklist steps is manage_checklist — a
+  // work artifact owned by whoever is doing the work. It used to be edit_fields,
+  // so an assignee could tick a box but not add the step or remove a wrong one.
+  it("lets the assignee manage checklist items (manage_checklist, not edit_fields)", async () => {
     seedAssignedToMe();
     server.use(
       http.post(`*/api/tasks/getTaskChecklist`, async () =>
@@ -373,7 +377,7 @@ describe("TaskDetailModal", () => {
     );
     await openChecklistTab();
     await screen.findByTestId("checklist-toggle-900");
-    expect(screen.queryByRole("button", { name: /Remove item/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Remove item/i })).toBeInTheDocument();
   });
 
   it("leaves the checklist read-only for a member who is neither creator nor assignee", async () => {

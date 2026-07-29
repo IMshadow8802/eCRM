@@ -17,6 +17,7 @@ export default function KanbanColumn({
   onToggleSelect,
   canCreate = true,
   canManage = false,
+  canDragCard = () => true,
   siblingColumns = [],
 }) {
   const theme = useTheme();
@@ -249,6 +250,7 @@ export default function KanbanColumn({
             onOpen={onOpenTask}
             selected={selectedTaskIds.includes(task.Id)}
             onToggleSelect={onToggleSelect}
+            canDrag={canDragCard(task)}
           />
         ))}
 

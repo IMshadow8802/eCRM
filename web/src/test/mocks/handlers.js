@@ -383,6 +383,20 @@ export const handlers = [
     });
   }),
 
+  // Column moves have their own endpoint — change_status, not edit_fields, and
+  // no task body to accidentally clobber the assignee set with (064).
+  http.post(`*/api/tasks/moveTaskColumn`, async ({ request }) => {
+    const body = await request.json();
+    const task = taskFixture.list.find((t) => t.Id === body?.TaskId);
+    if (task) task.ColumnId = body.ColumnId;
+    return HttpResponse.json({
+      success: true,
+      message: "Task moved",
+      responseCode: 200,
+      data: null,
+    });
+  }),
+
   http.post(`*/api/tasks/saveTask`, async ({ request }) => {
     const body = await request.json();
     if (!body?.Title) {
@@ -414,6 +428,7 @@ export const handlers = [
         ColumnId: body.ColumnId ?? null,
         Priority: body.Priority ?? "medium",
         AssignedToUserId: body.AssignedToUserId ?? null,
+        AssigneeIds: body.AssigneeIds ?? [],
         DueDate: body.DueDate ?? null,
         IsBlocked: false,
         IsCompleted: 0,
