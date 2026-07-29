@@ -433,6 +433,13 @@ class TaskController {
     try {
       const { TaskId, PageNumber = 1, PageSize = 25 } = req.body;
 
+      // sp_FetchTaskComment has no permission logic and does not even filter
+      // by CompId, so without this any authenticated user could read any
+      // task's thread by id, across companies. It also writes read receipts on
+      // this path, so an unauthorised read would corrupt "Seen by N" too.
+      const allowed = await assertRecordAccess(req, res, "task", TaskId, "view");
+      if (!allowed) return;
+
       const result = await database.executeStoredProcedure(
         "sp_FetchTaskComment",
         {
@@ -628,6 +635,14 @@ class TaskController {
         PageNumber = 1,
         PageSize = 20,
       } = req.body;
+
+      // sp_FetchTimeEntry has no permission logic of its own. Asking for one
+      // task's entries needs membership on that task; asking without a TaskId
+      // is already pinned to the caller's own entries below (admins excepted).
+      if (TaskId) {
+        const allowed = await assertRecordAccess(req, res, "task", TaskId, "view");
+        if (!allowed) return;
+      }
 
       const result = await database.executeStoredProcedure(
         "sp_FetchTimeEntry",
@@ -853,6 +868,11 @@ class TaskController {
   async getChecklist(req, res) {
     try {
       const { Id = 0, TaskId, PageNumber = 1, PageSize = 50 } = req.body;
+
+      // sp_FetchTaskChecklist has no permission logic and ignores its own
+      // CompId/BranchId params — this is the only gate.
+      const allowed = await assertRecordAccess(req, res, "task", TaskId, "view");
+      if (!allowed) return;
 
       const result = await database.executeStoredProcedure(
         "sp_FetchTaskChecklist",

@@ -1054,3 +1054,50 @@ describe("taskController time-tracking + checklist + activity", () => {
     expect(res.json.mock.calls[0][0].data.activities).toHaveLength(0);
   });
 });
+
+// REGRESSION: getComments, getChecklist and getTimeEntries accepted a
+// client-supplied TaskId with no check in the controller and none in their SPs
+// — sp_FetchTaskComment does not even filter by CompId. Any authenticated user
+// could read any task's comments, checklist or time entries by id, across
+// companies. sp_FetchTaskComment also writes read receipts on that path, so an
+// unauthorised read corrupted "Seen by N" as well.
+describe("task read endpoints are gated by membership", () => {
+  const cases = [
+    ["getComments", "getComments"],
+    ["getChecklist", "getChecklist"],
+    ["getTimeEntries", "getTimeEntries"],
+  ];
+
+  it.each(cases)("%s requires view access on the task", async (_label, method) => {
+    database.executeStoredProcedure.mockResolvedValueOnce(spResult([]));
+    await taskController[method](baseReq({ body: { TaskId: 42 } }), mockRes());
+
+    expect(assertRecordAccess).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      "task",
+      42,
+      "view",
+    );
+  });
+
+  it.each(cases)("%s runs no query when access is refused", async (_label, method) => {
+    assertRecordAccess.mockResolvedValue(false);
+    await taskController[method](baseReq({ body: { TaskId: 42 } }), mockRes());
+
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  // Listing your own entries across every task carries no TaskId; that path is
+  // already pinned to the caller's UserId, so it must not demand a task guard.
+  it("getTimeEntries without a TaskId skips the task guard and scopes to the caller", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(spResult([]));
+    await taskController.getTimeEntries(baseReq({ body: {} }), mockRes());
+
+    expect(assertRecordAccess).not.toHaveBeenCalled();
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({
+      TaskId: null,
+      UserId: 7,
+    });
+  });
+});
