@@ -1,14 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
 import { screen, fireEvent } from "@testing-library/react";
-import { DragDropProvider } from "@dnd-kit/react";
+import { DndContext } from "@dnd-kit/core";
 import KanbanCard from "./KanbanCard";
 import renderWithProviders from "../../test/renderWithProviders";
 
 function wrap(ui) {
-  return renderWithProviders(
-    <DragDropProvider>{ui}</DragDropProvider>,
-    { router: false },
-  );
+  return renderWithProviders(<DndContext>{ui}</DndContext>, { router: false });
 }
 
 describe("KanbanCard", () => {

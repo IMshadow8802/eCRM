@@ -1,6 +1,14 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { DragDropProvider } from "@dnd-kit/react";
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  pointerWithin,
+} from "@dnd-kit/core";
 import { HeartCrack, Workflow } from "lucide-react";
 
 import { useApiQuery } from "../../hooks/useApiQuery";
@@ -9,7 +17,9 @@ import { SALES_ENDPOINTS } from "../../api/salesQueries";
 import { PageHeader, EmptyState, Modal, Combobox, Button } from "../../components/ui";
 import HelpGuide from "../../components/HelpGuide";
 import { HELP_GUIDES } from "../../data/helpGuides";
+import { dragGuard } from "../../realtime/dragGuard";
 import PipelineColumn from "./PipelineColumn";
+import { PipelineCardView } from "./PipelineCard";
 
 const PIPELINE_ENTITY = "lead";
 const LEADS_QUERY_KEY = ["sales-leads"];
@@ -71,6 +81,17 @@ export default function Pipeline() {
   // (same pattern as TicketBoard's drag-into-won resolution prompt).
   const [pendingMove, setPendingMove] = useState(null); // { leadId, targetStageId }
   const [lostReason, setLostReason] = useState(null);
+  const [activeCard, setActiveCard] = useState(null); // the card in the drag overlay
+
+  // Distance constraint so a plain click still opens the lead (no accidental
+  // drag); keyboard sensor keeps drag accessible.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor),
+  );
+
+  // Safety: release the realtime gate if the board unmounts mid-drag.
+  useEffect(() => () => dragGuard.end(), []);
 
   const moveStageMutation = useApiMutation({
     endpoint: SALES_ENDPOINTS.leads.moveLeadStage,
@@ -111,16 +132,29 @@ export default function Pipeline() {
     }
   };
 
-  const handleDragEnd = async (event) => {
-    if (event.canceled) return;
-    const { source, target } = event.operation || {};
-    if (!source || !target || source.type !== "lead") return;
+  const handleDragStart = (event) => {
+    dragGuard.start(); // hold realtime refetches until the drop lands
+    setActiveCard(event.active.data.current?.lead ?? null);
+  };
 
-    const leadId = source.data?.leadId;
+  const handleDragCancel = () => {
+    setActiveCard(null);
+    dragGuard.end();
+  };
+
+  const handleDragEnd = async (event) => {
+    setActiveCard(null);
+    // Release the realtime gate now — the optimistic patch in commitMove is the
+    // source of truth until the save round-trips; deferred refetches can flush.
+    dragGuard.end();
+    const { active, over } = event;
+    if (!over) return;
+
+    const leadId = active.data.current?.leadId;
     const lead = leads.find((l) => l.Id === leadId);
     if (!lead) return;
 
-    const targetStageId = target.data?.stageId;
+    const targetStageId = over.data.current?.stageId;
     if (!targetStageId || targetStageId === lead.StageId) return;
 
     // Losing a lead needs a reason — hold the move and ask. Won/open moves
@@ -181,7 +215,13 @@ export default function Pipeline() {
         actions={<HelpGuide guide={HELP_GUIDES.leads} />}
       />
 
-      <DragDropProvider onDragEnd={handleDragEnd}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={pointerWithin}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
+      >
         <div
           style={{
             display: "flex",
@@ -195,7 +235,10 @@ export default function Pipeline() {
             <PipelineColumn key={stage.Id} stage={stage} leads={leadsByStage[stage.Id] || []} />
           ))}
         </div>
-      </DragDropProvider>
+        <DragOverlay>
+          {activeCard ? <PipelineCardView lead={activeCard} overlay dragging /> : null}
+        </DragOverlay>
+      </DndContext>
 
       <Modal
         open={Boolean(pendingMove)}

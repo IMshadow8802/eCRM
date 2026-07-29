@@ -12,19 +12,28 @@ import { server } from "../../test/mocks/server";
 import renderWithProviders from "../../test/renderWithProviders";
 
 // dnd-kit's real drag lifecycle needs pointer/keyboard sensors jsdom can't
-// drive, so we stub the library: DragDropProvider just renders children and
-// stashes onDragEnd so a test can invoke it with a hand-built event shaped
-// exactly like a real @dnd-kit/react drop.
+// drive, so we stub the library: DndContext just renders children and stashes
+// onDragEnd so a test can invoke it with a hand-built event shaped exactly like
+// a real @dnd-kit/core drop ({ active, over }).
 const dnd = vi.hoisted(() => ({ onDragEnd: null }));
-vi.mock("@dnd-kit/react", () => ({
-  DragDropProvider: ({ children, onDragEnd }) => {
+vi.mock("@dnd-kit/core", () => ({
+  DndContext: ({ children, onDragEnd }) => {
     dnd.onDragEnd = onDragEnd;
     return children;
   },
-  useDroppable: () => ({ ref: () => {}, isDropTarget: false }),
-}));
-vi.mock("@dnd-kit/react/sortable", () => ({
-  useSortable: () => ({ ref: () => {}, isDragging: false }),
+  DragOverlay: ({ children }) => children,
+  useDroppable: () => ({ setNodeRef: () => {}, isOver: false }),
+  useDraggable: () => ({
+    attributes: {},
+    listeners: {},
+    setNodeRef: () => {},
+    isDragging: false,
+  }),
+  useSensor: () => ({}),
+  useSensors: () => [],
+  PointerSensor: function PointerSensor() {},
+  KeyboardSensor: function KeyboardSensor() {},
+  pointerWithin: () => [],
 }));
 
 const PIPELINE = {
@@ -177,11 +186,8 @@ describe("TicketBoard", () => {
     expect(typeof dnd.onDragEnd).toBe("function");
 
     await dnd.onDragEnd({
-      canceled: false,
-      operation: {
-        source: { type: "ticket", data: { ticketId: 100, stageId: 10 } },
-        target: { data: { stageId: 20 } },
-      },
+      active: { data: { current: { ticketId: 100, stageId: 10 } } },
+      over: { data: { current: { stageId: 20 } } },
     });
 
     await waitFor(() => {
@@ -206,21 +212,21 @@ describe("TicketBoard", () => {
     await screen.findByTestId("ticket-card-100");
 
     await dnd.onDragEnd({
-      canceled: false,
-      operation: {
-        source: { type: "ticket", data: { ticketId: 100, stageId: 10 } },
-        target: { data: { stageId: 10 } },
-      },
+      active: { data: { current: { ticketId: 100, stageId: 10 } } },
+      over: { data: { current: { stageId: 10 } } },
     });
 
     expect(called).toBe(false);
   });
 
-  it("ignores a canceled drag", async () => {
+  it("ignores a drop outside any stage (no over target)", async () => {
     renderBoard();
     await screen.findByTestId("ticket-card-100");
     await expect(
-      dnd.onDragEnd({ canceled: true, operation: {} }),
+      dnd.onDragEnd({
+        active: { data: { current: { ticketId: 100, stageId: 10 } } },
+        over: null,
+      }),
     ).resolves.toBeUndefined();
   });
 
@@ -255,11 +261,8 @@ describe("TicketBoard", () => {
     await screen.findByTestId("ticket-card-100");
 
     await dnd.onDragEnd({
-      canceled: false,
-      operation: {
-        source: { type: "ticket", data: { ticketId: 100, stageId: 10 } },
-        target: { data: { stageId: 30 } },
-      },
+      active: { data: { current: { ticketId: 100, stageId: 10 } } },
+      over: { data: { current: { stageId: 30 } } },
     });
 
     expect(await screen.findByTestId("board-resolve-modal")).toBeInTheDocument();
@@ -285,11 +288,8 @@ describe("TicketBoard", () => {
     await screen.findByTestId("ticket-card-100");
 
     await dnd.onDragEnd({
-      canceled: false,
-      operation: {
-        source: { type: "ticket", data: { ticketId: 100, stageId: 10 } },
-        target: { data: { stageId: 30 } },
-      },
+      active: { data: { current: { ticketId: 100, stageId: 10 } } },
+      over: { data: { current: { stageId: 30 } } },
     });
 
     const user = userEvent.setup();
@@ -322,11 +322,8 @@ describe("TicketBoard", () => {
     await screen.findByTestId("ticket-card-100");
 
     await dnd.onDragEnd({
-      canceled: false,
-      operation: {
-        source: { type: "ticket", data: { ticketId: 100, stageId: 10 } },
-        target: { data: { stageId: 30 } },
-      },
+      active: { data: { current: { ticketId: 100, stageId: 10 } } },
+      over: { data: { current: { stageId: 30 } } },
     });
 
     const user = userEvent.setup();
@@ -352,11 +349,8 @@ describe("TicketBoard", () => {
     await screen.findByTestId("ticket-card-100");
 
     await dnd.onDragEnd({
-      canceled: false,
-      operation: {
-        source: { type: "ticket", data: { ticketId: 100, stageId: 10 } },
-        target: { data: { stageId: 20 } },
-      },
+      active: { data: { current: { ticketId: 100, stageId: 10 } } },
+      over: { data: { current: { stageId: 20 } } },
     });
 
     await waitFor(() => {

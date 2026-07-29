@@ -1,13 +1,13 @@
 import { describe, it, expect, vi } from "vitest";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { DragDropProvider } from "@dnd-kit/react";
+import { DndContext } from "@dnd-kit/core";
 import KanbanColumn from "./KanbanColumn";
 import renderWithProviders from "../../test/renderWithProviders";
 
 function wrap(ui) {
   return renderWithProviders(
-    <DragDropProvider>{ui}</DragDropProvider>,
+    <DndContext>{ui}</DndContext>,
     { router: false },
   );
 }

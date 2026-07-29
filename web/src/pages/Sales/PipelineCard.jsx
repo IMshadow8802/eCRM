@@ -1,4 +1,5 @@
-import { useSortable } from "@dnd-kit/react/sortable";
+import { memo, useMemo } from "react";
+import { useDraggable } from "@dnd-kit/core";
 import { useTheme } from "@mui/material/styles";
 import { Calendar } from "lucide-react";
 import dayjs from "dayjs";
@@ -21,34 +22,41 @@ function ownerLabel(lead) {
   return "Unassigned";
 }
 
-export default function PipelineCard({ lead, index = 0, stageId }) {
+/**
+ * Pure presentational card. Shared by the draggable wrapper (below) and the
+ * DragOverlay clone, so the visual never diverges. No dnd hooks here — the
+ * overlay renders this directly while the real card is dimmed in place, which
+ * is why the library never has to reparent a live node (the crash we fixed).
+ */
+export const PipelineCardView = memo(function PipelineCardView({
+  lead,
+  dragging = false,
+  overlay = false,
+  dragRef,
+  dragHandleProps = {},
+}) {
   const theme = useTheme();
   const p = theme.tokens;
-  const { ref: sortableRef, isDragging } = useSortable({
-    id: `lead-${lead.Id}`,
-    index,
-    type: "lead",
-    accepts: "lead",
-    group: stageId ?? lead.StageId ?? "default",
-    data: { leadId: lead.Id, stageId: stageId ?? lead.StageId ?? null },
-  });
 
   const estValue = formatCurrency(lead.EstValue);
   const owner = ownerLabel(lead);
 
   return (
     <div
-      ref={sortableRef}
+      ref={dragRef}
+      {...dragHandleProps}
       data-testid={`pipeline-card-${lead.Id}`}
       style={{
         padding: 14,
-        marginBottom: 10,
+        marginBottom: overlay ? 0 : 10,
         borderRadius: theme.radii.md,
         backgroundColor: p.surface.card,
         border: `1px solid ${p.border.default}`,
-        cursor: "grab",
-        opacity: isDragging ? 0.6 : 1,
-        boxShadow: isDragging ? p.shadow.lg : p.shadow.xs,
+        cursor: overlay ? "grabbing" : "grab",
+        // Dim the real card while its overlay clone follows the cursor.
+        opacity: dragging && !overlay ? 0.4 : 1,
+        boxShadow: overlay ? p.shadow.lg : p.shadow.xs,
+        willChange: overlay ? "transform" : undefined,
       }}
     >
       <div
@@ -83,5 +91,32 @@ export default function PipelineCard({ lead, index = 0, stageId }) {
         <span style={{ fontSize: 11, fontWeight: 500, color: p.text.secondary }}>{owner}</span>
       </div>
     </div>
+  );
+});
+
+/**
+ * Draggable pipeline card (stable @dnd-kit/core). Stage columns are the
+ * droppables; cards are draggable-only — we persist only which stage a card
+ * lands in, not intra-column order, so no SortableContext is needed.
+ */
+export default function PipelineCard({ lead, stageId }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `lead-${lead.Id}`,
+    data: { leadId: lead.Id, stageId: stageId ?? lead.StageId ?? null, lead },
+  });
+
+  // Stable ref so the memoized view bails while other cards are dragged.
+  const dragHandleProps = useMemo(
+    () => ({ ...listeners, ...attributes }),
+    [listeners, attributes],
+  );
+
+  return (
+    <PipelineCardView
+      lead={lead}
+      dragging={isDragging}
+      dragRef={setNodeRef}
+      dragHandleProps={dragHandleProps}
+    />
   );
 }

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useDroppable } from "@dnd-kit/react";
+import { useDroppable } from "@dnd-kit/core";
 import { useTheme } from "@mui/material/styles";
 import { Plus, MoreVertical, Check, X, Trash2 } from "lucide-react";
 
@@ -21,10 +21,8 @@ export default function KanbanColumn({
 }) {
   const theme = useTheme();
   const p = theme.tokens;
-  const { ref: dropRef, isDropTarget } = useDroppable({
+  const { setNodeRef: dropRef, isOver: isDropTarget } = useDroppable({
     id: `column-${column.Id}`,
-    type: "column",
-    accepts: "task",
     data: { columnId: column.Id },
     disabled: column.Id === -1,
   });
@@ -243,11 +241,10 @@ export default function KanbanColumn({
         ref={dropRef}
         style={{ padding: 10, overflowY: "auto", flex: 1, minHeight: 100 }}
       >
-        {tasks.map((task, idx) => (
+        {tasks.map((task) => (
           <KanbanCard
             key={task.Id}
             task={task}
-            index={idx}
             columnId={column.Id}
             onOpen={onOpenTask}
             selected={selectedTaskIds.includes(task.Id)}

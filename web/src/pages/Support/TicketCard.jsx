@@ -1,4 +1,5 @@
-import { useSortable } from "@dnd-kit/react/sortable";
+import { memo, useMemo } from "react";
+import { useDraggable } from "@dnd-kit/core";
 import { useTheme } from "@mui/material/styles";
 import { Eye } from "lucide-react";
 
@@ -12,38 +13,52 @@ function assigneeLabel(ticket, users) {
   return "Unassigned";
 }
 
-export default function TicketCard({ ticket, index = 0, stageId, priorityById, users, onOpen }) {
+/**
+ * Pure presentational card. Shared by the draggable wrapper (below) and the
+ * DragOverlay clone, so the visual never diverges. No dnd hooks here — the
+ * overlay renders this directly while the real card is dimmed in place, which
+ * is why the library never has to reparent a live node (the crash we fixed).
+ */
+export const TicketCardView = memo(function TicketCardView({
+  ticket,
+  priorityById,
+  users,
+  onOpen,
+  dragging = false,
+  overlay = false,
+  dragRef,
+  dragHandleProps = {},
+}) {
   const theme = useTheme();
   const p = theme.tokens;
-  const { ref: sortableRef, isDragging } = useSortable({
-    id: `ticket-${ticket.Id}`,
-    index,
-    type: "ticket",
-    accepts: "ticket",
-    group: stageId ?? ticket.StageId ?? "default",
-    data: { ticketId: ticket.Id, stageId: stageId ?? ticket.StageId ?? null },
-  });
 
   const priority = priorityById?.get(ticket.Priority);
   const assignee = assigneeLabel(ticket, users);
 
   return (
     <div
-      ref={sortableRef}
+      ref={dragRef}
+      {...dragHandleProps}
       data-testid={`ticket-card-${ticket.Id}`}
       // Whole card opens the detail modal; a real drag suppresses the click.
-      onClick={() => {
-        if (!isDragging && onOpen) onOpen(ticket.Id);
-      }}
+      onClick={
+        overlay
+          ? undefined
+          : () => {
+              if (!dragging && onOpen) onOpen(ticket.Id);
+            }
+      }
       style={{
         padding: 14,
-        marginBottom: 10,
+        marginBottom: overlay ? 0 : 10,
         borderRadius: theme.radii.md,
         backgroundColor: p.surface.card,
         border: `1px solid ${p.border.default}`,
-        cursor: onOpen ? "pointer" : "grab",
-        opacity: isDragging ? 0.6 : 1,
-        boxShadow: isDragging ? p.shadow.lg : p.shadow.xs,
+        cursor: overlay ? "grabbing" : onOpen ? "pointer" : "grab",
+        // Dim the real card while its overlay clone follows the cursor.
+        opacity: dragging && !overlay ? 0.4 : 1,
+        boxShadow: overlay ? p.shadow.lg : p.shadow.xs,
+        willChange: overlay ? "transform" : undefined,
       }}
     >
       <div
@@ -68,7 +83,7 @@ export default function TicketCard({ ticket, index = 0, stageId, priorityById, u
         </div>
         {/* Explicit open affordance: a dedicated button never fights the
             card's drag gesture, and signals the card leads somewhere. */}
-        {onOpen && (
+        {onOpen && !overlay && (
           <button
             type="button"
             aria-label={`Open ${ticket.TicketNo}`}
@@ -77,6 +92,7 @@ export default function TicketCard({ ticket, index = 0, stageId, priorityById, u
               e.stopPropagation();
               onOpen(ticket.Id);
             }}
+            onPointerDown={(e) => e.stopPropagation()}
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -128,5 +144,35 @@ export default function TicketCard({ ticket, index = 0, stageId, priorityById, u
         <span style={{ fontSize: 11, fontWeight: 500, color: p.text.secondary }}>{assignee}</span>
       </div>
     </div>
+  );
+});
+
+/**
+ * Draggable ticket card (stable @dnd-kit/core). Stages are the droppables;
+ * cards are draggable-only — we persist only which stage a card lands in, not
+ * intra-stage order, so no SortableContext is needed.
+ */
+export default function TicketCard({ ticket, stageId, priorityById, users, onOpen }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `ticket-${ticket.Id}`,
+    data: { ticketId: ticket.Id, stageId: stageId ?? ticket.StageId ?? null, ticket },
+  });
+
+  // Stable ref so the memoized view bails while other cards are dragged.
+  const dragHandleProps = useMemo(
+    () => ({ ...listeners, ...attributes }),
+    [listeners, attributes],
+  );
+
+  return (
+    <TicketCardView
+      ticket={ticket}
+      priorityById={priorityById}
+      users={users}
+      onOpen={onOpen}
+      dragging={isDragging}
+      dragRef={setNodeRef}
+      dragHandleProps={dragHandleProps}
+    />
   );
 }

@@ -21,6 +21,7 @@ import {
   EVENT_WORKSPACE_LEAVE,
   SCOPES,
 } from "./contract";
+import { dragGuard } from "./dragGuard";
 
 // Connection status for the header pill.
 // "idle"    = never connected yet (show nothing — never alarm on first load)
@@ -102,7 +103,11 @@ export default function SocketProvider() {
       // Blanket invalidation on EVERY connect (first and reconnects): while
       // disconnected we may have missed invalidation events, so refetch
       // everything as catch-up. Cheap at this scale; data still flows REST.
-      queryClient.invalidateQueries();
+      // Defer if a board drag is in flight so the refetch doesn't re-bucket
+      // the board mid-drag.
+      const catchUp = () => queryClient.invalidateQueries();
+      if (dragGuard.isDragging()) dragGuard.defer(catchUp);
+      else catchUp();
       joinWorkspace(socket, useWorkspaceStore.getState().activeWorkspaceId);
     });
 
@@ -115,9 +120,15 @@ export default function SocketProvider() {
     socket.on(EVENT_INVALIDATE, (payload) => {
       const toKeys = SCOPE_INVALIDATIONS[payload?.scope];
       if (!toKeys) return;
-      for (const queryKey of toKeys(payload)) {
-        queryClient.invalidateQueries({ queryKey });
-      }
+      const run = () => {
+        for (const queryKey of toKeys(payload)) {
+          queryClient.invalidateQueries({ queryKey });
+        }
+      };
+      // A board drag in flight? Defer so an incoming refetch can't re-bucket
+      // the board mid-drag (the drop's own saveTask echoes back here).
+      if (dragGuard.isDragging()) dragGuard.defer(run);
+      else run();
     });
 
     return () => {

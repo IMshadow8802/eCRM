@@ -1,4 +1,4 @@
-import { useDroppable } from "@dnd-kit/react";
+import { useDroppable } from "@dnd-kit/core";
 import { useTheme } from "@mui/material/styles";
 
 import PipelineCard from "./PipelineCard";
@@ -6,10 +6,8 @@ import PipelineCard from "./PipelineCard";
 export default function PipelineColumn({ stage, leads }) {
   const theme = useTheme();
   const p = theme.tokens;
-  const { ref: dropRef, isDropTarget } = useDroppable({
+  const { setNodeRef: dropRef, isOver: isDropTarget } = useDroppable({
     id: `stage-${stage.Id}`,
-    type: "stage",
-    accepts: "lead",
     data: { stageId: stage.Id },
   });
 
@@ -64,8 +62,8 @@ export default function PipelineColumn({ stage, leads }) {
       </div>
 
       <div ref={dropRef} style={{ padding: 10, overflowY: "auto", flex: 1, minHeight: 100 }}>
-        {leads.map((lead, idx) => (
-          <PipelineCard key={lead.Id} lead={lead} index={idx} stageId={stage.Id} />
+        {leads.map((lead) => (
+          <PipelineCard key={lead.Id} lead={lead} stageId={stage.Id} />
         ))}
       </div>
     </div>

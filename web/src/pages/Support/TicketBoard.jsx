@@ -1,6 +1,14 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { DragDropProvider } from "@dnd-kit/react";
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  pointerWithin,
+} from "@dnd-kit/core";
 import { CheckCircle, LifeBuoy } from "lucide-react";
 
 import { useApiQuery } from "../../hooks/useApiQuery";
@@ -10,7 +18,9 @@ import { SUPPORT_ENDPOINTS } from "../../api/supportQueries";
 import { PageHeader, EmptyState, Modal, Combobox, Button } from "../../components/ui";
 import HelpGuide from "../../components/HelpGuide";
 import { HELP_GUIDES } from "../../data/helpGuides";
+import { dragGuard } from "../../realtime/dragGuard";
 import TicketColumn from "./TicketColumn";
+import { TicketCardView } from "./TicketCard";
 import TicketDetailModal from "./TicketDetailModal";
 
 const PIPELINE_ENTITY = "ticket";
@@ -88,9 +98,20 @@ export default function TicketBoard() {
   // A drag into a won stage parks here until the user picks a resolution.
   const [pendingMove, setPendingMove] = useState(null); // { ticketId, targetStageId }
   const [resolution, setResolution] = useState(null);
+  const [activeCard, setActiveCard] = useState(null); // the ticket in the drag overlay
 
   // Card "open" button -> full detail in a modal, board position preserved.
   const [detailTicketId, setDetailTicketId] = useState(null);
+
+  // Distance constraint so a plain click still opens the ticket (no accidental
+  // drag); keyboard sensor keeps drag accessible.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor),
+  );
+
+  // Safety: release the realtime gate if the board unmounts mid-drag.
+  useEffect(() => () => dragGuard.end(), []);
 
   const moveStageMutation = useApiMutation({
     endpoint: SUPPORT_ENDPOINTS.tickets.moveTicketStage,
@@ -132,16 +153,29 @@ export default function TicketBoard() {
     }
   };
 
-  const handleDragEnd = async (event) => {
-    if (event.canceled) return;
-    const { source, target } = event.operation || {};
-    if (!source || !target || source.type !== "ticket") return;
+  const handleDragStart = (event) => {
+    dragGuard.start(); // hold realtime refetches until the drop lands
+    setActiveCard(event.active.data.current?.ticket ?? null);
+  };
 
-    const ticketId = source.data?.ticketId;
+  const handleDragCancel = () => {
+    setActiveCard(null);
+    dragGuard.end();
+  };
+
+  const handleDragEnd = async (event) => {
+    setActiveCard(null);
+    // Release the realtime gate now — the optimistic patch is the source of
+    // truth until the save round-trips; deferred refetches can flush.
+    dragGuard.end();
+    const { active, over } = event;
+    if (!over) return;
+
+    const ticketId = active.data.current?.ticketId;
     const ticket = tickets.find((t) => t.Id === ticketId);
     if (!ticket) return;
 
-    const targetStageId = target.data?.stageId;
+    const targetStageId = over.data.current?.stageId;
     if (!targetStageId || targetStageId === ticket.StageId) return;
 
     // First entry into a won stage needs a resolution — hold the move and ask.
@@ -198,7 +232,13 @@ export default function TicketBoard() {
         actions={<HelpGuide guide={HELP_GUIDES.tickets} />}
       />
 
-      <DragDropProvider onDragEnd={handleDragEnd}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={pointerWithin}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
+      >
         <div
           style={{
             display: "flex",
@@ -219,7 +259,18 @@ export default function TicketBoard() {
             />
           ))}
         </div>
-      </DragDropProvider>
+        <DragOverlay>
+          {activeCard ? (
+            <TicketCardView
+              ticket={activeCard}
+              priorityById={priorityById}
+              users={users}
+              overlay
+              dragging
+            />
+          ) : null}
+        </DragOverlay>
+      </DndContext>
 
       <TicketDetailModal
         ticketId={detailTicketId}

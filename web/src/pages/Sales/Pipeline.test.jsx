@@ -8,27 +8,36 @@ import { http, HttpResponse } from "msw";
 configure({ asyncUtilTimeout: 5000 });
 
 import Pipeline from "./Pipeline";
+import { PipelineCardView } from "./PipelineCard";
 import { server } from "../../test/mocks/server";
 import renderWithProviders from "../../test/renderWithProviders";
 
 // dnd-kit's real drag lifecycle needs real pointer/keyboard sensors that
 // jsdom can't drive (no test in this codebase simulates a real drag — see
-// TaskBoard.test.jsx). Instead we stub the library: DragDropProvider just
-// renders children and stashes the onDragEnd callback so a test can invoke
-// it directly with a hand-built event, exactly the shape @dnd-kit/react
-// hands to onDragEnd for a real drag. useDroppable/useSortable become
-// no-op ref hooks since there's no real drag context to plug into.
-const dnd = vi.hoisted(() => ({ onDragEnd: null }));
-vi.mock("@dnd-kit/react", () => ({
-  DragDropProvider: ({ children, onDragEnd }) => {
-    dnd.onDragEnd = onDragEnd;
-    return children;
-  },
-  useDroppable: () => ({ ref: () => {}, isDropTarget: false }),
-}));
-vi.mock("@dnd-kit/react/sortable", () => ({
-  useSortable: () => ({ ref: () => {}, isDragging: false }),
-}));
+// TaskBoard.test.jsx). Instead we stub the library: DndContext just renders
+// children and stashes the onDragEnd callback so a test can invoke it
+// directly with a hand-built event, exactly the shape @dnd-kit/core hands to
+// onDragEnd for a real drag. useDroppable/useDraggable become no-op hooks
+// since there's no real drag context to plug into.
+const dnd = vi.hoisted(() => ({ onDragEnd: null, isOver: false }));
+vi.mock("@dnd-kit/core", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    DndContext: ({ children, onDragEnd }) => {
+      dnd.onDragEnd = onDragEnd;
+      return children;
+    },
+    DragOverlay: ({ children }) => children,
+    useDroppable: () => ({ setNodeRef: () => {}, isOver: dnd.isOver }),
+    useDraggable: () => ({
+      attributes: {},
+      listeners: {},
+      setNodeRef: () => {},
+      isDragging: false,
+    }),
+  };
+});
 
 const PIPELINE = {
   Id: 1,
@@ -96,9 +105,17 @@ const renderBoard = () => renderWithProviders(<Pipeline />);
 describe("Pipeline", () => {
   beforeEach(() => {
     dnd.onDragEnd = null;
+    dnd.isOver = false;
     mockPipelines();
     mockLeads();
     mockLostReasons();
+  });
+
+  it("highlights a stage column while a card hovers over it", async () => {
+    dnd.isOver = true;
+    renderBoard();
+    // The drop-target styling branch renders without error when hovered.
+    expect(await screen.findByTestId("pipeline-stage-10")).toBeInTheDocument();
   });
 
   it("renders stage columns from the default pipeline", async () => {
@@ -155,11 +172,8 @@ describe("Pipeline", () => {
     expect(typeof dnd.onDragEnd).toBe("function");
 
     await dnd.onDragEnd({
-      canceled: false,
-      operation: {
-        source: { type: "lead", data: { leadId: 100, stageId: 10 } },
-        target: { data: { stageId: 20 } },
-      },
+      active: { data: { current: { leadId: 100, stageId: 10 } } },
+      over: { data: { current: { stageId: 20 } } },
     });
 
     await waitFor(() => {
@@ -185,21 +199,21 @@ describe("Pipeline", () => {
     await screen.findByTestId("pipeline-card-100");
 
     await dnd.onDragEnd({
-      canceled: false,
-      operation: {
-        source: { type: "lead", data: { leadId: 100, stageId: 10 } },
-        target: { data: { stageId: 10 } },
-      },
+      active: { data: { current: { leadId: 100, stageId: 10 } } },
+      over: { data: { current: { stageId: 10 } } },
     });
 
     expect(called).toBe(false);
   });
 
-  it("ignores a canceled drag", async () => {
+  it("ignores a drop with no target (dropped outside any stage)", async () => {
     renderBoard();
     await screen.findByTestId("pipeline-card-100");
     await expect(
-      dnd.onDragEnd({ canceled: true, operation: {} }),
+      dnd.onDragEnd({
+        active: { data: { current: { leadId: 100, stageId: 10 } } },
+        over: null,
+      }),
     ).resolves.toBeUndefined();
   });
 
@@ -220,11 +234,8 @@ describe("Pipeline", () => {
     await screen.findByTestId("pipeline-card-100");
 
     await dnd.onDragEnd({
-      canceled: false,
-      operation: {
-        source: { type: "lead", data: { leadId: 100, stageId: 10 } },
-        target: { data: { stageId: 30 } },
-      },
+      active: { data: { current: { leadId: 100, stageId: 10 } } },
+      over: { data: { current: { stageId: 30 } } },
     });
 
     await waitFor(() => expect(capturedBody).toEqual({ LeadId: 100, StageId: 30 }));
@@ -248,11 +259,8 @@ describe("Pipeline", () => {
     await screen.findByTestId("pipeline-card-100");
 
     await dnd.onDragEnd({
-      canceled: false,
-      operation: {
-        source: { type: "lead", data: { leadId: 100, stageId: 10 } },
-        target: { data: { stageId: 40 } },
-      },
+      active: { data: { current: { leadId: 100, stageId: 10 } } },
+      over: { data: { current: { stageId: 40 } } },
     });
 
     // The move is held: no mutation until a reason is picked.
@@ -282,11 +290,8 @@ describe("Pipeline", () => {
     await screen.findByTestId("pipeline-card-100");
 
     await dnd.onDragEnd({
-      canceled: false,
-      operation: {
-        source: { type: "lead", data: { leadId: 100, stageId: 10 } },
-        target: { data: { stageId: 40 } },
-      },
+      active: { data: { current: { leadId: 100, stageId: 10 } } },
+      over: { data: { current: { stageId: 40 } } },
     });
 
     await screen.findByTestId("board-lost-modal");
@@ -313,11 +318,8 @@ describe("Pipeline", () => {
     await screen.findByTestId("pipeline-card-100");
 
     await dnd.onDragEnd({
-      canceled: false,
-      operation: {
-        source: { type: "lead", data: { leadId: 100, stageId: 10 } },
-        target: { data: { stageId: 20 } },
-      },
+      active: { data: { current: { leadId: 100, stageId: 10 } } },
+      over: { data: { current: { stageId: 20 } } },
     });
 
     await waitFor(() => {
@@ -325,5 +327,23 @@ describe("Pipeline", () => {
         screen.getByTestId("pipeline-card-100"),
       );
     });
+  });
+});
+
+// PipelineCardView is the pure card shared by the draggable wrapper and the
+// DragOverlay clone — render it directly to cover the overlay/dragging and
+// owner/value branches the stubbed dnd context never drives.
+describe("PipelineCardView", () => {
+  it("renders the overlay clone with the owner name and no follow-up chip", () => {
+    renderWithProviders(
+      <PipelineCardView
+        lead={{ Id: 100, Name: "Acme Corp", EstValue: null, OwnerName: "Jane Rep" }}
+        overlay
+        dragging
+      />,
+    );
+    expect(screen.getByText("Acme Corp")).toBeInTheDocument();
+    expect(screen.getByText("Jane Rep")).toBeInTheDocument();
+    expect(screen.queryByTestId("pipeline-followup-100")).not.toBeInTheDocument();
   });
 });

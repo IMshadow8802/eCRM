@@ -1,4 +1,5 @@
-import { useSortable } from "@dnd-kit/react/sortable";
+import { memo, useMemo } from "react";
+import { useDraggable } from "@dnd-kit/core";
 import { useTheme } from "@mui/material/styles";
 import {
   Calendar,
@@ -20,29 +21,24 @@ const PRIORITY_TONE = {
   critical: "error",
 };
 
-export default function KanbanCard({
+/**
+ * Pure presentational card. Shared by the draggable wrapper (below) and the
+ * DragOverlay clone, so the visual never diverges. No dnd hooks here — the
+ * overlay renders this directly while the real card is dimmed in place, which
+ * is why the library never has to reparent a live node (the crash we fixed).
+ */
+export const KanbanCardView = memo(function KanbanCardView({
   task,
-  index = 0,
-  columnId,
-  onOpen,
   selected = false,
   onToggleSelect,
+  onOpen,
+  dragging = false,
+  overlay = false,
+  dragRef,
+  dragHandleProps = {},
 }) {
   const theme = useTheme();
   const p = theme.tokens;
-  const { ref: sortableRef, isDragging } = useSortable({
-    id: `task-${task.Id}`,
-    index,
-    type: "task",
-    accepts: "task",
-    group: columnId ?? task.ColumnId ?? "default",
-    data: { taskId: task.Id, columnId: columnId ?? task.ColumnId ?? null },
-  });
-
-  const style = {
-    opacity: isDragging ? 0.6 : 1,
-    zIndex: isDragging ? 100 : 1,
-  };
 
   const isCompleted = Boolean(task.IsCompleted);
   const overdue =
@@ -56,49 +52,44 @@ export default function KanbanCard({
 
   return (
     <div
-      ref={sortableRef}
+      ref={dragRef}
+      {...dragHandleProps}
       style={{
-        ...style,
         position: "relative",
         padding: 14,
-        marginBottom: 10,
+        marginBottom: overlay ? 0 : 10,
         borderRadius: theme.radii.md,
         backgroundColor: p.surface.card,
         border: `1px solid ${selected ? p.primary.main : p.border.default}`,
-        cursor: "grab",
-        opacity: isCompleted && !isDragging ? 0.72 : style.opacity ?? 1,
-        boxShadow: isDragging
-          ? p.shadow.lg
-          : selected
-            ? p.shadow.md
-            : p.shadow.xs,
-        transition: isDragging
+        cursor: overlay ? "grabbing" : "grab",
+        // Dim the real card while its overlay clone follows the cursor.
+        opacity: dragging && !overlay ? 0.4 : isCompleted ? 0.72 : 1,
+        boxShadow: overlay ? p.shadow.lg : selected ? p.shadow.md : p.shadow.xs,
+        // Promote the moving overlay clone to its own compositor layer so it
+        // tracks the cursor smoothly instead of repainting each frame.
+        willChange: overlay ? "transform" : undefined,
+        transition: dragging
           ? undefined
-          : `border-color 240ms cubic-bezier(0.4,0,0.2,1), box-shadow 240ms cubic-bezier(0.4,0,0.2,1), transform 240ms cubic-bezier(0.4,0,0.2,1)`,
+          : `border-color 240ms cubic-bezier(0.4,0,0.2,1), box-shadow 240ms cubic-bezier(0.4,0,0.2,1)`,
       }}
-      onClick={(e) => {
-        if (isDragging) return;
-        if (e.target.closest("[data-card-checkbox]")) return;
-        onOpen?.(task);
-      }}
-      onMouseEnter={(e) => {
-        if (isDragging || selected) return;
-        e.currentTarget.style.transform = "translateY(-1px)";
-        e.currentTarget.style.boxShadow = p.shadow.md;
-      }}
-      onMouseLeave={(e) => {
-        if (isDragging || selected) return;
-        e.currentTarget.style.transform = "";
-        e.currentTarget.style.boxShadow = p.shadow.xs;
-      }}
+      onClick={
+        overlay
+          ? undefined
+          : (e) => {
+              if (dragging) return;
+              if (e.target.closest("[data-card-checkbox]")) return;
+              onOpen?.(task);
+            }
+      }
       data-testid={`kanban-card-${task.Id}`}
       data-completed={isCompleted ? "true" : "false"}
     >
       <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-        {onToggleSelect && (
+        {onToggleSelect && !overlay && (
           <div
             data-card-checkbox
             onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
             style={{ flexShrink: 0, marginTop: 1 }}
           >
             <Checkbox
@@ -207,5 +198,42 @@ export default function KanbanCard({
         </div>
       </div>
     </div>
+  );
+});
+
+/**
+ * Draggable kanban card (stable @dnd-kit/core). Columns are the droppables;
+ * cards are draggable-only — we persist only which column a card lands in, not
+ * intra-column order, so no SortableContext is needed.
+ */
+export default function KanbanCard({
+  task,
+  columnId,
+  onOpen,
+  selected = false,
+  onToggleSelect,
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `task-${task.Id}`,
+    data: { taskId: task.Id, columnId: columnId ?? task.ColumnId ?? null, task },
+  });
+
+  // Stable ref so the memoized view bails out of re-render while other cards
+  // are being dragged (dnd-kit re-renders every consumer on each pointer move).
+  const dragHandleProps = useMemo(
+    () => ({ ...listeners, ...attributes }),
+    [listeners, attributes],
+  );
+
+  return (
+    <KanbanCardView
+      task={task}
+      selected={selected}
+      onToggleSelect={onToggleSelect}
+      onOpen={onOpen}
+      dragging={isDragging}
+      dragRef={setNodeRef}
+      dragHandleProps={dragHandleProps}
+    />
   );
 }

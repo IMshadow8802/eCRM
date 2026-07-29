@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { DragDropProvider } from "@dnd-kit/react";
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  pointerWithin,
+} from "@dnd-kit/core";
 import { enqueueSnackbar } from "notistack";
 import {
   Plus,
@@ -18,6 +26,8 @@ import { useApiMutation } from "../../hooks/useApiMutation";
 import useWorkspaceStore from "../../stores/useWorkspaceStore";
 import WorkspaceSwitcher from "../../components/Workspace/WorkspaceSwitcher";
 import KanbanColumn from "../../components/Kanban/KanbanColumn";
+import { KanbanCardView } from "../../components/Kanban/KanbanCard";
+import { dragGuard } from "../../realtime/dragGuard";
 import ColumnAddInline from "../../components/Kanban/ColumnAddInline";
 import TaskCreateModal from "./Components/TaskCreateModal";
 import TaskDetailModal from "./Components/TaskDetailModal";
@@ -65,6 +75,18 @@ export default function TaskBoard() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [templateOpen, setTemplateOpen] = useState(false);
   const [templateChoice, setTemplateChoice] = useState(TEMPLATE_OPTIONS[0]);
+  const [activeTask, setActiveTask] = useState(null); // the card in the drag overlay
+
+  // Distance constraint so a plain click still opens the task (no accidental
+  // drag); keyboard sensor keeps drag accessible.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor),
+  );
+
+  // Safety: if the board unmounts mid-drag (navigation), release the realtime
+  // gate so deferred refetches aren't held forever.
+  useEffect(() => () => dragGuard.end(), []);
 
   const ensureMutation = useApiMutation({
     endpoint: "/api/workspaces/ensurePersonalWorkspace",
@@ -136,17 +158,29 @@ export default function TaskBoard() {
 
   const tasksQueryKey = ["tasks", workspaceId, search];
 
-  const handleDragEnd = async (event) => {
-    if (event.canceled) return;
-    const { source, target } = event.operation;
-    if (!source || !target) return;
-    if (source.type !== "task") return;
+  const handleDragStart = (event) => {
+    dragGuard.start(); // hold realtime refetches until the drop lands
+    setActiveTask(event.active.data.current?.task ?? null);
+  };
 
-    const taskId = source.data?.taskId;
+  const handleDragCancel = () => {
+    setActiveTask(null);
+    dragGuard.end();
+  };
+
+  const handleDragEnd = async (event) => {
+    setActiveTask(null);
+    const { active, over } = event;
+    // Release the realtime gate now — the optimistic patch below is the source
+    // of truth until the save round-trips; deferred refetches can flush.
+    dragGuard.end();
+    if (!over) return;
+
+    const taskId = active.data.current?.taskId;
     const task = tasks.find((t) => t.Id === taskId);
     if (!task) return;
 
-    const targetColumnId = target.data?.columnId;
+    const targetColumnId = over.data.current?.columnId;
     if (!targetColumnId || targetColumnId === task.ColumnId) return;
 
     // Optimistic: patch React Query cache so card jumps to the target column
@@ -349,7 +383,13 @@ export default function TaskBoard() {
           size="md"
         />
       ) : (
-        <DragDropProvider onDragEnd={handleDragEnd}>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={pointerWithin}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragCancel={handleDragCancel}
+        >
           <div
             style={{
               display: "flex",
@@ -401,7 +441,12 @@ export default function TaskBoard() {
               />
             )}
           </div>
-        </DragDropProvider>
+          <DragOverlay>
+            {activeTask ? (
+              <KanbanCardView task={activeTask} overlay dragging />
+            ) : null}
+          </DragOverlay>
+        </DndContext>
       )}
 
       <TaskCreateModal

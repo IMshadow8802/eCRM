@@ -1,4 +1,4 @@
-import { useDroppable } from "@dnd-kit/react";
+import { useDroppable } from "@dnd-kit/core";
 import { useTheme } from "@mui/material/styles";
 
 import TicketCard from "./TicketCard";
@@ -6,10 +6,8 @@ import TicketCard from "./TicketCard";
 export default function TicketColumn({ stage, tickets, priorityById, users, onOpen }) {
   const theme = useTheme();
   const p = theme.tokens;
-  const { ref: dropRef, isDropTarget } = useDroppable({
+  const { setNodeRef: dropRef, isOver: isDropTarget } = useDroppable({
     id: `stage-${stage.Id}`,
-    type: "stage",
-    accepts: "ticket",
     data: { stageId: stage.Id },
   });
 
@@ -64,11 +62,10 @@ export default function TicketColumn({ stage, tickets, priorityById, users, onOp
       </div>
 
       <div ref={dropRef} style={{ padding: 10, overflowY: "auto", flex: 1, minHeight: 100 }}>
-        {tickets.map((ticket, idx) => (
+        {tickets.map((ticket) => (
           <TicketCard
             key={ticket.Id}
             ticket={ticket}
-            index={idx}
             stageId={stage.Id}
             priorityById={priorityById}
             users={users}
