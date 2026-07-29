@@ -129,17 +129,21 @@ class WorkspaceController {
         SearchTerm = null,
       } = req.body;
 
-      const accessibleBranchIdsJson = req.scope?.branchIds?.length
-        ? JSON.stringify(req.scope.branchIds)
-        : null;
-
       const result = await database.executeStoredProcedure("sp_FetchWorkspaces", {
         Id,
         UserId: req.user.UserId,
         CompId: req.user.CompId,
-        BranchId: req.user.BranchId,
+        // Workspaces are membership-governed, never branch-governed — a shared
+        // board or project deliberately spans branches. Passing the caller's
+        // own BranchId (or their accessible-branch list) as a gate hid every
+        // cross-branch workspace from its own members: they still received the
+        // tasks via sp_FetchTask but the board was missing from the switcher,
+        // which also made a cross-branch invite impossible to accept. 061 drops
+        // both from the SP's visibility rule; they stay in the signature only
+        // so the call shape is unchanged.
+        BranchId: null,
         IsAdmin: req.scope?.isAdmin ? 1 : 0,
-        AccessibleBranchIdsJson: accessibleBranchIdsJson,
+        AccessibleBranchIdsJson: null,
         Type,
         IncludeArchived,
         PageNumber,

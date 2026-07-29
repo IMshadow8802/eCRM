@@ -265,14 +265,20 @@ describe("workspaceController.fetch", () => {
     const res = mockRes();
     await workspaceController.fetch(req, res);
 
+    // REGRESSION: this used to send BranchId: req.user.BranchId and the
+    // caller's accessible-branch list, both of which gated visibility — so a
+    // cross-branch member got the workspace's tasks from sp_FetchTask but the
+    // board itself was missing from their switcher, which also made a
+    // cross-branch invite impossible to accept. Workspaces are
+    // membership-governed, never branch-governed.
     expect(database.executeStoredProcedure).toHaveBeenCalledWith(
       "sp_FetchWorkspaces",
       expect.objectContaining({
         UserId: 7,
         CompId: 1,
-        BranchId: 2,
+        BranchId: null,
         IsAdmin: 0,
-        AccessibleBranchIdsJson: JSON.stringify([1, 2, 3]),
+        AccessibleBranchIdsJson: null,
         PageNumber: 1,
         PageSize: 25,
       }),

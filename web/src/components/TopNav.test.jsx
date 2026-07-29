@@ -35,10 +35,22 @@ vi.mock("notistack", async () => {
 
 vi.mock("../assets/profile.png", () => ({ default: "test-profile.png" }));
 
+// Capture the routing callback so the notification-click behaviour can be
+// exercised without rendering the real bell.
+let capturedOnOpenEntity = null;
 vi.mock("./Notifications/NotificationBell", () => ({
   __esModule: true,
-  default: () => null,
+  default: ({ onOpenEntity }) => {
+    capturedOnOpenEntity = onOpenEntity;
+    return null;
+  },
 }));
+
+const mockNavigate = vi.fn();
+vi.mock("react-router-dom", async () => {
+  const actual = await vi.importActual("react-router-dom");
+  return { ...actual, useNavigate: () => mockNavigate };
+});
 
 import { ThemeProvider } from "@mui/material/styles";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -181,5 +193,42 @@ describe("TopNav", () => {
     expect(burger).toBeInTheDocument();
     fireEvent.click(burger);
     expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("TopNav notification routing", () => {
+  beforeEach(() => {
+    mockNavigate.mockClear();
+    capturedOnOpenEntity = null;
+  });
+
+  it("opens a task notification on the board", () => {
+    renderTopNav();
+    capturedOnOpenEntity({ EntityType: "task", EntityId: 42 });
+    expect(mockNavigate).toHaveBeenCalledWith("/tasks?taskId=42");
+  });
+
+  it("opens a comment notification on the board", () => {
+    renderTopNav();
+    capturedOnOpenEntity({ EntityType: "comment", EntityId: 9 });
+    expect(mockNavigate).toHaveBeenCalledWith("/tasks?commentId=9");
+  });
+
+  // REGRESSION: workspace invites had no branch here at all, so clicking the
+  // bell item did nothing and the invite could only be found by wandering onto
+  // the Tasks page. Note the SPs emit EntityType 'Workspace' capitalised while
+  // task/comment are lowercase — matching must be case-insensitive.
+  it("sends a workspace invite to the board, where the switcher prompts it", () => {
+    renderTopNav();
+    capturedOnOpenEntity({ EntityType: "Workspace", EntityId: 10011 });
+    expect(mockNavigate).toHaveBeenCalledWith("/tasks");
+  });
+
+  it("ignores a notification with no usable entity", () => {
+    renderTopNav();
+    capturedOnOpenEntity({ EntityType: "task" }); // no EntityId
+    capturedOnOpenEntity({});
+    capturedOnOpenEntity(null);
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 });

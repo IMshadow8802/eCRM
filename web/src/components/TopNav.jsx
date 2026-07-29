@@ -143,10 +143,19 @@ const TopNav = ({ onOpenMobileSidebar }) => {
 
         <NotificationBell
           onOpenEntity={(n) => {
-            if (n?.EntityType === "task" && n?.EntityId) {
+            // The notification SPs emit EntityType 'Workspace' capitalised but
+            // 'task'/'comment' lowercase, so compare case-insensitively.
+            const entity = String(n?.EntityType ?? "").toLowerCase();
+            if (entity === "task" && n?.EntityId) {
               navigate(`/tasks?taskId=${n.EntityId}`);
-            } else if (n?.EntityType === "comment" && n?.EntityId) {
+            } else if (entity === "comment" && n?.EntityId) {
               navigate(`/tasks?commentId=${n.EntityId}`);
+            } else if (entity === "workspace") {
+              // Workspace invites had no handler at all — clicking the bell
+              // item did nothing. WorkspaceSwitcher auto-prompts any pending
+              // invite on mount, so landing on Tasks surfaces the
+              // accept/decline modal.
+              navigate("/tasks");
             }
           }}
         />
