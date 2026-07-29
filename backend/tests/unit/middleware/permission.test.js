@@ -7,6 +7,7 @@ const {
   HIERARCHY,
   loadScope,
   requireMinLevel,
+  requireAdmin,
   scopeParams,
   canSeeRecord,
   canWriteBranch,
@@ -85,6 +86,54 @@ describe("permission middleware", () => {
       const req = { scope: { hierarchyLevel: HIERARCHY.MANAGER } };
       requireMinLevel(HIERARCHY.MANAGER)(req, res, next);
       expect(next).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("requireAdmin", () => {
+    it("403s when scope is absent", () => {
+      const res = mockRes();
+      const next = jest.fn();
+      requireAdmin({ user: {} }, res, next);
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ code: "NO_SCOPE" })
+      );
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it("403s a non-admin caller", () => {
+      const res = mockRes();
+      const next = jest.fn();
+      requireAdmin({ scope: { isAdmin: false } }, res, next);
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ code: "INSUFFICIENT_ROLE" })
+      );
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    // The distinction that matters: IsAdmin is a role property on
+    // tblUserGroups, not a rank. The level-2 department heads (Sales/Support/HR)
+    // must NOT pass — requireMinLevel(HIERARCHY.ADMIN) would let them through,
+    // handing them the ability to mint IsAdmin accounts.
+    it("403s a level-2 department head who is not IsAdmin", () => {
+      const res = mockRes();
+      const next = jest.fn();
+      requireAdmin(
+        { scope: { hierarchyLevel: HIERARCHY.ADMIN, isAdmin: false } },
+        res,
+        next
+      );
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it("calls next for a real admin", () => {
+      const res = mockRes();
+      const next = jest.fn();
+      requireAdmin({ scope: { isAdmin: true } }, res, next);
+      expect(next).toHaveBeenCalledTimes(1);
+      expect(res.status).not.toHaveBeenCalled();
     });
   });
 

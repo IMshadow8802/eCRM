@@ -17,10 +17,22 @@ import {
   FormButtons,
 } from "../../../components/Design/FormComponents";
 
-// Define validation schema with Zod
-const userFormSchema = z.object({
+// Define validation schema with Zod.
+//
+// Password is required only when creating. On edit a blank field means "keep
+// the current password" — the label has always promised that, but the rule was
+// unconditional, so editing anything about a user was impossible without also
+// retyping their password.
+const buildUserFormSchema = (isEditing) =>
+  z.object({
   Username: z.string().min(1, "Username is required"),
-  Password: z.string().min(6, "Password must be at least 6 characters"),
+  Password: isEditing
+    ? z
+        .string()
+        .min(6, "Password must be at least 6 characters")
+        .optional()
+        .or(z.literal(""))
+    : z.string().min(6, "Password must be at least 6 characters"),
   FullName: z.string().min(1, "Full Name is required"),
   Email: z
     .string()
@@ -35,7 +47,7 @@ const userFormSchema = z.object({
   IsAdmin: z.boolean().optional(),
   AllowDay: z.coerce.number().optional(),
   UserIp: z.string().optional().or(z.literal("")),
-});
+  });
 
 const UserForm = ({
   open,
@@ -83,7 +95,7 @@ const UserForm = ({
     reset,
     setValue,
   } = useForm({
-    resolver: zodResolver(userFormSchema),
+    resolver: zodResolver(buildUserFormSchema(Boolean(editingUser))),
     defaultValues: getDefaultValues(),
     mode: "onBlur",
   });
@@ -163,7 +175,12 @@ const UserForm = ({
   };
 
   return (
-    <FormModal open={open} title={`${editingUser ? "Edit" : "Create"} User`} maxWidth="max-w-4xl">
+    <FormModal
+      open={open}
+      onClose={handleClose}
+      title={`${editingUser ? "Edit" : "Create"} User`}
+      maxWidth="max-w-4xl"
+    >
       {/* Content */}
       <div className="p-6">
         <FormContainer spacing="space-y-4">

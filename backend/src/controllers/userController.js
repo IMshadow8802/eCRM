@@ -24,10 +24,16 @@ class UserController {
         Mobile = null,
       } = req.body;
 
+      // Hash before it ever reaches the DB. Login bcrypt-compares against this
+      // column, so a plaintext write here means the account can never log in.
+      // Blank on edit means "keep the current password" -- sp_SaveUser leaves
+      // the column untouched when we send null (059).
+      const PasswordHash = Password ? await hashPassword(Password) : null;
+
       const result = await database.executeStoredProcedure("sp_SaveUser", {
         Id,
         Username,
-        Password,
+        Password: PasswordHash,
         UserActive,
         IsAdmin,
         UserIp: UserIp ?? User_IP ?? "",
@@ -258,8 +264,11 @@ class UserController {
       }
 
       // Read the current hash + profile (sp_ValidateUser returns all three).
+      // Resolve by UserId, not the UserName JWT claim — that claim is minted at
+      // login, so an admin rename in between would 401 the user out of their
+      // own password change until they logged back in (059).
       const current = await database.executeStoredProcedure("sp_ValidateUser", {
-        identifier: req.user.UserName,
+        UserId: req.user.UserId,
       });
       const me = current.recordsets[0][0];
       if (!me || me.ResponseCode !== 200) {

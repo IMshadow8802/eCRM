@@ -137,6 +137,9 @@ const Users = () => {
       FullName: row.original.FullName,
       Email: row.original.Email,
       JobTitle: row.original.JobTitle,
+      // Mobile is a login identifier. Omitting it here left the field blank, so
+      // every edit sent it back as null and silently wiped the user's number.
+      Mobile: row.original.Mobile ?? "",
       HourlyRate: row.original.HourlyRate,
       GroupId: row.original.GroupId || 0,
       UserActive: row.original.IsActive,

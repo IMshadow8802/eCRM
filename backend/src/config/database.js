@@ -79,7 +79,13 @@ class Database {
         if (typeof value === "string") {
           request.input(key, sql.NVarChar, value);
         } else if (typeof value === "number") {
-          request.input(key, sql.Int, value);
+          // Every number used to map to sql.Int, which silently truncated the
+          // DECIMAL params (HourlyRate 12.50 was stored as 12).
+          request.input(
+            key,
+            Number.isInteger(value) ? sql.Int : sql.Decimal(18, 4),
+            value,
+          );
         } else if (typeof value === "boolean") {
           request.input(key, sql.Bit, value);
         } else if (value instanceof Date) {
@@ -111,7 +117,13 @@ class Database {
         if (typeof value === "string") {
           request.input(key, sql.NVarChar, value);
         } else if (typeof value === "number") {
-          request.input(key, sql.Int, value);
+          // Every number used to map to sql.Int, which silently truncated the
+          // DECIMAL params (HourlyRate 12.50 was stored as 12).
+          request.input(
+            key,
+            Number.isInteger(value) ? sql.Int : sql.Decimal(18, 4),
+            value,
+          );
         } else if (typeof value === "boolean") {
           request.input(key, sql.Bit, value);
         } else if (value instanceof Date) {

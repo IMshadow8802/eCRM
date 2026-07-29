@@ -1,5 +1,5 @@
-// Auth route hardening: login is rate-limited (brute-force guard) and the
-// public hashPassword endpoint — which echoed plaintext passwords back with a
+// Auth route surface: login is NOT rate-limited (see below), and the public
+// hashPassword endpoint — which echoed plaintext passwords back with a
 // ready-made UPDATE statement — is gone.
 jest.mock("../../../src/controllers/authController", () => ({
   login: jest.fn((req, res) =>
@@ -16,19 +16,21 @@ const app = express();
 app.use(express.json());
 app.use("/api/auth", authRoutes);
 
-describe("authRoutes login rate limiter", () => {
-  it("allows 10 attempts then 429s the 11th with the standard error shape", async () => {
-    for (let i = 0; i < 10; i++) {
-      const r = await request(app).post("/api/auth/loginUser").send({ username: "x", password: "y" });
-      expect(r.status).toBe(401); // limiter passes through to the controller
+describe("authRoutes", () => {
+  // REGRESSION: login used to be capped at 10 attempts / 15 min keyed on IP.
+  // A whole office behind one NAT address shared that single bucket, so one
+  // person mistyping their password locked out everyone else — and because the
+  // limiter counted its own 429s toward the quota, the retries it provoked
+  // re-exhausted each new window the moment it opened. Removed deliberately.
+  // If it comes back, it must key on the submitted identifier, not the IP.
+  it("does not rate-limit login — repeated attempts all reach the controller", async () => {
+    for (let i = 0; i < 25; i++) {
+      const r = await request(app)
+        .post("/api/auth/loginUser")
+        .send({ identifier: "x", password: "y" });
+      expect(r.status).toBe(401);
+      expect(r.body.code).toBe("WRONG_PASSWORD");
     }
-    const r = await request(app).post("/api/auth/loginUser").send({ username: "x", password: "y" });
-    expect(r.status).toBe(429);
-    expect(r.body).toMatchObject({
-      success: false,
-      code: "RATE_LIMITED",
-      responseCode: 429,
-    });
   });
 
   it("does not rate-limit logout", async () => {

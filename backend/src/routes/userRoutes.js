@@ -1,16 +1,19 @@
 const express = require("express");
 const userController = require("../controllers/userController");
 const { verifyToken } = require("../middleware/auth");
-const { loadScope } = require("../middleware/permission");
+const { loadScope, requireAdmin } = require("../middleware/permission");
 const { requirePayload, allowEmptyPayload } = require("../middleware/payloadValidation");
 
 const router = express.Router();
 
 router.use(verifyToken, loadScope);
 
-router.post("/saveUser", requirePayload, userController.save);
+// Creating/editing a user can set IsAdmin, so these are admin-only. Without the
+// guard any authenticated employee could POST { Id: 0, IsAdmin: true } and mint
+// themselves an owner-level account.
+router.post("/saveUser", requireAdmin, requirePayload, userController.save);
 router.post("/fetchUsers", allowEmptyPayload, userController.fetch);
-router.post("/deleteUser", requirePayload, userController.delete);
+router.post("/deleteUser", requireAdmin, requirePayload, userController.delete);
 
 // Self-service — operate on the caller only (req.user.UserId).
 router.post("/me/updateProfile", requirePayload, userController.updateMyProfile);

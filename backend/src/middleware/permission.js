@@ -133,6 +133,34 @@ const requireMinLevel = (level) => (req, res, next) => {
   next();
 };
 
+// Route guard: require the IsAdmin role property (Owner + Admin only).
+//
+// Deliberately NOT requireMinLevel(HIERARCHY.ADMIN) — that is HierarchyLevel<=2,
+// which also catches the level-2 department heads (Sales/Support/HR). IsAdmin
+// lives on tblUserGroups and is a role property, not a rank; user management can
+// mint IsAdmin accounts, so it needs the narrow check.
+const requireAdmin = (req, res, next) => {
+  if (!req.scope) {
+    return res.status(403).json({
+      success: false,
+      message: "Permission scope not loaded",
+      code: "NO_SCOPE",
+      responseCode: 403,
+      timestamp: new Date().toISOString(),
+    });
+  }
+  if (!req.scope.isAdmin) {
+    return res.status(403).json({
+      success: false,
+      message: "Only an administrator can manage users",
+      code: "INSUFFICIENT_ROLE",
+      responseCode: 403,
+      timestamp: new Date().toISOString(),
+    });
+  }
+  next();
+};
+
 // Maps req.scope onto the scope params every scoped fetch SP takes.
 //
 // Controllers must use this instead of passing req.user.BranchId as a
@@ -251,6 +279,7 @@ module.exports = {
   HIERARCHY,
   loadScope,
   requireMinLevel,
+  requireAdmin,
   scopeParams,
   canSeeRecord,
   canWriteBranch,
