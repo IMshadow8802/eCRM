@@ -48,9 +48,22 @@ obvious progress gesture — is classified as `edit_fields`, so the assignee
 cannot move their own work. Ticking every box completes the task while the card
 sits in "To Do".
 
-**Checklist item management** (add / edit / delete items) sits between the two.
-It is granted to assignees as well as owner/manager/creator: the person doing
-the work decides the steps. It does **not** confer definition rights.
+Between the two sits a third class:
+
+| Class | Actions | Who |
+|---|---|---|
+| **Work artifacts** — the material of the work | add/edit/delete checklist items, attach/remove files | assignees, the creator, owner/manager |
+
+The person doing the work decides the steps and holds the evidence. A checklist
+step routinely needs a document against it — a signed form, a screenshot, a
+report — so attaching is part of doing the work, not part of defining it.
+Neither confers definition rights.
+
+Today both are gated as `edit_fields` (owner/manager/creator): checklist items
+via `taskController.saveChecklist`, and attachments via
+`attachmentController.save`, which calls `assertRecordAccess(..., "write")` and
+`TASK_ACTION.write` maps to `edit_fields`. So an assignee can tick a box but
+cannot add a step or attach the document that proves it.
 
 ---
 
@@ -111,6 +124,7 @@ live rows today. It is specified here so it stops being latent.
 | Create task | ✅ | ✅ | ✅ | ❌ |
 | **Progress** (tick, move column, log time) | ✅ | ✅ | if assigned | if assigned |
 | **Manage checklist items** (add/edit/delete) | ✅ | ✅ | if assigned or creator | ❌ |
+| **Attach / remove files** | ✅ | ✅ | if assigned or creator | ❌ |
 | **Define** (title, desc, dates, deps) | ✅ | ✅ | if creator | ❌ |
 | **Delete task** | ✅ | ✅ | if creator **and** untouched (§4.2) | ❌ |
 | Assign / unassign others | ✅ | ✅ | if creator | ❌ |
@@ -191,7 +205,8 @@ These hold for every workspace type. Each is currently violated.
 |---|---|
 | **New `tblTaskAssignee`** (`TaskId`, `UserId`, `AssignedAt`, `AssignedByUserId`; unique on `TaskId,UserId`) | multi-assignee |
 | Migrate existing `tblTasks.AssignedToUserId` rows into it, then retire the column | one source of truth; a kept column drifts |
-| `sp_CheckTaskPermission`: new action `manage_checklist`; `change_status` and `manage_checklist` consult the assignee **set** | §2, §4 |
+| `sp_CheckTaskPermission`: new actions `manage_checklist` and `manage_attachments`; they and `change_status` consult the assignee **set** | §2, §4 |
+| `attachmentController` save/delete pass `manage_attachments` for `Entity='task'` instead of `"write"` | assignees hold the evidence. Lead/ticket attachments are unaffected — `assertRecordAccess` ignores `level` for those entities |
 | Membership lookups gain `AND InviteStatus = 'active'` | invariant 1 |
 | `sp_SaveTask`: validate every assignee is an active member | invariant 2 |
 | `sp_FetchWorkspaces`: branch becomes an optional filter, not a gate | invariant 3 |
@@ -256,7 +271,10 @@ the date stored.
 Everything in §2, §4 and §6. Includes:
 
 - `tblTaskAssignee` + migration + retiring `AssignedToUserId`
-- `manage_checklist` action; `change_status` consults the assignee set
+- `manage_checklist` and `manage_attachments` actions; `change_status`
+  consults the assignee set
+- Attachment upload/delete on a task moves off `edit_fields`, so an assignee
+  can attach the document a checklist step calls for
 - **Column moves reclassified from `edit_fields` to `change_status`**
 - Kanban cards become permission-aware — today `KanbanCard` takes no permission
   prop, so every card is draggable by every role, optimistically moves, 403s,
@@ -318,5 +336,7 @@ Confirmed with the user; no longer open.
 3. **Self-claim is allowed.** Any `member` may assign themselves to an
    unassigned task without asking.
 4. **An assigned `viewer` ticks only.** They may progress work (tick, move, log
-   time) but not add, edit or delete checklist items. `viewer` stays genuinely
-   limited — it is the role an external client gets.
+   time) but not add, edit or delete checklist items — and by the same
+   reasoning, not attach or remove files. `viewer` stays genuinely limited — it
+   is the role an external client gets. Anyone who needs to contribute
+   artifacts should be a `member`.
