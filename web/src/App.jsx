@@ -12,8 +12,11 @@ import { HashLoader } from "react-spinners";
 import { AnimatePresence, motion } from "framer-motion";
 
 import ProtectedRoute from "./components/ProtectedRoutes";
+import HomeRedirect from "./components/HomeRedirect";
+import SectionRedirect from "./components/SectionRedirect";
 import RootLayout from "./components/RootLayout";
 import SessionMonitor from "./components/SessionMonitor";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 // Lazy-loaded components
 const Login = lazy(() => import("./pages/auth/Login"));
@@ -50,16 +53,20 @@ const TicketsByCategory = lazy(() => import("./pages/Reports/TicketsByCategory")
 const ResolutionSummary = lazy(() => import("./pages/Reports/ResolutionSummary"));
 
 export const routesConfig = [
-  { path: "/", element: <Navigate to="/dashboard" replace /> },
+  // Land on the first page the user's menu rights actually grant. This used to
+  // be a hardcoded /dashboard, which dumped every user on a page they might
+  // have no grant for.
+  { path: "/", element: <HomeRedirect /> },
   { path: "/login", element: <Login /> },
   // Section landing redirects — the sidebar parent items (and rail-mode
   // flyout headers) navigate to the bare section path, which would otherwise
-  // hit the 404 catch-all. Send each to its first child page.
-  { path: "/sales", element: <Navigate to="/sales/pipeline" replace /> },
-  { path: "/support", element: <Navigate to="/support/board" replace /> },
-  { path: "/settings", element: <Navigate to="/settings/custom-fields" replace /> },
-  { path: "/reports", element: <Navigate to="/reports/pipeline-funnel" replace /> },
-  { path: "/admin", element: <Navigate to="/users" replace /> },
+  // hit the 404 catch-all. Each goes to its first *granted* child, so a user
+  // with Leads but not Pipeline isn't bounced onto a page they can't see.
+  { path: "/sales", element: <SectionRedirect prefix="/sales" fallback="/sales/pipeline" /> },
+  { path: "/support", element: <SectionRedirect prefix="/support" fallback="/support/board" /> },
+  { path: "/settings", element: <SectionRedirect prefix="/settings" fallback="/settings/custom-fields" /> },
+  { path: "/reports", element: <SectionRedirect prefix="/reports" fallback="/reports/pipeline-funnel" /> },
+  { path: "/admin", element: <SectionRedirect prefix="/admin" fallback="/users" /> },
   { path: "/dashboard/*", element: <ProtectedRoute element={<Dashboard />} /> },
   { path: "/tasks/*", element: <ProtectedRoute element={<Task />} /> },
   // Admin — user/team/project provisioning (backend was always live).
@@ -132,15 +139,17 @@ const App = () => {
             }}
           >
             <RootLayout>
-              <Suspense
-                fallback={
-                  <div className="flex justify-center items-center h-screen">
-                    <HashLoader color={"#4F46E5"} loading={true} size={80} />
-                  </div>
-                }
-              >
-                <AnimatedRoutes />
-              </Suspense>
+              <ErrorBoundary>
+                <Suspense
+                  fallback={
+                    <div className="flex justify-center items-center h-screen">
+                      <HashLoader color={"#4F46E5"} loading={true} size={80} />
+                    </div>
+                  }
+                >
+                  <AnimatedRoutes />
+                </Suspense>
+              </ErrorBoundary>
             </RootLayout>
           </SessionMonitor>
         </SnackbarProvider>

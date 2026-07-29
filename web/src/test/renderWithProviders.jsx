@@ -6,7 +6,10 @@ import { render } from "@testing-library/react";
 
 import { buildTheme } from "../theme";
 
-export default function renderWithProviders(ui, { mode = "light", router = true } = {}) {
+export default function renderWithProviders(
+  ui,
+  { mode = "light", router = true, route } = {},
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const tree = (
     <ThemeProvider theme={buildTheme(mode)}>
@@ -15,5 +18,11 @@ export default function renderWithProviders(ui, { mode = "light", router = true 
       </QueryClientProvider>
     </ThemeProvider>
   );
-  return render(router ? <MemoryRouter>{tree}</MemoryRouter> : tree);
+  if (!router) return render(tree);
+  // `route` sets the starting URL, for tests that assert on route matching.
+  return render(
+    <MemoryRouter initialEntries={route ? [route] : undefined}>
+      {tree}
+    </MemoryRouter>,
+  );
 }

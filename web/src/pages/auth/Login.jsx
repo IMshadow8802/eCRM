@@ -8,6 +8,7 @@ import { Eye, EyeOff, ArrowRight, Mail, LockKeyhole } from "lucide-react";
 
 import useAuthStore from "../../stores/useAuthStore";
 import useApi from "../../hooks/useApi";
+import { firstAllowedPath } from "../../utils/routeAccess";
 import { Button, TextInput, Checkbox, IconButton } from "../../components/ui";
 
 export default function Login() {
@@ -16,14 +17,17 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
-  const { login, isAuthenticated } = useAuthStore();
+  const { login, isAuthenticated, menuRights } = useAuthStore();
   const navigate = useNavigate();
   const { enqueueSnackbar } = useSnackbar();
   const apiClient = useApi();
 
+  // Already signed in — bounce to whatever this user's first granted page is,
+  // not a hardcoded /dashboard they may have no rights to. "/" resolves that
+  // for us, so we don't need menuRights loaded to make the decision here.
   useEffect(() => {
-    if (isAuthenticated) navigate("/dashboard");
-  }, [isAuthenticated, navigate]);
+    if (isAuthenticated) navigate(firstAllowedPath(menuRights) ?? "/", { replace: true });
+  }, [isAuthenticated, menuRights, navigate]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -42,7 +46,11 @@ export default function Login() {
       const responseData = response.data;
       if (responseData.success && responseData.responseCode === 200) {
         login(responseData.data);
-        navigate("/dashboard");
+        // Land on the first page this user's menu rights grant. The rights are
+        // in the login response, so read them from there rather than waiting a
+        // render for the store to settle.
+        const rights = responseData.data?.permissions?.rawPermissions;
+        navigate(firstAllowedPath(rights) ?? "/", { replace: true });
         enqueueSnackbar("Welcome back", { variant: "success" });
       } else {
         enqueueSnackbar(
@@ -143,7 +151,11 @@ export default function Login() {
               </Typography>
             </Stack>
 
-            <Box component="form" onSubmit={handleSubmit}>
+            {/* noValidate so the guard in handleSubmit is what actually runs.
+                With the browser's `required` check in front of it that guard
+                was unreachable, and empty fields produced a native tooltip
+                instead of the app's own snackbar. */}
+            <Box component="form" onSubmit={handleSubmit} noValidate>
               <Stack spacing={2}>
                 <TextInput
                   label="Username / Email / Mobile"

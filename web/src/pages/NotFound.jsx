@@ -2,8 +2,15 @@ import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Home, ArrowLeft, RefreshCw } from "lucide-react";
 
+import useAuthStore from "../stores/useAuthStore";
+import { firstAllowedPath } from "../utils/routeAccess";
+
 const NotFound = () => {
   const navigate = useNavigate();
+  const menuRights = useAuthStore((state) => state.menuRights);
+  // Same trap as the old login redirect: "Go to Dashboard" dead-ends for anyone
+  // without Dashboard rights. Send them to a page they can actually open.
+  const home = firstAllowedPath(menuRights) ?? "/";
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
@@ -59,11 +66,11 @@ const NotFound = () => {
           style={{ transitionDelay: '0.3s' }}
         >
           <Link
-            to="/dashboard"
+            to={home}
             className="group flex items-center gap-3 px-8 py-4 bg-blue-600 text-white font-semibold rounded-lg shadow-lg hover:shadow-xl hover:bg-blue-700 transform hover:scale-105 hover:-translate-y-1 transition-all duration-300"
           >
             <Home className="w-5 h-5 group-hover:rotate-12 transition-transform duration-300" />
-            Go to Dashboard
+            Go to my home page
           </Link>
 
           <button
