@@ -716,6 +716,43 @@ describe("taskController time-tracking + checklist + activity", () => {
     spy.mockRestore();
   });
 
+  // REGRESSION: the web client sent LogDate while this destructured WorkDate,
+  // so the chosen date was silently dropped and every entry landed on today.
+  it("logTime honours an explicit WorkDate, and LogDate as a legacy alias", async () => {
+    mockSequence([{ ResponseCode: 201, ResponseMess: "ok", TimeEntryId: 1 }]);
+    await taskController.logTime(
+      baseReq({ body: { TaskId: 1, Hours: 2, WorkDate: "2026-07-01" } }),
+      mockRes(),
+    );
+    expect(database.executeStoredProcedure.mock.calls[0][1].WorkDate).toBe(
+      "2026-07-01",
+    );
+
+    database.executeStoredProcedure.mockClear();
+    mockSequence([{ ResponseCode: 201, ResponseMess: "ok", TimeEntryId: 2 }]);
+    await taskController.logTime(
+      baseReq({ body: { TaskId: 1, Hours: 2, LogDate: "2026-06-15" } }),
+      mockRes(),
+    );
+    expect(database.executeStoredProcedure.mock.calls[0][1].WorkDate).toBe(
+      "2026-06-15",
+    );
+  });
+
+  // sp_SaveTimeEntry now delegates to sp_CheckTaskPermission (062), which needs
+  // to know whether the admin bypass applies.
+  it("logTime passes IsAdmin through to the SP", async () => {
+    mockSequence([{ ResponseCode: 201, ResponseMess: "ok", TimeEntryId: 1 }]);
+    await taskController.logTime(
+      baseReq({
+        body: { TaskId: 1, Hours: 1 },
+        scope: { branchIds: [1], isAdmin: true },
+      }),
+      mockRes(),
+    );
+    expect(database.executeStoredProcedure.mock.calls[0][1].IsAdmin).toBe(1);
+  });
+
   it("getTimeEntries scopes to self for non-admin", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce(
       spResult([

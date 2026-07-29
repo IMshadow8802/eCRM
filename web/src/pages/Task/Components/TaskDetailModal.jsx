@@ -71,6 +71,7 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
   const [editingComment, setEditingComment] = useState(null); // { Id, text }
   const currentUserId = useAuthStore((s) => s.user?.UserId ?? s.UserId);
   const canEditOthers = useWorkspaceStore((s) => s.canEditOthersTasks)();
+  const canCreateTasks = useWorkspaceStore((s) => s.canCreateTasks)();
   const workspaceType = useWorkspaceStore((s) => s.activeWorkspaceType);
   const isPersonal = workspaceType === "personal";
 
@@ -135,6 +136,13 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
   // creator only, so an assigned member saw a dead checklist on their own task.
   const canProgressThisTask =
     canEditThisTask || (task && task.AssignedToUserId === currentUserId);
+
+  // sp_CheckTaskPermission grants log_time to owner/manager/member — the same
+  // set as canCreateTasks — and grants the owner everything on a personal
+  // workspace, which has no member rows at all (so the role is null there).
+  // This used to be gated on canEditThisTask, which is stricter, so an assigned
+  // member saw the button disabled on the very work they were tracking.
+  const canLogTime = isPersonal || canCreateTasks || canProgressThisTask;
 
   const isDirty = draft && task && (
     draft.Title !== (task.Title ?? "") ||
@@ -449,7 +457,7 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
         TaskId: task.Id,
         Hours: hours,
         Description: logNote || null,
-        LogDate: dayjs().format("YYYY-MM-DD"),
+        WorkDate: dayjs().format("YYYY-MM-DD"),
         WorkspaceId: task.WorkspaceId, // realtime emit-routing hint
       });
       setLogOpen(false);
@@ -774,7 +782,7 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
                           size="sm"
                           leftIcon={<Clock size={14} />}
                           onClick={() => setLogOpen(true)}
-                          disabled={!canEditThisTask}
+                          disabled={!canLogTime}
                           data-testid="log-time-btn"
                         >
                           Log time
@@ -908,7 +916,7 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
                       size="sm"
                       leftIcon={<Clock size={14} />}
                       onClick={() => setLogOpen(true)}
-                      disabled={!canEditThisTask}
+                      disabled={!canLogTime}
                     >
                       Log time
                     </Button>
@@ -1602,7 +1610,7 @@ function TimeEntryRow({ entry, canEdit, onDelete }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13, fontWeight: 600 }}>
           {Number(entry.Hours ?? 0).toFixed(2)} h
-          {entry.LogDate && (
+          {entry.WorkDate && (
             <span
               style={{
                 fontWeight: 400,
@@ -1610,7 +1618,7 @@ function TimeEntryRow({ entry, canEdit, onDelete }) {
                 color: "var(--color-surface-500)",
               }}
             >
-              {dayjs(entry.LogDate).format("DD-MM-YYYY")}
+              {dayjs(entry.WorkDate).format("DD-MM-YYYY")}
             </span>
           )}
         </div>

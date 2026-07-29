@@ -569,8 +569,17 @@ class TaskController {
   async logTime(req, res) {
     try {
       // WorkspaceId is an emit-routing hint only; not passed to the SP.
-      const { TaskId, Hours, Description, WorkDate, WorkspaceId = null } =
-        req.body;
+      // LogDate is accepted as an alias because the web client sent that name
+      // while this read WorkDate — the field was silently dropped and every
+      // entry defaulted to today.
+      const {
+        TaskId,
+        Hours,
+        Description,
+        WorkDate,
+        LogDate,
+        WorkspaceId = null,
+      } = req.body;
 
       const result = await database.executeStoredProcedure("sp_SaveTimeEntry", {
         Id: 0,
@@ -578,9 +587,13 @@ class TaskController {
         UserId: req.user.UserId,
         Hours,
         Description,
-        WorkDate: WorkDate || new Date().toISOString().split("T")[0],
+        WorkDate:
+          WorkDate || LogDate || new Date().toISOString().split("T")[0],
         CompId: req.user.CompId,
         BranchId: req.user.BranchId,
+        // sp_SaveTimeEntry now delegates to sp_CheckTaskPermission (062), which
+        // needs to know whether to apply the admin bypass.
+        IsAdmin: req.scope?.isAdmin ? 1 : 0,
       });
 
       const spResponse = result.recordsets[0][0];
