@@ -110,8 +110,9 @@ live rows today. It is specified here so it stops being latent.
 | Edit / delete **own** comment | ✅ | ✅ | ✅ | ✅ |
 | Create task | ✅ | ✅ | ✅ | ❌ |
 | **Progress** (tick, move column, log time) | ✅ | ✅ | if assigned | if assigned |
-| **Manage checklist items** (add/edit/delete) | ✅ | ✅ | if assigned or creator | if assigned |
-| **Define** (title, desc, dates, deps, delete task) | ✅ | ✅ | if creator | ❌ |
+| **Manage checklist items** (add/edit/delete) | ✅ | ✅ | if assigned or creator | ❌ |
+| **Define** (title, desc, dates, deps) | ✅ | ✅ | if creator | ❌ |
+| **Delete task** | ✅ | ✅ | if creator **and** untouched (§4.2) | ❌ |
 | Assign / unassign others | ✅ | ✅ | if creator | ❌ |
 | **Claim an unassigned task** | ✅ | ✅ | ✅ | ❌ |
 | Moderate comments (delete others', pin) | ✅ | ✅ | ❌ | ❌ |
@@ -132,11 +133,23 @@ This is what stops assignment becoming the new bottleneck — work lands on the
 board, whoever is free picks it up. Claiming an *already-assigned* task
 requires definition rights (it's a reassignment).
 
-**Viewers can progress tasks assigned to them.** Today a viewer holding an
-assigned task cannot tick a box on it, which makes assigning to a viewer
-meaningless. If you assign work to someone they can do the work; if you don't
-want them working, don't assign it. `viewer` remains the "read + comment"
-role for everyone *not* assigned.
+**Viewers can progress tasks assigned to them — but not redefine the steps.**
+Today a viewer holding an assigned task cannot tick a box on it, which makes
+assigning to a viewer meaningless. If you assign work to someone they can do
+the work. But an assigned viewer ticks existing boxes only: they cannot add,
+edit or delete checklist items. That keeps `viewer` genuinely limited, which is
+the role an external client or outside collaborator gets. `viewer` remains
+"read + comment" for everyone *not* assigned.
+
+### 4.2 Deleting a task
+
+A `member` may delete a task they created **only while it is still just
+theirs** — no other assignee, and no comments by anyone else. Once another
+person is assigned or has commented, the task carries other people's work and
+deleting it becomes an owner/manager decision.
+
+Owner and manager may always delete. This replaces today's rule, where the
+creator can always delete regardless of who else has contributed.
 
 ---
 
@@ -292,16 +305,18 @@ shown that 403s.
 
 ---
 
-## 9. Open questions for review
+## 9. Decisions taken (2026-07-29)
 
-1. **Project membership: sync or snapshot?** Spec says sync. Sync means
-   removing someone from a project silently revokes their board access, which
-   is correct but surprising if they were mid-task.
-2. **Should a `member` delete a task they created** once others have commented
-   on or been assigned to it? Currently yes.
-3. **Self-claim** — confirm any member may claim an unassigned task without
-   asking. This is the main lever against bottlenecks; the alternative is that
-   only owner/manager assigns.
-4. **Viewers and checklist management** — spec grants an assigned viewer
-   add/edit/delete on the checklist. Restricting them to ticking only is
-   defensible if `viewer` is meant to be strictly read-only-plus-comment.
+Confirmed with the user; no longer open.
+
+1. **Project membership syncs, it does not snapshot.** Removing someone from
+   the project team revokes their board access immediately, mid-task included.
+   The board always matches the project team — one list to maintain, not two.
+2. **A creator can only delete an untouched task.** Once another person is
+   assigned or has commented, deletion is an owner/manager decision. See §4.2.
+   This is a change from current behaviour.
+3. **Self-claim is allowed.** Any `member` may assign themselves to an
+   unassigned task without asking.
+4. **An assigned `viewer` ticks only.** They may progress work (tick, move, log
+   time) but not add, edit or delete checklist items. `viewer` stays genuinely
+   limited — it is the role an external client gets.
