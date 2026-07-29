@@ -44,17 +44,28 @@ beforeEach(() => {
   assertRecordAccess.mockResolvedValue(true);
 });
 
-// Helper: sequence SP mocks for primary call + any fire-and-forget notify
-function mockSequence(rowsForSave, followupOk = true) {
-  database.executeStoredProcedure.mockResolvedValueOnce(spResult(rowsForSave));
+// Helper: sequence SP mocks for primary call + any fire-and-forget notify.
+// newAssignees mirrors sp_SaveTask's 2nd result set — the assignees that save
+// actually ADDED, which is what drives the notify/emit fan-out (063).
+function mockSequence(rowsForSave, followupOk = true, newAssignees = []) {
+  database.executeStoredProcedure.mockResolvedValueOnce({
+    recordsets: [
+      rowsForSave,
+      newAssignees.map((UserId) => ({ NewAssigneeUserId: UserId })),
+    ],
+  });
   if (followupOk) {
     database.executeStoredProcedure.mockResolvedValue(spResult([{}]));
   }
 }
 
 describe("taskController.save", () => {
-  it("creates task with WorkspaceId + IsAdmin + notifies assignee", async () => {
-    mockSequence([{ ResponseCode: 201, ResponseMess: "Task created", TaskId: 11 }]);
+  it("creates task with WorkspaceId + IsAdmin + notifies each new assignee", async () => {
+    mockSequence(
+      [{ ResponseCode: 201, ResponseMess: "Task created", TaskId: 11 }],
+      true,
+      [9],
+    );
     const req = baseReq({
       body: {
         Title: "Do X",
@@ -85,7 +96,9 @@ describe("taskController.save", () => {
     await new Promise((r) => setImmediate(r));
     const secondCall = database.executeStoredProcedure.mock.calls[1];
     expect(secondCall[0]).toBe("sp_NotifyTaskAssigned");
-    expect(secondCall[1]).toEqual({ TaskId: 11, ActorUserId: 7 });
+    // Names the recipient explicitly now — the SP used to read the assignee
+    // off the task, which re-notified them on every save.
+    expect(secondCall[1]).toEqual({ TaskId: 11, ActorUserId: 7, AssigneeUserId: 9 });
     expect(res.status).toHaveBeenCalledWith(201);
   });
 
@@ -915,7 +928,7 @@ describe("taskController time-tracking + checklist + activity", () => {
     );
   });
 
-  it("saveChecklist asks for edit_fields when adding a new item", async () => {
+  it("saveChecklist asks for manage_checklist when adding a new item", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce(
       spResult([{ ResponseCode: 201, ResponseMess: "ok", ChecklistId: 7 }]),
     );
@@ -928,7 +941,7 @@ describe("taskController time-tracking + checklist + activity", () => {
       expect.anything(),
       "task",
       1,
-      "edit_fields",
+      "manage_checklist",
     );
   });
 
@@ -942,7 +955,7 @@ describe("taskController time-tracking + checklist + activity", () => {
     expect(logActivity).not.toHaveBeenCalled();
   });
 
-  it("deleteChecklist asks for edit_fields and stops when refused", async () => {
+  it("deleteChecklist asks for manage_checklist and stops when refused", async () => {
     assertRecordAccess.mockResolvedValue(false);
     await taskController.deleteChecklist(
       baseReq({ body: { Id: 7, TaskId: 1 } }),
@@ -953,7 +966,7 @@ describe("taskController time-tracking + checklist + activity", () => {
       expect.anything(),
       "task",
       1,
-      "edit_fields",
+      "manage_checklist",
     );
     expect(database.executeStoredProcedure).not.toHaveBeenCalled();
   });
@@ -1136,5 +1149,88 @@ describe("task read endpoints are gated by membership", () => {
       TaskId: null,
       UserId: 7,
     });
+  });
+});
+
+// A task now holds a SET of assignees. AssigneeIds is the real input;
+// AssignedToUserId survives as a legacy single-assignee alias so older clients
+// (and the untracked mobile app) keep working.
+describe("taskController.save multi-assignee", () => {
+  it("forwards AssigneeIds as a JSON array", async () => {
+    mockSequence([{ ResponseCode: 201, ResponseMess: "ok", TaskId: 5 }]);
+    await taskController.save(
+      baseReq({ body: { Title: "T", WorkspaceId: 5, AssigneeIds: [2, 11] } }),
+      mockRes(),
+    );
+    expect(database.executeStoredProcedure.mock.calls[0][1].AssigneeIdsJson).toBe(
+      "[2,11]",
+    );
+  });
+
+  it("drops junk ids rather than passing them to SQL", async () => {
+    mockSequence([{ ResponseCode: 201, ResponseMess: "ok", TaskId: 5 }]);
+    await taskController.save(
+      baseReq({
+        body: { Title: "T", WorkspaceId: 5, AssigneeIds: [2, 0, -1, "x", null] },
+      }),
+      mockRes(),
+    );
+    expect(database.executeStoredProcedure.mock.calls[0][1].AssigneeIdsJson).toBe(
+      "[2]",
+    );
+  });
+
+  // REGRESSION: drag-and-drop re-sends the whole task with no assignee fields.
+  // null means "leave them alone"; '[]' means "clear them". Collapsing the two
+  // would unassign everyone every time a card moved.
+  it("sends null (not []) when the caller expressed no assignee opinion", async () => {
+    mockSequence([{ ResponseCode: 200, ResponseMess: "ok", TaskId: 5 }]);
+    await taskController.save(
+      baseReq({ body: { Id: 5, Title: "T", WorkspaceId: 5 } }),
+      mockRes(),
+    );
+    expect(
+      database.executeStoredProcedure.mock.calls[0][1].AssigneeIdsJson,
+    ).toBeNull();
+  });
+
+  it("sends [] when the caller explicitly clears the assignees", async () => {
+    mockSequence([{ ResponseCode: 200, ResponseMess: "ok", TaskId: 5 }]);
+    await taskController.save(
+      baseReq({ body: { Id: 5, Title: "T", WorkspaceId: 5, AssigneeIds: [] } }),
+      mockRes(),
+    );
+    expect(database.executeStoredProcedure.mock.calls[0][1].AssigneeIdsJson).toBe(
+      "[]",
+    );
+  });
+
+  it("still forwards the legacy AssignedToUserId alias", async () => {
+    mockSequence([{ ResponseCode: 201, ResponseMess: "ok", TaskId: 5 }]);
+    await taskController.save(
+      baseReq({ body: { Title: "T", WorkspaceId: 5, AssignedToUserId: 9 } }),
+      mockRes(),
+    );
+    const args = database.executeStoredProcedure.mock.calls[0][1];
+    expect(args.AssignedToUserId).toBe(9);
+    expect(args.AssigneeIdsJson).toBeNull();
+  });
+
+  it("notifies every newly added assignee, and only the new ones", async () => {
+    mockSequence(
+      [{ ResponseCode: 200, ResponseMess: "ok", TaskId: 5 }],
+      true,
+      [2, 11, 7], // 7 is the caller — must be skipped
+    );
+    await taskController.save(
+      baseReq({ body: { Id: 5, Title: "T", WorkspaceId: 5, AssigneeIds: [2, 11, 7] } }),
+      mockRes(),
+    );
+    await new Promise((r) => setImmediate(r));
+
+    const notified = database.executeStoredProcedure.mock.calls
+      .filter(([sp]) => sp === "sp_NotifyTaskAssigned")
+      .map(([, args]) => args.AssigneeUserId);
+    expect(notified).toEqual([2, 11]);
   });
 });

@@ -21,6 +21,10 @@ class TaskController {
         ColumnId = null,
         ProjectId = null,
         ParentTaskId,
+        // AssigneeIds is the real input — an array of user ids.
+        // AssignedToUserId stays accepted as a legacy single-assignee alias so
+        // older clients keep working; sp_SaveTask treats it as a 1-element set.
+        AssigneeIds,
         AssignedToUserId,
         TeamId,
         Priority = "medium",
@@ -57,6 +61,12 @@ class TaskController {
         ProjectId,
         ParentTaskId,
         AssignedToUserId,
+        // null (not '[]') means "no opinion, leave assignees alone" — the
+        // drag-and-drop path re-sends the whole task without assignee fields,
+        // and must not unassign everyone.
+        AssigneeIdsJson: Array.isArray(AssigneeIds)
+          ? JSON.stringify(AssigneeIds.map(Number).filter((n) => n > 0))
+          : null,
         CreatedByUserId: req.user.UserId,
         TeamId,
         Priority,
@@ -86,15 +96,23 @@ class TaskController {
           req,
         });
 
-        if (AssignedToUserId && AssignedToUserId !== req.user.UserId) {
+        // sp_SaveTask returns the assignees this save actually ADDED as a
+        // second result set, so only new people get pinged. The old code
+        // re-notified the assignee on every save, a drag-and-drop included.
+        const newAssignees = (result.recordsets[1] ?? [])
+          .map((r) => r.NewAssigneeUserId)
+          .filter((id) => id && id !== req.user.UserId);
+
+        for (const assigneeId of newAssignees) {
           database
             .executeStoredProcedure("sp_NotifyTaskAssigned", {
               TaskId: spResponse.TaskId,
               ActorUserId: req.user.UserId,
+              AssigneeUserId: assigneeId,
             })
             .catch((e) => console.error("sp_NotifyTaskAssigned failed:", e.message));
-          // Bell goes realtime: target the assignee's user room directly.
-          emitToUser(AssignedToUserId, SCOPES.NOTIFICATIONS);
+          // Bell goes realtime: target each assignee's user room directly.
+          emitToUser(assigneeId, SCOPES.NOTIFICATIONS);
         }
 
         // sp_SaveTask returns only TaskId — updates that omit WorkspaceId in
@@ -796,14 +814,15 @@ class TaskController {
 
       // sp_SaveTaskChecklist has no permission check of its own, so this is
       // the only gate. Ticking an item is change_status (checklist drives
-      // completion) — that lets the assignee do the work they were given.
-      // Adding a brand-new item redefines the task, so it needs edit_fields.
+      // completion) — that lets anyone assigned do the work they were given.
+      // Adding or renaming an item is manage_checklist: a work artifact, owned
+      // by the assignees and the creator, but not by an assigned viewer.
       const allowed = await assertRecordAccess(
         req,
         res,
         "task",
         TaskId,
-        Id > 0 ? "change_status" : "edit_fields",
+        Id > 0 ? "change_status" : "manage_checklist",
       );
       if (!allowed) return;
 
@@ -953,10 +972,10 @@ class TaskController {
         });
       }
 
-      // Removing an item redefines the task, so edit_fields (not the looser
-      // change_status a tick gets). TaskId comes from the client because the
-      // SP only returns it after the delete has already happened.
-      const allowed = await assertRecordAccess(req, res, "task", TaskId, "edit_fields");
+      // Removing an item is manage_checklist, same class as adding one — the
+      // person doing the work decides the steps. TaskId comes from the client
+      // because the SP only returns it after the delete has already happened.
+      const allowed = await assertRecordAccess(req, res, "task", TaskId, "manage_checklist");
       if (!allowed) return;
 
       const result = await database.executeStoredProcedure(

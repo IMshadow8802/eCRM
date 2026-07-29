@@ -101,9 +101,12 @@ describe("attachmentController.save", () => {
     await attachmentController.save(req, res);
     expect(res.status).toHaveBeenCalledWith(403);
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
+    // manage_attachments, not edit_fields: a checklist step routinely needs a
+    // document against it, so holding the evidence belongs to whoever is doing
+    // the work, not only to whoever defined it. (063)
     expect(database.executeStoredProcedure).toHaveBeenCalledWith(
       "sp_CheckTaskPermission",
-      expect.objectContaining({ TaskId: 3, UserId: 7, Action: "edit_fields", IsAdmin: 1, CompId: 5 }),
+      expect.objectContaining({ TaskId: 3, UserId: 7, Action: "manage_attachments", IsAdmin: 1, CompId: 5 }),
     );
   });
 

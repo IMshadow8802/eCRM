@@ -6,6 +6,12 @@ const { UPLOAD_ROOT, ENTITIES } = require("../middleware/upload");
 const { logActivity, ACTIONS } = require("../utils/activityLogger");
 const { assertRecordAccess } = require("../middleware/permission");
 
+// Attaching to a task is a work artifact (assignees + creator + owner/manager),
+// not a redefinition of it. Other entities keep the coarse write level, which
+// assertRecordAccess ignores for them anyway.
+const ATTACH_LEVEL = (entity) =>
+  String(entity) === "task" ? "manage_attachments" : "write";
+
 // Absolute path to a stored file.
 function filePath(entity, storedName) {
   return path.join(UPLOAD_ROOT, entity, storedName);
@@ -44,7 +50,13 @@ class AttachmentController {
 
       // The caller must have write access to the parent record — lead/ticket
       // via scope, task via workspace membership (personal stays private).
-      if (!(await assertRecordAccess(req, res, String(Entity), Number(EntityId), "write"))) {
+      //
+      // Tasks use manage_attachments rather than the coarse "write": a
+      // checklist step routinely needs a document against it, so holding the
+      // evidence belongs to whoever is doing the work, not only to whoever
+      // defined it. assertRecordAccess ignores the level for lead/ticket, so
+      // those paths are unaffected.
+      if (!(await assertRecordAccess(req, res, String(Entity), Number(EntityId), ATTACH_LEVEL(Entity)))) {
         unlinkQuiet(file.path); // 403 already sent → clean the just-written file
         return;
       }
@@ -206,7 +218,7 @@ class AttachmentController {
           code: "NOT_FOUND", responseCode: 404, timestamp: new Date().toISOString(),
         });
       }
-      if (!(await assertRecordAccess(req, res, row.Entity, row.EntityId, "write"))) return;
+      if (!(await assertRecordAccess(req, res, row.Entity, row.EntityId, ATTACH_LEVEL(row.Entity)))) return;
 
       const result = await database.executeStoredProcedure("sp_DeleteAttachment", {
         Id, CompId: req.user.CompId,

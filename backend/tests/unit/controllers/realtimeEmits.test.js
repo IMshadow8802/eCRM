@@ -68,26 +68,52 @@ describe("taskController.save emits", () => {
     expect(emitToWorkspace).toHaveBeenCalledTimes(1);
   });
 
-  it("assigning someone else pings the assignee's user room (NOTIFICATIONS)", async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce(
-      spResult([{ ResponseCode: 201, ResponseMess: "Task created", TaskId: 11 }]),
-    );
+  // The fan-out is driven by sp_SaveTask's 2nd result set — the assignees this
+  // save actually ADDED — so every new person is pinged and nobody is pinged
+  // twice for a task they were already on. (063)
+  it("pings the user room of EVERY newly added assignee (NOTIFICATIONS)", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [
+        [{ ResponseCode: 201, ResponseMess: "Task created", TaskId: 11 }],
+        [{ NewAssigneeUserId: 9 }, { NewAssigneeUserId: 11 }],
+      ],
+    });
     const res = mockRes();
     await taskController.save(
-      baseReq({ Title: "T", WorkspaceId: 5, AssignedToUserId: 9 }),
+      baseReq({ Title: "T", WorkspaceId: 5, AssigneeIds: [9, 11] }),
       res,
     );
     expect(emitToUser).toHaveBeenCalledWith(9, SCOPES.NOTIFICATIONS);
+    expect(emitToUser).toHaveBeenCalledWith(11, SCOPES.NOTIFICATIONS);
   });
 
   it("self-assignment does NOT ping the user room", async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce(
-      spResult([{ ResponseCode: 201, ResponseMess: "Task created", TaskId: 11 }]),
-    );
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [
+        [{ ResponseCode: 201, ResponseMess: "Task created", TaskId: 11 }],
+        [{ NewAssigneeUserId: 7 }], // == caller
+      ],
+    });
     const res = mockRes();
     await taskController.save(
-      baseReq({ Title: "T", WorkspaceId: 5, AssignedToUserId: 7 }), // == caller
+      baseReq({ Title: "T", WorkspaceId: 5, AssigneeIds: [7] }),
       res,
+    );
+    expect(emitToUser).not.toHaveBeenCalled();
+  });
+
+  // A drag-and-drop re-sends the whole task with no assignee fields; the SP
+  // reports no additions, so nobody is re-notified.
+  it("does not ping anyone when the save added no assignees", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [
+        [{ ResponseCode: 200, ResponseMess: "Task updated", TaskId: 11 }],
+        [],
+      ],
+    });
+    await taskController.save(
+      baseReq({ Id: 11, Title: "T", WorkspaceId: 5 }),
+      mockRes(),
     );
     expect(emitToUser).not.toHaveBeenCalled();
   });
