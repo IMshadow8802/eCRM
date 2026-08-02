@@ -214,7 +214,13 @@ const styles = StyleSheet.create({
   },
   main: { flex: 1, gap: spacing[1] },
   subRow: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
-  doneText: { textDecorationLine: "line-through", color: colors.textMuted },
+  doneText: {
+    textDecorationLine: "line-through",
+    // Brand-coloured strike, muted text. textDecorationColor is iOS-only; on
+    // Android the line takes the text colour and renders muted.
+    textDecorationColor: colors.primary,
+    color: colors.textMuted,
+  },
   assignees: { flexDirection: "row", alignItems: "center" },
   avatarSlot: {
     borderRadius: radius.full,

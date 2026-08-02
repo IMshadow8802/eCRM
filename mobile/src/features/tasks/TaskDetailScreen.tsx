@@ -422,10 +422,12 @@ const styles = StyleSheet.create({
   itemRowPressed: { backgroundColor: colors.surfacePressed },
   struck: {
     textDecorationLine: "line-through",
-    // textDecorationColor is iOS-only; the text colour is what tints the line
-    // on Android, so both are set to the same green.
-    textDecorationColor: colors.success,
-    color: colors.success,
+    // Only the LINE is coloured — the text stays muted so a done item recedes.
+    // textDecorationColor is iOS-only; on Android the line inherits the text
+    // colour, so there it renders muted rather than brand. Accepted: the strike
+    // itself still reads as done on both.
+    textDecorationColor: colors.primary,
+    color: colors.textMuted,
   },
   readOnly: {
     flexDirection: "row",
