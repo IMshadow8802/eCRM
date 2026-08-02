@@ -43,11 +43,14 @@ export default function MeScreen() {
 
   return (
     <Screen>
+      <View style={[styles.header, { paddingTop: insets.top + spacing[3] }]}>
+        <Text variant="h1" color="textOnBrand">
+          Profile
+        </Text>
+      </View>
+
       <ScrollView
-        contentContainerStyle={[
-          styles.scroll,
-          { paddingTop: insets.top + spacing[4] },
-        ]}
+        contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.identity}>
@@ -172,7 +175,16 @@ function Row({
 }
 
 const styles = StyleSheet.create({
-  scroll: { padding: spacing[5], gap: spacing[5], paddingBottom: spacing[10] },
+  header: {
+    paddingHorizontal: spacing[5],
+    paddingBottom: spacing[4],
+    backgroundColor: colors.primary,
+  },
+  scroll: {
+    padding: spacing[5],
+    gap: spacing[5],
+    paddingBottom: spacing[10],
+  },
   identity: { alignItems: "center", gap: spacing[2] },
   stat: { flexDirection: "row", alignItems: "center", gap: spacing[1] },
   adminBadge: {

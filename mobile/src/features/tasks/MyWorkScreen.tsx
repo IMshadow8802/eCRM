@@ -83,11 +83,13 @@ export default function MyWorkScreen() {
       <View style={[styles.header, { paddingTop: insets.top + spacing[3] }]}>
         <View style={styles.headerTop}>
           <View style={styles.greetBlock}>
-            <Text variant="secondary">
+            <Text variant="secondary" color="textOnBrandMuted">
               {greeting.text}, {greeting.emoji}
             </Text>
-            <Text variant="h1">{firstName}</Text>
-            <Text variant="caption" color="textMuted">
+            <Text variant="h1" color="textOnBrand">
+              {firstName}
+            </Text>
+            <Text variant="caption" color="textOnBrandMuted">
               {longDate()}
             </Text>
           </View>
@@ -113,7 +115,7 @@ export default function MyWorkScreen() {
         </View>
 
         <View style={styles.summaryRow}>
-          <Text variant="secondary">
+          <Text variant="secondary" color="textOnBrandMuted">
             {mineCount > 0
               ? `${mineCount} task${mineCount === 1 ? "" : "s"} assigned to you`
               : "Nothing assigned to you right now"}
@@ -131,7 +133,7 @@ export default function MyWorkScreen() {
               >
                 <Text
                   variant="label"
-                  color={active ? "textOnBrand" : "textSecondary"}
+                  color={active ? "primary" : "textOnBrand"}
                 >
                   {f.label}
                 </Text>
@@ -211,11 +213,9 @@ const emptyMessage = (filter: Filter) =>
 const styles = StyleSheet.create({
   header: {
     paddingHorizontal: spacing[5],
-    paddingBottom: spacing[3],
+    paddingBottom: spacing[4],
     gap: spacing[4],
-    backgroundColor: colors.background,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.divider,
+    backgroundColor: colors.primary,
   },
   headerTop: {
     flexDirection: "row",
@@ -228,26 +228,26 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: colors.border,
     backgroundColor: colors.surface,
     alignItems: "center",
     justifyContent: "center",
   },
-  signOutPressed: { backgroundColor: colors.surfacePressed },
+  signOutPressed: { backgroundColor: colors.surfaceMuted },
   summaryRow: {},
   // No top padding — the section header below provides the gap. Stacking
   // header padding, list padding and section padding gave 44px of dead space.
   content: { paddingBottom: spacing[10] },
   contentEmpty: { flexGrow: 1 },
   filters: { flexDirection: "row", gap: spacing[2] },
+  // On the brand header the pills invert: selected is white, the rest are a
+  // solid lighter brand shade.
   filter: {
     paddingHorizontal: spacing[4],
     paddingVertical: spacing[2],
     borderRadius: radius.full,
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: colors.surfaceOnBrand,
   },
-  filterActive: { backgroundColor: colors.primary },
+  filterActive: { backgroundColor: colors.surface },
   sectionTitle: {
     paddingHorizontal: spacing[5],
     paddingTop: spacing[3],

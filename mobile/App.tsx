@@ -41,7 +41,8 @@ export default function App() {
               imperatively through this provider, so it must wrap the navigator. */}
           <BottomSheetModalProvider>
             <RootNavigator />
-            <StatusBar style="dark" />
+            {/* Every screen now opens with a brand-coloured bar at the top. */}
+          <StatusBar style="light" />
           </BottomSheetModalProvider>
         </GestureHandlerRootView>
       </SafeAreaProvider>

@@ -63,11 +63,17 @@ export default function BoardsScreen() {
   return (
     <Screen>
       <View style={[styles.header, { paddingTop: insets.top + spacing[3] }]}>
-        <Text variant="h1">Boards</Text>
+        <Text variant="h1" color="textOnBrand">
+          Boards
+        </Text>
         <View style={styles.headerStats}>
           <View style={styles.stat}>
-            <MaterialIcons name="dashboard" size={14} color={colors.primary} />
-            <Text variant="secondary">
+            <MaterialIcons
+              name="dashboard"
+              size={14}
+              color={colors.textOnBrand}
+            />
+            <Text variant="secondary" color="textOnBrandMuted">
               {activeCount} board{activeCount === 1 ? "" : "s"}
             </Text>
           </View>
@@ -76,9 +82,9 @@ export default function BoardsScreen() {
               <MaterialIcons
                 name="mark-email-unread"
                 size={14}
-                color={colors.accent}
+                color={colors.textOnBrand}
               />
-              <Text variant="secondary" color="accent">
+              <Text variant="secondary" color="textOnBrand">
                 {pending.length} invite{pending.length === 1 ? "" : "s"}
               </Text>
             </View>
@@ -190,9 +196,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[5],
     paddingBottom: spacing[3],
     gap: spacing[2],
-    backgroundColor: colors.background,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.divider,
+    backgroundColor: colors.primary,
   },
   headerStats: { flexDirection: "row", alignItems: "center", gap: spacing[4] },
   stat: { flexDirection: "row", alignItems: "center", gap: spacing[1] },
