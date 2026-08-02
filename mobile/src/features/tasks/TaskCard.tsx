@@ -148,11 +148,13 @@ function TaskCardBase({ task, onPress, showWorkspace = true }: TaskCardProps) {
       {/* Everything here comes from columns sp_FetchTask already returns —
           none of it costs an extra request. */}
       <View style={styles.stats}>
-        {total > 0 ? (
+        {task.IsCompleted ? (
+          <Stat icon="task-alt" value="Done" tone="success" />
+        ) : total > 0 ? (
           <Stat
             icon="checklist"
             value={`${done} of ${total}`}
-            tone={done === total ? "success" : "textSecondary"}
+            tone="textSecondary"
           />
         ) : null}
         {logged > 0 ? (
@@ -214,13 +216,11 @@ const styles = StyleSheet.create({
   },
   main: { flex: 1, gap: spacing[1] },
   subRow: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
-  doneText: {
-    textDecorationLine: "line-through",
-    // Brand-coloured strike, muted text. textDecorationColor is iOS-only; on
-    // Android the line takes the text colour and renders muted.
-    textDecorationColor: colors.primary,
-    color: colors.textMuted,
-  },
+  // No strikethrough here. React Native exposes no textDecorationThickness, so
+  // at 16px the line is about 1px and no colour reads on it. The card already
+  // says "done" twice — a green check glyph and a Done stat — so the title just
+  // recedes.
+  doneText: { color: colors.textMuted },
   assignees: { flexDirection: "row", alignItems: "center" },
   avatarSlot: {
     borderRadius: radius.full,
