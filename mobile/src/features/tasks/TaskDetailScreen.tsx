@@ -27,6 +27,7 @@ import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
 import { colors, radius, shadows, spacing } from "../../theme";
 import { Avatar, Button, Input, Screen, Text } from "../../ui";
+import AttachmentSection from "../attachments/AttachmentSection";
 import { abilitiesFor, assigneesOf, dueLabel } from "./taskHelpers";
 
 type Props = StackScreenProps<RootStackParamList, "TaskDetail">;
@@ -284,6 +285,14 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
                 <MaterialIcons name="add" size={20} color={colors.primary} />
               </View>
             ) : null}
+          </Section>
+
+          <Section title="Files" icon="attach-file">
+            <AttachmentSection
+              entity="task"
+              entityId={taskId}
+              canManage={can.manageArtifacts}
+            />
           </Section>
 
           <Section title="Comments" icon="chat-bubble-outline">
