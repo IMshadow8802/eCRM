@@ -1,27 +1,37 @@
 import { Pressable, StyleSheet, View } from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 
-import { colors, shadows, spacing, TAB_BAR_HEIGHT } from "../theme";
+import {
+  colors,
+  fontFamily,
+  shadows,
+  spacing,
+  TAB_BAR_HEIGHT,
+} from "../theme";
 import { Text } from "../ui";
+
+type MCIName = keyof typeof MaterialCommunityIcons.glyphMap;
 
 /**
  * Icons live here rather than in each screen's options: with a custom tab bar
  * React Navigation has no per-route icon option, and augmenting its options
  * type is not possible (it is a type alias, not an interface).
  *
- * Filled when selected, outlined when not. With no chip or pill behind the
- * icon, that weight change is what carries the state alongside the colour —
- * so selection still reads for anyone who cannot separate the two hues.
+ * MaterialCommunityIcons rather than MaterialIcons, which is what the rest of
+ * the app uses: MaterialIcons has no consistent filled/outlined pairs, so
+ * "grid-view" had no outline twin and the off state had to reuse the on state.
+ * Every pair below is a genuine pair.
+ *
+ * Filled when selected, outlined when not. With no chip behind the icon, that
+ * weight change is what carries the state alongside the colour — so selection
+ * still reads for anyone who cannot separate the two hues.
  */
-const TAB_ICONS: Record<
-  string,
-  { on: keyof typeof MaterialIcons.glyphMap; off: keyof typeof MaterialIcons.glyphMap }
-> = {
-  MyWork: { on: "check-circle", off: "check-circle-outline" },
-  Work: { on: "grid-view", off: "grid-view" },
-  Me: { on: "person", off: "person-outline" },
+const TAB_ICONS: Record<string, { on: MCIName; off: MCIName }> = {
+  MyWork: { on: "clipboard-check", off: "clipboard-check-outline" },
+  Work: { on: "view-grid", off: "view-grid-outline" },
+  Me: { on: "account-circle", off: "account-circle-outline" },
 };
 
 /**
@@ -81,11 +91,13 @@ export default function FloatingTabBar({
             style={[styles.item, { width: itemWidth }]}
           >
             <View style={styles.stack}>
-              <MaterialIcons
+              <MaterialCommunityIcons
                 name={
-                  focused ? (icons?.on ?? "circle") : (icons?.off ?? "circle")
+                  focused
+                    ? (icons?.on ?? "circle-outline")
+                    : (icons?.off ?? "circle-outline")
                 }
-                size={24}
+                size={25}
                 color={focused ? colors.primary : colors.textMuted}
               />
               <Text
@@ -147,7 +159,13 @@ const styles = StyleSheet.create({
     gap: spacing[1],
     paddingHorizontal: spacing[1],
   },
-  // The caption's 16px line box leaves dead space under an 11px glyph, which
-  // pushes the visual centre upward. Tightening it re-centres the pair.
-  label: { maxWidth: "100%", lineHeight: 13 },
+  label: {
+    maxWidth: "100%",
+    // Tightened: the caption's 16px line box leaves dead space under an 11px
+    // glyph and pushes the icon/label pair's visual centre upward.
+    lineHeight: 13,
+    // Back to the app's Medium baseline. The Regular exception only existed
+    // while these were white on a saturated fill, where 500 optically bolds.
+    fontFamily: fontFamily.medium,
+  },
 });
