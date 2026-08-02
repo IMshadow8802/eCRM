@@ -91,16 +91,11 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
           !editable && !onBrand && styles.fieldDisabled,
         ]}
       >
-        {LeftIcon ? (
-          <LeftIcon             size={18}
-            color={colors.textMuted}
-            style={styles.leftIcon}
-          />
-        ) : null}
+        {LeftIcon ? <LeftIcon size={18} color={colors.textMuted} /> : null}
 
         <TextInput
           ref={ref}
-          style={styles.input}
+          style={[styles.input, multiline && styles.inputMultiline]}
           placeholderTextColor={colors.textMuted}
           secureTextEntry={password && !reveal}
           editable={editable}
@@ -185,7 +180,6 @@ const styles = StyleSheet.create({
   },
   fieldError: { borderColor: colors.danger },
   fieldDisabled: { backgroundColor: colors.disabledBg },
-  leftIcon: {},
   input: {
     flex: 1,
     // No vertical padding — the parent's fixed height centres it. Padding here
@@ -193,6 +187,25 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
     maxHeight: 96,
     ...typography.body,
+    // Three things that all shift text off the row's centre line, so the
+    // placeholder never lines up with the leading icon beside it:
+    //
+    // 1. lineHeight. A single-line TextInput lays its text out inside a
+    //    lineHeight box and does not centre the glyphs within it. body's 22px
+    //    box around 14px type leaves the text riding high.
+    // 2. includeFontPadding (Android). Reserves room above the ascender and
+    //    below the descender for accents the string does not contain.
+    // 3. textAlignVertical (Android). Defaults to top on a bare TextInput.
+    //
+    // Dropped here and restored for multiline below, where a line box is
+    // exactly what wrapped text needs.
+    lineHeight: undefined,
+    includeFontPadding: false,
+    textAlignVertical: "center",
+  },
+  inputMultiline: {
+    lineHeight: typography.body.lineHeight,
+    textAlignVertical: "top",
   },
   helper: {},
 });

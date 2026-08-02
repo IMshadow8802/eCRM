@@ -109,8 +109,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[3],
     paddingVertical: spacing[3],
     backgroundColor: colors.surface,
+    // Same reasoning as Input: a single-line TextInput does not centre its
+    // glyphs inside a lineHeight box, and Android reserves accent room it does
+    // not need. Both push the text off centre against the padding around it.
+    lineHeight: undefined,
+    includeFontPadding: false,
+    textAlignVertical: "center",
   },
-  inputMultiline: { minHeight: 110, textAlignVertical: "top" },
+  inputMultiline: {
+    minHeight: 110,
+    lineHeight: typography.body.lineHeight,
+    textAlignVertical: "top",
+  },
 });
 
 export default ComposeSheet;
