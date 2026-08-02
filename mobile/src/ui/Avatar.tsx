@@ -1,10 +1,16 @@
 import { Image, StyleSheet, View } from "react-native";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { colors, radius } from "../theme";
 import { Text } from "./Text";
+import { parseAvatar } from "./avatarPresets";
 
 export interface AvatarProps {
   name?: string | null;
+  /**
+   * The stored tblUser.Avatar value — a preset string like "icon:ghost|violet",
+   * "emoji:🚀" or "color:violet", NOT a URL. Real URLs are handled too.
+   */
   uri?: string | null;
   size?: number;
 }
@@ -17,16 +23,43 @@ const initialsOf = (name?: string | null) =>
     .map((part) => part[0]?.toUpperCase() ?? "")
     .join("") || "?";
 
-/** Falls back to initials when there is no avatar image — most users have none. */
+/**
+ * Renders whichever avatar style the user picked on the web, falling back to
+ * initials whenever the value is empty or unrecognised — an unknown preset must
+ * never render a broken image or take out the row it sits in.
+ */
 export function Avatar({ name, uri, size = 32 }: AvatarProps) {
   const box = { width: size, height: size, borderRadius: radius.full };
+  const preset = parseAvatar(uri);
 
-  if (uri) {
-    return <Image source={{ uri }} style={[styles.image, box]} />;
+  if (preset?.kind === "image") {
+    return <Image source={{ uri: preset.uri }} style={[styles.image, box]} />;
   }
 
+  if (preset?.kind === "icon") {
+    return (
+      <View style={[styles.center, box, { backgroundColor: preset.color }]}>
+        <MaterialCommunityIcons
+          name={preset.icon}
+          size={Math.round(size * 0.55)}
+          color={colors.textOnBrand}
+        />
+      </View>
+    );
+  }
+
+  if (preset?.kind === "emoji") {
+    return (
+      <View style={[styles.center, box, styles.emojiBox]}>
+        <Text style={{ fontSize: Math.round(size * 0.5) }}>{preset.emoji}</Text>
+      </View>
+    );
+  }
+
+  const background = preset?.kind === "color" ? preset.color : colors.primary;
+
   return (
-    <View style={[styles.fallback, box]}>
+    <View style={[styles.center, box, { backgroundColor: background }]}>
       <Text
         variant="caption"
         color="textOnBrand"
@@ -40,11 +73,8 @@ export function Avatar({ name, uri, size = 32 }: AvatarProps) {
 
 const styles = StyleSheet.create({
   image: { backgroundColor: colors.surfaceSunken },
-  fallback: {
-    backgroundColor: colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  center: { alignItems: "center", justifyContent: "center" },
+  emojiBox: { backgroundColor: colors.surfaceSunken },
 });
 
 export default Avatar;
