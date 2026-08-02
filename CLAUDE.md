@@ -106,7 +106,7 @@ the live DB (`mcp__sqlserver-ecrm__read_query` on `sys.sql_modules`).
 pnpm start                    # Expo dev server (dev-client)
 pnpm typecheck                # tsc --noEmit — must be clean before any commit
 pnpm lint                     # eslint — enforces the design-system rules (§9.3)
-pnpm exec expo prebuild --clean   # regenerate android/ + ios/ from app.config.js
+pnpm exec expo prebuild --clean   # regenerate android/ + ios/ from app.config.ts
 pnpm ios --device             # run on a connected iPhone
 pnpm android                  # run on a connected Android device/emulator
 pnpm apk                      # cd android && ./gradlew assembleRelease
@@ -280,12 +280,20 @@ is **permanently web-only**, not deferred.
 ### 9.1 Build & release — no EAS, no app.json
 
 **Never use EAS. Never create `app.json` or `eas.json`.** Native config lives in
-**`app.config.js`** and nowhere else.
+**`app.config.ts`** and nowhere else — TypeScript, so `ExpoConfig` catches a
+mistyped key like `bundleIdentifer`, which as JSON would silently do nothing.
+
+**Which config files are TypeScript, and why not all of them:**
+`app.config.ts` is TS. `babel.config.js` and `metro.config.js` **must stay
+`.js`** — Babel and Metro bootstrap the toolchain that compiles TypeScript, so
+their own config is read before any TS transform exists. `eslint.config.js`
+stays `.js` too: TS configs there need `jiti` as an extra dependency and buy
+nothing, since the config has no meaningful types.
 
 `android/` and `ios/` are **build output, not source** — gitignored and
 regenerated. Anything hand-edited inside them is destroyed by the next
 prebuild, so every native setting (permissions, plugins, icons, bundle ids,
-`Info.plist` strings) must be expressed in `app.config.js`.
+`Info.plist` strings) must be expressed in `app.config.ts`.
 
 ```bash
 pnpm exec expo prebuild --clean          # regenerate android/ + ios/
@@ -295,7 +303,7 @@ cd android && ./gradlew assembleRelease  # release APK  (or: pnpm apk)
 
 Adding a native library: `pnpm exec expo install <pkg>` (never plain `pnpm add`
 for anything with native code — it skips the SDK version pin), add its config
-plugin + permission strings to `app.config.js`, then `expo prebuild --clean`.
+plugin + permission strings to `app.config.ts`, then `expo prebuild --clean`.
 
 ### 9.2 API layer — one file per domain, no exceptions
 
