@@ -40,6 +40,11 @@ export default function FloatingTabBar({
   navigation,
 }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
+  // Explicit equal share. Flex will not do it here: React Native defaults
+  // flexShrink to 0 (the web defaults to 1), so an item can never shrink below
+  // its own content — and "My Work" is wider than "Boards" or "Profile", so it
+  // kept claiming the extra space whatever flexBasis said.
+  const itemWidth = `${100 / state.routes.length}%` as const;
 
   return (
     <View
@@ -71,7 +76,7 @@ export default function FloatingTabBar({
             accessibilityRole="tab"
             accessibilityState={{ selected: focused }}
             accessibilityLabel={label}
-            style={styles.item}
+            style={[styles.item, { width: itemWidth }]}
           >
             <View style={[styles.pill, focused && styles.pillActive]}>
               <MaterialIcons
@@ -105,29 +110,21 @@ const styles = StyleSheet.create({
     height: TAB_BAR_HEIGHT,
     flexDirection: "row",
     alignItems: "center",
-    padding: spacing[1],
+    // Inset on all sides so the active highlight reads as a pill sitting INSIDE
+    // the bar rather than as a block the same height as it.
+    padding: spacing[2],
     borderRadius: radius["2xl"],
     backgroundColor: colors.primary,
     ...shadows.lg,
   },
-  /**
-   * Genuinely equal thirds. `flex: 1` alone is not enough — flexBasis defaults
-   * to `auto`, so each item floors at its content width and the longest label
-   * ("My Work") steals space from the others. flexBasis 0 + minWidth 0 makes
-   * the columns size purely from the split, and the labels truncate instead.
-   */
-  item: {
-    flexGrow: 1,
-    flexBasis: 0,
-    minWidth: 0,
-    alignSelf: "stretch",
-  },
+  // Width is set inline from the route count — see itemWidth above.
+  item: { alignSelf: "stretch" },
   pill: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     gap: spacing[1],
-    paddingHorizontal: spacing[2],
+    paddingHorizontal: spacing[1],
     borderRadius: radius.lg,
   },
   pillActive: { backgroundColor: colors.surface },

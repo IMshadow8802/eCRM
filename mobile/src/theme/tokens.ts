@@ -251,7 +251,7 @@ export const CONTROL_HEIGHT = 50;
  * must reserve this at the bottom — the bar is absolutely positioned, so it
  * covers whatever is under it instead of pushing it up.
  */
-export const TAB_BAR_HEIGHT = 64;
+export const TAB_BAR_HEIGHT = 70;
 export const TAB_BAR_CLEARANCE = TAB_BAR_HEIGHT + 28;
 
 export type SpacingKey = keyof typeof spacing;
