@@ -1,3 +1,4 @@
+import { StyleSheet } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -35,15 +36,20 @@ function Tabs() {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
-        headerTitleStyle: {
-          fontFamily: fontFamily.semibold,
-          color: colors.text,
-        },
+        // No navigation header anywhere. Screens render their own title via
+        // <PageHeader>, so it scrolls with the content instead of sitting in a
+        // fixed chrome bar — see src/ui/PageHeader.tsx.
+        headerShown: false,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
         tabBarLabelStyle: {
           fontFamily: fontFamily.medium,
           fontSize: fontSize.xs,
+        },
+        tabBarStyle: {
+          backgroundColor: colors.surface,
+          borderTopColor: colors.divider,
+          borderTopWidth: StyleSheet.hairlineWidth,
         },
         tabBarIcon: ({ color, size }) => (
           <MaterialIcons name={TAB_ICONS[route.name]} size={size} color={color} />
