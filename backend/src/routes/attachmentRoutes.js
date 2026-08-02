@@ -2,7 +2,7 @@ const express = require("express");
 const attachmentController = require("../controllers/attachmentController");
 const { verifyToken } = require("../middleware/auth");
 const { loadScope } = require("../middleware/permission");
-const { uploadSingle } = require("../middleware/upload");
+const { uploadSingle, MAX_SIZE_MB } = require("../middleware/upload");
 const { requirePayload } = require("../middleware/payloadValidation");
 
 const router = express.Router();
@@ -18,7 +18,7 @@ function handleUpload(req, res, next) {
       return res.status(400).json({
         success: false,
         message: tooBig
-          ? "File exceeds the 50MB limit"
+          ? `File exceeds the ${MAX_SIZE_MB}MB limit`
           : badType
             ? "Unsupported file type"
             : "Upload failed",

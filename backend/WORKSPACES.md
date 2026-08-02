@@ -64,22 +64,28 @@ provides the "oops" recovery at our scale.
 | Bug | Root cause | Status |
 |-----|-----------|--------|
 | **Duplicate personal workspace after unarchive** | `sp_SeedDefaultWorkspace` checked `IsArchived = 0`, so login while your personal workspace was archived seeded an empty twin | **Fix in `sql/047`** (seed check ignores archive + deletes the dup) |
-| **Image upload fails in prod** | nginx `CRM.conf` has no `client_max_body_size` → default 1 MB cap → 413 on anything bigger, long before multer's 50 MB limit | User-run nginx fix (below) |
+| **Large upload fails in prod (413)** | nginx `CRM.conf` caps the request body below multer's limit → 413 before the request ever reaches Express. Default is 1 MB; it was raised to 50m, and must go to **200m** now that `MAX_SIZE` is 200 MB for APK/ZIP builds | User-run nginx fix (below) |
 | **Toasts hidden behind modals** | notistack container defaults to z-index 1400 = our modal layer; the `zIndex` set via SnackbarProvider's `style` prop only styles items *inside* the container | **Fixed**: `.notistack-SnackbarContainer { z-index: 1700 }` in `index.css` (tokens.zIndex.toast) |
 | Workspace update has **no permission check** | `sp_SaveWorkspace` update path takes no acting user; controller doesn't gate — any logged-in user can rename any workspace by Id | Open — part of write-path gating |
 | Project workspace members are a snapshot | team changes after creation never sync | Open (design decision needed: sync vs snapshot) |
 
 ### nginx upload fix (user-run, on `myserver`)
 
+Must be **≥ `MAX_SIZE`** in `src/middleware/upload.js` (currently 200 MB).
+Idempotent — updates the directive if present, inserts it if not:
+
 ```bash
-# add inside the location block of the CRM proxy conf
-sed -i 's|proxy_pass http://127.0.0.1:5001/;|proxy_pass http://127.0.0.1:5001/;\n    client_max_body_size 50m;|' \
-  /www/server/panel/vhost/nginx/proxy/shadowcodes.in/CRM.conf
-nginx -t && nginx -s reload
+CONF=/www/server/panel/vhost/nginx/proxy/shadowcodes.in/CRM.conf
+grep -q client_max_body_size "$CONF" \
+  && sed -i 's|client_max_body_size .*;|client_max_body_size 200m;|' "$CONF" \
+  || sed -i 's|proxy_pass http://127.0.0.1:5001/;|proxy_pass http://127.0.0.1:5001/;\n    client_max_body_size 200m;|' "$CONF"
+grep -n client_max_body_size "$CONF"      # expect exactly one line, 200m
+nginx -t && nginx -s reload               # reload is mandatory — editing alone does nothing
 ```
 
-Verify: upload an image > 1 MB from the app. If *small* images also fail, the
-cause is something else — check the browser devtools response code.
+Verify: upload a file larger than the previous cap from the app. A 413 means
+nginx is still the one refusing; a JSON `FILE_TOO_LARGE` means the request
+reached Express and multer rejected it (raise `MAX_SIZE` instead).
 
 ## 4. Build order (agreed)
 

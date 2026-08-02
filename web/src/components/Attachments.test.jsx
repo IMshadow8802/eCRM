@@ -149,15 +149,60 @@ describe("Attachments — LIVE mode", () => {
     wrap(<Attachments entity="lead" entityId={5} />);
     await waitFor(() => expect(fetchAttachments).toHaveBeenCalled());
 
-    setInputFiles([makeFile("huge.png", { size: 51 * 1024 * 1024, type: "image/png" })]);
+    setInputFiles([makeFile("huge.png", { size: 201 * 1024 * 1024, type: "image/png" })]);
 
     await waitFor(() =>
       expect(enqueueSnackbar).toHaveBeenCalledWith(
-        expect.stringContaining("50MB"),
+        expect.stringContaining("200MB"),
         expect.anything(),
       ),
     );
     expect(uploadAttachment).not.toHaveBeenCalled();
+  });
+
+  // The cap moved 50MB → 200MB so builds fit. A 120MB APK is the case that
+  // used to be refused by the client before the request ever left the browser.
+  it("accepts a file between the old 50MB cap and the new 200MB one", async () => {
+    wrap(<Attachments entity="task" entityId={5} />);
+    await waitFor(() => expect(fetchAttachments).toHaveBeenCalled());
+
+    setInputFiles([
+      makeFile("app-release.apk", {
+        size: 120 * 1024 * 1024,
+        type: "application/vnd.android.package-archive",
+      }),
+    ]);
+
+    await waitFor(() => expect(uploadAttachment).toHaveBeenCalled());
+    expect(enqueueSnackbar).not.toHaveBeenCalledWith(
+      expect.stringContaining("200MB"),
+      expect.anything(),
+    );
+  });
+
+  // REGRESSION: .apk/.aab/.zip were absent from TYPES, so the client rejected
+  // every build upload as "file type not allowed" without contacting the API.
+  it.each([
+    ["app-release.apk", "application/vnd.android.package-archive"],
+    ["app-release.apk", "application/octet-stream"],
+    ["app-release.apk", ""],
+    ["bundle.aab", "application/octet-stream"],
+    ["build.zip", "application/zip"],
+    ["build.zip", "application/x-zip-compressed"],
+  ])("uploads %s regardless of the browser-guessed mime (%s)", async (name, type) => {
+    wrap(<Attachments entity="task" entityId={5} />);
+    await waitFor(() => expect(fetchAttachments).toHaveBeenCalled());
+
+    setInputFiles([makeFile(name, { type })]);
+
+    await waitFor(() => expect(uploadAttachment).toHaveBeenCalled());
+    expect(uploadAttachment).toHaveBeenCalledWith(
+      expect.objectContaining({ file: expect.objectContaining({ name }) }),
+    );
+    expect(enqueueSnackbar).not.toHaveBeenCalledWith(
+      expect.stringContaining("not allowed"),
+      expect.anything(),
+    );
   });
 
   it("rejects a disallowed file type and does not upload", async () => {

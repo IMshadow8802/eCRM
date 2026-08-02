@@ -31,6 +31,8 @@ import {
   FileVideo,
   FileText,
   FileSpreadsheet,
+  FileArchive,
+  Smartphone,
 } from "lucide-react";
 
 import { Button, IconButton, EmptyState, Modal, Skeleton } from "./ui";
@@ -44,7 +46,9 @@ import {
   fetchAttachmentBlob,
 } from "../api/attachmentQueries";
 
-const MAX_BYTES = 50 * 1024 * 1024; // 50MB
+// Keep in step with MAX_SIZE in backend/src/middleware/upload.js.
+const MAX_MB = 200;
+const MAX_BYTES = MAX_MB * 1024 * 1024;
 
 // extension → {icon, group}. Whitelist doubles as the validation allow-list.
 const TYPES = {
@@ -53,6 +57,7 @@ const TYPES = {
   pdf: "pdf",
   xls: "excel", xlsx: "excel",
   doc: "word", docx: "word",
+  apk: "app", aab: "app", zip: "archive",
 };
 
 const ICONS = {
@@ -61,6 +66,8 @@ const ICONS = {
   pdf: FileText,
   excel: FileSpreadsheet,
   word: FileText,
+  app: Smartphone,
+  archive: FileArchive,
 };
 
 const extOf = (name = "") => name.split(".").pop().toLowerCase();
@@ -91,7 +98,7 @@ function humanSize(bytes) {
 function validate(file) {
   const ext = extOf(file.name);
   if (!TYPES[ext]) return `"${file.name}" — file type .${ext} is not allowed`;
-  if (file.size > MAX_BYTES) return `"${file.name}" exceeds the 50MB limit`;
+  if (file.size > MAX_BYTES) return `"${file.name}" exceeds the ${MAX_MB}MB limit`;
   return null;
 }
 

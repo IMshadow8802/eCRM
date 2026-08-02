@@ -9,7 +9,7 @@ const multer = require("multer");
 
 const UPLOAD_ROOT = path.join(process.cwd(), "uploads");
 const ENTITIES = new Set(["task", "ticket", "lead"]);
-const MAX_SIZE = 50 * 1024 * 1024; // 50 MB
+const MAX_SIZE = 200 * 1024 * 1024; // 200 MB — release APKs run 20-150 MB
 
 // mime + extension whitelist — never trust the client mime alone, so both must
 // pass. Covers images, video, pdf, excel, word.
@@ -27,6 +27,17 @@ const ALLOWED = {
   "application/msword": [".doc"],
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
 };
+
+// Build artifacts, where the browser mime is unreliable and cannot be matched:
+// the same .apk arrives as application/vnd.android.package-archive from Chrome,
+// application/octet-stream from Safari/Finder, and occasionally as an empty
+// string. For these the extension is authoritative and the mime is ignored.
+//
+// The tradeoff is explicit: a renamed file can pass this branch. It is bounded
+// because attachments are never served inline — download() always sends
+// Content-Disposition: attachment, so the browser writes the bytes to disk and
+// never executes or renders them, and the endpoint is JWT- + CompId-gated.
+const EXT_ONLY = new Set([".apk", ".aab", ".zip"]);
 
 function safeEntity(req) {
   const e = String(req.body?.Entity || "").toLowerCase();
@@ -48,6 +59,7 @@ const storage = multer.diskStorage({
 
 function fileFilter(req, file, cb) {
   const ext = path.extname(file.originalname).toLowerCase();
+  if (EXT_ONLY.has(ext)) return cb(null, true);
   const exts = ALLOWED[file.mimetype];
   if (!exts || !exts.includes(ext)) {
     return cb(new Error("UNSUPPORTED_FILE_TYPE"));
@@ -62,4 +74,10 @@ module.exports = {
   UPLOAD_ROOT,
   ENTITIES,
   MAX_SIZE,
+  MAX_SIZE_MB: MAX_SIZE / (1024 * 1024),
+  ALLOWED,
+  EXT_ONLY,
+  fileFilter,
+  safeEntity,
+  storage,
 };
