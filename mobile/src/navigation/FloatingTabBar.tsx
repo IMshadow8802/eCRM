@@ -3,7 +3,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 
-import { colors, radius, shadows, spacing, TAB_BAR_HEIGHT } from "../theme";
+import { colors, shadows, spacing, TAB_BAR_HEIGHT } from "../theme";
 import { Text } from "../ui";
 
 /**
@@ -103,7 +103,13 @@ export default function FloatingTabBar({
 }
 
 const TAB_BAR_INSET = spacing[2];
-const BAR_RADIUS = radius["2xl"];
+/**
+ * Half the height — a full stadium. Not radius.full: a huge value would clamp
+ * per element, so the bar and the pill would each round to their own half-height
+ * and stop being concentric. Deriving it keeps `BAR_RADIUS - INSET` exactly
+ * equal to half the pill's height, which is the pill's own stadium radius.
+ */
+const BAR_RADIUS = TAB_BAR_HEIGHT / 2;
 /**
  * Derived, not chosen. Letting the pill stretch inside a padded row left its
  * final height negotiated between padding, alignItems and flex — and it settled
