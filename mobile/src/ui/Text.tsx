@@ -15,7 +15,7 @@ export interface TextProps extends RNTextProps {
  * in a screen — that is how font sizes and colours end up scattered.
  *
  * Weight comes from the variant's fontFamily, because React Native cannot
- * synthesise weights for a custom font: `fontWeight: "600"` on Poppins renders
+ * synthesise weights for a custom font: `fontWeight: "600"` on Inter renders
  * as regular on Android.
  */
 export function Text({

@@ -71,11 +71,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       "expo-font",
       {
         fonts: [
-          "./assets/fonts/Poppins-Regular.ttf",
-          "./assets/fonts/Poppins-Medium.ttf",
-          "./assets/fonts/Poppins-SemiBold.ttf",
-          "./assets/fonts/Poppins-Bold.ttf",
-          "./assets/fonts/Poppins-Black.ttf",
+          "./assets/fonts/Inter_400Regular.ttf",
+          "./assets/fonts/Inter_500Medium.ttf",
+          "./assets/fonts/Inter_600SemiBold.ttf",
+          "./assets/fonts/Inter_700Bold.ttf",
+          "./assets/fonts/Inter_900Black.ttf",
         ],
       },
     ],

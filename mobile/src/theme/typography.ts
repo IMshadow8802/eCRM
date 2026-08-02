@@ -5,35 +5,51 @@
 // type scale stays consistent and retuning it is one file.
 //
 // React Native cannot synthesise weights for custom fonts — `fontWeight: 600`
-// on Poppins silently renders regular on Android. The weight IS the family,
-// which is why each variant names a concrete Poppins file.
+// on Inter silently renders regular on Android. The weight IS the family,
+// which is why each variant names a concrete Inter file.
+//
+// Inter, not Poppins (changed 2026-08-02). Poppins is a geometric display face:
+// circular bowls, a small x-height, and wide letterforms that read as friendly
+// rather than businesslike. Inter was drawn for UI at small sizes — a tall
+// x-height, open apertures, and tabular-width digits, which matters on a screen
+// full of counts, hours and dates.
+//
+// That x-height difference is why the sizes below dropped a step: Inter at 15px
+// looks roughly the size Poppins did at 17. Heading line heights came down with
+// them so the ratio holds; body line heights did not, which buys running text a
+// little more air at the smaller size.
 
 import { colors } from "./tokens";
 
 export const fontFamily = {
   /**
-   * Poppins-Regular (400) is loaded but no variant uses it — the app's baseline
+   * Inter Regular (400) is loaded but no variant uses it — the app's baseline
    * weight is Medium (500). Kept available for anything that genuinely needs to
    * recede further than `secondary` does.
    */
-  regular: "Poppins-Regular",
-  medium: "Poppins-Medium",
-  semibold: "Poppins-SemiBold",
-  bold: "Poppins-Bold",
-  black: "Poppins-Black",
+  regular: "Inter_400Regular",
+  medium: "Inter_500Medium",
+  semibold: "Inter_600SemiBold",
+  bold: "Inter_700Bold",
+  black: "Inter_900Black",
 } as const;
 
 export type FontWeightName = keyof typeof fontFamily;
 
+/**
+ * Tuned for Inter's x-height — a step smaller than the Poppins scale above
+ * 13px, unchanged below it. Small text needs every pixel of legibility, and at
+ * 11–13px the two faces read at about the same size anyway.
+ */
 export const fontSize = {
   xs: 11,
   sm: 13,
-  base: 15,
-  md: 16,
-  lg: 18,
-  xl: 20,
-  "2xl": 24,
-  "3xl": 30,
+  base: 14,
+  md: 15,
+  lg: 17,
+  xl: 19,
+  "2xl": 22,
+  "3xl": 28,
 } as const;
 
 export interface TextStyleToken {
@@ -50,26 +66,34 @@ export interface TextStyleToken {
  * screen — if two screens need the same treatment, it belongs in this file.
  */
 export const typography = {
-  /** Screen titles. One per screen, at most. */
+  /**
+   * Screen titles. One per screen, at most.
+   *
+   * The negative tracking on the three headings is Inter's own guidance: it is
+   * spaced for body copy, so at display sizes the default gaps read loose.
+   */
   h1: {
     fontSize: fontSize["2xl"],
     fontFamily: fontFamily.bold,
-    lineHeight: 32,
+    lineHeight: 30,
     color: colors.text,
+    letterSpacing: -0.4,
   },
   /** Section headers, modal titles. */
   h2: {
     fontSize: fontSize.xl,
     fontFamily: fontFamily.semibold,
-    lineHeight: 28,
+    lineHeight: 26,
     color: colors.text,
+    letterSpacing: -0.3,
   },
   /** Card titles, list-row primary text. */
   h3: {
     fontSize: fontSize.md,
     fontFamily: fontFamily.semibold,
-    lineHeight: 22,
+    lineHeight: 21,
     color: colors.text,
+    letterSpacing: -0.15,
   },
   /** Default running text. Medium (500) is the app-wide baseline weight. */
   body: {

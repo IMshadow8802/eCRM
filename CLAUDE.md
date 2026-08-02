@@ -337,7 +337,10 @@ are inlined across 10 files. Extracting `web/src/api/taskQueries.js` +
 - `typography.ts` — the type scale. Text picks a **variant**
   (`<Text variant="h2">`), never a size + weight. Weight *is* the font family:
   React Native cannot synthesise weights for a custom font, so
-  `fontWeight: "600"` on Poppins silently renders regular on Android.
+  `fontWeight: "600"` on Inter silently renders regular on Android. The family
+  is **Inter** (since 2026-08-02) — drawn for UI at small sizes, unlike the
+  geometric Poppins it replaced. Its tall x-height is why the size scale sits a
+  step below the old one; do not "restore" the larger numbers.
 - `spacing` is a 4px grid — `spacing[3]` is 12.
 
 **Solid colours only — no translucency.** No `rgba()` washes, no `opacity` to
@@ -388,15 +391,22 @@ rebuild, and any future icon work does not.
 
 ### 9.5 Shared components — build it once, in `src/ui/`
 
-`Avatar · Button · Card · Chip · DateField · Dialog · Divider · EmptyState ·
-Input · Screen · Select · Sheet · Text`
+`ActionSheet · Avatar · Button · Card · Chip · ComposeSheet · DateField ·
+Dialog · Divider · EmptyState · Fab · Input · Screen · ScreenHeader ·
+Segmented · Select · Sheet · Text`
 
 If a screen needs a widget that is not there, **add it there**. Two screens
 building the same thing separately is the failure this prevents.
 
 - **One** bottom sheet (`Sheet`, `@gorhom/bottom-sheet`) — every picker, action
   menu and "move to…" list uses it. Presented imperatively via a ref so a
-  parent re-render cannot reopen it.
+  parent re-render cannot reopen it. `ActionSheet` (a list of actions) and
+  `ComposeSheet` (a one-to-three-field form) are the two shapes built on it;
+  reach for those before writing a bare `Sheet`.
+- **Never build a menu with `.push()`.** `react-hooks/refs` fails the build
+  when a handler closing over a ref is passed into a function call during
+  render — build the array as a literal with conditional spreads, and gate its
+  visibility on a boolean, not on `list.length`.
 - **One** confirm dialog (`Dialog`). **Never use RN's `Alert`** — it cannot be
   styled, cannot show a loading state, and blocks the JS thread on Android.
 - **One** picker (`Select`, single + multi) and **one** date picker
