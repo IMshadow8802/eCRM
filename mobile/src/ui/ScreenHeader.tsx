@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, View } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { colors, radius, spacing } from "../theme";
+import { colors, radius, shadows, spacing } from "../theme";
 import { Text } from "./Text";
 
 export interface ScreenHeaderAction {
@@ -16,6 +16,10 @@ export interface ScreenHeaderProps {
   subtitle?: string;
   onBack?: () => void;
   actions?: ScreenHeaderAction[];
+  /** Context glyph beside the title — board type, record kind. */
+  icon?: keyof typeof MaterialIcons.glyphMap;
+  /** Semantic token for the glyph fill. Defaults to the brand colour. */
+  tint?: keyof typeof colors;
 }
 
 /**
@@ -31,6 +35,8 @@ export function ScreenHeader({
   subtitle,
   onBack,
   actions,
+  icon,
+  tint = "primary",
 }: ScreenHeaderProps) {
   const insets = useSafeAreaInsets();
 
@@ -44,8 +50,18 @@ export function ScreenHeader({
           hitSlop={spacing[2]}
           style={({ pressed }) => [styles.back, pressed && styles.backPressed]}
         >
-          <MaterialIcons name="arrow-back" size={24} color={colors.text} />
+          <MaterialIcons
+            name="arrow-back"
+            size={22}
+            color={colors.textOnBrand}
+          />
         </Pressable>
+      ) : null}
+
+      {icon ? (
+        <View style={[styles.glyph, { backgroundColor: colors[tint] }]}>
+          <MaterialIcons name={icon} size={18} color={colors.textOnBrand} />
+        </View>
       ) : null}
 
       <View style={styles.titleBlock}>
@@ -53,9 +69,12 @@ export function ScreenHeader({
           {title}
         </Text>
         {subtitle ? (
-          <Text variant="caption" color="textMuted" numberOfLines={1}>
-            {subtitle}
-          </Text>
+          <View style={styles.subtitleRow}>
+            <View style={[styles.dot, { backgroundColor: colors[tint] }]} />
+            <Text variant="caption" color="textSecondary" numberOfLines={1}>
+              {subtitle}
+            </Text>
+          </View>
         ) : null}
       </View>
 
@@ -66,9 +85,12 @@ export function ScreenHeader({
           accessibilityLabel={action.label}
           accessibilityRole="button"
           hitSlop={spacing[2]}
-          style={({ pressed }) => [styles.back, pressed && styles.backPressed]}
+          style={({ pressed }) => [
+            styles.action,
+            pressed && styles.actionPressed,
+          ]}
         >
-          <MaterialIcons name={action.icon} size={22} color={colors.text} />
+          <MaterialIcons name={action.icon} size={20} color={colors.text} />
         </Pressable>
       ))}
     </View>
@@ -84,22 +106,43 @@ const styles = StyleSheet.create({
     gap: spacing[3],
     paddingHorizontal: spacing[4],
     paddingBottom: spacing[3],
-    backgroundColor: colors.background,
+    backgroundColor: colors.surface,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
+  // Solid brand fill. A bordered white square on a white bar is invisible, and
+  // back is the one control on this bar the user always needs to find.
   back: {
     width: BUTTON,
     height: BUTTON,
-    borderRadius: radius.md,
+    borderRadius: radius.full,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    ...shadows.sm,
+  },
+  backPressed: { backgroundColor: colors.primaryPressed },
+  glyph: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  action: {
+    width: BUTTON,
+    height: BUTTON,
+    borderRadius: radius.full,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     alignItems: "center",
     justifyContent: "center",
   },
-  backPressed: { backgroundColor: colors.surfacePressed },
+  actionPressed: { backgroundColor: colors.surfacePressed },
   titleBlock: { flex: 1 },
+  subtitleRow: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
+  dot: { width: 6, height: 6, borderRadius: radius.full },
 });
 
 export default ScreenHeader;
