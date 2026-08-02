@@ -41,7 +41,7 @@ export function Segmented<T extends string>({
           >
             <Text
               variant="label"
-              color={active ? "text" : "textMuted"}
+              color={active ? "textOnBrand" : "textSecondary"}
               numberOfLines={1}
             >
               {option.label}
@@ -50,7 +50,7 @@ export function Segmented<T extends string>({
               <View style={[styles.count, active && styles.countActive]}>
                 <Text
                   variant="caption"
-                  color={active ? "textOnBrand" : "textMuted"}
+                  color={active ? "primary" : "textSecondary"}
                 >
                   {option.count}
                 </Text>
@@ -80,15 +80,16 @@ const styles = StyleSheet.create({
     paddingVertical: spacing[2],
     borderRadius: radius.base,
   },
-  segmentActive: { backgroundColor: colors.surface },
+  // Solid brand fill — a white-on-grey active tab is barely a state change.
+  segmentActive: { backgroundColor: colors.primary },
   count: {
     minWidth: 18,
     paddingHorizontal: spacing[1],
     borderRadius: radius.full,
-    backgroundColor: colors.surfaceSunken,
+    backgroundColor: colors.surface,
     alignItems: "center",
   },
-  countActive: { backgroundColor: colors.primary },
+  countActive: { backgroundColor: colors.surface },
 });
 
 export default Segmented;

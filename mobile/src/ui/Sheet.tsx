@@ -20,6 +20,8 @@ export interface SheetProps {
   /** Percentages or pixel heights, e.g. ["50%"]. Omit to size to content. */
   snapPoints?: (string | number)[];
   onDismiss?: () => void;
+  /** Set when the sheet contains a text input so it lifts with the keyboard. */
+  keyboardAware?: boolean;
 }
 
 /**
@@ -31,7 +33,7 @@ export interface SheetProps {
  * parent re-render cannot reopen or close it by accident.
  */
 export const Sheet = forwardRef<SheetRef, SheetProps>(function Sheet(
-  { title, children, snapPoints, onDismiss },
+  { title, children, snapPoints, onDismiss, keyboardAware = false },
   ref,
 ) {
   const points = useMemo(() => snapPoints, [snapPoints]);
@@ -60,6 +62,10 @@ export const Sheet = forwardRef<SheetRef, SheetProps>(function Sheet(
       enableDynamicSizing={!points}
       backdropComponent={renderBackdrop}
       onDismiss={onDismiss}
+      // Without these an input inside the sheet is hidden by the keyboard.
+      keyboardBehavior={keyboardAware ? "interactive" : undefined}
+      keyboardBlurBehavior={keyboardAware ? "restore" : undefined}
+      android_keyboardInputMode={keyboardAware ? "adjustResize" : undefined}
       handleIndicatorStyle={styles.handle}
       backgroundStyle={styles.background}
     >

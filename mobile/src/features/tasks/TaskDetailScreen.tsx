@@ -1,9 +1,7 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   StyleSheet,
   View,
@@ -27,11 +25,13 @@ import useAuthStore from "../../stores/useAuthStore";
 import { colors, radius, shadows, spacing } from "../../theme";
 import {
   Avatar,
-  Input,
+  ComposeSheet,
+  Fab,
   Screen,
   ScreenHeader,
   Segmented,
   Text,
+  type SheetRef,
 } from "../../ui";
 import AttachmentList from "../attachments/AttachmentList";
 import { abilitiesFor, assigneesOf, dueBucket, dueLabel } from "./taskHelpers";
@@ -47,7 +47,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   const isAdmin = useAuthStore((s) => Boolean(s.user?.IsAdmin));
 
   const [tab, setTab] = useState<Tab>("checklist");
-  const [draft, setDraft] = useState("");
+  const composeRef = useRef<SheetRef>(null);
 
   const taskQuery = useQuery({
     queryKey: ["task", taskId],
@@ -93,14 +93,14 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   const addItem = useMutation({
     mutationFn: saveTaskChecklist,
     onSuccess: () => {
-      setDraft("");
+      composeRef.current?.dismiss();
       invalidate();
     },
   });
   const addComment = useMutation({
     mutationFn: addTaskComment,
     onSuccess: () => {
-      setDraft("");
+      composeRef.current?.dismiss();
       queryClient.invalidateQueries({ queryKey: ["task", taskId, "comments"] });
     },
   });
@@ -137,12 +137,11 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
 
   const overdue = dueBucket(task.DueDate) === "overdue";
   const due = dueLabel(task.DueDate);
-  const showComposer =
+  // Files brings its own FAB (it needs the camera/library/file picker sheet).
+  const showFab =
     (tab === "checklist" && can.manageArtifacts) || (tab === "chat" && can.comment);
 
-  const submit = () => {
-    const text = draft.trim();
-    if (!text) return;
+  const submit = (text: string) => {
     if (tab === "checklist") {
       addItem.mutate({
         TaskId: taskId,
@@ -167,13 +166,6 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
         onBack={navigation.goBack}
       />
 
-      {/* One KeyboardAvoidingView around everything, offset 0. The previous
-          version offset by insets.top + 40, which left ~100px of empty grey
-          screen sitting above the keyboard. */}
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
         <View style={styles.summary}>
           <Text variant="h2">{task.Title}</Text>
 
@@ -211,10 +203,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
 
           <Segmented
             value={tab}
-            onChange={(next) => {
-              setTab(next);
-              setDraft("");
-            }}
+            onChange={setTab}
             options={[
               { value: "checklist", label: "Checklist", count: checklist.length },
               { value: "files", label: "Files" },
@@ -284,10 +273,11 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
                       })
                     }
                   >
+                    {/* A cross means dismiss; this destroys the item. */}
                     <MaterialIcons
-                      name="close"
-                      size={18}
-                      color={colors.textMuted}
+                      name="delete-outline"
+                      size={19}
+                      color={colors.danger}
                     />
                   </Pressable>
                 ) : null}
@@ -328,53 +318,38 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
           />
         ) : null}
 
-        {showComposer ? (
-          <View
-            style={[
-              styles.composer,
-              { paddingBottom: insets.bottom + spacing[2] },
-            ]}
-          >
-            <Input
-              bare
-              containerStyle={styles.flex}
-              value={draft}
-              onChangeText={setDraft}
-              placeholder={
-                tab === "checklist" ? "Add a checklist item" : "Write a comment"
-              }
-              multiline={tab === "chat"}
-              onSubmitEditing={tab === "checklist" ? submit : undefined}
-            />
-            <Pressable
-              hitSlop={spacing[2]}
-              disabled={!draft.trim()}
-              onPress={submit}
-              style={[styles.send, !draft.trim() && styles.sendIdle]}
-            >
-              <MaterialIcons
-                name={tab === "checklist" ? "add" : "send"}
-                size={20}
-                color={draft.trim() ? colors.textOnBrand : colors.textMuted}
-              />
-            </Pressable>
-          </View>
-        ) : null}
+      {showFab ? (
+        <Fab
+          icon={tab === "checklist" ? "add" : "chat"}
+          accessibilityLabel={
+            tab === "checklist" ? "Add a checklist item" : "Write a comment"
+          }
+          onPress={() => composeRef.current?.present()}
+        />
+      ) : null}
 
-        {!can.changeStatus ? (
-          <View
-            style={[
-              styles.readOnly,
-              { paddingBottom: insets.bottom + spacing[2] },
-            ]}
-          >
-            <MaterialIcons name="visibility" size={15} color={colors.textMuted} />
-            <Text variant="caption" color="textMuted" style={styles.flex}>
-              View only — ask an owner to assign you this task to work on it.
-            </Text>
-          </View>
-        ) : null}
-      </KeyboardAvoidingView>
+      {!can.changeStatus ? (
+        <View
+          style={[styles.readOnly, { paddingBottom: insets.bottom + spacing[2] }]}
+        >
+          <MaterialIcons name="visibility" size={15} color={colors.textMuted} />
+          <Text variant="caption" color="textMuted" style={styles.flex}>
+            View only — ask an owner to assign you this task to work on it.
+          </Text>
+        </View>
+      ) : null}
+
+      <ComposeSheet
+        ref={composeRef}
+        title={tab === "checklist" ? "Add checklist item" : "Write a comment"}
+        placeholder={
+          tab === "checklist" ? "What needs doing?" : "Share an update…"
+        }
+        submitLabel={tab === "checklist" ? "Add item" : "Post comment"}
+        multiline={tab === "chat"}
+        busy={addItem.isPending || addComment.isPending}
+        onSubmit={submit}
+      />
     </Screen>
   );
 }
@@ -419,7 +394,8 @@ const styles = StyleSheet.create({
   overlap: { marginLeft: -spacing[2] },
   list: {
     paddingHorizontal: spacing[5],
-    paddingBottom: spacing[4],
+    // Clears the FAB so the last row is never hidden behind it.
+    paddingBottom: spacing[20],
     gap: spacing[3],
   },
   // Rows are surfaces, not bare text on the page — without a card they read as
@@ -435,34 +411,13 @@ const styles = StyleSheet.create({
     ...shadows.sm,
   },
   itemRowPressed: { backgroundColor: colors.surfacePressed },
-  struck: { textDecorationLine: "line-through", color: colors.textMuted },
-  commentCard: {
-    flexDirection: "row",
-    gap: spacing[3],
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    padding: spacing[4],
-    ...shadows.sm,
+  struck: {
+    textDecorationLine: "line-through",
+    // textDecorationColor is iOS-only; the text colour is what tints the line
+    // on Android, so both are set to the same green.
+    textDecorationColor: colors.success,
+    color: colors.success,
   },
-  composer: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: spacing[2],
-    paddingHorizontal: spacing[5],
-    paddingTop: spacing[3],
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  send: {
-    width: 34,
-    height: 34,
-    borderRadius: radius.full,
-    backgroundColor: colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  sendIdle: { backgroundColor: colors.surfaceSunken },
   readOnly: {
     flexDirection: "row",
     alignItems: "center",
@@ -471,5 +426,14 @@ const styles = StyleSheet.create({
     paddingTop: spacing[3],
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  commentCard: {
+    flexDirection: "row",
+    gap: spacing[3],
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing[4],
+    ...shadows.sm,
   },
 });

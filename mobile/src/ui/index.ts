@@ -11,11 +11,13 @@
 export { default as Avatar } from "./Avatar";
 export { default as Button } from "./Button";
 export { default as Card } from "./Card";
+export { default as ComposeSheet } from "./ComposeSheet";
 export { default as Chip } from "./Chip";
 export { default as DateField } from "./DateField";
 export { default as Dialog } from "./Dialog";
 export { default as Divider } from "./Divider";
 export { default as EmptyState } from "./EmptyState";
+export { default as Fab } from "./Fab";
 export { default as Input } from "./Input";
 export { default as PageHeader } from "./PageHeader";
 export { default as Screen } from "./Screen";
@@ -27,9 +29,11 @@ export { default as Text } from "./Text";
 
 export type { ButtonProps, ButtonSize, ButtonVariant } from "./Button";
 export type { ChipProps, ChipTone } from "./Chip";
+export type { ComposeSheetProps } from "./ComposeSheet";
 export type { DateFieldProps } from "./DateField";
 export type { DialogProps } from "./Dialog";
 export type { EmptyStateProps } from "./EmptyState";
+export type { FabProps } from "./Fab";
 export type { InputProps } from "./Input";
 export type { PageHeaderAction, PageHeaderProps } from "./PageHeader";
 export type { ScreenProps } from "./Screen";

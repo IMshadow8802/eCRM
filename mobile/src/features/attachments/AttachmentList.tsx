@@ -6,7 +6,6 @@ import {
   StyleSheet,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MaterialIcons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
@@ -20,7 +19,7 @@ import {
 } from "../../api/attachmentQueries";
 import type { Attachment, AttachmentEntity } from "../../types/api";
 import { colors, radius, shadows, spacing } from "../../theme";
-import { Dialog, Sheet, Text, type SheetRef } from "../../ui";
+import { Dialog, Fab, Sheet, Text, type SheetRef } from "../../ui";
 import FileViewer from "./FileViewer";
 import { fileMeta, humanSize, MAX_UPLOAD_BYTES } from "./attachmentHelpers";
 
@@ -37,7 +36,6 @@ export default function AttachmentList({
   canManage,
 }: AttachmentListProps) {
   const queryClient = useQueryClient();
-  const insets = useSafeAreaInsets();
   const sheetRef = useRef<SheetRef>(null);
   const [viewing, setViewing] = useState<Attachment | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -176,7 +174,12 @@ export default function AttachmentList({
 
               {canManage ? (
                 <Pressable hitSlop={spacing[2]} onPress={() => setPendingDelete(a)}>
-                  <MaterialIcons name="close" size={18} color={colors.textMuted} />
+                  {/* A cross means dismiss; this destroys the file. */}
+                  <MaterialIcons
+                    name="delete-outline"
+                    size={19}
+                    color={colors.danger}
+                  />
                 </Pressable>
               ) : (
                 <MaterialIcons
@@ -200,20 +203,12 @@ export default function AttachmentList({
       ) : null}
 
       {canManage ? (
-        <Pressable
-          style={[styles.addRow, { paddingBottom: insets.bottom + spacing[3] }]}
+        <Fab
+          icon="add"
+          accessibilityLabel="Add a file"
+          loading={upload.isPending}
           onPress={() => sheetRef.current?.present()}
-          disabled={upload.isPending}
-        >
-          {upload.isPending ? (
-            <ActivityIndicator size="small" color={colors.primary} />
-          ) : (
-            <MaterialIcons name="add-circle" size={20} color={colors.primary} />
-          )}
-          <Text variant="label" color="primary">
-            {upload.isPending ? "Uploading…" : "Add a file"}
-          </Text>
-        </Pressable>
+        />
       ) : null}
 
       <Sheet ref={sheetRef} title="Add a file">
@@ -261,7 +256,8 @@ function PickOption({
 
 const styles = StyleSheet.create({
   container: { flex: 1, paddingHorizontal: spacing[5] },
-  list: { gap: spacing[3], paddingBottom: spacing[4] },
+  // Clears the FAB so the last row is never hidden behind it.
+  list: { gap: spacing[3], paddingBottom: spacing[20] },
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -280,15 +276,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   rowText: { flex: 1, gap: spacing[1] },
-  addRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing[2],
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-    paddingVertical: spacing[3],
-  },
   error: {
     flexDirection: "row",
     alignItems: "center",
