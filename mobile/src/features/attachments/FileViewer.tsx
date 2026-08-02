@@ -122,7 +122,7 @@ export default function FileViewer({ attachment, onClose }: FileViewerProps) {
           </Pressable>
         </View>
 
-        <View style={styles.body}>
+        <View style={[styles.body, { paddingBottom: insets.bottom }]}>
           {loading ? <ActivityIndicator color={colors.primary} /> : null}
 
           {!loading && failed ? (

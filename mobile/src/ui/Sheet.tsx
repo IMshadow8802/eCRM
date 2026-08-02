@@ -1,5 +1,6 @@
 import { forwardRef, useCallback, useMemo, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   BottomSheetModal,
   BottomSheetBackdrop,
@@ -34,6 +35,9 @@ export const Sheet = forwardRef<SheetRef, SheetProps>(function Sheet(
   ref,
 ) {
   const points = useMemo(() => snapPoints, [snapPoints]);
+  // A sheet is flush to the bottom edge, so it MUST pay the inset itself —
+  // on Android with on-screen nav buttons the last row is otherwise unreachable.
+  const insets = useSafeAreaInsets();
 
   // Tap-outside-to-close. Without appearsOnIndex/disappearsOnIndex the backdrop
   // renders opaque at rest and swallows every touch on the screen behind it.
@@ -59,7 +63,9 @@ export const Sheet = forwardRef<SheetRef, SheetProps>(function Sheet(
       handleIndicatorStyle={styles.handle}
       backgroundStyle={styles.background}
     >
-      <BottomSheetView style={styles.content}>
+      <BottomSheetView
+        style={[styles.content, { paddingBottom: insets.bottom + spacing[4] }]}
+      >
         {title ? (
           <View style={styles.header}>
             <Text variant="h2">{title}</Text>
@@ -78,7 +84,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: radius.xl,
   },
   handle: { backgroundColor: colors.borderStrong, width: spacing[10] },
-  content: { paddingBottom: spacing[8] },
+  content: {},
   header: { paddingHorizontal: spacing[4], paddingBottom: spacing[3] },
 });
 

@@ -24,7 +24,7 @@ import {
 import { fetchWorkspaces } from "../../api/workspaceQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
-import { colors, radius, spacing } from "../../theme";
+import { colors, radius, shadows, spacing } from "../../theme";
 import {
   Avatar,
   Input,
@@ -37,7 +37,7 @@ import AttachmentList from "../attachments/AttachmentList";
 import { abilitiesFor, assigneesOf, dueBucket, dueLabel } from "./taskHelpers";
 
 type Props = StackScreenProps<RootStackParamList, "TaskDetail">;
-type Tab = "steps" | "files" | "chat";
+type Tab = "checklist" | "files" | "chat";
 
 export default function TaskDetailScreen({ route, navigation }: Props) {
   const { taskId, workspaceId } = route.params;
@@ -46,7 +46,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   const userId = useAuthStore((s) => s.UserId);
   const isAdmin = useAuthStore((s) => Boolean(s.user?.IsAdmin));
 
-  const [tab, setTab] = useState<Tab>("steps");
+  const [tab, setTab] = useState<Tab>("checklist");
   const [draft, setDraft] = useState("");
 
   const taskQuery = useQuery({
@@ -138,12 +138,12 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   const overdue = dueBucket(task.DueDate) === "overdue";
   const due = dueLabel(task.DueDate);
   const showComposer =
-    (tab === "steps" && can.manageArtifacts) || (tab === "chat" && can.comment);
+    (tab === "checklist" && can.manageArtifacts) || (tab === "chat" && can.comment);
 
   const submit = () => {
     const text = draft.trim();
     if (!text) return;
-    if (tab === "steps") {
+    if (tab === "checklist") {
       addItem.mutate({
         TaskId: taskId,
         ItemText: text,
@@ -216,14 +216,14 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
               setDraft("");
             }}
             options={[
-              { value: "steps", label: "Steps", count: checklist.length },
+              { value: "checklist", label: "Checklist", count: checklist.length },
               { value: "files", label: "Files" },
               { value: "chat", label: "Comments", count: comments.length },
             ]}
           />
         </View>
 
-        {tab === "steps" ? (
+        {tab === "checklist" ? (
           <FlatList
             data={checklist}
             keyExtractor={(i) => String(i.Id)}
@@ -233,13 +233,13 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
             ListHeaderComponent={
               checklist.length ? (
                 <Text variant="caption" color="textMuted">
-                  {done} of {checklist.length} done · completion follows this list
+                  {done} of {checklist.length} done · completion follows this checklist
                 </Text>
               ) : null
             }
             ListEmptyComponent={
               <Text variant="secondary">
-                No steps yet. Completion is driven by this list.
+                No checklist items yet. Completion is driven by this list.
               </Text>
             }
             renderItem={({ item }) => (
@@ -255,7 +255,10 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
                     WorkspaceId: task.WorkspaceId,
                   })
                 }
-                style={styles.stepRow}
+                style={({ pressed }) => [
+                  styles.itemRow,
+                  pressed && styles.itemRowPressed,
+                ]}
               >
                 <MaterialIcons
                   name={
@@ -312,7 +315,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
               <Text variant="secondary">No comments yet.</Text>
             }
             renderItem={({ item }) => (
-              <View style={styles.comment}>
+              <View style={styles.commentCard}>
                 <Avatar name={item.UserName} uri={item.Avatar} size={30} />
                 <View style={styles.flex}>
                   <Text variant="bodyStrong">{item.UserName ?? "Someone"}</Text>
@@ -337,9 +340,11 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
               containerStyle={styles.flex}
               value={draft}
               onChangeText={setDraft}
-              placeholder={tab === "steps" ? "Add a step" : "Write a comment"}
+              placeholder={
+                tab === "checklist" ? "Add a checklist item" : "Write a comment"
+              }
               multiline={tab === "chat"}
-              onSubmitEditing={tab === "steps" ? submit : undefined}
+              onSubmitEditing={tab === "checklist" ? submit : undefined}
             />
             <Pressable
               hitSlop={spacing[2]}
@@ -348,7 +353,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
               style={[styles.send, !draft.trim() && styles.sendIdle]}
             >
               <MaterialIcons
-                name="arrow-upward"
+                name={tab === "checklist" ? "add" : "send"}
                 size={20}
                 color={draft.trim() ? colors.textOnBrand : colors.textMuted}
               />
@@ -417,9 +422,28 @@ const styles = StyleSheet.create({
     paddingBottom: spacing[4],
     gap: spacing[3],
   },
-  stepRow: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
+  // Rows are surfaces, not bare text on the page — without a card they read as
+  // pen on paper against the tinted background.
+  itemRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[3],
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    paddingVertical: spacing[3],
+    paddingHorizontal: spacing[4],
+    ...shadows.sm,
+  },
+  itemRowPressed: { backgroundColor: colors.surfacePressed },
   struck: { textDecorationLine: "line-through", color: colors.textMuted },
-  comment: { flexDirection: "row", gap: spacing[3] },
+  commentCard: {
+    flexDirection: "row",
+    gap: spacing[3],
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing[4],
+    ...shadows.sm,
+  },
   composer: {
     flexDirection: "row",
     alignItems: "flex-end",
