@@ -1,14 +1,14 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { logout as logoutRequest } from "../../api/authQueries";
 import { fetchTasks } from "../../api/taskQueries";
 import { fetchWorkspaces } from "../../api/workspaceQueries";
 import useAuthStore from "../../stores/useAuthStore";
 import { isAssignee } from "../tasks/taskHelpers";
+import { useSignOut } from "../auth/useSignOut";
 import { colors, radius, shadows, spacing } from "../../theme";
 import { Avatar, Button, Dialog, Screen, Text } from "../../ui";
 
@@ -16,11 +16,8 @@ export default function MeScreen() {
   const user = useAuthStore((s) => s.user);
   const company = useAuthStore((s) => s.company);
   const userId = useAuthStore((s) => s.UserId);
-  const clearSession = useAuthStore((s) => s.logout);
   const insets = useSafeAreaInsets();
-
-  const [confirming, setConfirming] = useState(false);
-  const [signingOut, setSigningOut] = useState(false);
+  const signOut = useSignOut();
 
   // Both already cached by My Work and Boards, so opening this tab is free.
   const { data: taskData } = useQuery({
@@ -43,20 +40,6 @@ export default function MeScreen() {
       ).length,
     };
   }, [taskData, workspaces, userId]);
-
-  const signOut = async () => {
-    setSigningOut(true);
-    // Best-effort server call — the local session drops either way, so a dead
-    // network can never strand someone in a signed-in state.
-    try {
-      await logoutRequest();
-    } catch {
-      // ignored on purpose
-    }
-    setSigningOut(false);
-    setConfirming(false);
-    clearSession();
-  };
 
   return (
     <Screen>
@@ -114,7 +97,7 @@ export default function MeScreen() {
           title="Sign out"
           variant="danger"
           icon="logout"
-          onPress={() => setConfirming(true)}
+          onPress={() => signOut.setConfirming(true)}
           fullWidth
         />
 
@@ -127,14 +110,14 @@ export default function MeScreen() {
       </ScrollView>
 
       <Dialog
-        visible={confirming}
+        visible={signOut.confirming}
         title="Sign out?"
         message="You will need your password to sign back in."
         confirmLabel="Sign out"
         destructive
-        loading={signingOut}
-        onConfirm={signOut}
-        onCancel={() => setConfirming(false)}
+        loading={signOut.busy}
+        onConfirm={signOut.signOut}
+        onCancel={() => signOut.setConfirming(false)}
       />
     </Screen>
   );

@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { Pressable, RefreshControl, SectionList, StyleSheet, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
+import { MaterialIcons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import type { StackNavigationProp } from "@react-navigation/stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -10,7 +11,8 @@ import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
 import type { Task } from "../../types/api";
 import { colors, radius, spacing } from "../../theme";
-import { Avatar, EmptyState, Screen, Text } from "../../ui";
+import { Dialog, EmptyState, Screen, Text } from "../../ui";
+import { useSignOut } from "../auth/useSignOut";
 import { TaskCard } from "./TaskCard";
 import { greetingFor, longDate } from "./greeting";
 import { BUCKET_LABEL, groupByDue, isAssignee, isUnassigned } from "./taskHelpers";
@@ -30,6 +32,7 @@ export default function MyWorkScreen() {
   const user = useAuthStore((s) => s.user);
   const insets = useSafeAreaInsets();
   const [filter, setFilter] = useState<Filter>("mine");
+  const signOut = useSignOut();
 
   // WorkspaceId: null = every workspace the caller can see. sp_FetchTask has no
   // assignee parameter, so "assigned to me" is resolved on the client from each
@@ -88,7 +91,25 @@ export default function MyWorkScreen() {
               {longDate()}
             </Text>
           </View>
-          <Avatar name={user?.FullName} uri={user?.Avatar} size={44} />
+          {/* Sign-out lives here as well as on the profile tab: it is the one
+              action people hunt for, and a decorative avatar was occupying the
+              only obvious slot for it. */}
+          <Pressable
+            onPress={() => signOut.setConfirming(true)}
+            accessibilityLabel="Sign out"
+            accessibilityRole="button"
+            hitSlop={spacing[2]}
+            style={({ pressed }) => [
+              styles.signOut,
+              pressed && styles.signOutPressed,
+            ]}
+          >
+            <MaterialIcons
+              name="power-settings-new"
+              size={20}
+              color={colors.danger}
+            />
+          </Pressable>
         </View>
 
         <View style={styles.summaryRow}>
@@ -158,6 +179,17 @@ export default function MyWorkScreen() {
           )
         }
       />
+
+      <Dialog
+        visible={signOut.confirming}
+        title="Sign out?"
+        message="You will need your password to sign back in."
+        confirmLabel="Sign out"
+        destructive
+        loading={signOut.busy}
+        onConfirm={signOut.signOut}
+        onCancel={() => signOut.setConfirming(false)}
+      />
     </Screen>
   );
 }
@@ -192,6 +224,17 @@ const styles = StyleSheet.create({
     gap: spacing[3],
   },
   greetBlock: { flex: 1, gap: spacing[1] },
+  signOut: {
+    width: 42,
+    height: 42,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  signOutPressed: { backgroundColor: colors.surfacePressed },
   summaryRow: {},
   // No top padding — the section header below provides the gap. Stacking
   // header padding, list padding and section padding gave 44px of dead space.
