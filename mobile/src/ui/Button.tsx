@@ -78,10 +78,17 @@ export function Button({
           height: HEIGHT[size],
           backgroundColor: BG[variant],
         },
-        isDisabled && styles.disabled,
+        isDisabled &&
+          (variant === "primary"
+            ? styles.disabledPrimary
+            : variant === "danger"
+              ? styles.disabledDanger
+              : styles.disabledNeutral),
         variant === "ghost" && styles.ghost,
         fullWidth && styles.fullWidth,
-        pressed && !isDisabled && styles.pressed,
+        pressed &&
+          !isDisabled &&
+          (variant === "primary" ? styles.pressed : styles.pressedNeutral),
         style,
       ]}
       {...rest}
@@ -116,11 +123,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[5],
   },
   ghost: { paddingHorizontal: spacing[2] },
-  // Dim the whole control instead of recolouring it: the label stays legible
-  // and it still reads as a button.
-  disabled: { opacity: 0.45 },
+  // Solid muted fills — never `opacity`. Dimming lets the background bleed
+  // through and reads as faded rather than disabled.
+  disabledPrimary: { backgroundColor: colors.primaryDim },
+  disabledDanger: { backgroundColor: colors.dangerDim },
+  disabledNeutral: { backgroundColor: colors.disabledBg },
   fullWidth: { alignSelf: "stretch" },
-  pressed: { opacity: 0.75 },
+  pressed: { backgroundColor: colors.primaryPressed },
+  pressedNeutral: { backgroundColor: colors.surfacePressed },
   content: {
     flexDirection: "row",
     alignItems: "center",

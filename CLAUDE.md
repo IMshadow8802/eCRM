@@ -340,6 +340,19 @@ are inlined across 10 files. Extracting `web/src/api/taskQueries.js` +
   `fontWeight: "600"` on Poppins silently renders regular on Android.
 - `spacing` is a 4px grid — `spacing[3]` is 12.
 
+**Solid colours only — no translucency.** No `rgba()` washes, no `opacity` to
+dim a control, no frosted panels. A translucent surface changes colour
+depending on what is behind it and reads as washed out; a pressed or disabled
+state done with `opacity` looks faded rather than pressed. Use a solid token
+for every state instead — `surfacePressed`, `primaryDim`, `dangerDim`,
+`disabledBg`. Press feedback may also use `transform: scale`, which is not a
+colour.
+
+**The one exception is `colors.overlay`**, the modal scrim, because a dialog
+backdrop has to show the screen behind it — an opaque one is a different
+screen, not a dialog. Nothing else in `tokens.ts` carries alpha, and a new
+`rgba()` there needs the same kind of justification.
+
 **Enforced by eslint, not by good intentions** (`eslint.config.js`):
 `react-native/no-color-literals` is an error, and importing
 `Text`/`TextInput`/`Button`/`Alert` from `react-native` is banned outside

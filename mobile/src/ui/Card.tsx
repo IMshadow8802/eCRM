@@ -50,7 +50,8 @@ const styles = StyleSheet.create({
   card: { backgroundColor: colors.surface, borderRadius: radius.md },
   bordered: { borderWidth: 1, borderColor: colors.border },
   padded: { padding: spacing[4] },
-  pressed: { opacity: 0.7 },
+  // Solid fill, never opacity — see CLAUDE.md §9.3.
+  pressed: { backgroundColor: colors.surfacePressed },
 });
 
 export default Card;

@@ -84,7 +84,10 @@ export const colors = {
   surface: palette.white,
   surfaceMuted: palette.gray[50],
   surfaceSunken: palette.gray[100],
-  overlay: "rgba(17, 24, 39, 0.45)",
+  // The ONE place alpha is allowed, and only because a modal scrim must show
+  // the screen behind it — an opaque one is a different screen, not a dialog.
+  // Everything else in this file is a solid colour.
+  overlay: "rgba(17, 24, 39, 0.55)",
 
   // text
   text: palette.gray[900],
@@ -121,23 +124,24 @@ export const colors = {
   priorityHigh: palette.red[500],
   priorityUrgent: palette.red[700],
 
-  // Tinted fills behind a coloured icon. A saturated icon on its own soft wash
-  // is what gives a card a focal point instead of a wall of grey text.
-  priorityLowSoft: palette.green[100],
-  priorityMediumSoft: palette.amber[100],
-  priorityHighSoft: palette.red[100],
-  priorityUrgentSoft: palette.red[100],
-  neutralSoft: palette.purple[100],
+  /** Fallback glyph colour for a task with no priority set. */
   neutralIcon: palette.purple[500],
 
-  // Surfaces and lines that sit ON the brand gradient (auth screens).
-  // Translucent white so the gradient reads through them — a solid card over a
-  // gradient just hides the thing that makes the screen look good.
-  surfaceOnBrand: "rgba(255, 255, 255, 0.18)",
-  textOnBrandMuted: "rgba(255, 255, 255, 0.66)",
-  veilOnBrand: "rgba(255, 255, 255, 1)",
+  // Surfaces and text that sit ON the brand gradient (auth screens). Solid
+  // shades picked off the brand ramp, NOT translucent white — washes look
+  // washed out and change colour depending on what is behind them.
+  surfaceOnBrand: palette.brand.light,
+  textOnBrandMuted: "#C3CAEA",
+  veilOnBrand: palette.brand.light,
+  veilOnBrandDeep: "#4A5AB8",
 
   transparentBorder: "transparent",
+
+  // Solid press/disabled fills. Dimming with opacity lets whatever is behind
+  // bleed through and makes the control look faded rather than pressed.
+  surfacePressed: palette.gray[100],
+  primaryDim: "#8F99D4",
+  dangerDim: "#EFA3A3",
 
   // gray[100]/gray[400] was too faint — a disabled button read as an empty box.
   disabledBg: palette.gray[200],

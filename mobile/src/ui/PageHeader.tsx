@@ -104,7 +104,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  actionPressed: { opacity: 0.6 },
+  actionPressed: { backgroundColor: colors.surfacePressed },
   badge: {
     position: "absolute",
     top: spacing[2],

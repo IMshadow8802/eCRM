@@ -35,12 +35,7 @@ const PRIORITY_INK: Record<TaskPriority, keyof typeof colors> = {
   urgent: "priorityUrgent",
 };
 
-const PRIORITY_WASH: Record<TaskPriority, keyof typeof colors> = {
-  low: "priorityLowSoft",
-  medium: "priorityMediumSoft",
-  high: "priorityHighSoft",
-  urgent: "priorityUrgentSoft",
-};
+
 
 function TaskCardBase({ task, onPress, showWorkspace = true }: TaskCardProps) {
   const { done, total } = checklistProgress(task);
@@ -55,12 +50,6 @@ function TaskCardBase({ task, onPress, showWorkspace = true }: TaskCardProps) {
     : priority
       ? colors[PRIORITY_INK[priority]]
       : colors.neutralIcon;
-  const wash = task.IsCompleted
-    ? colors.successSoft
-    : priority
-      ? colors[PRIORITY_WASH[priority]]
-      : colors.neutralSoft;
-
   const icon = task.IsCompleted
     ? "check"
     : (TYPE_ICON[task.Type ?? "task"] ?? TYPE_ICON.task!);
@@ -78,8 +67,10 @@ function TaskCardBase({ task, onPress, showWorkspace = true }: TaskCardProps) {
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
       <View style={styles.row}>
-        <View style={[styles.glyph, { backgroundColor: wash }]}>
-          <MaterialIcons name={icon} size={20} color={ink} />
+        {/* Solid fill, white glyph — a pale wash behind a tinted icon reads as
+            washed out. The colour still encodes priority, just at full strength. */}
+        <View style={[styles.glyph, { backgroundColor: ink }]}>
+          <MaterialIcons name={icon} size={20} color={colors.textOnBrand} />
         </View>
 
         <View style={styles.main}>
@@ -173,7 +164,8 @@ const styles = StyleSheet.create({
     gap: spacing[3],
     ...shadows.md,
   },
-  pressed: { transform: [{ scale: 0.985 }], opacity: 0.96 },
+  // Scale only — no dimming. Solid surfaces stay solid.
+  pressed: { transform: [{ scale: 0.985 }] },
   row: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
   glyph: {
     width: 42,
