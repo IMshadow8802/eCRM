@@ -234,9 +234,11 @@ export interface Workspace {
   MyRole: WorkspaceRole | null;
   MyInviteStatus: InviteStatus | null;
   MemberCount: number | null;
-  TaskCount: number | null;
-  OwnerName: string | null;
 }
+
+// NOTE: sp_FetchWorkspaces returns exactly the columns above. It does NOT
+// return a task count or the owner's name — do not add them here without
+// adding them to the procedure first.
 
 export interface WorkspaceMember {
   Id: number;
