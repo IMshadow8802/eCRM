@@ -26,6 +26,7 @@ import {
   radius,
   shadows,
   spacing,
+  SCREEN_PADDING,
   TAB_BAR_CLEARANCE,
 } from "../../theme";
 import { Avatar, Button, Dialog, Screen, Text } from "../../ui";
@@ -192,14 +193,13 @@ function Row({
 
 const styles = StyleSheet.create({
   header: {
-    paddingHorizontal: spacing[5],
+    paddingHorizontal: SCREEN_PADDING,
     paddingBottom: spacing[3],
-    backgroundColor: colors.background,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.divider,
   },
   scroll: {
-    padding: spacing[5],
+    padding: SCREEN_PADDING,
     gap: spacing[5],
     paddingBottom: TAB_BAR_CLEARANCE,
   },

@@ -5,6 +5,7 @@ export {
   radius,
   shadows,
   gradients,
+  SCREEN_PADDING,
   HIT_TARGET,
   CONTROL_HEIGHT,
   TAB_BAR_HEIGHT,

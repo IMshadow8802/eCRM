@@ -10,12 +10,15 @@
 // building the same thing separately is the failure mode this prevents.
 export { default as ActionSheet } from "./ActionSheet";
 export { default as Avatar } from "./Avatar";
+export { default as BackgroundPattern } from "./BackgroundPattern";
+export { default as BoardColumns } from "./BoardColumns";
 export { default as Button } from "./Button";
 export { default as Card } from "./Card";
 export { default as ComposeSheet } from "./ComposeSheet";
 export { default as Chip } from "./Chip";
 export { default as DateField } from "./DateField";
 export { default as Dialog } from "./Dialog";
+export { default as DynamicField } from "./DynamicField";
 export { default as Divider } from "./Divider";
 export { default as EmptyState } from "./EmptyState";
 export { default as Fab } from "./Fab";
@@ -28,11 +31,13 @@ export { default as Sheet } from "./Sheet";
 export { default as Text } from "./Text";
 
 export type { ActionSheetProps, SheetAction } from "./ActionSheet";
+export type { BoardColumnsProps } from "./BoardColumns";
 export type { ButtonProps, ButtonSize, ButtonVariant } from "./Button";
 export type { ChipProps, ChipTone } from "./Chip";
 export type { ComposeField, ComposeSheetProps } from "./ComposeSheet";
 export type { DateFieldProps } from "./DateField";
 export type { DialogProps } from "./Dialog";
+export type { DynamicFieldProps } from "./DynamicField";
 export type { EmptyStateProps } from "./EmptyState";
 export type { FabProps } from "./Fab";
 export type { InputProps } from "./Input";

@@ -10,6 +10,9 @@ import ColumnsScreen from "../features/workspaces/ColumnsScreen";
 import WorkspaceFormScreen from "../features/workspaces/WorkspaceFormScreen";
 import WorkspaceSettingsScreen from "../features/workspaces/WorkspaceSettingsScreen";
 import TaskFormScreen from "../features/tasks/TaskFormScreen";
+import ComplaintsScreen from "../features/support/ComplaintsScreen";
+import ComplaintDetailScreen from "../features/support/ComplaintDetailScreen";
+import ComplaintFormScreen from "../features/support/ComplaintFormScreen";
 import WorkHubScreen from "../features/hub/WorkHubScreen";
 import ComingSoonScreen from "../features/hub/ComingSoonScreen";
 import MeScreen from "../features/profile/MeScreen";
@@ -34,6 +37,11 @@ export type RootStackParamList = {
   WorkspaceForm: { workspaceId?: number };
   WorkspaceSettings: { workspaceId: number };
   Columns: { workspaceId: number };
+  /** Support / complaints — Phase B. */
+  Complaints: undefined;
+  ComplaintDetail: { ticketId: number };
+  /** Omit `ticketId` to log a new one. */
+  ComplaintForm: { ticketId?: number };
   ComingSoon: { title: string; blurb: string };
 };
 
@@ -101,6 +109,12 @@ export default function RootNavigator() {
               component={WorkspaceSettingsScreen}
             />
             <Stack.Screen name="Columns" component={ColumnsScreen} />
+            <Stack.Screen name="Complaints" component={ComplaintsScreen} />
+            <Stack.Screen
+              name="ComplaintDetail"
+              component={ComplaintDetailScreen}
+            />
+            <Stack.Screen name="ComplaintForm" component={ComplaintFormScreen} />
             <Stack.Screen name="ComingSoon" component={ComingSoonScreen} />
           </>
         ) : (

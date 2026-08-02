@@ -85,6 +85,19 @@ export const palette = {
   },
   white: "#FFFFFF",
   black: "#000000",
+  /**
+   * Shadow ink, warm on purpose.
+   *
+   * The card shadow used to be brand blue. One card got away with it; a board
+   * column of eight, stacked 12px apart, pooled a cool haze between them that
+   * read as a grey lane running down the page — the white cards looked like
+   * they were sitting on a different, colder surface than the warm background
+   * either side of them.
+   *
+   * A shadow is the page seen through less light, so it has to be the page's
+   * own colour family. This is the warm neutral the stone ramp darkens into.
+   */
+  shadow: "#4A4034",
   transparent: "transparent",
 } as const;
 
@@ -120,6 +133,13 @@ export const colors = {
   border: palette.stone[200],
   borderStrong: palette.stone[300],
   divider: palette.stone[100],
+  /**
+   * The hairline the page texture is drawn in. Sits between `background` and
+   * `divider` on purpose: at `divider` the ruling reads as a grid you are meant
+   * to look at, and at `background` it disappears entirely on a bright screen.
+   * This is the value where it registers as paper rather than as lines.
+   */
+  patternLine: "#EFEDE6",
 
   // interactive
   primary: palette.brand.base,
@@ -212,28 +232,41 @@ export const radius = {
 export const shadows = {
   none: {},
   sm: {
-    shadowColor: palette.black,
+    shadowColor: palette.shadow,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 1,
   },
   base: {
-    shadowColor: palette.black,
+    shadowColor: palette.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 4,
     elevation: 2,
   },
+  /**
+   * The card shadow — a CONTACT shadow, not an ambient one.
+   *
+   * Cards in a board column sit 16px apart. Any shadow whose radius approaches
+   * that reaches its neighbour, and the overlap makes every gap darker than the
+   * open margin beside the column: the cards stop reading as separate objects
+   * and turn into one grey lane running down the page. Warming the ink helped
+   * but did not fix it, because the problem is reach, not colour.
+   *
+   * So: barely offset, small radius, low opacity. Enough to say the card is
+   * off the page, not enough to touch the card below. Definition comes from
+   * the hairline border on the card itself, which cannot bleed at all.
+   */
   md: {
-    shadowColor: "#1E34AE",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.1,
-    shadowRadius: 14,
-    elevation: 5,
+    shadowColor: palette.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
   },
   lg: {
-    shadowColor: palette.black,
+    shadowColor: palette.shadow,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.16,
     shadowRadius: 16,
@@ -245,13 +278,27 @@ export const shadows = {
    * centred element look like it is sitting too low.
    */
   floating: {
-    shadowColor: "#1E34AE",
+    shadowColor: palette.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.22,
     shadowRadius: 18,
     elevation: 10,
   },
 } as const;
+
+/**
+ * The gutter between screen content and the display edge.
+ *
+ * One number, because every screen has to agree: a list whose cards sit 20px
+ * in and a header whose title sits 16px in look broken even though neither
+ * value is wrong on its own. Screens read THIS, never `spacing[n]`, for their
+ * outer padding — a component's own internal padding is a different decision
+ * and stays on the spacing scale.
+ *
+ * It also matches the board strip's padding, so a board and a list line up
+ * when you move between them.
+ */
+export const SCREEN_PADDING = 16;
 
 /**
  * Minimum touch target. Anything tappable must reach this in both axes —

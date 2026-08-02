@@ -8,7 +8,7 @@ import type { StackScreenProps } from "@react-navigation/stack";
 import { fetchWorkspaces, respondInvite } from "../../api/workspaceQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import type { Workspace } from "../../types/api";
-import { colors, radius, shadows, spacing } from "../../theme";
+import { colors, radius, shadows, spacing, SCREEN_PADDING } from "../../theme";
 import { Button, EmptyState, Fab, Screen, ScreenHeader, Text } from "../../ui";
 import { WorkspaceCard } from "./WorkspaceCard";
 
@@ -195,13 +195,13 @@ const styles = StyleSheet.create({
   content: { paddingBottom: spacing[20] },
   contentEmpty: { flexGrow: 1 },
   sectionTitle: {
-    paddingHorizontal: spacing[5],
+    paddingHorizontal: SCREEN_PADDING,
     paddingTop: spacing[3],
     paddingBottom: spacing[2],
   },
-  cardWrap: { paddingHorizontal: spacing[5], paddingBottom: spacing[3] },
+  cardWrap: { paddingHorizontal: SCREEN_PADDING, paddingBottom: spacing[3] },
   inviteCard: {
-    marginHorizontal: spacing[5],
+    marginHorizontal: SCREEN_PADDING,
     marginBottom: spacing[3],
     padding: spacing[4],
     gap: spacing[3],

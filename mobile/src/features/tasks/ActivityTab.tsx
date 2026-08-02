@@ -16,7 +16,7 @@ import {
 } from "lucide-react-native";
 
 import { getTaskActivity } from "../../api/taskQueries";
-import { colors, radius, shadows, spacing } from "../../theme";
+import { colors, radius, shadows, spacing, SCREEN_PADDING } from "../../theme";
 import { EmptyState, Text } from "../../ui";
 import { relativeTime } from "./taskHelpers";
 
@@ -101,7 +101,7 @@ export default function ActivityTab({ taskId }: ActivityTabProps) {
 
 const styles = StyleSheet.create({
   list: {
-    paddingHorizontal: spacing[5],
+    paddingHorizontal: SCREEN_PADDING,
     paddingBottom: spacing[20],
     gap: spacing[3],
   },

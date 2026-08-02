@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Lock, Rocket, Users } from "lucide-react-native";
+import { Lock, Users } from "lucide-react-native";
 import type {
   StackNavigationProp,
   StackScreenProps,
@@ -11,7 +11,7 @@ import { fetchUserDirectory } from "../../api/userQueries";
 import { fetchWorkspaces, saveWorkspace } from "../../api/workspaceQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import type { Workspace, WorkspaceType } from "../../types/api";
-import { colors, spacing } from "../../theme";
+import { colors, spacing, SCREEN_PADDING } from "../../theme";
 import { Button, Input, Screen, ScreenHeader, Select, Text } from "../../ui";
 
 type Props = StackScreenProps<RootStackParamList, "WorkspaceForm">;
@@ -139,7 +139,6 @@ function WorkspaceForm({ navigation, workspace }: WorkspaceFormProps) {
       <ScreenHeader
         title={editing ? "Rename board" : "New board"}
         onBack={navigation.goBack}
-        icon={Rocket}
       />
 
       <ScrollView
@@ -214,7 +213,7 @@ const styles = StyleSheet.create({
     padding: spacing[6],
   },
   content: {
-    padding: spacing[5],
+    padding: SCREEN_PADDING,
     paddingBottom: spacing[20],
     gap: spacing[4],
   },

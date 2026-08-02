@@ -273,9 +273,28 @@ React Native + Expo SDK 57, **TypeScript**, rebuilt from scratch on
 `feat/mobile-rewrite` (2026-08-02). Spec:
 `docs/superpowers/specs/2026-08-02-mobile-task-app-rewrite-design.md`.
 
-Scope order: **Phase A** full task management → **Phase B** support/complaints
-→ **Phase C** sales leads. Admin CRUD (Users/Teams/Projects/Settings/Reports)
-is **permanently web-only**, not deferred.
+Scope order: **Phase A** full task management ✅ → **Phase B** support/complaints
+✅ → **Phase C** sales leads (next). Admin CRUD
+(Users/Teams/Projects/Settings/Reports) is **permanently web-only**, not
+deferred.
+
+**Config engine on mobile** (`src/api/configQueries.ts`): lookups, pipelines +
+stages, and custom-field definitions are read-only here — configuring them is
+admin desk work and stays on the web. `Entity`/`Kind` discriminate, so Phase C
+reuses the same fetchers with `Entity: 'lead'`.
+
+**Ticket lifecycle is derived, never hardcoded** (`features/support/ticketHelpers.ts`).
+Stage names are per-company and editable, so `stageRoles()` resolves Resolved /
+Closed / Rejected from `StageType` + `SortOrder`: first `won` = Resolved
+(requires a `ResolutionId`), last `won` = Closed, `lost` = Rejected. Matching on
+the word "Resolved" breaks the moment someone renames a stage. Every transition
+goes through `moveTicketStage`; `saveTicket` sends `StageId: null` so the SP's
+`ISNULL(@StageId, StageId)` keeps the ticket where it is.
+
+**Known gap — do not build call logging on a ticket.** `sp_LogCall` accepts a
+`TicketId` but writes no ticket activity, and `sp_FetchCalls` filters by
+`LeadId` only. A call logged against a complaint is invisible everywhere. Fix
+the backend first, or the button is write-only.
 
 ### 9.1 Build & release — no EAS, no app.json
 
@@ -424,8 +443,15 @@ There is no `@dnd-kit` on React Native; gestures go through
   Avoid `react-native-draggable-flatlist` — stale, and it breaks on Reanimated 4.
 - **Between kanban columns**: **do not build drag.** Four columns on a 360px
   screen makes a drop target a few pixels wide. Use long-press → "Move to…"
-  `Sheet` → `moveTaskColumn`. Same endpoint, same `change_status` gate, far
+  `Sheet` → `moveTaskColumn` / `moveTicketStage`. Same endpoint, same gate, far
   better on a phone.
+- **Both boards share `ui/BoardColumns`** — the horizontal snapping strip.
+  Column width and gap must agree exactly or every swipe lands a few pixels off
+  and the drift compounds; that arithmetic lives there and nowhere else.
+- **Mobile has no table view.** The web splits Support into a Tickets table and
+  a TicketBoard; mobile ships only the board. A table on 360px is a worse list,
+  and the board already answers what a phone gets asked — what is where, and
+  move this one along.
 
 ### 9.7 Standing constraints
 

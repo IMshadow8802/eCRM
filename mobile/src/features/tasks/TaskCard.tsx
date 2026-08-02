@@ -227,6 +227,11 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     padding: spacing[4],
     gap: spacing[3],
+    // A hairline warm edge does the separating; the shadow only lifts. A
+    // border stops exactly where the card does, so stacking cards 16px apart
+    // can never pool it into a lane the way a soft shadow does.
+    borderWidth: 1,
+    borderColor: colors.border,
     ...shadows.md,
   },
   // Scale only — no dimming. Solid surfaces stay solid.

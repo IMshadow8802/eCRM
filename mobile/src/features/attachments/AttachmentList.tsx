@@ -27,7 +27,7 @@ import {
   type PickedFile,
 } from "../../api/attachmentQueries";
 import type { Attachment, AttachmentEntity } from "../../types/api";
-import { colors, radius, shadows, spacing } from "../../theme";
+import { colors, radius, shadows, spacing, SCREEN_PADDING } from "../../theme";
 import { Dialog, Fab, Sheet, Text, type SheetRef } from "../../ui";
 import FileViewer from "./FileViewer";
 import { fileMeta, humanSize, MAX_UPLOAD_BYTES } from "./attachmentHelpers";
@@ -258,7 +258,7 @@ function PickOption({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingHorizontal: spacing[5] },
+  container: { flex: 1, paddingHorizontal: SCREEN_PADDING },
   // Clears the FAB so the last row is never hidden behind it.
   list: { gap: spacing[3], paddingBottom: spacing[20] },
   row: {

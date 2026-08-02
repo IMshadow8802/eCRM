@@ -15,6 +15,7 @@ import {
   radius,
   shadows,
   spacing,
+  SCREEN_PADDING,
   TAB_BAR_CLEARANCE,
 } from "../../theme";
 import { Dialog, EmptyState, Screen, Text } from "../../ui";
@@ -221,10 +222,9 @@ const emptyMessage = (filter: Filter) =>
 
 const styles = StyleSheet.create({
   header: {
-    paddingHorizontal: spacing[5],
+    paddingHorizontal: SCREEN_PADDING,
     paddingBottom: spacing[3],
     gap: spacing[4],
-    backgroundColor: colors.background,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.divider,
   },
@@ -272,9 +272,9 @@ const styles = StyleSheet.create({
     ...shadows.md,
   },
   sectionTitle: {
-    paddingHorizontal: spacing[5],
+    paddingHorizontal: SCREEN_PADDING,
     paddingTop: spacing[3],
     paddingBottom: spacing[2],
   },
-  cardWrap: { paddingHorizontal: spacing[5], paddingBottom: spacing[3] },
+  cardWrap: { paddingHorizontal: SCREEN_PADDING, paddingBottom: spacing[3] },
 });

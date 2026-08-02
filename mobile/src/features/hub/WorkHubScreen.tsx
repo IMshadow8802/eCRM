@@ -13,7 +13,10 @@ import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { StackNavigationProp } from "@react-navigation/stack";
 
+import { fetchPipelines } from "../../api/configQueries";
+import { fetchTickets } from "../../api/ticketQueries";
 import { fetchWorkspaces } from "../../api/workspaceQueries";
+import { lifecycleOf, stageRoles } from "../support/ticketHelpers";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
 import { canSeeAny, visibleRoutes } from "../../utils/menuAccess";
@@ -22,6 +25,7 @@ import {
   radius,
   shadows,
   spacing,
+  SCREEN_PADDING,
   TAB_BAR_CLEARANCE,
 } from "../../theme";
 import { EmptyState, Screen, Text } from "../../ui";
@@ -69,9 +73,29 @@ export default function WorkHubScreen() {
     queryFn: () => fetchWorkspaces({ PageSize: 100 }),
   });
 
+  // Both counts share their query keys with the screens they lead to, so the
+  // hub warms the cache rather than paying for a second fetch.
+  const { data: tickets } = useQuery({
+    queryKey: ["tickets", ""],
+    queryFn: () => fetchTickets({ PageSize: 100, SearchTerm: null }),
+  });
+  const { data: pipeline } = useQuery({
+    queryKey: ["pipelines", "ticket"],
+    queryFn: () => fetchPipelines({ Entity: "ticket" }),
+  });
+
   const boardCount = (workspaces ?? []).filter(
     (w) => w.MyInviteStatus !== "pending" && !w.IsArchived,
   ).length;
+
+  const roles = useMemo(() => stageRoles(pipeline?.stages), [pipeline]);
+  const openComplaints = useMemo(
+    () =>
+      (tickets?.data?.tickets ?? []).filter(
+        (t) => lifecycleOf(t, roles) === "open",
+      ).length,
+    [tickets, roles],
+  );
 
   const sections: HubSection[] = [
     {
@@ -99,15 +123,12 @@ export default function WorkHubScreen() {
           Icon: Headset,
           tint: "danger",
           label: "Complaints",
-          detail: "Log and track customer issues",
+          detail: openComplaints
+            ? `${openComplaints} open`
+            : "Log and track customer issues",
           routes: ["/support", "/support/tickets", "/support/board"],
-          ready: false,
-          go: (nav) =>
-            nav.navigate("ComingSoon", {
-              title: "Complaints",
-              blurb:
-                "Log a complaint from the field, track it to resolution and see everything assigned to you.",
-            }),
+          ready: true,
+          go: (nav) => nav.navigate("Complaints"),
         },
       ],
     },
@@ -217,15 +238,14 @@ export default function WorkHubScreen() {
 
 const styles = StyleSheet.create({
   header: {
-    paddingHorizontal: spacing[5],
+    paddingHorizontal: SCREEN_PADDING,
     paddingBottom: spacing[3],
     gap: spacing[1],
-    backgroundColor: colors.background,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.divider,
   },
   content: {
-    padding: spacing[5],
+    padding: SCREEN_PADDING,
     gap: spacing[5],
     paddingBottom: TAB_BAR_CLEARANCE,
   },

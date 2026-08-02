@@ -4,13 +4,13 @@ import {
   Archive,
   ChevronRight,
   Eye,
-  Lock,
+  FolderKanban,
   Pencil,
-  Rocket,
   Shield,
   Star,
   User,
-  Users,
+  UserRound,
+  UsersRound,
   type LucideIcon,
 } from "lucide-react-native";
 
@@ -18,14 +18,21 @@ import type { Workspace, WorkspaceRole, WorkspaceType } from "../../types/api";
 import { colors, radius, shadows, spacing } from "../../theme";
 import { Text } from "../../ui";
 
-/** Each workspace type gets its own glyph and colour so the list scans fast. */
+/**
+ * Each workspace type gets its own glyph and colour so the list scans fast.
+ *
+ * The rounded family (UserRound / UsersRound) rather than the squared one: it
+ * matches the app's rounded language, and one person vs several is a shape
+ * difference you can read at 19px, which a padlock-vs-rocket pairing was not —
+ * those said "locked" and "launch", neither of which is what the type means.
+ */
 const TYPE_META: Record<
   WorkspaceType,
   { Icon: LucideIcon; color: keyof typeof colors; label: string }
 > = {
-  personal: { Icon: Lock, color: "neutralIcon", label: "Personal" },
-  shared: { Icon: Users, color: "primary", label: "Shared" },
-  project: { Icon: Rocket, color: "info", label: "Project" },
+  personal: { Icon: UserRound, color: "neutralIcon", label: "Personal" },
+  shared: { Icon: UsersRound, color: "primary", label: "Shared" },
+  project: { Icon: FolderKanban, color: "info", label: "Project" },
 };
 
 /** Role decides what you can do, so it is worth showing on the card. */
@@ -55,7 +62,7 @@ function WorkspaceCardBase({ workspace, onPress }: WorkspaceCardProps) {
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
       <View style={[styles.glyph, { backgroundColor: colors[type.color] }]}>
-        <type.Icon size={22} color={colors.textOnBrand} />
+        <type.Icon size={19} color={colors.textOnBrand} />
       </View>
 
       <View style={styles.main}>
@@ -72,8 +79,10 @@ function WorkspaceCardBase({ workspace, onPress }: WorkspaceCardProps) {
         </View>
 
         <View style={styles.stats}>
+          {/* No icon here — the glyph on the left is already this same one,
+              and repeating it inside the row it labels reads as clutter. The
+              colour carries the link. */}
           <View style={styles.stat}>
-            <type.Icon size={13} color={colors[type.color]} />
             <Text variant="caption" color={type.color}>
               {type.label}
             </Text>
@@ -116,12 +125,17 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: radius.xl,
     padding: spacing[4],
+    // See TaskCard: the border separates, the shadow only lifts.
+    borderWidth: 1,
+    borderColor: colors.border,
     ...shadows.md,
   },
   pressed: { transform: [{ scale: 0.985 }] },
+  // 38, not 46. The glyph is a label for the row, not its subject — at 46 it
+  // was the heaviest thing on the card and pulled the eye off the board's name.
   glyph: {
-    width: 46,
-    height: 46,
+    width: 38,
+    height: 38,
     borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",

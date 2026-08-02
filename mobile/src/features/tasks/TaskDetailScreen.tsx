@@ -48,7 +48,7 @@ import { fetchKanbanColumns } from "../../api/kanbanQueries";
 import { fetchWorkspaces } from "../../api/workspaceQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
-import { colors, radius, shadows, spacing } from "../../theme";
+import { colors, radius, shadows, spacing, SCREEN_PADDING } from "../../theme";
 import {
   ActionSheet,
   Avatar,
@@ -693,7 +693,7 @@ const styles = StyleSheet.create({
     padding: spacing[6],
   },
   summary: {
-    paddingHorizontal: spacing[5],
+    paddingHorizontal: SCREEN_PADDING,
     paddingTop: spacing[4],
     paddingBottom: spacing[3],
     gap: spacing[3],
@@ -718,7 +718,7 @@ const styles = StyleSheet.create({
   avatars: { flexDirection: "row", alignItems: "center" },
   overlap: { marginLeft: -spacing[2] },
   list: {
-    paddingHorizontal: spacing[5],
+    paddingHorizontal: SCREEN_PADDING,
     // Clears the FAB so the last row is never hidden behind it.
     paddingBottom: spacing[20],
     gap: spacing[3],
@@ -749,7 +749,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing[2],
-    paddingHorizontal: spacing[5],
+    paddingHorizontal: SCREEN_PADDING,
     paddingTop: spacing[3],
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,

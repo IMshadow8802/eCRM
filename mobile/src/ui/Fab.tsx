@@ -3,7 +3,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type { LucideIcon } from "lucide-react-native";
 
-import { colors, radius, shadows, spacing } from "../theme";
+import { colors, radius, shadows, spacing, SCREEN_PADDING } from "../theme";
 import { Text } from "./Text";
 
 export interface FabProps {
@@ -66,7 +66,7 @@ export function Fab({
 const styles = StyleSheet.create({
   fab: {
     position: "absolute",
-    right: spacing[5],
+    right: SCREEN_PADDING,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",

@@ -12,7 +12,7 @@ import { fetchKanbanColumns } from "../../api/kanbanQueries";
 import { fetchWorkspaceMembers } from "../../api/workspaceQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import type { Task, TaskPriority } from "../../types/api";
-import { colors, spacing } from "../../theme";
+import { colors, spacing, SCREEN_PADDING } from "../../theme";
 import {
   Button,
   DateField,
@@ -292,7 +292,7 @@ const styles = StyleSheet.create({
     padding: spacing[6],
   },
   content: {
-    padding: spacing[5],
+    padding: SCREEN_PADDING,
     paddingBottom: spacing[20],
     gap: spacing[4],
   },

@@ -12,7 +12,6 @@ import {
   Trash2,
   UserMinus,
   UserPlus,
-  Users,
   type LucideIcon,
 } from "lucide-react-native";
 import type { StackScreenProps } from "@react-navigation/stack";
@@ -31,7 +30,7 @@ import {
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
 import type { WorkspaceMember, WorkspaceRole } from "../../types/api";
-import { colors, radius, shadows, spacing } from "../../theme";
+import { colors, radius, shadows, spacing, SCREEN_PADDING } from "../../theme";
 import {
   ActionSheet,
   Avatar,
@@ -239,7 +238,6 @@ export default function WorkspaceSettingsScreen({ route, navigation }: Props) {
       <ScreenHeader
         title={workspace?.Name ?? "Board settings"}
         subtitle={workspace?.Type}
-        icon={Users}
         onBack={navigation.goBack}
         actions={
           manages
@@ -420,7 +418,7 @@ export default function WorkspaceSettingsScreen({ route, navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  content: { padding: spacing[5], paddingBottom: spacing[20], gap: spacing[5] },
+  content: { padding: SCREEN_PADDING, paddingBottom: spacing[20], gap: spacing[5] },
   section: { gap: spacing[2] },
   sectionHead: {
     flexDirection: "row",

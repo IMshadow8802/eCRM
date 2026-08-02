@@ -1,18 +1,9 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import {
-  FlatList,
-  RefreshControl,
-  StyleSheet,
-  View,
-  useWindowDimensions,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-} from "react-native";
+import { FlatList, RefreshControl, StyleSheet, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRightLeft,
   Columns3,
-  LayoutDashboard,
   Plus,
   Settings,
 } from "lucide-react-native";
@@ -27,6 +18,7 @@ import type { KanbanColumn, Task } from "../../types/api";
 import { colors, radius, shadows, spacing } from "../../theme";
 import {
   ActionSheet,
+  BoardColumns,
   EmptyState,
   Fab,
   Screen,
@@ -44,12 +36,6 @@ type Props = StackScreenProps<RootStackParamList, "Board">;
 const UNSORTED_ID = -1;
 
 /**
- * How much of the screen one column occupies. Under 1 deliberately: the sliver
- * of the next column is what tells the user the board scrolls sideways at all.
- */
-const COLUMN_RATIO = 0.86;
-
-/**
  * One workspace's kanban.
  *
  * There is no drag between columns and there will not be: four columns on a
@@ -59,7 +45,6 @@ const COLUMN_RATIO = 0.86;
  */
 export default function BoardScreen({ route, navigation }: Props) {
   const { workspaceId, name } = route.params;
-  const { width } = useWindowDimensions();
   const queryClient = useQueryClient();
   const userId = useAuthStore((s) => s.UserId);
   const isAdmin = useAuthStore((s) => Boolean(s.user?.IsAdmin));
@@ -67,11 +52,6 @@ export default function BoardScreen({ route, navigation }: Props) {
   const [moving, setMoving] = useState<Task | null>(null);
   const [columnIndex, setColumnIndex] = useState(0);
   const moveRef = useRef<SheetRef>(null);
-
-  const columnWidth = Math.round(width * COLUMN_RATIO);
-  // The card and the gap travel together, so a snap lands the next column in
-  // exactly the same place the last one was.
-  const snap = columnWidth + spacing[3];
 
   const columnsQuery = useQuery({
     queryKey: ["columns", workspaceId],
@@ -146,9 +126,6 @@ export default function BoardScreen({ route, navigation }: Props) {
     moveRef.current?.present();
   }, []);
 
-  const onSettle = (event: NativeSyntheticEvent<NativeScrollEvent>) =>
-    setColumnIndex(Math.round(event.nativeEvent.contentOffset.x / snap));
-
   // Permission is per-task: an assignee may move their own card even though
   // they may not move anyone else's. The server re-checks either way.
   const canMove = moving
@@ -181,7 +158,6 @@ export default function BoardScreen({ route, navigation }: Props) {
       <ScreenHeader
         title={workspace?.Name ?? name}
         subtitle={`${tasks.length} task${tasks.length === 1 ? "" : "s"} · ${columns.length} column${columns.length === 1 ? "" : "s"}`}
-        icon={LayoutDashboard}
         onBack={navigation.goBack}
         actions={
           manages
@@ -219,19 +195,14 @@ export default function BoardScreen({ route, navigation }: Props) {
           }
         />
       ) : (
-        <FlatList
-          horizontal
-          data={columns}
-          keyExtractor={(column) => String(column.Id)}
-          showsHorizontalScrollIndicator={false}
-          snapToInterval={snap}
-          decelerationRate="fast"
-          onMomentumScrollEnd={onSettle}
-          contentContainerStyle={styles.board}
-          renderItem={({ item: column }) => {
+        <BoardColumns
+          columns={columns}
+          keyOf={(column) => String(column.Id)}
+          onSettle={setColumnIndex}
+          renderColumn={(column) => {
             const cards = byColumn.get(column.Id) ?? [];
             return (
-              <View style={[styles.column, { width: columnWidth }]}>
+              <>
                 <View style={styles.columnHeader}>
                   <View
                     style={[
@@ -278,7 +249,7 @@ export default function BoardScreen({ route, navigation }: Props) {
                     />
                   )}
                 />
-              </View>
+              </>
             );
           }}
         />
@@ -309,8 +280,6 @@ export default function BoardScreen({ route, navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  board: { paddingHorizontal: spacing[4], paddingTop: spacing[3], gap: spacing[3] },
-  column: { flex: 1 },
   columnHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -330,6 +299,8 @@ const styles = StyleSheet.create({
     ...shadows.sm,
   },
   // Clears the FAB so the last card in a full column stays reachable.
-  cards: { gap: spacing[3], paddingBottom: spacing[20] },
+  // 16, not 12: the gap has to out-reach the card shadow or the two shadows
+  // meet and the column reads as one continuous strip.
+  cards: { gap: spacing[4], paddingBottom: spacing[20] },
   columnEmpty: { paddingHorizontal: spacing[1] },
 });

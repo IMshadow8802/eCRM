@@ -12,7 +12,7 @@ import {
 import { fetchTasks } from "../../api/taskQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import type { KanbanColumn } from "../../types/api";
-import { colors, radius, shadows, spacing } from "../../theme";
+import { colors, radius, shadows, spacing, SCREEN_PADDING } from "../../theme";
 import {
   ActionSheet,
   ComposeSheet,
@@ -134,7 +134,6 @@ export default function ColumnsScreen({ route, navigation }: Props) {
       <ScreenHeader
         title="Columns"
         subtitle={`${columns.length} column${columns.length === 1 ? "" : "s"}`}
-        icon={Columns3}
         onBack={navigation.goBack}
       />
 
@@ -254,7 +253,7 @@ export default function ColumnsScreen({ route, navigation }: Props) {
 
 const styles = StyleSheet.create({
   list: {
-    padding: spacing[5],
+    padding: SCREEN_PADDING,
     paddingBottom: spacing[20],
     gap: spacing[3],
   },

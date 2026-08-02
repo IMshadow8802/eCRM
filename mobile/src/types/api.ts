@@ -49,6 +49,23 @@ export type TaskPriority = "low" | "medium" | "high" | "urgent";
 
 export type AttachmentEntity = "task" | "ticket" | "lead";
 
+/** The config engine's discriminator. One set of tables serves both modules. */
+export type ConfigEntity = "lead" | "ticket";
+
+/**
+ * A stage's role in the lifecycle. `open` is in-flight; `won` is a successful
+ * end; `lost` is a rejection. Support reads them as Open → Resolved → Closed
+ * and Rejected — see ticketHelpers for how the two `won` stages are told apart.
+ */
+export type StageType = "open" | "won" | "lost";
+
+export type CustomFieldType =
+  | "text"
+  | "number"
+  | "date"
+  | "dropdown"
+  | "checkbox";
+
 // ------------------------------------------------------------------- auth
 
 export interface AuthUser {
@@ -293,6 +310,146 @@ export interface KanbanColumn {
   BranchId: number;
   CreatedDate: string | null;
   IsCompanyWide: boolean;
+}
+
+// ---------------------------------------------------------- config engine
+
+/**
+ * A row of tblLookup. `Kind` is the list it belongs to — `ticket_category`,
+ * `priority`, `resolution`, `call_outcome`, `lead_source`, `lost_reason`.
+ *
+ * Note that a ticket's Priority is a lookup **Id**, not the string enum tasks
+ * use. The two modules genuinely differ here; do not unify them.
+ */
+export interface Lookup {
+  Id: number;
+  CompId: number;
+  Kind: string;
+  Value: string;
+  SortOrder: number | null;
+  IsActive: boolean;
+}
+
+export interface Pipeline {
+  Id: number;
+  CompId: number;
+  Entity: ConfigEntity;
+  Name: string;
+  IsDefault: boolean;
+  IsActive: boolean;
+  CreatedAt: string;
+}
+
+export interface PipelineStage {
+  Id: number;
+  CompId: number;
+  PipelineId: number;
+  Name: string;
+  SortOrder: number;
+  StageType: StageType;
+  /** Hex from the DB, drawn straight onto the stage chip. */
+  Color: string | null;
+  IsActive: boolean;
+}
+
+/**
+ * A typed-EAV field definition. `Options` is a JSON string for `dropdown`
+ * fields — either `["a","b"]` or `[{"value":"a","label":"A"}]`, both seen in
+ * the wild, so parse defensively.
+ */
+export interface CustomFieldDef {
+  Id: number;
+  CompId: number;
+  Entity: ConfigEntity;
+  FieldKey: string;
+  Label: string;
+  Type: CustomFieldType;
+  Options: string | null;
+  IsRequired: boolean;
+  SortOrder: number | null;
+  IsActive: boolean;
+  CreatedBy: number | null;
+  CreatedAt: string | null;
+}
+
+/** A stored value, as returned inside sp_FetchTicketDetail's second result set. */
+export interface CustomFieldValue {
+  FieldId: number;
+  FieldKey: string;
+  Label: string;
+  Type: CustomFieldType;
+  ValueText: string | null;
+  ValueNumber: number | null;
+  ValueDate: string | null;
+}
+
+// ----------------------------------------------------------------- ticket
+
+/**
+ * A row of tblTicket, as returned by sp_FetchTickets and sp_FetchTicketDetail.
+ *
+ * NOTE what is absent: the SP joins nothing. There is no StageName,
+ * CategoryName, PriorityName or AssigneeName — every one of those is an id
+ * that the client resolves against the lookups and stages it fetched
+ * separately. The web does the same. Do not add them here without adding the
+ * joins to the procedure first.
+ *
+ * `Priority` and `CategoryId` are tblLookup ids. `ResolvedAt`/`ClosedAt`/
+ * `ResolutionId` are stamped by sp_MoveTicketStage and must never be written
+ * directly — stage is the single source of truth for the lifecycle.
+ */
+export interface Ticket {
+  Id: number;
+  CompId: number;
+  BranchId: number;
+  TicketNo: string;
+  CustomerName: string | null;
+  ContactPerson: string | null;
+  Contact: string | null;
+  Channel: string | null;
+  CategoryId: number | null;
+  Priority: number | null;
+  PipelineId: number | null;
+  StageId: number | null;
+  AssignedTo: number | null;
+  LinkedLeadId: number | null;
+  ResolvedAt: string | null;
+  ClosedAt: string | null;
+  ResolutionId: number | null;
+  Description: string | null;
+  CreatedAt: string;
+  UpdatedAt: string | null;
+  /** Detail only — the list SP does not select these. */
+  CreatedBy?: number | null;
+  EditBy?: number | null;
+}
+
+/** A row of tblTicketActivity. `MetaJSON` carries per-type detail. */
+export interface TicketActivityEntry {
+  Id: number;
+  TicketId: number;
+  UserId: number | null;
+  Type: string;
+  Summary: string | null;
+  MetaJSON: string | null;
+  CreatedAt: string;
+}
+
+/** The lead a ticket was raised from, when there is one. */
+export interface LinkedLead {
+  Id: number;
+  Name: string | null;
+  MobileNo: string | null;
+  Email: string | null;
+  StageId: number | null;
+}
+
+/** sp_FetchTicketDetail returns four result sets; the controller names them. */
+export interface TicketDetail {
+  ticket: Ticket | null;
+  fields: CustomFieldValue[];
+  activity: TicketActivityEntry[];
+  linkedLead: LinkedLead | null;
 }
 
 // ------------------------------------------------------- misc collections
