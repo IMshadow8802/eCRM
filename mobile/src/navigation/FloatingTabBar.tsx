@@ -11,8 +11,8 @@ import { Text } from "../ui";
  * React Navigation has no per-route icon option, and augmenting its options
  * type is not possible (it is a type alias, not an interface).
  *
- * Filled when selected, outlined when not — the weight change is what carries
- * the state alongside the colour, so it still reads without relying on hue.
+ * Filled when selected, outlined when not, so the state reads through weight
+ * as well as colour.
  */
 const TAB_ICONS: Record<
   string,
@@ -24,12 +24,15 @@ const TAB_ICONS: Record<
 };
 
 /**
- * Floating tab bar in the Apple Music shape: a detached rounded bar where every
- * tab shows its icon above its label in an equal-width column, and the selected
- * one is marked by colour rather than by a pill behind it.
+ * Floating tab bar, built on the Apple Music shape: a detached, heavily rounded
+ * bar; every tab shows its icon above its label in an equal-width column; the
+ * selected tab sits inside its own rounded highlight.
  *
- * Solid surface rather than glass — translucency is out per the design rules,
- * and a solid bar keeps the labels legible over whatever is scrolling beneath.
+ * Inverted from Apple's, though. Theirs is a pale bar with a pale highlight and
+ * a coloured selection; ours is a SOLID BRAND bar with a white highlight,
+ * because the page behind it is warm off-white and white cards — a pale bar
+ * disappears into both. Solid also keeps the labels readable over whatever is
+ * scrolling underneath, which a translucent one would not.
  */
 export default function FloatingTabBar({
   state,
@@ -70,18 +73,22 @@ export default function FloatingTabBar({
             accessibilityLabel={label}
             style={styles.item}
           >
-            <MaterialIcons
-              name={focused ? (icons?.on ?? "circle") : (icons?.off ?? "circle")}
-              size={24}
-              color={focused ? colors.primary : colors.textMuted}
-            />
-            <Text
-              variant="caption"
-              color={focused ? "primary" : "textMuted"}
-              numberOfLines={1}
-            >
-              {label}
-            </Text>
+            <View style={[styles.pill, focused && styles.pillActive]}>
+              <MaterialIcons
+                name={
+                  focused ? (icons?.on ?? "circle") : (icons?.off ?? "circle")
+                }
+                size={22}
+                color={focused ? colors.primary : colors.textOnBrand}
+              />
+              <Text
+                variant="caption"
+                color={focused ? "primary" : "textOnBrand"}
+                numberOfLines={1}
+              >
+                {label}
+              </Text>
+            </View>
           </Pressable>
         );
       })}
@@ -97,16 +104,21 @@ const styles = StyleSheet.create({
     height: TAB_BAR_HEIGHT,
     flexDirection: "row",
     alignItems: "center",
+    paddingHorizontal: spacing[2],
     borderRadius: radius["2xl"],
-    backgroundColor: colors.surface,
+    backgroundColor: colors.primary,
     ...shadows.lg,
   },
-  // Equal-width columns, so the row is symmetric whatever the labels say.
-  item: {
-    flex: 1,
+  // Equal-width columns, so the row stays symmetric whatever the labels say.
+  item: { flex: 1, alignItems: "center", justifyContent: "center" },
+  pill: {
     alignItems: "center",
     justifyContent: "center",
     gap: spacing[1],
-    height: "100%",
+    paddingVertical: spacing[2],
+    paddingHorizontal: spacing[3],
+    borderRadius: radius.lg,
+    alignSelf: "stretch",
   },
+  pillActive: { backgroundColor: colors.surface },
 });
