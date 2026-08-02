@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { RefreshControl, SectionList, StyleSheet, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { MaterialIcons } from "@expo/vector-icons";
+import { CloudOff, LayoutDashboard, Mail } from "lucide-react-native";
 
 import type { StackScreenProps } from "@react-navigation/stack";
 
@@ -105,8 +105,7 @@ export default function BoardsScreen({ navigation }: Props) {
                 <View key={w.Id} style={styles.inviteCard}>
                   <View style={styles.inviteTop}>
                     <View style={styles.inviteGlyph}>
-                      <MaterialIcons
-                        name="mail"
+                      <Mail
                         size={20}
                         color={colors.textOnBrand}
                       />
@@ -159,7 +158,7 @@ export default function BoardsScreen({ navigation }: Props) {
         ListEmptyComponent={
           isLoading || pending.length ? null : (
             <EmptyState
-              icon={isError ? "cloud-off" : "dashboard-customize"}
+              icon={isError ? CloudOff : LayoutDashboard}
               title={isError ? "Couldn't load your boards" : "No boards yet"}
               message={
                 isError

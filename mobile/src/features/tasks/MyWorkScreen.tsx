@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { Pressable, RefreshControl, SectionList, StyleSheet, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
-import { MaterialIcons } from "@expo/vector-icons";
+import { ClipboardCheck, CloudOff, Power } from "lucide-react-native";
 import { useNavigation } from "@react-navigation/native";
 import type { StackNavigationProp } from "@react-navigation/stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -104,8 +104,7 @@ export default function MyWorkScreen() {
               pressed && styles.signOutPressed,
             ]}
           >
-            <MaterialIcons
-              name="power-settings-new"
+            <Power
               size={20}
               color={colors.danger}
             />
@@ -170,7 +169,7 @@ export default function MyWorkScreen() {
         ListEmptyComponent={
           isLoading ? null : (
             <EmptyState
-              icon={isError ? "cloud-off" : "check-circle-outline"}
+              icon={isError ? CloudOff : ClipboardCheck}
               title={isError ? "Couldn't load your tasks" : emptyTitle(filter)}
               message={
                 isError ? "Pull down to try again." : emptyMessage(filter)

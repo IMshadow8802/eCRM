@@ -1,5 +1,11 @@
 import { Pressable, StyleSheet, View } from "react-native";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import {
+  ClipboardCheck,
+  Circle,
+  LayoutGrid,
+  UserRound,
+  type LucideIcon,
+} from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 
@@ -12,26 +18,19 @@ import {
 } from "../theme";
 import { Text } from "../ui";
 
-type MCIName = keyof typeof MaterialCommunityIcons.glyphMap;
-
 /**
  * Icons live here rather than in each screen's options: with a custom tab bar
  * React Navigation has no per-route icon option, and augmenting its options
  * type is not possible (it is a type alias, not an interface).
  *
- * MaterialCommunityIcons rather than MaterialIcons, which is what the rest of
- * the app uses: MaterialIcons has no consistent filled/outlined pairs, so
- * "grid-view" had no outline twin and the off state had to reuse the on state.
- * Every pair below is a genuine pair.
- *
- * Filled when selected, outlined when not. With no chip behind the icon, that
- * weight change is what carries the state alongside the colour — so selection
- * still reads for anyone who cannot separate the two hues.
+ * lucide has a single stroked icon per concept rather than filled/outlined
+ * pairs, so selection is carried by colour plus a heavier stroke on the active
+ * tab — which stays legible for anyone who cannot separate the two hues.
  */
-const TAB_ICONS: Record<string, { on: MCIName; off: MCIName }> = {
-  MyWork: { on: "clipboard-check", off: "clipboard-check-outline" },
-  Work: { on: "view-grid", off: "view-grid-outline" },
-  Me: { on: "account-circle", off: "account-circle-outline" },
+const TAB_ICONS: Record<string, LucideIcon> = {
+  MyWork: ClipboardCheck,
+  Work: LayoutGrid,
+  Me: UserRound,
 };
 
 /**
@@ -67,7 +66,7 @@ export default function FloatingTabBar({
         const { options } = descriptors[route.key]!;
         const focused = state.index === index;
         const label = options.title ?? route.name;
-        const icons = TAB_ICONS[route.name];
+        const Icon = TAB_ICONS[route.name] ?? Circle;
 
         const onPress = () => {
           // Emit first: a screen may cancel navigation (scroll-to-top etc).
@@ -91,13 +90,9 @@ export default function FloatingTabBar({
             style={[styles.item, { width: itemWidth }]}
           >
             <View style={styles.stack}>
-              <MaterialCommunityIcons
-                name={
-                  focused
-                    ? (icons?.on ?? "circle-outline")
-                    : (icons?.off ?? "circle-outline")
-                }
+              <Icon
                 size={25}
+                strokeWidth={focused ? 2.4 : 1.8}
                 color={focused ? colors.primary : colors.textMuted}
               />
               <Text

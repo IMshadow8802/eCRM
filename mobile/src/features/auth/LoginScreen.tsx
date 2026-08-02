@@ -9,7 +9,7 @@ import {
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { StatusBar } from "expo-status-bar";
-import { MaterialIcons } from "@expo/vector-icons";
+import { CircleAlert, LayoutDashboard, Lock, User } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { login as loginRequest } from "../../api/authQueries";
@@ -99,8 +99,7 @@ export default function LoginScreen() {
               hides the thing that makes it look good. */}
           <Animated.View entering={FadeInDown.duration(500)} style={styles.head}>
             <View style={styles.mark}>
-              <MaterialIcons
-                name="dashboard"
+              <LayoutDashboard
                 size={26}
                 color={colors.textOnBrand}
               />
@@ -129,7 +128,7 @@ export default function LoginScreen() {
               autoCorrect={false}
               autoComplete="username"
               placeholder="Enter username, email or mobile"
-              leftIcon="person-outline"
+              leftIcon={User}
               editable={!busy}
             />
 
@@ -145,7 +144,7 @@ export default function LoginScreen() {
               autoCapitalize="none"
               autoComplete="password"
               placeholder="Enter password"
-              leftIcon="lock-outline"
+              leftIcon={Lock}
               editable={!busy}
               onSubmitEditing={submit}
               returnKeyType="go"
@@ -153,8 +152,7 @@ export default function LoginScreen() {
 
             {error ? (
               <Animated.View entering={FadeIn.duration(200)} style={styles.error}>
-                <MaterialIcons
-                  name="error-outline"
+                <CircleAlert
                   size={18}
                   color={colors.textOnBrand}
                 />

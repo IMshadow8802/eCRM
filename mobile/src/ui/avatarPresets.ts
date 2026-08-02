@@ -11,13 +11,15 @@
 // Feeding that to <Image source={{uri}}> fails with
 // "no suitable image url loader found for icon:ghost%7cviolet".
 //
-// Mirrors web/src/utils/avatarPresets.js — the colour keys and icon keys MUST
-// stay in step with it, since the same string renders on both clients.
-// The web draws these with lucide-react; the equivalents here come from
-// MaterialCommunityIcons, which covers all 24 without a new dependency.
-import type { MaterialCommunityIcons } from "@expo/vector-icons";
-
-type MCIName = keyof typeof MaterialCommunityIcons.glyphMap;
+// Mirrors web/src/utils/avatarPresets.js EXACTLY — same colour keys, same icon
+// keys, and now the same icon set, since both clients are on lucide. The stored
+// string renders identically on web and mobile with no translation layer.
+import {
+  Anchor, Bird, Bot, Bug, Camera, Cat, Cloud, Coffee, Crown, Diamond, Dog,
+  Fish, Flame, Flower2, Gamepad2, Ghost, Heart, Leaf, Moon, Music, Rocket,
+  Star, Sun, Zap,
+  type LucideIcon,
+} from "lucide-react-native";
 
 export const AVATAR_COLORS: Record<string, string> = {
   violet: "#7C3AED",
@@ -30,39 +32,19 @@ export const AVATAR_COLORS: Record<string, string> = {
   slate: "#475569",
 };
 
-/** lucide key (as stored) -> MaterialCommunityIcons name. */
-export const AVATAR_ICONS: Record<string, MCIName> = {
-  rocket: "rocket",
-  cat: "cat",
-  dog: "dog",
-  star: "star",
-  heart: "heart",
-  flame: "fire",
-  zap: "flash",
-  crown: "crown",
-  ghost: "ghost",
-  bot: "robot",
-  bird: "bird",
-  fish: "fish",
-  leaf: "leaf",
-  flower: "flower",
-  sun: "weather-sunny",
-  moon: "weather-night",
-  cloud: "cloud",
-  coffee: "coffee",
-  camera: "camera",
-  music: "music",
-  game: "gamepad-variant",
-  anchor: "anchor",
-  diamond: "diamond-stone",
-  bug: "bug",
+export const AVATAR_ICONS: Record<string, LucideIcon> = {
+  rocket: Rocket, cat: Cat, dog: Dog, star: Star, heart: Heart, flame: Flame,
+  zap: Zap, crown: Crown, ghost: Ghost, bot: Bot, bird: Bird, fish: Fish,
+  leaf: Leaf, flower: Flower2, sun: Sun, moon: Moon, cloud: Cloud,
+  coffee: Coffee, camera: Camera, music: Music, game: Gamepad2, anchor: Anchor,
+  diamond: Diamond, bug: Bug,
 };
 
 export const colorOf = (key?: string): string =>
   (key && AVATAR_COLORS[key]) || AVATAR_COLORS.violet!;
 
 export type ParsedAvatar =
-  | { kind: "icon"; icon: MCIName; color: string }
+  | { kind: "icon"; Icon: LucideIcon; color: string }
   | { kind: "emoji"; emoji: string }
   | { kind: "color"; color: string }
   | { kind: "image"; uri: string }
@@ -91,9 +73,9 @@ export function parseAvatar(preset?: string | null): ParsedAvatar {
 
   if (kind === "icon") {
     const [iconKey, colorKey] = rest.split("|");
-    const icon = iconKey ? AVATAR_ICONS[iconKey] : undefined;
-    if (!icon) return null;
-    return { kind: "icon", icon, color: colorOf(colorKey) };
+    const Icon = iconKey ? AVATAR_ICONS[iconKey] : undefined;
+    if (!Icon) return null;
+    return { kind: "icon", Icon, color: colorOf(colorKey) };
   }
 
   if (kind === "color") return { kind: "color", color: colorOf(rest) };

@@ -3,7 +3,7 @@ import { Platform, Pressable, StyleSheet, View } from "react-native";
 import DateTimePicker, {
   type DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
-import { MaterialIcons } from "@expo/vector-icons";
+import { Calendar, X } from "lucide-react-native";
 
 import { colors, radius, spacing, CONTROL_HEIGHT } from "../theme";
 import { Text } from "./Text";
@@ -77,7 +77,7 @@ export function DateField({
           disabled && styles.triggerDisabled,
         ]}
       >
-        <MaterialIcons name="event" size={18} color={colors.textMuted} />
+        <Calendar size={18} color={colors.textMuted} />
         <Text
           variant="body"
           color={value ? "text" : "textMuted"}
@@ -87,7 +87,7 @@ export function DateField({
         </Text>
         {value && clearable ? (
           <Pressable onPress={() => onChange(null)} hitSlop={spacing[2]}>
-            <MaterialIcons name="close" size={18} color={colors.textSecondary} />
+            <X size={18} color={colors.textSecondary} />
           </Pressable>
         ) : null}
       </Pressable>

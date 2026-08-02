@@ -1,12 +1,12 @@
 import { Pressable, StyleSheet, View } from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
+import { ArrowLeft, type LucideIcon } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { colors, radius, shadows, spacing } from "../theme";
 import { Text } from "./Text";
 
 export interface ScreenHeaderAction {
-  icon: keyof typeof MaterialIcons.glyphMap;
+  icon: LucideIcon;
   onPress: () => void;
   label: string;
 }
@@ -17,7 +17,7 @@ export interface ScreenHeaderProps {
   onBack?: () => void;
   actions?: ScreenHeaderAction[];
   /** Context glyph beside the title — board type, record kind. */
-  icon?: keyof typeof MaterialIcons.glyphMap;
+  icon?: LucideIcon;
   /** Semantic token for the glyph fill. Defaults to the brand colour. */
   tint?: keyof typeof colors;
 }
@@ -35,7 +35,7 @@ export function ScreenHeader({
   subtitle,
   onBack,
   actions,
-  icon,
+  icon: Icon,
   tint = "primary",
 }: ScreenHeaderProps) {
   const insets = useSafeAreaInsets();
@@ -50,17 +50,16 @@ export function ScreenHeader({
           hitSlop={spacing[2]}
           style={({ pressed }) => [styles.back, pressed && styles.backPressed]}
         >
-          <MaterialIcons
-            name="arrow-back"
+          <ArrowLeft
             size={22}
             color={colors.textOnBrand}
           />
         </Pressable>
       ) : null}
 
-      {icon ? (
+      {Icon ? (
         <View style={[styles.glyph, { backgroundColor: colors[tint] }]}>
-          <MaterialIcons name={icon} size={18} color={colors.textOnBrand} />
+          <Icon size={18} color={colors.textOnBrand} />
         </View>
       ) : null}
 
@@ -90,7 +89,7 @@ export function ScreenHeader({
             pressed && styles.actionPressed,
           ]}
         >
-          <MaterialIcons name={action.icon} size={20} color={colors.text} />
+          <action.icon size={20} color={colors.text} />
         </Pressable>
       ))}
     </View>

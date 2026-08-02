@@ -1,30 +1,37 @@
-import type { MaterialIcons } from "@expo/vector-icons";
+import {
+  File as FileIcon,
+  FileArchive,
+  FileText,
+  Image as ImageIcon,
+  Film,
+  Smartphone,
+  Table,
+  type LucideIcon,
+} from "lucide-react-native";
 
 import { colors } from "../../theme";
-
-type IconName = keyof typeof MaterialIcons.glyphMap;
 
 /** Icon + colour per file kind, so a list of files is scannable at a glance. */
 export function fileMeta(
   fileName: string,
   mimeType: string | null,
-): { icon: IconName; tint: keyof typeof colors } {
+): { Icon: LucideIcon; tint: keyof typeof colors } {
   const mime = mimeType ?? "";
   const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
 
-  if (mime.startsWith("image/")) return { icon: "image", tint: "info" };
-  if (mime.startsWith("video/")) return { icon: "movie", tint: "neutralIcon" };
+  if (mime.startsWith("image/")) return { Icon: ImageIcon, tint: "info" };
+  if (mime.startsWith("video/")) return { Icon: Film, tint: "neutralIcon" };
   if (mime === "application/pdf" || ext === "pdf")
-    return { icon: "picture-as-pdf", tint: "danger" };
+    return { Icon: FileText, tint: "danger" };
   if (["xls", "xlsx", "csv"].includes(ext))
-    return { icon: "table-chart", tint: "success" };
+    return { Icon: Table, tint: "success" };
   if (["doc", "docx"].includes(ext))
-    return { icon: "description", tint: "primary" };
+    return { Icon: FileText, tint: "primary" };
   if (["apk", "aab"].includes(ext))
-    return { icon: "android", tint: "success" };
+    return { Icon: Smartphone, tint: "success" };
   if (["zip", "rar", "7z"].includes(ext))
-    return { icon: "folder-zip", tint: "priorityMedium" };
-  return { icon: "insert-drive-file", tint: "textSecondary" };
+    return { Icon: FileArchive, tint: "priorityMedium" };
+  return { Icon: FileIcon, tint: "textSecondary" };
 }
 
 /** "2.4 MB" — files here run from a few KB to a 200MB build. */

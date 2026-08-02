@@ -25,6 +25,15 @@ module.exports = [
         {
           paths: [
             {
+              name: "@expo/vector-icons",
+              message:
+                "Icons come from lucide-react-native only. The web uses lucide-react with identical names, so a stored icon key renders the same on both clients — mixing sets breaks that.",
+            },
+            {
+              name: "react-native-vector-icons",
+              message: "Icons come from lucide-react-native only.",
+            },
+            {
               name: "react-native",
               importNames: ["Text", "TextInput", "Button", "Alert"],
               message:

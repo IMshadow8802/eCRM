@@ -6,9 +6,10 @@ import {
   type PressableProps,
   type ViewStyle,
 } from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
 
 import { colors, radius, spacing, CONTROL_HEIGHT } from "../theme";
+import type { LucideIcon } from "lucide-react-native";
+
 import { Text } from "./Text";
 
 export type ButtonVariant =
@@ -25,7 +26,7 @@ export interface ButtonProps extends Omit<PressableProps, "style" | "children"> 
   variant?: ButtonVariant;
   size?: ButtonSize;
   loading?: boolean;
-  icon?: keyof typeof MaterialIcons.glyphMap;
+  icon?: LucideIcon;
   fullWidth?: boolean;
   style?: ViewStyle;
 }
@@ -58,7 +59,7 @@ export function Button({
   variant = "primary",
   size = "md",
   loading = false,
-  icon,
+  icon: Icon,
   fullWidth = false,
   disabled,
   style,
@@ -99,12 +100,8 @@ export function Button({
         />
       ) : (
         <View style={styles.content}>
-          {icon ? (
-            <MaterialIcons
-              name={icon}
-              size={size === "sm" ? 16 : 18}
-              color={colors[fg]}
-            />
+          {Icon ? (
+            <Icon size={size === "sm" ? 16 : 18} color={colors[fg]} />
           ) : null}
           <Text variant="button" color={fg} numberOfLines={1}>
             {title}

@@ -1,12 +1,13 @@
 import { StyleSheet, View } from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
+
+import { Inbox, type LucideIcon } from "lucide-react-native";
 
 import { colors, spacing } from "../theme";
 import { Button } from "./Button";
 import { Text } from "./Text";
 
 export interface EmptyStateProps {
-  icon?: keyof typeof MaterialIcons.glyphMap;
+  icon?: LucideIcon;
   title: string;
   message?: string;
   actionLabel?: string;
@@ -14,7 +15,7 @@ export interface EmptyStateProps {
 }
 
 export function EmptyState({
-  icon = "inbox",
+  icon: Icon = Inbox,
   title,
   message,
   actionLabel,
@@ -23,7 +24,7 @@ export function EmptyState({
   return (
     <View style={styles.container}>
       <View style={styles.iconWrap}>
-        <MaterialIcons name={icon} size={28} color={colors.textMuted} />
+        <Icon size={28} color={colors.textMuted} />
       </View>
       <Text variant="h3" align="center">
         {title}

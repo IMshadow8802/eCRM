@@ -1,6 +1,24 @@
 import { memo } from "react";
+import {
+  Ban,
+  Bug,
+  Check,
+  CircleAlert,
+  CircleCheckBig,
+  Clock,
+  Columns3,
+  Flag,
+  FolderOpen,
+  GitBranch,
+  Globe,
+  Layers,
+  ListChecks,
+  Sparkles,
+  Timer,
+  TrendingUp,
+  type LucideIcon,
+} from "lucide-react-native";
 import { Pressable, StyleSheet, View } from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
 
 import type { Task, TaskPriority } from "../../types/api";
 import { colors, radius, shadows, spacing } from "../../theme";
@@ -20,12 +38,12 @@ interface TaskCardProps {
 }
 
 /** Icon comes from the task's type, colour from its priority. */
-const TYPE_ICON: Record<string, keyof typeof MaterialIcons.glyphMap> = {
-  task: "layers",
-  bug: "bug-report",
-  feature: "auto-awesome",
-  improvement: "trending-up",
-  research: "travel-explore",
+const TYPE_ICON: Record<string, LucideIcon> = {
+  task: Layers,
+  bug: Bug,
+  feature: Sparkles,
+  improvement: TrendingUp,
+  research: Globe,
 };
 
 const PRIORITY_INK: Record<TaskPriority, keyof typeof colors> = {
@@ -37,17 +55,17 @@ const PRIORITY_INK: Record<TaskPriority, keyof typeof colors> = {
 
 /** One icon + value pair. Reads faster than a labelled row and packs tighter. */
 function Stat({
-  icon,
+  Icon,
   value,
   tone = "textSecondary",
 }: {
-  icon: keyof typeof MaterialIcons.glyphMap;
+  Icon: LucideIcon;
   value: string;
   tone?: keyof typeof colors;
 }) {
   return (
     <View style={styles.stat}>
-      <MaterialIcons name={icon} size={14} color={colors[tone]} />
+      <Icon size={14} color={colors[tone]} />
       <Text variant="caption" color={tone}>
         {value}
       </Text>
@@ -72,8 +90,8 @@ function TaskCardBase({ task, onPress, showWorkspace = true }: TaskCardProps) {
       ? colors[PRIORITY_INK[priority]]
       : colors.neutralIcon;
 
-  const icon = task.IsCompleted
-    ? "check"
+  const Icon = task.IsCompleted
+    ? Check
     : (TYPE_ICON[task.Type ?? "task"] ?? TYPE_ICON.task!);
 
   const logged = task.LoggedHours ?? 0;
@@ -89,7 +107,7 @@ function TaskCardBase({ task, onPress, showWorkspace = true }: TaskCardProps) {
       <View style={styles.row}>
         {/* Solid fill, white glyph — the colour encodes priority at full strength. */}
         <View style={[styles.glyph, { backgroundColor: ink }]}>
-          <MaterialIcons name={icon} size={20} color={colors.textOnBrand} />
+          <Icon size={20} color={colors.textOnBrand} />
         </View>
 
         <View style={styles.main}>
@@ -104,13 +122,13 @@ function TaskCardBase({ task, onPress, showWorkspace = true }: TaskCardProps) {
           <View style={styles.subRow}>
             {showWorkspace && task.WorkspaceName ? (
               <Stat
-                icon="folder-open"
+                Icon={FolderOpen}
                 value={task.WorkspaceName}
                 tone="textMuted"
               />
             ) : null}
             {task.ColumnTitle ? (
-              <Stat icon="view-week" value={task.ColumnTitle} tone="textMuted" />
+              <Stat Icon={Columns3} value={task.ColumnTitle} tone="textMuted" />
             ) : null}
           </View>
         </View>
@@ -149,17 +167,17 @@ function TaskCardBase({ task, onPress, showWorkspace = true }: TaskCardProps) {
           none of it costs an extra request. */}
       <View style={styles.stats}>
         {task.IsCompleted ? (
-          <Stat icon="task-alt" value="Done" tone="success" />
+          <Stat Icon={CircleCheckBig} value="Done" tone="success" />
         ) : total > 0 ? (
           <Stat
-            icon="checklist"
+            Icon={ListChecks}
             value={`${done} of ${total}`}
             tone="textSecondary"
           />
         ) : null}
         {logged > 0 ? (
           <Stat
-            icon="timer"
+            Icon={Timer}
             value={
               estimated > 0
                 ? `${hours(logged)} / ${hours(estimated)}`
@@ -169,20 +187,20 @@ function TaskCardBase({ task, onPress, showWorkspace = true }: TaskCardProps) {
           />
         ) : null}
         {subTasks > 0 ? (
-          <Stat icon="account-tree" value={String(subTasks)} />
+          <Stat Icon={GitBranch} value={String(subTasks)} />
         ) : null}
         {blockers > 0 ? (
-          <Stat icon="block" value={String(blockers)} tone="danger" />
+          <Stat Icon={Ban} value={String(blockers)} tone="danger" />
         ) : null}
         {priority ? (
-          <Stat icon="flag" value={priority} tone={PRIORITY_INK[priority]} />
+          <Stat Icon={Flag} value={priority} tone={PRIORITY_INK[priority]} />
         ) : null}
 
         <View style={styles.spacer} />
 
         {due ? (
           <Stat
-            icon={overdue ? "error-outline" : "schedule"}
+            Icon={overdue ? CircleAlert : Clock}
             value={due}
             tone={overdue ? "danger" : "textSecondary"}
           />

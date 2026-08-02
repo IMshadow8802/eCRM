@@ -1,5 +1,4 @@
 import { Image, StyleSheet, View } from "react-native";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { colors, radius } from "../theme";
 import { Text } from "./Text";
@@ -39,8 +38,7 @@ export function Avatar({ name, uri, size = 32 }: AvatarProps) {
   if (preset?.kind === "icon") {
     return (
       <View style={[styles.center, box, { backgroundColor: preset.color }]}>
-        <MaterialCommunityIcons
-          name={preset.icon}
+        <preset.Icon
           size={Math.round(size * 0.55)}
           color={colors.textOnBrand}
         />

@@ -7,7 +7,7 @@ import {
   type TextInputProps,
   type ViewStyle,
 } from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
+import { Eye, EyeOff, type LucideIcon } from "lucide-react-native";
 
 import {
   colors,
@@ -24,7 +24,7 @@ export interface InputProps extends Omit<TextInputProps, "style"> {
   error?: string | null;
   hint?: string;
   required?: boolean;
-  leftIcon?: keyof typeof MaterialIcons.glyphMap;
+  leftIcon?: LucideIcon;
   /** Renders the show/hide eye and manages secureTextEntry internally. */
   password?: boolean;
   /**
@@ -52,7 +52,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
     error,
     hint,
     required,
-    leftIcon,
+    leftIcon: LeftIcon,
     password = false,
     tone = "default",
     bare = false,
@@ -91,10 +91,8 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
           !editable && !onBrand && styles.fieldDisabled,
         ]}
       >
-        {leftIcon ? (
-          <MaterialIcons
-            name={leftIcon}
-            size={18}
+        {LeftIcon ? (
+          <LeftIcon             size={18}
             color={colors.textMuted}
             style={styles.leftIcon}
           />
@@ -124,11 +122,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
             hitSlop={spacing[2]}
             accessibilityLabel={reveal ? "Hide password" : "Show password"}
           >
-            <MaterialIcons
-              name={reveal ? "visibility-off" : "visibility"}
-              size={20}
-              color={colors.textSecondary}
-            />
+            {reveal ? <EyeOff size={20} color={colors.textSecondary} /> : <Eye size={20} color={colors.textSecondary} />}
           </Pressable>
         ) : null}
       </View>

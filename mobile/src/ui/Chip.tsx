@@ -1,5 +1,6 @@
 import { StyleSheet, View } from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
+
+import type { LucideIcon } from "lucide-react-native";
 
 import { colors, radius, spacing } from "../theme";
 import { Text } from "./Text";
@@ -27,14 +28,14 @@ const FG: Record<ChipTone, keyof typeof colors> = {
 export interface ChipProps {
   label: string;
   tone?: ChipTone;
-  icon?: keyof typeof MaterialIcons.glyphMap;
+  icon?: LucideIcon;
 }
 
 /** Small status pill — priority, due state, counts, member roles. */
-export function Chip({ label, tone = "neutral", icon }: ChipProps) {
+export function Chip({ label, tone = "neutral", icon: Icon }: ChipProps) {
   return (
     <View style={[styles.chip, { backgroundColor: BG[tone] }]}>
-      {icon ? <MaterialIcons name={icon} size={12} color={colors[FG[tone]]} /> : null}
+      {Icon ? <Icon size={12} color={colors[FG[tone]]} /> : null}
       <Text variant="caption" color={FG[tone]}>
         {label}
       </Text>

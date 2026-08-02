@@ -7,7 +7,21 @@ import {
   View,
 } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { MaterialIcons } from "@expo/vector-icons";
+import {
+  ArrowUp,
+  Calendar,
+  CircleAlert,
+  CircleCheck,
+  Circle,
+  Eye,
+  Flag,
+  Lock,
+  MessageCircle,
+  Plus,
+  Trash2,
+  UserX,
+  type LucideIcon,
+} from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { StackScreenProps } from "@react-navigation/stack";
 
@@ -130,7 +144,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
       <Screen>
         <ScreenHeader title="Task" onBack={navigation.goBack} />
         <View style={styles.centre}>
-          <MaterialIcons name="lock" size={30} color={colors.textMuted} />
+          <Lock size={30} color={colors.textMuted} />
           <Text variant="h3">Task not available</Text>
           <Text variant="secondary" align="center">
             It may have been deleted, or you no longer have access to its board.
@@ -184,11 +198,11 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
               a fifth of the height. */}
           <View style={styles.metaRow}>
             {task.Priority ? (
-              <Meta icon="flag" text={task.Priority} tone="priorityHigh" />
+              <Meta Icon={Flag} text={task.Priority} tone="priorityHigh" />
             ) : null}
             {due ? (
               <Meta
-                icon={overdue ? "error-outline" : "event"}
+                Icon={overdue ? CircleAlert : Calendar}
                 text={due}
                 tone={overdue ? "danger" : "textSecondary"}
               />
@@ -202,7 +216,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
                 ))}
               </View>
             ) : (
-              <Meta icon="person-off" text="Unassigned" tone="textMuted" />
+              <Meta Icon={UserX} text="Unassigned" tone="textMuted" />
             )}
           </View>
 
@@ -258,13 +272,11 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
                   pressed && styles.itemRowPressed,
                 ]}
               >
-                <MaterialIcons
-                  name={
-                    item.IsCompleted ? "check-circle" : "radio-button-unchecked"
-                  }
-                  size={22}
-                  color={item.IsCompleted ? colors.success : colors.borderStrong}
-                />
+                {item.IsCompleted ? (
+                  <CircleCheck size={22} color={colors.success} />
+                ) : (
+                  <Circle size={22} color={colors.borderStrong} />
+                )}
                 <Text
                   variant="body"
                   style={[styles.flex, item.IsCompleted && styles.struck]}
@@ -283,8 +295,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
                     }
                   >
                     {/* A cross means dismiss; this destroys the item. */}
-                    <MaterialIcons
-                      name="delete-outline"
+                    <Trash2
                       size={19}
                       color={colors.danger}
                     />
@@ -329,7 +340,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
 
       {showFab ? (
         <Fab
-          icon={tab === "checklist" ? "add" : "chat"}
+          icon={tab === "checklist" ? Plus : MessageCircle}
           accessibilityLabel={
             tab === "checklist" ? "Add a checklist item" : "Write a comment"
           }
@@ -341,7 +352,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
         <View
           style={[styles.readOnly, { paddingBottom: insets.bottom + spacing[2] }]}
         >
-          <MaterialIcons name="visibility" size={15} color={colors.textMuted} />
+          <Eye size={15} color={colors.textMuted} />
           <Text variant="caption" color="textMuted" style={styles.flex}>
             View only — ask an owner to assign you this task to work on it.
           </Text>
@@ -364,17 +375,17 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
 }
 
 function Meta({
-  icon,
+  Icon,
   text,
   tone,
 }: {
-  icon: keyof typeof MaterialIcons.glyphMap;
+  Icon: LucideIcon;
   text: string;
   tone: keyof typeof colors;
 }) {
   return (
     <View style={styles.meta}>
-      <MaterialIcons name={icon} size={14} color={colors[tone]} />
+      <Icon size={14} color={colors[tone]} />
       <Text variant="caption" color={tone}>
         {text}
       </Text>

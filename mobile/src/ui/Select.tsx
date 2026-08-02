@@ -1,6 +1,8 @@
 import { useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
+import { Check, ChevronDown,
+  type LucideIcon,
+} from "lucide-react-native";
 
 import { colors, radius, spacing, CONTROL_HEIGHT, HIT_TARGET } from "../theme";
 import { Sheet, type SheetRef } from "./Sheet";
@@ -10,7 +12,7 @@ export interface SelectOption<T> {
   value: T;
   label: string;
   sublabel?: string;
-  icon?: keyof typeof MaterialIcons.glyphMap;
+  icon?: LucideIcon;
 }
 
 export interface SelectProps<T> {
@@ -107,7 +109,7 @@ export function Select<T extends string | number>({
         >
           {summary ?? placeholder}
         </Text>
-        <MaterialIcons name="expand-more" size={20} color={colors.textSecondary} />
+        <ChevronDown size={20} color={colors.textSecondary} />
       </Pressable>
 
       {error ? <Text variant="caption" color="danger">{error}</Text> : null}
@@ -123,11 +125,7 @@ export function Select<T extends string | number>({
                 onPress={() => pick(option)}
               >
                 {option.icon ? (
-                  <MaterialIcons
-                    name={option.icon}
-                    size={18}
-                    color={colors.textSecondary}
-                  />
+                  <option.icon size={18} color={colors.textSecondary} />
                 ) : null}
                 <View style={styles.optionText}>
                   <Text variant="body">{option.label}</Text>
@@ -136,7 +134,7 @@ export function Select<T extends string | number>({
                   ) : null}
                 </View>
                 {checked ? (
-                  <MaterialIcons name="check" size={20} color={colors.primary} />
+                  <Check size={20} color={colors.primary} />
                 ) : null}
               </Pressable>
             );

@@ -1,7 +1,19 @@
 import { useMemo } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
-import { MaterialIcons } from "@expo/vector-icons";
+import {
+  Briefcase,
+  Building2,
+  CircleCheckBig,
+  ClipboardList,
+  Contact,
+  LayoutDashboard,
+  LogOut,
+  Mail,
+  ShieldCheck,
+  Smartphone,
+  type LucideIcon,
+} from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { fetchTasks } from "../../api/taskQueries";
@@ -62,22 +74,22 @@ export default function MeScreen() {
           <Text variant="h1">{user?.FullName ?? "—"}</Text>
           {user?.JobTitle ? (
             <View style={styles.stat}>
-              <MaterialIcons name="work-outline" size={14} color={colors.textSecondary} />
+              <Briefcase size={14} color={colors.textSecondary} />
               <Text variant="secondary">{user.JobTitle}</Text>
             </View>
           ) : null}
           {user?.IsAdmin ? (
             <View style={styles.adminBadge}>
-              <MaterialIcons name="verified-user" size={13} color={colors.textOnBrand} />
+              <ShieldCheck size={13} color={colors.textOnBrand} />
               <Text variant="caption" color="textOnBrand">Administrator</Text>
             </View>
           ) : null}
         </View>
 
         <View style={styles.statRow}>
-          <StatTile icon="assignment-ind" tint="primary" value={stats.assigned} label="Assigned" />
-          <StatTile icon="task-alt" tint="success" value={stats.done} label="Completed" />
-          <StatTile icon="dashboard" tint="info" value={stats.boards} label="Boards" />
+          <StatTile Icon={ClipboardList} tint="primary" value={stats.assigned} label="Assigned" />
+          <StatTile Icon={CircleCheckBig} tint="success" value={stats.done} label="Completed" />
+          <StatTile Icon={LayoutDashboard} tint="info" value={stats.boards} label="Boards" />
         </View>
 
         <View style={styles.group}>
@@ -86,16 +98,16 @@ export default function MeScreen() {
           </Text>
           <View style={styles.card}>
             {user?.Email ? (
-              <Row icon="mail-outline" tint="info" label="Email" value={user.Email} />
+              <Row Icon={Mail} tint="info" label="Email" value={user.Email} />
             ) : null}
             {user?.Mobile ? (
-              <Row icon="phone-iphone" tint="success" label="Mobile" value={user.Mobile} />
+              <Row Icon={Smartphone} tint="success" label="Mobile" value={user.Mobile} />
             ) : null}
             {user?.Username ? (
-              <Row icon="badge" tint="primary" label="Username" value={user.Username} last={!company?.CompName} />
+              <Row Icon={Contact} tint="primary" label="Username" value={user.Username} last={!company?.CompName} />
             ) : null}
             {company?.CompName ? (
-              <Row icon="business" tint="neutralIcon" label="Company" value={company.CompName} last />
+              <Row Icon={Building2} tint="neutralIcon" label="Company" value={company.CompName} last />
             ) : null}
           </View>
         </View>
@@ -103,7 +115,7 @@ export default function MeScreen() {
         <Button
           title="Sign out"
           variant="danger"
-          icon="logout"
+          icon={LogOut}
           onPress={() => signOut.setConfirming(true)}
           fullWidth
         />
@@ -131,12 +143,12 @@ export default function MeScreen() {
 }
 
 function StatTile({
-  icon,
+  Icon,
   tint,
   value,
   label,
 }: {
-  icon: keyof typeof MaterialIcons.glyphMap;
+  Icon: LucideIcon;
   tint: keyof typeof colors;
   value: number;
   label: string;
@@ -144,7 +156,7 @@ function StatTile({
   return (
     <View style={styles.tile}>
       <View style={[styles.tileGlyph, { backgroundColor: colors[tint] }]}>
-        <MaterialIcons name={icon} size={18} color={colors.textOnBrand} />
+        <Icon size={18} color={colors.textOnBrand} />
       </View>
       <Text variant="h2">{value}</Text>
       <Text variant="caption" color="textMuted">{label}</Text>
@@ -153,13 +165,13 @@ function StatTile({
 }
 
 function Row({
-  icon,
+  Icon,
   tint,
   label,
   value,
   last = false,
 }: {
-  icon: keyof typeof MaterialIcons.glyphMap;
+  Icon: LucideIcon;
   tint: keyof typeof colors;
   label: string;
   value: string;
@@ -168,7 +180,7 @@ function Row({
   return (
     <View style={[styles.row, !last && styles.rowDivider]}>
       <View style={[styles.rowGlyph, { backgroundColor: colors[tint] }]}>
-        <MaterialIcons name={icon} size={16} color={colors.textOnBrand} />
+        <Icon size={16} color={colors.textOnBrand} />
       </View>
       <View style={styles.rowText}>
         <Text variant="caption" color="textMuted">{label}</Text>

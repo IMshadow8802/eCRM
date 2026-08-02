@@ -1,12 +1,13 @@
 import { ActivityIndicator, Pressable, StyleSheet } from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import type { LucideIcon } from "lucide-react-native";
 
 import { colors, radius, shadows, spacing } from "../theme";
 import { Text } from "./Text";
 
 export interface FabProps {
-  icon: keyof typeof MaterialIcons.glyphMap;
+  icon: LucideIcon;
   onPress: () => void;
   label?: string;
   /** Accessible name. Required when there is no visible label. */
@@ -26,7 +27,7 @@ export interface FabProps {
  * draws its nav buttons.
  */
 export function Fab({
-  icon,
+  icon: Icon,
   onPress,
   label,
   accessibilityLabel,
@@ -51,7 +52,7 @@ export function Fab({
       {loading ? (
         <ActivityIndicator size="small" color={colors.textOnBrand} />
       ) : (
-        <MaterialIcons name={icon} size={24} color={colors.textOnBrand} />
+        <Icon size={24} color={colors.textOnBrand} />
       )}
       {label ? (
         <Text variant="button" color="textOnBrand">

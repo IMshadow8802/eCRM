@@ -1,7 +1,14 @@
 import { useMemo } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
-import { MaterialIcons } from "@expo/vector-icons";
+import {
+  ChevronRight,
+  Headset,
+  LayoutDashboard,
+  Lock,
+  TrendingUp,
+  type LucideIcon,
+} from "lucide-react-native";
 import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { StackNavigationProp } from "@react-navigation/stack";
@@ -23,7 +30,7 @@ type Nav = StackNavigationProp<RootStackParamList>;
 
 interface HubEntry {
   key: string;
-  icon: keyof typeof MaterialIcons.glyphMap;
+  Icon: LucideIcon;
   tint: keyof typeof colors;
   label: string;
   detail: string;
@@ -72,7 +79,7 @@ export default function WorkHubScreen() {
       entries: [
         {
           key: "boards",
-          icon: "dashboard",
+          Icon: LayoutDashboard,
           tint: "primary",
           label: "Boards",
           detail: boardCount
@@ -89,7 +96,7 @@ export default function WorkHubScreen() {
       entries: [
         {
           key: "complaints",
-          icon: "support-agent",
+          Icon: Headset,
           tint: "danger",
           label: "Complaints",
           detail: "Log and track customer issues",
@@ -109,7 +116,7 @@ export default function WorkHubScreen() {
       entries: [
         {
           key: "leads",
-          icon: "trending-up",
+          Icon: TrendingUp,
           tint: "success",
           label: "Leads",
           detail: "Pipeline, calls and follow-ups",
@@ -167,11 +174,7 @@ export default function WorkHubScreen() {
                   <View
                     style={[styles.glyph, { backgroundColor: colors[entry.tint] }]}
                   >
-                    <MaterialIcons
-                      name={entry.icon}
-                      size={20}
-                      color={colors.textOnBrand}
-                    />
+                    <entry.Icon size={20} color={colors.textOnBrand} />
                   </View>
 
                   <View style={styles.rowText}>
@@ -190,8 +193,7 @@ export default function WorkHubScreen() {
                     </Text>
                   </View>
 
-                  <MaterialIcons
-                    name="chevron-right"
+                  <ChevronRight
                     size={22}
                     color={colors.textMuted}
                   />
@@ -203,7 +205,7 @@ export default function WorkHubScreen() {
 
         {!visible.length ? (
           <EmptyState
-            icon="lock"
+            icon={Lock}
             title="Nothing here yet"
             message="You do not have access to any modules. Ask an administrator to grant you one."
           />

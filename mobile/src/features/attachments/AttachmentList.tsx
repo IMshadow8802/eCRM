@@ -7,7 +7,16 @@ import {
   View,
 } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { MaterialIcons } from "@expo/vector-icons";
+import {
+  Camera,
+  CircleAlert,
+  Eye,
+  FolderOpen,
+  Images,
+  Plus,
+  Trash2,
+  type LucideIcon,
+} from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 
@@ -147,18 +156,14 @@ export default function AttachmentList({
           )
         }
         renderItem={({ item: a }) => {
-          const meta = fileMeta(a.FileName, a.MimeType);
+          const { Icon, tint } = fileMeta(a.FileName, a.MimeType);
           return (
             <Pressable
               style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
               onPress={() => setViewing(a)}
             >
-              <View style={[styles.glyph, { backgroundColor: colors[meta.tint] }]}>
-                <MaterialIcons
-                  name={meta.icon}
-                  size={18}
-                  color={colors.textOnBrand}
-                />
+              <View style={[styles.glyph, { backgroundColor: colors[tint] }]}>
+                <Icon size={18} color={colors.textOnBrand} />
               </View>
 
               <View style={styles.rowText}>
@@ -175,15 +180,13 @@ export default function AttachmentList({
               {canManage ? (
                 <Pressable hitSlop={spacing[2]} onPress={() => setPendingDelete(a)}>
                   {/* A cross means dismiss; this destroys the file. */}
-                  <MaterialIcons
-                    name="delete-outline"
+                  <Trash2
                     size={19}
                     color={colors.danger}
                   />
                 </Pressable>
               ) : (
-                <MaterialIcons
-                  name="visibility"
+                <Eye
                   size={18}
                   color={colors.textMuted}
                 />
@@ -195,7 +198,7 @@ export default function AttachmentList({
 
       {error ? (
         <View style={styles.error}>
-          <MaterialIcons name="error-outline" size={16} color={colors.danger} />
+          <CircleAlert size={16} color={colors.danger} />
           <Text variant="caption" color="danger" style={styles.errorText}>
             {error}
           </Text>
@@ -204,7 +207,7 @@ export default function AttachmentList({
 
       {canManage ? (
         <Fab
-          icon="add"
+          icon={Plus}
           accessibilityLabel="Add a file"
           loading={upload.isPending}
           onPress={() => sheetRef.current?.present()}
@@ -212,9 +215,9 @@ export default function AttachmentList({
       ) : null}
 
       <Sheet ref={sheetRef} title="Add a file">
-        <PickOption icon="photo-camera" label="Take a photo" onPress={takePhoto} />
-        <PickOption icon="photo-library" label="Choose from library" onPress={pickImage} />
-        <PickOption icon="folder-open" label="Choose a file" onPress={pickDocument} />
+        <PickOption Icon={Camera} label="Take a photo" onPress={takePhoto} />
+        <PickOption Icon={Images} label="Choose from library" onPress={pickImage} />
+        <PickOption Icon={FolderOpen} label="Choose a file" onPress={pickDocument} />
       </Sheet>
 
       <FileViewer attachment={viewing} onClose={() => setViewing(null)} />
@@ -236,18 +239,18 @@ export default function AttachmentList({
 }
 
 function PickOption({
-  icon,
+  Icon,
   label,
   onPress,
 }: {
-  icon: keyof typeof MaterialIcons.glyphMap;
+  Icon: LucideIcon;
   label: string;
   onPress: () => void;
 }) {
   return (
     <Pressable style={styles.pickOption} onPress={onPress}>
       <View style={styles.pickGlyph}>
-        <MaterialIcons name={icon} size={20} color={colors.textOnBrand} />
+        <Icon size={20} color={colors.textOnBrand} />
       </View>
       <Text variant="body">{label}</Text>
     </Pressable>

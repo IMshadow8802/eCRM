@@ -1,6 +1,18 @@
 import { memo } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
+import {
+  Archive,
+  ChevronRight,
+  Eye,
+  Lock,
+  Pencil,
+  Rocket,
+  Shield,
+  Star,
+  User,
+  Users,
+  type LucideIcon,
+} from "lucide-react-native";
 
 import type { Workspace, WorkspaceRole, WorkspaceType } from "../../types/api";
 import { colors, radius, shadows, spacing } from "../../theme";
@@ -9,22 +21,22 @@ import { Text } from "../../ui";
 /** Each workspace type gets its own glyph and colour so the list scans fast. */
 const TYPE_META: Record<
   WorkspaceType,
-  { icon: keyof typeof MaterialIcons.glyphMap; color: keyof typeof colors; label: string }
+  { Icon: LucideIcon; color: keyof typeof colors; label: string }
 > = {
-  personal: { icon: "lock", color: "neutralIcon", label: "Personal" },
-  shared: { icon: "groups", color: "primary", label: "Shared" },
-  project: { icon: "rocket-launch", color: "info", label: "Project" },
+  personal: { Icon: Lock, color: "neutralIcon", label: "Personal" },
+  shared: { Icon: Users, color: "primary", label: "Shared" },
+  project: { Icon: Rocket, color: "info", label: "Project" },
 };
 
 /** Role decides what you can do, so it is worth showing on the card. */
 const ROLE_META: Record<
   WorkspaceRole,
-  { icon: keyof typeof MaterialIcons.glyphMap; tone: keyof typeof colors }
+  { Icon: LucideIcon; tone: keyof typeof colors }
 > = {
-  owner: { icon: "star", tone: "priorityMedium" },
-  manager: { icon: "shield", tone: "primary" },
-  member: { icon: "edit", tone: "textSecondary" },
-  viewer: { icon: "visibility", tone: "textMuted" },
+  owner: { Icon: Star, tone: "priorityMedium" },
+  manager: { Icon: Shield, tone: "primary" },
+  member: { Icon: Pencil, tone: "textSecondary" },
+  viewer: { Icon: Eye, tone: "textMuted" },
 };
 
 interface WorkspaceCardProps {
@@ -43,7 +55,7 @@ function WorkspaceCardBase({ workspace, onPress }: WorkspaceCardProps) {
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
       <View style={[styles.glyph, { backgroundColor: colors[type.color] }]}>
-        <MaterialIcons name={type.icon} size={22} color={colors.textOnBrand} />
+        <type.Icon size={22} color={colors.textOnBrand} />
       </View>
 
       <View style={styles.main}>
@@ -52,8 +64,7 @@ function WorkspaceCardBase({ workspace, onPress }: WorkspaceCardProps) {
             {workspace.Name}
           </Text>
           {workspace.IsArchived ? (
-            <MaterialIcons
-              name="inventory-2"
+            <Archive
               size={16}
               color={colors.textMuted}
             />
@@ -62,11 +73,7 @@ function WorkspaceCardBase({ workspace, onPress }: WorkspaceCardProps) {
 
         <View style={styles.stats}>
           <View style={styles.stat}>
-            <MaterialIcons
-              name={type.icon}
-              size={13}
-              color={colors[type.color]}
-            />
+            <type.Icon size={13} color={colors[type.color]} />
             <Text variant="caption" color={type.color}>
               {type.label}
             </Text>
@@ -75,7 +82,7 @@ function WorkspaceCardBase({ workspace, onPress }: WorkspaceCardProps) {
           {/* Personal workspaces are owner-only — a member count there is noise. */}
           {workspace.Type !== "personal" ? (
             <View style={styles.stat}>
-              <MaterialIcons name="person" size={13} color={colors.textMuted} />
+              <User size={13} color={colors.textMuted} />
               <Text variant="caption" color="textMuted">
                 {members} member{members === 1 ? "" : "s"}
               </Text>
@@ -84,11 +91,7 @@ function WorkspaceCardBase({ workspace, onPress }: WorkspaceCardProps) {
 
           {role && workspace.MyRole ? (
             <View style={styles.stat}>
-              <MaterialIcons
-                name={role.icon}
-                size={13}
-                color={colors[role.tone]}
-              />
+              <role.Icon size={13} color={colors[role.tone]} />
               <Text variant="caption" color={role.tone}>
                 {workspace.MyRole}
               </Text>
@@ -97,7 +100,7 @@ function WorkspaceCardBase({ workspace, onPress }: WorkspaceCardProps) {
         </View>
       </View>
 
-      <MaterialIcons name="chevron-right" size={22} color={colors.textMuted} />
+      <ChevronRight size={22} color={colors.textMuted} />
     </Pressable>
   );
 }

@@ -8,7 +8,14 @@ import {
   StyleSheet,
   View,
 } from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
+// `File` is aliased: lucide exports a File icon and expo-file-system exports a
+// File class, and both are needed in this module.
+import {
+  CloudOff,
+  File as FileGlyph,
+  Share2,
+  X,
+} from "lucide-react-native";
 import { WebView } from "react-native-webview";
 import * as Sharing from "expo-sharing";
 import { File, Paths } from "expo-file-system";
@@ -112,13 +119,13 @@ export default function FileViewer({ attachment, onClose }: FileViewerProps) {
       <View style={styles.root}>
         <View style={[styles.bar, { paddingTop: insets.top + spacing[2] }]}>
           <Pressable onPress={onClose} hitSlop={spacing[2]} style={styles.iconButton}>
-            <MaterialIcons name="close" size={24} color={colors.text} />
+            <X size={24} color={colors.text} />
           </Pressable>
           <Text variant="h3" numberOfLines={1} style={styles.title}>
             {attachment?.FileName ?? ""}
           </Text>
           <Pressable onPress={share} hitSlop={spacing[2]} style={styles.iconButton}>
-            <MaterialIcons name="ios-share" size={22} color={colors.text} />
+            <Share2 size={22} color={colors.text} />
           </Pressable>
         </View>
 
@@ -127,7 +134,7 @@ export default function FileViewer({ attachment, onClose }: FileViewerProps) {
 
           {!loading && failed ? (
             <View style={styles.fallback}>
-              <MaterialIcons name="cloud-off" size={30} color={colors.textMuted} />
+              <CloudOff size={30} color={colors.textMuted} />
               <Text variant="h3">Couldn&apos;t open this file</Text>
               <Text variant="secondary" align="center">
                 Check your connection and try again.
@@ -151,16 +158,14 @@ export default function FileViewer({ attachment, onClose }: FileViewerProps) {
 
           {!loading && !failed && uri && !canRenderInApp ? (
             <View style={styles.fallback}>
-              <MaterialIcons
-                name="insert-drive-file"
-                size={30}
+              <FileGlyph size={30}
                 color={colors.textMuted}
               />
               <Text variant="h3">No preview for this type</Text>
               <Text variant="secondary" align="center">
                 Open it in another app to view or install it.
               </Text>
-              <Button title="Open in…" icon="ios-share" onPress={share} />
+              <Button title="Open in…" icon={Share2} onPress={share} />
             </View>
           ) : null}
         </View>

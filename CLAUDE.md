@@ -105,7 +105,7 @@ the live DB (`mcp__sqlserver-ecrm__read_query` on `sys.sql_modules`).
 ```bash
 pnpm start                    # Expo dev server (dev-client)
 pnpm typecheck                # tsc --noEmit — must be clean before any commit
-pnpm lint                     # eslint — enforces the design-system rules (§9.3)
+pnpm lint                     # eslint — enforces the design-system rules (§9.3, §9.4)
 pnpm exec expo prebuild --clean   # regenerate android/ + ios/ from app.config.ts
 pnpm ios --device             # run on a connected iPhone
 pnpm android                  # run on a connected Android device/emulator
@@ -358,7 +358,35 @@ screen, not a dialog. Nothing else in `tokens.ts` carries alpha, and a new
 `Text`/`TextInput`/`Button`/`Alert` from `react-native` is banned outside
 `src/ui/`. `pnpm lint` must pass. Only `src/theme/` and `src/ui/` are exempt.
 
-### 9.4 Shared components — build it once, in `src/ui/`
+### 9.4 Icons — lucide only
+
+**`lucide-react-native` is the only icon library.** `@expo/vector-icons` and
+`react-native-vector-icons` are removed and banned by eslint.
+
+The web already uses `lucide-react`, so both clients share icon *names*. That
+matters beyond consistency: `tblUser.Avatar` stores presets like
+`icon:ghost|violet`, and with one shared set those render identically on web and
+mobile with no translation table between them.
+
+Icons are **components, not name strings**. A prop that takes an icon is typed
+`LucideIcon` and rendered as a component:
+
+```tsx
+import { Trash2, type LucideIcon } from "lucide-react-native";
+
+interface Props { icon: LucideIcon }
+function Row({ icon: Icon }: Props) {   // capitalise it — JSX needs that
+  return <Icon size={18} color={colors.danger} />;
+}
+```
+
+lucide has one stroked icon per concept rather than filled/outlined pairs, so
+selected states use colour plus `strokeWidth`, not a different glyph.
+
+It depends on `react-native-svg` — a **native module**, so adding it needed a
+rebuild, and any future icon work does not.
+
+### 9.5 Shared components — build it once, in `src/ui/`
 
 `Avatar · Button · Card · Chip · DateField · Dialog · Divider · EmptyState ·
 Input · Screen · Select · Sheet · Text`
@@ -376,7 +404,7 @@ building the same thing separately is the failure this prevents.
 - `DateField` formats local Y/M/D, **never `toISOString()`** — that converts to
   UTC and rolls the date back a day for every user in IST.
 
-### 9.5 Drag and drop
+### 9.6 Drag and drop
 
 There is no `@dnd-kit` on React Native; gestures go through
 `react-native-gesture-handler` + `react-native-reanimated`.
@@ -389,7 +417,7 @@ There is no `@dnd-kit` on React Native; gestures go through
   `Sheet` → `moveTaskColumn`. Same endpoint, same `change_status` gate, far
   better on a phone.
 
-### 9.6 Standing constraints
+### 9.7 Standing constraints
 
 - **No test suite on mobile** (decided 2026-08-02). §0.4 binds `backend/src`
   and `web/src` only. `pnpm typecheck` + `pnpm lint` are the gate instead.

@@ -1,5 +1,5 @@
 import { StyleSheet, View } from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
+import { Construction } from "lucide-react-native";
 import type { StackScreenProps } from "@react-navigation/stack";
 
 import type { RootStackParamList } from "../../navigation/RootNavigator";
@@ -23,7 +23,7 @@ export default function ComingSoonScreen({ route, navigation }: Props) {
       <ScreenHeader title={title} onBack={navigation.goBack} />
       <View style={styles.body}>
         <View style={styles.glyph}>
-          <MaterialIcons name="construction" size={30} color={colors.primary} />
+          <Construction size={30} color={colors.primary} />
         </View>
         <Text variant="h2" align="center">
           {title} is on the way
