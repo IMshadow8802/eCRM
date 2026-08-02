@@ -85,6 +85,7 @@ export default function FloatingTabBar({
                 variant="caption"
                 color={focused ? "primary" : "textOnBrand"}
                 numberOfLines={1}
+                style={styles.label}
               >
                 {label}
               </Text>
@@ -104,21 +105,31 @@ const styles = StyleSheet.create({
     height: TAB_BAR_HEIGHT,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing[2],
+    padding: spacing[1],
     borderRadius: radius["2xl"],
     backgroundColor: colors.primary,
     ...shadows.lg,
   },
-  // Equal-width columns, so the row stays symmetric whatever the labels say.
-  item: { flex: 1, alignItems: "center", justifyContent: "center" },
+  /**
+   * Genuinely equal thirds. `flex: 1` alone is not enough — flexBasis defaults
+   * to `auto`, so each item floors at its content width and the longest label
+   * ("My Work") steals space from the others. flexBasis 0 + minWidth 0 makes
+   * the columns size purely from the split, and the labels truncate instead.
+   */
+  item: {
+    flexGrow: 1,
+    flexBasis: 0,
+    minWidth: 0,
+    alignSelf: "stretch",
+  },
   pill: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
     gap: spacing[1],
-    paddingVertical: spacing[2],
-    paddingHorizontal: spacing[3],
+    paddingHorizontal: spacing[2],
     borderRadius: radius.lg,
-    alignSelf: "stretch",
   },
   pillActive: { backgroundColor: colors.surface },
+  label: { maxWidth: "100%" },
 });
