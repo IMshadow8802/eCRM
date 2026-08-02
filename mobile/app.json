@@ -9,11 +9,6 @@
     "developmentClient": {
       "silentLaunch": true
     },
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.shadowider.eCRM"
@@ -41,6 +36,14 @@
             "./assets/fonts/Poppins-Bold.ttf",
             "./assets/fonts/Poppins-Black.ttf"
           ]
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
         }
       ]
     ]
