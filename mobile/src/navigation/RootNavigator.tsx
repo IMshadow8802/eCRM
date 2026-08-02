@@ -1,4 +1,3 @@
-import { StyleSheet } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -43,16 +42,19 @@ function Tabs() {
         // <PageHeader>, so it scrolls with the content instead of sitting in a
         // fixed chrome bar — see src/ui/PageHeader.tsx.
         headerShown: false,
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.textMuted,
+        // Solid brand bar. Inactive uses a solid lighter brand shade rather
+        // than a translucent white, per the no-transparency rule.
+        tabBarActiveTintColor: colors.textOnBrand,
+        tabBarInactiveTintColor: colors.textOnBrandMuted,
         tabBarLabelStyle: {
-          fontFamily: fontFamily.medium,
+          // Regular, not the app's Medium baseline: white on a saturated fill
+          // optically gains weight, and at 11px Medium reads as bold.
+          fontFamily: fontFamily.regular,
           fontSize: fontSize.xs,
         },
         tabBarStyle: {
-          backgroundColor: colors.surface,
-          borderTopColor: colors.divider,
-          borderTopWidth: StyleSheet.hairlineWidth,
+          backgroundColor: colors.primary,
+          borderTopWidth: 0,
         },
         tabBarIcon: ({ color, size }) => (
           <MaterialIcons name={TAB_ICONS[route.name]} size={size} color={color} />
