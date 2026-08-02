@@ -8,8 +8,7 @@ import MyWorkScreen from "../features/tasks/MyWorkScreen";
 import BoardsScreen from "../features/workspaces/BoardsScreen";
 import MeScreen from "../features/profile/MeScreen";
 import useAuthStore from "../stores/useAuthStore";
-import theme from "../constants/theme";
-import { getFontFamily } from "../constants/fonts";
+import { colors, fontFamily, fontSize } from "../theme";
 
 export type RootStackParamList = {
   Login: undefined;
@@ -37,14 +36,14 @@ function Tabs() {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerTitleStyle: {
-          fontFamily: getFontFamily("semibold"),
-          color: theme.colors.gray[900],
+          fontFamily: fontFamily.semibold,
+          color: colors.text,
         },
-        tabBarActiveTintColor: theme.colors.primary.brand,
-        tabBarInactiveTintColor: theme.colors.gray[400],
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textMuted,
         tabBarLabelStyle: {
-          fontFamily: getFontFamily("medium"),
-          fontSize: 11,
+          fontFamily: fontFamily.medium,
+          fontSize: fontSize.xs,
         },
         tabBarIcon: ({ color, size }) => (
           <MaterialIcons name={TAB_ICONS[route.name]} size={size} color={color} />

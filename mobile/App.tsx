@@ -1,14 +1,15 @@
 import { useEffect } from "react";
-import { AppState, type AppStateStatus, Platform } from "react-native";
+import { AppState, type AppStateStatus, Platform, StyleSheet } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { QueryClientProvider, focusManager } from "@tanstack/react-query";
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 
 import { queryClient } from "./src/api/queryClient";
 import RootNavigator from "./src/navigation/RootNavigator";
-import { useAppFonts } from "./src/constants/fonts";
+import { useAppFonts } from "./src/theme";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -35,11 +36,17 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <SafeAreaProvider>
-        <GestureHandlerRootView style={{ flex: 1 }}>
-          <RootNavigator />
-          <StatusBar style="dark" />
+        <GestureHandlerRootView style={styles.root}>
+          {/* Required by @gorhom/bottom-sheet — every Sheet is presented
+              imperatively through this provider, so it must wrap the navigator. */}
+          <BottomSheetModalProvider>
+            <RootNavigator />
+            <StatusBar style="dark" />
+          </BottomSheetModalProvider>
         </GestureHandlerRootView>
       </SafeAreaProvider>
     </QueryClientProvider>
   );
 }
+
+const styles = StyleSheet.create({ root: { flex: 1 } });
