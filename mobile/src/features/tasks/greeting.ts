@@ -5,12 +5,15 @@
  * greeting is about the person holding the phone, not about the database.
  */
 export function greetingFor(now = new Date()): { text: string; emoji: string } {
+  // Always the wave — it reads as a greeting. Weather/time emoji just look like
+  // a forecast sitting next to someone's name.
   const hour = now.getHours();
-  if (hour < 5) return { text: "Working late", emoji: "🌙" };
-  if (hour < 12) return { text: "Good morning", emoji: "☀️" };
-  if (hour < 17) return { text: "Good afternoon", emoji: "🌤️" };
-  if (hour < 21) return { text: "Good evening", emoji: "🌆" };
-  return { text: "Good night", emoji: "🌙" };
+  const emoji = "👋";
+  if (hour < 5) return { text: "Working late", emoji };
+  if (hour < 12) return { text: "Good morning", emoji };
+  if (hour < 17) return { text: "Good afternoon", emoji };
+  if (hour < 21) return { text: "Good evening", emoji };
+  return { text: "Good night", emoji };
 }
 
 /** "Saturday, 2 August" — the long form reads better under a big greeting. */

@@ -21,11 +21,11 @@ interface TaskCardProps {
 
 /** Icon comes from the task's type, colour from its priority. */
 const TYPE_ICON: Record<string, keyof typeof MaterialIcons.glyphMap> = {
-  task: "check-circle-outline",
+  task: "layers",
   bug: "bug-report",
   feature: "auto-awesome",
   improvement: "trending-up",
-  research: "search",
+  research: "travel-explore",
 };
 
 const PRIORITY_INK: Record<TaskPriority, keyof typeof colors> = {
@@ -62,117 +62,101 @@ function TaskCardBase({ task, onPress, showWorkspace = true }: TaskCardProps) {
       : colors.neutralSoft;
 
   const icon = task.IsCompleted
-    ? "check-circle"
+    ? "check"
     : (TYPE_ICON[task.Type ?? "task"] ?? TYPE_ICON.task!);
+
+  // One quiet line instead of a row of boxes. Chips everywhere is what makes a
+  // card look busy; muted text with a leading glyph carries the same
+  // information and lets the title stay the loudest thing on the card.
+  const metaParts: string[] = [];
+  if (showWorkspace && task.WorkspaceName) metaParts.push(task.WorkspaceName);
+  if (total > 0) metaParts.push(`${done} of ${total}`);
 
   return (
     <Pressable
       onPress={() => onPress(task)}
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
-      {/* Priority stripe down the edge — colour reads before any text does. */}
-      <View style={[styles.stripe, { backgroundColor: ink }]} />
-
-      <View style={styles.body}>
-        <View style={styles.top}>
-          <View style={[styles.iconTile, { backgroundColor: wash }]}>
-            <MaterialIcons name={icon} size={20} color={ink} />
-          </View>
-
-          <View style={styles.titleBlock}>
-            <Text
-              variant="h3"
-              numberOfLines={2}
-              style={task.IsCompleted ? styles.doneText : undefined}
-            >
-              {task.Title}
-            </Text>
-            {showWorkspace && task.WorkspaceName ? (
-              <View style={styles.workspace}>
-                <MaterialIcons
-                  name="folder-open"
-                  size={12}
-                  color={colors.textMuted}
-                />
-                <Text variant="caption" color="textMuted" numberOfLines={1}>
-                  {task.WorkspaceName}
-                </Text>
-              </View>
-            ) : null}
-          </View>
+      <View style={styles.row}>
+        <View style={[styles.glyph, { backgroundColor: wash }]}>
+          <MaterialIcons name={icon} size={20} color={ink} />
         </View>
 
-        {/* Checklist is the completion model, so this bar is real progress —
-            not a Progress field somebody has to remember to update. */}
-        {total > 0 ? (
-          <View style={styles.progressRow}>
-            <View style={styles.track}>
-              <View
-                style={[
-                  styles.fill,
-                  { width: `${Math.round(pct * 100)}%`, backgroundColor: ink },
-                ]}
-              />
-            </View>
-            <Text variant="caption" color="textSecondary">
-              {done}/{total}
-            </Text>
-          </View>
-        ) : null}
+        <View style={styles.main}>
+          <Text
+            variant="h3"
+            numberOfLines={2}
+            style={task.IsCompleted ? styles.doneText : undefined}
+          >
+            {task.Title}
+          </Text>
 
-        <View style={styles.meta}>
-          {due ? (
+          {metaParts.length ? (
+            <Text variant="caption" color="textMuted" numberOfLines={1}>
+              {metaParts.join("  ·  ")}
+            </Text>
+          ) : null}
+        </View>
+
+        <View style={styles.assignees}>
+          {assignees.slice(0, 2).map((a, i) => (
             <View
-              style={[
-                styles.pill,
-                { backgroundColor: overdue ? colors.dangerSoft : colors.surfaceSunken },
-              ]}
+              key={a.UserId}
+              style={[styles.avatarSlot, i > 0 && styles.avatarOverlap]}
             >
+              <Avatar name={a.FullName} uri={a.Avatar} size={26} />
+            </View>
+          ))}
+          {assignees.length > 2 ? (
+            <View style={[styles.avatarSlot, styles.avatarOverlap, styles.more]}>
+              <Text variant="caption" color="textSecondary">
+                +{assignees.length - 2}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      </View>
+
+      {/* Hairline progress, flush to the card's lower edge — reads as a state
+          indicator rather than as another widget competing for attention. */}
+      {total > 0 && !task.IsCompleted ? (
+        <View style={styles.track}>
+          <View
+            style={[
+              styles.fill,
+              { width: `${Math.round(pct * 100)}%`, backgroundColor: ink },
+            ]}
+          />
+        </View>
+      ) : null}
+
+      {due || task.IsBlocked ? (
+        <View style={styles.footer}>
+          {due ? (
+            <View style={styles.footerItem}>
               <MaterialIcons
                 name={overdue ? "error-outline" : "schedule"}
                 size={13}
-                color={overdue ? colors.danger : colors.textSecondary}
+                color={overdue ? colors.danger : colors.textMuted}
               />
               <Text
                 variant="caption"
-                color={overdue ? "danger" : "textSecondary"}
+                color={overdue ? "danger" : "textMuted"}
               >
                 {due}
               </Text>
             </View>
           ) : null}
-
           {task.IsBlocked ? (
-            <View style={[styles.pill, { backgroundColor: colors.dangerSoft }]}>
+            <View style={styles.footerItem}>
               <MaterialIcons name="block" size={13} color={colors.danger} />
               <Text variant="caption" color="danger">
                 Blocked
               </Text>
             </View>
           ) : null}
-
-          <View style={styles.spacer} />
-
-          {/* Stacked and overlapping — four separate avatars would eat the row. */}
-          <View style={styles.assignees}>
-            {assignees.slice(0, 3).map((a, i) => (
-              <View
-                key={a.UserId}
-                style={[styles.avatarSlot, i > 0 && styles.avatarOverlap]}
-              >
-                <Avatar name={a.FullName} uri={a.Avatar} size={26} />
-              </View>
-            ))}
-            {assignees.length > 3 ? (
-              <View style={[styles.avatarSlot, styles.avatarOverlap, styles.more]}>
-                <Text variant="caption" color="textSecondary">
-                  +{assignees.length - 3}
-                </Text>
-              </View>
-            ) : null}
-          </View>
         </View>
-      </View>
+      ) : null}
     </Pressable>
   );
 }
@@ -183,50 +167,23 @@ export default TaskCard;
 
 const styles = StyleSheet.create({
   card: {
-    flexDirection: "row",
     backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    overflow: "hidden",
+    borderRadius: radius.xl,
+    padding: spacing[4],
+    gap: spacing[3],
     ...shadows.md,
   },
-  pressed: { transform: [{ scale: 0.985 }], opacity: 0.95 },
-  stripe: { width: 4 },
-  body: { flex: 1, padding: spacing[4], gap: spacing[3] },
-  top: { flexDirection: "row", alignItems: "flex-start", gap: spacing[3] },
-  iconTile: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.md,
+  pressed: { transform: [{ scale: 0.985 }], opacity: 0.96 },
+  row: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
+  glyph: {
+    width: 42,
+    height: 42,
+    borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",
   },
-  titleBlock: { flex: 1, gap: spacing[1] },
+  main: { flex: 1, gap: spacing[1] },
   doneText: { textDecorationLine: "line-through", color: colors.textMuted },
-  workspace: { flexDirection: "row", alignItems: "center", gap: spacing[1] },
-  progressRow: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
-  track: {
-    flex: 1,
-    height: 6,
-    borderRadius: radius.full,
-    backgroundColor: colors.surfaceSunken,
-    overflow: "hidden",
-  },
-  fill: { height: "100%", borderRadius: radius.full },
-  meta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[2],
-    flexWrap: "wrap",
-  },
-  pill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[1],
-    paddingHorizontal: spacing[2],
-    paddingVertical: spacing[1],
-    borderRadius: radius.full,
-  },
-  spacer: { flex: 1 },
   assignees: { flexDirection: "row", alignItems: "center" },
   avatarSlot: {
     borderRadius: radius.full,
@@ -242,4 +199,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  track: {
+    height: 3,
+    borderRadius: radius.full,
+    backgroundColor: colors.surfaceSunken,
+    overflow: "hidden",
+  },
+  fill: { height: "100%", borderRadius: radius.full },
+  footer: { flexDirection: "row", alignItems: "center", gap: spacing[4] },
+  footerItem: { flexDirection: "row", alignItems: "center", gap: spacing[1] },
 });
