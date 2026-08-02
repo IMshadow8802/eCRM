@@ -11,6 +11,11 @@
 import { colors } from "./tokens";
 
 export const fontFamily = {
+  /**
+   * Poppins-Regular (400) is loaded but no variant uses it — the app's baseline
+   * weight is Medium (500). Kept available for anything that genuinely needs to
+   * recede further than `secondary` does.
+   */
   regular: "Poppins-Regular",
   medium: "Poppins-Medium",
   semibold: "Poppins-SemiBold",
@@ -66,24 +71,27 @@ export const typography = {
     lineHeight: 22,
     color: colors.text,
   },
-  /** Default running text. */
+  /** Default running text. Medium (500) is the app-wide baseline weight. */
   body: {
     fontSize: fontSize.base,
-    fontFamily: fontFamily.regular,
+    fontFamily: fontFamily.medium,
     lineHeight: 22,
     color: colors.text,
   },
-  /** Body text that needs emphasis without being a heading. */
+  /**
+   * Body text that needs emphasis without being a heading. Semibold, because
+   * body is already Medium — Medium-on-Medium would read as no emphasis.
+   */
   bodyStrong: {
     fontSize: fontSize.base,
-    fontFamily: fontFamily.medium,
+    fontFamily: fontFamily.semibold,
     lineHeight: 22,
     color: colors.text,
   },
   /** Supporting text under a title — metadata, timestamps, counts. */
   secondary: {
     fontSize: fontSize.sm,
-    fontFamily: fontFamily.regular,
+    fontFamily: fontFamily.medium,
     lineHeight: 18,
     color: colors.textSecondary,
   },
