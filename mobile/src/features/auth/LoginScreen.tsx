@@ -128,7 +128,7 @@ export default function LoginScreen() {
               autoCapitalize="none"
               autoCorrect={false}
               autoComplete="username"
-              placeholder="ayush · you@company.com"
+              placeholder="Enter username, email or mobile"
               leftIcon="person-outline"
               editable={!busy}
             />
@@ -144,7 +144,7 @@ export default function LoginScreen() {
               password
               autoCapitalize="none"
               autoComplete="password"
-              placeholder="Your password"
+              placeholder="Enter password"
               leftIcon="lock-outline"
               editable={!busy}
               onSubmitEditing={submit}
@@ -173,7 +173,6 @@ export default function LoginScreen() {
               variant="onBrand"
               onPress={submit}
               loading={busy}
-              size="lg"
               fullWidth
               style={styles.submit}
             />
