@@ -38,3 +38,10 @@ yarn-error.*
 
 andrroid/
  ios/
+
+# Native projects — Continuous Native Generation (CNG).
+# `expo prebuild` / EAS Build regenerate these from app.json on every build, so
+# committing them means app.json's orientation/icon/plugins silently stop
+# applying (expo-doctor flags exactly this). Never commit them back.
+/android
+/ios

@@ -27,6 +27,7 @@ Always `pnpm`, never `npm`. npm corrupts the lockfile. Applies to `web/`, `backe
 
 ### 0.4 Test-first — every code change ships with tests
 - No change in `backend/src/` or `web/src/` ships without tests proving the changed behaviour (features, bug fixes, refactors).
+- **`mobile/` is exempt** (decided 2026-08-02) — no test suite there. Its gate is `pnpm typecheck` + `pnpm lint`, both of which must be clean. See §9.6.
 - New behaviour → happy path + ≥1 failure/edge. Bug fix → a regression test that would have failed before the fix (flag it when reporting).
 - Files you modify must reach **≥80% line/branch coverage**. Global floor 60%.
 - Never silence tests (`.only`, `.skip`, `xit`, exclude patterns). Fix the code or the test.
@@ -102,9 +103,16 @@ the live DB (`mcp__sqlserver-ecrm__read_query` on `sys.sql_modules`).
 
 ### mobile/
 ```bash
-pnpm start                    # Expo dev server
-pnpm android | pnpm ios       # run on device/simulator
+pnpm start                    # Expo dev server (dev-client)
+pnpm typecheck                # tsc --noEmit — must be clean before any commit
+pnpm lint                     # eslint — enforces the design-system rules (§9.3, §9.4)
+pnpm exec expo prebuild --clean   # regenerate android/ + ios/ from app.config.ts
+pnpm ios --device             # run on a connected iPhone
+pnpm android                  # run on a connected Android device/emulator
+pnpm apk                      # cd android && ./gradlew assembleRelease
 ```
+Mobile is **TypeScript**, has **no test suite** (see §0.4), and does **not use
+EAS**. Full detail in §9.
 
 ---
 
@@ -114,7 +122,7 @@ pnpm android | pnpm ios       # run on device/simulator
 - **Request path (backend):** route → controller → `database.executeStoredProcedure(name, params)` → SQL Server → `responseHelper` → client.
 - **State:** Zustand + persistence (web: `localStorage`, mobile: `AsyncStorage`). Key stores: `useAuthStore` (auth, user, permissions, menuRights, API base URL), `useWorkspaceStore`, `useTaskStore`, `useKanbanStore`.
 - **API:** Axios instance with interceptors — injects the JWT, handles 401 (redirect via `utils/redirectToLogin.js`; auth-endpoint 401s skipped via `utils/authRedirectGuard.js`).
-- **API base URL:** prod `https://prdinfotech.in/CRM`; dev proxies `/api/*` → `http://localhost:5001`.
+- **API base URL:** prod `https://shadowcodes.in/CRM` (`prdinfotech.in` is dead — do not reintroduce it); web dev proxies `/api/*` → `http://localhost:5001`, mobile overrides via `EXPO_PUBLIC_API_BASE_URL`.
 
 ### Standard API response
 ```json
@@ -254,4 +262,209 @@ sql/              # NNN_*.sql — pending, user-applied scripts only (see §0.2)
     ```
     Gotchas: **`nginx -s reload` is mandatory** — editing the conf alone does nothing (a stale reload was the one 404 we hit). `location ^~ /CRM/` (prefix, high-priority) beats the SPA's `location /`. The deploy dir `…/shadowcodes.in/CRM` sits inside the web docroot but the `^~` proxy location overrides static file handling, so it's fine. Public API base for the **web frontend** = `https://shadowcodes.in/CRM` (not the dead `prdinfotech.in/CRM`).
 - **Web**: Vite build (`pnpm build` → `dist-web/`), base + router basename `/CRM/`. Deployed on a **separate IIS server** under `/CRM/` — upload the contents of `dist-web/`; the bundled `public/web.config` does the SPA URL-rewrite (`→ /CRM/index.html`) so deep-link refreshes don't 404. API base is dynamic: dev → Vite proxy to `localhost:5001`; prod → `API_BASE_URL` in `useAuthStore` (`https://shadowcodes.in/CRM`, the Linux API box — separate from the IIS web host).
-- **Mobile**: EAS Build; OTA via Expo Updates.
+- **Mobile**: **no EAS, no OTA.** Local builds only — `expo prebuild` then Xcode
+  / Gradle. See §9.
+
+---
+
+## 9. Mobile (`mobile/`)
+
+React Native + Expo SDK 57, **TypeScript**, rebuilt from scratch on
+`feat/mobile-rewrite` (2026-08-02). Spec:
+`docs/superpowers/specs/2026-08-02-mobile-task-app-rewrite-design.md`.
+
+Scope order: **Phase A** full task management ✅ → **Phase B** support/complaints
+✅ → **Phase C** sales leads (next). Admin CRUD
+(Users/Teams/Projects/Settings/Reports) is **permanently web-only**, not
+deferred.
+
+**Config engine on mobile** (`src/api/configQueries.ts`): lookups, pipelines +
+stages, and custom-field definitions are read-only here — configuring them is
+admin desk work and stays on the web. `Entity`/`Kind` discriminate, so Phase C
+reuses the same fetchers with `Entity: 'lead'`.
+
+**Ticket lifecycle is derived, never hardcoded** (`features/support/ticketHelpers.ts`).
+Stage names are per-company and editable, so `stageRoles()` resolves Resolved /
+Closed / Rejected from `StageType` + `SortOrder`: first `won` = Resolved
+(requires a `ResolutionId`), last `won` = Closed, `lost` = Rejected. Matching on
+the word "Resolved" breaks the moment someone renames a stage. Every transition
+goes through `moveTicketStage`; `saveTicket` sends `StageId: null` so the SP's
+`ISNULL(@StageId, StageId)` keeps the ticket where it is.
+
+**Known gap — do not build call logging on a ticket.** `sp_LogCall` accepts a
+`TicketId` but writes no ticket activity, and `sp_FetchCalls` filters by
+`LeadId` only. A call logged against a complaint is invisible everywhere. Fix
+the backend first, or the button is write-only.
+
+### 9.1 Build & release — no EAS, no app.json
+
+**Never use EAS. Never create `app.json` or `eas.json`.** Native config lives in
+**`app.config.ts`** and nowhere else — TypeScript, so `ExpoConfig` catches a
+mistyped key like `bundleIdentifer`, which as JSON would silently do nothing.
+
+**Which config files are TypeScript, and why not all of them:**
+`app.config.ts` is TS. `babel.config.js` and `metro.config.js` **must stay
+`.js`** — Babel and Metro bootstrap the toolchain that compiles TypeScript, so
+their own config is read before any TS transform exists. `eslint.config.js`
+stays `.js` too: TS configs there need `jiti` as an extra dependency and buy
+nothing, since the config has no meaningful types.
+
+`android/` and `ios/` are **build output, not source** — gitignored and
+regenerated. Anything hand-edited inside them is destroyed by the next
+prebuild, so every native setting (permissions, plugins, icons, bundle ids,
+`Info.plist` strings) must be expressed in `app.config.ts`.
+
+```bash
+pnpm exec expo prebuild --clean          # regenerate android/ + ios/
+pnpm ios --device                        # run on a connected iPhone
+cd android && ./gradlew assembleRelease  # release APK  (or: pnpm apk)
+```
+
+Adding a native library: `pnpm exec expo install <pkg>` (never plain `pnpm add`
+for anything with native code — it skips the SDK version pin), add its config
+plugin + permission strings to `app.config.ts`, then `expo prebuild --clean`.
+
+### 9.2 API layer — one file per domain, no exceptions
+
+**No screen or component may call `apiClient` directly.** Every request goes
+through a named fetcher in `mobile/src/api/`. A screen needing a new endpoint
+gets a new fetcher, not an inline `post`.
+
+Payloads are copied **verbatim from the controller signature** in
+`backend/src/controllers/`, never written from memory. Response types live in
+`src/types/api.ts`, written from `INFORMATION_SCHEMA` + the SP `SELECT` lists.
+They are a **copy** of the backend contract — if a controller changes shape,
+this file must change with it; nothing enforces that automatically.
+
+`src/api/` must stay free of store imports. The auth store pushes the token
+down via `setAuthToken`; the client never reaches up. Otherwise the cycle
+`store → client → store` breaks Metro.
+
+**The web has the same problem in reverse** — its 42 task/workspace endpoints
+are inlined across 10 files. Extracting `web/src/api/taskQueries.js` +
+`workspaceQueries.js` to match is agreed follow-on work.
+
+### 9.3 Theming & typography — the tokens are the only source
+
+`src/theme/` holds every colour, size, space, radius and shadow.
+**Nothing else may define one.** No component writes `fontSize: 14`,
+`#3F4FAF`, or `padding: 12` — it reads a token.
+
+- `tokens.ts` — `palette` (raw) → `colors` (semantic). Components use
+  **semantic** names (`colors.danger`), never `palette.red[600]`, so a colour
+  can be retuned in one line.
+- `typography.ts` — the type scale. Text picks a **variant**
+  (`<Text variant="h2">`), never a size + weight. Weight *is* the font family:
+  React Native cannot synthesise weights for a custom font, so
+  `fontWeight: "600"` on Inter silently renders regular on Android. The family
+  is **Inter** (since 2026-08-02) — drawn for UI at small sizes, unlike the
+  geometric Poppins it replaced. Its tall x-height is why the size scale sits a
+  step below the old one; do not "restore" the larger numbers.
+- `spacing` is a 4px grid — `spacing[3]` is 12.
+
+**Solid colours only — no translucency.** No `rgba()` washes, no `opacity` to
+dim a control, no frosted panels. A translucent surface changes colour
+depending on what is behind it and reads as washed out; a pressed or disabled
+state done with `opacity` looks faded rather than pressed. Use a solid token
+for every state instead — `surfacePressed`, `primaryDim`, `dangerDim`,
+`disabledBg`. Press feedback may also use `transform: scale`, which is not a
+colour.
+
+**The one exception is `colors.overlay`**, the modal scrim, because a dialog
+backdrop has to show the screen behind it — an opaque one is a different
+screen, not a dialog. Nothing else in `tokens.ts` carries alpha, and a new
+`rgba()` there needs the same kind of justification.
+
+**Enforced by eslint, not by good intentions** (`eslint.config.js`):
+`react-native/no-color-literals` is an error, and importing
+`Text`/`TextInput`/`Button`/`Alert` from `react-native` is banned outside
+`src/ui/`. `pnpm lint` must pass. Only `src/theme/` and `src/ui/` are exempt.
+
+### 9.4 Icons — lucide only
+
+**`lucide-react-native` is the only icon library.** `@expo/vector-icons` and
+`react-native-vector-icons` are removed and banned by eslint.
+
+The web already uses `lucide-react`, so both clients share icon *names*. That
+matters beyond consistency: `tblUser.Avatar` stores presets like
+`icon:ghost|violet`, and with one shared set those render identically on web and
+mobile with no translation table between them.
+
+Icons are **components, not name strings**. A prop that takes an icon is typed
+`LucideIcon` and rendered as a component:
+
+```tsx
+import { Trash2, type LucideIcon } from "lucide-react-native";
+
+interface Props { icon: LucideIcon }
+function Row({ icon: Icon }: Props) {   // capitalise it — JSX needs that
+  return <Icon size={18} color={colors.danger} />;
+}
+```
+
+lucide has one stroked icon per concept rather than filled/outlined pairs, so
+selected states use colour plus `strokeWidth`, not a different glyph.
+
+It depends on `react-native-svg` — a **native module**, so adding it needed a
+rebuild, and any future icon work does not.
+
+### 9.5 Shared components — build it once, in `src/ui/`
+
+`ActionSheet · Avatar · Button · Card · Chip · ComposeSheet · DateField ·
+Dialog · Divider · EmptyState · Fab · Input · Screen · ScreenHeader ·
+Segmented · Select · Sheet · Text`
+
+If a screen needs a widget that is not there, **add it there**. Two screens
+building the same thing separately is the failure this prevents.
+
+- **One** bottom sheet (`Sheet`, `@gorhom/bottom-sheet`) — every picker, action
+  menu and "move to…" list uses it. Presented imperatively via a ref so a
+  parent re-render cannot reopen it. `ActionSheet` (a list of actions) and
+  `ComposeSheet` (a one-to-three-field form) are the two shapes built on it;
+  reach for those before writing a bare `Sheet`.
+- **Never build a menu with `.push()`.** `react-hooks/refs` fails the build
+  when a handler closing over a ref is passed into a function call during
+  render — build the array as a literal with conditional spreads, and gate its
+  visibility on a boolean, not on `list.length`.
+- **One** confirm dialog (`Dialog`). **Never use RN's `Alert`** — it cannot be
+  styled, cannot show a loading state, and blocks the JS thread on Android.
+- **One** picker (`Select`, single + multi) and **one** date picker
+  (`DateField`, handles the iOS/Android modal difference internally).
+- `DateField` formats local Y/M/D, **never `toISOString()`** — that converts to
+  UTC and rolls the date back a day for every user in IST.
+
+### 9.6 Drag and drop
+
+There is no `@dnd-kit` on React Native; gestures go through
+`react-native-gesture-handler` + `react-native-reanimated`.
+
+- **Within a list** (checklist items, column order): use
+  `react-native-reorderable-list`. Actively maintained, works with Reanimated 4.
+  Avoid `react-native-draggable-flatlist` — stale, and it breaks on Reanimated 4.
+- **Between kanban columns**: **do not build drag.** Four columns on a 360px
+  screen makes a drop target a few pixels wide. Use long-press → "Move to…"
+  `Sheet` → `moveTaskColumn` / `moveTicketStage`. Same endpoint, same gate, far
+  better on a phone.
+- **Both boards share `ui/BoardColumns`** — the horizontal snapping strip.
+  Column width and gap must agree exactly or every swipe lands a few pixels off
+  and the drift compounds; that arithmetic lives there and nowhere else.
+- **Mobile has no table view.** The web splits Support into a Tickets table and
+  a TicketBoard; mobile ships only the board. A table on 360px is a worse list,
+  and the board already answers what a phone gets asked — what is where, and
+  move this one along.
+
+### 9.7 Standing constraints
+
+- **No test suite on mobile** (decided 2026-08-02). §0.4 binds `backend/src`
+  and `web/src` only. `pnpm typecheck` + `pnpm lint` are the gate instead.
+  Reactotron (dev-only, stripped from release bundles) shows every API call
+  live — that is how payload drift is caught.
+- **No realtime, no push, no offline** in Phase A. Freshness comes from
+  refetch-on-app-focus, wired via `AppState` → React Query's `focusManager`
+  (its default is browser-only and does nothing on native).
+- API base is `https://shadowcodes.in/CRM`, overridable via
+  `EXPO_PUBLIC_API_BASE_URL` in `mobile/.env.local` for pointing at a local
+  backend — use the LAN IP, not `localhost` (on a phone that is the phone).
+- Attachments: `Entity` must be appended to `FormData` **before** the file part
+  — multer reads `req.body.Entity` while the stream is parsed, so file-first
+  lands the upload in `uploads/misc/`.
