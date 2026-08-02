@@ -9,7 +9,13 @@ import { fetchWorkspaces } from "../../api/workspaceQueries";
 import useAuthStore from "../../stores/useAuthStore";
 import { isAssignee } from "../tasks/taskHelpers";
 import { useSignOut } from "../auth/useSignOut";
-import { colors, radius, shadows, spacing } from "../../theme";
+import {
+  colors,
+  radius,
+  shadows,
+  spacing,
+  TAB_BAR_CLEARANCE,
+} from "../../theme";
 import { Avatar, Button, Dialog, Screen, Text } from "../../ui";
 
 export default function MeScreen() {
@@ -44,9 +50,7 @@ export default function MeScreen() {
   return (
     <Screen>
       <View style={[styles.header, { paddingTop: insets.top + spacing[3] }]}>
-        <Text variant="h1" color="textOnBrand">
-          Profile
-        </Text>
+        <Text variant="h1">Profile</Text>
       </View>
 
       <ScrollView
@@ -177,13 +181,15 @@ function Row({
 const styles = StyleSheet.create({
   header: {
     paddingHorizontal: spacing[5],
-    paddingBottom: spacing[4],
-    backgroundColor: colors.primary,
+    paddingBottom: spacing[3],
+    backgroundColor: colors.background,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.divider,
   },
   scroll: {
     padding: spacing[5],
     gap: spacing[5],
-    paddingBottom: spacing[10],
+    paddingBottom: TAB_BAR_CLEARANCE,
   },
   identity: { alignItems: "center", gap: spacing[2] },
   stat: { flexDirection: "row", alignItems: "center", gap: spacing[1] },

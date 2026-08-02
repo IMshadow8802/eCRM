@@ -6,7 +6,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { fetchWorkspaces, respondInvite } from "../../api/workspaceQueries";
 import type { Workspace } from "../../types/api";
-import { colors, radius, shadows, spacing } from "../../theme";
+import {
+  colors,
+  radius,
+  shadows,
+  spacing,
+  TAB_BAR_CLEARANCE,
+} from "../../theme";
 import { Button, EmptyState, Screen, Text } from "../../ui";
 import { WorkspaceCard } from "./WorkspaceCard";
 
@@ -63,17 +69,11 @@ export default function BoardsScreen() {
   return (
     <Screen>
       <View style={[styles.header, { paddingTop: insets.top + spacing[3] }]}>
-        <Text variant="h1" color="textOnBrand">
-          Boards
-        </Text>
+        <Text variant="h1">Boards</Text>
         <View style={styles.headerStats}>
           <View style={styles.stat}>
-            <MaterialIcons
-              name="dashboard"
-              size={14}
-              color={colors.textOnBrand}
-            />
-            <Text variant="secondary" color="textOnBrandMuted">
+            <MaterialIcons name="dashboard" size={14} color={colors.primary} />
+            <Text variant="secondary">
               {activeCount} board{activeCount === 1 ? "" : "s"}
             </Text>
           </View>
@@ -82,9 +82,9 @@ export default function BoardsScreen() {
               <MaterialIcons
                 name="mark-email-unread"
                 size={14}
-                color={colors.textOnBrand}
+                color={colors.accent}
               />
-              <Text variant="secondary" color="textOnBrand">
+              <Text variant="secondary" color="accent">
                 {pending.length} invite{pending.length === 1 ? "" : "s"}
               </Text>
             </View>
@@ -196,13 +196,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[5],
     paddingBottom: spacing[3],
     gap: spacing[2],
-    backgroundColor: colors.primary,
+    backgroundColor: colors.background,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.divider,
   },
   headerStats: { flexDirection: "row", alignItems: "center", gap: spacing[4] },
   stat: { flexDirection: "row", alignItems: "center", gap: spacing[1] },
   // No top padding — the section header below provides the gap. Stacking
   // header padding, list padding and section padding gave 44px of dead space.
-  content: { paddingBottom: spacing[10] },
+  content: { paddingBottom: TAB_BAR_CLEARANCE },
   contentEmpty: { flexGrow: 1 },
   sectionTitle: {
     paddingHorizontal: spacing[5],

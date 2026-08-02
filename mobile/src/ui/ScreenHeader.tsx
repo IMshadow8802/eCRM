@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, View } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { colors, radius, spacing } from "../theme";
+import { colors, radius, shadows, spacing } from "../theme";
 import { Text } from "./Text";
 
 export interface ScreenHeaderAction {
@@ -50,7 +50,11 @@ export function ScreenHeader({
           hitSlop={spacing[2]}
           style={({ pressed }) => [styles.back, pressed && styles.backPressed]}
         >
-          <MaterialIcons name="arrow-back" size={22} color={colors.primary} />
+          <MaterialIcons
+            name="arrow-back"
+            size={22}
+            color={colors.textOnBrand}
+          />
         </Pressable>
       ) : null}
 
@@ -61,13 +65,13 @@ export function ScreenHeader({
       ) : null}
 
       <View style={styles.titleBlock}>
-        <Text variant="h3" color="textOnBrand" numberOfLines={1}>
+        <Text variant="h3" numberOfLines={1}>
           {title}
         </Text>
         {subtitle ? (
           <View style={styles.subtitleRow}>
             <View style={[styles.dot, { backgroundColor: colors[tint] }]} />
-            <Text variant="caption" color="textOnBrandMuted" numberOfLines={1}>
+            <Text variant="caption" color="textSecondary" numberOfLines={1}>
               {subtitle}
             </Text>
           </View>
@@ -86,7 +90,7 @@ export function ScreenHeader({
             pressed && styles.actionPressed,
           ]}
         >
-          <MaterialIcons name={action.icon} size={20} color={colors.primary} />
+          <MaterialIcons name={action.icon} size={20} color={colors.text} />
         </Pressable>
       ))}
     </View>
@@ -102,19 +106,22 @@ const styles = StyleSheet.create({
     gap: spacing[3],
     paddingHorizontal: spacing[4],
     paddingBottom: spacing[3],
-    backgroundColor: colors.primary,
+    backgroundColor: colors.surface,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
   },
-  // White circle on the brand bar — inverted from the rest of the app, because
-  // here the bar is the coloured surface and the control has to sit on top.
+  // Solid brand circle. A bordered white square on a white bar is invisible,
+  // and back is the one control here the user always needs to find.
   back: {
     width: BUTTON,
     height: BUTTON,
     borderRadius: radius.full,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
+    ...shadows.sm,
   },
-  backPressed: { backgroundColor: colors.surfaceMuted },
+  backPressed: { backgroundColor: colors.primaryPressed },
   glyph: {
     width: 34,
     height: 34,
@@ -126,11 +133,13 @@ const styles = StyleSheet.create({
     width: BUTTON,
     height: BUTTON,
     borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.border,
     backgroundColor: colors.surface,
     alignItems: "center",
     justifyContent: "center",
   },
-  actionPressed: { backgroundColor: colors.surfaceMuted },
+  actionPressed: { backgroundColor: colors.surfacePressed },
   titleBlock: { flex: 1 },
   subtitleRow: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
   dot: { width: 6, height: 6, borderRadius: radius.full },

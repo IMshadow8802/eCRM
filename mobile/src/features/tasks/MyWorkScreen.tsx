@@ -10,7 +10,7 @@ import { fetchTasks } from "../../api/taskQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
 import type { Task } from "../../types/api";
-import { colors, radius, spacing } from "../../theme";
+import { colors, radius, spacing, TAB_BAR_CLEARANCE } from "../../theme";
 import { Dialog, EmptyState, Screen, Text } from "../../ui";
 import { useSignOut } from "../auth/useSignOut";
 import { TaskCard } from "./TaskCard";
@@ -83,13 +83,11 @@ export default function MyWorkScreen() {
       <View style={[styles.header, { paddingTop: insets.top + spacing[3] }]}>
         <View style={styles.headerTop}>
           <View style={styles.greetBlock}>
-            <Text variant="secondary" color="textOnBrandMuted">
+            <Text variant="secondary">
               {greeting.text}, {greeting.emoji}
             </Text>
-            <Text variant="h1" color="textOnBrand">
-              {firstName}
-            </Text>
-            <Text variant="caption" color="textOnBrandMuted">
+            <Text variant="h1">{firstName}</Text>
+            <Text variant="caption" color="textMuted">
               {longDate()}
             </Text>
           </View>
@@ -115,7 +113,7 @@ export default function MyWorkScreen() {
         </View>
 
         <View style={styles.summaryRow}>
-          <Text variant="secondary" color="textOnBrandMuted">
+          <Text variant="secondary">
             {mineCount > 0
               ? `${mineCount} task${mineCount === 1 ? "" : "s"} assigned to you`
               : "Nothing assigned to you right now"}
@@ -133,7 +131,7 @@ export default function MyWorkScreen() {
               >
                 <Text
                   variant="label"
-                  color={active ? "primary" : "textOnBrand"}
+                  color={active ? "textOnBrand" : "textSecondary"}
                 >
                   {f.label}
                 </Text>
@@ -213,9 +211,11 @@ const emptyMessage = (filter: Filter) =>
 const styles = StyleSheet.create({
   header: {
     paddingHorizontal: spacing[5],
-    paddingBottom: spacing[4],
+    paddingBottom: spacing[3],
     gap: spacing[4],
-    backgroundColor: colors.primary,
+    backgroundColor: colors.background,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.divider,
   },
   headerTop: {
     flexDirection: "row",
@@ -228,26 +228,26 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.border,
     backgroundColor: colors.surface,
     alignItems: "center",
     justifyContent: "center",
   },
-  signOutPressed: { backgroundColor: colors.surfaceMuted },
+  signOutPressed: { backgroundColor: colors.surfacePressed },
   summaryRow: {},
   // No top padding — the section header below provides the gap. Stacking
   // header padding, list padding and section padding gave 44px of dead space.
-  content: { paddingBottom: spacing[10] },
+  content: { paddingBottom: TAB_BAR_CLEARANCE },
   contentEmpty: { flexGrow: 1 },
   filters: { flexDirection: "row", gap: spacing[2] },
-  // On the brand header the pills invert: selected is white, the rest are a
-  // solid lighter brand shade.
   filter: {
     paddingHorizontal: spacing[4],
     paddingVertical: spacing[2],
     borderRadius: radius.full,
-    backgroundColor: colors.surfaceOnBrand,
+    backgroundColor: colors.surfaceMuted,
   },
-  filterActive: { backgroundColor: colors.surface },
+  filterActive: { backgroundColor: colors.primary },
   sectionTitle: {
     paddingHorizontal: spacing[5],
     paddingTop: spacing[3],

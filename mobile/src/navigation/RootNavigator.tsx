@@ -1,4 +1,5 @@
 import { MaterialIcons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createStackNavigator } from "@react-navigation/stack";
@@ -9,7 +10,15 @@ import BoardsScreen from "../features/workspaces/BoardsScreen";
 import MeScreen from "../features/profile/MeScreen";
 import TaskDetailScreen from "../features/tasks/TaskDetailScreen";
 import useAuthStore from "../stores/useAuthStore";
-import { colors, fontFamily, fontSize } from "../theme";
+import {
+  colors,
+  fontFamily,
+  fontSize,
+  radius,
+  shadows,
+  spacing,
+  TAB_BAR_HEIGHT,
+} from "../theme";
 
 export type RootStackParamList = {
   Login: undefined;
@@ -35,6 +44,9 @@ const TAB_ICONS: Record<keyof TabParamList, keyof typeof MaterialIcons.glyphMap>
   };
 
 function Tabs() {
+  // The bar floats, so it must clear the home indicator / nav buttons itself.
+  const insets = useSafeAreaInsets();
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -52,10 +64,23 @@ function Tabs() {
           fontFamily: fontFamily.regular,
           fontSize: fontSize.xs,
         },
+        // Detached island rather than a bar welded to the bottom edge: the
+        // content scrolls under it, which is why screens reserve
+        // TAB_BAR_CLEARANCE at the end of their lists.
         tabBarStyle: {
-          backgroundColor: colors.primary,
+          position: "absolute",
+          left: spacing[4],
+          right: spacing[4],
+          bottom: insets.bottom + spacing[2],
+          height: TAB_BAR_HEIGHT,
+          paddingBottom: 0,
+          paddingTop: 0,
+          borderRadius: radius.xl,
           borderTopWidth: 0,
+          backgroundColor: colors.primary,
+          ...shadows.lg,
         },
+        tabBarItemStyle: { height: TAB_BAR_HEIGHT, paddingVertical: spacing[2] },
         tabBarIcon: ({ color, size }) => (
           <MaterialIcons name={TAB_ICONS[route.name]} size={size} color={color} />
         ),
