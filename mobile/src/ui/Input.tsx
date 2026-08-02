@@ -20,6 +20,12 @@ export interface InputProps extends Omit<TextInputProps, "style"> {
   leftIcon?: keyof typeof MaterialIcons.glyphMap;
   /** Renders the show/hide eye and manages secureTextEntry internally. */
   password?: boolean;
+  /**
+   * "onBrand" restyles the field for use directly on the brand gradient —
+   * translucent fill, white text and border. Everything stays a token so the
+   * two tones cannot drift apart.
+   */
+  tone?: "default" | "onBrand";
   containerStyle?: ViewStyle;
 }
 
@@ -35,6 +41,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
     required,
     leftIcon,
     password = false,
+    tone = "default",
     containerStyle,
     editable = true,
     multiline,
@@ -44,11 +51,16 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
 ) {
   const [focused, setFocused] = useState(false);
   const [reveal, setReveal] = useState(false);
+  const onBrand = tone === "onBrand";
 
   return (
     <View style={[styles.container, containerStyle]}>
       {label ? (
-        <Text variant="label" style={styles.label}>
+        <Text
+          variant="label"
+          color={onBrand ? "textOnBrandMuted" : "textSecondary"}
+          style={styles.label}
+        >
           {label}
           {required ? <Text variant="label" color="danger"> *</Text> : null}
         </Text>
@@ -57,25 +69,28 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
       <View
         style={[
           styles.field,
+          onBrand && styles.fieldOnBrand,
           multiline && styles.fieldMultiline,
-          focused && styles.fieldFocused,
+          focused && (onBrand ? styles.fieldFocusedOnBrand : styles.fieldFocused),
           !!error && styles.fieldError,
-          !editable && styles.fieldDisabled,
+          !editable && !onBrand && styles.fieldDisabled,
         ]}
       >
         {leftIcon ? (
           <MaterialIcons
             name={leftIcon}
             size={18}
-            color={colors.textMuted}
+            color={onBrand ? colors.textOnBrandMuted : colors.textMuted}
             style={styles.leftIcon}
           />
         ) : null}
 
         <TextInput
           ref={ref}
-          style={styles.input}
-          placeholderTextColor={colors.textMuted}
+          style={[styles.input, onBrand && styles.inputOnBrand]}
+          placeholderTextColor={
+            onBrand ? colors.textOnBrandMuted : colors.textMuted
+          }
           secureTextEntry={password && !reveal}
           editable={editable}
           multiline={multiline}
@@ -99,7 +114,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
             <MaterialIcons
               name={reveal ? "visibility-off" : "visibility"}
               size={20}
-              color={colors.textSecondary}
+              color={onBrand ? colors.textOnBrandMuted : colors.textSecondary}
             />
           </Pressable>
         ) : null}
@@ -140,6 +155,11 @@ const styles = StyleSheet.create({
     paddingVertical: spacing[3],
   },
   fieldFocused: { borderColor: colors.primary },
+  fieldOnBrand: {
+    backgroundColor: colors.fieldOnBrand,
+    borderColor: colors.borderOnBrand,
+  },
+  fieldFocusedOnBrand: { borderColor: colors.borderOnBrandFocus },
   fieldError: { borderColor: colors.danger },
   fieldDisabled: { backgroundColor: colors.disabledBg },
   leftIcon: {},
@@ -150,6 +170,7 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
     ...typography.body,
   },
+  inputOnBrand: { color: colors.textOnBrand },
   helper: {},
 });
 

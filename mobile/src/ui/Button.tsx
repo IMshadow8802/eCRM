@@ -11,7 +11,13 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { colors, radius, spacing, CONTROL_HEIGHT } from "../theme";
 import { Text } from "./Text";
 
-export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+export type ButtonVariant =
+  | "primary"
+  | "secondary"
+  | "ghost"
+  | "danger"
+  /** Solid white — for use on the brand gradient, where primary would vanish. */
+  | "onBrand";
 export type ButtonSize = "sm" | "md" | "lg";
 
 export interface ButtonProps extends Omit<PressableProps, "style" | "children"> {
@@ -29,6 +35,7 @@ const BG: Record<ButtonVariant, string> = {
   secondary: colors.surfaceMuted,
   ghost: "transparent",
   danger: colors.danger,
+  onBrand: colors.surface,
 };
 
 const FG: Record<ButtonVariant, keyof typeof colors> = {
@@ -36,6 +43,7 @@ const FG: Record<ButtonVariant, keyof typeof colors> = {
   secondary: "text",
   ghost: "primary",
   danger: "textOnBrand",
+  onBrand: "primary",
 };
 
 // md matches CONTROL_HEIGHT exactly so a button lines up with an Input beside it.

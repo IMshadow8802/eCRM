@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -6,12 +6,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
-import Animated, {
-  FadeInDown,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-} from "react-native-reanimated";
+import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { StatusBar } from "expo-status-bar";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -19,7 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { login as loginRequest } from "../../api/authQueries";
 import useAuthStore from "../../stores/useAuthStore";
-import { colors, gradients, radius, shadows, spacing } from "../../theme";
+import { colors, gradients, radius, spacing } from "../../theme";
 import { Button, Input, Text } from "../../ui";
 import FloatingShapes from "./FloatingShapes";
 
@@ -35,17 +30,6 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
-  // Card entrance. Spring rather than timing so it settles instead of stopping.
-  const enter = useSharedValue(0);
-  useEffect(() => {
-    enter.value = withSpring(1, { damping: 14, stiffness: 120 });
-  }, [enter]);
-
-  const cardStyle = useAnimatedStyle(() => ({
-    opacity: enter.value,
-    transform: [{ scale: 0.92 + 0.08 * enter.value }],
-  }));
 
   const canSubmit = identifier.trim().length > 0 && password.length > 0;
 
@@ -80,8 +64,8 @@ export default function LoginScreen() {
       <StatusBar style="light" />
       <LinearGradient
         colors={gradients.brand}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+        start={{ x: 0.1, y: 0 }}
+        end={{ x: 0.9, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
       <FloatingShapes />
@@ -94,33 +78,37 @@ export default function LoginScreen() {
           contentContainerStyle={[
             styles.scroll,
             {
-              paddingTop: insets.top + spacing[8],
-              paddingBottom: insets.bottom + spacing[6],
+              paddingTop: insets.top + spacing[10],
+              paddingBottom: insets.bottom + spacing[5],
             },
           ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <Animated.View entering={FadeInDown.duration(500)} style={styles.brand}>
+          {/* Type carries the screen — no card. A panel over a gradient just
+              hides the thing that makes it look good. */}
+          <Animated.View entering={FadeInDown.duration(500)} style={styles.head}>
             <View style={styles.mark}>
               <MaterialIcons
                 name="dashboard"
-                size={32}
+                size={26}
                 color={colors.textOnBrand}
               />
             </View>
-            <Text variant="h1" color="textOnBrand">
-              Nexus CRM
+            <Text variant="h1" color="textOnBrand" style={styles.hello}>
+              Welcome back
+            </Text>
+            <Text variant="body" color="textOnBrandMuted">
+              Sign in to continue to Nexus CRM
             </Text>
           </Animated.View>
 
-          <Animated.View style={[styles.card, cardStyle]}>
-            <View style={styles.cardHead}>
-              <Text variant="h2">Welcome back</Text>
-              <Text variant="secondary">Sign in to continue</Text>
-            </View>
-
+          <Animated.View
+            entering={FadeInDown.delay(120).duration(500)}
+            style={styles.form}
+          >
             <Input
+              tone="onBrand"
               label="Username, email or mobile"
               value={identifier}
               onChangeText={(t) => {
@@ -136,6 +124,7 @@ export default function LoginScreen() {
             />
 
             <Input
+              tone="onBrand"
               label="Password"
               value={password}
               onChangeText={(t) => {
@@ -153,16 +142,17 @@ export default function LoginScreen() {
             />
 
             {error ? (
-              <Animated.View
-                entering={FadeInDown.duration(200)}
-                style={styles.error}
-              >
+              <Animated.View entering={FadeIn.duration(200)} style={styles.error}>
                 <MaterialIcons
                   name="error-outline"
                   size={18}
-                  color={colors.danger}
+                  color={colors.textOnBrand}
                 />
-                <Text variant="caption" color="danger" style={styles.errorText}>
+                <Text
+                  variant="caption"
+                  color="textOnBrand"
+                  style={styles.errorText}
+                >
                   {error}
                 </Text>
               </Animated.View>
@@ -170,22 +160,27 @@ export default function LoginScreen() {
 
             <Button
               title="Sign in"
+              variant="onBrand"
               onPress={submit}
               loading={busy}
               disabled={!canSubmit}
               size="lg"
               fullWidth
+              style={styles.submit}
             />
           </Animated.View>
 
-          <Text
-            variant="caption"
-            color="textOnBrand"
-            align="center"
+          <Animated.View
+            entering={FadeIn.delay(400).duration(600)}
             style={styles.footer}
           >
-            Nexus CRM · Sales, Support and Tasks
-          </Text>
+            <Text variant="caption" color="textOnBrand" align="center">
+              PRD Infotech Pvt Ltd
+            </Text>
+            <Text variant="caption" color="textOnBrandMuted" align="center">
+              Nexus CRM · v1.0.0
+            </Text>
+          </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -198,33 +193,30 @@ const styles = StyleSheet.create({
   scroll: {
     flexGrow: 1,
     justifyContent: "center",
-    paddingHorizontal: spacing[5],
+    paddingHorizontal: spacing[6],
   },
-  brand: { alignItems: "center", gap: spacing[3], marginBottom: spacing[6] },
+  head: { gap: spacing[2], marginBottom: spacing[8] },
   mark: {
-    width: 72,
-    height: 72,
-    borderRadius: radius.xl,
+    width: 56,
+    height: 56,
+    borderRadius: radius.lg,
     backgroundColor: colors.surfaceOnBrand,
     alignItems: "center",
     justifyContent: "center",
+    marginBottom: spacing[4],
   },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius["2xl"],
-    padding: spacing[5],
-    gap: spacing[4],
-    ...shadows.lg,
-  },
-  cardHead: { gap: spacing[1], marginBottom: spacing[1] },
+  hello: { letterSpacing: -0.5 },
+  form: { gap: spacing[4] },
   error: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing[2],
-    backgroundColor: colors.dangerSoft,
+    backgroundColor: colors.danger,
     borderRadius: radius.base,
-    padding: spacing[3],
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[3],
   },
   errorText: { flex: 1 },
-  footer: { marginTop: spacing[6], opacity: 0.7 },
+  submit: { marginTop: spacing[2] },
+  footer: { marginTop: spacing[10], gap: spacing[1] },
 });

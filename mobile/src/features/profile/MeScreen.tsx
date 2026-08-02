@@ -56,6 +56,15 @@ export default function MeScreen() {
           onPress={() => setConfirming(true)}
           fullWidth
         />
+
+        <View style={styles.footer}>
+          <Text variant="caption" align="center">
+            PRD Infotech Pvt Ltd
+          </Text>
+          <Text variant="caption" color="textMuted" align="center">
+            Nexus CRM · v1.0.0
+          </Text>
+        </View>
       </ScrollView>
 
       <Dialog
@@ -103,4 +112,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[4],
     paddingVertical: spacing[4],
   },
+  footer: { gap: spacing[1], marginTop: spacing[4] },
 });

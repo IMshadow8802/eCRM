@@ -121,9 +121,14 @@ export const colors = {
   priorityHigh: palette.red[500],
   priorityUrgent: palette.red[700],
 
-  // Surfaces that sit ON the brand gradient (auth screens). Translucent white
-  // so the gradient reads through them.
+  // Surfaces and lines that sit ON the brand gradient (auth screens).
+  // Translucent white so the gradient reads through them — a solid card over a
+  // gradient just hides the thing that makes the screen look good.
   surfaceOnBrand: "rgba(255, 255, 255, 0.18)",
+  fieldOnBrand: "rgba(255, 255, 255, 0.14)",
+  borderOnBrand: "rgba(255, 255, 255, 0.28)",
+  borderOnBrandFocus: "rgba(255, 255, 255, 0.70)",
+  textOnBrandMuted: "rgba(255, 255, 255, 0.66)",
   veilOnBrand: "rgba(255, 255, 255, 1)",
 
   // gray[100]/gray[400] was too faint — a disabled button read as an empty box.
