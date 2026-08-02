@@ -35,7 +35,28 @@ const PRIORITY_INK: Record<TaskPriority, keyof typeof colors> = {
   urgent: "priorityUrgent",
 };
 
+/** One icon + value pair. Reads faster than a labelled row and packs tighter. */
+function Stat({
+  icon,
+  value,
+  tone = "textSecondary",
+}: {
+  icon: keyof typeof MaterialIcons.glyphMap;
+  value: string;
+  tone?: keyof typeof colors;
+}) {
+  return (
+    <View style={styles.stat}>
+      <MaterialIcons name={icon} size={14} color={colors[tone]} />
+      <Text variant="caption" color={tone}>
+        {value}
+      </Text>
+    </View>
+  );
+}
 
+/** "4h" / "1.5h" — hours are decimals in the DB and 1.5 must not print as 2. */
+const hours = (h: number) => `${Number.isInteger(h) ? h : h.toFixed(1)}h`;
 
 function TaskCardBase({ task, onPress, showWorkspace = true }: TaskCardProps) {
   const { done, total } = checklistProgress(task);
@@ -50,16 +71,15 @@ function TaskCardBase({ task, onPress, showWorkspace = true }: TaskCardProps) {
     : priority
       ? colors[PRIORITY_INK[priority]]
       : colors.neutralIcon;
+
   const icon = task.IsCompleted
     ? "check"
     : (TYPE_ICON[task.Type ?? "task"] ?? TYPE_ICON.task!);
 
-  // One quiet line instead of a row of boxes. Chips everywhere is what makes a
-  // card look busy; muted text with a leading glyph carries the same
-  // information and lets the title stay the loudest thing on the card.
-  const metaParts: string[] = [];
-  if (showWorkspace && task.WorkspaceName) metaParts.push(task.WorkspaceName);
-  if (total > 0) metaParts.push(`${done} of ${total}`);
+  const logged = task.LoggedHours ?? 0;
+  const estimated = task.EstimatedHours ?? 0;
+  const subTasks = task.SubTaskCount ?? 0;
+  const blockers = task.BlockerCount ?? 0;
 
   return (
     <Pressable
@@ -67,8 +87,7 @@ function TaskCardBase({ task, onPress, showWorkspace = true }: TaskCardProps) {
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
       <View style={styles.row}>
-        {/* Solid fill, white glyph — a pale wash behind a tinted icon reads as
-            washed out. The colour still encodes priority, just at full strength. */}
+        {/* Solid fill, white glyph — the colour encodes priority at full strength. */}
         <View style={[styles.glyph, { backgroundColor: ink }]}>
           <MaterialIcons name={icon} size={20} color={colors.textOnBrand} />
         </View>
@@ -82,11 +101,18 @@ function TaskCardBase({ task, onPress, showWorkspace = true }: TaskCardProps) {
             {task.Title}
           </Text>
 
-          {metaParts.length ? (
-            <Text variant="caption" color="textMuted" numberOfLines={1}>
-              {metaParts.join("  ·  ")}
-            </Text>
-          ) : null}
+          <View style={styles.subRow}>
+            {showWorkspace && task.WorkspaceName ? (
+              <Stat
+                icon="folder-open"
+                value={task.WorkspaceName}
+                tone="textMuted"
+              />
+            ) : null}
+            {task.ColumnTitle ? (
+              <Stat icon="view-week" value={task.ColumnTitle} tone="textMuted" />
+            ) : null}
+          </View>
         </View>
 
         <View style={styles.assignees}>
@@ -108,8 +134,6 @@ function TaskCardBase({ task, onPress, showWorkspace = true }: TaskCardProps) {
         </View>
       </View>
 
-      {/* Hairline progress, flush to the card's lower edge — reads as a state
-          indicator rather than as another widget competing for attention. */}
       {total > 0 && !task.IsCompleted ? (
         <View style={styles.track}>
           <View
@@ -121,33 +145,47 @@ function TaskCardBase({ task, onPress, showWorkspace = true }: TaskCardProps) {
         </View>
       ) : null}
 
-      {due || task.IsBlocked ? (
-        <View style={styles.footer}>
-          {due ? (
-            <View style={styles.footerItem}>
-              <MaterialIcons
-                name={overdue ? "error-outline" : "schedule"}
-                size={13}
-                color={overdue ? colors.danger : colors.textMuted}
-              />
-              <Text
-                variant="caption"
-                color={overdue ? "danger" : "textMuted"}
-              >
-                {due}
-              </Text>
-            </View>
-          ) : null}
-          {task.IsBlocked ? (
-            <View style={styles.footerItem}>
-              <MaterialIcons name="block" size={13} color={colors.danger} />
-              <Text variant="caption" color="danger">
-                Blocked
-              </Text>
-            </View>
-          ) : null}
-        </View>
-      ) : null}
+      {/* Everything here comes from columns sp_FetchTask already returns —
+          none of it costs an extra request. */}
+      <View style={styles.stats}>
+        {total > 0 ? (
+          <Stat
+            icon="checklist"
+            value={`${done} of ${total}`}
+            tone={done === total ? "success" : "textSecondary"}
+          />
+        ) : null}
+        {logged > 0 ? (
+          <Stat
+            icon="timer"
+            value={
+              estimated > 0
+                ? `${hours(logged)} / ${hours(estimated)}`
+                : hours(logged)
+            }
+            tone={estimated > 0 && logged > estimated ? "danger" : "textSecondary"}
+          />
+        ) : null}
+        {subTasks > 0 ? (
+          <Stat icon="account-tree" value={String(subTasks)} />
+        ) : null}
+        {blockers > 0 ? (
+          <Stat icon="block" value={String(blockers)} tone="danger" />
+        ) : null}
+        {priority ? (
+          <Stat icon="flag" value={priority} tone={PRIORITY_INK[priority]} />
+        ) : null}
+
+        <View style={styles.spacer} />
+
+        {due ? (
+          <Stat
+            icon={overdue ? "error-outline" : "schedule"}
+            value={due}
+            tone={overdue ? "danger" : "textSecondary"}
+          />
+        ) : null}
+      </View>
     </Pressable>
   );
 }
@@ -175,6 +213,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   main: { flex: 1, gap: spacing[1] },
+  subRow: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
   doneText: { textDecorationLine: "line-through", color: colors.textMuted },
   assignees: { flexDirection: "row", alignItems: "center" },
   avatarSlot: {
@@ -198,6 +237,12 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   fill: { height: "100%", borderRadius: radius.full },
-  footer: { flexDirection: "row", alignItems: "center", gap: spacing[4] },
-  footerItem: { flexDirection: "row", alignItems: "center", gap: spacing[1] },
+  stats: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[3],
+    flexWrap: "wrap",
+  },
+  stat: { flexDirection: "row", alignItems: "center", gap: spacing[1] },
+  spacer: { flex: 1 },
 });

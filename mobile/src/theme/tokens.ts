@@ -53,7 +53,9 @@ export const palette = {
   amber: {
     50: "#FFFBEB",
     100: "#FEF3C7",
-    500: "#FBBF24",
+    // #FBBF24 was too pale to carry a white glyph, #D97706 too brown to read as
+    // "medium". This sits between them — clearly amber, white icon still legible.
+    500: "#F59E0B",
     600: "#D97706",
     700: "#B45309",
   },
@@ -80,7 +82,9 @@ export const palette = {
  */
 export const colors = {
   // surfaces
-  background: palette.white,
+  // The PAGE is tinted and CARDS are white. With both white there is no figure
+  // and no ground, so nothing reads as a card — it all looks like one sheet.
+  background: "#F1F3FA",
   surface: palette.white,
   surfaceMuted: palette.gray[50],
   surfaceSunken: palette.gray[100],
@@ -120,7 +124,7 @@ export const colors = {
 
   // task priority — used by chips and card accents
   priorityLow: palette.green[600],
-  priorityMedium: palette.amber[600],
+  priorityMedium: palette.amber[500],
   priorityHigh: palette.red[500],
   priorityUrgent: palette.red[700],
 
