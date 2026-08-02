@@ -10,7 +10,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import Reactotron from "reactotron-react-native";
 import { reactotronReactQuery } from "reactotron-react-query";
 
-import { queryClient } from "./src/services/queryClient";
+import { queryClient } from "./src/api/queryClient";
 
 const reactotron = Reactotron.setAsyncStorageHandler(AsyncStorage)
   .configure({ name: "Nexus CRM Mobile" })

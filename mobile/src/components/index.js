@@ -1,4 +1,6 @@
-// Export all reusable components
+// Shared design-system primitives kept from the previous app. Task-specific
+// components were removed with the old screens; their replacements live under
+// src/features/.
 export { default as BottomSheetModal } from "./BottomSheetModal";
 export { default as Button } from "./Button";
 export { default as CheckboxField } from "./CheckboxField";
@@ -15,5 +17,3 @@ export { default as Logo } from "./Logo";
 export { default as MultiSelectField } from "./MultiSelectField";
 export { default as SearchBar } from "./SearchBar";
 export { default as SelectField } from "./SelectField";
-export { default as StatsCards } from "./StatsCards";
-export { default as TaskModal } from "./TaskModal";

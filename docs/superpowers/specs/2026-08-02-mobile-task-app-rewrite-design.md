@@ -274,19 +274,28 @@ its own project. Phase A ships the in-app notification list only.
 Offline means a mutation queue and conflict resolution. Out of scope. Query
 cache only; no signal means no app.
 
-### 5.4 Testing
+### 5.4 Testing — none on mobile (decided 2026-08-02)
 
-`mobile/` has zero tests today. CLAUDE.md §0.4 binds `backend/src/` and
-`web/src/` — mobile is not covered by that rule, and full RNTL screen coverage
-would cost more than it returns here.
+**No test suite in `mobile/`.** No Jest, no RNTL. CLAUDE.md §0.4 binds
+`backend/src/` and `web/src/` only; mobile is outside it, and the backend and
+web suites (549 + 918) already cover every endpoint this client calls.
 
-But untested payload mapping is precisely what rotted last time. So:
+The residual risk is stated plainly so nobody is surprised by it later: those
+suites verify the *server* contract, not what the phone puts on the wire. The
+old app died sending `ProjectId` where the controller wanted `WorkspaceId`, and
+a green backend suite would not have caught it.
 
-- **Mandatory:** `src/api/` — every fetcher, asserting endpoint and exact
-  payload shape. `src/stores/`. Pure helpers (`taskAssignees`, date grouping).
-- **Not required:** screen rendering, navigation, RNTL interaction tests.
+What stands in for tests:
 
-Runner: Jest + `jest-expo` + `@testing-library/react-native`.
+- Every payload in `src/api/` is copied verbatim from the controller
+  signature in `backend/src/controllers/`, not written from memory.
+- Reactotron (`ReactotronConfig.js`, dev-only) shows every request and
+  response live, so a drifted payload surfaces the first time the screen runs.
+- The API layer is centralised (§4.2), so a contract change is one file to fix
+  rather than a hunt across the feature tree.
+
+If drift bites in practice, the cheapest fix is a thin suite over `src/api/`
+alone — endpoint plus payload shape, no screens.
 
 ### 5.5 Board moves via menu, not drag
 
