@@ -3,37 +3,33 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 
-import {
-  colors,
-  radius,
-  shadows,
-  spacing,
-  TAB_BAR_HEIGHT,
-} from "../theme";
+import { colors, radius, shadows, spacing, TAB_BAR_HEIGHT } from "../theme";
 import { Text } from "../ui";
 
 /**
  * Icons live here rather than in each screen's options: with a custom tab bar
  * React Navigation has no per-route icon option, and augmenting its options
  * type is not possible (it is a type alias, not an interface).
+ *
+ * Filled when selected, outlined when not — the weight change is what carries
+ * the state alongside the colour, so it still reads without relying on hue.
  */
-const TAB_ICONS: Record<string, keyof typeof MaterialIcons.glyphMap> = {
-  MyWork: "check-circle-outline",
-  Boards: "view-column",
-  Me: "person-outline",
+const TAB_ICONS: Record<
+  string,
+  { on: keyof typeof MaterialIcons.glyphMap; off: keyof typeof MaterialIcons.glyphMap }
+> = {
+  MyWork: { on: "check-circle", off: "check-circle-outline" },
+  Boards: { on: "dashboard", off: "dashboard-customize" },
+  Me: { on: "person", off: "person-outline" },
 };
 
 /**
- * Custom floating tab bar.
+ * Floating tab bar in the Apple Music shape: a detached rounded bar where every
+ * tab shows its icon above its label in an equal-width column, and the selected
+ * one is marked by colour rather than by a pill behind it.
  *
- * React Navigation's default stacks an icon over a label in every item, which
- * inside a rounded pill gives three columns of different widths, text crowding
- * the rounded ends, and no vertical rhythm.
- *
- * Instead: inactive tabs are icon-only and identically sized, and only the
- * ACTIVE tab expands into a white pill with its label. The row stays balanced
- * whatever the labels are, and the selected tab is unmistakable — which is the
- * label's only real job here.
+ * Solid surface rather than glass — translucency is out per the design rules,
+ * and a solid bar keeps the labels legible over whatever is scrolling beneath.
  */
 export default function FloatingTabBar({
   state,
@@ -51,7 +47,7 @@ export default function FloatingTabBar({
         const { options } = descriptors[route.key]!;
         const focused = state.index === index;
         const label = options.title ?? route.name;
-        const icon = TAB_ICONS[route.name] ?? "circle";
+        const icons = TAB_ICONS[route.name];
 
         const onPress = () => {
           // Emit first: a screen may cancel navigation (scroll-to-top etc).
@@ -72,22 +68,20 @@ export default function FloatingTabBar({
             accessibilityRole="tab"
             accessibilityState={{ selected: focused }}
             accessibilityLabel={label}
-            style={({ pressed }) => [
-              styles.item,
-              focused && styles.itemActive,
-              pressed && !focused && styles.itemPressed,
-            ]}
+            style={styles.item}
           >
             <MaterialIcons
-              name={icon}
-              size={22}
-              color={focused ? colors.primary : colors.textOnBrandMuted}
+              name={focused ? (icons?.on ?? "circle") : (icons?.off ?? "circle")}
+              size={24}
+              color={focused ? colors.primary : colors.textMuted}
             />
-            {focused ? (
-              <Text variant="label" color="primary" numberOfLines={1}>
-                {label}
-              </Text>
-            ) : null}
+            <Text
+              variant="caption"
+              color={focused ? "primary" : "textMuted"}
+              numberOfLines={1}
+            >
+              {label}
+            </Text>
           </Pressable>
         );
       })}
@@ -98,32 +92,21 @@ export default function FloatingTabBar({
 const styles = StyleSheet.create({
   bar: {
     position: "absolute",
-    left: spacing[5],
-    right: spacing[5],
+    left: spacing[4],
+    right: spacing[4],
     height: TAB_BAR_HEIGHT,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-evenly",
-    paddingHorizontal: spacing[2],
-    borderRadius: radius.full,
-    backgroundColor: colors.primary,
+    borderRadius: radius["2xl"],
+    backgroundColor: colors.surface,
     ...shadows.lg,
   },
+  // Equal-width columns, so the row is symmetric whatever the labels say.
   item: {
-    flexDirection: "row",
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing[2],
-    height: 44,
-    // Inactive items are square, so the row reads as evenly spaced regardless
-    // of how long the labels are.
-    width: 44,
-    borderRadius: radius.full,
+    gap: spacing[1],
+    height: "100%",
   },
-  itemActive: {
-    width: "auto",
-    paddingHorizontal: spacing[4],
-    backgroundColor: colors.surface,
-  },
-  itemPressed: { backgroundColor: colors.primaryPressed },
 });
