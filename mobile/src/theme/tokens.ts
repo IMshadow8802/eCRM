@@ -151,6 +151,14 @@ export const colors = {
   // shades picked off the brand ramp, NOT translucent white — washes look
   // washed out and change colour depending on what is behind them.
   surfaceOnBrand: palette.brand.light,
+  /**
+   * Reads as frosted glass over the brand colour, but is a SOLID hex — it is
+   * exactly white-at-28%-over-brand, precomputed. On an opaque background a
+   * blur has nothing to sample but that background, so real translucency would
+   * look identical while costing a native module and breaking the
+   * no-transparency rule.
+   */
+  frostOnBrand: "#7580C5",
   textOnBrandMuted: "#C3CAEA",
   veilOnBrand: palette.brand.light,
   veilOnBrandDeep: "#4A5AB8",
@@ -230,6 +238,18 @@ export const shadows = {
     shadowOpacity: 0.16,
     shadowRadius: 16,
     elevation: 8,
+  },
+  /**
+   * For elements that float free of any edge. Barely offset, so the shadow
+   * spreads evenly instead of pooling underneath — an offset shadow makes a
+   * centred element look like it is sitting too low.
+   */
+  floating: {
+    shadowColor: "#1E34AE",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    elevation: 10,
   },
 } as const;
 

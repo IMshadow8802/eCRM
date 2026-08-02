@@ -84,11 +84,11 @@ export default function FloatingTabBar({
                   focused ? (icons?.on ?? "circle") : (icons?.off ?? "circle")
                 }
                 size={22}
-                color={focused ? colors.primary : colors.textOnBrand}
+                color={focused ? colors.textOnBrand : colors.textOnBrandMuted}
               />
               <Text
                 variant="caption"
-                color={focused ? "primary" : "textOnBrand"}
+                color={focused ? "textOnBrand" : "textOnBrandMuted"}
                 numberOfLines={1}
                 style={styles.label}
               >
@@ -102,6 +102,9 @@ export default function FloatingTabBar({
   );
 }
 
+const TAB_BAR_INSET = spacing[2];
+const BAR_RADIUS = radius["2xl"];
+
 const styles = StyleSheet.create({
   bar: {
     position: "absolute",
@@ -112,10 +115,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     // Inset on all sides so the active highlight reads as a pill sitting INSIDE
     // the bar rather than as a block the same height as it.
-    padding: spacing[2],
-    borderRadius: radius["2xl"],
+    padding: TAB_BAR_INSET,
+    borderRadius: BAR_RADIUS,
     backgroundColor: colors.primary,
-    ...shadows.lg,
+    ...shadows.floating,
   },
   // Width is set inline from the route count — see itemWidth above.
   item: { alignSelf: "stretch" },
@@ -125,8 +128,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: spacing[1],
     paddingHorizontal: spacing[1],
-    borderRadius: radius.lg,
+    // Concentric with the bar: an inner radius equal to the outer radius minus
+    // the inset is the only value whose curve stays parallel to it.
+    borderRadius: BAR_RADIUS - TAB_BAR_INSET,
   },
-  pillActive: { backgroundColor: colors.surface },
+  pillActive: { backgroundColor: colors.frostOnBrand },
   label: { maxWidth: "100%" },
 });
