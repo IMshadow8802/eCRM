@@ -22,7 +22,6 @@ import {
 import { fetchAttachments } from "../../api/attachmentQueries";
 import { fetchWorkspaces } from "../../api/workspaceQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
-import type { Task } from "../../types/api";
 import useAuthStore from "../../stores/useAuthStore";
 import { colors, radius, shadows, spacing } from "../../theme";
 import {
@@ -39,16 +38,6 @@ import AttachmentList from "../attachments/AttachmentList";
 import { abilitiesFor, assigneesOf, dueBucket, dueLabel } from "./taskHelpers";
 
 type Props = StackScreenProps<RootStackParamList, "TaskDetail">;
-
-const PRIORITY_TINT: Record<
-  NonNullable<Task["Priority"]>,
-  "priorityLow" | "priorityMedium" | "priorityHigh" | "priorityUrgent"
-> = {
-  low: "priorityLow",
-  medium: "priorityMedium",
-  high: "priorityHigh",
-  urgent: "priorityUrgent",
-};
 type Tab = "checklist" | "files" | "chat";
 
 export default function TaskDetailScreen({ route, navigation }: Props) {
@@ -180,16 +169,6 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
         title={task.WorkspaceName ?? "Task"}
         subtitle={task.ColumnTitle ?? undefined}
         onBack={navigation.goBack}
-        // Same glyph language as the card the user just tapped, tinted by the
-        // task's own priority so the header carries state, not just a label.
-        icon={task.IsCompleted ? "check" : "layers"}
-        tint={
-          task.IsCompleted
-            ? "success"
-            : task.Priority
-              ? PRIORITY_TINT[task.Priority]
-              : "primary"
-        }
       />
 
         <View style={styles.summary}>
