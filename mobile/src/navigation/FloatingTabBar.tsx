@@ -3,7 +3,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 
-import { colors, shadows, spacing, TAB_BAR_HEIGHT } from "../theme";
+import { colors, radius, shadows, spacing, TAB_BAR_HEIGHT } from "../theme";
 import { Text } from "../ui";
 
 /**
@@ -24,15 +24,16 @@ const TAB_ICONS: Record<
 };
 
 /**
- * Floating tab bar, built on the Apple Music shape: a detached, heavily rounded
- * bar; every tab shows its icon above its label in an equal-width column; the
- * selected tab sits inside its own rounded highlight.
+ * Floating tab bar, in the same visual language as the rest of the app.
  *
- * Inverted from Apple's, though. Theirs is a pale bar with a pale highlight and
- * a coloured selection; ours is a SOLID BRAND bar with a white highlight,
- * because the page behind it is warm off-white and white cards — a pale bar
- * disappears into both. Solid also keeps the labels readable over whatever is
- * scrolling underneath, which a translucent one would not.
+ * An earlier version was a solid brand slab. It was the only large saturated
+ * surface in an app built from white cards where colour appears as small solid
+ * glyphs — so it read as imported from somewhere else.
+ *
+ * This is a white card like every other surface, lifted on the same shadow, and
+ * the selected tab is marked by a solid brand glyph — exactly the treatment a
+ * task card gives its type icon. It separates from the page by elevation and a
+ * hairline, not by being loud.
  */
 export default function FloatingTabBar({
   state,
@@ -78,17 +79,19 @@ export default function FloatingTabBar({
             accessibilityLabel={label}
             style={[styles.item, { width: itemWidth }]}
           >
-            <View style={[styles.pill, focused && styles.pillActive]}>
-              <MaterialIcons
-                name={
-                  focused ? (icons?.on ?? "circle") : (icons?.off ?? "circle")
-                }
-                size={22}
-                color={focused ? colors.textOnBrand : colors.textOnBrandMuted}
-              />
+            <View style={styles.stack}>
+              <View style={[styles.glyph, focused && styles.glyphActive]}>
+                <MaterialIcons
+                  name={
+                    focused ? (icons?.on ?? "circle") : (icons?.off ?? "circle")
+                  }
+                  size={focused ? 20 : 22}
+                  color={focused ? colors.textOnBrand : colors.textMuted}
+                />
+              </View>
               <Text
                 variant="caption"
-                color={focused ? "textOnBrand" : "textOnBrandMuted"}
+                color={focused ? "primary" : "textMuted"}
                 numberOfLines={1}
                 style={styles.label}
               >
@@ -130,23 +133,32 @@ const styles = StyleSheet.create({
     // the bar rather than as a block the same height as it.
     padding: TAB_BAR_INSET,
     borderRadius: BAR_RADIUS,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
     ...shadows.floating,
   },
   // Width is set inline from the route count — see itemWidth above.
   item: { height: PILL_HEIGHT, alignItems: "center", justifyContent: "center" },
-  pill: {
+  stack: {
     height: PILL_HEIGHT,
     alignSelf: "stretch",
     alignItems: "center",
     justifyContent: "center",
     gap: spacing[1],
     paddingHorizontal: spacing[1],
-    // Concentric with the bar: an inner radius equal to the outer radius minus
-    // the inset is the only value whose curve stays parallel to it.
-    borderRadius: BAR_RADIUS - TAB_BAR_INSET,
   },
-  pillActive: { backgroundColor: colors.frostOnBrand },
+  // Same treatment a task card gives its type icon: a solid colour circle with
+  // a white glyph. Selection therefore looks native to this app rather than
+  // like a control borrowed from another one.
+  glyph: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  glyphActive: { backgroundColor: colors.primary },
   // The caption's 16px line box leaves dead space under an 11px glyph, which
   // pushes the visual centre upward. Tightening it re-centres the pair.
   label: { maxWidth: "100%", lineHeight: 13 },
