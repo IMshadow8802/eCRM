@@ -5,6 +5,11 @@ import { createStackNavigator } from "@react-navigation/stack";
 import LoginScreen from "../features/auth/LoginScreen";
 import MyWorkScreen from "../features/tasks/MyWorkScreen";
 import BoardsScreen from "../features/workspaces/BoardsScreen";
+import BoardScreen from "../features/workspaces/BoardScreen";
+import ColumnsScreen from "../features/workspaces/ColumnsScreen";
+import WorkspaceFormScreen from "../features/workspaces/WorkspaceFormScreen";
+import WorkspaceSettingsScreen from "../features/workspaces/WorkspaceSettingsScreen";
+import TaskFormScreen from "../features/tasks/TaskFormScreen";
 import WorkHubScreen from "../features/hub/WorkHubScreen";
 import ComingSoonScreen from "../features/hub/ComingSoonScreen";
 import MeScreen from "../features/profile/MeScreen";
@@ -19,6 +24,16 @@ export type RootStackParamList = {
   TaskDetail: { taskId: number; workspaceId: number | null };
   /** Boards moved off the tab bar and is now reached through the Work hub. */
   Boards: undefined;
+  /** One workspace's kanban. `name` is passed so the header has a title
+   *  before the columns arrive. */
+  Board: { workspaceId: number; name: string };
+  /** Omit `taskId` to create. `columnId` seeds the column when opened from a
+   *  board, so a new card lands where the user tapped +. */
+  TaskForm: { workspaceId: number; taskId?: number; columnId?: number | null };
+  /** Omit `workspaceId` to create a new workspace. */
+  WorkspaceForm: { workspaceId?: number };
+  WorkspaceSettings: { workspaceId: number };
+  Columns: { workspaceId: number };
   ComingSoon: { title: string; blurb: string };
 };
 
@@ -78,6 +93,14 @@ export default function RootNavigator() {
             <Stack.Screen name="Tabs" component={Tabs} />
             <Stack.Screen name="TaskDetail" component={TaskDetailScreen} />
             <Stack.Screen name="Boards" component={BoardsScreen} />
+            <Stack.Screen name="Board" component={BoardScreen} />
+            <Stack.Screen name="TaskForm" component={TaskFormScreen} />
+            <Stack.Screen name="WorkspaceForm" component={WorkspaceFormScreen} />
+            <Stack.Screen
+              name="WorkspaceSettings"
+              component={WorkspaceSettingsScreen}
+            />
+            <Stack.Screen name="Columns" component={ColumnsScreen} />
             <Stack.Screen name="ComingSoon" component={ComingSoonScreen} />
           </>
         ) : (

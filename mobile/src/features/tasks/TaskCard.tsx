@@ -28,11 +28,14 @@ import {
   checklistProgress,
   dueBucket,
   dueLabel,
+  formatHours,
 } from "./taskHelpers";
 
 interface TaskCardProps {
   task: Task;
   onPress: (task: Task) => void;
+  /** Board view uses this for "move to…" — there is no drag on a phone. */
+  onLongPress?: (task: Task) => void;
   /** Hide the workspace name when the list is already scoped to one board. */
   showWorkspace?: boolean;
 }
@@ -73,10 +76,12 @@ function Stat({
   );
 }
 
-/** "4h" / "1.5h" — hours are decimals in the DB and 1.5 must not print as 2. */
-const hours = (h: number) => `${Number.isInteger(h) ? h : h.toFixed(1)}h`;
-
-function TaskCardBase({ task, onPress, showWorkspace = true }: TaskCardProps) {
+function TaskCardBase({
+  task,
+  onPress,
+  onLongPress,
+  showWorkspace = true,
+}: TaskCardProps) {
   const { done, total } = checklistProgress(task);
   const pct = total > 0 ? done / total : 0;
   const overdue = dueBucket(task.DueDate) === "overdue";
@@ -102,6 +107,8 @@ function TaskCardBase({ task, onPress, showWorkspace = true }: TaskCardProps) {
   return (
     <Pressable
       onPress={() => onPress(task)}
+      onLongPress={onLongPress ? () => onLongPress(task) : undefined}
+      delayLongPress={300}
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
       <View style={styles.row}>
@@ -180,8 +187,8 @@ function TaskCardBase({ task, onPress, showWorkspace = true }: TaskCardProps) {
             Icon={Timer}
             value={
               estimated > 0
-                ? `${hours(logged)} / ${hours(estimated)}`
-                : hours(logged)
+                ? `${formatHours(logged)} / ${formatHours(estimated)}`
+                : formatHours(logged)
             }
             tone={estimated > 0 && logged > estimated ? "danger" : "textSecondary"}
           />

@@ -112,6 +112,39 @@ export function dueLabel(dueDate: string | null, now = new Date()): string | nul
   return `Due ${due.toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`;
 }
 
+/**
+ * "4m ago" / "3d ago" / "12 Jul" for a timestamp column.
+ *
+ * These are `datetime` values, not `date`: the backend runs with
+ * `useUTC: false` and the container is pinned to Asia/Kolkata, so a serialised
+ * timestamp is a correct instant and plain `new Date()` parsing is right here.
+ * Only `DueDate` needs the local-calendar treatment above.
+ */
+export function relativeTime(iso: string | null, now = new Date()): string {
+  if (!iso) return "";
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+
+  const mins = Math.round((now.getTime() - then) / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+
+  const days = Math.round(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+
+  return new Date(then).toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+  });
+}
+
+/** "4h" / "1.5h" — hours are decimals in the DB and 1.5 must not print as 2. */
+export const formatHours = (h: number) =>
+  `${Number.isInteger(h) ? h : h.toFixed(1)}h`;
+
 // ---------------------------------------------------------------- priority
 
 export const PRIORITY_TONE: Record<TaskPriority, "success" | "warning" | "danger"> = {

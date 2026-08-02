@@ -8,6 +8,7 @@
 //
 // If a screen needs a widget that is not here, add it here. Two screens
 // building the same thing separately is the failure mode this prevents.
+export { default as ActionSheet } from "./ActionSheet";
 export { default as Avatar } from "./Avatar";
 export { default as Button } from "./Button";
 export { default as Card } from "./Card";
@@ -26,9 +27,10 @@ export { default as Select } from "./Select";
 export { default as Sheet } from "./Sheet";
 export { default as Text } from "./Text";
 
+export type { ActionSheetProps, SheetAction } from "./ActionSheet";
 export type { ButtonProps, ButtonSize, ButtonVariant } from "./Button";
 export type { ChipProps, ChipTone } from "./Chip";
-export type { ComposeSheetProps } from "./ComposeSheet";
+export type { ComposeField, ComposeSheetProps } from "./ComposeSheet";
 export type { DateFieldProps } from "./DateField";
 export type { DialogProps } from "./Dialog";
 export type { EmptyStateProps } from "./EmptyState";

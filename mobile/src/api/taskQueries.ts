@@ -331,6 +331,7 @@ export const deleteTaskTimeEntry = (params: {
 
 // --------------------------------------------------- activity + dependencies
 
+/** NOTE the key: the controller answers with `activities`, not `activity`. */
 export const getTaskActivity = (params: {
   TaskId: number;
   PageNumber?: number;
@@ -339,17 +340,25 @@ export const getTaskActivity = (params: {
   postData<TaskActivityEntry>(
     TASK_ENDPOINTS.getTaskActivity,
     { PageNumber: 1, PageSize: 50, ...params },
-    "activity",
+    "activities",
   );
 
+/**
+ * Two lists, not one: sp_FetchTaskDependencies returns both directions in a
+ * single result set tagged with `Direction`, and the controller splits them
+ * into `blockers` (what this task waits on) and `dependents` (what waits on
+ * it). Each row describes the OTHER task — `TaskId` is its id, not this one's.
+ */
 export const fetchTaskDependencies = (params: {
   TaskId: number;
-}): Promise<TaskDependency[]> =>
-  postData<TaskDependency>(
+}): Promise<{ blockers: TaskDependency[]; dependents: TaskDependency[] }> =>
+  post<{ blockers: TaskDependency[]; dependents: TaskDependency[] }>(
     TASK_ENDPOINTS.fetchTaskDependencies,
     params,
-    "dependencies",
-  );
+  ).then((response) => ({
+    blockers: response.data?.blockers ?? [],
+    dependents: response.data?.dependents ?? [],
+  }));
 
 export const addTaskDependency = (params: {
   TaskId: number;

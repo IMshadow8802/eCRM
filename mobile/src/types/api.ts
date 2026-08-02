@@ -200,6 +200,7 @@ export interface TaskComment {
 export interface TaskTimeEntry {
   Id: number;
   TaskId: number;
+  TaskTitle: string | null;
   UserId: number;
   UserName: string | null;
   Hours: number;
@@ -208,22 +209,33 @@ export interface TaskTimeEntry {
   CreatedDate: string;
 }
 
+/** A row of tblActivityLog, as returned by sp_FetchTaskActivity. */
 export interface TaskActivityEntry {
   Id: number;
   TaskId: number;
   UserId: number | null;
   UserName: string | null;
   Action: string;
+  OldValue: string | null;
+  NewValue: string | null;
   Description: string | null;
   CreatedDate: string;
 }
 
+/**
+ * One end of a dependency edge, as returned by sp_FetchTaskDependencies.
+ *
+ * `TaskId` here is the OTHER task — the blocker's id in a `blockers` row, the
+ * dependent's id in a `dependents` row. The task you asked about is not
+ * repeated on the row.
+ */
 export interface TaskDependency {
+  Direction: "blocker" | "dependent";
   TaskId: number;
-  DependsOnTaskId: number;
-  DependsOnTitle: string | null;
+  Title: string | null;
+  ColumnTitle: string | null;
+  IsCompleted: boolean;
   Type: string;
-  IsCompleted: boolean | null;
 }
 
 // -------------------------------------------------------------- workspace

@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { RefreshControl, SectionList, StyleSheet, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CloudOff, LayoutDashboard, Mail } from "lucide-react-native";
+import { CloudOff, LayoutDashboard, Mail, Plus } from "lucide-react-native";
 
 import type { StackScreenProps } from "@react-navigation/stack";
 
@@ -9,7 +9,7 @@ import { fetchWorkspaces, respondInvite } from "../../api/workspaceQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import type { Workspace } from "../../types/api";
 import { colors, radius, shadows, spacing } from "../../theme";
-import { Button, EmptyState, Screen, ScreenHeader, Text } from "../../ui";
+import { Button, EmptyState, Fab, Screen, ScreenHeader, Text } from "../../ui";
 import { WorkspaceCard } from "./WorkspaceCard";
 
 type Props = StackScreenProps<RootStackParamList, "Boards">;
@@ -54,10 +54,14 @@ export default function BoardsScreen({ navigation }: Props) {
     return out;
   }, [workspaces]);
 
-  const openWorkspace = useCallback((workspace: Workspace) => {
-    // Phase 2 continues: push the board for this workspace.
-    void workspace;
-  }, []);
+  const openWorkspace = useCallback(
+    (workspace: Workspace) =>
+      navigation.navigate("Board", {
+        workspaceId: workspace.Id,
+        name: workspace.Name,
+      }),
+    [navigation],
+  );
 
   const activeCount = workspaces.filter(
     (w) => w.MyInviteStatus !== "pending" && !w.IsArchived,
@@ -163,11 +167,21 @@ export default function BoardsScreen({ navigation }: Props) {
               message={
                 isError
                   ? "Pull down to try again."
-                  : "Boards you own or are invited to appear here. Create one on the web."
+                  : "Boards you own or are invited to appear here."
+              }
+              actionLabel={isError ? undefined : "Create a board"}
+              onAction={
+                isError ? undefined : () => navigation.navigate("WorkspaceForm", {})
               }
             />
           )
         }
+      />
+
+      <Fab
+        icon={Plus}
+        accessibilityLabel="Create a board"
+        onPress={() => navigation.navigate("WorkspaceForm", {})}
       />
     </Screen>
   );
@@ -176,8 +190,9 @@ export default function BoardsScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   // No top padding — the section header below provides the gap. Stacking
   // header padding, list padding and section padding gave 44px of dead space.
-  // Pushed screen, not a tab — no floating bar to clear.
-  content: { paddingBottom: spacing[10] },
+  // Pushed screen, not a tab — no floating bar to clear, but the FAB still
+  // needs room or it covers the last card.
+  content: { paddingBottom: spacing[20] },
   contentEmpty: { flexGrow: 1 },
   sectionTitle: {
     paddingHorizontal: spacing[5],
