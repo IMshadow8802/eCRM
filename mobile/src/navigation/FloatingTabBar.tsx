@@ -3,7 +3,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 
-import { colors, radius, shadows, spacing, TAB_BAR_HEIGHT } from "../theme";
+import { colors, shadows, spacing, TAB_BAR_HEIGHT } from "../theme";
 import { Text } from "../ui";
 
 /**
@@ -11,8 +11,9 @@ import { Text } from "../ui";
  * React Navigation has no per-route icon option, and augmenting its options
  * type is not possible (it is a type alias, not an interface).
  *
- * Filled when selected, outlined when not, so the state reads through weight
- * as well as colour.
+ * Filled when selected, outlined when not. With no chip or pill behind the
+ * icon, that weight change is what carries the state alongside the colour —
+ * so selection still reads for anyone who cannot separate the two hues.
  */
 const TAB_ICONS: Record<
   string,
@@ -31,9 +32,9 @@ const TAB_ICONS: Record<
  * glyphs — so it read as imported from somewhere else.
  *
  * This is a white card like every other surface, lifted on the same shadow, and
- * the selected tab is marked by a solid brand glyph — exactly the treatment a
- * task card gives its type icon. It separates from the page by elevation and a
- * hairline, not by being loud.
+ * the selected tab is marked by nothing more than a filled, brand-coloured
+ * icon. No chip, no pill: the bar already has one job, and a container around
+ * the icon only competes with the row of coloured glyphs on the cards above it.
  */
 export default function FloatingTabBar({
   state,
@@ -80,15 +81,13 @@ export default function FloatingTabBar({
             style={[styles.item, { width: itemWidth }]}
           >
             <View style={styles.stack}>
-              <View style={[styles.glyph, focused && styles.glyphActive]}>
-                <MaterialIcons
-                  name={
-                    focused ? (icons?.on ?? "circle") : (icons?.off ?? "circle")
-                  }
-                  size={focused ? 20 : 22}
-                  color={focused ? colors.textOnBrand : colors.textMuted}
-                />
-              </View>
+              <MaterialIcons
+                name={
+                  focused ? (icons?.on ?? "circle") : (icons?.off ?? "circle")
+                }
+                size={24}
+                color={focused ? colors.primary : colors.textMuted}
+              />
               <Text
                 variant="caption"
                 color={focused ? "primary" : "textMuted"}
@@ -148,17 +147,6 @@ const styles = StyleSheet.create({
     gap: spacing[1],
     paddingHorizontal: spacing[1],
   },
-  // Same treatment a task card gives its type icon: a solid colour circle with
-  // a white glyph. Selection therefore looks native to this app rather than
-  // like a control borrowed from another one.
-  glyph: {
-    width: 34,
-    height: 34,
-    borderRadius: radius.full,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  glyphActive: { backgroundColor: colors.primary },
   // The caption's 16px line box leaves dead space under an 11px glyph, which
   // pushes the visual centre upward. Tightening it re-centres the pair.
   label: { maxWidth: "100%", lineHeight: 13 },
