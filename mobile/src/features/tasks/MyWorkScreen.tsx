@@ -1,9 +1,12 @@
 import { useCallback, useMemo, useState } from "react";
 import { Pressable, RefreshControl, SectionList, StyleSheet, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
+import { useNavigation } from "@react-navigation/native";
+import type { StackNavigationProp } from "@react-navigation/stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { fetchTasks } from "../../api/taskQueries";
+import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
 import type { Task } from "../../types/api";
 import { colors, radius, spacing } from "../../theme";
@@ -21,6 +24,8 @@ const FILTERS: { key: Filter; label: string }[] = [
 ];
 
 export default function MyWorkScreen() {
+  const navigation =
+    useNavigation<StackNavigationProp<RootStackParamList>>();
   const userId = useAuthStore((s) => s.UserId);
   const user = useAuthStore((s) => s.user);
   const insets = useSafeAreaInsets();
@@ -57,10 +62,14 @@ export default function MyWorkScreen() {
     [tasks, userId],
   );
 
-  const openTask = useCallback((task: Task) => {
-    // Phase 2 continues: push the task detail screen.
-    void task;
-  }, []);
+  const openTask = useCallback(
+    (task: Task) =>
+      navigation.navigate("TaskDetail", {
+        taskId: task.Id,
+        workspaceId: task.WorkspaceId,
+      }),
+    [navigation],
+  );
 
   const firstName = (user?.FullName ?? "").split(" ")[0] || "there";
   const greeting = greetingFor();

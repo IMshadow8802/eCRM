@@ -33,6 +33,12 @@ export interface InputProps extends Omit<TextInputProps, "style"> {
    * the text. Only the label, helper and elevation change.
    */
   tone?: "default" | "onBrand";
+  /**
+   * Strips the border, background and fixed height — for an inline composer
+   * sitting inside a card that already provides the surface. Exists so screens
+   * never reach for a raw RN TextInput to get one.
+   */
+  bare?: boolean;
   containerStyle?: ViewStyle;
 }
 
@@ -49,6 +55,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
     leftIcon,
     password = false,
     tone = "default",
+    bare = false,
     containerStyle,
     editable = true,
     multiline,
@@ -76,6 +83,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
       <View
         style={[
           styles.field,
+          bare && styles.fieldBare,
           onBrand && styles.fieldOnBrand,
           multiline && styles.fieldMultiline,
           focused && styles.fieldFocused,
@@ -161,6 +169,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   // Multiline is the one case that grows past the fixed control height.
+  fieldBare: {
+    height: undefined,
+    minHeight: undefined,
+    borderWidth: 0,
+    paddingHorizontal: 0,
+    backgroundColor: colors.transparentBorder,
+  },
   fieldMultiline: {
     height: undefined,
     minHeight: CONTROL_HEIGHT * 2,
@@ -182,6 +197,7 @@ const styles = StyleSheet.create({
     // No vertical padding — the parent's fixed height centres it. Padding here
     // is what made inputs render taller than buttons beside them.
     paddingVertical: 0,
+    maxHeight: 96,
     ...typography.body,
   },
   helper: {},

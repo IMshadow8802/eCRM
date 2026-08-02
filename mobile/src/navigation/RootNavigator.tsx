@@ -8,12 +8,15 @@ import LoginScreen from "../features/auth/LoginScreen";
 import MyWorkScreen from "../features/tasks/MyWorkScreen";
 import BoardsScreen from "../features/workspaces/BoardsScreen";
 import MeScreen from "../features/profile/MeScreen";
+import TaskDetailScreen from "../features/tasks/TaskDetailScreen";
 import useAuthStore from "../stores/useAuthStore";
 import { colors, fontFamily, fontSize } from "../theme";
 
 export type RootStackParamList = {
   Login: undefined;
   Tabs: undefined;
+  /** Pushed from any tab. Only the id travels — the screen fetches the task. */
+  TaskDetail: { taskId: number; workspaceId: number | null };
 };
 
 export type TabParamList = {
@@ -78,7 +81,10 @@ export default function RootNavigator() {
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {isAuthenticated ? (
-          <Stack.Screen name="Tabs" component={Tabs} />
+          <>
+            <Stack.Screen name="Tabs" component={Tabs} />
+            <Stack.Screen name="TaskDetail" component={TaskDetailScreen} />
+          </>
         ) : (
           <Stack.Screen name="Login" component={LoginScreen} />
         )}

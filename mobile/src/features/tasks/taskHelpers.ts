@@ -1,4 +1,9 @@
-import type { Task, TaskAssignee, TaskPriority } from "../../types/api";
+import type {
+  Task,
+  TaskAssignee,
+  TaskPriority,
+  WorkspaceRole,
+} from "../../types/api";
 
 /**
  * Assignment lives in tblTaskAssignee and arrives as AssigneesJson. The scalar
@@ -137,4 +142,58 @@ export function groupByDue(
     bucket,
     tasks: buckets.get(bucket)!,
   }));
+}
+
+// ------------------------------------------------------------- permissions
+
+/**
+ * What the current user may do to a task, mirroring sp_CheckTaskPermission.
+ * This is a UI convenience ONLY — the server re-checks every mutation, so a
+ * wrong answer here hides a button, it never grants access.
+ *
+ * The split is deliberate and matches the web:
+ *   change_status      progress   — ticking checklist, moving column
+ *   manage_checklist   artifacts  — adding/removing checklist items
+ *   manage_attachments artifacts  — adding/removing files
+ *   edit_fields        definition — title, description, due date, assignees
+ *
+ * Assignment is an act of delegation: being assigned grants progress and
+ * artifact rights even to someone who is only a `member` of the workspace,
+ * because they cannot do the work otherwise. A `viewer` who is assigned may
+ * still record progress but may not reshape the work.
+ */
+export interface TaskAbilities {
+  changeStatus: boolean;
+  manageArtifacts: boolean;
+  editFields: boolean;
+  comment: boolean;
+}
+
+export function abilitiesFor(
+  task: Task | null | undefined,
+  userId: number | null,
+  role: WorkspaceRole | null,
+  isAdmin = false,
+): TaskAbilities {
+  if (!task || userId == null) {
+    return { changeStatus: false, manageArtifacts: false, editFields: false, comment: false };
+  }
+
+  const owner = role === "owner" || role === "manager";
+  const creator = task.CreatedByUserId === userId;
+  const assigned = isAssignee(task, userId);
+  const viewer = role === "viewer";
+
+  // IsAdmin bypasses on shared/project boards only — a personal workspace stays
+  // private even from an administrator.
+  const adminBypass = isAdmin && task.WorkspaceId != null && role !== null;
+
+  const authority = owner || creator || adminBypass;
+
+  return {
+    changeStatus: authority || assigned,
+    manageArtifacts: authority || (assigned && !viewer),
+    editFields: authority,
+    comment: role !== null || creator || assigned,
+  };
 }
