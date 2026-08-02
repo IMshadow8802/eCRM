@@ -216,11 +216,15 @@ const styles = StyleSheet.create({
   },
   main: { flex: 1, gap: spacing[1] },
   subRow: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
-  // No strikethrough here. React Native exposes no textDecorationThickness, so
-  // at 16px the line is about 1px and no colour reads on it. The card already
-  // says "done" twice — a green check glyph and a Done stat — so the title just
-  // recedes.
-  doneText: { color: colors.textMuted },
+  // Muted strike, muted line. The strikethrough is what actually reads as
+  // "finished" at a glance, so it stays — but deliberately uncoloured: React
+  // Native has no textDecorationThickness, and at 16px a 1px line is too thin
+  // to carry a colour. Muted works because it matches the text either way,
+  // including on Android where the line always inherits the text colour.
+  doneText: {
+    textDecorationLine: "line-through",
+    color: colors.textMuted,
+  },
   assignees: { flexDirection: "row", alignItems: "center" },
   avatarSlot: {
     borderRadius: radius.full,
