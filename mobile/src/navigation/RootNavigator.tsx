@@ -5,6 +5,8 @@ import { createStackNavigator } from "@react-navigation/stack";
 import LoginScreen from "../features/auth/LoginScreen";
 import MyWorkScreen from "../features/tasks/MyWorkScreen";
 import BoardsScreen from "../features/workspaces/BoardsScreen";
+import WorkHubScreen from "../features/hub/WorkHubScreen";
+import ComingSoonScreen from "../features/hub/ComingSoonScreen";
 import MeScreen from "../features/profile/MeScreen";
 import TaskDetailScreen from "../features/tasks/TaskDetailScreen";
 import useAuthStore from "../stores/useAuthStore";
@@ -15,11 +17,14 @@ export type RootStackParamList = {
   Tabs: undefined;
   /** Pushed from any tab. Only the id travels — the screen fetches the task. */
   TaskDetail: { taskId: number; workspaceId: number | null };
+  /** Boards moved off the tab bar and is now reached through the Work hub. */
+  Boards: undefined;
+  ComingSoon: { title: string; blurb: string };
 };
 
 export type TabParamList = {
   MyWork: undefined;
-  Boards: undefined;
+  Work: undefined;
   Me: undefined;
 };
 
@@ -45,9 +50,9 @@ function Tabs() {
         options={{ title: "My Work" }}
       />
       <Tab.Screen
-        name="Boards"
-        component={BoardsScreen}
-        options={{ title: "Boards" }}
+        name="Work"
+        component={WorkHubScreen}
+        options={{ title: "Work" }}
       />
       <Tab.Screen
         name="Me"
@@ -72,6 +77,8 @@ export default function RootNavigator() {
           <>
             <Stack.Screen name="Tabs" component={Tabs} />
             <Stack.Screen name="TaskDetail" component={TaskDetailScreen} />
+            <Stack.Screen name="Boards" component={BoardsScreen} />
+            <Stack.Screen name="ComingSoon" component={ComingSoonScreen} />
           </>
         ) : (
           <Stack.Screen name="Login" component={LoginScreen} />

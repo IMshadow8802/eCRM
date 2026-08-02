@@ -2,22 +2,19 @@ import { useCallback, useMemo } from "react";
 import { RefreshControl, SectionList, StyleSheet, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MaterialIcons } from "@expo/vector-icons";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import type { StackScreenProps } from "@react-navigation/stack";
 
 import { fetchWorkspaces, respondInvite } from "../../api/workspaceQueries";
+import type { RootStackParamList } from "../../navigation/RootNavigator";
 import type { Workspace } from "../../types/api";
-import {
-  colors,
-  radius,
-  shadows,
-  spacing,
-  TAB_BAR_CLEARANCE,
-} from "../../theme";
-import { Button, EmptyState, Screen, Text } from "../../ui";
+import { colors, radius, shadows, spacing } from "../../theme";
+import { Button, EmptyState, Screen, ScreenHeader, Text } from "../../ui";
 import { WorkspaceCard } from "./WorkspaceCard";
 
-export default function BoardsScreen() {
-  const insets = useSafeAreaInsets();
+type Props = StackScreenProps<RootStackParamList, "Boards">;
+
+export default function BoardsScreen({ navigation }: Props) {
   const queryClient = useQueryClient();
 
   const { data, isLoading, isRefetching, refetch, isError } = useQuery({
@@ -68,29 +65,15 @@ export default function BoardsScreen() {
 
   return (
     <Screen>
-      <View style={[styles.header, { paddingTop: insets.top + spacing[3] }]}>
-        <Text variant="h1">Boards</Text>
-        <View style={styles.headerStats}>
-          <View style={styles.stat}>
-            <MaterialIcons name="dashboard" size={14} color={colors.primary} />
-            <Text variant="secondary">
-              {activeCount} board{activeCount === 1 ? "" : "s"}
-            </Text>
-          </View>
-          {pending.length ? (
-            <View style={styles.stat}>
-              <MaterialIcons
-                name="mark-email-unread"
-                size={14}
-                color={colors.accent}
-              />
-              <Text variant="secondary" color="accent">
-                {pending.length} invite{pending.length === 1 ? "" : "s"}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-      </View>
+      <ScreenHeader
+        title="Boards"
+        subtitle={
+          pending.length
+            ? `${activeCount} board${activeCount === 1 ? "" : "s"} · ${pending.length} invite${pending.length === 1 ? "" : "s"}`
+            : `${activeCount} board${activeCount === 1 ? "" : "s"}`
+        }
+        onBack={navigation.goBack}
+      />
 
       <SectionList
         sections={sections}
@@ -192,19 +175,10 @@ export default function BoardsScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: {
-    paddingHorizontal: spacing[5],
-    paddingBottom: spacing[3],
-    gap: spacing[2],
-    backgroundColor: colors.background,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.divider,
-  },
-  headerStats: { flexDirection: "row", alignItems: "center", gap: spacing[4] },
-  stat: { flexDirection: "row", alignItems: "center", gap: spacing[1] },
   // No top padding — the section header below provides the gap. Stacking
   // header padding, list padding and section padding gave 44px of dead space.
-  content: { paddingBottom: TAB_BAR_CLEARANCE },
+  // Pushed screen, not a tab — no floating bar to clear.
+  content: { paddingBottom: spacing[10] },
   contentEmpty: { flexGrow: 1 },
   sectionTitle: {
     paddingHorizontal: spacing[5],

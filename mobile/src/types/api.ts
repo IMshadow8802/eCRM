@@ -78,15 +78,27 @@ export interface Company {
   CompGSTIN: string | null;
 }
 
+/**
+ * A menu-rights row. NOTE the lower-case keys: authController.mapMenuRow
+ * rewrites the SP's PascalCase columns into this shape, so this is the only
+ * payload in the API that is not PascalCase. Do not "correct" it.
+ */
 export interface MenuItem {
-  MenuId: number;
-  MenuName: string;
-  Route: string | null;
-  ParentId: number | null;
-  CanView: boolean;
-  CanAdd: boolean;
-  CanEdit: boolean;
-  CanDelete: boolean;
+  menuid: number;
+  parentid: number;
+  description: string;
+  image: string | null;
+  route: string | null;
+  formname: string | null;
+  formclass: string | null;
+  openStyle: number | null;
+  permissions: {
+    canView: boolean;
+    canAdd: boolean;
+    canEdit: boolean;
+    canDelete: boolean;
+  };
+  groupName: string | null;
   children?: MenuItem[];
 }
 

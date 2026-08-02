@@ -19,7 +19,7 @@ const TAB_ICONS: Record<
   { on: keyof typeof MaterialIcons.glyphMap; off: keyof typeof MaterialIcons.glyphMap }
 > = {
   MyWork: { on: "check-circle", off: "check-circle-outline" },
-  Boards: { on: "dashboard", off: "dashboard-customize" },
+  Work: { on: "grid-view", off: "grid-view" },
   Me: { on: "person", off: "person-outline" },
 };
 
