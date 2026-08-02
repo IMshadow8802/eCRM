@@ -104,6 +104,13 @@ export default function FloatingTabBar({
 
 const TAB_BAR_INSET = spacing[2];
 const BAR_RADIUS = radius["2xl"];
+/**
+ * Derived, not chosen. Letting the pill stretch inside a padded row left its
+ * final height negotiated between padding, alignItems and flex — and it settled
+ * a couple of pixels low, so the gap under it read thinner than the one above.
+ * An explicit height makes the inset arithmetic: (bar - 2 x inset).
+ */
+const PILL_HEIGHT = TAB_BAR_HEIGHT - TAB_BAR_INSET * 2;
 
 const styles = StyleSheet.create({
   bar: {
@@ -121,9 +128,10 @@ const styles = StyleSheet.create({
     ...shadows.floating,
   },
   // Width is set inline from the route count — see itemWidth above.
-  item: { alignSelf: "stretch" },
+  item: { height: PILL_HEIGHT, alignItems: "center", justifyContent: "center" },
   pill: {
-    flex: 1,
+    height: PILL_HEIGHT,
+    alignSelf: "stretch",
     alignItems: "center",
     justifyContent: "center",
     gap: spacing[1],
@@ -133,5 +141,7 @@ const styles = StyleSheet.create({
     borderRadius: BAR_RADIUS - TAB_BAR_INSET,
   },
   pillActive: { backgroundColor: colors.frostOnBrand },
-  label: { maxWidth: "100%" },
+  // The caption's 16px line box leaves dead space under an 11px glyph, which
+  // pushes the visual centre upward. Tightening it re-centres the pair.
+  label: { maxWidth: "100%", lineHeight: 13 },
 });
