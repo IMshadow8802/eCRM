@@ -1,11 +1,9 @@
 import { useRef, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MaterialIcons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
-import * as Sharing from "expo-sharing";
-import { File, Paths } from "expo-file-system";
 
 import {
   deleteAttachment,
@@ -13,27 +11,27 @@ import {
   uploadAttachment,
   type PickedFile,
 } from "../../api/attachmentQueries";
-import { apiClient } from "../../api/client";
 import type { Attachment, AttachmentEntity } from "../../types/api";
 import { colors, radius, spacing } from "../../theme";
 import { Dialog, Sheet, Text, type SheetRef } from "../../ui";
+import FileViewer from "./FileViewer";
 import { fileMeta, humanSize, MAX_UPLOAD_BYTES } from "./attachmentHelpers";
 
-interface AttachmentSectionProps {
+interface AttachmentListProps {
   entity: AttachmentEntity;
   entityId: number;
   /** manageArtifacts — assignees, creator, owner/manager. Viewers are read-only. */
   canManage: boolean;
 }
 
-export default function AttachmentSection({
+export default function AttachmentList({
   entity,
   entityId,
   canManage,
-}: AttachmentSectionProps) {
+}: AttachmentListProps) {
   const queryClient = useQueryClient();
   const sheetRef = useRef<SheetRef>(null);
-  const [busy, setBusy] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<Attachment | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Attachment | null>(null);
 
@@ -128,96 +126,58 @@ export default function AttachmentSection({
     );
   };
 
-  /**
-   * Download, then hand to the OS share sheet — that is how a file gets opened,
-   * saved to Files, or installed on Android.
-   *
-   * The download endpoint is POST, so expo-file-system's GET-only download task
-   * cannot be used; the bytes come through axios and are written to cache.
-   * That holds the whole file in memory, which is fine for photos and PDFs but
-   * would strain on a 200MB build — a GET download route is the fix if that
-   * ever becomes a real workflow.
-   */
-  const open = async (attachment: Attachment) => {
-    setError(null);
-    setBusy(String(attachment.Id));
-    try {
-      const res = await apiClient.post(
-        "/api/attachments/download",
-        { Id: attachment.Id },
-        { responseType: "arraybuffer", timeout: 0 },
-      );
-      const file = new File(Paths.cache, attachment.FileName);
-      if (file.exists) file.delete();
-      file.create();
-      file.write(new Uint8Array(res.data as ArrayBuffer));
-
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(file.uri, {
-          mimeType: attachment.MimeType ?? undefined,
-          dialogTitle: attachment.FileName,
-        });
-      }
-    } catch {
-      setError(`Could not open "${attachment.FileName}".`);
-    } finally {
-      setBusy(null);
-    }
-  };
-
   return (
     <View style={styles.container}>
-      {isLoading ? <ActivityIndicator color={colors.primary} /> : null}
-
-      {attachments.map((a) => {
-        const meta = fileMeta(a.FileName, a.MimeType);
-        const isBusy = busy === String(a.Id);
-        return (
-          <Pressable
-            key={a.Id}
-            style={styles.row}
-            onPress={() => open(a)}
-            disabled={isBusy}
-          >
-            <View style={[styles.glyph, { backgroundColor: colors[meta.tint] }]}>
-              {isBusy ? (
-                <ActivityIndicator size="small" color={colors.textOnBrand} />
-              ) : (
+      <FlatList
+        data={attachments}
+        keyExtractor={(a) => String(a.Id)}
+        contentContainerStyle={styles.list}
+        showsVerticalScrollIndicator={false}
+        ListEmptyComponent={
+          isLoading ? (
+            <ActivityIndicator color={colors.primary} />
+          ) : (
+            <Text variant="secondary">No files yet.</Text>
+          )
+        }
+        renderItem={({ item: a }) => {
+          const meta = fileMeta(a.FileName, a.MimeType);
+          return (
+            <Pressable style={styles.row} onPress={() => setViewing(a)}>
+              <View style={[styles.glyph, { backgroundColor: colors[meta.tint] }]}>
                 <MaterialIcons
                   name={meta.icon}
                   size={18}
                   color={colors.textOnBrand}
                 />
+              </View>
+
+              <View style={styles.rowText}>
+                <Text variant="body" numberOfLines={1}>
+                  {a.FileName}
+                </Text>
+                <Text variant="caption" color="textMuted">
+                  {[humanSize(a.FileSize), a.UploaderName]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </Text>
+              </View>
+
+              {canManage ? (
+                <Pressable hitSlop={spacing[2]} onPress={() => setPendingDelete(a)}>
+                  <MaterialIcons name="close" size={18} color={colors.textMuted} />
+                </Pressable>
+              ) : (
+                <MaterialIcons
+                  name="visibility"
+                  size={18}
+                  color={colors.textMuted}
+                />
               )}
-            </View>
-
-            <View style={styles.rowText}>
-              <Text variant="body" numberOfLines={1}>
-                {a.FileName}
-              </Text>
-              <Text variant="caption" color="textMuted">
-                {[humanSize(a.FileSize), a.UploaderName].filter(Boolean).join(" · ")}
-              </Text>
-            </View>
-
-            {canManage ? (
-              <Pressable hitSlop={spacing[2]} onPress={() => setPendingDelete(a)}>
-                <MaterialIcons name="close" size={18} color={colors.textMuted} />
-              </Pressable>
-            ) : (
-              <MaterialIcons
-                name="file-download"
-                size={18}
-                color={colors.textMuted}
-              />
-            )}
-          </Pressable>
-        );
-      })}
-
-      {!attachments.length && !isLoading ? (
-        <Text variant="secondary">No files yet.</Text>
-      ) : null}
+            </Pressable>
+          );
+        }}
+      />
 
       {error ? (
         <View style={styles.error}>
@@ -250,6 +210,8 @@ export default function AttachmentSection({
         <PickOption icon="photo-library" label="Choose from library" onPress={pickImage} />
         <PickOption icon="folder-open" label="Choose a file" onPress={pickDocument} />
       </Sheet>
+
+      <FileViewer attachment={viewing} onClose={() => setViewing(null)} />
 
       <Dialog
         visible={!!pendingDelete}
@@ -287,7 +249,8 @@ function PickOption({
 }
 
 const styles = StyleSheet.create({
-  container: { gap: spacing[3] },
+  container: { flex: 1, paddingHorizontal: spacing[5] },
+  list: { gap: spacing[3], paddingBottom: spacing[4] },
   row: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
   glyph: {
     width: 36,
@@ -300,12 +263,18 @@ const styles = StyleSheet.create({
   addRow: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: spacing[2],
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.divider,
-    paddingTop: spacing[3],
+    borderTopColor: colors.border,
+    paddingVertical: spacing[3],
   },
-  error: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
+  error: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[2],
+    paddingBottom: spacing[2],
+  },
   errorText: { flex: 1 },
   pickOption: {
     flexDirection: "row",

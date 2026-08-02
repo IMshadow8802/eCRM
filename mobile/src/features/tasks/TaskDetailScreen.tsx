@@ -1,11 +1,10 @@
 import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  FlatList,
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  RefreshControl,
-  ScrollView,
   StyleSheet,
   View,
 } from "react-native";
@@ -25,12 +24,20 @@ import {
 import { fetchWorkspaces } from "../../api/workspaceQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
-import { colors, radius, shadows, spacing } from "../../theme";
-import { Avatar, Button, Input, Screen, ScreenHeader, Text } from "../../ui";
-import AttachmentSection from "../attachments/AttachmentSection";
-import { abilitiesFor, assigneesOf, dueLabel } from "./taskHelpers";
+import { colors, radius, spacing } from "../../theme";
+import {
+  Avatar,
+  Input,
+  Screen,
+  ScreenHeader,
+  Segmented,
+  Text,
+} from "../../ui";
+import AttachmentList from "../attachments/AttachmentList";
+import { abilitiesFor, assigneesOf, dueBucket, dueLabel } from "./taskHelpers";
 
 type Props = StackScreenProps<RootStackParamList, "TaskDetail">;
+type Tab = "steps" | "files" | "chat";
 
 export default function TaskDetailScreen({ route, navigation }: Props) {
   const { taskId, workspaceId } = route.params;
@@ -39,8 +46,8 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   const userId = useAuthStore((s) => s.UserId);
   const isAdmin = useAuthStore((s) => Boolean(s.user?.IsAdmin));
 
-  const [newItem, setNewItem] = useState("");
-  const [newComment, setNewComment] = useState("");
+  const [tab, setTab] = useState<Tab>("steps");
+  const [draft, setDraft] = useState("");
 
   const taskQuery = useQuery({
     queryKey: ["task", taskId],
@@ -54,8 +61,8 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
     queryKey: ["task", taskId, "comments"],
     queryFn: () => getTaskComments({ TaskId: taskId }),
   });
-  // Needed for permissions: authority comes from the caller's role in THIS
-  // task's workspace, which the task row itself does not carry.
+  // Authority comes from the caller's role in THIS task's workspace, which the
+  // task row does not carry. Already cached by Boards, so this costs nothing.
   const { data: workspaces } = useQuery({
     queryKey: ["workspaces"],
     queryFn: () => fetchWorkspaces({ PageSize: 100 }),
@@ -70,32 +77,30 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   );
   const can = abilitiesFor(task, userId, role, isAdmin);
 
-  // Ticking an item changes IsCompleted on the task, so the lists that show
-  // progress have to be refetched too.
-  const invalidateAll = () => {
+  const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["task", taskId] });
     queryClient.invalidateQueries({ queryKey: ["tasks"] });
   };
 
   const toggleItem = useMutation({
     mutationFn: saveTaskChecklist,
-    onSuccess: invalidateAll,
+    onSuccess: invalidate,
   });
   const removeItem = useMutation({
     mutationFn: deleteTaskChecklist,
-    onSuccess: invalidateAll,
+    onSuccess: invalidate,
   });
   const addItem = useMutation({
     mutationFn: saveTaskChecklist,
     onSuccess: () => {
-      setNewItem("");
-      invalidateAll();
+      setDraft("");
+      invalidate();
     },
   });
   const addComment = useMutation({
     mutationFn: addTaskComment,
     onSuccess: () => {
-      setNewComment("");
+      setDraft("");
       queryClient.invalidateQueries({ queryKey: ["task", taskId, "comments"] });
     },
   });
@@ -103,7 +108,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   const checklist = checklistQuery.data ?? [];
   const comments = commentsQuery.data ?? [];
   const assignees = task ? assigneesOf(task) : [];
-  const due = task ? dueLabel(task.DueDate) : null;
+  const done = checklist.filter((i) => i.IsCompleted).length;
 
   if (taskQuery.isLoading) {
     return (
@@ -118,17 +123,41 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   if (!task) {
     return (
       <Screen>
-        <View style={[styles.centre, styles.gap]}>
-          <MaterialIcons name="lock" size={32} color={colors.textMuted} />
+        <ScreenHeader title="Task" onBack={navigation.goBack} />
+        <View style={styles.centre}>
+          <MaterialIcons name="lock" size={30} color={colors.textMuted} />
           <Text variant="h3">Task not available</Text>
           <Text variant="secondary" align="center">
             It may have been deleted, or you no longer have access to its board.
           </Text>
-          <Button title="Go back" variant="secondary" onPress={navigation.goBack} />
         </View>
       </Screen>
     );
   }
+
+  const overdue = dueBucket(task.DueDate) === "overdue";
+  const due = dueLabel(task.DueDate);
+  const showComposer =
+    (tab === "steps" && can.manageArtifacts) || (tab === "chat" && can.comment);
+
+  const submit = () => {
+    const text = draft.trim();
+    if (!text) return;
+    if (tab === "steps") {
+      addItem.mutate({
+        TaskId: taskId,
+        ItemText: text,
+        SortOrder: checklist.length,
+        WorkspaceId: task.WorkspaceId,
+      });
+    } else {
+      addComment.mutate({
+        TaskId: taskId,
+        Comment: text,
+        WorkspaceId: task.WorkspaceId,
+      });
+    }
+  };
 
   return (
     <Screen>
@@ -138,76 +167,83 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
         onBack={navigation.goBack}
       />
 
+      {/* One KeyboardAvoidingView around everything, offset 0. The previous
+          version offset by insets.top + 40, which left ~100px of empty grey
+          screen sitting above the keyboard. */}
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={insets.top + spacing[10]}
       >
-        <ScrollView
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          refreshControl={
-            <RefreshControl
-              refreshing={taskQuery.isRefetching}
-              onRefresh={taskQuery.refetch}
-              tintColor={colors.primary}
-            />
-          }
-        >
-          <Text variant="h1">{task.Title}</Text>
+        <View style={styles.summary}>
+          <Text variant="h2">{task.Title}</Text>
 
           {task.Description ? (
-            <Text variant="body" color="textSecondary">
+            <Text variant="secondary" numberOfLines={3}>
               {task.Description}
             </Text>
           ) : null}
 
-          <View style={styles.factCard}>
-            <Fact icon="flag" tint="priorityHigh" label="Priority" value={task.Priority ?? "—"} />
-            <Fact icon="event" tint="info" label="Due" value={due ?? "No due date"} />
-            <Fact icon="view-week" tint="primary" label="Column" value={task.ColumnTitle ?? "—"} />
-            <Fact
-              icon="person-outline"
-              tint="neutralIcon"
-              label="Created by"
-              value={task.CreatorName ?? "—"}
-              last
-            />
-          </View>
-
-          <Section title="Assignees" icon="group">
+          {/* One dense row instead of a four-row fact card — same information,
+              a fifth of the height. */}
+          <View style={styles.metaRow}>
+            {task.Priority ? (
+              <Meta icon="flag" text={task.Priority} tone="priorityHigh" />
+            ) : null}
+            {due ? (
+              <Meta
+                icon={overdue ? "error-outline" : "event"}
+                text={due}
+                tone={overdue ? "danger" : "textSecondary"}
+              />
+            ) : null}
             {assignees.length ? (
-              <View style={styles.assigneeList}>
-                {assignees.map((a) => (
-                  <View key={a.UserId} style={styles.assigneeRow}>
-                    <Avatar name={a.FullName} uri={a.Avatar} size={30} />
-                    <Text variant="body">{a.FullName}</Text>
-                    {a.UserId === userId ? (
-                      <Text variant="caption" color="primary">
-                        you
-                      </Text>
-                    ) : null}
+              <View style={styles.avatars}>
+                {assignees.slice(0, 3).map((a, i) => (
+                  <View key={a.UserId} style={i > 0 ? styles.overlap : undefined}>
+                    <Avatar name={a.FullName} uri={a.Avatar} size={24} />
                   </View>
                 ))}
               </View>
             ) : (
-              <Text variant="secondary">Nobody is assigned yet.</Text>
+              <Meta icon="person-off" text="Unassigned" tone="textMuted" />
             )}
-          </Section>
+          </View>
 
-          <Section
-            title="Checklist"
-            icon="checklist"
-            trailing={
-              checklist.length
-                ? `${checklist.filter((i) => i.IsCompleted).length}/${checklist.length}`
-                : undefined
+          <Segmented
+            value={tab}
+            onChange={(next) => {
+              setTab(next);
+              setDraft("");
+            }}
+            options={[
+              { value: "steps", label: "Steps", count: checklist.length },
+              { value: "files", label: "Files" },
+              { value: "chat", label: "Comments", count: comments.length },
+            ]}
+          />
+        </View>
+
+        {tab === "steps" ? (
+          <FlatList
+            data={checklist}
+            keyExtractor={(i) => String(i.Id)}
+            contentContainerStyle={styles.list}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            ListHeaderComponent={
+              checklist.length ? (
+                <Text variant="caption" color="textMuted">
+                  {done} of {checklist.length} done · completion follows this list
+                </Text>
+              ) : null
             }
-          >
-            {checklist.map((item) => (
+            ListEmptyComponent={
+              <Text variant="secondary">
+                No steps yet. Completion is driven by this list.
+              </Text>
+            }
+            renderItem={({ item }) => (
               <Pressable
-                key={item.Id}
                 disabled={!can.changeStatus || toggleItem.isPending}
                 onPress={() =>
                   toggleItem.mutate({
@@ -219,16 +255,18 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
                     WorkspaceId: task.WorkspaceId,
                   })
                 }
-                style={styles.checkRow}
+                style={styles.stepRow}
               >
                 <MaterialIcons
-                  name={item.IsCompleted ? "check-box" : "check-box-outline-blank"}
+                  name={
+                    item.IsCompleted ? "check-circle" : "radio-button-unchecked"
+                  }
                   size={22}
-                  color={item.IsCompleted ? colors.success : colors.textMuted}
+                  color={item.IsCompleted ? colors.success : colors.borderStrong}
                 />
                 <Text
                   variant="body"
-                  style={[styles.checkText, item.IsCompleted && styles.checkDone]}
+                  style={[styles.flex, item.IsCompleted && styles.struck]}
                 >
                   {item.ItemText}
                 </Text>
@@ -243,232 +281,171 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
                       })
                     }
                   >
-                    <MaterialIcons name="close" size={18} color={colors.textMuted} />
+                    <MaterialIcons
+                      name="close"
+                      size={18}
+                      color={colors.textMuted}
+                    />
                   </Pressable>
                 ) : null}
               </Pressable>
-            ))}
+            )}
+          />
+        ) : null}
 
-            {!checklist.length ? (
-              <Text variant="secondary">
-                No steps yet. Completion is driven by this list.
-              </Text>
-            ) : null}
+        {tab === "files" ? (
+          <AttachmentList
+            entity="task"
+            entityId={taskId}
+            canManage={can.manageArtifacts}
+          />
+        ) : null}
 
-            {can.manageArtifacts ? (
-              <View style={styles.composer}>
-                <Input
-                  bare
-                  containerStyle={styles.composerInput}
-                  value={newItem}
-                  onChangeText={setNewItem}
-                  placeholder="Add a step"
-                  returnKeyType="done"
-                  onSubmitEditing={() => {
-                    const text = newItem.trim();
-                    if (!text) return;
-                    addItem.mutate({
-                      TaskId: taskId,
-                      ItemText: text,
-                      SortOrder: checklist.length,
-                      WorkspaceId: task.WorkspaceId,
-                    });
-                  }}
-                />
-                <MaterialIcons name="add" size={20} color={colors.primary} />
-              </View>
-            ) : null}
-          </Section>
-
-          <Section title="Files" icon="attach-file">
-            <AttachmentSection
-              entity="task"
-              entityId={taskId}
-              canManage={can.manageArtifacts}
-            />
-          </Section>
-
-          <Section title="Comments" icon="chat-bubble-outline">
-            {comments.map((c) => (
-              <View key={c.Id} style={styles.comment}>
-                <Avatar name={c.UserName} uri={c.Avatar} size={30} />
-                <View style={styles.commentBody}>
-                  <Text variant="bodyStrong">{c.UserName ?? "Someone"}</Text>
+        {tab === "chat" ? (
+          <FlatList
+            data={comments}
+            keyExtractor={(c) => String(c.Id)}
+            contentContainerStyle={styles.list}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            ListEmptyComponent={
+              <Text variant="secondary">No comments yet.</Text>
+            }
+            renderItem={({ item }) => (
+              <View style={styles.comment}>
+                <Avatar name={item.UserName} uri={item.Avatar} size={30} />
+                <View style={styles.flex}>
+                  <Text variant="bodyStrong">{item.UserName ?? "Someone"}</Text>
                   <Text variant="body" color="textSecondary">
-                    {c.Comment}
+                    {item.Comment}
                   </Text>
                 </View>
               </View>
-            ))}
-            {!comments.length ? (
-              <Text variant="secondary">No comments yet.</Text>
-            ) : null}
+            )}
+          />
+        ) : null}
 
-            {can.comment ? (
-              <View style={styles.composer}>
-                <Input
-                  bare
-                  containerStyle={styles.composerInput}
-                  value={newComment}
-                  onChangeText={setNewComment}
-                  placeholder="Write a comment"
-                  multiline
-                />
-                <Pressable
-                  hitSlop={spacing[2]}
-                  disabled={!newComment.trim() || addComment.isPending}
-                  onPress={() =>
-                    addComment.mutate({
-                      TaskId: taskId,
-                      Comment: newComment.trim(),
-                      WorkspaceId: task.WorkspaceId,
-                    })
-                  }
-                >
-                  <MaterialIcons
-                    name="send"
-                    size={20}
-                    color={newComment.trim() ? colors.primary : colors.textMuted}
-                  />
-                </Pressable>
-              </View>
-            ) : null}
-          </Section>
+        {showComposer ? (
+          <View
+            style={[
+              styles.composer,
+              { paddingBottom: insets.bottom + spacing[2] },
+            ]}
+          >
+            <Input
+              bare
+              containerStyle={styles.flex}
+              value={draft}
+              onChangeText={setDraft}
+              placeholder={tab === "steps" ? "Add a step" : "Write a comment"}
+              multiline={tab === "chat"}
+              onSubmitEditing={tab === "steps" ? submit : undefined}
+            />
+            <Pressable
+              hitSlop={spacing[2]}
+              disabled={!draft.trim()}
+              onPress={submit}
+              style={[styles.send, !draft.trim() && styles.sendIdle]}
+            >
+              <MaterialIcons
+                name="arrow-upward"
+                size={20}
+                color={draft.trim() ? colors.textOnBrand : colors.textMuted}
+              />
+            </Pressable>
+          </View>
+        ) : null}
 
-          {/* Says why a control is missing instead of leaving a dead screen. */}
-          {!can.changeStatus ? (
-            <View style={styles.readOnly}>
-              <MaterialIcons name="visibility" size={16} color={colors.textMuted} />
-              <Text variant="caption" color="textMuted" style={styles.flex}>
-                You have view access to this board. Ask an owner to assign you
-                the task to work on it.
-              </Text>
-            </View>
-          ) : null}
-        </ScrollView>
+        {!can.changeStatus ? (
+          <View
+            style={[
+              styles.readOnly,
+              { paddingBottom: insets.bottom + spacing[2] },
+            ]}
+          >
+            <MaterialIcons name="visibility" size={15} color={colors.textMuted} />
+            <Text variant="caption" color="textMuted" style={styles.flex}>
+              View only — ask an owner to assign you this task to work on it.
+            </Text>
+          </View>
+        ) : null}
       </KeyboardAvoidingView>
     </Screen>
   );
 }
 
-function Section({
-  title,
+function Meta({
   icon,
-  trailing,
-  children,
-}: {
-  title: string;
-  icon: keyof typeof MaterialIcons.glyphMap;
-  trailing?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <View style={styles.section}>
-      <View style={styles.sectionHead}>
-        <MaterialIcons name={icon} size={16} color={colors.textSecondary} />
-        <Text variant="overline" color="textSecondary" style={styles.flex}>
-          {title}
-        </Text>
-        {trailing ? (
-          <Text variant="caption" color="textMuted">
-            {trailing}
-          </Text>
-        ) : null}
-      </View>
-      <View style={styles.sectionBody}>{children}</View>
-    </View>
-  );
-}
-
-function Fact({
-  icon,
-  tint,
-  label,
-  value,
-  last = false,
+  text,
+  tone,
 }: {
   icon: keyof typeof MaterialIcons.glyphMap;
-  tint: keyof typeof colors;
-  label: string;
-  value: string;
-  last?: boolean;
+  text: string;
+  tone: keyof typeof colors;
 }) {
   return (
-    <View style={[styles.fact, !last && styles.factDivider]}>
-      <View style={[styles.factGlyph, { backgroundColor: colors[tint] }]}>
-        <MaterialIcons name={icon} size={15} color={colors.textOnBrand} />
-      </View>
-      <Text variant="caption" color="textMuted" style={styles.flex}>
-        {label}
+    <View style={styles.meta}>
+      <MaterialIcons name={icon} size={14} color={colors[tone]} />
+      <Text variant="caption" color={tone}>
+        {text}
       </Text>
-      <Text variant="bodyStrong">{value}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  centre: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing[6] },
-  gap: { gap: spacing[3] },
-  content: {
+  centre: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing[2],
+    padding: spacing[6],
+  },
+  summary: {
     paddingHorizontal: spacing[5],
     paddingTop: spacing[4],
-    paddingBottom: spacing[16],
-    gap: spacing[5],
-  },
-  factCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-    ...shadows.md,
-  },
-  fact: {
-    flexDirection: "row",
-    alignItems: "center",
+    paddingBottom: spacing[3],
     gap: spacing[3],
-    padding: spacing[4],
   },
-  factDivider: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.divider,
+  metaRow: { flexDirection: "row", alignItems: "center", gap: spacing[4] },
+  meta: { flexDirection: "row", alignItems: "center", gap: spacing[1] },
+  avatars: { flexDirection: "row", alignItems: "center" },
+  overlap: { marginLeft: -spacing[2] },
+  list: {
+    paddingHorizontal: spacing[5],
+    paddingBottom: spacing[4],
+    gap: spacing[3],
   },
-  factGlyph: {
-    width: 28,
-    height: 28,
+  stepRow: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
+  struck: { textDecorationLine: "line-through", color: colors.textMuted },
+  comment: { flexDirection: "row", gap: spacing[3] },
+  composer: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: spacing[2],
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[3],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  send: {
+    width: 34,
+    height: 34,
     borderRadius: radius.full,
+    backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
   },
-  section: { gap: spacing[2] },
-  sectionHead: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
-  sectionBody: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-    padding: spacing[4],
-    gap: spacing[3],
-    ...shadows.md,
-  },
-  assigneeList: { gap: spacing[3] },
-  assigneeRow: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
-  checkRow: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
-  checkText: { flex: 1 },
-  checkDone: { textDecorationLine: "line-through", color: colors.textMuted },
-  composer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[2],
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.divider,
-    paddingTop: spacing[3],
-  },
-  composerInput: { flex: 1 },
-  comment: { flexDirection: "row", gap: spacing[3] },
-  commentBody: { flex: 1, gap: spacing[1] },
+  sendIdle: { backgroundColor: colors.surfaceSunken },
   readOnly: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing[2],
-    backgroundColor: colors.surfaceSunken,
-    borderRadius: radius.md,
-    padding: spacing[3],
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[3],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
   },
 });
