@@ -22,6 +22,18 @@ export const palette = {
     light: "#FF7AB7",
     dark: "#E5558C",
   },
+  /**
+   * Warm neutrals for SURFACES and LINES — the page background is warm
+   * off-white, and a cool grey border on it reads as dirty rather than neutral.
+   * Text keeps the `gray` ramp below: at text darkness the temperature does not
+   * register, and the cool greys have better contrast.
+   */
+  stone: {
+    50: "#F7F6F3",
+    100: "#F1EFEA",
+    200: "#E7E4DD",
+    300: "#D8D4CB",
+  },
   gray: {
     50: "#F9FAFB",
     100: "#F3F4F6",
@@ -84,10 +96,14 @@ export const colors = {
   // surfaces
   // The PAGE is tinted and CARDS are white. With both white there is no figure
   // and no ground, so nothing reads as a card — it all looks like one sheet.
-  background: "#F1F3FA",
+  //
+  // Warm off-white rather than a cool grey: it reads as paper, and the white
+  // cards sitting on it feel lifted rather than merely lighter. Do not push it
+  // closer to white — the separation from the cards is the whole point.
+  background: palette.stone[50],
   surface: palette.white,
-  surfaceMuted: palette.gray[50],
-  surfaceSunken: palette.gray[100],
+  surfaceMuted: palette.stone[100],
+  surfaceSunken: palette.stone[200],
   // The ONE place alpha is allowed, and only because a modal scrim must show
   // the screen behind it — an opaque one is a different screen, not a dialog.
   // Everything else in this file is a solid colour.
@@ -101,9 +117,9 @@ export const colors = {
   textOnBrand: palette.white,
 
   // lines
-  border: palette.gray[200],
-  borderStrong: palette.gray[300],
-  divider: palette.gray[100],
+  border: palette.stone[200],
+  borderStrong: palette.stone[300],
+  divider: palette.stone[100],
 
   // interactive
   primary: palette.brand.base,
@@ -143,12 +159,12 @@ export const colors = {
 
   // Solid press/disabled fills. Dimming with opacity lets whatever is behind
   // bleed through and makes the control look faded rather than pressed.
-  surfacePressed: palette.gray[100],
+  surfacePressed: palette.stone[100],
   primaryDim: "#8F99D4",
   dangerDim: "#EFA3A3",
 
   // gray[100]/gray[400] was too faint — a disabled button read as an empty box.
-  disabledBg: palette.gray[200],
+  disabledBg: palette.stone[200],
   disabledText: palette.gray[500],
 } as const;
 
