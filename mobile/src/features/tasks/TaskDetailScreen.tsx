@@ -19,6 +19,7 @@ import {
   getTaskComments,
   saveTaskChecklist,
 } from "../../api/taskQueries";
+import { fetchAttachments } from "../../api/attachmentQueries";
 import { fetchWorkspaces } from "../../api/workspaceQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
@@ -60,6 +61,10 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   const commentsQuery = useQuery({
     queryKey: ["task", taskId, "comments"],
     queryFn: () => getTaskComments({ TaskId: taskId }),
+  });
+  const attachmentsQuery = useQuery({
+    queryKey: ["attachments", "task", taskId],
+    queryFn: () => fetchAttachments({ Entity: "task", EntityId: taskId }),
   });
   // Authority comes from the caller's role in THIS task's workspace, which the
   // task row does not carry. Already cached by Boards, so this costs nothing.
@@ -206,7 +211,11 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
             onChange={setTab}
             options={[
               { value: "checklist", label: "Checklist", count: checklist.length },
-              { value: "files", label: "Files" },
+              {
+                value: "files",
+                label: "Files",
+                count: attachmentsQuery.data?.length ?? 0,
+              },
               { value: "chat", label: "Comments", count: comments.length },
             ]}
           />

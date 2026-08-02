@@ -6,7 +6,10 @@ import { Text } from "./Text";
 export interface SegmentedOption<T extends string> {
   value: T;
   label: string;
-  /** Rendered as a small pill after the label — counts, unread badges. */
+  /**
+   * Rendered as a small pill after the label. Displayed as "99+" past 99 —
+   * a raw 4-digit count would grow the badge and squeeze the label out.
+   */
   count?: number;
 }
 
@@ -52,6 +55,7 @@ export function Segmented<T extends string>({
               variant="label"
               color={active ? "textOnBrand" : "textSecondary"}
               numberOfLines={1}
+              style={styles.label}
             >
               {option.label}
             </Text>
@@ -62,8 +66,9 @@ export function Segmented<T extends string>({
                 <Text
                   variant="caption"
                   color={active ? "primary" : "textSecondary"}
+                  numberOfLines={1}
                 >
-                  {option.count}
+                  {option.count > 99 ? "99+" : option.count}
                 </Text>
               </View>
             ) : null}
@@ -76,14 +81,18 @@ export function Segmented<T extends string>({
 
 const styles = StyleSheet.create({
   bar: { flexDirection: "row", gap: spacing[2] },
+  // Lets a long label shrink rather than push the badge past the border.
+  label: { flexShrink: 1 },
   segment: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing[2],
+    gap: spacing[1],
     paddingVertical: spacing[3],
-    paddingHorizontal: spacing[2],
+    // Tight, because the longest label ("Comments") plus a badge has to fit an
+    // equal third of a 360px screen without touching the border.
+    paddingHorizontal: spacing[1],
     borderRadius: radius.md,
     borderWidth: 1,
   },
@@ -103,8 +112,10 @@ const styles = StyleSheet.create({
   count: {
     minWidth: 20,
     paddingHorizontal: spacing[1],
+    paddingVertical: 1,
     borderRadius: radius.full,
     alignItems: "center",
+    flexShrink: 0,
   },
   countIdle: { backgroundColor: colors.surfaceSunken },
   countActive: { backgroundColor: colors.surface },
