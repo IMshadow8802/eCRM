@@ -10,7 +10,13 @@ import { fetchTasks } from "../../api/taskQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
 import type { Task } from "../../types/api";
-import { colors, radius, spacing, TAB_BAR_CLEARANCE } from "../../theme";
+import {
+  colors,
+  radius,
+  shadows,
+  spacing,
+  TAB_BAR_CLEARANCE,
+} from "../../theme";
 import { Dialog, EmptyState, Screen, Text } from "../../ui";
 import { useSignOut } from "../auth/useSignOut";
 import { TaskCard } from "./TaskCard";
@@ -126,7 +132,13 @@ export default function MyWorkScreen() {
               <Pressable
                 key={f.key}
                 onPress={() => setFilter(f.key)}
-                style={[styles.filter, active && styles.filterActive]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                style={({ pressed }) => [
+                  styles.filter,
+                  active ? styles.filterActive : styles.filterIdle,
+                  pressed && !active && styles.filterPressed,
+                ]}
               >
                 <Text
                   variant="label"
@@ -244,9 +256,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[4],
     paddingVertical: spacing[2],
     borderRadius: radius.full,
-    backgroundColor: colors.surfaceMuted,
+    borderWidth: 1,
   },
-  filterActive: { backgroundColor: colors.primary },
+  // Raised, like every other surface in the app: a white card on a warm page,
+  // lifted on the same shadow the task cards use. Flat chips read as painted on.
+  filterIdle: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    ...shadows.sm,
+  },
+  filterPressed: { backgroundColor: colors.surfacePressed },
+  filterActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+    ...shadows.md,
+  },
   sectionTitle: {
     paddingHorizontal: spacing[5],
     paddingTop: spacing[3],
