@@ -26,7 +26,7 @@ import { fetchWorkspaces } from "../../api/workspaceQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
 import { colors, radius, shadows, spacing } from "../../theme";
-import { Avatar, Button, Input, Screen, Text } from "../../ui";
+import { Avatar, Button, Input, Screen, ScreenHeader, Text } from "../../ui";
 import AttachmentSection from "../attachments/AttachmentSection";
 import { abilitiesFor, assigneesOf, dueLabel } from "./taskHelpers";
 
@@ -132,18 +132,11 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
 
   return (
     <Screen>
-      <View style={[styles.header, { paddingTop: insets.top + spacing[2] }]}>
-        <Pressable
-          onPress={navigation.goBack}
-          style={styles.back}
-          accessibilityLabel="Go back"
-        >
-          <MaterialIcons name="arrow-back" size={22} color={colors.text} />
-        </Pressable>
-        <Text variant="label" numberOfLines={1} style={styles.headerTitle}>
-          {task.WorkspaceName ?? "Task"}
-        </Text>
-      </View>
+      <ScreenHeader
+        title={task.WorkspaceName ?? "Task"}
+        subtitle={task.ColumnTitle ?? undefined}
+        onBack={navigation.goBack}
+      />
 
       <KeyboardAvoidingView
         style={styles.flex}
@@ -417,25 +410,12 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   centre: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing[6] },
   gap: { gap: spacing[3] },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[2],
-    paddingHorizontal: spacing[3],
-    paddingBottom: spacing[3],
-    backgroundColor: colors.background,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.divider,
+  content: {
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[4],
+    paddingBottom: spacing[16],
+    gap: spacing[5],
   },
-  back: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.full,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  headerTitle: { flex: 1 },
-  content: { padding: spacing[5], gap: spacing[5], paddingBottom: spacing[16] },
   factCard: {
     backgroundColor: colors.surface,
     borderRadius: radius.xl,

@@ -179,7 +179,7 @@ const emptyMessage = (filter: Filter) =>
 const styles = StyleSheet.create({
   header: {
     paddingHorizontal: spacing[5],
-    paddingBottom: spacing[4],
+    paddingBottom: spacing[3],
     gap: spacing[4],
     backgroundColor: colors.background,
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -193,7 +193,9 @@ const styles = StyleSheet.create({
   },
   greetBlock: { flex: 1, gap: spacing[1] },
   summaryRow: {},
-  content: { paddingTop: spacing[2], paddingBottom: spacing[10] },
+  // No top padding — the section header below provides the gap. Stacking
+  // header padding, list padding and section padding gave 44px of dead space.
+  content: { paddingBottom: spacing[10] },
   contentEmpty: { flexGrow: 1 },
   filters: { flexDirection: "row", gap: spacing[2] },
   filter: {
@@ -205,7 +207,7 @@ const styles = StyleSheet.create({
   filterActive: { backgroundColor: colors.primary },
   sectionTitle: {
     paddingHorizontal: spacing[5],
-    paddingTop: spacing[5],
+    paddingTop: spacing[3],
     paddingBottom: spacing[2],
   },
   cardWrap: { paddingHorizontal: spacing[5], paddingBottom: spacing[3] },

@@ -188,7 +188,7 @@ export default function BoardsScreen() {
 const styles = StyleSheet.create({
   header: {
     paddingHorizontal: spacing[5],
-    paddingBottom: spacing[4],
+    paddingBottom: spacing[3],
     gap: spacing[2],
     backgroundColor: colors.background,
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -196,11 +196,13 @@ const styles = StyleSheet.create({
   },
   headerStats: { flexDirection: "row", alignItems: "center", gap: spacing[4] },
   stat: { flexDirection: "row", alignItems: "center", gap: spacing[1] },
-  content: { paddingTop: spacing[2], paddingBottom: spacing[10] },
+  // No top padding — the section header below provides the gap. Stacking
+  // header padding, list padding and section padding gave 44px of dead space.
+  content: { paddingBottom: spacing[10] },
   contentEmpty: { flexGrow: 1 },
   sectionTitle: {
     paddingHorizontal: spacing[5],
-    paddingTop: spacing[4],
+    paddingTop: spacing[3],
     paddingBottom: spacing[2],
   },
   cardWrap: { paddingHorizontal: spacing[5], paddingBottom: spacing[3] },
