@@ -31,10 +31,20 @@ export default function LoginScreen() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const canSubmit = identifier.trim().length > 0 && password.length > 0;
-
+  // No disabled state on the button. A greyed-out control that never explains
+  // itself is worse than one that tells you what is missing when you tap it.
   const submit = async () => {
-    if (!canSubmit || busy) return;
+    if (busy) return;
+
+    if (!identifier.trim()) {
+      setError("Enter your username, email or mobile.");
+      return;
+    }
+    if (!password) {
+      setError("Enter your password.");
+      return;
+    }
+
     setBusy(true);
     setError(null);
     try {
@@ -163,7 +173,6 @@ export default function LoginScreen() {
               variant="onBrand"
               onPress={submit}
               loading={busy}
-              disabled={!canSubmit}
               size="lg"
               fullWidth
               style={styles.submit}

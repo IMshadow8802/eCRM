@@ -9,7 +9,14 @@ import {
 } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 
-import { colors, radius, spacing, typography, CONTROL_HEIGHT } from "../theme";
+import {
+  colors,
+  radius,
+  shadows,
+  spacing,
+  typography,
+  CONTROL_HEIGHT,
+} from "../theme";
 import { Text } from "./Text";
 
 export interface InputProps extends Omit<TextInputProps, "style"> {
@@ -21,9 +28,9 @@ export interface InputProps extends Omit<TextInputProps, "style"> {
   /** Renders the show/hide eye and manages secureTextEntry internally. */
   password?: boolean;
   /**
-   * "onBrand" restyles the field for use directly on the brand gradient —
-   * translucent fill, white text and border. Everything stays a token so the
-   * two tones cannot drift apart.
+   * "onBrand" is for a field sitting directly on the brand gradient. The field
+   * itself stays SOLID WHITE — a translucent one reads as icy and washes out
+   * the text. Only the label, helper and elevation change.
    */
   tone?: "default" | "onBrand";
   containerStyle?: ViewStyle;
@@ -71,7 +78,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
           styles.field,
           onBrand && styles.fieldOnBrand,
           multiline && styles.fieldMultiline,
-          focused && (onBrand ? styles.fieldFocusedOnBrand : styles.fieldFocused),
+          focused && styles.fieldFocused,
           !!error && styles.fieldError,
           !editable && !onBrand && styles.fieldDisabled,
         ]}
@@ -80,17 +87,15 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
           <MaterialIcons
             name={leftIcon}
             size={18}
-            color={onBrand ? colors.textOnBrandMuted : colors.textMuted}
+            color={colors.textMuted}
             style={styles.leftIcon}
           />
         ) : null}
 
         <TextInput
           ref={ref}
-          style={[styles.input, onBrand && styles.inputOnBrand]}
-          placeholderTextColor={
-            onBrand ? colors.textOnBrandMuted : colors.textMuted
-          }
+          style={styles.input}
+          placeholderTextColor={colors.textMuted}
           secureTextEntry={password && !reveal}
           editable={editable}
           multiline={multiline}
@@ -114,18 +119,26 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
             <MaterialIcons
               name={reveal ? "visibility-off" : "visibility"}
               size={20}
-              color={onBrand ? colors.textOnBrandMuted : colors.textSecondary}
+              color={colors.textSecondary}
             />
           </Pressable>
         ) : null}
       </View>
 
       {error ? (
-        <Text variant="caption" color="danger" style={styles.helper}>
+        <Text
+          variant="caption"
+          color={onBrand ? "textOnBrand" : "danger"}
+          style={styles.helper}
+        >
           {error}
         </Text>
       ) : hint ? (
-        <Text variant="caption" style={styles.helper}>
+        <Text
+          variant="caption"
+          color={onBrand ? "textOnBrandMuted" : "textSecondary"}
+          style={styles.helper}
+        >
           {hint}
         </Text>
       ) : null}
@@ -155,11 +168,12 @@ const styles = StyleSheet.create({
     paddingVertical: spacing[3],
   },
   fieldFocused: { borderColor: colors.primary },
+  // Solid white, borderless, lifted off the gradient by a shadow rather than
+  // by a stroke — a border on white over a gradient just looks like a seam.
   fieldOnBrand: {
-    backgroundColor: colors.fieldOnBrand,
-    borderColor: colors.borderOnBrand,
+    borderColor: colors.transparentBorder,
+    ...shadows.base,
   },
-  fieldFocusedOnBrand: { borderColor: colors.borderOnBrandFocus },
   fieldError: { borderColor: colors.danger },
   fieldDisabled: { backgroundColor: colors.disabledBg },
   leftIcon: {},
@@ -170,7 +184,6 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
     ...typography.body,
   },
-  inputOnBrand: { color: colors.textOnBrand },
   helper: {},
 });
 
