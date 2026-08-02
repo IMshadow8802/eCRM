@@ -7,8 +7,9 @@ import { fetchTasks } from "../../api/taskQueries";
 import useAuthStore from "../../stores/useAuthStore";
 import type { Task } from "../../types/api";
 import { colors, radius, spacing } from "../../theme";
-import { EmptyState, PageHeader, Screen, Text } from "../../ui";
+import { Avatar, EmptyState, Screen, Text } from "../../ui";
 import { TaskCard } from "./TaskCard";
+import { greetingFor, longDate } from "./greeting";
 import { BUCKET_LABEL, groupByDue, isAssignee, isUnassigned } from "./taskHelpers";
 
 type Filter = "mine" | "unassigned" | "all";
@@ -62,15 +63,59 @@ export default function MyWorkScreen() {
   }, []);
 
   const firstName = (user?.FullName ?? "").split(" ")[0] || "there";
+  const greeting = greetingFor();
 
   return (
     <Screen>
+      {/* Fixed — it is a header, not a list row. Only the tasks scroll. */}
+      <View style={[styles.header, { paddingTop: insets.top + spacing[3] }]}>
+        <View style={styles.headerTop}>
+          <View style={styles.greetBlock}>
+            <Text variant="secondary">
+              {greeting.text}, {greeting.emoji}
+            </Text>
+            <Text variant="h1">{firstName}</Text>
+            <Text variant="caption" color="textMuted">
+              {longDate()}
+            </Text>
+          </View>
+          <Avatar name={user?.FullName} uri={user?.Avatar} size={44} />
+        </View>
+
+        <View style={styles.summaryRow}>
+          <Text variant="secondary">
+            {mineCount > 0
+              ? `${mineCount} task${mineCount === 1 ? "" : "s"} assigned to you`
+              : "Nothing assigned to you right now"}
+          </Text>
+        </View>
+
+        <View style={styles.filters}>
+          {FILTERS.map((f) => {
+            const active = f.key === filter;
+            return (
+              <Pressable
+                key={f.key}
+                onPress={() => setFilter(f.key)}
+                style={[styles.filter, active && styles.filterActive]}
+              >
+                <Text
+                  variant="label"
+                  color={active ? "textOnBrand" : "textSecondary"}
+                >
+                  {f.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
       <SectionList
         sections={sections}
         keyExtractor={(item) => String(item.Id)}
         contentContainerStyle={[
           styles.content,
-          { paddingTop: insets.top + spacing[4] },
           !sections.length && styles.contentEmpty,
         ]}
         stickySectionHeadersEnabled={false}
@@ -81,37 +126,6 @@ export default function MyWorkScreen() {
             onRefresh={refetch}
             tintColor={colors.primary}
           />
-        }
-        ListHeaderComponent={
-          <PageHeader
-            eyebrow={`Hi ${firstName}`}
-            title="My Work"
-            subtitle={
-              mineCount > 0
-                ? `${mineCount} task${mineCount === 1 ? "" : "s"} assigned to you`
-                : "Nothing assigned to you right now"
-            }
-          >
-            <View style={styles.filters}>
-              {FILTERS.map((f) => {
-                const active = f.key === filter;
-                return (
-                  <Pressable
-                    key={f.key}
-                    onPress={() => setFilter(f.key)}
-                    style={[styles.filter, active && styles.filterActive]}
-                  >
-                    <Text
-                      variant="label"
-                      color={active ? "textOnBrand" : "textSecondary"}
-                    >
-                      {f.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </PageHeader>
         }
         renderSectionHeader={({ section }) => (
           <Text variant="overline" color="textMuted" style={styles.sectionTitle}>
@@ -154,7 +168,23 @@ const emptyMessage = (filter: Filter) =>
       : "Tasks from all your workspaces will appear here.";
 
 const styles = StyleSheet.create({
-  content: { paddingBottom: spacing[10] },
+  header: {
+    paddingHorizontal: spacing[5],
+    paddingBottom: spacing[4],
+    gap: spacing[4],
+    backgroundColor: colors.background,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.divider,
+  },
+  headerTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing[3],
+  },
+  greetBlock: { flex: 1, gap: spacing[1] },
+  summaryRow: {},
+  content: { paddingTop: spacing[2], paddingBottom: spacing[10] },
   contentEmpty: { flexGrow: 1 },
   filters: { flexDirection: "row", gap: spacing[2] },
   filter: {

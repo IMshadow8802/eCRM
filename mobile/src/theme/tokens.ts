@@ -116,10 +116,19 @@ export const colors = {
   infoSoft: palette.blue[50],
 
   // task priority — used by chips and card accents
-  priorityLow: palette.green[500],
-  priorityMedium: palette.amber[500],
+  priorityLow: palette.green[600],
+  priorityMedium: palette.amber[600],
   priorityHigh: palette.red[500],
   priorityUrgent: palette.red[700],
+
+  // Tinted fills behind a coloured icon. A saturated icon on its own soft wash
+  // is what gives a card a focal point instead of a wall of grey text.
+  priorityLowSoft: palette.green[100],
+  priorityMediumSoft: palette.amber[100],
+  priorityHighSoft: palette.red[100],
+  priorityUrgentSoft: palette.red[100],
+  neutralSoft: palette.purple[100],
+  neutralIcon: palette.purple[500],
 
   // Surfaces and lines that sit ON the brand gradient (auth screens).
   // Translucent white so the gradient reads through them — a solid card over a
@@ -185,11 +194,11 @@ export const shadows = {
     elevation: 2,
   },
   md: {
-    shadowColor: palette.black,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowColor: "#1E34AE",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.1,
+    shadowRadius: 14,
+    elevation: 5,
   },
   lg: {
     shadowColor: palette.black,
