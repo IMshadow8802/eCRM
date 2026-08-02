@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, View } from "react-native";
 
-import { colors, radius, spacing } from "../theme";
+import { colors, radius, shadows, spacing } from "../theme";
 import { Text } from "./Text";
 
 export interface SegmentedOption<T extends string> {
@@ -20,9 +20,12 @@ export interface SegmentedProps<T extends string> {
  * Tab strip for switching between sections of the SAME record — checklist,
  * files, comments on one task.
  *
- * Stacking those as separate cards down one long page means the last section is
- * unreachable once the keyboard is up. Segments keep every section one tap away
- * and the composer pinned in view.
+ * Every segment is its own pill. An earlier version drew a sunken grey track
+ * and left the inactive segments unfilled, so they disappeared into it and only
+ * the selected one looked like a control — the other two read as background.
+ *
+ * Stacking these sections as separate cards down one page instead would put the
+ * last one out of reach once the keyboard is up.
  */
 export function Segmented<T extends string>({
   value,
@@ -37,7 +40,13 @@ export function Segmented<T extends string>({
           <Pressable
             key={option.value}
             onPress={() => onChange(option.value)}
-            style={[styles.segment, active && styles.segmentActive]}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: active }}
+            style={({ pressed }) => [
+              styles.segment,
+              active ? styles.segmentActive : styles.segmentIdle,
+              pressed && !active && styles.segmentPressed,
+            ]}
           >
             <Text
               variant="label"
@@ -47,7 +56,9 @@ export function Segmented<T extends string>({
               {option.label}
             </Text>
             {option.count ? (
-              <View style={[styles.count, active && styles.countActive]}>
+              <View
+                style={[styles.count, active ? styles.countActive : styles.countIdle]}
+              >
                 <Text
                   variant="caption"
                   color={active ? "primary" : "textSecondary"}
@@ -64,31 +75,38 @@ export function Segmented<T extends string>({
 }
 
 const styles = StyleSheet.create({
-  bar: {
-    flexDirection: "row",
-    backgroundColor: colors.surfaceSunken,
-    borderRadius: radius.md,
-    padding: spacing[1],
-    gap: spacing[1],
-  },
+  bar: { flexDirection: "row", gap: spacing[2] },
   segment: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing[1],
-    paddingVertical: spacing[2],
-    borderRadius: radius.base,
+    gap: spacing[2],
+    paddingVertical: spacing[3],
+    paddingHorizontal: spacing[2],
+    borderRadius: radius.md,
+    borderWidth: 1,
   },
-  // Solid brand fill — a white-on-grey active tab is barely a state change.
-  segmentActive: { backgroundColor: colors.primary },
+  // Inactive segments are surfaces in their own right, so all three read as
+  // controls rather than only the selected one.
+  segmentIdle: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    ...shadows.sm,
+  },
+  segmentPressed: { backgroundColor: colors.surfacePressed },
+  segmentActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+    ...shadows.md,
+  },
   count: {
-    minWidth: 18,
+    minWidth: 20,
     paddingHorizontal: spacing[1],
     borderRadius: radius.full,
-    backgroundColor: colors.surface,
     alignItems: "center",
   },
+  countIdle: { backgroundColor: colors.surfaceSunken },
   countActive: { backgroundColor: colors.surface },
 });
 
