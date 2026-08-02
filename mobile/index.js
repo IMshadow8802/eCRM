@@ -1,16 +1,12 @@
 import { registerRootComponent } from 'expo';
 
+import { startReactotron } from './ReactotronConfig';
 import App from './App';
 
-// Dev-only network/query inspector. `require` inside the guard rather than a
-// top-level import is what lets Metro dead-code-eliminate Reactotron out of
-// release bundles — __DEV__ inlines to false there, so neither this call nor
-// the packages it pulls in reach production, which is why they stay
-// devDependencies. It runs before registerRootComponent, so XHR is patched
-// before anything mounts and before the first API call fires.
-if (__DEV__) {
-  require('./ReactotronConfig');
-}
+// No-op unless EXPO_PUBLIC_REACTOTRON=1. Runs before registerRootComponent so
+// XHR is patched before the first API call, and it swallows its own errors —
+// a dev tool must never be able to stop the app booting.
+startReactotron();
 
 // registerRootComponent calls AppRegistry.registerComponent('main', () => App);
 // It also ensures that whether you load the app in Expo Go or in a native build,
