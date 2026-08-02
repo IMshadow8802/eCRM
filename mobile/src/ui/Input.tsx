@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 
-import { colors, radius, spacing, typography, HIT_TARGET } from "../theme";
+import { colors, radius, spacing, typography, CONTROL_HEIGHT } from "../theme";
 import { Text } from "./Text";
 
 export interface InputProps extends Omit<TextInputProps, "style"> {
@@ -125,21 +125,29 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing[2],
-    minHeight: HIT_TARGET,
+    height: CONTROL_HEIGHT,
     borderWidth: 1,
     borderColor: colors.borderStrong,
     borderRadius: radius.md,
     paddingHorizontal: spacing[3],
     backgroundColor: colors.surface,
   },
-  fieldMultiline: { alignItems: "flex-start", paddingVertical: spacing[3] },
+  // Multiline is the one case that grows past the fixed control height.
+  fieldMultiline: {
+    height: undefined,
+    minHeight: CONTROL_HEIGHT * 2,
+    alignItems: "flex-start",
+    paddingVertical: spacing[3],
+  },
   fieldFocused: { borderColor: colors.primary },
   fieldError: { borderColor: colors.danger },
   fieldDisabled: { backgroundColor: colors.disabledBg },
   leftIcon: {},
   input: {
     flex: 1,
-    paddingVertical: spacing[3],
+    // No vertical padding — the parent's fixed height centres it. Padding here
+    // is what made inputs render taller than buttons beside them.
+    paddingVertical: 0,
     ...typography.body,
   },
   helper: {},

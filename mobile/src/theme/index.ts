@@ -1,4 +1,13 @@
-export { colors, palette, spacing, radius, shadows, HIT_TARGET } from "./tokens";
+export {
+  colors,
+  palette,
+  spacing,
+  radius,
+  shadows,
+  gradients,
+  HIT_TARGET,
+  CONTROL_HEIGHT,
+} from "./tokens";
 export type { ColorKey, RadiusKey, SpacingKey } from "./tokens";
 export { typography, fontFamily, fontSize } from "./typography";
 export type { TypographyVariant, FontWeightName } from "./typography";

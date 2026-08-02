@@ -5,7 +5,7 @@ import DateTimePicker, {
 } from "@react-native-community/datetimepicker";
 import { MaterialIcons } from "@expo/vector-icons";
 
-import { colors, radius, spacing, HIT_TARGET } from "../theme";
+import { colors, radius, spacing, CONTROL_HEIGHT } from "../theme";
 import { Text } from "./Text";
 
 export interface DateFieldProps {
@@ -119,7 +119,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing[2],
-    minHeight: HIT_TARGET,
+    height: CONTROL_HEIGHT,
     borderWidth: 1,
     borderColor: colors.borderStrong,
     borderRadius: radius.md,

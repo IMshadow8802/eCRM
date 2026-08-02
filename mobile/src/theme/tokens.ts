@@ -121,8 +121,19 @@ export const colors = {
   priorityHigh: palette.red[500],
   priorityUrgent: palette.red[700],
 
-  disabledBg: palette.gray[100],
-  disabledText: palette.gray[400],
+  // Surfaces that sit ON the brand gradient (auth screens). Translucent white
+  // so the gradient reads through them.
+  surfaceOnBrand: "rgba(255, 255, 255, 0.18)",
+  veilOnBrand: "rgba(255, 255, 255, 1)",
+
+  // gray[100]/gray[400] was too faint — a disabled button read as an empty box.
+  disabledBg: palette.gray[200],
+  disabledText: palette.gray[500],
+} as const;
+
+/** Brand gradient, dark -> light. The auth backdrop. */
+export const gradients = {
+  brand: [palette.brand.dark, palette.brand.base, palette.brand.light],
 } as const;
 
 /** 4px grid. `spacing[3]` is 12px. Never write a raw padding number. */
@@ -190,6 +201,13 @@ export const shadows = {
  * below it, taps get missed on real devices.
  */
 export const HIT_TARGET = 44;
+
+/**
+ * The height of every form control — Input, Select, DateField, Button. They
+ * sit next to each other constantly, so one shared number is the only way they
+ * line up. Never set a control height locally.
+ */
+export const CONTROL_HEIGHT = 50;
 
 export type SpacingKey = keyof typeof spacing;
 export type RadiusKey = keyof typeof radius;

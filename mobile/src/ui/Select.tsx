@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 
-import { colors, radius, spacing, HIT_TARGET } from "../theme";
+import { colors, radius, spacing, CONTROL_HEIGHT, HIT_TARGET } from "../theme";
 import { Sheet, type SheetRef } from "./Sheet";
 import { Text } from "./Text";
 
@@ -157,7 +157,7 @@ const styles = StyleSheet.create({
   trigger: {
     flexDirection: "row",
     alignItems: "center",
-    minHeight: HIT_TARGET,
+    height: CONTROL_HEIGHT,
     borderWidth: 1,
     borderColor: colors.borderStrong,
     borderRadius: radius.md,
