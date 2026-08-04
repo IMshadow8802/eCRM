@@ -166,14 +166,23 @@ describe("userController.fetch", () => {
     });
   });
 
-  it("sends a null branch filter when scope carries no branches", async () => {
+  /**
+   * REGRESSION, 2026-08-04. This asserted `null` and was named for it, which
+   * made the bug look like the specification.
+   *
+   * sp_FetchUser gates on `@UseScope`, and NULL sets that to 0 — "apply no
+   * branch filter". So the user with the narrowest possible scope saw the
+   * widest possible list. `'[]'` keeps @UseScope at 1 against an empty
+   * allow-list, which matches nothing.
+   */
+  it("sends an empty allow-list, not null, when scope carries no branches", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce(
       spResult([{ ResponseCode: 200, ResponseMess: "ok" }]),
     );
     await userController.fetch(baseReq({ scope: { branchIds: [] } }), mockRes());
     expect(
       database.executeStoredProcedure.mock.calls[0][1].AccessibleBranchIdsJson,
-    ).toBeNull();
+    ).toBe("[]");
   });
 
   it("500s when the SP throws", async () => {

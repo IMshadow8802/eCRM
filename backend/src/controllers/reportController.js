@@ -1,7 +1,14 @@
 const database = require("../config/database");
+const { scopeJson: serialiseScope } = require("../middleware/permission");
 
+/**
+ * Was a local copy that collapsed an empty scope to NULL — which sp_Dashboard
+ * and sp_ConvertedSummary both read as "no branch filter", so the user with the
+ * narrowest scope got the widest dashboard. Delegates to the shared serialiser
+ * now, which keeps `[]` as an empty allow-list.
+ */
 function scopeJson(req) {
-  return req.scope?.branchIds?.length ? JSON.stringify(req.scope.branchIds) : null;
+  return serialiseScope(req.scope?.branchIds);
 }
 
 class ReportController {

@@ -4,7 +4,7 @@ const { cleanSpRows } = require("../utils/spHelpers");
 const attachmentController = require("./attachmentController");
 const { emitToWorkspace, emitToUser } = require("../realtime/events");
 const { SCOPES } = require("../realtime/contract");
-const { assertRecordAccess } = require("../middleware/permission");
+const { assertRecordAccess, scopeJson } = require("../middleware/permission");
 
 class TaskController {
   // ================================
@@ -223,9 +223,11 @@ class TaskController {
         SearchTerm = null,
       } = req.body;
 
-      const accessibleBranchIdsJson = req.scope?.branchIds?.length
-        ? JSON.stringify(req.scope.branchIds)
-        : null;
+      // scopeJson, not `?.length ? stringify : null`. That form collapses an
+      // empty scope to NULL, which every one of these SPs reads as "apply no
+      // branch filter at all" — the widest possible answer for the narrowest
+      // possible scope. '[]' is an empty allow-list and matches nothing.
+      const accessibleBranchIdsJson = scopeJson(req.scope?.branchIds);
 
       const result = await database.executeStoredProcedure("sp_FetchTask", {
         Id,
@@ -862,10 +864,15 @@ class TaskController {
         ItemText,
         IsCompleted = false,
         SortOrder = 0,
-        CompId,
-        BranchId,
         WorkspaceId = null, // emit-routing hint only; not passed to the SP
       } = req.body;
+      // CompId and BranchId are deliberately NOT read from the body. They used
+      // to be, as `CompId || req.user.CompId` — the only place in the backend
+      // that took a tenant id from the request. assertRecordAccess below gates
+      // the TaskId but says nothing about the company, so posting a checklist
+      // item against your own task with `"CompId": 999` wrote the row into
+      // company 999. Both now come from the verified token, like everywhere
+      // else.
 
       // sp_SaveTaskChecklist has no permission check of its own, so this is
       // the only gate. Ticking an item is change_status (checklist drives
@@ -889,8 +896,8 @@ class TaskController {
           ItemText,
           IsCompleted,
           SortOrder,
-          CompId: CompId || req.user.CompId,
-          BranchId: BranchId || req.user.BranchId,
+          CompId: req.user.CompId,
+          BranchId: req.user.BranchId,
           ActingUserId: req.user.UserId,
         }
       );

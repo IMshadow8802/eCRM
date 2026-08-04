@@ -1,4 +1,5 @@
 const database = require("../config/database");
+const { scopeJson } = require("../middleware/permission");
 const { logActivity, ACTIONS } = require("../utils/activityLogger");
 const { cleanSpRows } = require("../utils/spHelpers");
 
@@ -81,9 +82,11 @@ class ProjectController {
         SearchTerm = null,
       } = req.body;
 
-      const accessibleBranchIdsJson = req.scope?.branchIds?.length
-        ? JSON.stringify(req.scope.branchIds)
-        : null;
+      // scopeJson, not `?.length ? stringify : null`. That form collapses an
+      // empty scope to NULL, which every one of these SPs reads as "apply no
+      // branch filter at all" — the widest possible answer for the narrowest
+      // possible scope. '[]' is an empty allow-list and matches nothing.
+      const accessibleBranchIdsJson = scopeJson(req.scope?.branchIds);
 
       const result = await database.executeStoredProcedure("sp_FetchProject", {
         Id,

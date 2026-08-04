@@ -16,7 +16,11 @@ jest.mock("../../../src/utils/activityLogger", () => ({
 // The record guard is exercised for real in middleware/permission.test.js;
 // here it is stubbed so the checklist tests keep asserting controller wiring
 // on their own SP mocks (allow by default, flipped per-test to check the gate).
+// Only assertRecordAccess is stubbed. scopeJson stays REAL on purpose — it is
+// the thing that decides whether an empty scope fails open or closed, so a mock
+// of it would assert nothing worth asserting.
 jest.mock("../../../src/middleware/permission", () => ({
+  ...jest.requireActual("../../../src/middleware/permission"),
   assertRecordAccess: jest.fn().mockResolvedValue(true),
 }));
 
@@ -872,6 +876,31 @@ describe("taskController time-tracking + checklist + activity", () => {
     );
     expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({
       ActingUserId: 7,
+    });
+  });
+
+  /**
+   * REGRESSION, 2026-08-04.
+   *
+   * saveChecklist destructured CompId/BranchId from req.body and used
+   * `CompId || req.user.CompId` — the only endpoint in the backend that took a
+   * tenant id from the request. assertRecordAccess gates the TaskId and says
+   * nothing about the company, so a caller could post a checklist item against
+   * their own task with a foreign CompId and land the row in that tenant.
+   */
+  it("saveChecklist ignores a CompId/BranchId supplied in the body", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 201, ResponseMess: "ok", ChecklistId: 7 }]),
+    );
+    await taskController.saveChecklist(
+      baseReq({
+        body: { TaskId: 1, ItemText: "do", CompId: 999, BranchId: 888 },
+      }),
+      mockRes(),
+    );
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({
+      CompId: 1, // from the token, not the 999 in the body
+      BranchId: 2,
     });
   });
 
