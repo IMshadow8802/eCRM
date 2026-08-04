@@ -34,6 +34,9 @@ function handleUpload(req, res, next) {
 router.post("/save", handleUpload, attachmentController.save);
 router.post("/fetch", requirePayload, attachmentController.fetch);
 router.post("/download", requirePayload, attachmentController.download);
+// No requirePayload — a GET has no body by definition. verifyToken + loadScope
+// still apply (router.use above), so the Bearer header is mandatory here too.
+router.get("/download/:id", attachmentController.download);
 router.post("/delete", requirePayload, attachmentController.delete);
 
 module.exports = router;

@@ -155,10 +155,18 @@ class AttachmentController {
     }
   }
 
-  // POST /api/attachments/download  { Id }  → streams the file (blob on client)
+  // POST /api/attachments/download  { Id }        → streams the file
+  // GET  /api/attachments/download/:id            → same, for clients that can
+  //                                                  only stream a GET to disk
+  //
+  // Both shapes exist because the two are not interchangeable on a phone.
+  // expo-file-system writes a download straight to storage but issues a GET
+  // only; going through the POST means buffering the whole response in JS
+  // memory first, which a 200MB build will not survive. Same handler, same
+  // access checks — only where the id is read from differs.
   async download(req, res) {
     try {
-      const { Id } = req.body || {};
+      const Id = Number(req.body?.Id ?? req.params?.id) || 0;
       if (!Id || Id <= 0) {
         return res.status(400).json({ success: false, message: "Id is required", responseCode: 400 });
       }

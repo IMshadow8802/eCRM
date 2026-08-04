@@ -81,10 +81,24 @@ const LOOKUPS = {
   priority: [{ Id: 2, Value: "High" }],
   ticket_category: [{ Id: 4, Value: "Billing" }],
   resolution: [{ Id: 5, Value: "Fixed" }],
+  call_outcome: [{ Id: 8, Value: "Answered" }],
 };
 
-const mockDetail = ({ ticket = TICKET, fields = FIELDS, activity = ACTIVITY, linkedLead = LINKED_LEAD } = {}) =>
+const mockDetail = ({
+  ticket = TICKET,
+  fields = FIELDS,
+  activity = ACTIVITY,
+  linkedLead = LINKED_LEAD,
+  calls = [],
+} = {}) =>
   server.use(
+    http.post("*/api/calls/fetchCalls", async () =>
+      HttpResponse.json({
+        success: true,
+        responseCode: 200,
+        data: { calls },
+      }),
+    ),
     http.post("*/api/tickets/fetchTicketDetail", async () =>
       HttpResponse.json({
         success: true,
@@ -212,6 +226,40 @@ describe("TicketDetail", () => {
     expect(items).toHaveLength(2);
     expect(items[0]).toHaveTextContent("Created");
     expect(items[1]).toHaveTextContent("Stage changed");
+  });
+
+  // A ticket call used to be written and then unreachable — sp_FetchCalls had
+  // no @TicketId and sp_LogCall wrote no ticket activity (fixed in SQL 067).
+  // The timeline must now show what was said, not just that a call happened.
+  it("Timeline shows a logged call's notes, outcome and duration", async () => {
+    mockDetail({
+      activity: [
+        { Id: 1, Type: "created", Summary: "Ticket created", CreatedAt: "2026-01-01T09:00:00Z" },
+        { Id: 2, Type: "call", Summary: "Outbound call logged", CreatedAt: "2026-01-02T09:00:00Z" },
+      ],
+      calls: [
+        {
+          Id: 31,
+          Direction: "out",
+          Notes: "Customer will send the invoice",
+          OutcomeId: 8,
+          Duration: 4,
+          CalledAt: "2026-01-02T09:00:00Z",
+        },
+      ],
+    });
+    renderWithProviders(<TicketDetail ticketId={7} />, { router: false });
+    await screen.findByText("TKT-0007");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: /Timeline/i }));
+
+    expect(await screen.findByText("Outgoing call")).toBeInTheDocument();
+    expect(screen.getByText(/Customer will send the invoice/)).toBeInTheDocument();
+    expect(screen.getByText(/Answered/)).toBeInTheDocument();
+    expect(screen.getByText(/4 min/)).toBeInTheDocument();
+    // The thin activity row is replaced, not duplicated alongside it.
+    expect(screen.queryByText("Outbound call logged")).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("timeline-item")).toHaveLength(2);
   });
 
   // Two-step lifecycle: open -> Resolve; resolved -> Close (customer

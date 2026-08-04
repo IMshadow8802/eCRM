@@ -77,3 +77,26 @@ describe("attachmentRoutes — upload error translation", () => {
     expect(r.body.message).toBe("Upload failed");
   });
 });
+
+// The GET form is what lets a phone stream a download straight to storage;
+// expo-file-system issues GETs only, and the POST route would mean holding a
+// 200MB build in JS memory first.
+describe("attachmentRoutes — GET download", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it("routes GET /download/:id to the same controller, with the id in params", async () => {
+    const r = await request(app).get("/api/attachments/download/42");
+    expect(r.status).toBe(200);
+    expect(attachmentController.download).toHaveBeenCalled();
+    const [req] = attachmentController.download.mock.calls[0];
+    expect(req.params.id).toBe("42");
+  });
+
+  it("still routes the POST form", async () => {
+    const r = await request(app)
+      .post("/api/attachments/download")
+      .send({ Id: 42 });
+    expect(r.status).toBe(200);
+    expect(attachmentController.download).toHaveBeenCalled();
+  });
+});

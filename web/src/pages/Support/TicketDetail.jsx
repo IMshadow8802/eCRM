@@ -118,6 +118,24 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
     showErrorMessage: false,
   });
   const stages = pipelinesData?.stages || [];
+  // The activity row for a call only records that one happened; tblCall holds
+  // the notes and outcome. Both were unreachable for tickets until SQL 067
+  // gave sp_FetchCalls a @TicketId and sp_LogCall a ticket-timeline write.
+  const { data: callsData, refetch: refetchCalls } = useApiQuery({
+    queryKey: ["ticket-calls", ticketId],
+    endpoint: SUPPORT_ENDPOINTS.calls.fetchCalls,
+    params: { TicketId: Number(ticketId) },
+    enabled: Boolean(ticketId),
+    showErrorMessage: false,
+  });
+  const calls = callsData?.calls || [];
+  const { data: outcomesData } = useApiQuery({
+    queryKey: ["ticket-lookups", "call_outcome"],
+    endpoint: SUPPORT_ENDPOINTS.config.fetchLookups,
+    params: { Kind: "call_outcome" },
+    showErrorMessage: false,
+  });
+  const outcomes = outcomesData?.lookups || [];
 
   const ticket = data?.ticket ?? null;
   const activity = data?.activity ?? [];
@@ -408,14 +426,21 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
           </div>
         )}
 
-        {tab === "timeline" && <Timeline activity={activity} />}
+        {tab === "timeline" && (
+          <Timeline activity={activity} calls={calls} outcomes={outcomes} />
+        )}
       </div>
 
       <LogCallModal
         open={callModalOpen}
         onClose={() => setCallModalOpen(false)}
         ticketId={ticketId}
-        onLogged={refetch}
+        onLogged={() => {
+          // Two sources, two refetches: the activity row lands via refetch,
+          // the call row (with its notes) via refetchCalls.
+          refetch();
+          refetchCalls();
+        }}
       />
 
       <Modal open={resolveOpen} onClose={() => setResolveOpen(false)} size="sm" data-testid="resolve-modal">

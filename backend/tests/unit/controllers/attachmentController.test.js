@@ -261,6 +261,47 @@ describe("attachmentController.download", () => {
     existsSpy.mockRestore();
   });
 
+  // The GET form exists so a phone can stream the bytes straight to storage —
+  // expo-file-system only issues GETs, and routing a 200MB build through the
+  // POST means buffering the whole thing in JS memory first.
+  it("accepts the id from route params (GET form) and applies the same access check", async () => {
+    const fs = require("fs");
+    const existsSpy = jest.spyOn(fs, "existsSync").mockReturnValueOnce(true);
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[{ Id: 3, Entity: "lead", EntityId: 8, StoredName: "u.apk", FileName: "app.apk", MimeType: "application/vnd.android.package-archive" }]],
+    });
+    mockLeadLookup({ Id: 8, BranchId: 2, OwnerId: 7, CreatedBy: 7 });
+    const req = baseReq({ body: undefined });
+    req.params = { id: "3" };
+    const res = mockRes();
+    res.setHeader = jest.fn();
+    res.sendFile = jest.fn();
+    await attachmentController.download(req, res);
+    expect(res.sendFile).toHaveBeenCalled();
+    existsSpy.mockRestore();
+  });
+
+  it("403s on the GET form too when the parent record is out of scope", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[{ Id: 3, Entity: "lead", EntityId: 8, StoredName: "u.apk", FileName: "app.apk" }]],
+    });
+    mockLeadLookup({ Id: 8, BranchId: 9, OwnerId: 3, CreatedBy: 3 });
+    const req = baseReq({ body: undefined });
+    req.params = { id: "3" };
+    const res = mockRes();
+    await attachmentController.download(req, res);
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+
+  it("400s on a non-numeric route param rather than querying with NaN", async () => {
+    const req = baseReq({ body: undefined });
+    req.params = { id: "not-a-number" };
+    const res = mockRes();
+    await attachmentController.download(req, res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
   it("404s when access is allowed but the file is missing on disk", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [[{ Id: 3, Entity: "lead", EntityId: 8, StoredName: "does-not-exist.pdf", FileName: "x.pdf" }]],

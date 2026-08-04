@@ -68,15 +68,28 @@ const callController = {
     );
   },
 
-  // Fetches calls by lead (LeadId in body) or falls back to the caller's own calls.
+  /**
+   * Fetches calls by lead, by ticket, or — when neither id is given — the
+   * caller's own calls.
+   *
+   * The record filters gate on visibility the same way logCall does: asking
+   * for another branch's lead by id must not hand back its call history, which
+   * includes free-text notes. The own-calls fallback needs no check, since it
+   * is scoped to the caller by definition.
+   */
   async fetchCalls(req, res) {
     try {
       const { CompId, UserId } = req.user;
-      const { LeadId = null } = req.body;
+      const { LeadId = null, TicketId = null } = req.body;
+
+      if (LeadId && !(await assertRecordAccess(req, res, "lead", LeadId))) return;
+      if (!LeadId && TicketId
+          && !(await assertRecordAccess(req, res, "ticket", TicketId))) return;
 
       const result = await database.executeStoredProcedure("sp_FetchCalls", {
         CompId,
         LeadId,
+        TicketId,
         UserId,
       });
 

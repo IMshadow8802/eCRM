@@ -167,6 +167,7 @@ describe("callController.logCall", () => {
 
 describe("callController.fetchCalls", () => {
   it("fetches by lead when LeadId is provided in body", async () => {
+    mockLeadLookup({ Id: 9, BranchId: 2, OwnerId: 7, CreatedBy: 7 });
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordset: [{ Id: 1, LeadId: 9, Direction: "Outbound" }],
     });
@@ -176,13 +177,47 @@ describe("callController.fetchCalls", () => {
 
     expect(database.executeStoredProcedure).toHaveBeenCalledWith(
       "sp_FetchCalls",
-      expect.objectContaining({ CompId: 5, LeadId: 9, UserId: 7 }),
+      expect.objectContaining({ CompId: 5, LeadId: 9, TicketId: null, UserId: 7 }),
     );
     const json = res.json.mock.calls[0][0];
     expect(json.data.calls).toEqual([{ Id: 1, LeadId: 9, Direction: "Outbound" }]);
   });
 
-  it("fetches by user when LeadId is absent from body", async () => {
+  // The whole point of 067: a ticket's calls were unreachable, because
+  // sp_FetchCalls had no TicketId parameter and the controller never sent one.
+  it("fetches by ticket when TicketId is provided in body", async () => {
+    mockTicketLookup({ Id: 4, BranchId: 2, AssignedTo: 7, CreatedBy: 7 });
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordset: [{ Id: 2, TicketId: 4, Direction: "in" }],
+    });
+    const req = baseReq({ body: { TicketId: 4 } });
+    const res = mockRes();
+    await callController.fetchCalls(req, res);
+
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
+      "sp_FetchCalls",
+      expect.objectContaining({ CompId: 5, LeadId: null, TicketId: 4, UserId: 7 }),
+    );
+    const json = res.json.mock.calls[0][0];
+    expect(json.data.calls).toEqual([{ Id: 2, TicketId: 4, Direction: "in" }]);
+  });
+
+  it("prefers the lead filter when both ids are sent", async () => {
+    mockLeadLookup({ Id: 9, BranchId: 2, OwnerId: 7, CreatedBy: 7 });
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordset: [] });
+    const req = baseReq({ body: { LeadId: 9, TicketId: 4 } });
+    const res = mockRes();
+    await callController.fetchCalls(req, res);
+
+    // Only the lead is access-checked; the ticket check is skipped entirely.
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(2);
+    expect(database.executeStoredProcedure).toHaveBeenLastCalledWith(
+      "sp_FetchCalls",
+      expect.objectContaining({ LeadId: 9, TicketId: 4 }),
+    );
+  });
+
+  it("fetches by user when neither id is in the body", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({ recordset: [] });
     const req = baseReq();
     const res = mockRes();
@@ -190,10 +225,32 @@ describe("callController.fetchCalls", () => {
 
     expect(database.executeStoredProcedure).toHaveBeenCalledWith(
       "sp_FetchCalls",
-      expect.objectContaining({ CompId: 5, LeadId: null, UserId: 7 }),
+      expect.objectContaining({ CompId: 5, LeadId: null, TicketId: null, UserId: 7 }),
     );
     const json = res.json.mock.calls[0][0];
     expect(json.data.calls).toEqual([]);
+  });
+
+  // Call notes are free text about a customer — reading them must be gated the
+  // same way logCall gates writing one.
+  it("refuses a lead the caller cannot see, without querying calls", async () => {
+    mockLeadLookup(null);
+    const req = baseReq({ body: { LeadId: 9 } });
+    const res = mockRes();
+    await callController.fetchCalls(req, res);
+
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+
+  it("refuses a ticket the caller cannot see, without querying calls", async () => {
+    mockTicketLookup(null);
+    const req = baseReq({ body: { TicketId: 4 } });
+    const res = mockRes();
+    await callController.fetchCalls(req, res);
+
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
+    expect(res.status).toHaveBeenCalledWith(403);
   });
 
   it("handles DB error as 500", async () => {

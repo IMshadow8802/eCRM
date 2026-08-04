@@ -1,11 +1,13 @@
+import { useMemo } from "react";
 import { useTheme } from "@mui/material/styles";
 import { Clock } from "lucide-react";
 import dayjs from "dayjs";
 
 import { EmptyState } from "../../components/ui";
 
-// tblLeadActivity rows expose `Type` (created|stage_changed|call|...) and a
-// human-readable `Summary`; there is no separate Action/Details column.
+// tblLeadActivity / tblTicketActivity rows expose `Type`
+// (created|stage_changed|call|...) and a human-readable `Summary`; there is no
+// separate Action/Details column.
 const formatType = (type) =>
   String(type || "activity")
     .replace(/_/g, " ")
@@ -13,24 +15,56 @@ const formatType = (type) =>
 
 const activityDate = (item) => item.CreatedAt ?? item.CreatedDate ?? null;
 
+const isCall = (item) => String(item?.Type || "").toLowerCase().includes("call");
+
 /**
- * Renders a lead's activity trail (from `fetchLeadDetail`'s `activity`
- * recordset) as a chronological list, oldest first.
+ * Renders a record's activity trail as a chronological list, oldest first.
+ *
+ * `calls` is optional and, when given, REPLACES the activity rows of type
+ * 'call' rather than adding to them. The two describe the same event at
+ * different depths: sp_LogCall writes an activity row saying a call happened
+ * ("Outbound call logged"), while tblCall holds what was actually said. Showing
+ * both lists every call twice; showing only the activity row loses the notes
+ * the user typed.
  */
-export default function Timeline({ activity = [] }) {
+export default function Timeline({ activity = [], calls = [], outcomes = [] }) {
   const theme = useTheme();
   const p = theme.tokens;
 
-  const sorted = [...activity].sort(
-    (a, b) => new Date(activityDate(a) ?? 0) - new Date(activityDate(b) ?? 0),
-  );
+  const sorted = useMemo(() => {
+    const outcomeName = (id) =>
+      outcomes.find((o) => o.Id === id)?.Value ?? null;
+
+    const fromActivity = activity
+      .filter((item) => !(calls.length && isCall(item)))
+      .map((item, i) => ({
+        key: `a-${item.Id ?? i}`,
+        title: formatType(item.Type),
+        detail: item.Summary,
+        at: activityDate(item),
+      }));
+
+    const fromCalls = calls.map((call) => ({
+      key: `c-${call.Id}`,
+      title: call.Direction === "in" ? "Incoming call" : "Outgoing call",
+      detail:
+        [call.Notes, outcomeName(call.OutcomeId), call.Duration ? `${call.Duration} min` : null]
+          .filter(Boolean)
+          .join(" · ") || null,
+      at: call.CalledAt ?? call.CreatedAt ?? null,
+    }));
+
+    return [...fromActivity, ...fromCalls].sort(
+      (a, b) => new Date(a.at ?? 0) - new Date(b.at ?? 0),
+    );
+  }, [activity, calls, outcomes]);
 
   if (sorted.length === 0) {
     return (
       <EmptyState
         icon={<Clock size={28} />}
         title="No activity yet"
-        description="Calls, stage moves, and field changes on this lead will show up here."
+        description="Calls, stage moves, and field changes on this record will show up here."
         size="sm"
         data-testid="timeline-empty"
       />
@@ -42,50 +76,46 @@ export default function Timeline({ activity = [] }) {
       data-testid="lead-timeline"
       style={{ display: "flex", flexDirection: "column", gap: 2 }}
     >
-      {sorted.map((item, i) => {
-        const when = activityDate(item);
-        const detail = item.Summary;
-        return (
+      {sorted.map((item) => (
+        <div
+          key={item.key}
+          data-testid="timeline-item"
+          style={{
+            position: "relative",
+            display: "flex",
+            gap: 12,
+            padding: "10px 4px 10px 16px",
+            marginLeft: 6,
+            borderLeft: `2px solid ${p.border.default}`,
+          }}
+        >
           <div
-            key={item.Id ?? i}
-            data-testid="timeline-item"
+            aria-hidden="true"
             style={{
-              position: "relative",
-              display: "flex",
-              gap: 12,
-              padding: "10px 4px 10px 16px",
-              marginLeft: 6,
-              borderLeft: `2px solid ${p.border.default}`,
+              position: "absolute",
+              left: -5,
+              top: 14,
+              width: 8,
+              height: 8,
+              borderRadius: theme.radii.full,
+              backgroundColor: p.primary.main,
             }}
-          >
-            <div
-              aria-hidden="true"
-              style={{
-                position: "absolute",
-                left: -5,
-                top: 14,
-                width: 8,
-                height: 8,
-                borderRadius: theme.radii.full,
-                backgroundColor: p.primary.main,
-              }}
-            />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: p.text.primary }}>
-                {formatType(item.Type)}
+          />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: p.text.primary }}>
+              {item.title}
+            </div>
+            {item.detail && (
+              <div style={{ fontSize: 13, color: p.text.secondary, marginTop: 2 }}>
+                {item.detail}
               </div>
-              {detail && (
-                <div style={{ fontSize: 13, color: p.text.secondary, marginTop: 2 }}>
-                  {detail}
-                </div>
-              )}
-              <div style={{ fontSize: 11, color: p.text.tertiary, marginTop: 4 }}>
-                {when ? dayjs(when).format("DD-MM-YYYY HH:mm") : ""}
-              </div>
+            )}
+            <div style={{ fontSize: 11, color: p.text.tertiary, marginTop: 4 }}>
+              {item.at ? dayjs(item.at).format("DD-MM-YYYY HH:mm") : ""}
             </div>
           </div>
-        );
-      })}
+        </div>
+      ))}
     </div>
   );
 }
