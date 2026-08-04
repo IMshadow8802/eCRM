@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import {
   Archive,
   ChevronRight,
@@ -15,8 +15,8 @@ import {
 } from "lucide-react-native";
 
 import type { Workspace, WorkspaceRole, WorkspaceType } from "../../types/api";
-import { colors, radius, shadows, spacing } from "../../theme";
-import { Text } from "../../ui";
+import { colors, radius, spacing } from "../../theme";
+import { Card, Text } from "../../ui";
 
 /**
  * Each workspace type gets its own glyph and colour so the list scans fast.
@@ -57,10 +57,7 @@ function WorkspaceCardBase({ workspace, onPress }: WorkspaceCardProps) {
   const members = workspace.MemberCount ?? 0;
 
   return (
-    <Pressable
-      onPress={() => onPress(workspace)}
-      style={({ pressed }) => [styles.card, pressed && styles.pressed]}
-    >
+    <Card onPress={() => onPress(workspace)} style={styles.row}>
       <View style={[styles.glyph, { backgroundColor: colors[type.color] }]}>
         <type.Icon size={19} color={colors.textOnBrand} />
       </View>
@@ -110,7 +107,7 @@ function WorkspaceCardBase({ workspace, onPress }: WorkspaceCardProps) {
       </View>
 
       <ChevronRight size={22} color={colors.textMuted} />
-    </Pressable>
+    </Card>
   );
 }
 
@@ -118,21 +115,9 @@ export const WorkspaceCard = memo(WorkspaceCardBase);
 export default WorkspaceCard;
 
 const styles = StyleSheet.create({
-  card: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[3],
-    backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-    padding: spacing[4],
-    ...shadows.md,
-  },
-  // Presses INTO the page: it sinks by the shadow offset and the shadow
-  // shrinks with it, which is what a lifted object does when you push it.
-  pressed: {
-    transform: [{ scale: 0.985 }, { translateY: 2 }],
-    ...shadows.sm,
-  },
+  // This card lays its children out sideways rather than stacked, which is the
+  // one thing Card does not decide for it.
+  row: { flexDirection: "row", alignItems: "center" },
   // 38, not 46. The glyph is a label for the row, not its subject — at 46 it
   // was the heaviest thing on the card and pulled the eye off the board's name.
   glyph: {

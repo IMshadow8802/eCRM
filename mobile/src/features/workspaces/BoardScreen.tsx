@@ -15,7 +15,7 @@ import { fetchWorkspaces } from "../../api/workspaceQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
 import type { KanbanColumn, Task } from "../../types/api";
-import { colors, radius, shadows, spacing } from "../../theme";
+import { colors, radius, spacing } from "../../theme";
 import {
   ActionSheet,
   BoardColumns,
@@ -296,11 +296,10 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
     backgroundColor: colors.surface,
     alignItems: "center",
-    ...shadows.sm,
   },
   // Clears the FAB so the last card in a full column stays reachable.
-  // 16, not 12: the gap has to out-reach the card shadow or the two shadows
-  // meet and the column reads as one continuous strip.
-  cards: { gap: spacing[4], paddingBottom: spacing[20] },
+  // Cards on a board carry no shadow (see ui/boardSurface), so this gap is
+  // pure breathing room rather than shadow clearance.
+  cards: { gap: spacing[5], paddingBottom: spacing[20] },
   columnEmpty: { paddingHorizontal: spacing[1] },
 });

@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import {
   CircleCheck,
   CircleDot,
@@ -14,8 +14,8 @@ import {
 } from "lucide-react-native";
 
 import type { Ticket } from "../../types/api";
-import { colors, radius, shadows, spacing } from "../../theme";
-import { Text } from "../../ui";
+import { colors, radius, spacing } from "../../theme";
+import { Card, Chip, Text } from "../../ui";
 import { relativeTime } from "../tasks/taskHelpers";
 import {
   channelLabel,
@@ -89,11 +89,9 @@ function ComplaintCardBase({
   const assignee = ticket.AssignedTo ? people.get(ticket.AssignedTo) : undefined;
 
   return (
-    <Pressable
+    <Card
       onPress={() => onPress(ticket)}
       onLongPress={onLongPress ? () => onLongPress(ticket) : undefined}
-      delayLongPress={300}
-      style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
       <View style={styles.row}>
         <View style={[styles.glyph, { backgroundColor: ink }]}>
@@ -113,11 +111,7 @@ function ComplaintCardBase({
         </View>
 
         {showStage && stage ? (
-          <View style={[styles.stagePill, { backgroundColor: ink }]}>
-            <Text variant="caption" color="textOnBrand" numberOfLines={1}>
-              {stage.Name}
-            </Text>
-          </View>
+          <Chip label={stage.Name} color={ink} maxWidth={110} />
         ) : null}
       </View>
 
@@ -150,7 +144,7 @@ function ComplaintCardBase({
           {relativeTime(ticket.CreatedAt)}
         </Text>
       </View>
-    </Pressable>
+    </Card>
   );
 }
 
@@ -158,20 +152,6 @@ export const ComplaintCard = memo(ComplaintCardBase);
 export default ComplaintCard;
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-    padding: spacing[4],
-    gap: spacing[3],
-    ...shadows.md,
-  },
-  // Presses INTO the page: it sinks by the shadow offset and the shadow
-  // shrinks with it, which is what a lifted object does when you push it.
-  // No dimming — solid surfaces stay solid.
-  pressed: {
-    transform: [{ scale: 0.985 }, { translateY: 2 }],
-    ...shadows.sm,
-  },
   row: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
   glyph: {
     width: 42,
@@ -186,12 +166,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing[3],
     flexWrap: "wrap",
-  },
-  stagePill: {
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[1],
-    borderRadius: radius.full,
-    maxWidth: 110,
   },
   stats: {
     flexDirection: "row",

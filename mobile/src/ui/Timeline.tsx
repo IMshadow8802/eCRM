@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import type { LucideIcon } from "lucide-react-native";
 
@@ -6,13 +7,18 @@ import { Text } from "./Text";
 
 export interface TimelineEntry {
   key: string;
-  /** What happened. One line, sentence case. */
+  /** What happened, or what was said. Wraps freely. */
   title: string;
   /** Who and when — "Ayush · 2h ago". */
   meta?: string;
   icon?: LucideIcon;
   /** Semantic token for the node. Defaults to the brand colour. */
   tone?: keyof typeof colors;
+  /**
+   * Rendered in place of the coloured node — an Avatar, for a comment. Must be
+   * NODE px and round, since it sits on the rail where the dot would be.
+   */
+  node?: ReactNode;
 }
 
 export interface TimelineProps {
@@ -47,11 +53,13 @@ export function Timeline({ entries }: TimelineProps) {
           <View key={entry.key} style={styles.row}>
             <View style={styles.rail}>
               <View style={[styles.segment, styles.head, first && styles.hidden]} />
-              <View style={[styles.node, { backgroundColor: colors[tone] }]}>
-                {entry.icon ? (
-                  <entry.icon size={13} color={colors.textOnBrand} />
-                ) : null}
-              </View>
+              {entry.node ?? (
+                <View style={[styles.node, { backgroundColor: colors[tone] }]}>
+                  {entry.icon ? (
+                    <entry.icon size={13} color={colors.textOnBrand} />
+                  ) : null}
+                </View>
+              )}
               {/* Flexes to whatever the body needs, so a two-line entry does
                   not break the rail. */}
               <View style={[styles.segment, styles.tail, last && styles.hidden]} />

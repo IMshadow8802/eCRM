@@ -53,7 +53,9 @@ export function Segmented<T extends string>({
           styles.segment,
           scrolls ? styles.segmentAuto : styles.segmentEven,
           active ? styles.segmentActive : styles.segmentIdle,
-          pressed && !active && styles.segmentPressed,
+          // Sinks whether or not it is selected; pressing the active tab used
+          // to do nothing, which reads as a dead control.
+          pressed && styles.segmentPressed,
         ]}
       >
         <Text
@@ -105,27 +107,28 @@ const styles = StyleSheet.create({
     gap: spacing[1],
     paddingVertical: spacing[3],
     // Tight, because the longest label ("Comments") plus a badge has to fit an
-    // equal third of a 360px screen without touching the border.
+    // equal third of a 360px screen without touching the edge.
     paddingHorizontal: spacing[1],
-    borderRadius: radius.md,
-    borderWidth: 1,
+    borderRadius: radius.full,
   },
   segmentEven: { flex: 1 },
   // Scrolling strip: natural width, but wide enough that a one-word label is
   // still a comfortable target rather than a thin sliver.
   segmentAuto: { minWidth: 96, paddingHorizontal: spacing[3] },
-  // Inactive segments are surfaces in their own right, so all three read as
-  // controls rather than only the selected one.
-  segmentIdle: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
+  /**
+   * No outline. A white pill on a page one step darker is already a distinct
+   * object, and the border was drawing a box round each of four segments in a
+   * row — the noisiest thing on the screen for the least information.
+   *
+   * Both states carry the same shadow so an unselected segment reads as a
+   * control too, not as a hole in the strip.
+   */
+  segmentIdle: { backgroundColor: colors.surface, ...shadows.md },
+  segmentActive: { backgroundColor: colors.primary, ...shadows.md },
+  // Sinks rather than tints — the same press physics as cards and chips.
+  segmentPressed: {
+    transform: [{ translateY: 1 }],
     ...shadows.sm,
-  },
-  segmentPressed: { backgroundColor: colors.surfacePressed },
-  segmentActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-    ...shadows.md,
   },
   count: {
     minWidth: 20,

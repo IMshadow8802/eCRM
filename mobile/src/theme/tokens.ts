@@ -100,21 +100,23 @@ export const palette = {
 export const colors = {
   // surfaces
   //
-  // The page is WHITE, and so are the cards. That used to be the thing to
-  // avoid — with no tint behind them nothing reads as a card — so the page was
-  // a warm off-white and the separation came for free.
+  // The page is a hair off white and the cards are pure white. That one step
+  // of contrast is what makes a card read as a card.
   //
-  // It now comes from the cards instead: a hairline border, a contact shadow,
-  // and a colour-tinted footer strip on each one. That is a better trade. The
-  // tint was doing its job on a list of cards and nothing else; every plain
-  // screen in the app paid for it by looking faintly yellow.
+  // It was tried the other way — white page, white cards, separated by shadow
+  // alone — and it cannot work. A shadow soft enough not to bleed is too faint
+  // to see; one strong enough to see reaches the next card and paints the gaps
+  // between a column of cards darker than the margin beside them, so the list
+  // reads as a grey lane with white slots cut out of it. There is no value in
+  // between. Every serious app on a white-ish page does this: contrast first,
+  // shadow only as a whisper on top.
   //
-  // Neutrals are cool greys again to match. A warm border on a warm page reads
-  // as paper; the same border on white reads as dirty.
-  background: palette.white,
+  // COOL grey (#F9FAFB), not the warm cream this started as. That one read as
+  // faintly yellow on every plain screen, which is why it went.
+  background: palette.gray[50],
   surface: palette.white,
-  surfaceMuted: palette.gray[50],
-  surfaceSunken: palette.gray[100],
+  surfaceMuted: palette.gray[100],
+  surfaceSunken: palette.gray[200],
   // The ONE place alpha is allowed, and only because a modal scrim must show
   // the screen behind it — an opaque one is a different screen, not a dialog.
   // Everything else in this file is a solid colour.
@@ -220,6 +222,18 @@ export const radius = {
   full: 9999,
 } as const;
 
+/**
+ * A blur radius spreads in every direction — there is no downward-only blur.
+ * So a stack of same-width cards casts an identical smudge down its left and
+ * right edges at the same two x positions, and those merge into two continuous
+ * vertical lines: the cards read as sitting in a narrow lane.
+ *
+ * That is survivable in a full-width list, where the lines fall in the screen
+ * gutter with nothing beside them. It is not survivable inside a board column,
+ * which is narrow, repeated across the screen, and has a neighbouring column
+ * painting over the spill. Cards there drop the shadow entirely — see
+ * `useOnBoard` in ui/boardSurface.
+ */
 export const shadows = {
   none: {},
   sm: {
@@ -237,33 +251,17 @@ export const shadows = {
     elevation: 2,
   },
   /**
-   * The card shadow — a CONTACT shadow, not an ambient one.
-   *
-   * Cards in a board column sit 16px apart. Any shadow whose radius approaches
-   * that reaches its neighbour, and the overlap makes every gap darker than the
-   * open margin beside the column: the cards stop reading as separate objects
-   * and turn into one grey lane running down the page. Warming the ink helped
-   * but did not fix it, because the problem is reach, not colour.
-   *
-   * It is the ONLY thing separating a white card from a white page — there is
-   * no border any more — so it has to actually read as height rather than as a
-   * smudge. Two properties do that work:
-   *
-   *   offset 4  — a shadow directly under an object reads as contact; one cast
-   *               below it reads as the object standing above the surface.
-   *   radius 10 — soft enough to be light falling off an edge rather than a
-   *               drawn outline.
-   *
-   * Bounded by the 16px gap between stacked cards. The version that welded a
-   * board column into one grey lane was radius 14 at offset 6 across a 12px
-   * gap; this reaches meaningfully less far across meaningfully more space.
+   * The card shadow. Deliberately a whisper: it is not what separates a card
+   * from the page — `background` being a step darker than `surface` does that
+   * — it only rounds the edge so the card sits ON the page rather than inlaid
+   * into it. Reaches 4px below and 2px above, inside the 20px card gap.
    */
   md: {
     shadowColor: palette.shadow,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
   },
   lg: {
     shadowColor: palette.shadow,
@@ -273,9 +271,8 @@ export const shadows = {
     elevation: 8,
   },
   /**
-   * For elements that float free of any edge. Barely offset, so the shadow
-   * spreads evenly instead of pooling underneath — an offset shadow makes a
-   * centred element look like it is sitting too low.
+   * For elements that float free of any edge — the tab bar, the FAB. They
+   * never stack against anything, so they cannot band.
    */
   floating: {
     shadowColor: palette.shadow,

@@ -24,12 +24,11 @@ import { useSignOut } from "../auth/useSignOut";
 import {
   colors,
   radius,
-  shadows,
   spacing,
   SCREEN_PADDING,
   TAB_BAR_CLEARANCE,
 } from "../../theme";
-import { Avatar, Button, Dialog, Screen, Text } from "../../ui";
+import { Avatar, Button, Card, Dialog, Screen, Text } from "../../ui";
 
 export default function MeScreen() {
   const user = useAuthStore((s) => s.user);
@@ -97,7 +96,7 @@ export default function MeScreen() {
           <Text variant="overline" color="textMuted" style={styles.groupTitle}>
             Account
           </Text>
-          <View style={styles.card}>
+          <Card padded={false} gap={0}>
             {user?.Email ? (
               <Row Icon={Mail} tint="info" label="Email" value={user.Email} />
             ) : null}
@@ -110,7 +109,7 @@ export default function MeScreen() {
             {company?.CompName ? (
               <Row Icon={Building2} tint="neutralIcon" label="Company" value={company.CompName} last />
             ) : null}
-          </View>
+          </Card>
         </View>
 
         <Button
@@ -155,13 +154,13 @@ function StatTile({
   label: string;
 }) {
   return (
-    <View style={styles.tile}>
+    <Card style={styles.tile} gap={1}>
       <View style={[styles.tileGlyph, { backgroundColor: colors[tint] }]}>
         <Icon size={18} color={colors.textOnBrand} />
       </View>
       <Text variant="h2">{value}</Text>
       <Text variant="caption" color="textMuted">{label}</Text>
-    </View>
+    </Card>
   );
 }
 
@@ -216,15 +215,7 @@ const styles = StyleSheet.create({
     marginTop: spacing[1],
   },
   statRow: { flexDirection: "row", gap: spacing[3] },
-  tile: {
-    flex: 1,
-    alignItems: "center",
-    gap: spacing[1],
-    backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-    paddingVertical: spacing[4],
-    ...shadows.md,
-  },
+  tile: { flex: 1, alignItems: "center" },
   tileGlyph: {
     width: 36,
     height: 36,
@@ -235,11 +226,6 @@ const styles = StyleSheet.create({
   },
   group: { gap: spacing[2] },
   groupTitle: { paddingHorizontal: spacing[1] },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-    ...shadows.md,
-  },
   row: {
     flexDirection: "row",
     alignItems: "center",

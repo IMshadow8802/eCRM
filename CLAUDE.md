@@ -430,6 +430,32 @@ Segmented · Select · Sheet · Text`
 If a screen needs a widget that is not there, **add it there**. Two screens
 building the same thing separately is the failure this prevents.
 
+- **`ChipGroup` for a row of pills where one is selected** (list filters, a
+  direction picker); **`Chip` for a static label** (a stage, a badge);
+  **`Segmented` for switching between views of one record**. All three were
+  hand-rolled ~20 times before this was written down.
+- **`Card` is the only raised surface.** Never hand-roll
+  `backgroundColor + borderRadius + shadows.md` in a screen. That happened in
+  nine files, and every change to the shell then had to be made nine times —
+  a clipping bug that flattened one screen lived in exactly one of the copies.
+  Content stays per-domain (a task and a complaint show different things); the
+  surface is decided in `ui/Card` and nowhere else.
+- Three rules inside it are load-bearing: **no border**, **never
+  `overflow: hidden`** (on iOS it sets `masksToBounds`, which clips the layer's
+  own shadow and renders the card perfectly flat — this cost an afternoon), and
+  **press sinks** via `translateY` rather than a colour tint.
+- **Depth comes from contrast, not shadow.** The page (`background`) is one
+  step darker than a card (`surface`); that is what makes a card read as a
+  card. A shadow is a whisper on top and nothing more. Do not reach for
+  shadow opacity when something looks flat — check the contrast first.
+- **A blur spreads sideways as well as down.** A column of same-width cards
+  therefore draws two continuous grey lines down its edges, and inside a board
+  the neighbouring column paints over the spill and slices them. Cards on a
+  board drop the shadow entirely, via the `useOnBoard` context in
+  `ui/boardSurface` — a context, not a prop, because it is a fact about where
+  the card is and the call site that forgets to pass `flat` is the one that
+  will look wrong.
+
 - **One** bottom sheet (`Sheet`, `@gorhom/bottom-sheet`) — every picker, action
   menu and "move to…" list uses it. Presented imperatively via a ref so a
   parent re-render cannot reopen it. `ActionSheet` (a list of actions) and

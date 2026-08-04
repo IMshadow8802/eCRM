@@ -9,6 +9,7 @@ import {
 } from "react-native";
 
 import { spacing, SCREEN_PADDING } from "../theme";
+import { BoardSurfaceContext } from "./boardSurface";
 
 /**
  * How much of the screen one column occupies. Under 1 deliberately: the sliver
@@ -16,6 +17,7 @@ import { spacing, SCREEN_PADDING } from "../theme";
  * sideways at all.
  */
 export const BOARD_COLUMN_RATIO = 0.86;
+
 
 export interface BoardColumnsProps<T> {
   columns: T[];
@@ -55,21 +57,26 @@ export function BoardColumns<T>({
   };
 
   return (
-    <FlatList
-      horizontal
-      data={columns}
-      keyExtractor={keyOf}
-      showsHorizontalScrollIndicator={false}
-      snapToInterval={snap}
-      decelerationRate="fast"
-      onMomentumScrollEnd={settle}
-      contentContainerStyle={styles.board}
-      renderItem={({ item }) => (
-        <View style={[styles.column, { width: columnWidth }]}>
-          {renderColumn(item)}
-        </View>
-      )}
-    />
+    // Everything inside a column is on a board, and cards read that to drop
+    // their shadow — a narrow column repeated across the screen cannot carry
+    // one without banding. See ui/boardSurface.
+    <BoardSurfaceContext value={true}>
+      <FlatList
+        horizontal
+        data={columns}
+        keyExtractor={keyOf}
+        showsHorizontalScrollIndicator={false}
+        snapToInterval={snap}
+        decelerationRate="fast"
+        onMomentumScrollEnd={settle}
+        contentContainerStyle={styles.board}
+        renderItem={({ item }) => (
+          <View style={[styles.column, { width: columnWidth }]}>
+            {renderColumn(item)}
+          </View>
+        )}
+      />
+    </BoardSurfaceContext>
   );
 }
 

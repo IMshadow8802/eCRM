@@ -35,9 +35,10 @@ import { fetchCalls, logCall, type CallDirection } from "../../api/callQueries";
 import { fetchUserDirectory } from "../../api/userQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import type { CustomFieldValue, PipelineStage } from "../../types/api";
-import { colors, radius, shadows, spacing, SCREEN_PADDING } from "../../theme";
+import { colors, radius, spacing, SCREEN_PADDING } from "../../theme";
 import {
   ActionSheet,
+  Card,
   ComposeSheet,
   Dialog,
   Screen,
@@ -398,7 +399,7 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.card}>
+          <Card padded={false} gap={0} style={styles.factCard}>
             <Fact Icon={Hash} label="Ticket" value={ticket.TicketNo} />
             <Fact
               Icon={User}
@@ -429,7 +430,7 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
               value={relativeTime(ticket.CreatedAt)}
               last
             />
-          </View>
+          </Card>
 
           {ticket.Description ? (
             <View style={styles.block}>
@@ -640,12 +641,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing[20],
     gap: spacing[4],
   },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    paddingHorizontal: spacing[4],
-    ...shadows.sm,
-  },
+  factCard: { paddingHorizontal: spacing[4] },
   fact: {
     flexDirection: "row",
     alignItems: "center",

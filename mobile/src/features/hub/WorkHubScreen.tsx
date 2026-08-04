@@ -23,12 +23,11 @@ import { canSeeAny, visibleRoutes } from "../../utils/menuAccess";
 import {
   colors,
   radius,
-  shadows,
   spacing,
   SCREEN_PADDING,
   TAB_BAR_CLEARANCE,
 } from "../../theme";
-import { EmptyState, Screen, Text } from "../../ui";
+import { Card, Chip, EmptyState, Screen, Text } from "../../ui";
 
 type Nav = StackNavigationProp<RootStackParamList>;
 
@@ -181,7 +180,7 @@ export default function WorkHubScreen() {
               {section.title}
             </Text>
 
-            <View style={styles.card}>
+            <Card padded={false} gap={0}>
               {section.entries.map((entry, i) => (
                 <Pressable
                   key={entry.key}
@@ -201,13 +200,7 @@ export default function WorkHubScreen() {
                   <View style={styles.rowText}>
                     <View style={styles.labelRow}>
                       <Text variant="h3">{entry.label}</Text>
-                      {!entry.ready ? (
-                        <View style={styles.soon}>
-                          <Text variant="caption" color="textSecondary">
-                            Coming soon
-                          </Text>
-                        </View>
-                      ) : null}
+                      {!entry.ready ? <Chip label="Coming soon" /> : null}
                     </View>
                     <Text variant="caption" color="textMuted" numberOfLines={1}>
                       {entry.detail}
@@ -220,7 +213,7 @@ export default function WorkHubScreen() {
                   />
                 </Pressable>
               ))}
-            </View>
+            </Card>
           </View>
         ))}
 
@@ -251,11 +244,6 @@ const styles = StyleSheet.create({
   },
   contentEmpty: { flexGrow: 1 },
   section: { gap: spacing[2] },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-    ...shadows.md,
-  },
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -276,10 +264,4 @@ const styles = StyleSheet.create({
   },
   rowText: { flex: 1, gap: spacing[1] },
   labelRow: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
-  soon: {
-    paddingHorizontal: spacing[2],
-    paddingVertical: 1,
-    borderRadius: radius.full,
-    backgroundColor: colors.surfaceSunken,
-  },
 });

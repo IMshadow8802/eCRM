@@ -13,12 +13,11 @@ import type { Task } from "../../types/api";
 import {
   colors,
   radius,
-  shadows,
   spacing,
   SCREEN_PADDING,
   TAB_BAR_CLEARANCE,
 } from "../../theme";
-import { Dialog, EmptyState, Screen, Text } from "../../ui";
+import { ChipGroup, Dialog, EmptyState, Screen, Text } from "../../ui";
 import { useSignOut } from "../auth/useSignOut";
 import { TaskCard } from "./TaskCard";
 import { greetingFor, longDate } from "./greeting";
@@ -26,10 +25,10 @@ import { BUCKET_LABEL, groupByDue, isAssignee, isUnassigned } from "./taskHelper
 
 type Filter = "mine" | "unassigned" | "all";
 
-const FILTERS: { key: Filter; label: string }[] = [
-  { key: "mine", label: "Mine" },
-  { key: "unassigned", label: "Unassigned" },
-  { key: "all", label: "All" },
+const FILTERS: { value: Filter; label: string }[] = [
+  { value: "mine", label: "Mine" },
+  { value: "unassigned", label: "Unassigned" },
+  { value: "all", label: "All" },
 ];
 
 export default function MyWorkScreen() {
@@ -126,34 +125,12 @@ export default function MyWorkScreen() {
           </Text>
         </View>
 
-        <View style={styles.filters}>
-          {FILTERS.map((f) => {
-            const active = f.key === filter;
-            return (
-              <Pressable
-                key={f.key}
-                onPress={() => setFilter(f.key)}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                style={({ pressed }) => [
-                  styles.filter,
-                  active ? styles.filterActive : styles.filterIdle,
-                  // Sinks whether or not it is the selected one — pressing the
-                  // active chip used to do nothing at all, which reads as a
-                  // dead control.
-                  pressed && styles.filterPressed,
-                ]}
-              >
-                <Text
-                  variant="label"
-                  color={active ? "textOnBrand" : "textSecondary"}
-                >
-                  {f.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        <ChipGroup
+          label="Filter tasks"
+          value={filter}
+          options={FILTERS}
+          onChange={setFilter}
+        />
       </View>
 
       <SectionList
@@ -254,25 +231,6 @@ const styles = StyleSheet.create({
   // header padding, list padding and section padding gave 44px of dead space.
   content: { paddingBottom: TAB_BAR_CLEARANCE },
   contentEmpty: { flexGrow: 1 },
-  filters: { flexDirection: "row", gap: spacing[2] },
-  filter: {
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[2],
-    borderRadius: radius.full,
-  },
-  /**
-   * Raised the same way the cards are: no outline, `shadows.md` doing the
-   * lifting, and a press that sinks the chip rather than tinting it.
-   *
-   * No `overflow: hidden` anywhere near these — that is what flattened the
-   * cards, since iOS clips a layer's own shadow along with its children.
-   */
-  filterIdle: { backgroundColor: colors.surface, ...shadows.md },
-  filterActive: { backgroundColor: colors.primary, ...shadows.md },
-  filterPressed: {
-    transform: [{ translateY: 2 }],
-    ...shadows.sm,
-  },
   sectionTitle: {
     paddingHorizontal: SCREEN_PADDING,
     paddingTop: spacing[3],
@@ -280,5 +238,5 @@ const styles = StyleSheet.create({
   },
   // 16, matching the board columns: the gap has to out-reach the card shadow
   // or stacked shadows meet and the list reads as one grey slab.
-  cardWrap: { paddingHorizontal: SCREEN_PADDING, paddingBottom: spacing[4] },
+  cardWrap: { paddingHorizontal: SCREEN_PADDING, paddingBottom: spacing[5] },
 });

@@ -8,8 +8,16 @@ import type { StackScreenProps } from "@react-navigation/stack";
 import { fetchWorkspaces, respondInvite } from "../../api/workspaceQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import type { Workspace } from "../../types/api";
-import { colors, radius, shadows, spacing, SCREEN_PADDING } from "../../theme";
-import { Button, EmptyState, Fab, Screen, ScreenHeader, Text } from "../../ui";
+import { colors, radius, spacing, SCREEN_PADDING } from "../../theme";
+import {
+  Button,
+  Card,
+  EmptyState,
+  Fab,
+  Screen,
+  ScreenHeader,
+  Text,
+} from "../../ui";
 import { WorkspaceCard } from "./WorkspaceCard";
 
 type Props = StackScreenProps<RootStackParamList, "Boards">;
@@ -106,7 +114,7 @@ export default function BoardsScreen({ navigation }: Props) {
                 Invitations
               </Text>
               {pending.map((w) => (
-                <View key={w.Id} style={styles.inviteCard}>
+                <Card key={w.Id} style={styles.inviteCard}>
                   <View style={styles.inviteTop}>
                     <View style={styles.inviteGlyph}>
                       <Mail
@@ -144,7 +152,7 @@ export default function BoardsScreen({ navigation }: Props) {
                       }
                     />
                   </View>
-                </View>
+                </Card>
               ))}
             </View>
           ) : null
@@ -201,17 +209,15 @@ const styles = StyleSheet.create({
   },
   // 16, matching the board columns: the gap has to out-reach the card shadow
   // or stacked shadows meet and the list reads as one grey slab.
-  cardWrap: { paddingHorizontal: SCREEN_PADDING, paddingBottom: spacing[4] },
+  cardWrap: { paddingHorizontal: SCREEN_PADDING, paddingBottom: spacing[5] },
+  // The one card in the app that keeps an outline. An invite is a decision
+  // waiting on you rather than somewhere you can already go, and the accent
+  // ring is what says so — Card supplies everything else.
   inviteCard: {
     marginHorizontal: SCREEN_PADDING,
     marginBottom: spacing[3],
-    padding: spacing[4],
-    gap: spacing[3],
-    borderRadius: radius.xl,
-    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.accent,
-    ...shadows.md,
   },
   inviteTop: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
   inviteGlyph: {

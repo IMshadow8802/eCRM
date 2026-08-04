@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import {
   FlatList,
   Pressable,
+  ScrollView,
   StyleSheet,
   View,
 } from "react-native";
@@ -51,6 +52,7 @@ import { colors, radius, shadows, spacing, SCREEN_PADDING } from "../../theme";
 import {
   ActionSheet,
   Avatar,
+  Card,
   ComposeSheet,
   Dialog,
   Fab,
@@ -59,6 +61,7 @@ import {
   ScreenLoader,
   Segmented,
   Text,
+  Timeline,
   type ComposeField,
   type SheetAction,
   type SheetRef,
@@ -73,6 +76,7 @@ import {
   dueBucket,
   dueLabel,
   formatHours,
+  relativeTime,
 } from "./taskHelpers";
 
 type Props = StackScreenProps<RootStackParamList, "TaskDetail">;
@@ -507,22 +511,21 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
             </Text>
           }
           renderItem={({ item }) => (
-            <Pressable
-              disabled={!can.changeStatus || toggleItem.isPending}
-              onPress={() =>
-                toggleItem.mutate({
-                  Id: item.Id,
-                  TaskId: taskId,
-                  ItemText: item.ItemText,
-                  IsCompleted: !item.IsCompleted,
-                  SortOrder: item.SortOrder ?? 0,
-                  WorkspaceId: task.WorkspaceId,
-                })
+            <Card
+              style={styles.itemRow}
+              onPress={
+                !can.changeStatus || toggleItem.isPending
+                  ? undefined
+                  : () =>
+                      toggleItem.mutate({
+                        Id: item.Id,
+                        TaskId: taskId,
+                        ItemText: item.ItemText,
+                        IsCompleted: !item.IsCompleted,
+                        SortOrder: item.SortOrder ?? 0,
+                        WorkspaceId: task.WorkspaceId,
+                      })
               }
-              style={({ pressed }) => [
-                styles.itemRow,
-                pressed && styles.itemRowPressed,
-              ]}
             >
               {item.IsCompleted ? (
                 <CircleCheck size={22} color={colors.success} />
@@ -550,7 +553,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
                   <Trash2 size={19} color={colors.danger} />
                 </Pressable>
               ) : null}
-            </Pressable>
+            </Card>
           )}
         />
       ) : null}
@@ -563,26 +566,28 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
         />
       ) : null}
 
+      {/* Comments are a conversation in time, exactly like the history — so
+          they use the same rail rather than a stack of cards. The avatar IS
+          the node, which is why Timeline takes one. */}
       {tab === "chat" ? (
-        <FlatList
-          data={comments}
-          keyExtractor={(c) => String(c.Id)}
+        <ScrollView
           contentContainerStyle={styles.list}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
-          ListEmptyComponent={<Text variant="secondary">No comments yet.</Text>}
-          renderItem={({ item }) => (
-            <View style={styles.commentCard}>
-              <Avatar name={item.UserName} uri={item.Avatar} size={30} />
-              <View style={styles.flex}>
-                <Text variant="bodyStrong">{item.UserName ?? "Someone"}</Text>
-                <Text variant="body" color="textSecondary">
-                  {item.Comment}
-                </Text>
-              </View>
-            </View>
+        >
+          {comments.length ? (
+            <Timeline
+              entries={comments.map((c) => ({
+                key: String(c.Id),
+                title: c.Comment,
+                meta: `${c.UserName ?? "Someone"} · ${relativeTime(c.CreatedDate)}`,
+                node: <Avatar name={c.UserName} uri={c.Avatar} size={24} />,
+              }))}
+            />
+          ) : (
+            <Text variant="secondary">No comments yet.</Text>
           )}
-        />
+        </ScrollView>
       ) : null}
 
       {tab === "activity" ? <ActivityTab taskId={taskId} /> : null}
@@ -726,7 +731,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     ...shadows.sm,
   },
-  metaPressed: { backgroundColor: colors.surfacePressed },
+  metaPressed: { transform: [{ translateY: 1 }] },
   avatars: { flexDirection: "row", alignItems: "center" },
   overlap: { marginLeft: -spacing[2] },
   list: {
@@ -737,17 +742,7 @@ const styles = StyleSheet.create({
   },
   // Rows are surfaces, not bare text on the page — without a card they read as
   // pen on paper against the tinted background.
-  itemRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[3],
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    paddingVertical: spacing[3],
-    paddingHorizontal: spacing[4],
-    ...shadows.sm,
-  },
-  itemRowPressed: { backgroundColor: colors.surfacePressed },
+  itemRow: { flexDirection: "row", alignItems: "center" },
   struck: {
     textDecorationLine: "line-through",
     // Only the LINE is coloured — the text stays muted so a done item recedes.
@@ -766,13 +761,5 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
     backgroundColor: colors.surface,
-  },
-  commentCard: {
-    flexDirection: "row",
-    gap: spacing[3],
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    padding: spacing[4],
-    ...shadows.sm,
   },
 });

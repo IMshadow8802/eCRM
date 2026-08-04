@@ -30,11 +30,12 @@ import {
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
 import type { WorkspaceMember, WorkspaceRole } from "../../types/api";
-import { colors, radius, shadows, spacing, SCREEN_PADDING } from "../../theme";
+import { colors, radius, spacing, SCREEN_PADDING } from "../../theme";
 import {
   ActionSheet,
   Avatar,
   Button,
+  Card,
   Dialog,
   Screen,
   ScreenHeader,
@@ -276,14 +277,14 @@ export default function WorkspaceSettingsScreen({ route, navigation }: Props) {
           {/* A personal board has exactly one member by definition, and
               converting it to shared is a web action. */}
           {personal ? (
-            <View style={styles.note}>
+            <Card>
               <Text variant="secondary">
                 Personal boards are yours alone — private even from
                 administrators. Create a shared board to work with anyone else.
               </Text>
-            </View>
+            </Card>
           ) : (
-            <View style={styles.card}>
+            <Card padded={false} gap={0}>
               {active.map((member, i) => {
                 const meta = ROLE_META[member.Role] ?? ROLE_META.member;
                 return (
@@ -323,7 +324,7 @@ export default function WorkspaceSettingsScreen({ route, navigation }: Props) {
                   <Text variant="secondary">Nobody on this board yet.</Text>
                 </View>
               ) : null}
-            </View>
+            </Card>
           )}
         </View>
 
@@ -333,7 +334,7 @@ export default function WorkspaceSettingsScreen({ route, navigation }: Props) {
               Board
             </Text>
 
-            <View style={styles.card}>
+            <Card padded={false} gap={0}>
               <Pressable
                 onPress={() =>
                   archive.mutate({
@@ -385,7 +386,7 @@ export default function WorkspaceSettingsScreen({ route, navigation }: Props) {
                   </Text>
                 </View>
               </Pressable>
-            </View>
+            </Card>
           </View>
         ) : null}
       </ScrollView>
@@ -424,17 +425,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-  },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-    ...shadows.md,
-  },
-  note: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-    padding: spacing[4],
-    ...shadows.md,
   },
   row: {
     flexDirection: "row",

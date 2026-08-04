@@ -1,9 +1,10 @@
 import { forwardRef, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 
-import { colors, radius, shadows, spacing, typography } from "../theme";
+import { colors, radius, spacing, typography } from "../theme";
 import { Button } from "./Button";
+import { ChipGroup } from "./ChipGroup";
 import { Sheet, type SheetRef } from "./Sheet";
 import { Text } from "./Text";
 
@@ -104,33 +105,13 @@ export const ComposeSheet = forwardRef<SheetRef, ComposeSheetProps>(
                   ) : null}
                 </Text>
               ) : null}
-              <View style={styles.chips}>
-                {choice.options.map((option) => {
-                  const active = picked[choice.key] === option.value;
-                  return (
-                    <Pressable
-                      key={String(option.value)}
-                      onPress={() =>
-                        setPicked((prev) => ({ ...prev, [choice.key]: option.value }))
-                      }
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: active }}
-                      style={({ pressed }) => [
-                        styles.chip,
-                        active ? styles.chipActive : styles.chipIdle,
-                        pressed && !active && styles.chipPressed,
-                      ]}
-                    >
-                      <Text
-                        variant="label"
-                        color={active ? "textOnBrand" : "textSecondary"}
-                      >
-                        {option.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+              <ChipGroup
+                value={picked[choice.key] ?? null}
+                options={choice.options}
+                onChange={(value) =>
+                  setPicked((prev) => ({ ...prev, [choice.key]: value }))
+                }
+              />
             </View>
           ))}
 
@@ -175,24 +156,7 @@ export const ComposeSheet = forwardRef<SheetRef, ComposeSheetProps>(
 const styles = StyleSheet.create({
   body: { paddingHorizontal: spacing[4], gap: spacing[3] },
   field: { gap: spacing[2] },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing[2] },
-  chip: {
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[2],
-    borderRadius: radius.full,
-    borderWidth: 1,
-  },
-  chipIdle: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    ...shadows.sm,
-  },
   chipPressed: { backgroundColor: colors.surfacePressed },
-  chipActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-    ...shadows.md,
-  },
   input: {
     ...typography.body,
     borderWidth: 1,

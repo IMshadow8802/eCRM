@@ -29,14 +29,43 @@ export interface ChipProps {
   label: string;
   tone?: ChipTone;
   icon?: LucideIcon;
+  /**
+   * A solid fill in an arbitrary colour, with white on it — overrides `tone`.
+   *
+   * For colours that come from DATA rather than from the palette: a pipeline
+   * stage carries its own hex in `tblPipelineStage.Color`, so a company that
+   * recolours its board on the web sees it here without a release. `tone`
+   * cannot express that, because its six values are fixed at build time.
+   */
+  color?: string;
+  /** Caps the width and truncates — for labels a company can type freely. */
+  maxWidth?: number;
 }
 
-/** Small status pill — priority, due state, counts, member roles. */
-export function Chip({ label, tone = "neutral", icon: Icon }: ChipProps) {
+/** Small status pill — stage, priority, due state, member roles. */
+export function Chip({
+  label,
+  tone = "neutral",
+  icon: Icon,
+  color,
+  maxWidth,
+}: ChipProps) {
+  const ink = color ? colors.textOnBrand : colors[FG[tone]];
+
   return (
-    <View style={[styles.chip, { backgroundColor: BG[tone] }]}>
-      {Icon ? <Icon size={12} color={colors[FG[tone]]} /> : null}
-      <Text variant="caption" color={FG[tone]}>
+    <View
+      style={[
+        styles.chip,
+        { backgroundColor: color ?? BG[tone] },
+        maxWidth != null && { maxWidth },
+      ]}
+    >
+      {Icon ? <Icon size={12} color={ink} /> : null}
+      <Text
+        variant="caption"
+        color={color ? "textOnBrand" : FG[tone]}
+        numberOfLines={1}
+      >
         {label}
       </Text>
     </View>
