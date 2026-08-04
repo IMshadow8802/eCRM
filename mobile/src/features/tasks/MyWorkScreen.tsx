@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { Pressable, RefreshControl, SectionList, StyleSheet, View } from "react-native";
+import { Pressable, SectionList, StyleSheet, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { ClipboardCheck, CloudOff, Power } from "lucide-react-native";
 import { useNavigation } from "@react-navigation/native";
@@ -17,11 +17,11 @@ import {
   SCREEN_PADDING,
   TAB_BAR_CLEARANCE,
 } from "../../theme";
-import { ChipGroup, Dialog, EmptyState, Screen, Text } from "../../ui";
+import { ChipGroup, Dialog, EmptyState, Refresher, Screen, Text } from "../../ui";
 import { useSignOut } from "../auth/useSignOut";
 import { TaskCard } from "./TaskCard";
 import { greetingFor, longDate } from "./greeting";
-import { BUCKET_LABEL, groupByDue, isAssignee, isUnassigned } from "./taskHelpers";
+import { dueBucket, groupByDue, isAssignee, isUnassigned } from "./taskHelpers";
 
 type Filter = "mine" | "unassigned" | "all";
 
@@ -57,18 +57,32 @@ export default function MyWorkScreen() {
     return tasks;
   }, [tasks, filter, userId]);
 
+  /**
+   * Still grouped, but the group labels are gone — the buckets survive only to
+   * ORDER the list, overdue first and undated last.
+   *
+   * The headers were dropped because the top one could never work: a section
+   * header divides what is above it from what is below, and the first one has
+   * nothing above it but the filter chips. The rest were mostly restating what
+   * the card already says two lines down — "Overdue" over "108 days overdue".
+   * The count that was worth keeping moved up to the summary line, where it is
+   * visible without scrolling.
+   */
   const sections = useMemo(
-    () =>
-      groupByDue(visible).map((g) => ({
-        title: BUCKET_LABEL[g.bucket],
-        data: g.tasks,
-      })),
+    () => groupByDue(visible).map((g) => ({ key: g.bucket, data: g.tasks })),
     [visible],
   );
 
   const mineCount = useMemo(
     () => tasks.filter((t) => isAssignee(t, userId)).length,
     [tasks, userId],
+  );
+
+  // Counted off what is ON SCREEN, not off `tasks` — with the Unassigned or All
+  // filter up, a figure from a set the user cannot see is worse than none.
+  const overdueCount = useMemo(
+    () => visible.filter((t) => !t.IsCompleted && dueBucket(t.DueDate) === "overdue").length,
+    [visible],
   );
 
   const openTask = useCallback(
@@ -123,6 +137,15 @@ export default function MyWorkScreen() {
               ? `${mineCount} task${mineCount === 1 ? "" : "s"} assigned to you`
               : "Nothing assigned to you right now"}
           </Text>
+          {/* Split out in red rather than buried in the sentence: the count of
+              things already late is the one number on this screen worth acting
+              on, and it was previously only discoverable by scrolling. */}
+          {overdueCount > 0 ? (
+            <Text variant="secondary" color="danger">
+              {" · "}
+              {overdueCount} overdue
+            </Text>
+          ) : null}
         </View>
 
         <ChipGroup
@@ -140,20 +163,10 @@ export default function MyWorkScreen() {
           styles.content,
           !sections.length && styles.contentEmpty,
         ]}
-        stickySectionHeadersEnabled={false}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl
-            refreshing={isRefetching && !isLoading}
-            onRefresh={refetch}
-            tintColor={colors.primary}
-          />
+          <Refresher refreshing={isRefetching && !isLoading} onRefresh={refetch} />
         }
-        renderSectionHeader={({ section }) => (
-          <Text variant="overline" color="textMuted" style={styles.sectionTitle}>
-            {section.title}
-          </Text>
-        )}
         renderItem={({ item }) => (
           <View style={styles.cardWrap}>
             <TaskCard task={item} onPress={openTask} />
@@ -226,16 +239,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   signOutPressed: { backgroundColor: colors.surfacePressed },
-  summaryRow: {},
-  // No top padding — the section header below provides the gap. Stacking
-  // header padding, list padding and section padding gave 44px of dead space.
-  content: { paddingBottom: TAB_BAR_CLEARANCE },
+  summaryRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap" },
+  // The gap the section header used to provide, now that there is none.
+  content: { paddingTop: spacing[4], paddingBottom: TAB_BAR_CLEARANCE },
   contentEmpty: { flexGrow: 1 },
-  sectionTitle: {
-    paddingHorizontal: SCREEN_PADDING,
-    paddingTop: spacing[3],
-    paddingBottom: spacing[2],
-  },
   // 16, matching the board columns: the gap has to out-reach the card shadow
   // or stacked shadows meet and the list reads as one grey slab.
   cardWrap: { paddingHorizontal: SCREEN_PADDING, paddingBottom: spacing[5] },

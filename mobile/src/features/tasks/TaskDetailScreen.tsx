@@ -1,19 +1,11 @@
 import { useMemo, useRef, useState } from "react";
-import {
-  FlatList,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  View,
-} from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRightLeft,
   Ban,
   Calendar,
   CircleAlert,
-  CircleCheck,
-  Circle,
   Eye,
   Flag,
   Link2,
@@ -52,7 +44,6 @@ import { colors, radius, shadows, spacing, SCREEN_PADDING } from "../../theme";
 import {
   ActionSheet,
   Avatar,
-  Card,
   ComposeSheet,
   Dialog,
   Fab,
@@ -68,6 +59,7 @@ import {
 } from "../../ui";
 import AttachmentList from "../attachments/AttachmentList";
 import ActivityTab from "./ActivityTab";
+import { Checklist } from "./Checklist";
 import { DependencySheet } from "./DependencySheet";
 import { TimeSheet } from "./TimeSheet";
 import {
@@ -229,7 +221,6 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   const checklist = checklistQuery.data ?? [];
   const comments = commentsQuery.data ?? [];
   const assignees = task ? assigneesOf(task) : [];
-  const done = checklist.filter((i) => i.IsCompleted).length;
 
   // The header renders in every one of these states on purpose: a loading or
   // failed screen with no back button is a dead end, and force-quitting the app
@@ -492,69 +483,27 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
       </View>
 
       {tab === "checklist" ? (
-        <FlatList
-          data={checklist}
-          keyExtractor={(i) => String(i.Id)}
-          contentContainerStyle={styles.list}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          ListHeaderComponent={
-            checklist.length ? (
-              <Text variant="caption" color="textMuted">
-                {done} of {checklist.length} done · completion follows this checklist
-              </Text>
-            ) : null
+        <Checklist
+          items={checklist}
+          canToggle={can.changeStatus && !toggleItem.isPending}
+          canManage={can.manageArtifacts}
+          onToggle={(item) =>
+            toggleItem.mutate({
+              Id: item.Id,
+              TaskId: taskId,
+              ItemText: item.ItemText,
+              IsCompleted: !item.IsCompleted,
+              SortOrder: item.SortOrder ?? 0,
+              WorkspaceId: task.WorkspaceId,
+            })
           }
-          ListEmptyComponent={
-            <Text variant="secondary">
-              No checklist items yet. Completion is driven by this list.
-            </Text>
+          onDelete={(item) =>
+            removeItem.mutate({
+              Id: item.Id,
+              TaskId: taskId,
+              WorkspaceId: task.WorkspaceId,
+            })
           }
-          renderItem={({ item }) => (
-            <Card
-              style={styles.itemRow}
-              onPress={
-                !can.changeStatus || toggleItem.isPending
-                  ? undefined
-                  : () =>
-                      toggleItem.mutate({
-                        Id: item.Id,
-                        TaskId: taskId,
-                        ItemText: item.ItemText,
-                        IsCompleted: !item.IsCompleted,
-                        SortOrder: item.SortOrder ?? 0,
-                        WorkspaceId: task.WorkspaceId,
-                      })
-              }
-            >
-              {item.IsCompleted ? (
-                <CircleCheck size={22} color={colors.success} />
-              ) : (
-                <Circle size={22} color={colors.borderStrong} />
-              )}
-              <Text
-                variant="body"
-                style={[styles.flex, item.IsCompleted && styles.struck]}
-              >
-                {item.ItemText}
-              </Text>
-              {can.manageArtifacts ? (
-                <Pressable
-                  hitSlop={spacing[2]}
-                  onPress={() =>
-                    removeItem.mutate({
-                      Id: item.Id,
-                      TaskId: taskId,
-                      WorkspaceId: task.WorkspaceId,
-                    })
-                  }
-                >
-                  {/* A cross means dismiss; this destroys the item. */}
-                  <Trash2 size={19} color={colors.danger} />
-                </Pressable>
-              ) : null}
-            </Card>
-          )}
         />
       ) : null}
 
@@ -739,18 +688,6 @@ const styles = StyleSheet.create({
     // Clears the FAB so the last row is never hidden behind it.
     paddingBottom: spacing[20],
     gap: spacing[3],
-  },
-  // Rows are surfaces, not bare text on the page — without a card they read as
-  // pen on paper against the tinted background.
-  itemRow: { flexDirection: "row", alignItems: "center" },
-  struck: {
-    textDecorationLine: "line-through",
-    // Only the LINE is coloured — the text stays muted so a done item recedes.
-    // textDecorationColor is iOS-only; on Android the line inherits the text
-    // colour, so there it renders muted rather than brand. Accepted: the strike
-    // itself still reads as done on both.
-    textDecorationColor: colors.primary,
-    color: colors.textMuted,
   },
   readOnly: {
     flexDirection: "row",

@@ -1,5 +1,5 @@
 import { useCallback, useDeferredValue, useMemo, useRef, useState } from "react";
-import { FlatList, RefreshControl, StyleSheet, View } from "react-native";
+import { FlatList, StyleSheet, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRightLeft,
@@ -24,6 +24,7 @@ import {
   EmptyState,
   Fab,
   Input,
+  Refresher,
   Screen,
   ScreenHeader,
   Text,
@@ -296,10 +297,9 @@ export default function ComplaintsScreen({ navigation }: Props) {
                   showsVerticalScrollIndicator={false}
                   keyboardShouldPersistTaps="handled"
                   refreshControl={
-                    <RefreshControl
+                    <Refresher
                       refreshing={ticketsQuery.isRefetching && !loading}
                       onRefresh={ticketsQuery.refetch}
-                      tintColor={colors.primary}
                     />
                   }
                   ListEmptyComponent={

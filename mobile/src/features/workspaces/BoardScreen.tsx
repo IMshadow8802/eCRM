@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import { FlatList, RefreshControl, StyleSheet, View } from "react-native";
+import { FlatList, StyleSheet, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRightLeft,
@@ -21,6 +21,7 @@ import {
   BoardColumns,
   EmptyState,
   Fab,
+  Refresher,
   Screen,
   ScreenHeader,
   Text,
@@ -229,10 +230,9 @@ export default function BoardScreen({ route, navigation }: Props) {
                   // RefreshControl on the horizontal one never fires — the
                   // gesture it listens for is the one that scrolls the column.
                   refreshControl={
-                    <RefreshControl
+                    <Refresher
                       refreshing={tasksQuery.isRefetching && !loading}
                       onRefresh={tasksQuery.refetch}
-                      tintColor={colors.primary}
                     />
                   }
                   ListEmptyComponent={

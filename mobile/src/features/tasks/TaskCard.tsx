@@ -2,20 +2,19 @@ import { memo } from "react";
 import {
   Ban,
   Bug,
-  Check,
   CircleAlert,
-  CircleCheckBig,
+  ClipboardCheck,
+  ClipboardList,
   Clock,
   Columns3,
   Flag,
   FolderOpen,
   GitBranch,
-  Globe,
-  Layers,
   ListChecks,
   Sparkles,
+  Telescope,
   Timer,
-  TrendingUp,
+  Wrench,
   type LucideIcon,
 } from "lucide-react-native";
 import { StyleSheet, View } from "react-native";
@@ -40,13 +39,29 @@ interface TaskCardProps {
   showWorkspace?: boolean;
 }
 
-/** Icon comes from the task's type, colour from its priority. */
+/**
+ * Icon comes from the task's type, colour from its priority.
+ *
+ * Chosen for SILHOUETTE first. A board is read by scanning a column of 42px
+ * discs at speed, so what matters is that five shapes are unmistakable from each
+ * other at a glance — an insect, three stars, a tube, a clipboard, a spanner —
+ * not that each is the most literal illustration of its word.
+ *
+ * Three of these replaced icons that were describing something else entirely:
+ * `Layers` is z-order, `Globe` is international, and `TrendingUp` is a metrics
+ * chart. All three are real concepts in a CRM, which is exactly why they should
+ * not be sitting on a task.
+ */
 const TYPE_ICON: Record<string, LucideIcon> = {
-  task: Layers,
+  // Not `Layers` — a plain task is a line of work on a list, not a stack.
+  task: ClipboardList,
   bug: Bug,
   feature: Sparkles,
-  improvement: TrendingUp,
-  research: Globe,
+  // Not `TrendingUp` — an improvement is tuning something that already works,
+  // which is a spanner, not a growth chart.
+  improvement: Wrench,
+  // Not `Globe` — research is a spike into the unknown, not the internet.
+  research: Telescope,
 };
 
 const PRIORITY_INK: Record<TaskPriority, keyof typeof colors> = {
@@ -97,14 +112,33 @@ function TaskCardBase({
   const assignees = assigneesOf(task);
 
   const priority = task.Priority ?? null;
-  const ink = task.IsCompleted
+  const complete = Boolean(task.IsCompleted);
+
+  const ink = complete
     ? colors.success
     : priority
       ? colors[PRIORITY_INK[priority]]
       : colors.neutralIcon;
 
-  const Icon = task.IsCompleted
-    ? Check
+  /**
+   * A ticked clipboard for a finished task.
+   *
+   * It says the literal truth about this app: completion is DERIVED from the
+   * checklist (`tblTaskChecklist` — the `IsDone` column was retired), so a task
+   * is done exactly when its list is. A generic tick says "done" without saying
+   * why; a completed checklist says both.
+   *
+   * It also rhymes with `ClipboardList` above — the same object the pending card
+   * carries, now with a tick on it. Two earlier attempts were weaker: a single
+   * `Check` is one small mark adrift on a 42px disc, and it collides with the
+   * checkbox glyph the checklist uses for ONE item; `CheckCheck` fixed both but
+   * is a read receipt, borrowed from messaging and about delivery, not work.
+   *
+   * The disc stays solid, full-strength green. A pale tint reads as washed out,
+   * grey reads as disabled, and a finished task is neither.
+   */
+  const Icon = complete
+    ? ClipboardCheck
     : (TYPE_ICON[task.Type ?? "task"] ?? TYPE_ICON.task!);
 
   const logged = task.LoggedHours ?? 0;
@@ -123,7 +157,7 @@ function TaskCardBase({
           <Text
             variant="h3"
             numberOfLines={2}
-            style={task.IsCompleted ? styles.doneText : undefined}
+            style={complete ? styles.doneText : undefined}
           >
             {task.Title}
           </Text>
@@ -169,9 +203,12 @@ function TaskCardBase({
       <View style={styles.stats}>
         {total > 0 ? (
           <Stat
-            Icon={task.IsCompleted ? CircleCheckBig : ListChecks}
+            // Always the list glyph — the disc above is now a ticked clipboard,
+            // and a second check icon 40px under it says the same thing twice.
+            // Green is what marks this one finished.
+            Icon={ListChecks}
             value={`${done} of ${total}`}
-            tone={task.IsCompleted ? "success" : "textSecondary"}
+            tone={complete ? "success" : "textSecondary"}
           />
         ) : null}
         {priority ? (
@@ -227,15 +264,17 @@ const styles = StyleSheet.create({
     gap: spacing[3],
     flexWrap: "wrap",
   },
-  // Muted strike, muted line. The strikethrough is what actually reads as
-  // "finished" at a glance, so it stays — but deliberately uncoloured: React
-  // Native has no textDecorationThickness, and at 15px a 1px line is too thin
-  // to carry a colour. Muted works because it matches the text either way,
-  // including on Android where the line always inherits the text colour.
-  doneText: {
-    textDecorationLine: "line-through",
-    color: colors.textMuted,
-  },
+  /**
+   * Muted, NOT struck through.
+   *
+   * React Native has no `textDecorationThickness` and `textDecorationColor` is
+   * iOS-only, so a strike is a 1px hairline you cannot tune — at 15px it reads
+   * as damage to the text rather than as completion, and it renders differently
+   * on each platform. The card already says done twice over: the glyph is a
+   * green check and the checklist stat goes green. Muting the title is the
+   * third, quietest signal, and the only one that needs no line.
+   */
+  doneText: { color: colors.textMuted },
   assignees: { flexDirection: "row", alignItems: "center" },
   avatarSlot: {
     borderRadius: radius.full,

@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from "react";
-import { RefreshControl, SectionList, StyleSheet, View } from "react-native";
+import { SectionList, StyleSheet, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CloudOff, LayoutDashboard, Mail, Plus } from "lucide-react-native";
 
@@ -14,6 +14,7 @@ import {
   Card,
   EmptyState,
   Fab,
+  Refresher,
   Screen,
   ScreenHeader,
   Text,
@@ -97,11 +98,7 @@ export default function BoardsScreen({ navigation }: Props) {
         stickySectionHeadersEnabled={false}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl
-            refreshing={isRefetching && !isLoading}
-            onRefresh={refetch}
-            tintColor={colors.primary}
-          />
+          <Refresher refreshing={isRefetching && !isLoading} onRefresh={refetch} />
         }
         ListHeaderComponent={
           pending.length ? (
