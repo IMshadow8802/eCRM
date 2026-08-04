@@ -3,10 +3,20 @@ const { scopeJson } = require("../middleware/permission");
 const { logActivity, ACTIONS } = require("../utils/activityLogger");
 const { cleanSpRows } = require("../utils/spHelpers");
 const { hashPassword, comparePassword } = require("../utils/encryption");
+const { success, error, validationError } = require("../utils/responseHelper");
+const {
+  asyncRoute,
+  firstRow,
+  spStatus,
+  spOk,
+  spMessage,
+  pageParams,
+  positiveInt,
+} = require("../utils/controllerKit");
 
 class UserController {
-  async save(req, res) {
-    try {
+  save = asyncRoute(
+    async (req, res) => {
       // Accept both new (UserIp) and legacy (User_IP) field names.
       const {
         Id = 0,
@@ -49,9 +59,10 @@ class UserController {
         Mobile,
       });
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
+      const ok = spOk(spResponse);
 
-      if (spResponse.ResponseCode < 300 && spResponse.UserId) {
+      if (ok && spResponse.UserId) {
         await logActivity({
           entityType: "User",
           entityId: spResponse.UserId,
@@ -64,39 +75,27 @@ class UserController {
         });
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode < 300,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
-        data:
-          spResponse.ResponseCode < 300
-            ? {
-                userId: spResponse.UserId,
-                assignedGroupId: spResponse.AssignedGroupId
-              }
-            : null,
+      return res.status(spStatus(spResponse)).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: spStatus(spResponse),
+        data: ok
+          ? {
+              userId: spResponse.UserId,
+              assignedGroupId: spResponse.AssignedGroupId
+            }
+          : null,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Save user error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to save user",
-        code: "USER_SAVE_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to save user",
+    "USER_SAVE_ERROR",
+  );
 
-  async fetch(req, res) {
-    try {
-      const {
-        Id = 0,
-        PageNumber = 1,
-        PageSize = 10,
-        SearchTerm = null,
-      } = req.body;
+  fetch = asyncRoute(
+    async (req, res) => {
+      const { Id = 0, SearchTerm = null } = req.body;
+      const { PageNumber, PageSize } = pageParams(req.body, 10);
 
       // scopeJson, not `?.length ? stringify : null`. That form collapses an
       // empty scope to NULL, which every one of these SPs reads as "apply no
@@ -115,39 +114,37 @@ class UserController {
         SearchTerm,
       });
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
       const users = cleanSpRows(result.recordsets[0]);
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
+      return res.status(spStatus(spResponse)).json({
+        success: spOk(spResponse),
+        message: spMessage(spResponse),
+        responseCode: spStatus(spResponse),
         data: {
           users: users,
           pagination: {
-            currentPage: spResponse.CurrentPage,
-            pageSize: spResponse.PageSize,
-            totalRecords: spResponse.TotalRecords,
-            totalPages: spResponse.TotalPages,
+            currentPage: spResponse?.CurrentPage,
+            pageSize: spResponse?.PageSize,
+            totalRecords: spResponse?.TotalRecords,
+            totalPages: spResponse?.TotalPages,
           },
         },
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Fetch user error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to fetch users",
-        code: "USER_FETCH_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to fetch users",
+    "USER_FETCH_ERROR",
+  );
 
-  async delete(req, res) {
-    try {
-      const { Id } = req.body;
+  delete = asyncRoute(
+    async (req, res) => {
+      // Validated here rather than left to the SP: an absent Id reached
+      // sp_DeleteUser as undefined and the procedure decided for itself what
+      // that meant.
+      const Id = positiveInt(req.body.Id);
+
+      if (!Id) return validationError(res, "User ID is required");
 
       const result = await database.executeStoredProcedure("sp_DeleteUser", {
         Id,
@@ -157,9 +154,9 @@ class UserController {
         RequestingUserId: req.user.UserId,
       });
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
 
-      if (spResponse.ResponseCode === 200) {
+      if (spOk(spResponse)) {
         await logActivity({
           entityType: "User",
           entityId: Id,
@@ -169,31 +166,24 @@ class UserController {
         });
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
+      return res.status(spStatus(spResponse)).json({
+        success: spOk(spResponse),
+        message: spMessage(spResponse),
+        responseCode: spStatus(spResponse),
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Delete user error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to delete user",
-        code: "USER_DELETE_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to delete user",
+    "USER_DELETE_ERROR",
+  );
 
   // --------------------------------------------------------------------------
   // Self-service ( /me ) — always operates on req.user.UserId, never a body id.
   // --------------------------------------------------------------------------
 
   // Edit own display name (FullName) + avatar preset. Username stays admin-only.
-  async updateMyProfile(req, res) {
-    try {
+  updateMyProfile = asyncRoute(
+    async (req, res) => {
       const { FullName, Avatar = null, Email = null, Mobile = null } = req.body;
 
       const result = await database.executeStoredProcedure(
@@ -207,9 +197,10 @@ class UserController {
           NewPasswordHash: null, // profile edit never touches the password
         }
       );
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
+      const ok = spOk(spResponse);
 
-      if (spResponse.ResponseCode === 200) {
+      if (ok) {
         await logActivity({
           entityType: "User",
           entityId: req.user.UserId,
@@ -219,51 +210,32 @@ class UserController {
         });
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
-        data:
-          spResponse.ResponseCode === 200
-            ? { FullName, Avatar, Email, Mobile }
-            : null,
+      return res.status(spStatus(spResponse)).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: spStatus(spResponse),
+        data: ok ? { FullName, Avatar, Email, Mobile } : null,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Update own profile error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to update profile",
-        code: "PROFILE_UPDATE_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to update profile",
+    "PROFILE_UPDATE_ERROR",
+  );
 
   // Change own password: bcrypt-verify the current one, then write the new hash
   // through the same profile SP (keeping the current name + avatar).
-  async changeMyPassword(req, res) {
-    try {
+  changeMyPassword = asyncRoute(
+    async (req, res) => {
       const { CurrentPassword, NewPassword } = req.body;
 
       if (!CurrentPassword || !NewPassword) {
-        return res.status(400).json({
-          success: false,
-          message: "Current and new password are required",
-          code: "VALIDATION_ERROR",
-          responseCode: 400,
-          timestamp: new Date().toISOString(),
-        });
+        return validationError(res, "Current and new password are required");
       }
       if (String(NewPassword).length < 6) {
-        return res.status(400).json({
-          success: false,
-          message: "New password must be at least 6 characters",
-          code: "VALIDATION_ERROR",
-          responseCode: 400,
-          timestamp: new Date().toISOString(),
-        });
+        return validationError(
+          res,
+          "New password must be at least 6 characters",
+        );
       }
 
       // Read the current hash + profile (sp_ValidateUser returns all three).
@@ -273,26 +245,14 @@ class UserController {
       const current = await database.executeStoredProcedure("sp_ValidateUser", {
         UserId: req.user.UserId,
       });
-      const me = current.recordsets[0][0];
-      if (!me || me.ResponseCode !== 200) {
-        return res.status(401).json({
-          success: false,
-          message: "Could not verify current user",
-          code: "AUTH_ERROR",
-          responseCode: 401,
-          timestamp: new Date().toISOString(),
-        });
+      const me = firstRow(current);
+      if (!spOk(me)) {
+        return error(res, "Could not verify current user", "AUTH_ERROR", 401);
       }
 
       const ok = await comparePassword(CurrentPassword, me.Password);
       if (!ok) {
-        return res.status(401).json({
-          success: false,
-          message: "Current password is incorrect",
-          code: "WRONG_PASSWORD",
-          responseCode: 401,
-          timestamp: new Date().toISOString(),
-        });
+        return error(res, "Current password is incorrect", "WRONG_PASSWORD", 401);
       }
 
       const newHash = await hashPassword(NewPassword);
@@ -308,9 +268,10 @@ class UserController {
           NewPasswordHash: newHash,
         }
       );
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
+      const saved = spOk(spResponse);
 
-      if (spResponse.ResponseCode === 200) {
+      if (saved) {
         await logActivity({
           entityType: "User",
           entityId: req.user.UserId,
@@ -320,55 +281,32 @@ class UserController {
         });
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message:
-          spResponse.ResponseCode === 200
-            ? "Password changed"
-            : spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
+      return res.status(spStatus(spResponse)).json({
+        success: saved,
+        message: saved ? "Password changed" : spMessage(spResponse),
+        responseCode: spStatus(spResponse),
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Change password error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to change password",
-        code: "PASSWORD_CHANGE_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to change password",
+    "PASSWORD_CHANGE_ERROR",
+  );
 
   // Light company roster {Id, FullName, Avatar} for client-side avatar lookup
   // in feeds. Any authenticated user; company-scoped.
-  async directory(req, res) {
-    try {
+  directory = asyncRoute(
+    async (req, res) => {
       const result = await database.executeStoredProcedure(
         "sp_FetchUserDirectory",
         { CompId: req.user.CompId }
       );
       const users = cleanSpRows(result.recordsets[0] || []);
 
-      return res.status(200).json({
-        success: true,
-        message: "Directory retrieved",
-        responseCode: 200,
-        data: { users },
-        timestamp: new Date().toISOString(),
-      });
-    } catch (err) {
-      console.error("User directory error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to fetch directory",
-        code: "DIRECTORY_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+      return success(res, "Directory retrieved", { users });
+    },
+    "Failed to fetch directory",
+    "DIRECTORY_ERROR",
+  );
 }
 
 module.exports = new UserController();

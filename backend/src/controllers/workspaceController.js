@@ -6,6 +6,16 @@ const { cleanSpRows } = require("../utils/spHelpers");
 const { UPLOAD_ROOT } = require("../middleware/upload");
 const { emitToWorkspace, emitToUser } = require("../realtime/events");
 const { SCOPES } = require("../realtime/contract");
+const { validationError } = require("../utils/responseHelper");
+const {
+  asyncRoute,
+  firstRow,
+  spStatus,
+  spOk,
+  spMessage,
+  pageParams,
+  positiveInt,
+} = require("../utils/controllerKit");
 
 // Best-effort unlink — a missing file must never block the DB operation.
 // (Same pattern as attachmentController.)
@@ -18,8 +28,8 @@ function unlinkQuiet(p) {
 }
 
 class WorkspaceController {
-  async save(req, res) {
-    try {
+  save = asyncRoute(
+    async (req, res) => {
       const {
         Id = 0,
         Name,
@@ -52,7 +62,11 @@ class WorkspaceController {
         IsAdmin: req.scope?.isAdmin ? 1 : 0,
       });
 
-      const spResponse = result.recordsets[0][0];
+      // `?? {}` so a status-less result (an SP that RETURNed before its
+      // SELECT) answers 500 via spStatus instead of throwing on undefined.
+      const spResponse = firstRow(result) ?? {};
+      const ok = spOk(spResponse);
+      const status = spStatus(spResponse);
       const newWorkspaceId = spResponse.WorkspaceId;
 
       // Auto-seed kanban columns for every new workspace using the template
@@ -60,7 +74,7 @@ class WorkspaceController {
       // login auto-seed path; manual creates (any type, personal included)
       // always honour TemplateKey so the board ships usable.
       let columnsSeeded = 0;
-      if (Id === 0 && spResponse.ResponseCode < 300 && newWorkspaceId) {
+      if (Id === 0 && ok && newWorkspaceId) {
         try {
           const tplResult = await database.executeStoredProcedure(
             "sp_ApplyKanbanTemplate",
@@ -71,7 +85,7 @@ class WorkspaceController {
               BranchId: req.user.BranchId,
             },
           );
-          columnsSeeded = tplResult.recordsets[0][0]?.ColumnsCreated ?? 0;
+          columnsSeeded = firstRow(tplResult)?.ColumnsCreated ?? 0;
         } catch (tplErr) {
           console.error(
             "sp_ApplyKanbanTemplate failed for workspace",
@@ -81,7 +95,7 @@ class WorkspaceController {
         }
       }
 
-      if (spResponse.ResponseCode < 300 && newWorkspaceId) {
+      if (ok && newWorkspaceId) {
         await logActivity({
           entityType: "Workspace",
           entityId: newWorkspaceId,
@@ -96,38 +110,27 @@ class WorkspaceController {
         }
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode < 300,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
-        data:
-          spResponse.ResponseCode < 300
-            ? { workspaceId: newWorkspaceId, columnsSeeded }
-            : null,
+      return res.status(status).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: status,
+        data: ok ? { workspaceId: newWorkspaceId, columnsSeeded } : null,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Save workspace error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to save workspace",
-        code: "WORKSPACE_SAVE_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to save workspace",
+    "WORKSPACE_SAVE_ERROR",
+  );
 
-  async fetch(req, res) {
-    try {
+  fetch = asyncRoute(
+    async (req, res) => {
       const {
         Id = 0,
         Type = null,
         IncludeArchived = false,
-        PageNumber = 1,
-        PageSize = 25,
         SearchTerm = null,
       } = req.body;
+      const { PageNumber, PageSize } = pageParams(req.body, 25);
 
       const result = await database.executeStoredProcedure("sp_FetchWorkspaces", {
         Id,
@@ -151,13 +154,14 @@ class WorkspaceController {
         SearchTerm,
       });
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result) ?? {};
+      const status = spStatus(spResponse);
       const workspaces = cleanSpRows(result.recordsets[0]);
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
+      return res.status(status).json({
+        success: spOk(spResponse),
+        message: spMessage(spResponse),
+        responseCode: status,
         data: {
           workspaces,
           pagination: {
@@ -169,29 +173,16 @@ class WorkspaceController {
         },
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Fetch workspaces error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to fetch workspaces",
-        code: "WORKSPACE_FETCH_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to fetch workspaces",
+    "WORKSPACE_FETCH_ERROR",
+  );
 
-  async fetchMembers(req, res) {
-    try {
+  fetchMembers = asyncRoute(
+    async (req, res) => {
       const { WorkspaceId } = req.body;
-      if (!WorkspaceId) {
-        return res.status(400).json({
-          success: false,
-          message: "WorkspaceId is required",
-          code: "VALIDATION_ERROR",
-          responseCode: 400,
-          timestamp: new Date().toISOString(),
-        });
+      if (!positiveInt(WorkspaceId)) {
+        return validationError(res, "WorkspaceId is required");
       }
 
       const result = await database.executeStoredProcedure(
@@ -206,54 +197,42 @@ class WorkspaceController {
 
       // Status columns ride the data rows; a permission refusal comes back as
       // a single status-only row.
-      const spResponse = result.recordsets[0]?.[0] ?? {
+      const spResponse = firstRow(result) ?? {
         ResponseCode: 200,
         ResponseMess: "Members retrieved",
       };
-      if (spResponse.ResponseCode !== 200) {
-        return res.status(spResponse.ResponseCode).json({
+      if (!spOk(spResponse)) {
+        const status = spStatus(spResponse);
+        return res.status(status).json({
           success: false,
-          message: spResponse.ResponseMess,
-          responseCode: spResponse.ResponseCode,
+          message: spMessage(spResponse),
+          responseCode: status,
           timestamp: new Date().toISOString(),
         });
       }
 
       return res.status(200).json({
         success: true,
-        message: spResponse.ResponseMess,
+        message: spMessage(spResponse),
         responseCode: 200,
         data: { members: cleanSpRows(result.recordsets[0] || [], "UserId") },
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Fetch workspace members error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to fetch workspace members",
-        code: "WORKSPACE_MEMBERS_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to fetch workspace members",
+    "WORKSPACE_MEMBERS_ERROR",
+  );
 
   // Change an existing member's role. Deliberately NOT sp_AddWorkspaceMember,
   // whose upsert branch also resets InviteStatus to 'pending' — demoting an
   // active member with it would knock them back to pending and (since 061) lock
   // them out of the board until they accepted again.
-  async setMemberRole(req, res) {
-    try {
+  setMemberRole = asyncRoute(
+    async (req, res) => {
       const { WorkspaceId, UserId, Role } = req.body;
 
-      if (!WorkspaceId || !UserId || !Role) {
-        return res.status(400).json({
-          success: false,
-          message: "WorkspaceId, UserId and Role are required",
-          code: "VALIDATION_ERROR",
-          responseCode: 400,
-          timestamp: new Date().toISOString(),
-        });
+      if (!positiveInt(WorkspaceId) || !positiveInt(UserId) || !Role) {
+        return validationError(res, "WorkspaceId, UserId and Role are required");
       }
 
       const result = await database.executeStoredProcedure(
@@ -268,9 +247,11 @@ class WorkspaceController {
         },
       );
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
+      const ok = spOk(spResponse);
+      const status = spStatus(spResponse);
 
-      if (spResponse.ResponseCode === 200) {
+      if (ok) {
         await logActivity({
           entityType: "Workspace",
           entityId: WorkspaceId,
@@ -287,36 +268,23 @@ class WorkspaceController {
         emitToUser(UserId, SCOPES.WORKSPACES);
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
+      return res.status(status).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: status,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Set member role error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to change member role",
-        code: "MEMBER_ROLE_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to change member role",
+    "MEMBER_ROLE_ERROR",
+  );
 
-  async addMember(req, res) {
-    try {
+  addMember = asyncRoute(
+    async (req, res) => {
       const { WorkspaceId, UserId, Role = "member" } = req.body;
 
-      if (!WorkspaceId || !UserId) {
-        return res.status(400).json({
-          success: false,
-          message: "WorkspaceId and UserId are required",
-          code: "VALIDATION_ERROR",
-          responseCode: 400,
-          timestamp: new Date().toISOString(),
-        });
+      if (!positiveInt(WorkspaceId) || !positiveInt(UserId)) {
+        return validationError(res, "WorkspaceId and UserId are required");
       }
 
       const result = await database.executeStoredProcedure(
@@ -331,9 +299,11 @@ class WorkspaceController {
         },
       );
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
+      const ok = spOk(spResponse);
+      const status = spStatus(spResponse);
 
-      if (spResponse.ResponseCode < 300) {
+      if (ok) {
         await logActivity({
           entityType: "Workspace",
           entityId: WorkspaceId,
@@ -351,44 +321,30 @@ class WorkspaceController {
         emitToUser(UserId, SCOPES.NOTIFICATIONS);
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode < 300,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
-        data:
-          spResponse.ResponseCode < 300
-            ? {
-                workspaceId: spResponse.WorkspaceId,
-                userId: spResponse.UserId,
-                role: spResponse.Role,
-              }
-            : null,
+      return res.status(status).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: status,
+        data: ok
+          ? {
+              workspaceId: spResponse.WorkspaceId,
+              userId: spResponse.UserId,
+              role: spResponse.Role,
+            }
+          : null,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Add workspace member error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to add member",
-        code: "WORKSPACE_MEMBER_ADD_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to add member",
+    "WORKSPACE_MEMBER_ADD_ERROR",
+  );
 
-  async removeMember(req, res) {
-    try {
+  removeMember = asyncRoute(
+    async (req, res) => {
       const { WorkspaceId, UserId } = req.body;
 
-      if (!WorkspaceId || !UserId) {
-        return res.status(400).json({
-          success: false,
-          message: "WorkspaceId and UserId are required",
-          code: "VALIDATION_ERROR",
-          responseCode: 400,
-          timestamp: new Date().toISOString(),
-        });
+      if (!positiveInt(WorkspaceId) || !positiveInt(UserId)) {
+        return validationError(res, "WorkspaceId and UserId are required");
       }
 
       const result = await database.executeStoredProcedure(
@@ -402,9 +358,11 @@ class WorkspaceController {
         },
       );
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
+      const ok = spOk(spResponse);
+      const status = spStatus(spResponse);
 
-      if (spResponse.ResponseCode === 200) {
+      if (ok) {
         await logActivity({
           entityType: "Workspace",
           entityId: WorkspaceId,
@@ -423,35 +381,22 @@ class WorkspaceController {
         emitToUser(UserId, SCOPES.NOTIFICATIONS);
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
+      return res.status(status).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: status,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Remove workspace member error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to remove member",
-        code: "WORKSPACE_MEMBER_REMOVE_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to remove member",
+    "WORKSPACE_MEMBER_REMOVE_ERROR",
+  );
 
-  async applyTemplate(req, res) {
-    try {
+  applyTemplate = asyncRoute(
+    async (req, res) => {
       const { WorkspaceId, TemplateKey = "basic" } = req.body;
-      if (!WorkspaceId) {
-        return res.status(400).json({
-          success: false,
-          message: "WorkspaceId is required",
-          code: "VALIDATION_ERROR",
-          responseCode: 400,
-          timestamp: new Date().toISOString(),
-        });
+      if (!positiveInt(WorkspaceId)) {
+        return validationError(res, "WorkspaceId is required");
       }
       const result = await database.executeStoredProcedure(
         "sp_ApplyKanbanTemplate",
@@ -462,35 +407,29 @@ class WorkspaceController {
           BranchId: req.user.BranchId,
         },
       );
-      const spResponse = result.recordsets[0][0];
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode < 300,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
-        data:
-          spResponse.ResponseCode < 300
-            ? {
-                workspaceId: spResponse.WorkspaceId,
-                templateKey: spResponse.TemplateKey,
-                columnsCreated: spResponse.ColumnsCreated ?? 0,
-              }
-            : null,
+      const spResponse = firstRow(result);
+      const ok = spOk(spResponse);
+      const status = spStatus(spResponse);
+      return res.status(status).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: status,
+        data: ok
+          ? {
+              workspaceId: spResponse.WorkspaceId,
+              templateKey: spResponse.TemplateKey,
+              columnsCreated: spResponse.ColumnsCreated ?? 0,
+            }
+          : null,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Apply template error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to apply template",
-        code: "WORKSPACE_TEMPLATE_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to apply template",
+    "WORKSPACE_TEMPLATE_ERROR",
+  );
 
-  async ensurePersonal(req, res) {
-    try {
+  ensurePersonal = asyncRoute(
+    async (req, res) => {
       const result = await database.executeStoredProcedure(
         "sp_SeedDefaultWorkspace",
         {
@@ -499,9 +438,11 @@ class WorkspaceController {
           BranchId: req.user.BranchId,
         },
       );
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
+      const ok = spOk(spResponse);
+      const status = spStatus(spResponse);
 
-      if (spResponse.ResponseCode < 300 && spResponse.Seeded) {
+      if (ok && spResponse.Seeded) {
         await logActivity({
           entityType: "Workspace",
           entityId: spResponse.WorkspaceId,
@@ -511,43 +452,29 @@ class WorkspaceController {
         });
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode < 300,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
-        data:
-          spResponse.ResponseCode < 300
-            ? {
-                workspaceId: spResponse.WorkspaceId,
-                seeded: !!spResponse.Seeded,
-              }
-            : null,
+      return res.status(status).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: status,
+        data: ok
+          ? {
+              workspaceId: spResponse.WorkspaceId,
+              seeded: !!spResponse.Seeded,
+            }
+          : null,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Ensure personal workspace error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to ensure personal workspace",
-        code: "WORKSPACE_SEED_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to ensure personal workspace",
+    "WORKSPACE_SEED_ERROR",
+  );
 
-  async archive(req, res) {
-    try {
+  archive = asyncRoute(
+    async (req, res) => {
       const { WorkspaceId, IsArchived = true } = req.body;
 
-      if (!WorkspaceId) {
-        return res.status(400).json({
-          success: false,
-          message: "WorkspaceId is required",
-          code: "VALIDATION_ERROR",
-          responseCode: 400,
-          timestamp: new Date().toISOString(),
-        });
+      if (!positiveInt(WorkspaceId)) {
+        return validationError(res, "WorkspaceId is required");
       }
 
       const result = await database.executeStoredProcedure(
@@ -561,9 +488,11 @@ class WorkspaceController {
         },
       );
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
+      const ok = spOk(spResponse);
+      const status = spStatus(spResponse);
 
-      if (spResponse.ResponseCode === 200) {
+      if (ok) {
         await logActivity({
           entityType: "Workspace",
           entityId: WorkspaceId,
@@ -575,38 +504,25 @@ class WorkspaceController {
         emitToWorkspace(WorkspaceId, SCOPES.WORKSPACES);
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
+      return res.status(status).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: status,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Archive workspace error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to archive workspace",
-        code: "WORKSPACE_ARCHIVE_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to archive workspace",
+    "WORKSPACE_ARCHIVE_ERROR",
+  );
 
   // POST /convertWorkspaceToShared — one-way personal -> shared (owner-only,
   // enforced by the SP; controller just passes acting identity faithfully).
-  async convertToShared(req, res) {
-    try {
+  convertToShared = asyncRoute(
+    async (req, res) => {
       const { WorkspaceId, MemberIds } = req.body;
 
-      if (!WorkspaceId) {
-        return res.status(400).json({
-          success: false,
-          message: "WorkspaceId is required",
-          code: "VALIDATION_ERROR",
-          responseCode: 400,
-          timestamp: new Date().toISOString(),
-        });
+      if (!positiveInt(WorkspaceId)) {
+        return validationError(res, "WorkspaceId is required");
       }
 
       const result = await database.executeStoredProcedure(
@@ -619,9 +535,11 @@ class WorkspaceController {
         },
       );
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
+      const ok = spOk(spResponse);
+      const status = spStatus(spResponse);
 
-      if (spResponse.ResponseCode === 200) {
+      if (ok) {
         await logActivity({
           entityType: "Workspace",
           entityId: WorkspaceId,
@@ -636,42 +554,26 @@ class WorkspaceController {
         });
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
-        data:
-          spResponse.ResponseCode === 200
-            ? { workspaceId: spResponse.WorkspaceId }
-            : null,
+      return res.status(status).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: status,
+        data: ok ? { workspaceId: spResponse.WorkspaceId } : null,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Convert workspace error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to share workspace",
-        code: "WORKSPACE_CONVERT_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to share workspace",
+    "WORKSPACE_CONVERT_ERROR",
+  );
 
   // POST /deleteWorkspace — archived-only cascade delete. DryRun=1 returns the
   // blast-radius counts only (no writes, no unlink, no audit).
-  async delete(req, res) {
-    try {
+  delete = asyncRoute(
+    async (req, res) => {
       const { WorkspaceId, DryRun } = req.body;
 
-      if (!WorkspaceId) {
-        return res.status(400).json({
-          success: false,
-          message: "WorkspaceId is required",
-          code: "VALIDATION_ERROR",
-          responseCode: 400,
-          timestamp: new Date().toISOString(),
-        });
+      if (!positiveInt(WorkspaceId)) {
+        return validationError(res, "WorkspaceId is required");
       }
 
       const isDryRun = DryRun ? 1 : 0;
@@ -686,7 +588,9 @@ class WorkspaceController {
         },
       );
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result) ?? {};
+      const ok = spOk(spResponse);
+      const status = spStatus(spResponse);
       const counts = {
         taskCount: spResponse.TaskCount ?? 0,
         commentCount: spResponse.CommentCount ?? 0,
@@ -694,7 +598,7 @@ class WorkspaceController {
         memberCount: spResponse.MemberCount ?? 0,
       };
 
-      if (spResponse.ResponseCode === 200 && !isDryRun) {
+      if (ok && !isDryRun) {
         // Rows are gone (committed) — remove the files, best-effort. DB is the
         // source of truth; a missing file never fails the request.
         const files = result.recordsets[1] || [];
@@ -717,41 +621,30 @@ class WorkspaceController {
         emitToWorkspace(WorkspaceId, SCOPES.WORKSPACES);
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
-        data:
-          spResponse.ResponseCode === 200
-            ? { workspaceId: spResponse.WorkspaceId, dryRun: !!isDryRun, ...counts }
-            : null,
+      return res.status(status).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: status,
+        data: ok
+          ? { workspaceId: spResponse.WorkspaceId, dryRun: !!isDryRun, ...counts }
+          : null,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Delete workspace error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to delete workspace",
-        code: "WORKSPACE_DELETE_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to delete workspace",
+    "WORKSPACE_DELETE_ERROR",
+  );
 
   // POST /transferWorkspaceOwnership — shared/project only (SP-enforced).
-  async transferOwnership(req, res) {
-    try {
+  transferOwnership = asyncRoute(
+    async (req, res) => {
       const { WorkspaceId, NewOwnerUserId } = req.body;
 
-      if (!WorkspaceId || !NewOwnerUserId) {
-        return res.status(400).json({
-          success: false,
-          message: "WorkspaceId and NewOwnerUserId are required",
-          code: "VALIDATION_ERROR",
-          responseCode: 400,
-          timestamp: new Date().toISOString(),
-        });
+      if (!positiveInt(WorkspaceId) || !positiveInt(NewOwnerUserId)) {
+        return validationError(
+          res,
+          "WorkspaceId and NewOwnerUserId are required",
+        );
       }
 
       const result = await database.executeStoredProcedure(
@@ -765,9 +658,11 @@ class WorkspaceController {
         },
       );
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
+      const ok = spOk(spResponse);
+      const status = spStatus(spResponse);
 
-      if (spResponse.ResponseCode === 200) {
+      if (ok) {
         await logActivity({
           entityType: "Workspace",
           entityId: WorkspaceId,
@@ -784,44 +679,30 @@ class WorkspaceController {
         emitToWorkspace(WorkspaceId, SCOPES.NOTIFICATIONS);
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
-        data:
-          spResponse.ResponseCode === 200
-            ? {
-                workspaceId: spResponse.WorkspaceId,
-                newOwnerUserId: spResponse.NewOwnerUserId,
-              }
-            : null,
+      return res.status(status).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: status,
+        data: ok
+          ? {
+              workspaceId: spResponse.WorkspaceId,
+              newOwnerUserId: spResponse.NewOwnerUserId,
+            }
+          : null,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Transfer ownership error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to transfer ownership",
-        code: "WORKSPACE_TRANSFER_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to transfer ownership",
+    "WORKSPACE_TRANSFER_ERROR",
+  );
 
   // POST /syncProjectWorkspaceMembers — explicit "sync from team" refresh.
-  async syncProjectMembers(req, res) {
-    try {
+  syncProjectMembers = asyncRoute(
+    async (req, res) => {
       const { WorkspaceId } = req.body;
 
-      if (!WorkspaceId) {
-        return res.status(400).json({
-          success: false,
-          message: "WorkspaceId is required",
-          code: "VALIDATION_ERROR",
-          responseCode: 400,
-          timestamp: new Date().toISOString(),
-        });
+      if (!positiveInt(WorkspaceId)) {
+        return validationError(res, "WorkspaceId is required");
       }
 
       const result = await database.executeStoredProcedure(
@@ -834,9 +715,11 @@ class WorkspaceController {
         },
       );
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
+      const ok = spOk(spResponse);
+      const status = spStatus(spResponse);
 
-      if (spResponse.ResponseCode === 200) {
+      if (ok) {
         await logActivity({
           entityType: "Workspace",
           entityId: WorkspaceId,
@@ -854,44 +737,33 @@ class WorkspaceController {
         emitToWorkspace(WorkspaceId, SCOPES.WORKSPACES);
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
-        data:
-          spResponse.ResponseCode === 200
-            ? {
-                workspaceId: spResponse.WorkspaceId,
-                membersAddedOrRestored: spResponse.MembersAddedOrRestored ?? 0,
-                membersDeactivated: spResponse.MembersDeactivated ?? 0,
-              }
-            : null,
+      return res.status(status).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: status,
+        data: ok
+          ? {
+              workspaceId: spResponse.WorkspaceId,
+              membersAddedOrRestored: spResponse.MembersAddedOrRestored ?? 0,
+              membersDeactivated: spResponse.MembersDeactivated ?? 0,
+            }
+          : null,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Sync project members error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to sync members",
-        code: "WORKSPACE_SYNC_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to sync members",
+    "WORKSPACE_SYNC_ERROR",
+  );
 
-  async respondInvite(req, res) {
-    try {
+  respondInvite = asyncRoute(
+    async (req, res) => {
       const { WorkspaceId, Action } = req.body;
 
-      if (!WorkspaceId || !Action || !["accept", "decline"].includes(Action)) {
-        return res.status(400).json({
-          success: false,
-          message: "WorkspaceId and Action (accept|decline) are required",
-          code: "VALIDATION_ERROR",
-          responseCode: 400,
-          timestamp: new Date().toISOString(),
-        });
+      if (!positiveInt(WorkspaceId) || !["accept", "decline"].includes(Action)) {
+        return validationError(
+          res,
+          "WorkspaceId and Action (accept|decline) are required",
+        );
       }
 
       const result = await database.executeStoredProcedure(
@@ -904,9 +776,11 @@ class WorkspaceController {
         },
       );
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
+      const ok = spOk(spResponse);
+      const status = spStatus(spResponse);
 
-      if (spResponse.ResponseCode === 200) {
+      if (ok) {
         await logActivity({
           entityType: "Workspace",
           entityId: WorkspaceId,
@@ -926,30 +800,22 @@ class WorkspaceController {
         emitToUser(req.user.UserId, SCOPES.NOTIFICATIONS);
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
-        data:
-          spResponse.ResponseCode === 200
-            ? {
-                workspaceId: spResponse.WorkspaceId,
-                inviteStatus: spResponse.InviteStatus,
-              }
-            : null,
+      return res.status(status).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: status,
+        data: ok
+          ? {
+              workspaceId: spResponse.WorkspaceId,
+              inviteStatus: spResponse.InviteStatus,
+            }
+          : null,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Respond invite error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to respond to invite",
-        code: "WORKSPACE_INVITE_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to respond to invite",
+    "WORKSPACE_INVITE_ERROR",
+  );
 }
 
 module.exports = new WorkspaceController();

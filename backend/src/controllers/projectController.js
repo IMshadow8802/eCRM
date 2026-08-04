@@ -2,10 +2,20 @@ const database = require("../config/database");
 const { scopeJson } = require("../middleware/permission");
 const { logActivity, ACTIONS } = require("../utils/activityLogger");
 const { cleanSpRows } = require("../utils/spHelpers");
+const { validationError } = require("../utils/responseHelper");
+const {
+  asyncRoute,
+  firstRow,
+  spStatus,
+  spOk,
+  spMessage,
+  pageParams,
+  positiveInt,
+} = require("../utils/controllerKit");
 
 class ProjectController {
-  async save(req, res) {
-    try {
+  save = asyncRoute(
+    async (req, res) => {
       const {
         Id = 0,
         Name,
@@ -39,9 +49,10 @@ class ProjectController {
         BranchId: req.user.BranchId,
       });
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
+      const ok = spOk(spResponse);
 
-      if (spResponse.ResponseCode < 300 && spResponse.ProjectId) {
+      if (ok && spResponse.ProjectId) {
         await logActivity({
           entityType: "Project",
           entityId: spResponse.ProjectId,
@@ -51,36 +62,22 @@ class ProjectController {
         });
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode < 300,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
-        data:
-          spResponse.ResponseCode < 300
-            ? { projectId: spResponse.ProjectId }
-            : null,
+      return res.status(spStatus(spResponse)).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: spStatus(spResponse),
+        data: ok ? { projectId: spResponse.ProjectId } : null,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Save project error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to save project",
-        code: "PROJECT_SAVE_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to save project",
+    "PROJECT_SAVE_ERROR",
+  );
 
-  async fetch(req, res) {
-    try {
-      const {
-        Id = 0,
-        PageNumber = 1,
-        PageSize = 10,
-        SearchTerm = null,
-      } = req.body;
+  fetch = asyncRoute(
+    async (req, res) => {
+      const { Id = 0, SearchTerm = null } = req.body;
+      const { PageNumber, PageSize } = pageParams(req.body, 10);
 
       // scopeJson, not `?.length ? stringify : null`. That form collapses an
       // empty scope to NULL, which every one of these SPs reads as "apply no
@@ -100,51 +97,36 @@ class ProjectController {
         SearchTerm,
       });
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
 
       // Drop envelope fields and the empty-result placeholder row.
       const projects = cleanSpRows(result.recordsets[0]);
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
+      return res.status(spStatus(spResponse)).json({
+        success: spOk(spResponse),
+        message: spMessage(spResponse),
+        responseCode: spStatus(spResponse),
         data: {
           projects: projects,
           pagination: {
-            currentPage: spResponse.CurrentPage,
-            pageSize: spResponse.PageSize,
-            totalRecords: spResponse.TotalRecords,
-            totalPages: spResponse.TotalPages,
+            currentPage: spResponse?.CurrentPage,
+            pageSize: spResponse?.PageSize,
+            totalRecords: spResponse?.TotalRecords,
+            totalPages: spResponse?.TotalPages,
           },
         },
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Fetch project error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to fetch projects",
-        code: "PROJECT_FETCH_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to fetch projects",
+    "PROJECT_FETCH_ERROR",
+  );
 
-  async delete(req, res) {
-    try {
-      const { Id } = req.body;
+  delete = asyncRoute(
+    async (req, res) => {
+      const Id = positiveInt(req.body.Id);
 
-      if (!Id || Id <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: "Project ID is required",
-          code: "VALIDATION_ERROR",
-          responseCode: 400,
-          timestamp: new Date().toISOString(),
-        });
-      }
+      if (!Id) return validationError(res, "Project ID is required");
 
       const result = await database.executeStoredProcedure("sp_DeleteProject", {
         Id,
@@ -154,9 +136,9 @@ class ProjectController {
         IsAdmin: req.user.IsAdmin,
       });
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
 
-      if (spResponse.ResponseCode === 200) {
+      if (spOk(spResponse)) {
         await logActivity({
           entityType: "Project",
           entityId: Id,
@@ -166,23 +148,16 @@ class ProjectController {
         });
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
+      return res.status(spStatus(spResponse)).json({
+        success: spOk(spResponse),
+        message: spMessage(spResponse),
+        responseCode: spStatus(spResponse),
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Delete project error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to delete project",
-        code: "PROJECT_DELETE_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to delete project",
+    "PROJECT_DELETE_ERROR",
+  );
 }
 
 module.exports = new ProjectController();

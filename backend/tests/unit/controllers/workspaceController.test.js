@@ -224,6 +224,17 @@ describe("workspaceController.save", () => {
     expect(json.code).toBe("WORKSPACE_SAVE_ERROR");
     spy.mockRestore();
   });
+
+  // REGRESSION: reading ResponseCode off a status-less result threw
+  // "RangeError: Invalid status code: undefined" inside res.status().
+  it("answers 500 when the SP returns no status row", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[]] });
+    const res = mockRes();
+    await workspaceController.save(baseReq({ body: { Name: "X" } }), res);
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json.mock.calls[0][0].success).toBe(false);
+    expect(logActivity).not.toHaveBeenCalled();
+  });
 });
 
 describe("workspaceController.fetch", () => {
@@ -334,6 +345,14 @@ describe("workspaceController.fetch", () => {
     expect(res.status).toHaveBeenCalledWith(500);
     expect(res.json.mock.calls[0][0].code).toBe("WORKSPACE_FETCH_ERROR");
     spy.mockRestore();
+  });
+
+  it("answers 500 when the SP returns no status row", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[]] });
+    const res = mockRes();
+    await workspaceController.fetch(baseReq(), res);
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json.mock.calls[0][0].data.workspaces).toEqual([]);
   });
 });
 
@@ -1041,6 +1060,17 @@ describe("workspaceController.delete", () => {
     expect(res.status).toHaveBeenCalledWith(500);
     expect(res.json.mock.calls[0][0].code).toBe("WORKSPACE_DELETE_ERROR");
     spy.mockRestore();
+  });
+
+  // A status-less result must never be read as success — that would unlink
+  // files and log a delete for a call the SP never confirmed.
+  it("answers 500 and touches nothing when the SP returns no status row", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[]] });
+    const res = mockRes();
+    await workspaceController.delete(baseReq({ body: { WorkspaceId: 1 } }), res);
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(fs.unlink).not.toHaveBeenCalled();
+    expect(logActivity).not.toHaveBeenCalled();
   });
 });
 

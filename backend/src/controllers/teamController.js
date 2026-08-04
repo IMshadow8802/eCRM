@@ -2,10 +2,20 @@ const database = require("../config/database");
 const { scopeJson } = require("../middleware/permission");
 const { logActivity, ACTIONS } = require("../utils/activityLogger");
 const { cleanSpRows } = require("../utils/spHelpers");
+const { validationError } = require("../utils/responseHelper");
+const {
+  asyncRoute,
+  firstRow,
+  spStatus,
+  spOk,
+  spMessage,
+  pageParams,
+  positiveInt,
+} = require("../utils/controllerKit");
 
 class TeamController {
-  async save(req, res) {
-    try {
+  save = asyncRoute(
+    async (req, res) => {
       const {
         Id = 0,
         Name,
@@ -50,9 +60,10 @@ class TeamController {
         BranchId: req.user.BranchId,
       });
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
+      const ok = spOk(spResponse);
 
-      if (spResponse.ResponseCode < 300 && spResponse.TeamId) {
+      if (ok && spResponse.TeamId) {
         await logActivity({
           entityType: "Team",
           entityId: spResponse.TeamId,
@@ -62,39 +73,27 @@ class TeamController {
         });
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode < 300,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
-        data:
-          spResponse.ResponseCode < 300
-            ? {
-                teamId: spResponse.TeamId,
-                memberCount: spResponse.MemberCount || 0
-              }
-            : null,
+      return res.status(spStatus(spResponse)).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: spStatus(spResponse),
+        data: ok
+          ? {
+              teamId: spResponse.TeamId,
+              memberCount: spResponse.MemberCount || 0
+            }
+          : null,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Save team error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to save team",
-        code: "TEAM_SAVE_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to save team",
+    "TEAM_SAVE_ERROR",
+  );
 
-  async fetch(req, res) {
-    try {
-      const {
-        Id = 0,
-        PageNumber = 1,
-        PageSize = 10,
-        SearchTerm = null,
-      } = req.body;
+  fetch = asyncRoute(
+    async (req, res) => {
+      const { Id = 0, SearchTerm = null } = req.body;
+      const { PageNumber, PageSize } = pageParams(req.body, 10);
 
       // scopeJson, not `?.length ? stringify : null`. That form collapses an
       // empty scope to NULL, which every one of these SPs reads as "apply no
@@ -113,7 +112,7 @@ class TeamController {
         SearchTerm,
       });
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
 
       // Strip envelope + placeholder rows, then parse the Members JSON column.
       const teams = cleanSpRows(result.recordsets[0]).map((team) => {
@@ -129,47 +128,31 @@ class TeamController {
         return { ...rest, Members: parsedMembers };
       });
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
+      return res.status(spStatus(spResponse)).json({
+        success: spOk(spResponse),
+        message: spMessage(spResponse),
+        responseCode: spStatus(spResponse),
         data: {
           teams: teams,
           pagination: {
-            currentPage: spResponse.CurrentPage,
-            pageSize: spResponse.PageSize,
-            totalRecords: spResponse.TotalRecords,
-            totalPages: spResponse.TotalPages,
+            currentPage: spResponse?.CurrentPage,
+            pageSize: spResponse?.PageSize,
+            totalRecords: spResponse?.TotalRecords,
+            totalPages: spResponse?.TotalPages,
           },
         },
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Fetch team error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to fetch teams",
-        code: "TEAM_FETCH_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to fetch teams",
+    "TEAM_FETCH_ERROR",
+  );
 
+  delete = asyncRoute(
+    async (req, res) => {
+      const Id = positiveInt(req.body.Id);
 
-  async delete(req, res) {
-    try {
-      const { Id } = req.body;
-
-      if (!Id || Id <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: "Team ID is required",
-          code: "VALIDATION_ERROR",
-          responseCode: 400,
-          timestamp: new Date().toISOString(),
-        });
-      }
+      if (!Id) return validationError(res, "Team ID is required");
 
       const result = await database.executeStoredProcedure("sp_DeleteTeam", {
         Id,
@@ -178,9 +161,9 @@ class TeamController {
         IsAdmin: req.user.IsAdmin,
       });
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
 
-      if (spResponse.ResponseCode === 200) {
+      if (spOk(spResponse)) {
         await logActivity({
           entityType: "Team",
           entityId: Id,
@@ -190,24 +173,16 @@ class TeamController {
         });
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
+      return res.status(spStatus(spResponse)).json({
+        success: spOk(spResponse),
+        message: spMessage(spResponse),
+        responseCode: spStatus(spResponse),
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Delete team error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to delete team",
-        code: "TEAM_DELETE_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
-
+    },
+    "Failed to delete team",
+    "TEAM_DELETE_ERROR",
+  );
 }
 
 module.exports = new TeamController();

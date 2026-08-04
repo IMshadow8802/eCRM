@@ -5,14 +5,24 @@ const attachmentController = require("./attachmentController");
 const { emitToWorkspace, emitToUser } = require("../realtime/events");
 const { SCOPES } = require("../realtime/contract");
 const { assertRecordAccess, scopeJson } = require("../middleware/permission");
+const { validationError } = require("../utils/responseHelper");
+const {
+  asyncRoute,
+  firstRow,
+  spStatus,
+  spOk,
+  spMessage,
+  pageParams,
+  positiveInt,
+} = require("../utils/controllerKit");
 
 class TaskController {
   // ================================
   // MAIN TASK OPERATIONS
   // ================================
 
-  async save(req, res) {
-    try {
+  save = asyncRoute(
+    async (req, res) => {
       const {
         Id = 0,
         Title,
@@ -85,9 +95,11 @@ class TaskController {
         BranchId: req.user.BranchId,
       });
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
+      const ok = spOk(spResponse);
+      const status = spStatus(spResponse);
 
-      if (spResponse.ResponseCode < 300 && spResponse.TaskId) {
+      if (ok && spResponse.TaskId) {
         await logActivity({
           entityType: "Task",
           entityId: spResponse.TaskId,
@@ -131,25 +143,17 @@ class TaskController {
         }
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode < 300,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
-        data:
-          spResponse.ResponseCode < 300 ? { taskId: spResponse.TaskId } : null,
+      return res.status(status).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: status,
+        data: ok ? { taskId: spResponse.TaskId } : null,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Save task error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to save task",
-        code: "TASK_SAVE_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to save task",
+    "TASK_SAVE_ERROR",
+  );
 
   // Moving a card between columns is its own operation, gated as change_status
   // rather than edit_fields — the assignee is exactly who should be able to
@@ -157,9 +161,13 @@ class TaskController {
   // the whole task, including the legacy AssignedToUserId alias, which under
   // 063 would replace the assignee set with one person and silently drop
   // co-assignees on every drag.
-  async moveColumn(req, res) {
-    try {
+  moveColumn = asyncRoute(
+    async (req, res) => {
       const { TaskId, ColumnId, WorkspaceId = null } = req.body;
+
+      if (!positiveInt(TaskId) || !positiveInt(ColumnId)) {
+        return validationError(res, "TaskId and ColumnId are required");
+      }
 
       const result = await database.executeStoredProcedure("sp_MoveTaskColumn", {
         TaskId,
@@ -169,9 +177,11 @@ class TaskController {
         CompId: req.user.CompId,
       });
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
+      const ok = spOk(spResponse);
+      const status = spStatus(spResponse);
 
-      if (spResponse.ResponseCode === 200) {
+      if (ok) {
         await logActivity({
           entityType: "Task",
           entityId: TaskId,
@@ -188,26 +198,19 @@ class TaskController {
         }
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
+      return res.status(status).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: status,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Move task error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to move task",
-        code: "TASK_MOVE_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to move task",
+    "TASK_MOVE_ERROR",
+  );
 
-  async fetch(req, res) {
-    try {
+  fetch = asyncRoute(
+    async (req, res) => {
       const {
         Id = 0,
         WorkspaceId = null,
@@ -218,10 +221,9 @@ class TaskController {
         // from its own members (e.g. a branch-1 member of a branch-2 shared
         // workspace saw zero tasks).
         BranchId = null,
-        PageNumber = 1,
-        PageSize = 25,
         SearchTerm = null,
       } = req.body;
+      const { PageNumber, PageSize } = pageParams(req.body, 25);
 
       // scopeJson, not `?.length ? stringify : null`. That form collapses an
       // empty scope to NULL, which every one of these SPs reads as "apply no
@@ -243,14 +245,18 @@ class TaskController {
         SearchTerm,
       });
 
-      const spResponse = result.recordsets[0][0];
-      
+      // No status row at all (an SP that RETURNed before its SELECT) is a
+      // malformed response, not an empty page — spStatus answers 500 for it
+      // rather than the RangeError the bare ResponseCode read used to throw.
+      const spResponse = firstRow(result) ?? {};
+      const status = spStatus(spResponse);
+
       const tasks = cleanSpRows(result.recordsets[0]);
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
+      return res.status(status).json({
+        success: spOk(spResponse),
+        message: spMessage(spResponse),
+        responseCode: status,
         data: {
           tasks: tasks,
           pagination: {
@@ -262,30 +268,17 @@ class TaskController {
         },
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Fetch task error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to fetch tasks",
-        code: "TASK_FETCH_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to fetch tasks",
+    "TASK_FETCH_ERROR",
+  );
 
-  async delete(req, res) {
-    try {
+  delete = asyncRoute(
+    async (req, res) => {
       const { Id, WorkspaceId = null } = req.body;
 
-      if (!Id || Id <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: "Task ID is required",
-          code: "VALIDATION_ERROR",
-          responseCode: 400,
-          timestamp: new Date().toISOString(),
-        });
+      if (!positiveInt(Id)) {
+        return validationError(res, "Task ID is required");
       }
 
       const result = await database.executeStoredProcedure("sp_DeleteTask", {
@@ -296,9 +289,11 @@ class TaskController {
         IsAdmin: req.scope?.isAdmin ? 1 : 0,
       });
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
+      const ok = spOk(spResponse);
+      const status = spStatus(spResponse);
 
-      if (spResponse.ResponseCode === 200) {
+      if (ok) {
         await attachmentController.cascadeDelete(req.user.CompId, "task", Id);
         await logActivity({
           entityType: "Task",
@@ -318,37 +313,24 @@ class TaskController {
         }
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
+      return res.status(status).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: status,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Delete task error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to delete task",
-        code: "TASK_DELETE_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to delete task",
+    "TASK_DELETE_ERROR",
+  );
 
-  async bulkDelete(req, res) {
-    try {
+  bulkDelete = asyncRoute(
+    async (req, res) => {
       // WorkspaceId is an emit-routing hint only; not passed to the SP.
       const { TaskIds, WorkspaceId = null } = req.body;
 
       if (!TaskIds || TaskIds.length === 0) {
-        return res.status(400).json({
-          success: false,
-          message: "Task IDs are required",
-          code: "VALIDATION_ERROR",
-          responseCode: 400,
-          timestamp: new Date().toISOString(),
-        });
+        return validationError(res, "Task IDs are required");
       }
 
       const taskIdsString = Array.isArray(TaskIds)
@@ -366,9 +348,11 @@ class TaskController {
         }
       );
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
+      const ok = spOk(spResponse);
+      const status = spStatus(spResponse);
 
-      if (spResponse.ResponseCode === 200) {
+      if (ok) {
         const ids = Array.isArray(TaskIds)
           ? TaskIds
           : String(TaskIds).split(",").map((s) => Number(s.trim())).filter(Boolean);
@@ -391,37 +375,29 @@ class TaskController {
         }
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
-        data:
-          spResponse.ResponseCode === 200
-            ? {
-                deletedCount: spResponse.DeletedCount,
-                failedCount: spResponse.FailedCount,
-              }
-            : null,
+      return res.status(status).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: status,
+        data: ok
+          ? {
+              deletedCount: spResponse.DeletedCount,
+              failedCount: spResponse.FailedCount,
+            }
+          : null,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Bulk delete tasks error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to bulk delete tasks",
-        code: "BULK_DELETE_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to bulk delete tasks",
+    "BULK_DELETE_ERROR",
+  );
 
   // ================================
   // TASK COMMENTS
   // ================================
 
-  async addComment(req, res) {
-    try {
+  addComment = asyncRoute(
+    async (req, res) => {
       const {
         Id = 0,
         TaskId,
@@ -429,6 +405,10 @@ class TaskController {
         ParentCommentId = null,
         WorkspaceId = null, // emit-routing hint only; not passed to the SP
       } = req.body;
+
+      if (!positiveInt(TaskId)) {
+        return validationError(res, "TaskId is required");
+      }
 
       const result = await database.executeStoredProcedure(
         "sp_SaveTaskComment",
@@ -444,9 +424,11 @@ class TaskController {
         }
       );
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
+      const ok = spOk(spResponse);
+      const status = spStatus(spResponse);
 
-      if (spResponse.ResponseCode < 300 && spResponse.CommentId) {
+      if (ok && spResponse.CommentId) {
         await logActivity({
           entityType: "Task",
           entityId: TaskId,
@@ -482,31 +464,22 @@ class TaskController {
         }
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode < 300,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
-        data:
-          spResponse.ResponseCode < 300
-            ? { commentId: spResponse.CommentId }
-            : null,
+      return res.status(status).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: status,
+        data: ok ? { commentId: spResponse.CommentId } : null,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Add comment error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to add comment",
-        code: "COMMENT_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to add comment",
+    "COMMENT_ERROR",
+  );
 
-  async getComments(req, res) {
-    try {
-      const { TaskId, PageNumber = 1, PageSize = 25 } = req.body;
+  getComments = asyncRoute(
+    async (req, res) => {
+      const { TaskId } = req.body;
+      const { PageNumber, PageSize } = pageParams(req.body, 25);
 
       // sp_FetchTaskComment has no permission logic and does not even filter
       // by CompId, so without this any authenticated user could read any
@@ -531,7 +504,7 @@ class TaskController {
       // Status columns ride on the data rows, so a task with zero comments
       // returns zero rows — default the response instead of crashing on
       // undefined (that was the COMMENTS_ERROR 500 on any commentless task).
-      const spResponse = result.recordsets[0]?.[0] ?? {
+      const spResponse = firstRow(result) ?? {
         ResponseCode: 200,
         ResponseMess: "Comments retrieved",
         CurrentPage: PageNumber,
@@ -541,11 +514,12 @@ class TaskController {
       };
 
       const comments = cleanSpRows(result.recordsets[0] || []);
+      const status = spStatus(spResponse);
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
+      return res.status(status).json({
+        success: spOk(spResponse),
+        message: spMessage(spResponse),
+        responseCode: status,
         data: {
           comments: comments,
           pagination: {
@@ -557,31 +531,18 @@ class TaskController {
         },
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Get comments error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to get comments",
-        code: "COMMENTS_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to get comments",
+    "COMMENTS_ERROR",
+  );
 
-  async deleteComment(req, res) {
-    try {
+  deleteComment = asyncRoute(
+    async (req, res) => {
       // TaskId/WorkspaceId are emit-routing hints only; not passed to the SP.
       const { Id, TaskId = null, WorkspaceId = null } = req.body;
 
-      if (!Id || Id <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: "Comment ID is required",
-          code: "VALIDATION_ERROR",
-          responseCode: 400,
-          timestamp: new Date().toISOString(),
-        });
+      if (!positiveInt(Id)) {
+        return validationError(res, "Comment ID is required");
       }
 
       const result = await database.executeStoredProcedure(
@@ -595,9 +556,11 @@ class TaskController {
         }
       );
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
+      const ok = spOk(spResponse);
+      const status = spStatus(spResponse);
 
-      if (spResponse.ResponseCode === 200) {
+      if (ok) {
         // Log under the parent Task (not the comment id) so it surfaces in the
         // task's History tab, which filters on EntityType='Task'.
         await logActivity({
@@ -619,30 +582,23 @@ class TaskController {
         }
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
+      return res.status(status).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: status,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Delete comment error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to delete comment",
-        code: "COMMENT_DELETE_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to delete comment",
+    "COMMENT_DELETE_ERROR",
+  );
 
   // ================================
   // TIME TRACKING
   // ================================
 
-  async logTime(req, res) {
-    try {
+  logTime = asyncRoute(
+    async (req, res) => {
       // WorkspaceId is an emit-routing hint only; not passed to the SP.
       // LogDate is accepted as an alias because the web client sent that name
       // while this read WorkDate — the field was silently dropped and every
@@ -655,6 +611,10 @@ class TaskController {
         LogDate,
         WorkspaceId = null,
       } = req.body;
+
+      if (!positiveInt(TaskId)) {
+        return validationError(res, "TaskId is required");
+      }
 
       const result = await database.executeStoredProcedure("sp_SaveTimeEntry", {
         Id: 0,
@@ -671,9 +631,11 @@ class TaskController {
         IsAdmin: req.scope?.isAdmin ? 1 : 0,
       });
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
+      const ok = spOk(spResponse);
+      const status = spStatus(spResponse);
 
-      if (spResponse.ResponseCode < 300) {
+      if (ok) {
         await logActivity({
           entityType: "Task",
           entityId: TaskId,
@@ -693,36 +655,22 @@ class TaskController {
         }
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode < 300,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
-        data:
-          spResponse.ResponseCode < 300
-            ? { timeEntryId: spResponse.TimeEntryId }
-            : null,
+      return res.status(status).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: status,
+        data: ok ? { timeEntryId: spResponse.TimeEntryId } : null,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Log time error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to log time",
-        code: "TIME_LOG_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to log time",
+    "TIME_LOG_ERROR",
+  );
 
-  async getTimeEntries(req, res) {
-    try {
-      const {
-        TaskId = null,
-        UserId = null,
-        PageNumber = 1,
-        PageSize = 20,
-      } = req.body;
+  getTimeEntries = asyncRoute(
+    async (req, res) => {
+      const { TaskId = null, UserId = null } = req.body;
+      const { PageNumber, PageSize } = pageParams(req.body, 20);
 
       // sp_FetchTimeEntry has no permission logic of its own. Asking for one
       // task's entries needs membership on that task; asking without a TaskId
@@ -747,7 +695,7 @@ class TaskController {
 
       // Status columns ride on the data rows — zero time entries means zero
       // rows, so default the response instead of crashing on undefined.
-      const spResponse = result.recordsets[0]?.[0] ?? {
+      const spResponse = firstRow(result) ?? {
         ResponseCode: 200,
         ResponseMess: "Time entries retrieved",
         CurrentPage: PageNumber,
@@ -757,11 +705,12 @@ class TaskController {
       };
 
       const timeEntries = cleanSpRows(result.recordsets[0] || []);
+      const status = spStatus(spResponse);
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
+      return res.status(status).json({
+        success: spOk(spResponse),
+        message: spMessage(spResponse),
+        responseCode: status,
         data: {
           timeEntries: timeEntries,
           pagination: {
@@ -773,31 +722,18 @@ class TaskController {
         },
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Get time entries error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to get time entries",
-        code: "TIME_ENTRIES_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to get time entries",
+    "TIME_ENTRIES_ERROR",
+  );
 
-  async deleteTimeEntry(req, res) {
-    try {
+  deleteTimeEntry = asyncRoute(
+    async (req, res) => {
       // TaskId/WorkspaceId are emit-routing hints only; not passed to the SP.
       const { Id, TaskId = null, WorkspaceId = null } = req.body;
 
-      if (!Id || Id <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: "Time entry ID is required",
-          code: "VALIDATION_ERROR",
-          responseCode: 400,
-          timestamp: new Date().toISOString(),
-        });
+      if (!positiveInt(Id)) {
+        return validationError(res, "Time entry ID is required");
       }
 
       const result = await database.executeStoredProcedure(
@@ -811,9 +747,11 @@ class TaskController {
         }
       );
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
+      const ok = spOk(spResponse);
+      const status = spStatus(spResponse);
 
-      if (spResponse.ResponseCode === 200) {
+      if (ok) {
         // Log under the parent Task so it shows in the History tab.
         await logActivity({
           entityType: "Task",
@@ -834,30 +772,23 @@ class TaskController {
         }
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
+      return res.status(status).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: status,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Delete time entry error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to delete time entry",
-        code: "TIME_ENTRY_DELETE_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to delete time entry",
+    "TIME_ENTRY_DELETE_ERROR",
+  );
 
   // ================================
   // CHECKLIST
   // ================================
 
-  async saveChecklist(req, res) {
-    try {
+  saveChecklist = asyncRoute(
+    async (req, res) => {
       const {
         Id = 0,
         TaskId,
@@ -902,9 +833,11 @@ class TaskController {
         }
       );
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
+      const ok = spOk(spResponse);
+      const status = spStatus(spResponse);
 
-      if (spResponse.ResponseCode < 300) {
+      if (ok) {
         // Id>0 always means a tick/untick here (there's no text-edit UI), so
         // record which way it went — that's the accountability trail: who
         // ticked what, when.
@@ -937,31 +870,22 @@ class TaskController {
         }
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode < 300,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
-        data:
-          spResponse.ResponseCode < 300
-            ? { checklistId: spResponse.ChecklistId }
-            : null,
+      return res.status(status).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: status,
+        data: ok ? { checklistId: spResponse.ChecklistId } : null,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Save checklist error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to save checklist item",
-        code: "CHECKLIST_SAVE_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to save checklist item",
+    "CHECKLIST_SAVE_ERROR",
+  );
 
-  async getChecklist(req, res) {
-    try {
-      const { Id = 0, TaskId, PageNumber = 1, PageSize = 50 } = req.body;
+  getChecklist = asyncRoute(
+    async (req, res) => {
+      const { Id = 0, TaskId } = req.body;
+      const { PageNumber, PageSize } = pageParams(req.body, 50);
 
       // sp_FetchTaskChecklist has no permission logic and ignores its own
       // CompId/BranchId params — this is the only gate.
@@ -982,7 +906,7 @@ class TaskController {
 
       // Zero checklist items => zero rows (status rides on the data rows), so
       // default rather than read undefined.
-      const spResponse = result.recordsets[0]?.[0] ?? {
+      const spResponse = firstRow(result) ?? {
         ResponseCode: 200,
         ResponseMess: "Checklist retrieved",
         CurrentPage: PageNumber,
@@ -992,11 +916,12 @@ class TaskController {
       };
 
       const checklist = cleanSpRows(result.recordsets[0] || []);
+      const status = spStatus(spResponse);
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
+      return res.status(status).json({
+        success: spOk(spResponse),
+        message: spMessage(spResponse),
+        responseCode: status,
         data: {
           checklist: checklist,
           pagination: {
@@ -1008,30 +933,17 @@ class TaskController {
         },
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Fetch checklist error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to fetch checklist",
-        code: "CHECKLIST_FETCH_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to fetch checklist",
+    "CHECKLIST_FETCH_ERROR",
+  );
 
-  async deleteChecklist(req, res) {
-    try {
+  deleteChecklist = asyncRoute(
+    async (req, res) => {
       const { Id, TaskId, WorkspaceId = null } = req.body;
 
-      if (!Id || Id <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: "Checklist item ID is required",
-          code: "VALIDATION_ERROR",
-          responseCode: 400,
-          timestamp: new Date().toISOString(),
-        });
+      if (!positiveInt(Id)) {
+        return validationError(res, "Checklist item ID is required");
       }
 
       // Removing an item is manage_checklist, same class as adding one — the
@@ -1050,9 +962,11 @@ class TaskController {
         }
       );
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
+      const ok = spOk(spResponse);
+      const status = spStatus(spResponse);
 
-      if (spResponse.ResponseCode === 200) {
+      if (ok) {
         // Log under the parent Task so it shows in the History tab.
         await logActivity({
           entityType: "Task",
@@ -1076,41 +990,28 @@ class TaskController {
         }
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
+      return res.status(status).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: status,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Delete checklist item error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to delete checklist item",
-        code: "CHECKLIST_DELETE_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to delete checklist item",
+    "CHECKLIST_DELETE_ERROR",
+  );
 
   // ================================
   // COMMENT EXTRAS (pin, mark-read)
   // ================================
 
-  async pinComment(req, res) {
-    try {
+  pinComment = asyncRoute(
+    async (req, res) => {
       // TaskId/WorkspaceId are emit-routing hints only; not passed to the SP.
       const { CommentId, IsPinned = true, TaskId = null, WorkspaceId = null } =
         req.body;
-      if (!CommentId) {
-        return res.status(400).json({
-          success: false,
-          message: "CommentId is required",
-          code: "VALIDATION_ERROR",
-          responseCode: 400,
-          timestamp: new Date().toISOString(),
-        });
+      if (!positiveInt(CommentId)) {
+        return validationError(res, "CommentId is required");
       }
 
       const result = await database.executeStoredProcedure(
@@ -1123,92 +1024,70 @@ class TaskController {
           CompId: req.user.CompId,
         }
       );
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
+      const ok = spOk(spResponse);
+      const status = spStatus(spResponse);
 
       // Pins render inside the comments list — TASK_COMMENTS covers it.
-      if (spResponse.ResponseCode === 200 && WorkspaceId && TaskId) {
+      if (ok && WorkspaceId && TaskId) {
         emitToWorkspace(WorkspaceId, SCOPES.TASK_COMMENTS, {
           workspaceId: WorkspaceId,
           taskId: TaskId,
         });
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
+      return res.status(status).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: status,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Pin comment error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to pin comment",
-        code: "COMMENT_PIN_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to pin comment",
+    "COMMENT_PIN_ERROR",
+  );
 
-  async markCommentRead(req, res) {
-    try {
+  markCommentRead = asyncRoute(
+    async (req, res) => {
       const { CommentId } = req.body;
-      if (!CommentId) {
-        return res.status(400).json({
-          success: false,
-          message: "CommentId is required",
-          code: "VALIDATION_ERROR",
-          responseCode: 400,
-          timestamp: new Date().toISOString(),
-        });
+      if (!positiveInt(CommentId)) {
+        return validationError(res, "CommentId is required");
       }
       const result = await database.executeStoredProcedure(
         "sp_MarkCommentRead",
         { CommentId, UserId: req.user.UserId }
       );
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
+      const ok = spOk(spResponse);
+      const status = spStatus(spResponse);
 
       // Reader's own bell count changed — sync their OTHER tabs/devices.
-      if (spResponse.ResponseCode === 200) {
+      if (ok) {
         emitToUser(req.user.UserId, SCOPES.NOTIFICATIONS);
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
+      return res.status(status).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: status,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Mark comment read error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to mark comment read",
-        code: "COMMENT_READ_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to mark comment read",
+    "COMMENT_READ_ERROR",
+  );
 
   // ================================
   // DEPENDENCIES
   // ================================
 
-  async addDependency(req, res) {
-    try {
+  addDependency = asyncRoute(
+    async (req, res) => {
       // WorkspaceId is an emit-routing hint only; not passed to the SP.
       const { TaskId, DependsOnTaskId, Type = "blocks", WorkspaceId = null } =
         req.body;
-      if (!TaskId || !DependsOnTaskId) {
-        return res.status(400).json({
-          success: false,
-          message: "TaskId and DependsOnTaskId are required",
-          code: "VALIDATION_ERROR",
-          responseCode: 400,
-          timestamp: new Date().toISOString(),
-        });
+      if (!positiveInt(TaskId) || !positiveInt(DependsOnTaskId)) {
+        return validationError(res, "TaskId and DependsOnTaskId are required");
       }
       const result = await database.executeStoredProcedure(
         "sp_AddTaskDependency",
@@ -1221,9 +1100,11 @@ class TaskController {
           CompId: req.user.CompId,
         }
       );
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
+      const ok = spOk(spResponse);
+      const status = spStatus(spResponse);
 
-      if (spResponse.ResponseCode < 300) {
+      if (ok) {
         await logActivity({
           entityType: "Task",
           entityId: TaskId,
@@ -1244,36 +1125,23 @@ class TaskController {
         }
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode < 300,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
+      return res.status(status).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: status,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Add dependency error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to add dependency",
-        code: "DEPENDENCY_ADD_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to add dependency",
+    "DEPENDENCY_ADD_ERROR",
+  );
 
-  async removeDependency(req, res) {
-    try {
+  removeDependency = asyncRoute(
+    async (req, res) => {
       // WorkspaceId is an emit-routing hint only; not passed to the SP.
       const { TaskId, DependsOnTaskId, WorkspaceId = null } = req.body;
-      if (!TaskId || !DependsOnTaskId) {
-        return res.status(400).json({
-          success: false,
-          message: "TaskId and DependsOnTaskId are required",
-          code: "VALIDATION_ERROR",
-          responseCode: 400,
-          timestamp: new Date().toISOString(),
-        });
+      if (!positiveInt(TaskId) || !positiveInt(DependsOnTaskId)) {
+        return validationError(res, "TaskId and DependsOnTaskId are required");
       }
       const result = await database.executeStoredProcedure(
         "sp_RemoveTaskDependency",
@@ -1285,46 +1153,35 @@ class TaskController {
           CompId: req.user.CompId,
         }
       );
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
+      const ok = spOk(spResponse);
+      const status = spStatus(spResponse);
 
       // sp_RemoveTaskDependency doesn't return WorkspaceId — client hint or
       // skip.
-      if (spResponse.ResponseCode === 200 && WorkspaceId) {
+      if (ok && WorkspaceId) {
         emitToWorkspace(WorkspaceId, SCOPES.TASK_DETAIL, {
           workspaceId: WorkspaceId,
           taskId: TaskId,
         });
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
+      return res.status(status).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: status,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Remove dependency error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to remove dependency",
-        code: "DEPENDENCY_REMOVE_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to remove dependency",
+    "DEPENDENCY_REMOVE_ERROR",
+  );
 
-  async fetchDependencies(req, res) {
-    try {
+  fetchDependencies = asyncRoute(
+    async (req, res) => {
       const { TaskId } = req.body;
-      if (!TaskId) {
-        return res.status(400).json({
-          success: false,
-          message: "TaskId is required",
-          code: "VALIDATION_ERROR",
-          responseCode: 400,
-          timestamp: new Date().toISOString(),
-        });
+      if (!positiveInt(TaskId)) {
+        return validationError(res, "TaskId is required");
       }
       const result = await database.executeStoredProcedure(
         "sp_FetchTaskDependencies",
@@ -1338,40 +1195,35 @@ class TaskController {
       // The SP carries its status columns on the data rows, so a task with
       // zero dependencies returns ZERO rows — reading [0].ResponseCode blind
       // was a TypeError -> 500 on every dependency-free task.
-      const spResponse = result.recordsets[0]?.[0] ?? {
+      const spResponse = firstRow(result) ?? {
         ResponseCode: 200,
         ResponseMess: "Dependencies retrieved",
       };
       const rows = cleanSpRows(result.recordsets[0] || [], "TaskId");
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
+      const status = spStatus(spResponse);
+      return res.status(status).json({
+        success: spOk(spResponse),
+        message: spMessage(spResponse),
+        responseCode: status,
         data: {
           blockers: rows.filter((r) => r.Direction === "blocker"),
           dependents: rows.filter((r) => r.Direction === "dependent"),
         },
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Fetch dependencies error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to fetch dependencies",
-        code: "DEPENDENCY_FETCH_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to fetch dependencies",
+    "DEPENDENCY_FETCH_ERROR",
+  );
 
   // ================================
   // ACTIVITY
   // ================================
 
-  async getActivity(req, res) {
-    try {
-      const { TaskId, PageNumber = 1, PageSize = 50 } = req.body;
+  getActivity = asyncRoute(
+    async (req, res) => {
+      const { TaskId } = req.body;
+      const { PageNumber, PageSize } = pageParams(req.body, 50);
 
       // History is task-scoped and can be sensitive (who did what, when) —
       // gate it behind membership, same as viewing the task.
@@ -1393,7 +1245,7 @@ class TaskController {
 
       // A task with no logged activity returns zero rows — default rather than
       // crash on undefined.
-      const spResponse = result.recordsets[0]?.[0] ?? {
+      const spResponse = firstRow(result) ?? {
         ResponseCode: 200,
         ResponseMess: "Activity retrieved",
         CurrentPage: PageNumber,
@@ -1403,11 +1255,12 @@ class TaskController {
       };
 
       const activities = cleanSpRows(result.recordsets[0] || []);
+      const status = spStatus(spResponse);
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
+      return res.status(status).json({
+        success: spOk(spResponse),
+        message: spMessage(spResponse),
+        responseCode: status,
         data: {
           activities: activities,
           pagination: {
@@ -1419,17 +1272,10 @@ class TaskController {
         },
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Get activity error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to get task activity",
-        code: "ACTIVITY_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to get task activity",
+    "ACTIVITY_ERROR",
+  );
 }
 
 module.exports = new TaskController();

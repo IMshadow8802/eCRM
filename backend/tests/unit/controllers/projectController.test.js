@@ -510,11 +510,18 @@ describe("projectController.fetch", () => {
     });
   });
 
-  // BUG: an SP that returns an empty first recordset (no rows at all, e.g. a
-  // RETURN before any SELECT) makes `result.recordsets[0][0]` undefined, and
-  // reading .ResponseCode off it throws — the caller gets an opaque 500
-  // instead of anything actionable. Every fetch in this file has the shape.
-  it("turns an empty recordset into an opaque 500", async () => {
+  /**
+   * WAS A BUG, fixed 2026-08-04 by adopting controllerKit's firstRow/spStatus.
+   *
+   * An SP that returns an empty first recordset (no rows at all, e.g. a RETURN
+   * before any SELECT) made `result.recordsets[0][0]` undefined, and reading
+   * .ResponseCode off it threw — the caller got an opaque 500 from the catch
+   * block with a stack trace behind it. It is still a 500, because a status row
+   * that does not exist is a malformed response and guessing 200 is how a
+   * failure gets reported as an empty list — but it is now a well-formed
+   * envelope rather than a TypeError, so `code` is no longer set.
+   */
+  it("turns an empty recordset into a clean 500, not a thrown TypeError", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[]] });
     const req = baseReq();
     const res = mockRes();
@@ -522,7 +529,9 @@ describe("projectController.fetch", () => {
     await projectController.fetch(req, res);
 
     expect(res.status).toHaveBeenCalledWith(500);
-    expect(res.json.mock.calls[0][0].code).toBe("PROJECT_FETCH_ERROR");
+    const body = res.json.mock.calls[0][0];
+    expect(body).toMatchObject({ success: false, responseCode: 500 });
+    expect(body.data.projects).toEqual([]);
   });
 });
 

@@ -269,6 +269,91 @@ describe("taskController.fetch", () => {
     await taskController.fetch(baseReq(), mockRes());
     spy.mockRestore();
   });
+
+  // REGRESSION: `result.recordsets[0][0].ResponseCode` on a status-less result
+  // threw RangeError: Invalid status code: undefined, which Express reported as
+  // a bare 500 with nothing naming the cause. spStatus answers 500 outright.
+  it("answers 500 (not a RangeError) when the SP returns no status row", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[]] });
+    const res = mockRes();
+    await taskController.fetch(baseReq(), res);
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json.mock.calls[0][0].success).toBe(false);
+    expect(res.json.mock.calls[0][0].data.tasks).toEqual([]);
+  });
+});
+
+describe("taskController.moveColumn", () => {
+  it("rejects a missing id with 400 and runs no query", async () => {
+    const res = mockRes();
+    await taskController.moveColumn(baseReq({ body: { TaskId: 11 } }), res);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json.mock.calls[0][0].code).toBe("VALIDATION_ERROR");
+  });
+
+  it("moves the card, logs the status change and emits to the hinted room", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "Moved", WorkspaceId: 5 }]),
+    );
+    const res = mockRes();
+    await taskController.moveColumn(
+      baseReq({ body: { TaskId: 11, ColumnId: 3, WorkspaceId: 9 } }),
+      res,
+    );
+
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
+      "sp_MoveTaskColumn",
+      { TaskId: 11, ColumnId: 3, UserId: 7, IsAdmin: 0, CompId: 1 },
+    );
+    expect(logActivity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityId: 11,
+        fieldName: "ColumnId",
+        newValue: "3",
+        action: "StatusChanged",
+      }),
+    );
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it("falls back to the WorkspaceId the SP returned when the client sent none", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "Moved", WorkspaceId: 5 }]),
+    );
+    const res = mockRes();
+    await taskController.moveColumn(
+      baseReq({ body: { TaskId: 11, ColumnId: 3 } }),
+      res,
+    );
+    expect(res.json.mock.calls[0][0].success).toBe(true);
+  });
+
+  it("does not log when the SP refuses the move", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 403, ResponseMess: "denied" }]),
+    );
+    const res = mockRes();
+    await taskController.moveColumn(
+      baseReq({ body: { TaskId: 11, ColumnId: 3 } }),
+      res,
+    );
+    expect(logActivity).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+
+  it("returns 500 when DB throws", async () => {
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("x"));
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    const res = mockRes();
+    await taskController.moveColumn(
+      baseReq({ body: { TaskId: 11, ColumnId: 3 } }),
+      res,
+    );
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json.mock.calls[0][0].code).toBe("TASK_MOVE_ERROR");
+    spy.mockRestore();
+  });
 });
 
 describe("taskController.delete", () => {
@@ -384,6 +469,14 @@ describe("taskController.addComment", () => {
       mockRes(),
     );
     spy.mockRestore();
+  });
+
+  it("rejects a missing TaskId with 400 instead of letting the SP decide", async () => {
+    const res = mockRes();
+    await taskController.addComment(baseReq({ body: { Comment: "hi" } }), res);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json.mock.calls[0][0].code).toBe("VALIDATION_ERROR");
   });
 });
 
@@ -724,6 +817,14 @@ describe("taskController time-tracking + checklist + activity", () => {
     const call = database.executeStoredProcedure.mock.calls[0][1];
     expect(call.WorkDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(logActivity).toHaveBeenCalled();
+  });
+
+  it("logTime rejects a missing TaskId with 400 and runs no query", async () => {
+    const res = mockRes();
+    await taskController.logTime(baseReq({ body: { Hours: 2 } }), res);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json.mock.calls[0][0].code).toBe("VALIDATION_ERROR");
   });
 
   it("logTime returns 500 on DB throw", async () => {

@@ -228,6 +228,32 @@ describe("userController.delete", () => {
     expect(res.status).toHaveBeenCalledWith(500);
     expect(res.json.mock.calls[0][0].code).toBe("USER_DELETE_ERROR");
   });
+
+  /**
+   * REGRESSION, 2026-08-04. delete sent whatever Id it was handed straight to
+   * sp_DeleteUser with no check at all — its siblings deleteTeam and
+   * deleteProject both validated, this one did not — so `undefined`, `0` and
+   * `"abc"` all reached the procedure and it decided for itself what they
+   * meant. The database is the wrong place to answer "you didn't send an id".
+   */
+  it.each([
+    ["missing", {}],
+    ["zero", { Id: 0 }],
+    ["negative", { Id: -1 }],
+    ["non-numeric", { Id: "abc" }],
+  ])("400s on a %s Id, before touching the database", async (_label, body) => {
+    const res = mockRes();
+    await userController.delete(baseReq({ body }), res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json.mock.calls[0][0]).toMatchObject({
+      success: false,
+      message: "User ID is required",
+      code: "VALIDATION_ERROR",
+      responseCode: 400,
+    });
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
 });
 
 describe("userController.updateMyProfile", () => {
@@ -307,6 +333,21 @@ describe("userController.changeMyPassword", () => {
     expect(database.executeStoredProcedure).not.toHaveBeenCalled();
   });
 
+  it("401s when the user lookup itself fails, without hashing anything", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 404, ResponseMess: "User not found" }]),
+    );
+    const res = mockRes();
+    await userController.changeMyPassword(
+      baseReq({ body: { CurrentPassword: "a", NewPassword: "newpass1" } }),
+      res,
+    );
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json.mock.calls[0][0].code).toBe("AUTH_ERROR");
+    expect(comparePassword).not.toHaveBeenCalled();
+    expect(hashPassword).not.toHaveBeenCalled();
+  });
+
   it("401s when the current password is wrong (no write happens)", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce(validateRow());
     comparePassword.mockResolvedValueOnce(false);
@@ -348,6 +389,31 @@ describe("userController.changeMyPassword", () => {
     });
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json.mock.calls[0][0].message).toBe("Password changed");
+  });
+
+  it("surfaces the profile SP's own failure instead of claiming the password changed", async () => {
+    database.executeStoredProcedure
+      .mockResolvedValueOnce(
+        validateRow({ FullName: "Alice", Avatar: null, Email: null, Mobile: null }),
+      )
+      .mockResolvedValueOnce(
+        spResult([{ ResponseCode: 409, ResponseMess: "Password reuse not allowed" }]),
+      );
+    comparePassword.mockResolvedValueOnce(true);
+    hashPassword.mockResolvedValueOnce("new-hash");
+
+    const res = mockRes();
+    await userController.changeMyPassword(
+      baseReq({ body: { CurrentPassword: "right", NewPassword: "newpass1" } }),
+      res,
+    );
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json.mock.calls[0][0]).toMatchObject({
+      success: false,
+      message: "Password reuse not allowed",
+      responseCode: 409,
+    });
   });
 
   it("rejects a too-short new password", async () => {

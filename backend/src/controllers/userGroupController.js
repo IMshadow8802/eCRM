@@ -1,10 +1,20 @@
 const database = require("../config/database");
 const { cleanSpRows } = require("../utils/spHelpers");
 const { logActivity, ACTIONS } = require("../utils/activityLogger");
+const { success, validationError } = require("../utils/responseHelper");
+const {
+  asyncRoute,
+  firstRow,
+  spStatus,
+  spOk,
+  spMessage,
+  pageParams,
+  positiveInt,
+} = require("../utils/controllerKit");
 
 class UserGroupController {
-  async save(req, res) {
-    try {
+  save = asyncRoute(
+    async (req, res) => {
       // Validate request body exists
       if (!req.body || Object.keys(req.body).length === 0) {
         return res.status(400).json({
@@ -37,9 +47,10 @@ class UserGroupController {
         BranchId: req.user.BranchId,
       });
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
+      const ok = spOk(spResponse);
 
-      if (spResponse.ResponseCode < 300) {
+      if (ok) {
         await logActivity({
           entityType: "UserGroup",
           entityId: spResponse.GroupId ?? Id,
@@ -49,39 +60,25 @@ class UserGroupController {
         });
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode < 300,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
-        data:
-          spResponse.ResponseCode < 300
-            ? { groupId: spResponse.GroupId }
-            : null,
+      return res.status(spStatus(spResponse)).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: spStatus(spResponse),
+        data: ok ? { groupId: spResponse.GroupId } : null,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Save user group error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to save user group",
-        code: "USER_GROUP_SAVE_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to save user group",
+    "USER_GROUP_SAVE_ERROR",
+  );
 
-  async fetch(req, res) {
-    try {
+  fetch = asyncRoute(
+    async (req, res) => {
       // Handle empty request body
       const requestBody = req.body || {};
-      
-      const {
-        Id = 0,
-        PageNumber = 1,
-        PageSize = 10,
-        SearchTerm = null,
-      } = requestBody;
+
+      const { Id = 0, SearchTerm = null } = requestBody;
+      const { PageNumber, PageSize } = pageParams(requestBody, 10);
 
       const result = await database.executeStoredProcedure("sp_FetchUserGroup", {
         Id,
@@ -93,60 +90,39 @@ class UserGroupController {
         SearchTerm,
       });
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
       const userGroups = cleanSpRows(result.recordsets[0]);
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
+      return res.status(spStatus(spResponse)).json({
+        success: spOk(spResponse),
+        message: spMessage(spResponse),
+        responseCode: spStatus(spResponse),
         data: {
           userGroups: userGroups,
           pagination: {
-            currentPage: spResponse.CurrentPage,
-            pageSize: spResponse.PageSize,
-            totalRecords: spResponse.TotalRecords,
-            totalPages: spResponse.TotalPages,
+            currentPage: spResponse?.CurrentPage,
+            pageSize: spResponse?.PageSize,
+            totalRecords: spResponse?.TotalRecords,
+            totalPages: spResponse?.TotalPages,
           },
         },
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Fetch user group error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to fetch user groups",
-        code: "USER_GROUP_FETCH_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to fetch user groups",
+    "USER_GROUP_FETCH_ERROR",
+  );
 
-  async delete(req, res) {
-    try {
+  delete = asyncRoute(
+    async (req, res) => {
       // Validate request body exists
       if (!req.body || Object.keys(req.body).length === 0) {
-        return res.status(400).json({
-          success: false,
-          message: "No payload found",
-          code: "VALIDATION_ERROR",
-          responseCode: 400,
-          timestamp: new Date().toISOString(),
-        });
+        return validationError(res, "No payload found");
       }
 
-      const { Id } = req.body;
+      const Id = positiveInt(req.body.Id);
 
-      if (!Id || Id <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: "Group ID is required",
-          code: "VALIDATION_ERROR",
-          responseCode: 400,
-          timestamp: new Date().toISOString(),
-        });
-      }
+      if (!Id) return validationError(res, "Group ID is required");
 
       const result = await database.executeStoredProcedure("sp_DeleteUserGroup", {
         Id,
@@ -154,9 +130,9 @@ class UserGroupController {
         BranchId: req.user.BranchId,
       });
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
 
-      if (spResponse.ResponseCode === 200) {
+      if (spOk(spResponse)) {
         await logActivity({
           entityType: "UserGroup",
           entityId: Id,
@@ -166,78 +142,46 @@ class UserGroupController {
         });
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode === 200,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
+      return res.status(spStatus(spResponse)).json({
+        success: spOk(spResponse),
+        message: spMessage(spResponse),
+        responseCode: spStatus(spResponse),
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Delete user group error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to delete user group",
-        code: "USER_GROUP_DELETE_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to delete user group",
+    "USER_GROUP_DELETE_ERROR",
+  );
 
   // Fetch the full menu list with a group's grant flags (the permissions
   // matrix). sp_FetchGroupAccess returns every menu + CanView/Add/Edit/Delete
   // (0 where the group has no grant).
-  async fetchAccess(req, res) {
-    try {
+  fetchAccess = asyncRoute(
+    async (req, res) => {
       const { GroupId } = req.body || {};
-      if (!GroupId || GroupId <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: "GroupId is required",
-          code: "VALIDATION_ERROR",
-          responseCode: 400,
-          timestamp: new Date().toISOString(),
-        });
-      }
+
+      if (!positiveInt(GroupId)) return validationError(res, "GroupId is required");
 
       const result = await database.executeStoredProcedure("sp_FetchGroupAccess", {
         GroupId,
         CompId: req.user.CompId,
       });
 
-      return res.status(200).json({
-        success: true,
-        message: "Group access fetched",
-        responseCode: 200,
-        data: { access: cleanSpRows(result.recordsets[0], "MenuId") },
-        timestamp: new Date().toISOString(),
+      return success(res, "Group access fetched", {
+        access: cleanSpRows(result.recordsets[0], "MenuId"),
       });
-    } catch (err) {
-      console.error("Fetch group access error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to fetch group access",
-        code: "GROUP_ACCESS_FETCH_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to fetch group access",
+    "GROUP_ACCESS_FETCH_ERROR",
+  );
 
   // Bulk-replace a group's menu grants. Body: { GroupId, Access: [{ MenuId,
   // CanView, CanAdd, CanEdit, CanDelete }] }.
-  async saveAccess(req, res) {
-    try {
+  saveAccess = asyncRoute(
+    async (req, res) => {
       const { GroupId, Access = [] } = req.body || {};
-      if (!GroupId || GroupId <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: "GroupId is required",
-          code: "VALIDATION_ERROR",
-          responseCode: 400,
-          timestamp: new Date().toISOString(),
-        });
-      }
+
+      if (!positiveInt(GroupId)) return validationError(res, "GroupId is required");
 
       const accessList = Array.isArray(Access) ? Access : [];
       const accessJson = JSON.stringify(accessList);
@@ -248,9 +192,10 @@ class UserGroupController {
         CompId: req.user.CompId,
       });
 
-      const spResponse = result.recordsets[0][0];
+      const spResponse = firstRow(result);
+      const ok = spOk(spResponse);
 
-      if (spResponse.ResponseCode < 300) {
+      if (ok) {
         // Accountability: record WHO changed a group's menu permissions, WHEN,
         // and the resulting granted-menu set. PERMISSION_CHANGED is the audit
         // action; NewValue holds the menu ids the group can now access.
@@ -267,24 +212,17 @@ class UserGroupController {
         });
       }
 
-      return res.status(spResponse.ResponseCode).json({
-        success: spResponse.ResponseCode < 300,
-        message: spResponse.ResponseMess,
-        responseCode: spResponse.ResponseCode,
-        data: spResponse.ResponseCode < 300 ? { groupId: spResponse.GroupId } : null,
+      return res.status(spStatus(spResponse)).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: spStatus(spResponse),
+        data: ok ? { groupId: spResponse.GroupId } : null,
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("Save group access error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to save group access",
-        code: "GROUP_ACCESS_SAVE_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
+    },
+    "Failed to save group access",
+    "GROUP_ACCESS_SAVE_ERROR",
+  );
 }
 
 module.exports = new UserGroupController();
