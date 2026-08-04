@@ -179,7 +179,16 @@ describe("followupController.fetch", () => {
     });
   });
 
-  it("defaults LeadId to 0 and AccessibleBranchIdsJson to null when scope is empty", async () => {
+  /**
+   * Regression, 2026-08-04. This test previously asserted `null` here, which
+   * encoded the bug rather than the behaviour: the SP reads NULL as "apply no
+   * branch filter", so a caller whose scope resolved to zero branches saw every
+   * follow-up in every company. `'[]'` is an empty allow-list — it matches
+   * nothing, which is what an empty scope has to mean.
+   *
+   * `baseReq` supplies `scope: { branchIds: [] }`, so this is exactly that case.
+   */
+  it("serialises an empty scope to '[]' so it fails closed, not open", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [[{ ResponseCode: 200, ResponseMess: "Fetched", TotalRecords: 0, TotalPages: 0, CurrentPage: 1, PageSize: 10 }]],
     });
@@ -189,7 +198,21 @@ describe("followupController.fetch", () => {
 
     expect(database.executeStoredProcedure).toHaveBeenCalledWith(
       "sp_FetchFollowUp",
-      expect.objectContaining({ LeadId: 0, AccessibleBranchIdsJson: null }),
+      expect.objectContaining({ LeadId: 0, AccessibleBranchIdsJson: "[]" }),
+    );
+  });
+
+  it("passes the caller's CompId — the SP has no other tenant filter", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[{ ResponseCode: 200, ResponseMess: "Fetched", TotalRecords: 0, TotalPages: 0, CurrentPage: 1, PageSize: 10 }]],
+    });
+    const req = baseReq();
+    const res = mockRes();
+    await followupController.fetch(req, res);
+
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
+      "sp_FetchFollowUp",
+      expect.objectContaining({ CompId: 5 }),
     );
   });
 
@@ -250,7 +273,7 @@ describe("followupController.delete", () => {
     const res = mockRes();
     await followupController.delete(req, res);
 
-    expect(database.executeStoredProcedure).toHaveBeenNthCalledWith(1, "sp_FetchFollowUp", { Id: 12 });
+    expect(database.executeStoredProcedure).toHaveBeenNthCalledWith(1, "sp_FetchFollowUp", { Id: 12, CompId: 5 });
     expect(database.executeStoredProcedure).toHaveBeenNthCalledWith(3, "sp_DeleteFollowUp", { Id: 12, CompId: 5 });
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json.mock.calls[0][0].success).toBe(true);

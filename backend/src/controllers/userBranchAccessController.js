@@ -134,9 +134,13 @@ class UserBranchAccessController {
         });
       }
 
+      // CompId, because the SP used to delete whatever row id it was handed.
+      // Its siblings save/fetch both scoped by company; only delete was missed,
+      // which let one company's admin strip another company's branch grants by
+      // guessing ids.
       const result = await database.executeStoredProcedure(
         "sp_DeleteUserBranchAccess",
-        { Id }
+        { Id, CompId: req.user.CompId }
       );
 
       const sp = result.recordsets[0][0];

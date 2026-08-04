@@ -1,7 +1,7 @@
 const database = require("../config/database");
 const { logActivity, ACTIONS } = require("../utils/activityLogger");
 const { cleanSpRows } = require("../utils/spHelpers");
-const { assertRecordAccess } = require("../middleware/permission");
+const { assertRecordAccess, scopeJson } = require("../middleware/permission");
 
 class FollowupController {
   async save(req, res) {
@@ -84,18 +84,18 @@ class FollowupController {
         Status = null,
       } = req.body;
 
-      const accessibleBranchIdsJson = req.scope?.branchIds?.length
-        ? JSON.stringify(req.scope.branchIds)
-        : null;
-
       const result = await database.executeStoredProcedure("sp_FetchFollowUp", {
         Id,
         LeadId: LeadId ?? LeadID ?? 0,
-        AccessibleBranchIdsJson: accessibleBranchIdsJson,
+        // scopeJson, not the old `?.length ? stringify : null`. That version
+        // turned an empty scope into "no filter at all", which is the one case
+        // it most needed to block — see the comment on scopeJson itself.
+        AccessibleBranchIdsJson: scopeJson(req.scope?.branchIds),
         PageNumber,
         PageSize,
         SearchTerm,
         Status,
+        CompId: req.user.CompId,
       });
 
       const spResponse = result.recordsets[0][0];
@@ -137,6 +137,7 @@ class FollowupController {
       // hardening ships separately.
       const lookup = await database.executeStoredProcedure("sp_FetchFollowUp", {
         Id,
+        CompId: req.user.CompId,
       });
       const followup = lookup.recordsets?.[0]?.[0];
       if (!followup || followup.ResponseCode !== 200) {

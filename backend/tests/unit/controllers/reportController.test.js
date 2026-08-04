@@ -122,60 +122,6 @@ describe("reportController.getConvertedSummary", () => {
   });
 });
 
-describe("reportController.getFollowupsUserWise", () => {
-  it("forwards StartDate/EndDate and returns followups rows", async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce({
-      recordsets: [[{ UserId: 7, FollowupCount: 3 }]],
-    });
-    const req = baseReq({ body: { StartDate: "2026-06-01", EndDate: "2026-06-30" } });
-    const res = mockRes();
-    await reportController.getFollowupsUserWise(req, res);
-
-    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_FollowupsListUserWise", {
-      StartDate: "2026-06-01",
-      EndDate: "2026-06-30",
-    });
-    expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.json.mock.calls[0][0].data.followups).toEqual([{ UserId: 7, FollowupCount: 3 }]);
-  });
-
-  it("handles DB error as 500", async () => {
-    database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
-    const req = baseReq();
-    const res = mockRes();
-    await reportController.getFollowupsUserWise(req, res);
-    expect(res.status).toHaveBeenCalledWith(500);
-    expect(res.json.mock.calls[0][0].success).toBe(false);
-  });
-});
-
-describe("reportController.getLeadSummaryBranchWise", () => {
-  it("forwards StartDate/EndDate and returns summary rows", async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce({
-      recordsets: [[{ BranchId: 2, LeadCount: 9 }]],
-    });
-    const req = baseReq({ body: { StartDate: "2026-06-01", EndDate: "2026-06-30" } });
-    const res = mockRes();
-    await reportController.getLeadSummaryBranchWise(req, res);
-
-    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_LeadSummaryBranchWise", {
-      StartDate: "2026-06-01",
-      EndDate: "2026-06-30",
-    });
-    expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.json.mock.calls[0][0].data.summary).toEqual([{ BranchId: 2, LeadCount: 9 }]);
-  });
-
-  it("handles DB error as 500", async () => {
-    database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
-    const req = baseReq();
-    const res = mockRes();
-    await reportController.getLeadSummaryBranchWise(req, res);
-    expect(res.status).toHaveBeenCalledWith(500);
-    expect(res.json.mock.calls[0][0].success).toBe(false);
-  });
-});
-
 describe("reportController.pipelineFunnel", () => {
   it("calls sp_PipelineFunnel with CompId/BranchId + PipelineId and returns stage rows", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({

@@ -12,8 +12,6 @@ const leadRoutes = require("../routes/leadRoutes");
 const followupRoutes = require("../routes/followupRoutes");
 const callRoutes = require("../routes/callRoutes");
 const ticketRoutes = require("../routes/ticketRoutes");
-const leadSourceRoutes = require("../routes/leadSourceRoutes");
-const statusRoutes = require("../routes/statusRoutes");
 const reportRoutes = require("../routes/reportRoutes");
 const userBranchAccessRoutes = require("../routes/userBranchAccessRoutes");
 const configRoutes = require("../routes/configRoutes");
@@ -35,8 +33,12 @@ function setupRoutes(app) {
   app.use("/api/followups", followupRoutes);
   app.use("/api/calls", callRoutes);
   app.use("/api/tickets", ticketRoutes);
-  app.use("/api/sources", leadSourceRoutes);
-  app.use("/api/status", statusRoutes);
+  // /api/sources and /api/status were removed on 2026-08-04. They were the
+  // pre-config-engine Status and LeadSource lists, superseded by tblLookup, and
+  // no client had called them for months. Their SPs take no @CompId — not
+  // "forget to check it", there is no parameter — so sp_DeleteStatus deleted
+  // whatever row id it was handed, whoever owned it. Deleting the routes closes
+  // that outright; the legacy tables and SPs are a separate DB cleanup.
   app.use("/api/reports", reportRoutes);
   app.use("/api/user-branch-access", userBranchAccessRoutes);
   app.use("/api/config", configRoutes);

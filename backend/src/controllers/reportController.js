@@ -66,62 +66,6 @@ class ReportController {
     }
   }
 
-  async getFollowupsUserWise(req, res) {
-    try {
-      const { StartDate, EndDate } = req.body;
-
-      const result = await database.executeStoredProcedure("sp_FollowupsListUserWise", {
-        StartDate,
-        EndDate,
-      });
-
-      return res.status(200).json({
-        success: true,
-        message: "User-wise followups fetched successfully",
-        responseCode: 200,
-        data: { followups: result.recordsets[0] },
-        timestamp: new Date().toISOString(),
-      });
-    } catch (err) {
-      console.error("Followups user-wise error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to fetch user-wise followups",
-        code: "FOLLOWUPS_USERWISE_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
-
-  async getLeadSummaryBranchWise(req, res) {
-    try {
-      const { StartDate, EndDate } = req.body;
-
-      const result = await database.executeStoredProcedure("sp_LeadSummaryBranchWise", {
-        StartDate,
-        EndDate,
-      });
-
-      return res.status(200).json({
-        success: true,
-        message: "Branch-wise lead summary fetched successfully",
-        responseCode: 200,
-        data: { summary: result.recordsets[0] },
-        timestamp: new Date().toISOString(),
-      });
-    } catch (err) {
-      console.error("Lead summary branch-wise error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to fetch branch-wise lead summary",
-        code: "LEAD_SUMMARY_BRANCHWISE_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
-
   async pipelineFunnel(req, res) {
     try {
       const { CompId, BranchId } = req.user;

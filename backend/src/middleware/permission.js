@@ -281,6 +281,10 @@ module.exports = {
   requireMinLevel,
   requireAdmin,
   scopeParams,
+  // Exported for the SPs that declare AccessibleBranchIdsJson but not UserId or
+  // OwnerIdsJson — spreading the whole of scopeParams into those makes node-mssql
+  // reject the call for passing parameters the procedure never declared.
+  scopeJson,
   canSeeRecord,
   canWriteBranch,
   canReadBranch,
