@@ -52,6 +52,16 @@ function setupRoutes(app) {
     });
   });
 
+  /**
+   * Connectivity probe. Unauthenticated on purpose — it is what nginx and a
+   * human debugging a deploy reach for, and requiring a token would defeat that.
+   *
+   * It no longer echoes DB_SERVER and DB_NAME, though. Those named the database
+   * host and catalogue to anyone who could curl the domain, which is a free head
+   * start for anyone probing the box and buys the operator nothing they cannot
+   * read from their own .env. Whether the connection works, and how long it
+   * took, is the entire useful answer.
+   */
   app.get("/test-db", async (req, res) => {
     try {
       const startTime = Date.now();
@@ -59,8 +69,6 @@ function setupRoutes(app) {
       if (!isConnected) return dbErrors.connectionFailed(res);
       return success(res, "Database connected", {
         connectionTimeMs: Date.now() - startTime,
-        server: process.env.DB_SERVER,
-        database: process.env.DB_NAME,
       });
     } catch (err) {
       return dbErrors.connectionFailed(res);
