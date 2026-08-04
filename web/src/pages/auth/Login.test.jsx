@@ -3,7 +3,9 @@ import { cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const post = vi.fn();
-vi.mock("../../hooks/useApi", () => ({ default: () => ({ post }) }));
+vi.mock("../../utils/axiosConfig", () => ({
+  apiClient: { post: (...args) => post(...args) },
+}));
 
 const navigate = vi.fn();
 vi.mock("react-router-dom", async () => {

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { useSnackbar } from "notistack";
 import { useQueryClient } from "@tanstack/react-query";
 import useAuthStore from "../../../stores/useAuthStore";
-import useApi from "../../../hooks/useApi";
+import { saveTeam } from "../../../api/masterQueries";
 import {
   FormModal,
   FormContainer,
@@ -35,7 +35,6 @@ const TeamForm = ({
   onTeamSaved,
 }) => {
   const { enqueueSnackbar } = useSnackbar();
-  const apiClient = useApi();
   const queryClient = useQueryClient();
   const { CompId, BranchId, UserId } = useAuthStore();
 
@@ -141,7 +140,7 @@ const TeamForm = ({
         CompId: CompId,
       };
 
-      const response = await apiClient.post("/api/teams/saveTeam", teamData);
+      const response = await saveTeam(teamData);
 
       if (response.data.success) {
         enqueueSnackbar(

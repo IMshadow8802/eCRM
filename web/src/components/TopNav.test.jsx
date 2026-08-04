@@ -23,9 +23,9 @@ vi.mock("../stores/useThemeStore", () => {
 });
 
 let mockApiPost = vi.fn().mockResolvedValue({ data: {} });
-vi.mock("../hooks/useApi", () => ({
+vi.mock("../utils/axiosConfig", () => ({
   __esModule: true,
-  default: () => ({ post: (...args) => mockApiPost(...args) }),
+  apiClient: { post: (...args) => mockApiPost(...args) },
 }));
 
 vi.mock("notistack", async () => {

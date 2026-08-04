@@ -18,7 +18,7 @@ import { AnimatePresence, motion } from "framer-motion";
 
 import useAuthStore from "../stores/useAuthStore";
 import useThemeStore from "../stores/useThemeStore";
-import useApi from "../hooks/useApi";
+import { logoutUser } from "../api/platformQueries";
 import UiAvatar from "./ui/Avatar";
 import AccountModal from "./AccountModal";
 import NotificationBell from "./Notifications/NotificationBell";
@@ -43,7 +43,6 @@ const TopNav = ({ onOpenMobileSidebar }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { enqueueSnackbar } = useSnackbar();
-  const apiClient = useApi();
 
   const { user, logout } = useAuthStore();
   const themeMode = useThemeStore((s) => s.mode);
@@ -79,7 +78,7 @@ const TopNav = ({ onOpenMobileSidebar }) => {
       setIsLoggingOut(true);
       setProfileAnchor(null);
       try {
-        await apiClient.post("/api/auth/logoutUser");
+        await logoutUser();
       } catch (apiError) {
         console.error("Logout API error:", apiError);
       }

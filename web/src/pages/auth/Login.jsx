@@ -7,7 +7,7 @@ import { Box, Stack, Typography, Paper } from "@mui/material";
 import { Eye, EyeOff, ArrowRight, Mail, LockKeyhole } from "lucide-react";
 
 import useAuthStore from "../../stores/useAuthStore";
-import useApi from "../../hooks/useApi";
+import { loginUser } from "../../api/platformQueries";
 import { firstAllowedPath } from "../../utils/routeAccess";
 import { Button, TextInput, Checkbox, IconButton } from "../../components/ui";
 
@@ -20,7 +20,6 @@ export default function Login() {
   const { login, isAuthenticated, menuRights } = useAuthStore();
   const navigate = useNavigate();
   const { enqueueSnackbar } = useSnackbar();
-  const apiClient = useApi();
 
   // Already signed in — bounce to whatever this user's first granted page is,
   // not a hardcoded /dashboard they may have no rights to. "/" resolves that
@@ -39,10 +38,7 @@ export default function Login() {
     }
     setIsLoading(true);
     try {
-      const response = await apiClient.post("/api/auth/loginUser", {
-        identifier,
-        password,
-      });
+      const response = await loginUser({ identifier, password });
       const responseData = response.data;
       if (responseData.success && responseData.responseCode === 200) {
         login(responseData.data);

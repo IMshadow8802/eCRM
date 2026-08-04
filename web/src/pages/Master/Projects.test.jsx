@@ -29,9 +29,9 @@ vi.mock("../../hooks", () => ({
   }),
 }));
 
-vi.mock("../../hooks/useApi", () => ({
+vi.mock("../../utils/axiosConfig", () => ({
   __esModule: true,
-  default: () => ({ post: vi.fn() }),
+  apiClient: { post: vi.fn() },
 }));
 
 vi.mock("material-react-table", () => ({

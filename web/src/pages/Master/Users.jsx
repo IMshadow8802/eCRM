@@ -12,7 +12,7 @@ import UserForm from "./components/UserForm";
 import ActionButton from "../../components/Design/ActionButton";
 import ConfirmationDialog from "../../components/ConfirmationDialog";
 
-import useApi from "../../hooks/useApi";
+import { MASTER_ENDPOINTS, deleteUser } from "../../api/masterQueries";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import useServerTable from "../../hooks/useServerTable";
 import { useConfirmation } from "../../hooks";
@@ -20,7 +20,6 @@ import { useQueryClient } from "@tanstack/react-query";
 
 const Users = () => {
   const { enqueueSnackbar } = useSnackbar();
-  const apiClient = useApi();
   const queryClient = useQueryClient();
   const confirmation = useConfirmation();
 
@@ -31,7 +30,7 @@ const Users = () => {
   // API shape as everywhere else, just with a large PageSize).
   const { data: userGroupsData } = useApiQuery({
     queryKey: ["userGroups-all"],
-    endpoint: "/api/user-groups/fetchUserGroups",
+    endpoint: MASTER_ENDPOINTS.userGroups.fetchUserGroups,
     params: { Id: 0, PageNumber: 1, PageSize: 1000, SearchTerm: null },
   });
   const userGroups = userGroupsData?.userGroups || [];
@@ -103,9 +102,7 @@ const Users = () => {
         confirmText: "Delete User",
         onConfirm: async () => {
           try {
-            const response = await apiClient.post("/api/users/deleteUser", {
-              Id: row.original.Id,
-            });
+            const response = await deleteUser({ Id: row.original.Id });
 
             if (response.data.success) {
               enqueueSnackbar("User deleted successfully!", { variant: "success" });
@@ -127,7 +124,7 @@ const Users = () => {
         },
       });
     },
-    [apiClient, enqueueSnackbar, queryClient, confirmation]
+    [enqueueSnackbar, queryClient, confirmation]
   );
 
   const handleEdit = (row) => {
@@ -159,7 +156,7 @@ const Users = () => {
   } = useServerTable({
     columns,
     queryKey: "users",
-    endpoint: "/api/users/fetchUsers",
+    endpoint: MASTER_ENDPOINTS.users.fetchUsers,
     dataKey: "users",
     enableRowActions: true,
     getRowId: (row) => row.Id,

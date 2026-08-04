@@ -17,6 +17,7 @@ import { enqueueSnackbar } from "notistack";
 
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { useApiMutation } from "../../hooks/useApiMutation";
+import { WORKSPACE_ENDPOINTS } from "../../api/workspaceQueries";
 import useWorkspaceStore from "../../stores/useWorkspaceStore";
 import CreateWorkspaceModal from "./CreateWorkspaceModal";
 import InviteResponseModal from "./InviteResponseModal";
@@ -56,13 +57,13 @@ export default function WorkspaceSwitcher() {
     refetch,
   } = useApiQuery({
     queryKey: ["workspaces", "list"],
-    endpoint: "/api/workspaces/fetchWorkspaces",
+    endpoint: WORKSPACE_ENDPOINTS.workspaces.fetchWorkspaces,
     params: { PageNumber: 1, PageSize: 100, IncludeArchived: true },
     showErrorMessage: true,
   });
 
   const restoreMutation = useApiMutation({
-    endpoint: "/api/workspaces/archiveWorkspace",
+    endpoint: WORKSPACE_ENDPOINTS.workspaces.archiveWorkspace,
     showSuccessMessage: false,
   });
 

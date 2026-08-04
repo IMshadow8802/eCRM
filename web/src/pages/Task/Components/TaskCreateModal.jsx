@@ -13,6 +13,7 @@ import {
 } from "../../../components/ui";
 import Attachments from "../../../components/Attachments";
 import { useApiMutation } from "../../../hooks/useApiMutation";
+import { TASK_ENDPOINTS } from "../../../api/taskQueries";
 import useWorkspaceMemberOptions from "../../../hooks/useWorkspaceMemberOptions";
 import useWorkspaceStore from "../../../stores/useWorkspaceStore";
 import useAuthStore from "../../../stores/useAuthStore";
@@ -51,7 +52,7 @@ export default function TaskCreateModal({
   });
 
   const saveMutation = useApiMutation({
-    endpoint: "/api/tasks/saveTask",
+    endpoint: TASK_ENDPOINTS.tasks.saveTask,
     showSuccessMessage: false,
   });
 

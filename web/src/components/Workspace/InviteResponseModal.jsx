@@ -4,6 +4,7 @@ import { MailCheck } from "lucide-react";
 
 import { Modal, Button } from "../ui";
 import { useApiMutation } from "../../hooks/useApiMutation";
+import { WORKSPACE_ENDPOINTS } from "../../api/workspaceQueries";
 
 /**
  * Lightweight accept/decline confirmation for a pending workspace invite.
@@ -14,7 +15,7 @@ export default function InviteResponseModal({ workspace, onClose, onResponded })
   const theme = useTheme();
   const p = theme.tokens;
   const respondMutation = useApiMutation({
-    endpoint: "/api/workspaces/respondInvite",
+    endpoint: WORKSPACE_ENDPOINTS.members.respondInvite,
     showSuccessMessage: false,
   });
 

@@ -5,7 +5,7 @@ import dayjs from "dayjs";
 import { useSnackbar } from "notistack";
 import { useQueryClient } from "@tanstack/react-query";
 import useAuthStore from "../../../stores/useAuthStore";
-import useApi from "../../../hooks/useApi";
+import { saveProject } from "../../../api/masterQueries";
 import {
   FormModal,
   FormContainer,
@@ -50,7 +50,6 @@ const ProjectForm = ({
 }) => {
   const { enqueueSnackbar } = useSnackbar();
   const queryClient = useQueryClient();
-  const apiClient = useApi();
   const { CompId, BranchId, UserId } = useAuthStore();
 
   const [formData, setFormData] = useState({
@@ -179,7 +178,7 @@ const ProjectForm = ({
         CompId: CompId,
       };
 
-      const response = await apiClient.post("/api/projects/saveProject", projectData);
+      const response = await saveProject(projectData);
 
       if (response.data.success) {
         enqueueSnackbar(

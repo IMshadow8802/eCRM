@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 
 import { useApiQuery } from "./useApiQuery";
+import { WORKSPACE_ENDPOINTS } from "../api/workspaceQueries";
 
 /**
  * Combobox options for the people who can actually be assigned on a board.
@@ -16,7 +17,7 @@ import { useApiQuery } from "./useApiQuery";
 export default function useWorkspaceMemberOptions(workspaceId, { enabled = true } = {}) {
   const { data, isPending } = useApiQuery({
     queryKey: ["workspace-members", workspaceId],
-    endpoint: "/api/workspaces/fetchWorkspaceMembers",
+    endpoint: WORKSPACE_ENDPOINTS.members.fetchWorkspaceMembers,
     params: { WorkspaceId: workspaceId },
     enabled: Boolean(workspaceId) && enabled,
     showErrorMessage: false,

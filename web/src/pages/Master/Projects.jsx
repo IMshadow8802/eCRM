@@ -22,14 +22,13 @@ import ConfirmationDialog from "../../components/ConfirmationDialog";
 
 // Import hooks
 import { useTeams, useUsers, useConfirmation } from "../../hooks";
-import useApi from "../../hooks/useApi";
+import { MASTER_ENDPOINTS, deleteProject } from "../../api/masterQueries";
 import useServerTable from "../../hooks/useServerTable";
 import { useQueryClient } from "@tanstack/react-query";
 
 const Projects = () => {
   const theme = useTheme();
   const { enqueueSnackbar } = useSnackbar();
-  const apiClient = useApi();
   const confirmation = useConfirmation();
   const queryClient = useQueryClient();
 
@@ -180,9 +179,7 @@ const Projects = () => {
         confirmText: "Delete Project",
         onConfirm: async () => {
           try {
-            const response = await apiClient.post("/api/projects/deleteProject", {
-              Id: row.original.Id,
-            });
+            const response = await deleteProject({ Id: row.original.Id });
 
             if (response.data.success) {
               enqueueSnackbar("Project deleted successfully!", {
@@ -211,7 +208,7 @@ const Projects = () => {
         },
       });
     },
-    [apiClient, enqueueSnackbar, confirmation]
+    [enqueueSnackbar, confirmation]
   );
 
   // Handle edit
@@ -224,7 +221,7 @@ const Projects = () => {
   const { table, error: projectsError } = useServerTable({
     columns,
     queryKey: "projects",
-    endpoint: "/api/projects/fetchProjects",
+    endpoint: MASTER_ENDPOINTS.projects.fetchProjects,
     dataKey: "projects",
     enableRowActions: true,
     getRowId: (row) => row.Id,

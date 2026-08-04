@@ -12,6 +12,7 @@ import {
 } from "../ui";
 import { useApiMutation } from "../../hooks/useApiMutation";
 import { useApiQuery } from "../../hooks/useApiQuery";
+import { WORKSPACE_ENDPOINTS } from "../../api/workspaceQueries";
 import { toUserOptions } from "../../utils/userShape";
 import useAuthStore from "../../stores/useAuthStore";
 
@@ -45,7 +46,7 @@ export default function CreateWorkspaceModal({
   const [submitting, setSubmitting] = useState(false);
 
   const saveMutation = useApiMutation({
-    endpoint: "/api/workspaces/saveWorkspace",
+    endpoint: WORKSPACE_ENDPOINTS.workspaces.saveWorkspace,
     showSuccessMessage: false,
   });
 

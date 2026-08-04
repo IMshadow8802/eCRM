@@ -4,6 +4,7 @@ import { Plus } from "lucide-react";
 
 import { TextInput } from "../ui";
 import { useApiMutation } from "../../hooks/useApiMutation";
+import { PLATFORM_ENDPOINTS } from "../../api/platformQueries";
 
 /**
  * Trailing "+ Add column" tile rendered at the end of the kanban strip.
@@ -18,7 +19,7 @@ export default function ColumnAddInline({ workspaceId, onCreated }) {
   const [title, setTitle] = useState("");
 
   const saveMutation = useApiMutation({
-    endpoint: "/api/kanban/saveKanbanColumn",
+    endpoint: PLATFORM_ENDPOINTS.kanban.saveKanbanColumn,
     showSuccessMessage: false,
   });
 

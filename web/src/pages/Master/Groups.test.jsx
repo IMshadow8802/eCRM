@@ -11,9 +11,10 @@ let groupsData;
 let accessByGroup;
 let accessCache;
 
-vi.mock("../../hooks/useApi", () => ({
+// Groups.jsx writes through api/masterQueries → the one shared apiClient.
+vi.mock("../../utils/axiosConfig", () => ({
   __esModule: true,
-  default: () => ({ post: postMock }),
+  apiClient: { post: (...args) => postMock(...args) },
 }));
 
 vi.mock("../../hooks/useApiQuery", () => ({

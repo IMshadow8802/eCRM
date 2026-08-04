@@ -7,9 +7,9 @@ import renderWithProviders from "../../../test/renderWithProviders";
 
 const post = vi.fn();
 
-vi.mock("../../../hooks/useApi", () => ({
+vi.mock("../../../utils/axiosConfig", () => ({
   __esModule: true,
-  default: () => ({ post }),
+  apiClient: { post: (...args) => post(...args) },
 }));
 
 vi.mock("../../../stores/useAuthStore", () => ({

@@ -25,7 +25,12 @@ import {
   EmptyState,
 } from "../../components/ui";
 
-import useApi from "../../hooks/useApi";
+import {
+  MASTER_ENDPOINTS,
+  saveUserGroup,
+  deleteUserGroup,
+  saveGroupAccess,
+} from "../../api/masterQueries";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { useConfirmation } from "../../hooks";
 
@@ -41,7 +46,6 @@ const PERMS = [
 const Groups = () => {
   const theme = useTheme();
   const p = theme.tokens;
-  const apiClient = useApi();
   const { enqueueSnackbar } = useSnackbar();
   const confirmation = useConfirmation();
 
@@ -54,14 +58,14 @@ const Groups = () => {
 
   const groupsQuery = useApiQuery({
     queryKey: ["userGroups"],
-    endpoint: "/api/user-groups/fetchUserGroups",
+    endpoint: MASTER_ENDPOINTS.userGroups.fetchUserGroups,
     params: {},
   });
   const groups = groupsQuery.data?.userGroups || [];
 
   const accessQuery = useApiQuery({
     queryKey: ["groupAccess", selectedGroupId],
-    endpoint: "/api/user-groups/fetchGroupAccess",
+    endpoint: MASTER_ENDPOINTS.userGroups.fetchGroupAccess,
     params: { GroupId: selectedGroupId },
     enabled: !!selectedGroupId,
   });
@@ -98,7 +102,7 @@ const Groups = () => {
     }
     setIsSaving(true);
     try {
-      const res = await apiClient.post("/api/user-groups/saveUserGroup", {
+      const res = await saveUserGroup({
         Id: form.Id || 0,
         Name: form.Name.trim(),
         Description: form.Description?.trim() || "",
@@ -128,7 +132,7 @@ const Groups = () => {
       message: `Are you sure you want to delete "${group.Name}"? This action cannot be undone.`,
       confirmText: "Delete Group",
       onConfirm: async () => {
-        const res = await apiClient.post("/api/user-groups/deleteUserGroup", { Id: group.Id });
+        const res = await deleteUserGroup({ Id: group.Id });
         if (res.data.success) {
           enqueueSnackbar("Group deleted successfully!", { variant: "success" });
           if (selectedGroupId === group.Id) setSelectedGroupId(null);
@@ -157,7 +161,7 @@ const Groups = () => {
   const savePermissions = async () => {
     setIsSaving(true);
     try {
-      const res = await apiClient.post("/api/user-groups/saveGroupAccess", {
+      const res = await saveGroupAccess({
         GroupId: selectedGroupId,
         Access: access.map((r) => ({
           MenuId: r.MenuId,

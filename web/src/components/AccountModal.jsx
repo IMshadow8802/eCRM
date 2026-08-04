@@ -11,6 +11,7 @@ import {
 } from "./ui";
 import useAuthStore from "../stores/useAuthStore";
 import { useApiMutation } from "../hooks/useApiMutation";
+import { MASTER_ENDPOINTS } from "../api/masterQueries";
 import {
   AVATAR_COLOR_KEYS,
   AVATAR_ICON_KEYS,
@@ -168,11 +169,11 @@ export default function AccountModal({ open, onClose }) {
   const [confirm, setConfirm] = useState("");
 
   const profileMutation = useApiMutation({
-    endpoint: "/api/users/me/updateProfile",
+    endpoint: MASTER_ENDPOINTS.users.updateProfile,
     showSuccessMessage: false,
   });
   const passwordMutation = useApiMutation({
-    endpoint: "/api/users/me/changePassword",
+    endpoint: MASTER_ENDPOINTS.users.changePassword,
     showSuccessMessage: false,
     showErrorMessage: false,
   });

@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useApiQuery } from "./useApiQuery";
+import { MASTER_ENDPOINTS } from "../api/masterQueries";
 
 // Company roster {Id → {FullName, Avatar}} for resolving avatars in feeds
 // (comments, history, board) without every fetch SP having to project it.
@@ -7,7 +8,7 @@ import { useApiQuery } from "./useApiQuery";
 export function useUserDirectory() {
   const { data } = useApiQuery({
     queryKey: ["userDirectory"],
-    endpoint: "/api/users/directory",
+    endpoint: MASTER_ENDPOINTS.users.directory,
     params: {},
     staleTime: 10 * 60 * 1000,
     showErrorMessage: false,

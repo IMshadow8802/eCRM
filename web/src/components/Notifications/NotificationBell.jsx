@@ -4,6 +4,7 @@ import { Bell } from "lucide-react";
 
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { useApiMutation } from "../../hooks/useApiMutation";
+import { PLATFORM_ENDPOINTS } from "../../api/platformQueries";
 import useNotificationStore from "../../stores/useNotificationStore";
 import {
   IconButton,
@@ -26,7 +27,7 @@ export default function NotificationBell({ onOpenEntity }) {
 
   const { data: payload, refetch } = useApiQuery({
     queryKey: ["notifications", "bell"],
-    endpoint: "/api/notifications/fetchNotifications",
+    endpoint: PLATFORM_ENDPOINTS.notifications.fetchNotifications,
     params: { PageNumber: 1, PageSize: 20, UnreadOnly: false },
     options: { refetchInterval: POLL_MS, refetchOnWindowFocus: true },
     showErrorMessage: false,
@@ -40,12 +41,12 @@ export default function NotificationBell({ onOpenEntity }) {
   }, [unreadCountFromServer, setUnreadCount]);
 
   const markReadMutation = useApiMutation({
-    endpoint: "/api/notifications/markNotificationRead",
+    endpoint: PLATFORM_ENDPOINTS.notifications.markNotificationRead,
     showSuccessMessage: false,
     showErrorMessage: false,
   });
   const markAllReadMutation = useApiMutation({
-    endpoint: "/api/notifications/markAllNotificationsRead",
+    endpoint: PLATFORM_ENDPOINTS.notifications.markAllNotificationsRead,
     showSuccessMessage: false,
     showErrorMessage: false,
   });

@@ -14,14 +14,13 @@ import ActionButton from "../../components/Design/ActionButton";
 import ConfirmationDialog from "../../components/ConfirmationDialog";
 
 // Import hooks
-import useApi from "../../hooks/useApi";
+import { MASTER_ENDPOINTS, deleteTeam } from "../../api/masterQueries";
 import useServerTable from "../../hooks/useServerTable";
 import { useUsers, useConfirmation } from "../../hooks";
 import { useQueryClient } from "@tanstack/react-query";
 
 const Teams = () => {
   const { enqueueSnackbar } = useSnackbar();
-  const apiClient = useApi();
   const confirmation = useConfirmation();
   const queryClient = useQueryClient();
 
@@ -120,9 +119,7 @@ const Teams = () => {
         confirmText: "Delete Team",
         onConfirm: async () => {
           try {
-            const response = await apiClient.post("/api/teams/deleteTeam", {
-              Id: row.original.Id,
-            });
+            const response = await deleteTeam({ Id: row.original.Id });
 
             if (response.data.success) {
               enqueueSnackbar("Team deleted successfully!", {
@@ -151,7 +148,7 @@ const Teams = () => {
         },
       });
     },
-    [apiClient, enqueueSnackbar, confirmation]
+    [enqueueSnackbar, confirmation]
   );
 
   // Handle edit
@@ -164,7 +161,7 @@ const Teams = () => {
   const { table, error: teamsError } = useServerTable({
     columns,
     queryKey: "teams",
-    endpoint: "/api/teams/fetchTeams",
+    endpoint: MASTER_ENDPOINTS.teams.fetchTeams,
     dataKey: "teams",
     enableRowActions: true,
     enableExpanding: true,

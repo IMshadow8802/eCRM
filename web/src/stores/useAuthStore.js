@@ -117,21 +117,10 @@ const useAuthStore = create(
           });
         },
 
-        // Enhanced logout with API call
-        logoutWithApi: async (apiClient) => {
-          try {
-            // Call logout API if apiClient is provided
-            if (apiClient) {
-              await apiClient.post("/api/auth/logoutUser");
-            }
-          } catch (error) {
-            console.error("Logout API error:", error);
-            // Continue with logout even if API fails
-          } finally {
-            // Always clear local state
-            get().logout();
-          }
-        },
+        // ponytail: `logoutWithApi(apiClient)` lived here with zero callers —
+        // TopNav owns the logout-then-clear flow and calls api/platformQueries'
+        // `logoutUser` directly. Dropped rather than rewired, which also keeps
+        // the store free of an import cycle back through axiosConfig.
 
         // Helper method to get current user data
         getCurrentUser: () => {

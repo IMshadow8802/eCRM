@@ -18,7 +18,11 @@ import {
 import { Modal, Button, TextInput, Combobox, Chip, IconButton } from "../ui";
 import { useApiMutation } from "../../hooks/useApiMutation";
 import { useApiQuery } from "../../hooks/useApiQuery";
-import { apiClient } from "../../utils/axiosConfig";
+import {
+  WORKSPACE_ENDPOINTS,
+  addWorkspaceMember,
+  setWorkspaceMemberRole,
+} from "../../api/workspaceQueries";
 import { toUserOptions } from "../../utils/userShape";
 import useAuthStore from "../../stores/useAuthStore";
 
@@ -199,7 +203,7 @@ export default function WorkspaceSettingsModal({
 
   const { data: membersPayload } = useApiQuery({
     queryKey: ["workspace-members", workspace?.Id],
-    endpoint: "/api/workspaces/fetchWorkspaceMembers",
+    endpoint: WORKSPACE_ENDPOINTS.members.fetchWorkspaceMembers,
     params: { WorkspaceId: workspace?.Id },
     enabled: Boolean(workspace?.Id) && isMemberBoard,
     showErrorMessage: false,
@@ -217,31 +221,31 @@ export default function WorkspaceSettingsModal({
 
   const quiet = { showSuccessMessage: false };
   const saveMutation = useApiMutation({
-    endpoint: "/api/workspaces/saveWorkspace",
+    endpoint: WORKSPACE_ENDPOINTS.workspaces.saveWorkspace,
     ...quiet,
   });
   const archiveMutation = useApiMutation({
-    endpoint: "/api/workspaces/archiveWorkspace",
+    endpoint: WORKSPACE_ENDPOINTS.workspaces.archiveWorkspace,
     ...quiet,
   });
   const convertMutation = useApiMutation({
-    endpoint: "/api/workspaces/convertWorkspaceToShared",
+    endpoint: WORKSPACE_ENDPOINTS.workspaces.convertWorkspaceToShared,
     ...quiet,
   });
   const deleteMutation = useApiMutation({
-    endpoint: "/api/workspaces/deleteWorkspace",
+    endpoint: WORKSPACE_ENDPOINTS.workspaces.deleteWorkspace,
     ...quiet,
   });
   const transferMutation = useApiMutation({
-    endpoint: "/api/workspaces/transferWorkspaceOwnership",
+    endpoint: WORKSPACE_ENDPOINTS.workspaces.transferWorkspaceOwnership,
     ...quiet,
   });
   const syncMutation = useApiMutation({
-    endpoint: "/api/workspaces/syncProjectWorkspaceMembers",
+    endpoint: WORKSPACE_ENDPOINTS.members.syncProjectWorkspaceMembers,
     ...quiet,
   });
   const leaveMutation = useApiMutation({
-    endpoint: "/api/workspaces/removeWorkspaceMember",
+    endpoint: WORKSPACE_ENDPOINTS.members.removeWorkspaceMember,
     ...quiet,
   });
 
@@ -400,7 +404,7 @@ export default function WorkspaceSettingsModal({
   const changeRole = async (userId, role) => {
     setInviting(true);
     try {
-      const res = await apiClient.post("/api/workspaces/setWorkspaceMemberRole", {
+      const res = await setWorkspaceMemberRole({
         WorkspaceId: workspace.Id,
         UserId: userId,
         Role: role,
@@ -418,7 +422,7 @@ export default function WorkspaceSettingsModal({
   const inviteUser = async (userId, role = "member") => {
     setInviting(true);
     try {
-      const res = await apiClient.post("/api/workspaces/addWorkspaceMember", {
+      const res = await addWorkspaceMember({
         WorkspaceId: workspace.Id,
         UserId: userId,
         Role: role,

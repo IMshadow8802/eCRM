@@ -6,6 +6,7 @@ import { Plus, MoreVertical, Check, X, Trash2 } from "lucide-react";
 import KanbanCard from "./KanbanCard";
 import { TextInput, Menu, IconButton, Modal, Button, Combobox } from "../ui";
 import { useApiMutation } from "../../hooks/useApiMutation";
+import { PLATFORM_ENDPOINTS } from "../../api/platformQueries";
 
 export default function KanbanColumn({
   column,
@@ -37,11 +38,11 @@ export default function KanbanColumn({
   const isOrphan = column.Id === -1;
 
   const saveColumnMutation = useApiMutation({
-    endpoint: "/api/kanban/saveKanbanColumn",
+    endpoint: PLATFORM_ENDPOINTS.kanban.saveKanbanColumn,
     showSuccessMessage: false,
   });
   const deleteColumnMutation = useApiMutation({
-    endpoint: "/api/kanban/deleteKanbanColumn",
+    endpoint: PLATFORM_ENDPOINTS.kanban.deleteKanbanColumn,
     showSuccessMessage: false,
   });
 

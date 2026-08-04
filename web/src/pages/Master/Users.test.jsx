@@ -26,10 +26,13 @@ vi.mock("../../hooks/useApiQuery", () => ({
   useApiQuery: vi.fn(() => ({ data: { userGroups: [] } })),
 }));
 
+// Users.jsx writes through api/masterQueries, which posts on the one shared
+// apiClient — so the client is what we stub, and the endpoint assertions below
+// still read as "this page hits this URL".
 const post = vi.fn();
-vi.mock("../../hooks/useApi", () => ({
+vi.mock("../../utils/axiosConfig", () => ({
   __esModule: true,
-  default: () => ({ post }),
+  apiClient: { post: (...args) => post(...args) },
 }));
 
 const confirmDelete = vi.fn();

@@ -6,7 +6,7 @@ import * as z from "zod";
 import { useSnackbar } from "notistack";
 import { useQueryClient } from "@tanstack/react-query";
 import useAuthStore from "../../../stores/useAuthStore";
-import useApi from "../../../hooks/useApi";
+import { saveUser } from "../../../api/masterQueries";
 import {
   FormModal,
   FormContainer,
@@ -58,7 +58,6 @@ const UserForm = ({
 }) => {
   const { enqueueSnackbar } = useSnackbar();
   const queryClient = useQueryClient();
-  const apiClient = useApi();
   const { CompId, BranchId, UserId } = useAuthStore();
 
   // Initialize default values
@@ -124,7 +123,7 @@ const UserForm = ({
         ...(editingUser && !data.Password && { Password: undefined }),
       };
 
-      const response = await apiClient.post("/api/users/saveUser", payload);
+      const response = await saveUser(payload);
 
       if (response.data.success) {
         enqueueSnackbar(

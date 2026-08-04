@@ -23,6 +23,8 @@ import {
 
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { useApiMutation } from "../../hooks/useApiMutation";
+import { TASK_ENDPOINTS } from "../../api/taskQueries";
+import { WORKSPACE_ENDPOINTS } from "../../api/workspaceQueries";
 import useWorkspaceStore from "../../stores/useWorkspaceStore";
 import WorkspaceSwitcher from "../../components/Workspace/WorkspaceSwitcher";
 import KanbanColumn from "../../components/Kanban/KanbanColumn";
@@ -103,12 +105,12 @@ export default function TaskBoard() {
   useEffect(() => () => dragGuard.end(), []);
 
   const ensureMutation = useApiMutation({
-    endpoint: "/api/workspaces/ensurePersonalWorkspace",
+    endpoint: WORKSPACE_ENDPOINTS.workspaces.ensurePersonalWorkspace,
     showSuccessMessage: false,
     showErrorMessage: false,
   });
   const applyTemplateMutation = useApiMutation({
-    endpoint: "/api/workspaces/applyKanbanTemplate",
+    endpoint: WORKSPACE_ENDPOINTS.workspaces.applyKanbanTemplate,
     showSuccessMessage: false,
   });
 
@@ -142,7 +144,7 @@ export default function TaskBoard() {
 
   const { data: tasksPayload, refetch: refetchTasks } = useApiQuery({
     queryKey: ["tasks", workspaceId, search],
-    endpoint: "/api/tasks/fetchTasks",
+    endpoint: TASK_ENDPOINTS.tasks.fetchTasks,
     params: {
       WorkspaceId: workspaceId,
       PageNumber: 1,
@@ -154,20 +156,16 @@ export default function TaskBoard() {
   });
   const tasks = tasksPayload?.tasks ?? [];
 
-  const saveMutation = useApiMutation({
-    endpoint: "/api/tasks/saveTask",
-    showSuccessMessage: false,
-  });
   // Dragging is a status change, not an edit of the task — it goes through its
   // own endpoint so the assignee can move their own work, and so the whole task
   // (including the legacy AssignedToUserId alias, which would replace the
   // assignee set with one person) is never re-sent just to change a column.
   const moveMutation = useApiMutation({
-    endpoint: "/api/tasks/moveTaskColumn",
+    endpoint: TASK_ENDPOINTS.tasks.moveTaskColumn,
     showSuccessMessage: false,
   });
   const bulkDeleteMutation = useApiMutation({
-    endpoint: "/api/tasks/bulkDeleteTasks",
+    endpoint: TASK_ENDPOINTS.tasks.bulkDeleteTasks,
     showSuccessMessage: false,
     showErrorMessage: false,
   });
