@@ -162,18 +162,25 @@ describe("teamController.save", () => {
     );
   });
 
-  // BUG: Members defaults to [] and an empty/absent array serialises to null.
-  // sp_SaveTeam's update path unconditionally runs
-  // `DELETE FROM tblTeamMembers WHERE TeamId = @Id` before re-inserting from
-  // @Members, so a partial update that only touches the name silently wipes
-  // every member — and the SP's workspace cascade then soft-removes those
-  // users from every linked project workspace too. A PATCH-shaped request is
-  // destructive. Members should be omitted-means-unchanged, or the controller
-  // should require it explicitly.
-  it("sends Members: null for a name-only update, which wipes the roster", async () => {
+  /**
+   * FIXED 2026-08-04 (controller + 070_team_roster_guard.sql).
+   *
+   * sp_SaveTeam replaces the whole roster and cascades that into every linked
+   * project workspace, so "said nothing about members" and "wants no members"
+   * cannot share a value. They used to: Members defaulted to `[]` and both an
+   * empty array and a missing key became null, which the SP read as "no
+   * opinion" — while still running an unconditional DELETE first. Renaming a
+   * team therefore deleted every member and soft-removed them from its project
+   * workspaces. The web form escaped it only by posting the whole array back
+   * every time.
+   *
+   * Three states now: absent -> null (leave alone), [] -> '[]' (clear),
+   * [1,2] -> '[1,2]' (replace).
+   */
+  it("omits Members entirely for a name-only update, so the roster survives", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [
-        [{ ResponseCode: 200, ResponseMess: "Team updated successfully", TeamId: 8, MemberCount: 0 }],
+        [{ ResponseCode: 200, ResponseMess: "Team updated successfully", TeamId: 8, MemberCount: 2 }],
       ],
     });
     const req = baseReq({ body: { Id: 8, Name: "Ops renamed" } });
@@ -184,12 +191,31 @@ describe("teamController.save", () => {
     expect(database.executeStoredProcedure.mock.calls[0][1].Members).toBeNull();
   });
 
-  // BUG: a non-array Members payload (an already-stringified JSON array, or an
-  // object) is silently discarded as null rather than rejected — same
-  // destructive outcome as above, with no error to tell the caller. Compare
-  // projectController.save, which passes a string through untouched: the two
-  // sibling controllers disagree on the same field.
-  it("silently drops a Members payload that is not an array", async () => {
+  it("sends '[]' for an explicit empty array, so clearing a roster still works", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [
+        [{ ResponseCode: 200, ResponseMess: "Team updated successfully", TeamId: 8, MemberCount: 0 }],
+      ],
+    });
+    const req = baseReq({ body: { Id: 8, Name: "Ops", Members: [] } });
+    const res = mockRes();
+
+    await teamController.save(req, res);
+
+    // The distinction the whole fix rests on: '[]' is not null.
+    expect(database.executeStoredProcedure.mock.calls[0][1].Members).toBe("[]");
+  });
+
+  /**
+   * A non-array payload (an already-stringified array, an object, junk) is
+   * treated as ABSENT rather than as a clear. Refusing to touch the roster is
+   * the safe reading of an input we do not understand — the alternative is
+   * deleting everyone because a client sent the wrong shape.
+   *
+   * Note the sibling disagreement this leaves in place: projectController.save
+   * passes a Members string straight through to its SP.
+   */
+  it("treats a non-array Members payload as absent, not as a clear", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce(created);
     const req = baseReq({ body: { Name: "Ops", Members: "[11,12]" } });
     const res = mockRes();

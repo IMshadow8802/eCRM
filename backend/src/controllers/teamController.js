@@ -12,14 +12,31 @@ class TeamController {
         Description,
         LeadUserId,
         Color,
-        Members = [], // Array of user IDs
+        Members, // Array of user IDs. NO default — see below.
         IsActive = true,
       } = req.body;
 
-      // Convert Members array to JSON string for stored procedure
-      const membersJson = Array.isArray(Members) && Members.length > 0
-        ? JSON.stringify(Members)
-        : null;
+      /**
+       * Three states, not two. sp_SaveTeam replaces the whole roster and
+       * cascades that into every linked project workspace, so "the caller said
+       * nothing about members" and "the caller wants no members" cannot share a
+       * value:
+       *
+       *   absent      -> null    leave the roster alone
+       *   []          -> '[]'    clear it, deliberately
+       *   [1, 2]      -> '[1,2]' replace it
+       *
+       * This used to default Members to `[]` and map both `[]` and a missing
+       * key to null, which the SP read as "no opinion" — while still running an
+       * unconditional DELETE first. So renaming a team deleted every member and
+       * soft-removed them from its project workspaces. The web form only
+       * escaped it by posting the full array back every time.
+       *
+       * Anything that is not an array (a string, an object, junk) is treated as
+       * absent rather than as a clear: refusing to touch the roster is the safe
+       * reading of an input we do not understand.
+       */
+      const membersJson = Array.isArray(Members) ? JSON.stringify(Members) : null;
 
       const result = await database.executeStoredProcedure("sp_SaveTeam", {
         Id,
