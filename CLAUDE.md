@@ -316,9 +316,22 @@ prebuild, so every native setting (permissions, plugins, icons, bundle ids,
 
 ```bash
 pnpm exec expo prebuild --clean          # regenerate android/ + ios/
-pnpm ios --device                        # run on a connected iPhone
+pnpm ios --device                        # Debug build on a connected iPhone
+pnpm ios:release                         # Release build, installed + standalone
 cd android && ./gradlew assembleRelease  # release APK  (or: pnpm apk)
 ```
+
+**Debug vs Release on device.** `pnpm ios --device` installs a *Debug* build: it
+loads JS from Metro over the network, so it dies the moment the laptop sleeps or
+the phone leaves wifi. `pnpm ios:release`
+(`expo run:ios --device --configuration Release`) bundles the JS into the app —
+it launches from the home screen with no Metro, no laptop, and behaves like the
+shipped app. Use it for anything you actually want to *use* rather than debug.
+
+Signing: whatever team Xcode is set to. A paid Apple Developer account gives a
+1-year provisioning profile; a free personal team expires after **7 days** and
+the app then refuses to launch until reinstalled. There is no EAS and no OTA
+here (§9.1), so a reinstall means re-running the command.
 
 Adding a native library: `pnpm exec expo install <pkg>` (never plain `pnpm add`
 for anything with native code — it skips the SDK version pin), add its config

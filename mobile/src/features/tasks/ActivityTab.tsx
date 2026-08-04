@@ -1,4 +1,5 @@
-import { FlatList, StyleSheet, View } from "react-native";
+import { useMemo } from "react";
+import { ScrollView, StyleSheet } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowRightLeft,
@@ -16,16 +17,16 @@ import {
 } from "lucide-react-native";
 
 import { getTaskActivity } from "../../api/taskQueries";
-import { colors, radius, shadows, spacing, SCREEN_PADDING } from "../../theme";
-import { EmptyState, Text } from "../../ui";
+import { colors, spacing, SCREEN_PADDING } from "../../theme";
+import { EmptyState, Text, Timeline, type TimelineEntry } from "../../ui";
 import { relativeTime } from "./taskHelpers";
 
 /**
- * tblTaskActivity.Action is a free-ish verb written by whichever SP logged the
+ * tblActivityLog.Action is a free-ish verb written by whichever SP logged the
  * row, so this matches on a substring rather than an exact set — an action the
- * backend adds later still lands on a sensible glyph instead of vanishing.
+ * backend adds later still lands on a sensible node instead of vanishing.
  */
-const ACTION_ICON: { match: string; Icon: LucideIcon; tone: keyof typeof colors }[] = [
+const ACTION_NODE: { match: string; Icon: LucideIcon; tone: keyof typeof colors }[] = [
   { match: "creat", Icon: Plus, tone: "success" },
   { match: "complet", Icon: CircleCheck, tone: "success" },
   { match: "checklist", Icon: ListChecks, tone: "primary" },
@@ -41,10 +42,9 @@ const ACTION_ICON: { match: string; Icon: LucideIcon; tone: keyof typeof colors 
   { match: "updat", Icon: Pencil, tone: "textSecondary" },
 ];
 
-function glyphFor(action: string) {
-  const key = action.toLowerCase();
+function nodeFor(action: string) {
   return (
-    ACTION_ICON.find((entry) => key.includes(entry.match)) ?? {
+    ACTION_NODE.find((entry) => action.toLowerCase().includes(entry.match)) ?? {
       Icon: History,
       tone: "textSecondary" as keyof typeof colors,
     }
@@ -62,65 +62,52 @@ export default function ActivityTab({ taskId }: ActivityTabProps) {
     queryFn: () => getTaskActivity({ TaskId: taskId }),
   });
 
-  const entries = data ?? [];
+  const entries: TimelineEntry[] = useMemo(
+    () =>
+      (data ?? []).map((item) => {
+        const node = nodeFor(item.Action);
+        return {
+          key: String(item.Id),
+          title: item.Description ?? item.Action,
+          meta: `${item.UserName ?? "System"} · ${relativeTime(item.CreatedDate)}`,
+          icon: node.Icon,
+          tone: node.tone,
+        };
+      }),
+    [data],
+  );
+
+  if (!entries.length) {
+    return isLoading ? null : (
+      <EmptyState
+        icon={History}
+        title="No history yet"
+        message="Edits, moves and completions on this task get recorded here."
+      />
+    );
+  }
 
   return (
-    <FlatList
-      data={entries}
-      keyExtractor={(entry) => String(entry.Id)}
-      contentContainerStyle={[styles.list, !entries.length && styles.listEmpty]}
+    <ScrollView
+      contentContainerStyle={styles.list}
       showsVerticalScrollIndicator={false}
-      ListEmptyComponent={
-        isLoading ? null : (
-          <EmptyState
-            icon={History}
-            title="No history yet"
-            message="Edits, moves and completions on this task get recorded here."
-          />
-        )
-      }
-      renderItem={({ item }) => {
-        const { Icon, tone } = glyphFor(item.Action);
-        return (
-          <View style={styles.row}>
-            <View style={[styles.glyph, { backgroundColor: colors[tone] }]}>
-              <Icon size={16} color={colors.textOnBrand} />
-            </View>
-            <View style={styles.text}>
-              <Text variant="body">{item.Description ?? item.Action}</Text>
-              <Text variant="caption" color="textMuted">
-                {item.UserName ?? "System"} · {relativeTime(item.CreatedDate)}
-              </Text>
-            </View>
-          </View>
-        );
-      }}
-    />
+    >
+      <Timeline entries={entries} />
+      {/* The rail stops at the last node; this says the log does too, rather
+          than leaving it looking truncated. */}
+      <Text variant="caption" color="textMuted" style={styles.end}>
+        Start of history
+      </Text>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   list: {
     paddingHorizontal: SCREEN_PADDING,
+    paddingTop: spacing[2],
     paddingBottom: spacing[20],
-    gap: spacing[3],
   },
-  listEmpty: { flexGrow: 1 },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[3],
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: spacing[3],
-    ...shadows.sm,
-  },
-  glyph: {
-    width: 32,
-    height: 32,
-    borderRadius: radius.full,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  text: { flex: 1, gap: spacing[1] },
+  // Lines up under the entry text, not under the rail.
+  end: { paddingLeft: spacing[10] },
 });

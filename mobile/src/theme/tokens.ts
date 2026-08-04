@@ -22,18 +22,6 @@ export const palette = {
     light: "#FF7AB7",
     dark: "#E5558C",
   },
-  /**
-   * Warm neutrals for SURFACES and LINES — the page background is warm
-   * off-white, and a cool grey border on it reads as dirty rather than neutral.
-   * Text keeps the `gray` ramp below: at text darkness the temperature does not
-   * register, and the cool greys have better contrast.
-   */
-  stone: {
-    50: "#F7F6F3",
-    100: "#F1EFEA",
-    200: "#E7E4DD",
-    300: "#D8D4CB",
-  },
   gray: {
     50: "#F9FAFB",
     100: "#F3F4F6",
@@ -54,13 +42,22 @@ export const palette = {
     600: "#DC2626",
     700: "#B91C1C",
   },
+  /**
+   * Emerald, not the old grass green (#16A34A).
+   *
+   * That one leans yellow, which put it a short hop from the amber beside it —
+   * two hues doing different jobs that read as neighbours instead of
+   * opposites. Emerald sits further round toward teal, so "done" and "medium
+   * priority" are unmistakable side by side, and it holds white text better:
+   * ~3.6:1 at the 600 level against ~2.5 for a brighter green.
+   */
   green: {
-    50: "#F0FDF4",
-    100: "#DCFCE7",
-    300: "#86EFAC",
-    500: "#22C55E",
-    600: "#16A34A",
-    700: "#15803D",
+    50: "#ECFDF5",
+    100: "#D1FAE5",
+    300: "#6EE7B7",
+    500: "#10B981",
+    600: "#059669",
+    700: "#047857",
   },
   amber: {
     50: "#FFFBEB",
@@ -86,18 +83,13 @@ export const palette = {
   white: "#FFFFFF",
   black: "#000000",
   /**
-   * Shadow ink, warm on purpose.
+   * Shadow ink.
    *
-   * The card shadow used to be brand blue. One card got away with it; a board
-   * column of eight, stacked 12px apart, pooled a cool haze between them that
-   * read as a grey lane running down the page — the white cards looked like
-   * they were sitting on a different, colder surface than the warm background
-   * either side of them.
-   *
-   * A shadow is the page seen through less light, so it has to be the page's
-   * own colour family. This is the warm neutral the stone ramp darkens into.
+   * Neutral, now that the page is white — a warm shadow on white goes brown
+   * rather than grey. Pure black is still wrong: at these opacities it reads
+   * as a smudge, where a near-black grey reads as depth.
    */
-  shadow: "#4A4034",
+  shadow: "#111827",
   transparent: "transparent",
 } as const;
 
@@ -107,16 +99,22 @@ export const palette = {
  */
 export const colors = {
   // surfaces
-  // The PAGE is tinted and CARDS are white. With both white there is no figure
-  // and no ground, so nothing reads as a card — it all looks like one sheet.
   //
-  // Warm off-white rather than a cool grey: it reads as paper, and the white
-  // cards sitting on it feel lifted rather than merely lighter. Do not push it
-  // closer to white — the separation from the cards is the whole point.
-  background: palette.stone[50],
+  // The page is WHITE, and so are the cards. That used to be the thing to
+  // avoid — with no tint behind them nothing reads as a card — so the page was
+  // a warm off-white and the separation came for free.
+  //
+  // It now comes from the cards instead: a hairline border, a contact shadow,
+  // and a colour-tinted footer strip on each one. That is a better trade. The
+  // tint was doing its job on a list of cards and nothing else; every plain
+  // screen in the app paid for it by looking faintly yellow.
+  //
+  // Neutrals are cool greys again to match. A warm border on a warm page reads
+  // as paper; the same border on white reads as dirty.
+  background: palette.white,
   surface: palette.white,
-  surfaceMuted: palette.stone[100],
-  surfaceSunken: palette.stone[200],
+  surfaceMuted: palette.gray[50],
+  surfaceSunken: palette.gray[100],
   // The ONE place alpha is allowed, and only because a modal scrim must show
   // the screen behind it — an opaque one is a different screen, not a dialog.
   // Everything else in this file is a solid colour.
@@ -130,16 +128,9 @@ export const colors = {
   textOnBrand: palette.white,
 
   // lines
-  border: palette.stone[200],
-  borderStrong: palette.stone[300],
-  divider: palette.stone[100],
-  /**
-   * The hairline the page texture is drawn in. Sits between `background` and
-   * `divider` on purpose: at `divider` the ruling reads as a grid you are meant
-   * to look at, and at `background` it disappears entirely on a bright screen.
-   * This is the value where it registers as paper rather than as lines.
-   */
-  patternLine: "#EFEDE6",
+  border: palette.gray[200],
+  borderStrong: palette.gray[300],
+  divider: palette.gray[100],
 
   // interactive
   primary: palette.brand.base,
@@ -187,12 +178,12 @@ export const colors = {
 
   // Solid press/disabled fills. Dimming with opacity lets whatever is behind
   // bleed through and makes the control look faded rather than pressed.
-  surfacePressed: palette.stone[100],
+  surfacePressed: palette.gray[100],
   primaryDim: "#8F99D4",
   dangerDim: "#EFA3A3",
 
   // gray[100]/gray[400] was too faint — a disabled button read as an empty box.
-  disabledBg: palette.stone[200],
+  disabledBg: palette.gray[200],
   disabledText: palette.gray[500],
 } as const;
 
@@ -254,16 +245,25 @@ export const shadows = {
    * and turn into one grey lane running down the page. Warming the ink helped
    * but did not fix it, because the problem is reach, not colour.
    *
-   * So: barely offset, small radius, low opacity. Enough to say the card is
-   * off the page, not enough to touch the card below. Definition comes from
-   * the hairline border on the card itself, which cannot bleed at all.
+   * It is the ONLY thing separating a white card from a white page — there is
+   * no border any more — so it has to actually read as height rather than as a
+   * smudge. Two properties do that work:
+   *
+   *   offset 4  — a shadow directly under an object reads as contact; one cast
+   *               below it reads as the object standing above the surface.
+   *   radius 10 — soft enough to be light falling off an edge rather than a
+   *               drawn outline.
+   *
+   * Bounded by the 16px gap between stacked cards. The version that welded a
+   * board column into one grey lane was radius 14 at offset 6 across a 12px
+   * gap; this reaches meaningfully less far across meaningfully more space.
    */
   md: {
     shadowColor: palette.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 5,
   },
   lg: {
     shadowColor: palette.shadow,

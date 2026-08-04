@@ -1,6 +1,5 @@
 import { useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
   StyleSheet,
@@ -57,6 +56,7 @@ import {
   Fab,
   Screen,
   ScreenHeader,
+  ScreenLoader,
   Segmented,
   Text,
   type ComposeField,
@@ -227,16 +227,28 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   const assignees = task ? assigneesOf(task) : [];
   const done = checklist.filter((i) => i.IsCompleted).length;
 
-  if (taskQuery.isLoading) {
+  // The header renders in every one of these states on purpose: a loading or
+  // failed screen with no back button is a dead end, and force-quitting the app
+  // was the only way out of it.
+  if (taskQuery.isLoading || taskQuery.isError) {
     return (
       <Screen>
-        <View style={styles.centre}>
-          <ActivityIndicator color={colors.primary} />
-        </View>
+        <ScreenHeader title="Task" onBack={navigation.goBack} />
+        <ScreenLoader
+          failed={taskQuery.isError}
+          onRetry={taskQuery.refetch}
+          message={
+            taskQuery.isError
+              ? "The task could not be loaded. Check your connection and try again."
+              : undefined
+          }
+        />
       </Screen>
     );
   }
 
+  // Loaded fine, but there is no row — deleted, or access was revoked. That is
+  // a different thing from a failed request and must not offer a retry.
   if (!task) {
     return (
       <Screen>

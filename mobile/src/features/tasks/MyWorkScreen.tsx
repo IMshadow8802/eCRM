@@ -138,7 +138,10 @@ export default function MyWorkScreen() {
                 style={({ pressed }) => [
                   styles.filter,
                   active ? styles.filterActive : styles.filterIdle,
-                  pressed && !active && styles.filterPressed,
+                  // Sinks whether or not it is the selected one — pressing the
+                  // active chip used to do nothing at all, which reads as a
+                  // dead control.
+                  pressed && styles.filterPressed,
                 ]}
               >
                 <Text
@@ -256,25 +259,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[4],
     paddingVertical: spacing[2],
     borderRadius: radius.full,
-    borderWidth: 1,
   },
-  // Raised, like every other surface in the app: a white card on a warm page,
-  // lifted on the same shadow the task cards use. Flat chips read as painted on.
-  filterIdle: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
+  /**
+   * Raised the same way the cards are: no outline, `shadows.md` doing the
+   * lifting, and a press that sinks the chip rather than tinting it.
+   *
+   * No `overflow: hidden` anywhere near these — that is what flattened the
+   * cards, since iOS clips a layer's own shadow along with its children.
+   */
+  filterIdle: { backgroundColor: colors.surface, ...shadows.md },
+  filterActive: { backgroundColor: colors.primary, ...shadows.md },
+  filterPressed: {
+    transform: [{ translateY: 2 }],
     ...shadows.sm,
-  },
-  filterPressed: { backgroundColor: colors.surfacePressed },
-  filterActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-    ...shadows.md,
   },
   sectionTitle: {
     paddingHorizontal: SCREEN_PADDING,
     paddingTop: spacing[3],
     paddingBottom: spacing[2],
   },
-  cardWrap: { paddingHorizontal: SCREEN_PADDING, paddingBottom: spacing[3] },
+  // 16, matching the board columns: the gap has to out-reach the card shadow
+  // or stacked shadows meet and the list reads as one grey slab.
+  cardWrap: { paddingHorizontal: SCREEN_PADDING, paddingBottom: spacing[4] },
 });

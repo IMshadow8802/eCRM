@@ -3,8 +3,8 @@ import {
   Ban,
   Bug,
   Check,
-  CircleAlert,
   CircleCheckBig,
+  CircleAlert,
   Clock,
   Columns3,
   Flag,
@@ -56,7 +56,14 @@ const PRIORITY_INK: Record<TaskPriority, keyof typeof colors> = {
   urgent: "priorityUrgent",
 };
 
-/** One icon + value pair. Reads faster than a labelled row and packs tighter. */
+/**
+ * One icon + value pair. Reads faster than a labelled row and packs tighter.
+ *
+ * Outlined, never filled. lucide has no filled variants, and faking them with
+ * the SVG `fill` prop turns an icon into a blob wherever its meaning lives in
+ * its interior lines. Weight comes from the stroke instead — see the
+ * LucideProvider in App.tsx.
+ */
 function Stat({
   Icon,
   value,
@@ -99,6 +106,18 @@ function TaskCardBase({
     ? Check
     : (TYPE_ICON[task.Type ?? "task"] ?? TYPE_ICON.task!);
 
+  /**
+   * The footer strip takes the card's ink at FULL strength, with white on it.
+   *
+   * Not a 50-level tint of it: a pale wash is exactly the washed-out look this
+   * app has a standing rule against, and it reads as a mistake rather than as
+   * a choice. A strip is either a colour or it is not.
+   *
+   * `ink` already resolves done-outranks-priority — a finished urgent task is
+   * not urgent any more — so the strip just takes it.
+   */
+  const strip = ink;
+
   const logged = task.LoggedHours ?? 0;
   const estimated = task.EstimatedHours ?? 0;
   const subTasks = task.SubTaskCount ?? 0;
@@ -111,108 +130,140 @@ function TaskCardBase({
       delayLongPress={300}
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
-      <View style={styles.row}>
-        {/* Solid fill, white glyph — the colour encodes priority at full strength. */}
-        <View style={[styles.glyph, { backgroundColor: ink }]}>
-          <Icon size={20} color={colors.textOnBrand} />
-        </View>
+      <View style={styles.body}>
+        <View style={styles.row}>
+          <View style={styles.main}>
+            <View style={styles.titleRow}>
+              <Icon size={15} color={ink} style={styles.titleIcon} />
+              <Text
+                variant="h3"
+                numberOfLines={2}
+                style={[styles.title, task.IsCompleted && styles.doneText]}
+              >
+                {task.Title}
+              </Text>
+            </View>
+          </View>
 
-        <View style={styles.main}>
-          <Text
-            variant="h3"
-            numberOfLines={2}
-            style={task.IsCompleted ? styles.doneText : undefined}
-          >
-            {task.Title}
-          </Text>
-
-          <View style={styles.subRow}>
-            {showWorkspace && task.WorkspaceName ? (
-              <Stat
-                Icon={FolderOpen}
-                value={task.WorkspaceName}
-                tone="textMuted"
-              />
-            ) : null}
-            {task.ColumnTitle ? (
-              <Stat Icon={Columns3} value={task.ColumnTitle} tone="textMuted" />
+          <View style={styles.assignees}>
+            {assignees.slice(0, 2).map((a, i) => (
+              <View
+                key={a.UserId}
+                style={[styles.avatarSlot, i > 0 && styles.avatarOverlap]}
+              >
+                <Avatar name={a.FullName} uri={a.Avatar} size={26} />
+              </View>
+            ))}
+            {assignees.length > 2 ? (
+              <View style={[styles.avatarSlot, styles.avatarOverlap, styles.more]}>
+                <Text variant="caption" color="textSecondary">
+                  +{assignees.length - 2}
+                </Text>
+              </View>
             ) : null}
           </View>
         </View>
 
-        <View style={styles.assignees}>
-          {assignees.slice(0, 2).map((a, i) => (
+        {/* Shown when finished too, filled and green. "3 of 3" is the proof the
+            work was actually done — hiding the bar at 100% removes the only
+            thing that distinguishes a task that had nine steps from one that
+            had none. */}
+        {total > 0 ? (
+          <View style={styles.track}>
             <View
-              key={a.UserId}
-              style={[styles.avatarSlot, i > 0 && styles.avatarOverlap]}
-            >
-              <Avatar name={a.FullName} uri={a.Avatar} size={26} />
-            </View>
-          ))}
-          {assignees.length > 2 ? (
-            <View style={[styles.avatarSlot, styles.avatarOverlap, styles.more]}>
-              <Text variant="caption" color="textSecondary">
-                +{assignees.length - 2}
-              </Text>
-            </View>
+              style={[
+                styles.fill,
+                {
+                  width: `${task.IsCompleted ? 100 : Math.round(pct * 100)}%`,
+                  backgroundColor: ink,
+                },
+              ]}
+            />
+          </View>
+        ) : null}
+
+        {/* Everything here comes from columns sp_FetchTask already returns —
+            none of it costs an extra request. */}
+        <View style={styles.stats}>
+          {total > 0 ? (
+            <Stat
+              Icon={task.IsCompleted ? CircleCheckBig : ListChecks}
+              value={`${done} of ${total}`}
+              tone={task.IsCompleted ? "success" : "textSecondary"}
+            />
+          ) : null}
+          {logged > 0 ? (
+            <Stat
+              Icon={Timer}
+              value={
+                estimated > 0
+                  ? `${formatHours(logged)} / ${formatHours(estimated)}`
+                  : formatHours(logged)
+              }
+              tone={estimated > 0 && logged > estimated ? "danger" : "textSecondary"}
+            />
+          ) : null}
+          {subTasks > 0 ? (
+            <Stat Icon={GitBranch} value={String(subTasks)} />
+          ) : null}
+          {blockers > 0 ? (
+            <Stat Icon={Ban} value={String(blockers)} tone="danger" />
+          ) : null}
+          {priority ? (
+            <Stat Icon={Flag} value={priority} tone={PRIORITY_INK[priority]} />
+          ) : null}
+
+          <View style={styles.spacer} />
+
+          {due ? (
+            <Stat
+              Icon={overdue ? CircleAlert : Clock}
+              value={due}
+              tone={overdue ? "danger" : "textSecondary"}
+            />
           ) : null}
         </View>
       </View>
 
-      {total > 0 && !task.IsCompleted ? (
-        <View style={styles.track}>
-          <View
-            style={[
-              styles.fill,
-              { width: `${Math.round(pct * 100)}%`, backgroundColor: ink },
-            ]}
-          />
+      {/* The board, given its own tinted strip across the foot of the card.
+          It was a 11px grey line lost among five other 11px grey lines, and on
+          My Work — which spans every workspace you are in — which board a task
+          belongs to is the first thing you need, not the last. */}
+      {showWorkspace && task.WorkspaceName ? (
+        <View style={[styles.footer, { backgroundColor: strip }]}>
+          <FolderOpen size={14} color={colors.textOnBrand} />
+          <Text
+            variant="label"
+            color="textOnBrand"
+            numberOfLines={1}
+            style={styles.board}
+          >
+            {task.WorkspaceName}
+          </Text>
+          {task.ColumnTitle ? (
+            <>
+              <Columns3 size={13} color={colors.textOnBrand} />
+              <Text variant="caption" color="textOnBrand" numberOfLines={1}>
+                {task.ColumnTitle}
+              </Text>
+            </>
+          ) : null}
+        </View>
+      ) : task.ColumnTitle ? (
+        // On a board the workspace is a given, so the strip carries the column
+        // alone rather than disappearing and leaving a plain slab.
+        <View style={[styles.footer, { backgroundColor: strip }]}>
+          <Columns3 size={14} color={colors.textOnBrand} />
+          <Text
+            variant="label"
+            color="textOnBrand"
+            numberOfLines={1}
+            style={styles.board}
+          >
+            {task.ColumnTitle}
+          </Text>
         </View>
       ) : null}
-
-      {/* Everything here comes from columns sp_FetchTask already returns —
-          none of it costs an extra request. */}
-      <View style={styles.stats}>
-        {task.IsCompleted ? (
-          <Stat Icon={CircleCheckBig} value="Done" tone="success" />
-        ) : total > 0 ? (
-          <Stat
-            Icon={ListChecks}
-            value={`${done} of ${total}`}
-            tone="textSecondary"
-          />
-        ) : null}
-        {logged > 0 ? (
-          <Stat
-            Icon={Timer}
-            value={
-              estimated > 0
-                ? `${formatHours(logged)} / ${formatHours(estimated)}`
-                : formatHours(logged)
-            }
-            tone={estimated > 0 && logged > estimated ? "danger" : "textSecondary"}
-          />
-        ) : null}
-        {subTasks > 0 ? (
-          <Stat Icon={GitBranch} value={String(subTasks)} />
-        ) : null}
-        {blockers > 0 ? (
-          <Stat Icon={Ban} value={String(blockers)} tone="danger" />
-        ) : null}
-        {priority ? (
-          <Stat Icon={Flag} value={priority} tone={PRIORITY_INK[priority]} />
-        ) : null}
-
-        <View style={styles.spacer} />
-
-        {due ? (
-          <Stat
-            Icon={overdue ? CircleAlert : Clock}
-            value={due}
-            tone={overdue ? "danger" : "textSecondary"}
-          />
-        ) : null}
-      </View>
     </Pressable>
   );
 }
@@ -225,27 +276,49 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
     borderRadius: radius.xl,
-    padding: spacing[4],
-    gap: spacing[3],
-    // A hairline warm edge does the separating; the shadow only lifts. A
-    // border stops exactly where the card does, so stacking cards 16px apart
-    // can never pool it into a lane the way a soft shadow does.
-    borderWidth: 1,
-    borderColor: colors.border,
+    /**
+     * No padding here — the footer strip runs edge to edge, so each section
+     * pads itself.
+     *
+     * And NO `overflow: hidden`, even though that is the obvious way to make
+     * the strip respect the bottom corners. On iOS it sets `masksToBounds` on
+     * the layer, which clips the layer's own shadow as well as its children —
+     * the card goes completely flat and merges into a white page. That is why
+     * these looked dead next to the Work hub's cards, which are the same
+     * `shadows.md` without the clip. The footer rounds its own corners instead.
+     */
     ...shadows.md,
   },
-  // Scale only — no dimming. Solid surfaces stay solid.
-  pressed: { transform: [{ scale: 0.985 }] },
-  row: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
-  glyph: {
-    width: 42,
-    height: 42,
-    borderRadius: radius.full,
-    alignItems: "center",
-    justifyContent: "center",
+  // Presses INTO the page: it sinks by the shadow offset and the shadow
+  // shrinks with it, which is what a lifted object does when you push it.
+  // No dimming — solid surfaces stay solid.
+  pressed: {
+    transform: [{ scale: 0.985 }, { translateY: 2 }],
+    ...shadows.sm,
   },
+  body: { padding: spacing[4], gap: spacing[3] },
+  row: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
   main: { flex: 1, gap: spacing[1] },
-  subRow: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
+  titleRow: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
+  // Fixed, so a two-line title wraps under itself rather than under the icon.
+  titleIcon: { marginTop: 1 },
+  title: { flex: 1 },
+  footer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[2],
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[3],
+    // Rounds itself to match the card, so the card never needs to clip — see
+    // the note on `card` for why clipping is not an option here.
+    borderBottomLeftRadius: radius.xl,
+    borderBottomRightRadius: radius.xl,
+    // No rule above it: the colour change from white to a solid strip already
+    // is the edge, and a grey hairline across it just looks like a seam.
+  },
+  // Shrinks before the column label does — a long board name should truncate,
+  // not push the column off the card.
+  board: { flexShrink: 1 },
   // Muted strike, muted line. The strikethrough is what actually reads as
   // "finished" at a glance, so it stays — but deliberately uncoloured: React
   // Native has no textDecorationThickness, and at 16px a 1px line is too thin

@@ -125,12 +125,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: radius.xl,
     padding: spacing[4],
-    // See TaskCard: the border separates, the shadow only lifts.
-    borderWidth: 1,
-    borderColor: colors.border,
     ...shadows.md,
   },
-  pressed: { transform: [{ scale: 0.985 }] },
+  // Presses INTO the page: it sinks by the shadow offset and the shadow
+  // shrinks with it, which is what a lifted object does when you push it.
+  pressed: {
+    transform: [{ scale: 0.985 }, { translateY: 2 }],
+    ...shadows.sm,
+  },
   // 38, not 46. The glyph is a label for the row, not its subject — at 46 it
   // was the heaviest thing on the card and pulled the eye off the board's name.
   glyph: {

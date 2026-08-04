@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Lock, Users } from "lucide-react-native";
 import type {
@@ -11,8 +11,16 @@ import { fetchUserDirectory } from "../../api/userQueries";
 import { fetchWorkspaces, saveWorkspace } from "../../api/workspaceQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import type { Workspace, WorkspaceType } from "../../types/api";
-import { colors, spacing, SCREEN_PADDING } from "../../theme";
-import { Button, Input, Screen, ScreenHeader, Select, Text } from "../../ui";
+import { spacing, SCREEN_PADDING } from "../../theme";
+import {
+  Button,
+  Input,
+  Screen,
+  ScreenHeader,
+  ScreenLoader,
+  Select,
+  Text,
+} from "../../ui";
 
 type Props = StackScreenProps<RootStackParamList, "WorkspaceForm">;
 type Nav = StackNavigationProp<RootStackParamList, "WorkspaceForm">;
@@ -41,7 +49,7 @@ export default function WorkspaceFormScreen({ route, navigation }: Props) {
   const workspaceId = route.params?.workspaceId;
   const editing = workspaceId != null;
 
-  const { data: workspaces, isLoading } = useQuery({
+  const { data: workspaces, isLoading, isError, refetch } = useQuery({
     queryKey: ["workspaces"],
     queryFn: () => fetchWorkspaces({ PageSize: 100, IncludeArchived: true }),
     enabled: editing,
@@ -49,13 +57,11 @@ export default function WorkspaceFormScreen({ route, navigation }: Props) {
 
   const existing = workspaces?.find((w) => w.Id === workspaceId) ?? null;
 
-  if (editing && isLoading) {
+  if (editing && (isLoading || isError)) {
     return (
       <Screen>
         <ScreenHeader title="Rename board" onBack={navigation.goBack} />
-        <View style={styles.centre}>
-          <ActivityIndicator color={colors.primary} />
-        </View>
+        <ScreenLoader failed={isError} onRetry={refetch} />
       </Screen>
     );
   }
@@ -206,12 +212,6 @@ function WorkspaceForm({ navigation, workspace }: WorkspaceFormProps) {
 }
 
 const styles = StyleSheet.create({
-  centre: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: spacing[6],
-  },
   content: {
     padding: SCREEN_PADDING,
     paddingBottom: spacing[20],

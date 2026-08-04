@@ -1,6 +1,7 @@
 // src/api/attachmentQueries.ts
 // Multipart upload + blob download. Mirrors web/src/api/attachmentQueries.js.
-import { apiClient, post, postData } from "./client";
+import { apiClient, getAuthToken, post, postData } from "./client";
+import { API_BASE_URL } from "../config/env";
 import type { ApiEnvelope, Attachment, AttachmentEntity } from "../types/api";
 
 export const ATTACHMENT_ENDPOINTS = {
@@ -70,6 +71,29 @@ export const fetchAttachmentBlob = ({ Id }: { Id: number }): Promise<Blob> =>
   apiClient
     .post(ATTACHMENT_ENDPOINTS.download, { Id }, { responseType: "blob" })
     .then((res) => res.data as Blob);
+
+/**
+ * Absolute URL + headers for streaming an attachment straight to disk.
+ *
+ * The POST download buffers the whole response in JS memory before anything
+ * touches storage, which a 200MB build does not survive on a phone. The GET
+ * form exists so `expo-file-system` can write it as it arrives — but that API
+ * issues GETs only and takes a plain URL, so it cannot go through the axios
+ * instance and needs the base URL and the token handed to it.
+ *
+ * Returns null when there is no token, rather than firing a request that is
+ * guaranteed to 401.
+ */
+export const attachmentDownloadRequest = (
+  Id: number,
+): { url: string; headers: Record<string, string> } | null => {
+  const token = getAuthToken();
+  if (!token) return null;
+  return {
+    url: `${API_BASE_URL}${ATTACHMENT_ENDPOINTS.download}/${Id}`,
+    headers: { Authorization: `Bearer ${token}` },
+  };
+};
 
 export const deleteAttachment = (params: {
   Id: number;

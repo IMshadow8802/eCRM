@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Lock } from "lucide-react-native";
 import type {
@@ -19,6 +19,7 @@ import {
   Input,
   Screen,
   ScreenHeader,
+  ScreenLoader,
   Select,
   Text,
 } from "../../ui";
@@ -55,19 +56,17 @@ export default function TaskFormScreen({ route, navigation }: Props) {
   const { workspaceId, taskId, columnId } = route.params;
   const editing = taskId != null;
 
-  const { data: task, isLoading } = useQuery({
+  const { data: task, isLoading, isError, refetch } = useQuery({
     queryKey: ["task", taskId],
     queryFn: () => fetchTaskById(taskId!),
     enabled: editing,
   });
 
-  if (editing && isLoading) {
+  if (editing && (isLoading || isError)) {
     return (
       <Screen>
         <ScreenHeader title="Edit task" onBack={navigation.goBack} />
-        <View style={styles.centre}>
-          <ActivityIndicator color={colors.primary} />
-        </View>
+        <ScreenLoader failed={isError} onRetry={refetch} />
       </Screen>
     );
   }

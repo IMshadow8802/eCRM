@@ -199,7 +199,9 @@ const styles = StyleSheet.create({
     paddingTop: spacing[3],
     paddingBottom: spacing[2],
   },
-  cardWrap: { paddingHorizontal: SCREEN_PADDING, paddingBottom: spacing[3] },
+  // 16, matching the board columns: the gap has to out-reach the card shadow
+  // or stacked shadows meet and the list reads as one grey slab.
+  cardWrap: { paddingHorizontal: SCREEN_PADDING, paddingBottom: spacing[4] },
   inviteCard: {
     marginHorizontal: SCREEN_PADDING,
     marginBottom: spacing[3],

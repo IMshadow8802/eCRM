@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Lock } from "lucide-react-native";
 import type {
@@ -19,6 +19,7 @@ import {
   Input,
   Screen,
   ScreenHeader,
+  ScreenLoader,
   Select,
   Text,
 } from "../../ui";
@@ -46,19 +47,17 @@ export default function ComplaintFormScreen({ route, navigation }: Props) {
   const ticketId = route.params?.ticketId;
   const editing = ticketId != null;
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["ticket", ticketId],
     queryFn: () => fetchTicketDetail({ TicketId: ticketId! }),
     enabled: editing,
   });
 
-  if (editing && isLoading) {
+  if (editing && (isLoading || isError)) {
     return (
       <Screen>
         <ScreenHeader title="Edit complaint" onBack={navigation.goBack} />
-        <View style={styles.centre}>
-          <ActivityIndicator color={colors.primary} />
-        </View>
+        <ScreenLoader failed={isError} onRetry={refetch} />
       </Screen>
     );
   }

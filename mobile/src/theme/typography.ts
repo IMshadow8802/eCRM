@@ -112,17 +112,24 @@ export const typography = {
     lineHeight: 22,
     color: colors.text,
   },
-  /** Supporting text under a title — metadata, timestamps, counts. */
+  /**
+   * Supporting text under a title — metadata, timestamps, counts.
+   *
+   * Semibold, not Medium. Small type needs MORE weight than large type, not
+   * less: at 13px a Medium stroke on white is thin enough to grey out, and the
+   * headings above it end up carrying the whole page. The small variants below
+   * are all semibold for the same reason.
+   */
   secondary: {
     fontSize: fontSize.sm,
-    fontFamily: fontFamily.medium,
+    fontFamily: fontFamily.semibold,
     lineHeight: 18,
     color: colors.textSecondary,
   },
   /** Form labels, tab labels. */
   label: {
     fontSize: fontSize.sm,
-    fontFamily: fontFamily.medium,
+    fontFamily: fontFamily.semibold,
     lineHeight: 18,
     color: colors.textSecondary,
   },
@@ -133,10 +140,10 @@ export const typography = {
     lineHeight: 20,
     color: colors.textOnBrand,
   },
-  /** Chips, badges, counters. */
+  /** Chips, badges, counters. The smallest type, so the heaviest of the body weights. */
   caption: {
     fontSize: fontSize.xs,
-    fontFamily: fontFamily.medium,
+    fontFamily: fontFamily.semibold,
     lineHeight: 16,
     color: colors.textSecondary,
   },

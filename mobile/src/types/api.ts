@@ -435,6 +435,28 @@ export interface TicketActivityEntry {
   CreatedAt: string;
 }
 
+/**
+ * A row of tblCall. Exactly one of LeadId / TicketId is set.
+ *
+ * `Direction` is the SP's own two-value vocabulary — 'in' or 'out'. It rejects
+ * anything else, so do not send "Inbound".
+ */
+export interface Call {
+  Id: number;
+  CompId: number;
+  LeadId: number | null;
+  TicketId: number | null;
+  UserId: number;
+  Direction: "in" | "out";
+  OutcomeId: number | null;
+  Notes: string | null;
+  /** Minutes. */
+  Duration: number | null;
+  CalledAt: string;
+  CreatedBy: number | null;
+  CreatedAt: string;
+}
+
 /** The lead a ticket was raised from, when there is one. */
 export interface LinkedLead {
   Id: number;

@@ -6,6 +6,7 @@
     "start": "expo start --dev-client",
     "prebuild": "expo prebuild --clean",
     "ios": "expo run:ios",
+    "ios:release": "expo run:ios --device --configuration Release",
     "android": "expo run:android",
     "apk": "cd android && ./gradlew assembleRelease",
     "typecheck": "tsc --noEmit",

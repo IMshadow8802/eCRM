@@ -10,7 +10,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Camera,
   CircleAlert,
-  Eye,
+  Download,
   FolderOpen,
   Images,
   Plus,
@@ -31,6 +31,7 @@ import { colors, radius, shadows, spacing, SCREEN_PADDING } from "../../theme";
 import { Dialog, Fab, Sheet, Text, type SheetRef } from "../../ui";
 import FileViewer from "./FileViewer";
 import { fileMeta, humanSize, MAX_UPLOAD_BYTES } from "./attachmentHelpers";
+import { useDownloadAttachment } from "./useDownloadAttachment";
 
 interface AttachmentListProps {
   entity: AttachmentEntity;
@@ -49,6 +50,7 @@ export default function AttachmentList({
   const [viewing, setViewing] = useState<Attachment | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Attachment | null>(null);
+  const { download, busyId, error: downloadError, clearError } = useDownloadAttachment();
 
   const queryKey = ["attachments", entity, entityId];
   const { data, isLoading } = useQuery({
@@ -177,32 +179,56 @@ export default function AttachmentList({
                 </Text>
               </View>
 
+              {/* Save is always available, even to a viewer — reading a file
+                  you can already open is not a privileged act, and a build you
+                  cannot get off the phone is no use to anyone. */}
+              <Pressable
+                hitSlop={spacing[2]}
+                disabled={busyId === a.Id}
+                onPress={() => download(a)}
+                accessibilityLabel={`Download ${a.FileName}`}
+                accessibilityRole="button"
+                style={styles.rowAction}
+              >
+                {busyId === a.Id ? (
+                  <ActivityIndicator size="small" color={colors.primary} />
+                ) : (
+                  <Download size={19} color={colors.primary} />
+                )}
+              </Pressable>
+
               {canManage ? (
-                <Pressable hitSlop={spacing[2]} onPress={() => setPendingDelete(a)}>
+                <Pressable
+                  hitSlop={spacing[2]}
+                  onPress={() => setPendingDelete(a)}
+                  accessibilityLabel={`Delete ${a.FileName}`}
+                  accessibilityRole="button"
+                  style={styles.rowAction}
+                >
                   {/* A cross means dismiss; this destroys the file. */}
-                  <Trash2
-                    size={19}
-                    color={colors.danger}
-                  />
+                  <Trash2 size={19} color={colors.danger} />
                 </Pressable>
-              ) : (
-                <Eye
-                  size={18}
-                  color={colors.textMuted}
-                />
-              )}
+              ) : null}
             </Pressable>
           );
         }}
       />
 
-      {error ? (
-        <View style={styles.error}>
+      {error || downloadError ? (
+        <Pressable
+          style={styles.error}
+          onPress={() => {
+            setError(null);
+            clearError();
+          }}
+          accessibilityLabel="Dismiss the error"
+          accessibilityRole="button"
+        >
           <CircleAlert size={16} color={colors.danger} />
           <Text variant="caption" color="danger" style={styles.errorText}>
-            {error}
+            {error ?? downloadError}
           </Text>
-        </View>
+        </Pressable>
       ) : null}
 
       {canManage ? (
@@ -279,6 +305,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   rowText: { flex: 1, gap: spacing[1] },
+  // A fixed box so the spinner that replaces the icon mid-download does not
+  // shift the row width.
+  rowAction: { width: 28, alignItems: "center", justifyContent: "center" },
   error: {
     flexDirection: "row",
     alignItems: "center",

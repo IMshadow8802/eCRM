@@ -3,7 +3,6 @@ import { StyleSheet, View, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { colors, spacing } from "../theme";
-import { BackgroundPattern } from "./BackgroundPattern";
 
 export interface ScreenProps {
   children: ReactNode;
@@ -11,21 +10,15 @@ export interface ScreenProps {
   edgeBottom?: boolean;
   edgeTop?: boolean;
   padded?: boolean;
-  /**
-   * Off for screens that paint their own backdrop — the auth gradient covers
-   * the ruling anyway, so drawing it there is wasted work.
-   */
-  pattern?: boolean;
   style?: ViewStyle;
 }
 
-/** Screen shell: background, page texture, safe-area insets and the gutter. */
+/** Screen shell: background, safe-area insets and the standard gutter. */
 export function Screen({
   children,
   edgeBottom = false,
   edgeTop = false,
   padded = false,
-  pattern = true,
   style,
 }: ScreenProps) {
   const insets = useSafeAreaInsets();
@@ -39,8 +32,6 @@ export function Screen({
         style,
       ]}
     >
-      {/* Behind everything: children paint over it, and every card is opaque. */}
-      {pattern ? <BackgroundPattern /> : null}
       {children}
     </View>
   );

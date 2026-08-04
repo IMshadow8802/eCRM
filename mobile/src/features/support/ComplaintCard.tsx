@@ -163,13 +163,15 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     padding: spacing[4],
     gap: spacing[3],
-    // See TaskCard: the border separates, the shadow only lifts.
-    borderWidth: 1,
-    borderColor: colors.border,
     ...shadows.md,
   },
-  // Scale only — no dimming. Solid surfaces stay solid.
-  pressed: { transform: [{ scale: 0.985 }] },
+  // Presses INTO the page: it sinks by the shadow offset and the shadow
+  // shrinks with it, which is what a lifted object does when you push it.
+  // No dimming — solid surfaces stay solid.
+  pressed: {
+    transform: [{ scale: 0.985 }, { translateY: 2 }],
+    ...shadows.sm,
+  },
   row: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
   glyph: {
     width: 42,

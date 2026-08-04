@@ -11,5 +11,16 @@
 export const API_BASE_URL: string =
   process.env.EXPO_PUBLIC_API_BASE_URL ?? "https://shadowcodes.in/CRM";
 
-/** Matches the backend default; uploads override this per-request. */
-export const REQUEST_TIMEOUT_MS = 30_000;
+/**
+ * How long a normal JSON request may hang before axios aborts it.
+ *
+ * Deliberately shorter than it looks like it should be. Every one of these is
+ * a small POST answered by a stored procedure; if it has not come back in 15
+ * seconds it is not coming back, and the user is staring at a spinner. Paired
+ * with one retry, that bounds a dead request at roughly half a minute instead
+ * of the minute-and-a-half the old 30s × 3 attempts allowed.
+ *
+ * Transfers override it per-request: uploads and downloads pass `timeout: 0`,
+ * because a 200MB build legitimately takes minutes on a phone connection.
+ */
+export const REQUEST_TIMEOUT_MS = 15_000;

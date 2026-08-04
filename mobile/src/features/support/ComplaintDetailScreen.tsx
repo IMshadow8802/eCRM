@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRightLeft,
@@ -14,6 +14,10 @@ import {
   MoreVertical,
   Pencil,
   Phone,
+  PhoneCall,
+  PhoneIncoming,
+  PhoneOutgoing,
+  Plus,
   Tag,
   Trash2,
   User,
@@ -27,19 +31,24 @@ import {
   fetchTicketDetail,
   moveTicketStage,
 } from "../../api/ticketQueries";
+import { fetchCalls, logCall, type CallDirection } from "../../api/callQueries";
 import { fetchUserDirectory } from "../../api/userQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import type { CustomFieldValue, PipelineStage } from "../../types/api";
 import { colors, radius, shadows, spacing, SCREEN_PADDING } from "../../theme";
 import {
   ActionSheet,
+  ComposeSheet,
   Dialog,
   Screen,
   ScreenHeader,
+  ScreenLoader,
   Segmented,
   Text,
+  Timeline,
   type SheetAction,
   type SheetRef,
+  type TimelineEntry,
 } from "../../ui";
 import AttachmentList from "../attachments/AttachmentList";
 import { relativeTime } from "../tasks/taskHelpers";
@@ -69,6 +78,7 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
   const menuRef = useRef<SheetRef>(null);
   const stageRef = useRef<SheetRef>(null);
   const resolutionRef = useRef<SheetRef>(null);
+  const callRef = useRef<SheetRef>(null);
 
   const detailQuery = useQuery({
     queryKey: ["ticket", ticketId],
@@ -91,15 +101,27 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
     queryKey: ["lookups", LOOKUP_KIND.resolution],
     queryFn: () => fetchLookups({ Kind: LOOKUP_KIND.resolution }),
   });
+  const { data: outcomes } = useQuery({
+    queryKey: ["lookups", LOOKUP_KIND.callOutcome],
+    queryFn: () => fetchLookups({ Kind: LOOKUP_KIND.callOutcome }),
+  });
   const { data: directory } = useQuery({
     queryKey: ["users", "directory"],
     queryFn: () => fetchUserDirectory(),
+  });
+  // sp_LogCall's activity row only says "Outbound call logged" — the notes and
+  // outcome live on tblCall. Fetching them is what makes a logged call
+  // readable rather than just countable.
+  const { data: calls } = useQuery({
+    queryKey: ["calls", "ticket", ticketId],
+    queryFn: () => fetchCalls({ TicketId: ticketId }),
   });
 
   const roles = useMemo(() => stageRoles(pipeline?.stages), [pipeline]);
   const categoryNames = useMemo(() => lookupMap(categories), [categories]);
   const priorityNames = useMemo(() => lookupMap(priorities), [priorities]);
   const resolutionNames = useMemo(() => lookupMap(resolutions), [resolutions]);
+  const outcomeNames = useMemo(() => lookupMap(outcomes), [outcomes]);
   const people = useMemo(
     () => new Map((directory ?? []).map((u) => [u.Id, u.FullName])),
     [directory],
@@ -118,6 +140,17 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
     },
   });
 
+  const logTheCall = useMutation({
+    mutationFn: logCall,
+    onSuccess: () => {
+      callRef.current?.dismiss();
+      queryClient.invalidateQueries({ queryKey: ["calls", "ticket", ticketId] });
+      // sp_LogCall writes a ticket-activity row (SQL 067), so the call appears
+      // on the History tab without a second request.
+      invalidate();
+    },
+  });
+
   const remove = useMutation({
     mutationFn: deleteTicket,
     onSuccess: () => {
@@ -129,12 +162,21 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
 
   const ticket = detailQuery.data?.ticket;
 
-  if (detailQuery.isLoading) {
+  // The header renders here too — a loading screen with no back button is a
+  // dead end (see TaskDetailScreen).
+  if (detailQuery.isLoading || detailQuery.isError) {
     return (
       <Screen>
-        <View style={styles.centre}>
-          <ActivityIndicator color={colors.primary} />
-        </View>
+        <ScreenHeader title="Complaint" onBack={navigation.goBack} />
+        <ScreenLoader
+          failed={detailQuery.isError}
+          onRetry={detailQuery.refetch}
+          message={
+            detailQuery.isError
+              ? "The complaint could not be loaded. Check your connection and try again."
+              : undefined
+          }
+        />
       </Screen>
     );
   }
@@ -159,6 +201,69 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
   const fields = detailQuery.data?.fields ?? [];
   const activity = detailQuery.data?.activity ?? [];
   const linkedLead = detailQuery.data?.linkedLead ?? null;
+
+  const who = (userId: number | null) => people.get(userId ?? -1) ?? "System";
+
+  /**
+   * The history is two sources woven together.
+   *
+   * `tblTicketActivity` records that a call happened; `tblCall` records what
+   * was said. Showing both would list every call twice, so the activity rows
+   * of type 'call' are dropped and the richer call rows take their place.
+   *
+   * tblTicketActivity.Type is the vocabulary each SP writes — 'created',
+   * 'stage', 'note', 'call'. Anything unmapped still gets a node rather than
+   * being dropped, so a type added later shows up without a release here.
+   */
+  const timeline: TimelineEntry[] = [
+    ...activity
+      .filter((entry) => !(entry.Type ?? "").toLowerCase().includes("call"))
+      .map((entry) => {
+        const type = (entry.Type ?? "").toLowerCase();
+        const node = type.includes("creat")
+          ? { Icon: Plus, tone: "success" as const }
+          : type.includes("stage")
+            ? { Icon: ArrowRightLeft, tone: "primary" as const }
+            : type.includes("resolv") || type.includes("clos")
+              ? { Icon: CircleCheck, tone: "success" as const }
+              : { Icon: History, tone: "textSecondary" as const };
+
+        return {
+          key: `a-${entry.Id}`,
+          at: entry.CreatedAt,
+          title: entry.Summary ?? entry.Type,
+          meta: `${who(entry.UserId)} · ${relativeTime(entry.CreatedAt)}`,
+          icon: node.Icon,
+          tone: node.tone,
+        };
+      }),
+    ...(calls ?? []).map((call) => {
+      const outcome = call.OutcomeId ? outcomeNames.get(call.OutcomeId) : undefined;
+      const bits = [
+        who(call.UserId),
+        outcome,
+        call.Duration ? `${call.Duration} min` : undefined,
+        relativeTime(call.CalledAt),
+      ].filter(Boolean);
+
+      return {
+        key: `c-${call.Id}`,
+        at: call.CalledAt,
+        title:
+          call.Notes ||
+          (call.Direction === "in" ? "Incoming call" : "Outgoing call"),
+        meta: bits.join(" · "),
+        icon: call.Direction === "in" ? PhoneIncoming : PhoneOutgoing,
+        tone: "info" as const,
+      };
+    }),
+  ]
+    // Newest first, matching what sp_FetchTicketDetail already returns.
+    .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+    .map(({ at, ...entry }) => {
+      void at;
+      return entry;
+    });
 
   const priority = ticket.Priority ? priorityNames.get(ticket.Priority) : undefined;
   const category = ticket.CategoryId ? categoryNames.get(ticket.CategoryId) : undefined;
@@ -218,6 +323,13 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
   }));
 
   const menuActions: SheetAction[] = [
+    {
+      key: "call",
+      label: "Log a call",
+      sublabel: "Goes straight onto the history",
+      icon: PhoneCall,
+      onPress: () => callRef.current?.present(),
+    },
     {
       key: "stage",
       label: "Move stage",
@@ -372,23 +484,16 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
         >
-          {activity.map((entry) => (
-            <View key={entry.Id} style={styles.activityRow}>
-              <View style={styles.activityGlyph}>
-                <History size={15} color={colors.textOnBrand} />
-              </View>
-              <View style={styles.activityText}>
-                <Text variant="body">{entry.Summary ?? entry.Type}</Text>
-                <Text variant="caption" color="textMuted">
-                  {people.get(entry.UserId ?? -1) ?? "System"} ·{" "}
-                  {relativeTime(entry.CreatedAt)}
-                </Text>
-              </View>
-            </View>
-          ))}
-          {!activity.length ? (
+          {timeline.length ? (
+            <>
+              <Timeline entries={timeline} />
+              <Text variant="caption" color="textMuted" style={styles.end}>
+                Complaint logged
+              </Text>
+            </>
+          ) : (
             <Text variant="secondary">Nothing has happened yet.</Text>
-          ) : null}
+          )}
         </ScrollView>
       ) : null}
 
@@ -404,6 +509,51 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
         title="How was it resolved?"
         actions={resolutionActions}
         emptyMessage="No resolutions are configured. Add them on the web first."
+      />
+
+      {/* One sheet, not a chain of them: direction and outcome are chips so
+          the whole call fits on screen with the keyboard up. NextFollowupDate
+          is absent on purpose — tblFollowUp hangs off LeadId, so a ticket
+          cannot carry one, and its next step is its stage anyway. */}
+      <ComposeSheet
+        ref={callRef}
+        title="Log a call"
+        submitLabel="Log call"
+        busy={logTheCall.isPending}
+        choices={[
+          {
+            key: "direction",
+            label: "Direction",
+            required: true,
+            options: [
+              { value: "in", label: "Incoming" },
+              { value: "out", label: "Outgoing" },
+            ],
+          },
+          ...(outcomes?.length
+            ? [
+                {
+                  key: "outcome",
+                  label: "Outcome",
+                  options: outcomes.map((o) => ({ value: o.Id, label: o.Value })),
+                },
+              ]
+            : []),
+        ]}
+        fields={[
+          { key: "notes", label: "Notes", placeholder: "What was said", multiline: true },
+          { key: "minutes", label: "Minutes", placeholder: "0", numeric: true },
+        ]}
+        onSubmit={(values, picked) => {
+          const minutes = Number(values.minutes);
+          logTheCall.mutate({
+            TicketId: ticketId,
+            Direction: (picked.direction as CallDirection) ?? "out",
+            OutcomeId: (picked.outcome as number) ?? null,
+            Notes: values.notes || null,
+            Duration: Number.isFinite(minutes) && minutes > 0 ? minutes : null,
+          });
+        }}
       />
 
       <Dialog
@@ -512,22 +662,6 @@ const styles = StyleSheet.create({
   fieldRow: { gap: spacing[1] },
   leadRow: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
   leadText: { flex: 1, gap: spacing[1] },
-  activityRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[3],
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: spacing[3],
-    ...shadows.sm,
-  },
-  activityGlyph: {
-    width: 30,
-    height: 30,
-    borderRadius: radius.full,
-    backgroundColor: colors.info,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  activityText: { flex: 1, gap: spacing[1] },
+  // Lines up under the entry text, not under the rail.
+  end: { paddingLeft: spacing[10] },
 });
