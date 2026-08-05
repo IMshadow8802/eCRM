@@ -17,6 +17,7 @@ import useServerTable from "../../hooks/useServerTable";
 import { useConfirmation } from "../../hooks";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatDate } from "../../utils/format";
+import { useMasterDelete } from "../../hooks/useMasterDelete";
 
 const Users = () => {
   const { enqueueSnackbar } = useSnackbar();
@@ -84,37 +85,18 @@ const Users = () => {
     []
   );
 
+  const removeRow = useMasterDelete({ remove: deleteUser, entity: "User" });
+
   const handleDeleteRow = useCallback(
     (row) => {
       confirmation.confirmDelete({
         title: "Delete User",
         message: `Are you sure you want to delete "${row.original.FullName || row.original.Username}"? This action cannot be undone.`,
         confirmText: "Delete User",
-        onConfirm: async () => {
-          try {
-            const response = await deleteUser({ Id: row.original.Id });
-
-            if (response.data.success) {
-              enqueueSnackbar("User deleted successfully!", { variant: "success" });
-              queryClient.invalidateQueries({ queryKey: ["users"] });
-              queryClient.invalidateQueries({ queryKey: ["teams"] });
-              queryClient.invalidateQueries({ queryKey: ["tasks"] });
-              queryClient.invalidateQueries({ queryKey: ["projects"] });
-            } else {
-              enqueueSnackbar(
-                response.data.message || "Failed to delete user!",
-                { variant: "error" }
-              );
-            }
-          } catch (error) {
-            console.error("Error deleting user:", error);
-            enqueueSnackbar("Failed to delete user!", { variant: "error" });
-            throw error;
-          }
-        },
+        onConfirm: () => removeRow(row.original.Id),
       });
     },
-    [enqueueSnackbar, queryClient, confirmation]
+    [confirmation, removeRow]
   );
 
   const handleEdit = (row) => {

@@ -17,6 +17,7 @@ import { MASTER_ENDPOINTS, deleteTeam } from "../../api/masterQueries";
 import useServerTable from "../../hooks/useServerTable";
 import { useUsers, useConfirmation } from "../../hooks";
 import { useQueryClient } from "@tanstack/react-query";
+import { useMasterDelete } from "../../hooks/useMasterDelete";
 
 const Teams = () => {
   const { enqueueSnackbar } = useSnackbar();
@@ -101,44 +102,18 @@ const Teams = () => {
   );
 
   // Handle deleting a team
+  const removeRow = useMasterDelete({ remove: deleteTeam, entity: "Team" });
+
   const handleDeleteRow = useCallback(
     (row) => {
       confirmation.confirmDelete({
         title: "Delete Team",
         message: `Are you sure you want to delete "${row.original.Name}"? This action cannot be undone and will remove all team data including member assignments.`,
         confirmText: "Delete Team",
-        onConfirm: async () => {
-          try {
-            const response = await deleteTeam({ Id: row.original.Id });
-
-            if (response.data.success) {
-              enqueueSnackbar("Team deleted successfully!", {
-                variant: "success",
-              });
-              // Invalidate related caches
-              queryClient.invalidateQueries({ queryKey: ["teams"] });
-              queryClient.invalidateQueries({ queryKey: ["users"] });
-              queryClient.invalidateQueries({ queryKey: ["tasks"] });
-              queryClient.invalidateQueries({ queryKey: ["projects"] });
-            } else {
-              enqueueSnackbar(
-                response.data.message || "Failed to delete team!",
-                {
-                  variant: "error",
-                }
-              );
-            }
-          } catch (error) {
-            console.error("Error deleting team:", error);
-            enqueueSnackbar("Failed to delete team!", {
-              variant: "error",
-            });
-            throw error; // Re-throw to keep dialog open on error
-          }
-        },
+        onConfirm: () => removeRow(row.original.Id),
       });
     },
-    [enqueueSnackbar, confirmation]
+    [confirmation, removeRow]
   );
 
   // Handle edit
