@@ -24,7 +24,7 @@ import {
 } from "recharts";
 import dayjs from "dayjs";
 
-import PageHeader from "../../components/PageHeader";
+import PageHeader from "../../components/ui/PageHeader";
 import DateField from "../../components/ui/DateField";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";

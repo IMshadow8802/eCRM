@@ -7,7 +7,7 @@ import { MaterialReactTable } from "material-react-table";
 import { useSnackbar } from "notistack";
 import dayjs from "dayjs";
 
-import PageHeader from "../../components/PageHeader";
+import PageHeader from "../../components/ui/PageHeader";
 import UserForm from "./components/UserForm";
 import ActionButton from "../../components/Design/ActionButton";
 import ConfirmationDialog from "../../components/ConfirmationDialog";

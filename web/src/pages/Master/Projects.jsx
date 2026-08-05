@@ -16,7 +16,7 @@ import { Helmet } from "react-helmet-async";
 
 // Import components
 import ActionButton from "../../components/Design/ActionButton";
-import PageHeader from "../../components/PageHeader";
+import PageHeader from "../../components/ui/PageHeader";
 import ProjectForm from "./components/ProjectForm";
 import ConfirmationDialog from "../../components/ConfirmationDialog";
 

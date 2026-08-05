@@ -24,7 +24,7 @@ import {
   YAxis,
 } from "recharts";
 
-import PageHeader from "../../components/PageHeader";
+import PageHeader from "../../components/ui/PageHeader";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { SUPPORT_ENDPOINTS } from "../../api/supportQueries";
 

@@ -8,7 +8,7 @@ import { Helmet } from "react-helmet-async";
 import { Box } from "@mui/material";
 import { useSnackbar } from "notistack";
 
-import PageHeader from "../../components/PageHeader";
+import PageHeader from "../../components/ui/PageHeader";
 import MasterChipGrid from "../../components/MasterChipGrid";
 import ConfirmationDialog from "../../components/ConfirmationDialog";
 import Tabs from "../../components/ui/Tabs";

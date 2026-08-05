@@ -8,7 +8,7 @@ import { useSnackbar } from "notistack";
 import dayjs from "dayjs";
 
 // Import components
-import PageHeader from "../../components/PageHeader";
+import PageHeader from "../../components/ui/PageHeader";
 import TeamForm from "./components/TeamForm";
 import ActionButton from "../../components/Design/ActionButton";
 import ConfirmationDialog from "../../components/ConfirmationDialog";

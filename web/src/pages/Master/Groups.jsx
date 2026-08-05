@@ -13,7 +13,7 @@ import { Pencil, Trash2 } from "lucide-react";
 import { useTheme } from "@mui/material/styles";
 import { useSnackbar } from "notistack";
 
-import PageHeader from "../../components/PageHeader";
+import PageHeader from "../../components/ui/PageHeader";
 import ConfirmationDialog from "../../components/ConfirmationDialog";
 import {
   Button,

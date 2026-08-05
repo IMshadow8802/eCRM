@@ -8,7 +8,7 @@ import {
   WarningAmberOutlined,
 } from "@mui/icons-material";
 
-import PageHeader from "./PageHeader";
+import PageHeader from "./ui/PageHeader";
 import StatisticsCard from "./StatCard";
 import AreaTrend from "./Charts/AreaTrend";
 import Donut from "./Charts/Donut";

@@ -13,7 +13,7 @@ import {
   Typography,
 } from "@mui/material";
 
-import PageHeader from "../../components/PageHeader";
+import PageHeader from "../../components/ui/PageHeader";
 import Funnel from "../../components/Charts/Funnel";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
