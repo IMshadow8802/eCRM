@@ -9,6 +9,7 @@ import {
   fetchKanbanColumns,
   saveKanbanColumn,
 } from "../../api/kanbanQueries";
+import { apiErrorMessage } from "../../api/errors";
 import { fetchTasks } from "../../api/taskQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import type { KanbanColumn } from "../../types/api";
@@ -24,6 +25,7 @@ import {
   Text,
   type SheetAction,
   type SheetRef,
+  useToast,
 } from "../../ui";
 
 type Props = StackScreenProps<RootStackParamList, "Columns">;
@@ -39,6 +41,7 @@ type Props = StackScreenProps<RootStackParamList, "Columns">;
 export default function ColumnsScreen({ route, navigation }: Props) {
   const { workspaceId } = route.params;
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   const [editing, setEditing] = useState<KanbanColumn | null>(null);
   const [deleting, setDeleting] = useState<KanbanColumn | null>(null);
@@ -67,8 +70,12 @@ export default function ColumnsScreen({ route, navigation }: Props) {
     queryClient.invalidateQueries({ queryKey: ["tasks"] });
   };
 
+  const [composeError, setComposeError] = useState<string | null>(null);
+
   const save = useMutation({
     mutationFn: saveKanbanColumn,
+    onError: (err) =>
+      setComposeError(apiErrorMessage(err, "Could not save that column.")),
     onSuccess: () => {
       composeRef.current?.dismiss();
       setEditing(null);
@@ -78,6 +85,7 @@ export default function ColumnsScreen({ route, navigation }: Props) {
 
   const remove = useMutation({
     mutationFn: deleteKanbanColumn,
+    onError: (err) => toast.error(apiErrorMessage(err, "Could not delete that column.")),
     onSuccess: () => {
       setDeleting(null);
       setReassignTo(null);
@@ -87,6 +95,7 @@ export default function ColumnsScreen({ route, navigation }: Props) {
 
   const openCompose = (column: KanbanColumn | null) => {
     setEditing(column);
+    setComposeError(null);
     composeRef.current?.present();
   };
 
@@ -213,6 +222,7 @@ export default function ColumnsScreen({ route, navigation }: Props) {
           },
         ]}
         busy={save.isPending}
+        error={composeError}
         onSubmit={submit}
       />
 

@@ -32,6 +32,7 @@ export { default as Segmented } from "./Segmented";
 export { default as Select } from "./Select";
 export { default as Sheet } from "./Sheet";
 export { default as Timeline } from "./Timeline";
+export { ToastProvider, useToast } from "./Toast";
 export { default as Text } from "./Text";
 
 export type { ActionSheetProps, SheetAction } from "./ActionSheet";

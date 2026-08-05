@@ -27,6 +27,7 @@ import {
   setWorkspaceMemberRole,
   transferWorkspaceOwnership,
 } from "../../api/workspaceQueries";
+import { apiErrorMessage } from "../../api/errors";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
 import type { WorkspaceMember, WorkspaceRole } from "../../types/api";
@@ -42,6 +43,7 @@ import {
   Text,
   type SheetAction,
   type SheetRef,
+  useToast,
 } from "../../ui";
 
 type Props = StackScreenProps<RootStackParamList, "WorkspaceSettings">;
@@ -59,6 +61,7 @@ const ASSIGNABLE: WorkspaceRole[] = ["manager", "member", "viewer"];
 export default function WorkspaceSettingsScreen({ route, navigation }: Props) {
   const { workspaceId } = route.params;
   const queryClient = useQueryClient();
+  const toast = useToast();
   const userId = useAuthStore((s) => s.UserId);
 
   const [selected, setSelected] = useState<WorkspaceMember | null>(null);
@@ -70,7 +73,7 @@ export default function WorkspaceSettingsScreen({ route, navigation }: Props) {
   const addRef = useRef<SheetRef>(null);
 
   const { data: workspaces } = useQuery({
-    queryKey: ["workspaces"],
+    queryKey: ["workspaces", true],
     queryFn: () => fetchWorkspaces({ PageSize: 100, IncludeArchived: true }),
   });
 
@@ -96,23 +99,28 @@ export default function WorkspaceSettingsScreen({ route, navigation }: Props) {
 
   const addMember = useMutation({
     mutationFn: addWorkspaceMember,
+    onError: (err) => toast.error(apiErrorMessage(err, "Could not add that member.")),
     onSuccess: refreshMembers,
   });
   const setRole = useMutation({
     mutationFn: setWorkspaceMemberRole,
+    onError: (err) => toast.error(apiErrorMessage(err, "Could not change that role.")),
     onSuccess: refreshMembers,
   });
   const removeMember = useMutation({
     mutationFn: removeWorkspaceMember,
+    onError: (err) => toast.error(apiErrorMessage(err, "Could not remove that member.")),
     onSuccess: refreshMembers,
   });
   const transfer = useMutation({
     mutationFn: transferWorkspaceOwnership,
+    onError: (err) => toast.error(apiErrorMessage(err, "Could not transfer ownership.")),
     onSuccess: refreshMembers,
   });
 
   const archive = useMutation({
     mutationFn: archiveWorkspace,
+    onError: (err) => toast.error(apiErrorMessage(err, "Could not archive this workspace.")),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["workspaces"] });
     },
@@ -123,6 +131,7 @@ export default function WorkspaceSettingsScreen({ route, navigation }: Props) {
   // and a guess.
   const dryRun = useMutation({
     mutationFn: () => deleteWorkspace({ WorkspaceId: workspaceId, DryRun: true }),
+    onError: (err) => toast.error(apiErrorMessage(err, "Could not check what deleting would remove.")),
     onSuccess: (response) => {
       const tasks = response.data?.taskCount ?? 0;
       const files = response.data?.attachmentCount ?? 0;
@@ -137,6 +146,7 @@ export default function WorkspaceSettingsScreen({ route, navigation }: Props) {
 
   const destroy = useMutation({
     mutationFn: () => deleteWorkspace({ WorkspaceId: workspaceId }),
+    onError: (err) => toast.error(apiErrorMessage(err, "Could not delete this workspace.")),
     onSuccess: () => {
       setConfirmDelete(false);
       queryClient.invalidateQueries({ queryKey: ["workspaces"] });

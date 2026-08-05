@@ -4,8 +4,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Timer, Trash2 } from "lucide-react-native";
 
 import { deleteTaskTimeEntry, getTaskTimeEntries } from "../../api/taskQueries";
+import { apiErrorMessage } from "../../api/errors";
 import { colors, radius, spacing } from "../../theme";
-import { Sheet, Text, type SheetRef } from "../../ui";
+import { Sheet, Text, useToast, type SheetRef } from "../../ui";
 import { formatHours, relativeTime } from "./taskHelpers";
 
 interface TimeSheetProps {
@@ -35,6 +36,7 @@ export const TimeSheet = forwardRef<SheetRef, TimeSheetProps>(function TimeSheet
   ref,
 ) {
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   const { data } = useQuery({
     queryKey: ["task", taskId, "time"],
@@ -43,6 +45,7 @@ export const TimeSheet = forwardRef<SheetRef, TimeSheetProps>(function TimeSheet
 
   const remove = useMutation({
     mutationFn: deleteTaskTimeEntry,
+    onError: (err) => toast.error(apiErrorMessage(err, "Could not delete that time entry.")),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["task", taskId] });
       queryClient.invalidateQueries({ queryKey: ["tasks"] });

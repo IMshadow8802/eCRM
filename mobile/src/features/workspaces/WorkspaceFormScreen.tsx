@@ -9,6 +9,7 @@ import type {
 
 import { fetchUserDirectory } from "../../api/userQueries";
 import { fetchWorkspaces, saveWorkspace } from "../../api/workspaceQueries";
+import { apiErrorMessage } from "../../api/errors";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import type { Workspace, WorkspaceType } from "../../types/api";
 import { spacing, SCREEN_PADDING } from "../../theme";
@@ -50,7 +51,7 @@ export default function WorkspaceFormScreen({ route, navigation }: Props) {
   const editing = workspaceId != null;
 
   const { data: workspaces, isLoading, isError, refetch } = useQuery({
-    queryKey: ["workspaces"],
+    queryKey: ["workspaces", true],
     queryFn: () => fetchWorkspaces({ PageSize: 100, IncludeArchived: true }),
     enabled: editing,
   });
@@ -115,8 +116,10 @@ function WorkspaceForm({ navigation, workspace }: WorkspaceFormProps) {
       queryClient.invalidateQueries({ queryKey: ["workspaces"] });
       navigation.goBack();
     },
-    onError: () =>
-      setError("Could not save this workspace. Check your connection."),
+    onError: (err) =>
+      setError(
+        apiErrorMessage(err, "Could not save this workspace. Check your connection."),
+      ),
   });
 
   const submit = () => {

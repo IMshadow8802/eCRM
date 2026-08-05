@@ -6,6 +6,7 @@ import { CloudOff, LayoutDashboard, Mail, Plus } from "lucide-react-native";
 import type { StackScreenProps } from "@react-navigation/stack";
 
 import { fetchWorkspaces, respondInvite } from "../../api/workspaceQueries";
+import { apiErrorMessage } from "../../api/errors";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import type { Workspace } from "../../types/api";
 import { colors, radius, spacing, SCREEN_PADDING } from "../../theme";
@@ -18,6 +19,7 @@ import {
   Screen,
   ScreenHeader,
   Text,
+  useToast,
 } from "../../ui";
 import { WorkspaceCard } from "./WorkspaceCard";
 
@@ -25,14 +27,16 @@ type Props = StackScreenProps<RootStackParamList, "Boards">;
 
 export default function BoardsScreen({ navigation }: Props) {
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   const { data, isLoading, isRefetching, refetch, isError } = useQuery({
-    queryKey: ["workspaces"],
+    queryKey: ["workspaces", false],
     queryFn: () => fetchWorkspaces({ PageSize: 100 }),
   });
 
   const invite = useMutation({
     mutationFn: respondInvite,
+    onError: (err) => toast.error(apiErrorMessage(err, "Could not answer that invite.")),
     // Accepting changes which tasks the user can see, so both lists go stale.
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["workspaces"] });

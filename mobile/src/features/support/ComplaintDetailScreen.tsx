@@ -32,6 +32,7 @@ import {
   moveTicketStage,
 } from "../../api/ticketQueries";
 import { fetchCalls, logCall, type CallDirection } from "../../api/callQueries";
+import { apiErrorMessage } from "../../api/errors";
 import { fetchUserDirectory } from "../../api/userQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import type { CustomFieldValue, PipelineStage } from "../../types/api";
@@ -50,6 +51,7 @@ import {
   type SheetAction,
   type SheetRef,
   type TimelineEntry,
+  useToast,
 } from "../../ui";
 import AttachmentList from "../attachments/AttachmentList";
 import { relativeTime } from "../tasks/taskHelpers";
@@ -70,9 +72,11 @@ type Tab = "details" | "files" | "history";
 export default function ComplaintDetailScreen({ route, navigation }: Props) {
   const { ticketId } = route.params;
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   const [tab, setTab] = useState<Tab>("details");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [callError, setCallError] = useState<string | null>(null);
   // Held between the two sheets when a move needs a resolution first.
   const [pendingStage, setPendingStage] = useState<PipelineStage | null>(null);
 
@@ -118,7 +122,14 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
     queryFn: () => fetchCalls({ TicketId: ticketId }),
   });
 
-  const roles = useMemo(() => stageRoles(pipeline?.stages), [pipeline]);
+  // Scoped to the pipeline this ticket is actually in — not the default one.
+  // The move sheet and the Resolved/Closed labels below are built from these,
+  // and offering a stage from another pipeline moves the ticket out of its own.
+  const ticketPipelineId = detailQuery.data?.ticket?.PipelineId ?? null;
+  const roles = useMemo(
+    () => stageRoles(pipeline?.stages, ticketPipelineId),
+    [pipeline, ticketPipelineId],
+  );
   const categoryNames = useMemo(() => lookupMap(categories), [categories]);
   const priorityNames = useMemo(() => lookupMap(priorities), [priorities]);
   const resolutionNames = useMemo(() => lookupMap(resolutions), [resolutions]);
@@ -135,6 +146,10 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
 
   const move = useMutation({
     mutationFn: moveTicketStage,
+    onError: (err) => {
+      setPendingStage(null);
+      toast.error(apiErrorMessage(err, "Could not move this complaint."));
+    },
     onSuccess: () => {
       setPendingStage(null);
       invalidate();
@@ -143,6 +158,7 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
 
   const logTheCall = useMutation({
     mutationFn: logCall,
+    onError: (err) => setCallError(apiErrorMessage(err, "Could not log that call.")),
     onSuccess: () => {
       callRef.current?.dismiss();
       queryClient.invalidateQueries({ queryKey: ["calls", "ticket", ticketId] });
@@ -154,6 +170,7 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
 
   const remove = useMutation({
     mutationFn: deleteTicket,
+    onError: (err) => toast.error(apiErrorMessage(err, "Could not delete this complaint.")),
     onSuccess: () => {
       setConfirmingDelete(false);
       queryClient.invalidateQueries({ queryKey: ["tickets"] });
@@ -329,7 +346,10 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
       label: "Log a call",
       sublabel: "Goes straight onto the history",
       icon: PhoneCall,
-      onPress: () => callRef.current?.present(),
+      onPress: () => {
+        setCallError(null);
+        callRef.current?.present();
+      },
     },
     {
       key: "stage",
@@ -521,6 +541,7 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
         title="Log a call"
         submitLabel="Log call"
         busy={logTheCall.isPending}
+        error={callError}
         choices={[
           {
             key: "direction",

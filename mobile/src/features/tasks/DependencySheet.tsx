@@ -7,9 +7,10 @@ import {
   fetchTaskDependencies,
   removeTaskDependency,
 } from "../../api/taskQueries";
+import { apiErrorMessage } from "../../api/errors";
 import type { TaskDependency } from "../../types/api";
 import { colors, radius, spacing } from "../../theme";
-import { Sheet, Text, type SheetRef } from "../../ui";
+import { Sheet, Text, useToast, type SheetRef } from "../../ui";
 
 interface DependencySheetProps {
   taskId: number;
@@ -30,6 +31,7 @@ interface DependencySheetProps {
 export const DependencySheet = forwardRef<SheetRef, DependencySheetProps>(
   function DependencySheet({ taskId, workspaceId, canEdit }, ref) {
     const queryClient = useQueryClient();
+    const toast = useToast();
 
     const { data } = useQuery({
       queryKey: ["task", taskId, "dependencies"],
@@ -38,6 +40,7 @@ export const DependencySheet = forwardRef<SheetRef, DependencySheetProps>(
 
     const remove = useMutation({
       mutationFn: removeTaskDependency,
+      onError: (err) => toast.error(apiErrorMessage(err, "Could not remove that blocker.")),
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ["task", taskId] });
         queryClient.invalidateQueries({ queryKey: ["tasks"] });

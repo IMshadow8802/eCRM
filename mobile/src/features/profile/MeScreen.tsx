@@ -43,7 +43,7 @@ export default function MeScreen() {
     queryFn: () => fetchTasks({ WorkspaceId: null, PageSize: 200 }),
   });
   const { data: workspaces } = useQuery({
-    queryKey: ["workspaces"],
+    queryKey: ["workspaces", false],
     queryFn: () => fetchWorkspaces({ PageSize: 100 }),
   });
 

@@ -88,8 +88,32 @@ export interface StageRoles {
   rejected: PipelineStage | null;
 }
 
-export function stageRoles(stages: PipelineStage[] | undefined): StageRoles {
-  const ordered = [...(stages ?? [])].sort(
+/**
+ * @param stages     every stage fetchPipelines returned — it hands back the
+ *                   stages of ALL the entity's pipelines in one flat list.
+ * @param pipelineId scope the roles to one pipeline. Pass it whenever the
+ *                   answer is about a particular ticket or board.
+ *
+ * The filter is not optional in spirit, only in signature. A company may run
+ * more than one support pipeline, and without scoping, `resolved` is the first
+ * `won` stage across ALL of them and `closed` the last — so a ticket resolved
+ * in pipeline B gets compared against pipeline A's stages and renders under the
+ * wrong lifecycle, while the move sheet offers stages the ticket cannot go to.
+ * The web boards have always filtered by `PipelineId`; this is the same guard.
+ *
+ * Omit it only when the question genuinely spans pipelines — counting open
+ * tickets, say, where scoping would drop every ticket outside the default
+ * pipeline instead of counting it.
+ */
+export function stageRoles(
+  stages: PipelineStage[] | undefined,
+  pipelineId?: number | null,
+): StageRoles {
+  const scoped =
+    pipelineId == null
+      ? (stages ?? [])
+      : (stages ?? []).filter((s) => s.PipelineId === pipelineId);
+  const ordered = [...scoped].sort(
     (a, b) => (a.SortOrder ?? 0) - (b.SortOrder ?? 0),
   );
   const won = ordered.filter((s) => s.StageType === "won");

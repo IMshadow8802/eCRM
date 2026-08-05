@@ -68,15 +68,20 @@ export default function WorkHubScreen() {
   const routes = useMemo(() => visibleRoutes(permissions), [permissions]);
 
   const { data: workspaces } = useQuery({
-    queryKey: ["workspaces"],
+    queryKey: ["workspaces", false],
     queryFn: () => fetchWorkspaces({ PageSize: 100 }),
   });
 
   // Both counts share their query keys with the screens they lead to, so the
   // hub warms the cache rather than paying for a second fetch.
+  //
+  // PageSize must match ComplaintsScreen's exactly. It did not — the hub asked
+  // for 100 and the screen for 200 under the same key, so whichever mounted
+  // first won: opening the hub before Complaints silently capped that list at
+  // 100 rows. Sharing a key means sharing the parameters too.
   const { data: tickets } = useQuery({
     queryKey: ["tickets", ""],
-    queryFn: () => fetchTickets({ PageSize: 100, SearchTerm: null }),
+    queryFn: () => fetchTickets({ PageSize: 200, SearchTerm: null }),
   });
   const { data: pipeline } = useQuery({
     queryKey: ["pipelines", "ticket"],
@@ -87,6 +92,9 @@ export default function WorkHubScreen() {
     (w) => w.MyInviteStatus !== "pending" && !w.IsArchived,
   ).length;
 
+  // Deliberately NOT scoped to one pipeline: this is a count across every
+  // support pipeline, and scoping would silently drop tickets outside the
+  // default one. Only StageType is read here, which is per-stage anyway.
   const roles = useMemo(() => stageRoles(pipeline?.stages), [pipeline]);
   const openComplaints = useMemo(
     () =>

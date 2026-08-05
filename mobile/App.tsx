@@ -11,6 +11,7 @@ import { LucideProvider } from "lucide-react-native";
 import { queryClient } from "./src/api/queryClient";
 import RootNavigator from "./src/navigation/RootNavigator";
 import { useAppFonts } from "./src/theme";
+import { ToastProvider } from "./src/ui";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -52,8 +53,12 @@ export default function App() {
             {/* Required by @gorhom/bottom-sheet — every Sheet is presented
                 imperatively through this provider, so it must wrap the navigator. */}
             <BottomSheetModalProvider>
-              <RootNavigator />
-              <StatusBar style="dark" />
+              {/* Outside the navigator so a toast survives the screen that
+                  raised it — a refused delete often closes its own sheet. */}
+              <ToastProvider>
+                <RootNavigator />
+                <StatusBar style="dark" />
+              </ToastProvider>
             </BottomSheetModalProvider>
           </GestureHandlerRootView>
         </SafeAreaProvider>

@@ -39,6 +39,11 @@ export interface ComposeSheetProps {
   fields: ComposeField[];
   choices?: ComposeChoice[];
   busy?: boolean;
+  /**
+   * Why the last submit failed. Shown above the button, and the reason the
+   * sheet does not clear itself on submit — see `submit` below.
+   */
+  error?: string | null;
   onSubmit: (
     values: Record<string, string>,
     choices: Record<string, string | number>,
@@ -57,7 +62,7 @@ export interface ComposeSheetProps {
  */
 export const ComposeSheet = forwardRef<SheetRef, ComposeSheetProps>(
   function ComposeSheet(
-    { title, submitLabel, fields, choices = [], busy = false, onSubmit },
+    { title, submitLabel, fields, choices = [], busy = false, error, onSubmit },
     ref,
   ) {
     const [values, setValues] = useState<Record<string, string>>({});
@@ -75,12 +80,24 @@ export const ComposeSheet = forwardRef<SheetRef, ComposeSheetProps>(
       fields.every((f) => !f.required || (values[f.key] ?? "").trim()) &&
       choices.every((c) => !c.required || picked[c.key] != null);
 
+    /**
+     * Deliberately does NOT clear the fields.
+     *
+     * It used to reset synchronously, right after handing the values over — so
+     * a comment, a checklist item or a time entry was wiped from the sheet the
+     * instant it was submitted, before the request had been anywhere. When the
+     * save then failed the text was already gone, with nothing to retry and no
+     * way to get it back.
+     *
+     * Every caller dismisses the sheet in its mutation's `onSuccess`, and
+     * `onDismiss` resets. So a success still leaves an empty sheet for next
+     * time, while a failure keeps what was typed and shows `error` next to it.
+     */
     const submit = () => {
       if (!complete) return;
       const trimmed: Record<string, string> = {};
       for (const field of fields) trimmed[field.key] = (values[field.key] ?? "").trim();
       onSubmit(trimmed, picked);
-      reset();
     };
 
     return (
@@ -139,6 +156,12 @@ export const ComposeSheet = forwardRef<SheetRef, ComposeSheetProps>(
               />
             </View>
           ))}
+
+          {error ? (
+            <Text variant="caption" color="danger">
+              {error}
+            </Text>
+          ) : null}
 
           <Button
             title={submitLabel}

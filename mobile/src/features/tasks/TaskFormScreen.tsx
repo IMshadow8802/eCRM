@@ -1,13 +1,14 @@
 import { useMemo, useState } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Lock } from "lucide-react-native";
+import { Lock, Plus, X } from "lucide-react-native";
 import type {
   StackNavigationProp,
   StackScreenProps,
 } from "@react-navigation/stack";
 
 import { fetchTaskById, saveTask } from "../../api/taskQueries";
+import { apiErrorMessage } from "../../api/errors";
 import { fetchKanbanColumns } from "../../api/kanbanQueries";
 import { fetchWorkspaceMembers } from "../../api/workspaceQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
@@ -121,7 +122,20 @@ function TaskForm({ navigation, workspaceId, columnId, task }: TaskFormProps) {
   const [estimate, setEstimate] = useState(
     task?.EstimatedHours ? String(task.EstimatedHours) : "",
   );
+  // Create only. sp_SaveTask rejects a create with no checklist item, because
+  // completion is derived from the checklist and a task with an empty one could
+  // never complete. Editing ignores this — the checklist is owned by
+  // saveTaskChecklist from then on.
+  const [steps, setSteps] = useState<string[]>([""]);
   const [error, setError] = useState<string | null>(null);
+
+  const trimmedSteps = steps.map((s) => s.trim()).filter(Boolean);
+
+  const setStep = (idx: number, value: string) =>
+    setSteps((prev) => prev.map((s, i) => (i === idx ? value : s)));
+  const addStep = () => setSteps((prev) => [...prev, ""]);
+  const removeStep = (idx: number) =>
+    setSteps((prev) => (prev.length === 1 ? [""] : prev.filter((_, i) => i !== idx)));
 
   const { data: columns } = useQuery({
     queryKey: ["columns", workspaceId],
@@ -163,13 +177,18 @@ function TaskForm({ navigation, workspaceId, columnId, task }: TaskFormProps) {
       if (task) queryClient.invalidateQueries({ queryKey: ["task", task.Id] });
       navigation.goBack();
     },
-    onError: () => setError("Could not save this task. Check your connection."),
+    onError: (err) =>
+      setError(apiErrorMessage(err, "Could not save this task. Check your connection.")),
   });
 
   const submit = () => {
     const trimmed = title.trim();
     if (!trimmed) {
       setError("A task needs a title.");
+      return;
+    }
+    if (!editing && trimmedSteps.length === 0) {
+      setError("Add at least one step — that is what marks the task done.");
       return;
     }
     setError(null);
@@ -187,6 +206,21 @@ function TaskForm({ navigation, workspaceId, columnId, task }: TaskFormProps) {
       Type: type,
       DueDate: dueDate,
       EstimatedHours: Number.isFinite(hours) && hours > 0 ? hours : 0,
+      // sp_SaveTask's UPDATE branch assigns every one of these columns
+      // unconditionally — only ColumnId is COALESCEd. Omitting them here does
+      // not mean "leave them alone": saveTask's own defaults would fill in
+      // 0/null and the save would wipe logged time, progress, the parent link
+      // and the project. So this form re-sends what it does not edit.
+      ParentTaskId: task?.ParentTaskId ?? null,
+      ProjectId: task?.ProjectId ?? null,
+      TeamId: task?.TeamId ?? null,
+      LoggedHours: task?.LoggedHours ?? 0,
+      Progress: task?.Progress ?? 0,
+      IsBlocked: task?.IsBlocked ?? false,
+      Labels: task?.Labels ?? null,
+      Watchers: task?.Watchers ?? null,
+      // Ignored on update; required on create.
+      ChecklistItems: editing ? null : trimmedSteps,
     });
   };
 
@@ -263,6 +297,41 @@ function TaskForm({ navigation, workspaceId, columnId, task }: TaskFormProps) {
           keyboardType="decimal-pad"
         />
 
+        {!editing ? (
+          <View style={styles.steps}>
+            <Text variant="label">Steps *</Text>
+            <Text variant="caption" color="textMuted">
+              Break the work into steps. The task completes when every step is
+              ticked.
+            </Text>
+            {steps.map((step, idx) => (
+              <View key={idx} style={styles.stepRow}>
+                <View style={styles.stepInput}>
+                  <Input
+                    value={step}
+                    onChangeText={(v) => setStep(idx, v)}
+                    placeholder={`Step ${idx + 1}`}
+                  />
+                </View>
+                <Pressable
+                  onPress={() => removeStep(idx)}
+                  hitSlop={8}
+                  accessibilityLabel={`Remove step ${idx + 1}`}
+                  style={styles.stepRemove}
+                >
+                  <X size={18} color={colors.textMuted} />
+                </Pressable>
+              </View>
+            ))}
+            <Pressable onPress={addStep} hitSlop={8} style={styles.stepAdd}>
+              <Plus size={16} color={colors.primary} />
+              <Text variant="label" color="primary">
+                Add step
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
+
         {error ? (
           <Text variant="caption" color="danger">
             {error}
@@ -296,4 +365,14 @@ const styles = StyleSheet.create({
     gap: spacing[4],
   },
   actions: { paddingTop: spacing[2] },
+  steps: { gap: spacing[2] },
+  stepRow: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
+  stepInput: { flex: 1 },
+  stepRemove: { padding: spacing[2] },
+  stepAdd: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[1],
+    paddingVertical: spacing[1],
+  },
 });

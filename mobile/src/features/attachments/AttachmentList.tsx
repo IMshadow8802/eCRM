@@ -26,9 +26,10 @@ import {
   uploadAttachment,
   type PickedFile,
 } from "../../api/attachmentQueries";
+import { apiErrorMessage } from "../../api/errors";
 import type { Attachment, AttachmentEntity } from "../../types/api";
 import { colors, radius, shadows, spacing, SCREEN_PADDING } from "../../theme";
-import { Dialog, Fab, Sheet, Text, type SheetRef } from "../../ui";
+import { Dialog, Fab, Sheet, Text, useToast, type SheetRef } from "../../ui";
 import FileViewer from "./FileViewer";
 import { fileMeta, humanSize, MAX_UPLOAD_BYTES } from "./attachmentHelpers";
 import { useDownloadAttachment } from "./useDownloadAttachment";
@@ -46,6 +47,7 @@ export default function AttachmentList({
   canManage,
 }: AttachmentListProps) {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const sheetRef = useRef<SheetRef>(null);
   const [viewing, setViewing] = useState<Attachment | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -61,12 +63,12 @@ export default function AttachmentList({
   const upload = useMutation({
     mutationFn: uploadAttachment,
     onSuccess: () => queryClient.invalidateQueries({ queryKey }),
-    onError: (err: any) =>
-      setError(err?.response?.data?.message ?? "Upload failed."),
+    onError: (err) => setError(apiErrorMessage(err, "Upload failed.")),
   });
 
   const remove = useMutation({
     mutationFn: deleteAttachment,
+    onError: (err) => toast.error(apiErrorMessage(err, "Could not delete that file.")),
     onSuccess: () => {
       setPendingDelete(null);
       queryClient.invalidateQueries({ queryKey });

@@ -35,6 +35,7 @@ import {
   moveTaskColumn,
   saveTaskChecklist,
 } from "../../api/taskQueries";
+import { apiErrorMessage } from "../../api/errors";
 import { fetchAttachments } from "../../api/attachmentQueries";
 import { fetchKanbanColumns } from "../../api/kanbanQueries";
 import { fetchWorkspaces } from "../../api/workspaceQueries";
@@ -56,6 +57,7 @@ import {
   type ComposeField,
   type SheetAction,
   type SheetRef,
+  useToast,
 } from "../../ui";
 import AttachmentList from "../attachments/AttachmentList";
 import ActivityTab from "./ActivityTab";
@@ -106,11 +108,17 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   const { taskId, workspaceId } = route.params;
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
+  const toast = useToast();
   const userId = useAuthStore((s) => s.UserId);
   const isAdmin = useAuthStore((s) => Boolean(s.user?.IsAdmin));
 
   const [tab, setTab] = useState<Tab>("checklist");
   const [compose, setCompose] = useState<Compose>("checklist");
+  // Why the last compose submit failed. Cleared when the sheet is opened
+  // again, so a stale reason never greets the next entry.
+  const [composeError, setComposeError] = useState<string | null>(null);
+  // Ticking/removing a step happens inline on the details tab, not in a sheet.
+  const [checklistError, setChecklistError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const composeRef = useRef<SheetRef>(null);
@@ -139,7 +147,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   // Authority comes from the caller's role in THIS task's workspace, which the
   // task row does not carry. Already cached by Boards, so this costs nothing.
   const { data: workspaces } = useQuery({
-    queryKey: ["workspaces"],
+    queryKey: ["workspaces", false],
     queryFn: () => fetchWorkspaces({ PageSize: 100 }),
   });
 
@@ -171,16 +179,31 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
     queryClient.invalidateQueries({ queryKey: ["tasks"] });
   };
 
+  // Ticking a box and adding a step are the same endpoint but not the same
+  // failure: a rejected tick silently un-ticks itself, which reads as the app
+  // ignoring the tap, so it needs a line of its own rather than the compose
+  // sheet's (that sheet is not even open).
   const toggleItem = useMutation({
     mutationFn: saveTaskChecklist,
-    onSuccess: invalidate,
+    onError: (err) =>
+      setChecklistError(apiErrorMessage(err, "Could not update that step.")),
+    onSuccess: () => {
+      setChecklistError(null);
+      invalidate();
+    },
   });
   const removeItem = useMutation({
     mutationFn: deleteTaskChecklist,
-    onSuccess: invalidate,
+    onError: (err) =>
+      setChecklistError(apiErrorMessage(err, "Could not remove that step.")),
+    onSuccess: () => {
+      setChecklistError(null);
+      invalidate();
+    },
   });
   const addItem = useMutation({
     mutationFn: saveTaskChecklist,
+    onError: (err) => setComposeError(apiErrorMessage(err, "Could not add that step.")),
     onSuccess: () => {
       composeRef.current?.dismiss();
       invalidate();
@@ -188,6 +211,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   });
   const addComment = useMutation({
     mutationFn: addTaskComment,
+    onError: (err) => setComposeError(apiErrorMessage(err, "Could not post that comment.")),
     onSuccess: () => {
       composeRef.current?.dismiss();
       queryClient.invalidateQueries({ queryKey: ["task", taskId, "comments"] });
@@ -195,15 +219,21 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   });
   const logTime = useMutation({
     mutationFn: logTaskTime,
+    onError: (err) => setComposeError(apiErrorMessage(err, "Could not log that time.")),
     onSuccess: () => {
       composeRef.current?.dismiss();
       queryClient.invalidateQueries({ queryKey: ["task", taskId, "time"] });
       invalidate();
     },
   });
-  const move = useMutation({ mutationFn: moveTaskColumn, onSuccess: invalidate });
+  const move = useMutation({
+    mutationFn: moveTaskColumn,
+    onError: (err) => toast.error(apiErrorMessage(err, "Could not move this task.")),
+    onSuccess: invalidate,
+  });
   const addBlocker = useMutation({
     mutationFn: addTaskDependency,
+    onError: (err) => toast.error(apiErrorMessage(err, "Could not add that blocker.")),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["task", taskId, "dependencies"] });
       invalidate();
@@ -211,6 +241,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   });
   const removeTask = useMutation({
     mutationFn: deleteTask,
+    onError: (err) => toast.error(apiErrorMessage(err, "Could not delete this task.")),
     onSuccess: () => {
       setConfirmingDelete(false);
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
@@ -272,6 +303,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
 
   const openCompose = (kind: Compose) => {
     setCompose(kind);
+    setComposeError(null);
     composeRef.current?.present();
   };
 
@@ -294,7 +326,13 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
       return;
     }
     const hours = Number(values.hours);
-    if (!Number.isFinite(hours) || hours <= 0) return;
+    if (!Number.isFinite(hours) || hours <= 0) {
+      // Used to return silently. The sheet cleared itself on submit back then,
+      // so it at least looked like something happened; now that it keeps the
+      // text, saying nothing would read as a dead button.
+      setComposeError("Enter how many hours, as a number above zero.");
+      return;
+    }
     logTime.mutate({
       TaskId: taskId,
       Hours: hours,
@@ -507,6 +545,12 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
         />
       ) : null}
 
+      {tab === "checklist" && checklistError ? (
+        <Text variant="caption" color="danger" style={styles.inlineError}>
+          {checklistError}
+        </Text>
+      ) : null}
+
       {tab === "files" ? (
         <AttachmentList
           entity="task"
@@ -568,6 +612,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
         submitLabel={COMPOSE_FORM[compose].submitLabel}
         fields={COMPOSE_FORM[compose].fields}
         busy={addItem.isPending || addComment.isPending || logTime.isPending}
+        error={composeError}
         onSubmit={submit}
       />
 
@@ -651,6 +696,7 @@ function Meta({
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  inlineError: { paddingHorizontal: SCREEN_PADDING, paddingTop: spacing[2] },
   centre: {
     flex: 1,
     alignItems: "center",

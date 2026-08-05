@@ -12,6 +12,7 @@ import type { StackScreenProps } from "@react-navigation/stack";
 import { fetchKanbanColumns } from "../../api/kanbanQueries";
 import { fetchTasks, moveTaskColumn } from "../../api/taskQueries";
 import { fetchWorkspaces } from "../../api/workspaceQueries";
+import { apiErrorMessage } from "../../api/errors";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
 import type { KanbanColumn, Task } from "../../types/api";
@@ -27,6 +28,7 @@ import {
   Text,
   type SheetAction,
   type SheetRef,
+  useToast,
 } from "../../ui";
 import { TaskCard } from "../tasks/TaskCard";
 import { abilitiesFor } from "../tasks/taskHelpers";
@@ -47,6 +49,7 @@ const UNSORTED_ID = -1;
 export default function BoardScreen({ route, navigation }: Props) {
   const { workspaceId, name } = route.params;
   const queryClient = useQueryClient();
+  const toast = useToast();
   const userId = useAuthStore((s) => s.UserId);
   const isAdmin = useAuthStore((s) => Boolean(s.user?.IsAdmin));
 
@@ -65,7 +68,7 @@ export default function BoardScreen({ route, navigation }: Props) {
   });
 
   const { data: workspaces } = useQuery({
-    queryKey: ["workspaces"],
+    queryKey: ["workspaces", false],
     queryFn: () => fetchWorkspaces({ PageSize: 100 }),
   });
 
@@ -75,6 +78,13 @@ export default function BoardScreen({ route, navigation }: Props) {
 
   const move = useMutation({
     mutationFn: moveTaskColumn,
+    // Clearing `moving` here too, not just on success. The move sheet is driven
+    // by that state, so a refused move used to leave it pinned open on a card
+    // that had not gone anywhere, with nothing said about why.
+    onError: (err) => {
+      setMoving(null);
+      toast.error(apiErrorMessage(err, "Could not move that task."));
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
       setMoving(null);

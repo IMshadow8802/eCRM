@@ -9,6 +9,7 @@ import type {
 
 import { fetchCustomFields, fetchLookups, LOOKUP_KIND } from "../../api/configQueries";
 import { fetchTicketDetail, saveTicket } from "../../api/ticketQueries";
+import { apiErrorMessage } from "../../api/errors";
 import { fetchUserDirectory } from "../../api/userQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import type { CustomFieldDef, Ticket, TicketDetail } from "../../types/api";
@@ -159,8 +160,10 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
       if (ticket) queryClient.invalidateQueries({ queryKey: ["ticket", ticket.Id] });
       navigation.goBack();
     },
-    onError: () =>
-      setError("Could not save this complaint. Check your connection."),
+    onError: (err) =>
+      setError(
+        apiErrorMessage(err, "Could not save this complaint. Check your connection."),
+      ),
   });
 
   const submit = () => {

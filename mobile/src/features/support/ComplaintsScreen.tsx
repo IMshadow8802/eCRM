@@ -15,6 +15,7 @@ import type { StackScreenProps } from "@react-navigation/stack";
 import { fetchLookups, fetchPipelines, LOOKUP_KIND } from "../../api/configQueries";
 import { fetchTickets, moveTicketStage } from "../../api/ticketQueries";
 import { fetchUserDirectory } from "../../api/userQueries";
+import { apiErrorMessage } from "../../api/errors";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import type { PipelineStage, Ticket } from "../../types/api";
 import { colors, radius, spacing, SCREEN_PADDING } from "../../theme";
@@ -30,6 +31,7 @@ import {
   Text,
   type SheetAction,
   type SheetRef,
+  useToast,
 } from "../../ui";
 import { ComplaintCard } from "./ComplaintCard";
 import {
@@ -57,6 +59,7 @@ const NO_STAGE_ID = -1;
  */
 export default function ComplaintsScreen({ navigation }: Props) {
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   const [search, setSearch] = useState("");
   const [moving, setMoving] = useState<Ticket | null>(null);
@@ -99,6 +102,13 @@ export default function ComplaintsScreen({ navigation }: Props) {
 
   const move = useMutation({
     mutationFn: moveTicketStage,
+    // Same state the success path clears. Leaving `pendingStage` set after a
+    // refusal keeps the resolution prompt up over a ticket that never moved.
+    onError: (err) => {
+      setMoving(null);
+      setPendingStage(null);
+      toast.error(apiErrorMessage(err, "Could not move that complaint."));
+    },
     onSuccess: () => {
       setMoving(null);
       setPendingStage(null);
@@ -107,7 +117,6 @@ export default function ComplaintsScreen({ navigation }: Props) {
     },
   });
 
-  const roles = useMemo(() => stageRoles(pipeline?.stages), [pipeline]);
   const categoryNames = useMemo(() => lookupMap(categories), [categories]);
   const priorityNames = useMemo(() => lookupMap(priorities), [priorities]);
   const people = useMemo(
@@ -130,10 +139,13 @@ export default function ComplaintsScreen({ navigation }: Props) {
     [pipeline],
   );
 
-  const stages = useMemo(
-    () => roles.ordered.filter((s) => s.PipelineId === activePipeline?.Id),
-    [roles, activePipeline],
+  const roles = useMemo(
+    () => stageRoles(pipeline?.stages, activePipeline?.Id ?? null),
+    [pipeline, activePipeline],
   );
+
+  // Already scoped to activePipeline by stageRoles above.
+  const stages = roles.ordered;
 
   // A "No stage" column only exists when something is actually in it — an
   // empty extra column on a small screen is a wasted swipe.
