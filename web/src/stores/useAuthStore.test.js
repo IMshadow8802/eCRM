@@ -74,3 +74,45 @@ describe("useAuthStore.updateUser", () => {
     expect(useAuthStore.getState().user.FullName).toBe("Solo");
   });
 });
+
+const b64 = (o) =>
+  btoa(JSON.stringify(o)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const jwtExpiringIn = (seconds) =>
+  `${b64({ alg: "HS256", typ: "JWT" })}.${b64({
+    exp: Math.floor(Date.now() / 1000) + seconds,
+  })}.sig`;
+
+describe("useAuthStore.checkTokenExpiry", () => {
+  beforeEach(() => {
+    useAuthStore.setState({ isAuthenticated: true, token: jwtExpiringIn(3600) });
+  });
+
+  it("answers true while the token is still good", () => {
+    expect(useAuthStore.getState().checkTokenExpiry()).toBe(true);
+  });
+
+  it("answers false for an expired token", () => {
+    useAuthStore.setState({ token: jwtExpiringIn(-60) });
+    expect(useAuthStore.getState().checkTokenExpiry()).toBe(false);
+  });
+
+  it("answers false when there is no token at all", () => {
+    useAuthStore.setState({ token: null });
+    expect(useAuthStore.getState().checkTokenExpiry()).toBe(false);
+  });
+
+  /**
+   * REGRESSION: this used to call state.logout() when it found an expired
+   * token, so asking whether the session was still valid silently ended it —
+   * from a function named "check". Callers then ran their own teardown and
+   * became the SECOND one to clear the store, which is how two logout paths
+   * came to interleave on wake. Ending a session belongs to endSession.
+   */
+  it("is a question, not an action — it never clears the session", () => {
+    useAuthStore.setState({ token: jwtExpiringIn(-60) });
+    useAuthStore.getState().checkTokenExpiry();
+
+    expect(useAuthStore.getState().isAuthenticated).toBe(true);
+    expect(useAuthStore.getState().token).not.toBeNull();
+  });
+});

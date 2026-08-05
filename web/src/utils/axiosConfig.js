@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { isTokenExpired, isTokenExpiringSoon } from './tokenUtils';
-import { redirectToLogin } from './redirectToLogin';
 import { shouldSkipAuthRedirect } from './authRedirectGuard';
+import { endSession, isEndingSession } from './endSession';
 import useAuthStore from '../stores/useAuthStore';
 import { enqueueSnackbar } from 'notistack';
 
@@ -19,25 +19,28 @@ const createAxiosInstance = () => {
   // Request interceptor - Add token and validate expiry
   instance.interceptors.request.use(
     (config) => {
-      const { token, logout, API_BASE_URL } = useAuthStore.getState();
+      const { token, API_BASE_URL } = useAuthStore.getState();
 
       // In dev, leave baseURL empty so requests are relative (e.g. `/api/...`)
       // and get forwarded by Vite's proxy → http://localhost:5001 (see
       // vite.config.js). In prod we use the persisted store URL.
       config.baseURL = import.meta.env.DEV ? "" : API_BASE_URL;
-      
+
+      // Once the session is being torn down, nothing else goes out. This used
+      // to be missing, and it is what made the storm self-sustaining: the
+      // expiry check below sits inside `if (token)`, so after the first logout
+      // nulled the token every later request skipped the check entirely, went
+      // out with NO Authorization header, earned a fresh 401, and tripped the
+      // response interceptor into logging out all over again.
+      // Auth endpoints are exempt — the login form must still work.
+      if (isEndingSession() && !shouldSkipAuthRedirect(config.url)) {
+        return Promise.reject(new Error('Session ended'));
+      }
+
       if (token) {
         // Check if token is expired
         if (isTokenExpired(token)) {
-          console.warn('Token expired, logging out...');
-          logout();
-          enqueueSnackbar('Session expired. Please login again.', { 
-            variant: 'warning',
-            autoHideDuration: 3000 
-          });
-          
-          // Redirect to login page
-          redirectToLogin();
+          endSession('Expired token on an outgoing request');
           return Promise.reject(new Error('Token expired'));
         }
 
@@ -67,19 +70,11 @@ const createAxiosInstance = () => {
       return response;
     },
     (error) => {
-      const { logout } = useAuthStore.getState();
-      
       // Handle 401 Unauthorized responses (skip for auth endpoints — bad-creds
       // 401 must surface to the caller, not trigger logout/redirect loop).
+      // endSession is idempotent, so a burst of 401s tears down exactly once.
       if (error.response?.status === 401 && !shouldSkipAuthRedirect(error.config?.url)) {
-        console.warn('Received 401 Unauthorized, logging out...');
-        logout();
-        enqueueSnackbar('Session expired. Please login again.', {
-          variant: 'error',
-          autoHideDuration: 3000
-        });
-
-        redirectToLogin();
+        endSession('401 from the API');
         return Promise.reject(new Error('Authentication failed'));
       }
 

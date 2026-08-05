@@ -22,20 +22,24 @@ const LoginPage = () => <div data-testid="login-page">login</div>;
 const setRights = (rights) =>
   act(() => useAuthStore.setState({ menuRights: rights }));
 
+const setSignedIn = (value) =>
+  act(() => useAuthStore.setState({ isAuthenticated: value }));
+
 beforeEach(() => {
-  localStorage.setItem("userData", JSON.stringify({ token: "t" }));
+  setSignedIn(true);
   setRights(TASKS_ONLY);
 });
 
 afterEach(() => {
   cleanup(); // unmount before clearing auth, else guards re-render mid-teardown
   localStorage.clear();
+  setSignedIn(false);
   setRights([]);
 });
 
 describe("ProtectedRoute", () => {
   it("sends a signed-out visitor to login", () => {
-    localStorage.removeItem("userData");
+    setSignedIn(false);
     renderWithProviders(
       <Routes>
         <Route path="/login" element={<LoginPage />} />
@@ -89,6 +93,29 @@ describe("ProtectedRoute", () => {
       { route: "/sales/leads/42" },
     );
     expect(screen.getByTestId("the-page")).toBeInTheDocument();
+  });
+
+  /**
+   * REGRESSION: the gate read `localStorage.getItem("userData")` directly,
+   * which React cannot subscribe to. Ending a session cleared the store — the
+   * layout dropped its nav, every subscriber re-rendered — while this guard
+   * went on rendering the protected page, because nothing told it to look
+   * again. Reading the store is what keeps the guard and the UI agreeing.
+   */
+  it("stops rendering the page the moment the session is cleared", () => {
+    renderWithProviders(
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/tasks" element={<ProtectedRoute element={<Page />} />} />
+      </Routes>,
+      { route: "/tasks" },
+    );
+    expect(screen.getByTestId("the-page")).toBeInTheDocument();
+
+    act(() => useAuthStore.getState().logout());
+
+    expect(screen.queryByTestId("the-page")).not.toBeInTheDocument();
+    expect(screen.getByTestId("login-page")).toBeInTheDocument();
   });
 
   it("blocks everything when the user has no menus at all", () => {

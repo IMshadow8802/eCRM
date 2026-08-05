@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { enqueueSnackbar } from 'notistack';
 import useAuthStore from '../stores/useAuthStore';
+import { endSession } from '../utils/endSession';
 
 /**
  * Custom hook to monitor token expiry and handle automatic logout
@@ -17,7 +17,6 @@ export const useTokenMonitor = (options = {}) => {
     autoLogout = true
   } = options;
 
-  const navigate = useNavigate();
   const intervalRef = useRef(null);
   const warningShownRef = useRef(false);
   
@@ -27,7 +26,6 @@ export const useTokenMonitor = (options = {}) => {
     checkTokenExpiry, 
     isTokenExpiring, 
     getTokenRemainingSeconds,
-    forceLogout 
   } = useAuthStore();
 
   useEffect(() => {
@@ -43,14 +41,7 @@ export const useTokenMonitor = (options = {}) => {
 
     // Initial check
     if (!checkTokenExpiry()) {
-      if (autoLogout) {
-        enqueueSnackbar('Session expired. Please login again.', { 
-          variant: 'error',
-          autoHideDuration: 3000 
-        });
-        forceLogout('Token expired');
-        navigate('/login');
-      }
+      if (autoLogout) endSession('Token already expired when monitoring started');
       return;
     }
 
@@ -58,14 +49,7 @@ export const useTokenMonitor = (options = {}) => {
     intervalRef.current = setInterval(() => {
       // Check if token is expired
       if (!checkTokenExpiry()) {
-        if (autoLogout) {
-          enqueueSnackbar('Session expired. Please login again.', { 
-            variant: 'error',
-            autoHideDuration: 3000 
-          });
-          forceLogout('Token expired during monitoring');
-          navigate('/login');
-        }
+        if (autoLogout) endSession('Token expired during monitoring');
         return;
       }
 
@@ -104,11 +88,9 @@ export const useTokenMonitor = (options = {}) => {
     checkInterval, 
     warningMinutes, 
     autoLogout, 
-    navigate,
     checkTokenExpiry,
     isTokenExpiring,
     getTokenRemainingSeconds,
-    forceLogout
   ]);
 
   // Handle page visibility change - check token when user returns to tab
@@ -117,14 +99,7 @@ export const useTokenMonitor = (options = {}) => {
       if (!document.hidden && isAuthenticated && token) {
         // User returned to the tab, check token immediately
         if (!checkTokenExpiry()) {
-          if (autoLogout) {
-            enqueueSnackbar('Session expired while you were away. Please login again.', { 
-              variant: 'error',
-              autoHideDuration: 4000 
-            });
-            forceLogout('Token expired while away');
-            navigate('/login');
-          }
+          if (autoLogout) endSession('Token expired while the tab was away');
         }
       }
     };
@@ -134,7 +109,7 @@ export const useTokenMonitor = (options = {}) => {
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [isAuthenticated, token, autoLogout, navigate, checkTokenExpiry, forceLogout]);
+  }, [isAuthenticated, token, autoLogout, checkTokenExpiry]);
 
   // Handle page focus - similar to visibility change
   useEffect(() => {
@@ -142,14 +117,7 @@ export const useTokenMonitor = (options = {}) => {
       if (isAuthenticated && token) {
         // Check token when page gains focus
         if (!checkTokenExpiry()) {
-          if (autoLogout) {
-            enqueueSnackbar('Session expired. Please login again.', { 
-              variant: 'error',
-              autoHideDuration: 3000 
-            });
-            forceLogout('Token expired on focus');
-            navigate('/login');
-          }
+          if (autoLogout) endSession('Token expired, noticed on focus');
         }
       }
     };
@@ -159,12 +127,11 @@ export const useTokenMonitor = (options = {}) => {
     return () => {
       window.removeEventListener('focus', handleFocus);
     };
-  }, [isAuthenticated, token, autoLogout, navigate, checkTokenExpiry, forceLogout]);
+  }, [isAuthenticated, token, autoLogout, checkTokenExpiry]);
 
   return {
     isTokenExpiring: isTokenExpiring(warningMinutes),
     remainingSeconds: getTokenRemainingSeconds(),
     checkTokenExpiry: () => checkTokenExpiry(),
-    forceLogout
   };
 };

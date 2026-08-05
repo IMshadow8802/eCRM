@@ -171,19 +171,18 @@ const useAuthStore = create(
           });
         },
 
-        // Token validation methods
+        // Token validation methods.
+        //
+        // A QUESTION, not an action. This used to call state.logout() when it
+        // found an expired token — so asking whether the session was still
+        // good silently ended it, from a function named "check". That is what
+        // let two logout paths interleave: the caller would get `false`, run
+        // its own teardown, and be the SECOND one to clear the store. Ending
+        // the session is endSession's job now, and only the caller decides.
         checkTokenExpiry: () => {
           const state = get();
-          if (!state.token) {
-            return false;
-          }
-
-          if (isTokenExpired(state.token)) {
-            console.warn("Token expired, logging out...");
-            state.logout();
-            return false;
-          }
-          return true;
+          if (!state.token) return false;
+          return !isTokenExpired(state.token);
         },
 
         isTokenExpiring: (minutesBeforeExpiry = 5) => {
