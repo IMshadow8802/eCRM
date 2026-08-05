@@ -1,191 +1,60 @@
-import { useEffect, useMemo, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import {
-  DndContext,
-  DragOverlay,
-  PointerSensor,
-  KeyboardSensor,
-  useSensor,
-  useSensors,
-  pointerWithin,
-} from "@dnd-kit/core";
+import { useState } from "react";
+import { DndContext, DragOverlay, pointerWithin } from "@dnd-kit/core";
 import { HeartCrack, Workflow } from "lucide-react";
 
-import { useApiQuery } from "../../hooks/useApiQuery";
-import { useApiMutation } from "../../hooks/useApiMutation";
+import { useLookups } from "../../hooks/useLookups";
+import { useStageBoard } from "../../hooks/useStageBoard";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
 import { PageHeader, EmptyState, Modal, Combobox, Button } from "../../components/ui";
 import HelpGuide from "../../components/HelpGuide";
 import { HELP_GUIDES } from "../../data/helpGuides";
-import { dragGuard } from "../../realtime/dragGuard";
 import PipelineColumn from "./PipelineColumn";
 import { PipelineCardView } from "./PipelineCard";
 
-const PIPELINE_ENTITY = "lead";
-const LEADS_QUERY_KEY = ["sales-leads"];
-
-// sp_FetchPipelines returns 2 result sets (pipelines, then their stages);
-// configController.fetchPipelines forwards both as { pipelines, stages }.
-function bucketLeadsByStage(stages, leads) {
-  const bucket = {};
-  for (const stage of stages) bucket[stage.Id] = [];
-  for (const lead of leads) {
-    if (lead?.StageId != null && bucket[lead.StageId]) {
-      bucket[lead.StageId].push(lead);
-    }
-  }
-  return bucket;
-}
-
 export default function Pipeline() {
-  const queryClient = useQueryClient();
+  const board = useStageBoard({
+    entity: "lead",
+    pipelineQueryKey: ["sales-pipelines", "lead"],
+    fetchPipelines: SALES_ENDPOINTS.config.fetchPipelines,
+    itemsQueryKey: ["sales-leads"],
+    fetchItems: SALES_ENDPOINTS.leads.fetchLeads,
+    itemsKey: "leads",
+    moveEndpoint: SALES_ENDPOINTS.leads.moveLeadStage,
+    // Only lost moves carry a reason — keep other payloads unchanged.
+    movePayload: (LeadId, StageId, LostReasonId) => ({
+      LeadId,
+      StageId,
+      ...(LostReasonId ? { LostReasonId } : {}),
+    }),
+    // sp_MoveLeadStage rejects a lost move without a LostReasonId, so ask first.
+    needsPrompt: (targetStage) => targetStage?.StageType === "lost",
+    dragDataKey: "lead",
+    dragIdKey: "leadId",
+  });
 
-  const { data: pipelinesPayload, isPending: pipelinesPending } = useApiQuery({
-    queryKey: ["sales-pipelines", PIPELINE_ENTITY],
-    endpoint: SALES_ENDPOINTS.config.fetchPipelines,
-    params: { Entity: PIPELINE_ENTITY },
+  const { lookups: lostReasons } = useLookups("lost_reason", {
     showErrorMessage: false,
   });
-  const pipelines = pipelinesPayload?.pipelines ?? [];
-  const allStages = pipelinesPayload?.stages ?? [];
-  const activePipeline = pipelines.find((pl) => pl.IsDefault) ?? pipelines[0] ?? null;
-
-  const stages = useMemo(
-    () =>
-      allStages
-        .filter((s) => s.PipelineId === activePipeline?.Id)
-        .slice()
-        .sort((a, b) => (a.SortOrder ?? 0) - (b.SortOrder ?? 0)),
-    [allStages, activePipeline],
-  );
-
-  const { data: leadsPayload, refetch: refetchLeads } = useApiQuery({
-    queryKey: LEADS_QUERY_KEY,
-    endpoint: SALES_ENDPOINTS.leads.fetchLeads,
-    params: { PageNumber: 1, PageSize: 200 },
-    showErrorMessage: false,
-  });
-  const leads = leadsPayload?.leads ?? [];
-
-  // Lost reasons for the drag-into-lost prompt (sp_MoveLeadStage rejects a
-  // lost move without a LostReasonId, so ask before calling).
-  const { data: lostReasonsPayload } = useApiQuery({
-    queryKey: ["lost-reasons"],
-    endpoint: SALES_ENDPOINTS.config.fetchLookups,
-    params: { Kind: "lost_reason" },
-    showErrorMessage: false,
-  });
-  const lostReasons = lostReasonsPayload?.lookups ?? [];
-
-  // A drag into a lost stage parks here until the user picks a reason
-  // (same pattern as TicketBoard's drag-into-won resolution prompt).
-  const [pendingMove, setPendingMove] = useState(null); // { leadId, targetStageId }
   const [lostReason, setLostReason] = useState(null);
-  const [activeCard, setActiveCard] = useState(null); // the card in the drag overlay
-
-  // Distance constraint so a plain click still opens the lead (no accidental
-  // drag); keyboard sensor keeps drag accessible.
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(KeyboardSensor),
-  );
-
-  // Safety: release the realtime gate if the board unmounts mid-drag.
-  useEffect(() => () => dragGuard.end(), []);
-
-  const moveStageMutation = useApiMutation({
-    endpoint: SALES_ENDPOINTS.leads.moveLeadStage,
-    showSuccessMessage: false,
-  });
-
-  const leadsByStage = useMemo(() => bucketLeadsByStage(stages, leads), [stages, leads]);
-
-  const commitMove = async (leadId, targetStageId, lostReasonId = null) => {
-    // Optimistic: patch the cache so the card jumps to the target column
-    // immediately, before the save round-trip completes (copied from
-    // TaskBoard.jsx's handleDragEnd).
-    const previousPayload = queryClient.getQueryData(LEADS_QUERY_KEY);
-    queryClient.setQueryData(LEADS_QUERY_KEY, (prev) => {
-      if (!prev?.leads) return prev;
-      return {
-        ...prev,
-        leads: prev.leads.map((l) =>
-          l.Id === leadId ? { ...l, StageId: targetStageId } : l,
-        ),
-      };
-    });
-
-    try {
-      await moveStageMutation.mutateAsync({
-        LeadId: leadId,
-        StageId: targetStageId,
-        // Only lost moves carry a reason — keep other payloads unchanged.
-        ...(lostReasonId ? { LostReasonId: lostReasonId } : {}),
-      });
-      queryClient.invalidateQueries({ queryKey: LEADS_QUERY_KEY, refetchType: "none" });
-    } catch {
-      // Rollback on failure
-      if (previousPayload) {
-        queryClient.setQueryData(LEADS_QUERY_KEY, previousPayload);
-      }
-      refetchLeads();
-    }
-  };
-
-  const handleDragStart = (event) => {
-    dragGuard.start(); // hold realtime refetches until the drop lands
-    setActiveCard(event.active.data.current?.lead ?? null);
-  };
-
-  const handleDragCancel = () => {
-    setActiveCard(null);
-    dragGuard.end();
-  };
-
-  const handleDragEnd = async (event) => {
-    setActiveCard(null);
-    // Release the realtime gate now — the optimistic patch in commitMove is the
-    // source of truth until the save round-trips; deferred refetches can flush.
-    dragGuard.end();
-    const { active, over } = event;
-    if (!over) return;
-
-    const leadId = active.data.current?.leadId;
-    const lead = leads.find((l) => l.Id === leadId);
-    if (!lead) return;
-
-    const targetStageId = over.data.current?.stageId;
-    if (!targetStageId || targetStageId === lead.StageId) return;
-
-    // Losing a lead needs a reason — hold the move and ask. Won/open moves
-    // sail straight through.
-    const targetStage = stages.find((s) => s.Id === targetStageId);
-    if (targetStage?.StageType === "lost") {
-      setPendingMove({ leadId, targetStageId });
-      return;
-    }
-
-    await commitMove(leadId, targetStageId);
-  };
 
   const closeLostModal = () => {
-    setPendingMove(null);
+    board.setPendingMove(null);
     setLostReason(null);
   };
 
   const submitPendingMove = async () => {
-    if (!pendingMove || !lostReason) return;
-    const { leadId, targetStageId } = pendingMove;
+    if (!board.pendingMove || !lostReason) return;
+    const { id, targetStageId } = board.pendingMove;
     closeLostModal();
-    await commitMove(leadId, targetStageId, lostReason.value);
+    await board.commitMove(id, targetStageId, lostReason.value);
   };
 
   // Don't flash the empty state while the pipeline query is still in flight.
-  if (pipelinesPending) {
+  if (board.pipelinesPending) {
     return <div style={{ padding: 32 }} data-testid="pipeline-loading" />;
   }
 
-  if (!activePipeline || stages.length === 0) {
+  if (!board.activePipeline || board.stages.length === 0) {
     return (
       <div style={{ padding: 32 }}>
         <EmptyState
@@ -210,17 +79,17 @@ export default function Pipeline() {
     >
       <PageHeader
         title="Pipeline"
-        subtitle={activePipeline.Name}
+        subtitle={board.activePipeline.Name}
         icon={<Workflow size={22} />}
         actions={<HelpGuide guide={HELP_GUIDES.leads} />}
       />
 
       <DndContext
-        sensors={sensors}
+        sensors={board.sensors}
         collisionDetection={pointerWithin}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-        onDragCancel={handleDragCancel}
+        onDragStart={board.handleDragStart}
+        onDragEnd={board.handleDragEnd}
+        onDragCancel={board.handleDragCancel}
       >
         <div
           style={{
@@ -231,17 +100,23 @@ export default function Pipeline() {
             flex: 1,
           }}
         >
-          {stages.map((stage) => (
-            <PipelineColumn key={stage.Id} stage={stage} leads={leadsByStage[stage.Id] || []} />
+          {board.stages.map((stage) => (
+            <PipelineColumn
+              key={stage.Id}
+              stage={stage}
+              leads={board.itemsByStage[stage.Id] || []}
+            />
           ))}
         </div>
         <DragOverlay>
-          {activeCard ? <PipelineCardView lead={activeCard} overlay dragging /> : null}
+          {board.activeCard ? (
+            <PipelineCardView lead={board.activeCard} overlay dragging />
+          ) : null}
         </DragOverlay>
       </DndContext>
 
       <Modal
-        open={Boolean(pendingMove)}
+        open={Boolean(board.pendingMove)}
         onClose={closeLostModal}
         size="sm"
         data-testid="board-lost-modal"
