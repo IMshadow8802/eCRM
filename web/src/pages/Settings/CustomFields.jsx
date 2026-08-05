@@ -24,8 +24,15 @@ import {
 } from "../../components/Design/FormComponents";
 
 import { useApiQuery } from "../../hooks/useApiQuery";
+import { useApiMutation } from "../../hooks/useApiMutation";
 import { useConfirmation } from "../../hooks";
-import { SALES_ENDPOINTS, saveCustomField, deleteCustomField } from "../../api/salesQueries";
+import { SALES_ENDPOINTS } from "../../api/salesQueries";
+
+// useApiMutation rejects with the API's own message when the server refuses
+// the write; a transport failure arrives as an axios error whose message
+// ("Network Error") is no use to anyone, so that keeps the generic fallback.
+const errorText = (error, fallback) =>
+  error.isAxiosError ? error.response?.data?.message || fallback : error.message;
 
 const ENTITY_OPTIONS = [
   { value: "lead", label: "Leads" },
@@ -81,7 +88,6 @@ const CustomFields = () => {
   const [editingField, setEditingField] = useState(null);
   const [formData, setFormData] = useState(emptyForm);
   const [errors, setErrors] = useState({});
-  const [isSaving, setIsSaving] = useState(false);
 
   const query = useApiQuery({
     queryKey: ["customFields", entity],
@@ -147,46 +153,42 @@ const CustomFields = () => {
     return Object.keys(next).length === 0;
   };
 
-  const handleSubmit = async () => {
+  const saveMutation = useApiMutation({
+    endpoint: SALES_ENDPOINTS.config.saveCustomField,
+    successMessage: `Field ${editingField ? "updated" : "created"} successfully!`,
+    invalidateQueries: [["customFields", entity]],
+    onSuccess: closeModal,
+    showErrorMessage: false,
+    onError: (error) =>
+      enqueueSnackbar(errorText(error, "Failed to save field"), { variant: "error" }),
+  });
+
+  const deleteMutation = useApiMutation({
+    endpoint: SALES_ENDPOINTS.config.deleteCustomField,
+    successMessage: "Field deleted successfully!",
+    invalidateQueries: [["customFields", entity]],
+    showErrorMessage: false,
+    onError: (error) =>
+      enqueueSnackbar(errorText(error, "Failed to delete field!"), { variant: "error" }),
+  });
+
+  const handleSubmit = () => {
     if (!validate()) return;
-
-    setIsSaving(true);
-    try {
-      const payload = {
-        Id: editingField?.Id || 0,
-        Entity: entity,
-        FieldKey: editingField?.FieldKey || slugify(formData.Label),
-        Label: formData.Label.trim(),
-        Type: formData.Type,
-        Options:
-          formData.Type === "dropdown"
-            ? JSON.stringify(
-                formData.Options.split(",").map((s) => s.trim()).filter(Boolean)
-              )
-            : null,
-        IsRequired: Boolean(formData.IsRequired),
-        SortOrder: Number(formData.SortOrder) || 0,
-      };
-
-      const response = await saveCustomField(payload);
-      if (response.data.success) {
-        enqueueSnackbar(`Field ${editingField ? "updated" : "created"} successfully!`, {
-          variant: "success",
-        });
-        closeModal();
-        query.refetch();
-      } else {
-        enqueueSnackbar(response.data.message || "Failed to save field", { variant: "error" });
-      }
-    } catch (error) {
-      console.error("Error saving custom field:", error);
-      enqueueSnackbar(
-        error.response?.data?.message || "Failed to save field",
-        { variant: "error" }
-      );
-    } finally {
-      setIsSaving(false);
-    }
+    saveMutation.mutate({
+      Id: editingField?.Id || 0,
+      Entity: entity,
+      FieldKey: editingField?.FieldKey || slugify(formData.Label),
+      Label: formData.Label.trim(),
+      Type: formData.Type,
+      Options:
+        formData.Type === "dropdown"
+          ? JSON.stringify(
+              formData.Options.split(",").map((s) => s.trim()).filter(Boolean)
+            )
+          : null,
+      IsRequired: Boolean(formData.IsRequired),
+      SortOrder: Number(formData.SortOrder) || 0,
+    });
   };
 
   const handleDelete = useCallback(
@@ -195,26 +197,10 @@ const CustomFields = () => {
         title: "Delete Custom Field",
         message: `Are you sure you want to delete "${field.Label}"? This action cannot be undone.`,
         confirmText: "Delete Field",
-        onConfirm: async () => {
-          try {
-            const response = await deleteCustomField({ Id: field.Id });
-            if (response.data.success) {
-              enqueueSnackbar("Field deleted successfully!", { variant: "success" });
-              query.refetch();
-            } else {
-              enqueueSnackbar(response.data.message || "Failed to delete field", {
-                variant: "error",
-              });
-            }
-          } catch (error) {
-            console.error("Error deleting custom field:", error);
-            enqueueSnackbar("Failed to delete field!", { variant: "error" });
-            throw error;
-          }
-        },
+        onConfirm: () => deleteMutation.mutateAsync({ Id: field.Id }),
       });
     },
-    [confirmation, enqueueSnackbar, query]
+    [confirmation, deleteMutation]
   );
 
   return (
@@ -309,7 +295,7 @@ const CustomFields = () => {
           onCancel={closeModal}
           onSubmit={handleSubmit}
           submitText={editingField ? "Update Field" : "Create Field"}
-          isLoading={isSaving}
+          isLoading={saveMutation.isPending}
         />
       </FormModal>
 

@@ -5,7 +5,6 @@ import { Box } from "@mui/material";
 import { MaterialReactTable } from "material-react-table";
 import { useNavigate } from "react-router-dom";
 import { ArrowRightLeft, Pencil, Plus, Trash2 } from "lucide-react";
-import dayjs from "dayjs";
 
 import { Button, Combobox, IconButton, Tooltip } from "../../components/ui";
 import PageHeader from "../../components/ui/PageHeader";
@@ -15,21 +14,11 @@ import useServerTable from "../../hooks/useServerTable";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { useUsers } from "../../hooks";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
+import { formatCurrency, formatDate } from "../../utils/format";
 import { findUserById, getUserName } from "../../utils/userShape";
 import LeadCreateModal from "./LeadCreateModal";
 import TransferLeadModal from "./TransferLeadModal";
 import DeleteLeadModal from "./DeleteLeadModal";
-
-const formatMoney = (value) =>
-  value || value === 0
-    ? new Intl.NumberFormat("en-IN", {
-        style: "currency",
-        currency: "INR",
-        maximumFractionDigits: 0,
-      }).format(value)
-    : "—";
-
-const formatDate = (value) => (value ? dayjs(value).format("DD-MMM-YYYY") : "—");
 
 const Leads = () => {
   const navigate = useNavigate();
@@ -107,13 +96,13 @@ const Leads = () => {
         accessorKey: "EstValue",
         header: "Est. Value",
         enableSorting: true,
-        Cell: ({ cell }) => formatMoney(cell.getValue()),
+        Cell: ({ cell }) => formatCurrency(cell.getValue(), { empty: "—" }),
       },
       {
         accessorKey: "NextFollowupDate",
         header: "Next Follow-up",
         enableSorting: true,
-        Cell: ({ cell }) => formatDate(cell.getValue()),
+        Cell: ({ cell }) => formatDate(cell.getValue(), { empty: "—" }),
       },
     ],
     [users, stageById]

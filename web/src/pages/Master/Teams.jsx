@@ -5,7 +5,6 @@ import { Box, IconButton, Tooltip, Chip } from "@mui/material";
 import { EditRounded, DeleteRounded } from "@mui/icons-material";
 import { MaterialReactTable } from "material-react-table";
 import { useSnackbar } from "notistack";
-import dayjs from "dayjs";
 
 // Import components
 import PageHeader from "../../components/ui/PageHeader";
@@ -32,15 +31,6 @@ const Teams = () => {
   const [editingTeam, setEditingTeam] = useState(null);
 
   // Format date
-  const formatDate = (date) => {
-    if (!date) return "";
-    try {
-      return dayjs(date).format("DD-MM-YYYY");
-    } catch (error) {
-      console.error("Error formatting date:", error);
-      return "";
-    }
-  };
 
   // Table columns definition
   const columns = useMemo(

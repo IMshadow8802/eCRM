@@ -20,12 +20,18 @@ import {
 } from "../../components/Design/FormComponents";
 
 import { useApiQuery } from "../../hooks/useApiQuery";
+import { useApiMutation } from "../../hooks/useApiMutation";
 import { useConfirmation } from "../../hooks";
-import { saveLookup, deleteLookup } from "../../api/salesQueries";
 import { SUPPORT_ENDPOINTS } from "../../api/supportQueries";
 
 const KIND = "ticket_category";
 const emptyForm = { Value: "", SortOrder: "0" };
+
+// useApiMutation rejects with the API's own message when the server refuses
+// the write; a transport failure arrives as an axios error whose message
+// ("Network Error") is no use to anyone, so that keeps the generic fallback.
+const errorText = (error, fallback) =>
+  error.isAxiosError ? error.response?.data?.message || fallback : error.message;
 
 const TicketCategories = () => {
   const { enqueueSnackbar } = useSnackbar();
@@ -36,7 +42,6 @@ const TicketCategories = () => {
   const [editingLookup, setEditingLookup] = useState(null);
   const [formData, setFormData] = useState(emptyForm);
   const [errors, setErrors] = useState({});
-  const [isSaving, setIsSaving] = useState(false);
 
   const query = useApiQuery({
     queryKey: ["lookups", KIND],
@@ -91,36 +96,33 @@ const TicketCategories = () => {
     return Object.keys(next).length === 0;
   };
 
-  const handleSubmit = async () => {
+  const saveMutation = useApiMutation({
+    endpoint: SUPPORT_ENDPOINTS.config.saveLookup,
+    successMessage: `Category ${editingLookup ? "updated" : "created"} successfully!`,
+    invalidateQueries: [["lookups", KIND]],
+    onSuccess: closeModal,
+    showErrorMessage: false,
+    onError: (error) =>
+      enqueueSnackbar(errorText(error, "Failed to save category"), { variant: "error" }),
+  });
+
+  const deleteMutation = useApiMutation({
+    endpoint: SUPPORT_ENDPOINTS.config.deleteLookup,
+    successMessage: "Category deleted successfully!",
+    invalidateQueries: [["lookups", KIND]],
+    showErrorMessage: false,
+    onError: (error) =>
+      enqueueSnackbar(errorText(error, "Failed to delete category!"), { variant: "error" }),
+  });
+
+  const handleSubmit = () => {
     if (!validate()) return;
-
-    setIsSaving(true);
-    try {
-      const payload = {
-        Id: editingLookup?.Id || 0,
-        Kind: KIND,
-        Value: formData.Value.trim(),
-        SortOrder: Number(formData.SortOrder) || 0,
-      };
-
-      const response = await saveLookup(payload);
-      if (response.data.success) {
-        enqueueSnackbar(`Category ${editingLookup ? "updated" : "created"} successfully!`, {
-          variant: "success",
-        });
-        closeModal();
-        query.refetch();
-      } else {
-        enqueueSnackbar(response.data.message || "Failed to save category", { variant: "error" });
-      }
-    } catch (error) {
-      console.error("Error saving category:", error);
-      enqueueSnackbar(error.response?.data?.message || "Failed to save category", {
-        variant: "error",
-      });
-    } finally {
-      setIsSaving(false);
-    }
+    saveMutation.mutate({
+      Id: editingLookup?.Id || 0,
+      Kind: KIND,
+      Value: formData.Value.trim(),
+      SortOrder: Number(formData.SortOrder) || 0,
+    });
   };
 
   const handleDelete = useCallback(
@@ -129,26 +131,10 @@ const TicketCategories = () => {
         title: "Delete Category",
         message: `Are you sure you want to delete "${lookup.Value}"? This action cannot be undone.`,
         confirmText: "Delete Category",
-        onConfirm: async () => {
-          try {
-            const response = await deleteLookup({ Id: lookup.Id });
-            if (response.data.success) {
-              enqueueSnackbar("Category deleted successfully!", { variant: "success" });
-              query.refetch();
-            } else {
-              enqueueSnackbar(response.data.message || "Failed to delete category", {
-                variant: "error",
-              });
-            }
-          } catch (error) {
-            console.error("Error deleting category:", error);
-            enqueueSnackbar("Failed to delete category!", { variant: "error" });
-            throw error;
-          }
-        },
+        onConfirm: () => deleteMutation.mutateAsync({ Id: lookup.Id }),
       });
     },
-    [confirmation, enqueueSnackbar, query]
+    [confirmation, deleteMutation]
   );
 
   return (
@@ -206,7 +192,7 @@ const TicketCategories = () => {
           onCancel={closeModal}
           onSubmit={handleSubmit}
           submitText={editingLookup ? "Update Category" : "Create Category"}
-          isLoading={isSaving}
+          isLoading={saveMutation.isPending}
         />
       </FormModal>
 

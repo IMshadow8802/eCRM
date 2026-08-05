@@ -5,13 +5,7 @@ import { Calendar } from "lucide-react";
 import dayjs from "dayjs";
 
 import { Chip, Avatar } from "../../components/ui";
-
-function formatCurrency(value) {
-  if (value == null || value === "") return null;
-  const n = Number(value);
-  if (Number.isNaN(n)) return null;
-  return `₹${n.toLocaleString("en-IN")}`;
-}
+import { formatCurrency } from "../../utils/format";
 
 // Owner name isn't joined by sp_FetchLeads (only the raw OwnerId FK) — fall
 // back to a numbered label rather than inventing a lookup this page has no

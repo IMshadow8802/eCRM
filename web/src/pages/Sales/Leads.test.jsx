@@ -177,10 +177,15 @@ describe("Sales Leads page", () => {
   });
 
   it("formats NextFollowupDate and falls back to a dash", () => {
+    // Format unified 2026-08-05: the Sales pages rendered DD-MMM-YYYY while the
+    // Master pages rendered DD-MM-YYYY, so the same date looked different
+    // depending on which page you opened. utils/format.js settles it on
+    // DD-MM-YYYY; the "—" placeholder for a missing date is kept here because a
+    // blank table cell reads as a rendering fault.
     renderPage();
     const cfg = useServerTable.mock.calls.at(-1)[0];
     const dateCol = cfg.columns.find((c) => c.accessorKey === "NextFollowupDate");
-    expect(dateCol.Cell({ cell: { getValue: () => "2026-07-10" } })).toBe("10-Jul-2026");
+    expect(dateCol.Cell({ cell: { getValue: () => "2026-07-10" } })).toBe("10-07-2026");
     expect(dateCol.Cell({ cell: { getValue: () => null } })).toBe("—");
   });
 

@@ -5,7 +5,6 @@ import { Box, IconButton, Tooltip, Chip } from "@mui/material";
 import { EditRounded, DeleteRounded } from "@mui/icons-material";
 import { MaterialReactTable } from "material-react-table";
 import { useSnackbar } from "notistack";
-import dayjs from "dayjs";
 
 import PageHeader from "../../components/ui/PageHeader";
 import UserForm from "./components/UserForm";
@@ -17,6 +16,7 @@ import { useApiQuery } from "../../hooks/useApiQuery";
 import useServerTable from "../../hooks/useServerTable";
 import { useConfirmation } from "../../hooks";
 import { useQueryClient } from "@tanstack/react-query";
+import { formatDate } from "../../utils/format";
 
 const Users = () => {
   const { enqueueSnackbar } = useSnackbar();
@@ -34,16 +34,6 @@ const Users = () => {
     params: { Id: 0, PageNumber: 1, PageSize: 1000, SearchTerm: null },
   });
   const userGroups = userGroupsData?.userGroups || [];
-
-  const formatDate = (date) => {
-    if (!date) return "";
-    try {
-      return dayjs(date).format("DD-MM-YYYY");
-    } catch (error) {
-      console.error("Error formatting date:", error);
-      return "";
-    }
-  };
 
   const columns = useMemo(
     () => [

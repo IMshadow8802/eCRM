@@ -25,8 +25,7 @@ import useServerTable from "../../hooks/useServerTable";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { useApiMutation } from "../../hooks/useApiMutation";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
-
-const formatDate = (value) => (value ? dayjs(value).format("DD-MMM-YYYY") : "—");
+import { formatDate } from "../../utils/format";
 
 // A follow-up with no status yet counts as Pending (matches sp_FetchFollowUp's
 // ISNULL(Status,'Pending') filter).
@@ -127,7 +126,7 @@ const FollowUps = () => {
                 : undefined
             }
           >
-            {formatDate(cell.getValue())}
+            {formatDate(cell.getValue(), { empty: "—" })}
           </span>
         ),
       },
@@ -313,7 +312,7 @@ const FollowUps = () => {
           <div style={{ fontSize: 14 }}>
             This removes the follow-up
             {deleteTarget?.NextFollowupDate
-              ? ` scheduled for ${formatDate(deleteTarget.NextFollowupDate)}`
+              ? ` scheduled for ${formatDate(deleteTarget.NextFollowupDate, { empty: "—" })}`
               : ""}
             . This cannot be undone.
           </div>

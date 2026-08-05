@@ -22,8 +22,15 @@ import {
 } from "../../components/Design/FormComponents";
 
 import { useApiQuery } from "../../hooks/useApiQuery";
+import { useApiMutation } from "../../hooks/useApiMutation";
 import { useConfirmation } from "../../hooks";
-import { SALES_ENDPOINTS, saveLookup, deleteLookup } from "../../api/salesQueries";
+import { SALES_ENDPOINTS } from "../../api/salesQueries";
+
+// useApiMutation rejects with the API's own message when the server refuses
+// the write; a transport failure arrives as an axios error whose message
+// ("Network Error") is no use to anyone, so that keeps the generic fallback.
+const errorText = (error, fallback) =>
+  error.isAxiosError ? error.response?.data?.message || fallback : error.message;
 
 const KIND_OPTIONS = [
   { value: "lead_source", label: "Lead Sources" },
@@ -46,7 +53,6 @@ const Lookups = () => {
   const [editingLookup, setEditingLookup] = useState(null);
   const [formData, setFormData] = useState(emptyForm);
   const [errors, setErrors] = useState({});
-  const [isSaving, setIsSaving] = useState(false);
 
   const query = useApiQuery({
     queryKey: ["lookups", activeKind],
@@ -106,37 +112,33 @@ const Lookups = () => {
     return Object.keys(next).length === 0;
   };
 
-  const handleSubmit = async () => {
+  const saveMutation = useApiMutation({
+    endpoint: SALES_ENDPOINTS.config.saveLookup,
+    successMessage: `Lookup ${editingLookup ? "updated" : "created"} successfully!`,
+    invalidateQueries: [["lookups", activeKind]],
+    onSuccess: closeModal,
+    showErrorMessage: false,
+    onError: (error) =>
+      enqueueSnackbar(errorText(error, "Failed to save lookup"), { variant: "error" }),
+  });
+
+  const deleteMutation = useApiMutation({
+    endpoint: SALES_ENDPOINTS.config.deleteLookup,
+    successMessage: "Lookup deleted successfully!",
+    invalidateQueries: [["lookups", activeKind]],
+    showErrorMessage: false,
+    onError: (error) =>
+      enqueueSnackbar(errorText(error, "Failed to delete lookup!"), { variant: "error" }),
+  });
+
+  const handleSubmit = () => {
     if (!validate()) return;
-
-    setIsSaving(true);
-    try {
-      const payload = {
-        Id: editingLookup?.Id || 0,
-        Kind: activeKind,
-        Value: formData.Value.trim(),
-        SortOrder: Number(formData.SortOrder) || 0,
-      };
-
-      const response = await saveLookup(payload);
-      if (response.data.success) {
-        enqueueSnackbar(`Lookup ${editingLookup ? "updated" : "created"} successfully!`, {
-          variant: "success",
-        });
-        closeModal();
-        query.refetch();
-      } else {
-        enqueueSnackbar(response.data.message || "Failed to save lookup", { variant: "error" });
-      }
-    } catch (error) {
-      console.error("Error saving lookup:", error);
-      enqueueSnackbar(
-        error.response?.data?.message || "Failed to save lookup",
-        { variant: "error" }
-      );
-    } finally {
-      setIsSaving(false);
-    }
+    saveMutation.mutate({
+      Id: editingLookup?.Id || 0,
+      Kind: activeKind,
+      Value: formData.Value.trim(),
+      SortOrder: Number(formData.SortOrder) || 0,
+    });
   };
 
   const handleDelete = useCallback(
@@ -145,26 +147,10 @@ const Lookups = () => {
         title: "Delete Lookup",
         message: `Are you sure you want to delete "${lookup.Value}"? This action cannot be undone.`,
         confirmText: "Delete Lookup",
-        onConfirm: async () => {
-          try {
-            const response = await deleteLookup({ Id: lookup.Id });
-            if (response.data.success) {
-              enqueueSnackbar("Lookup deleted successfully!", { variant: "success" });
-              query.refetch();
-            } else {
-              enqueueSnackbar(response.data.message || "Failed to delete lookup", {
-                variant: "error",
-              });
-            }
-          } catch (error) {
-            console.error("Error deleting lookup:", error);
-            enqueueSnackbar("Failed to delete lookup!", { variant: "error" });
-            throw error;
-          }
-        },
+        onConfirm: () => deleteMutation.mutateAsync({ Id: lookup.Id }),
       });
     },
-    [confirmation, enqueueSnackbar, query]
+    [confirmation, deleteMutation]
   );
 
   const activeLabel = KIND_OPTIONS.find((k) => k.value === activeKind)?.label || "";
@@ -235,7 +221,7 @@ const Lookups = () => {
           onCancel={closeModal}
           onSubmit={handleSubmit}
           submitText={editingLookup ? "Update Lookup" : "Create Lookup"}
-          isLoading={isSaving}
+          isLoading={saveMutation.isPending}
         />
       </FormModal>
 

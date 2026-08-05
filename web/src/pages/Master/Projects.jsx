@@ -8,7 +8,6 @@ import {
   Tooltip,
   useTheme,
 } from "@mui/material";
-import dayjs from "dayjs";
 import { MaterialReactTable } from "material-react-table";
 import { useSnackbar } from "notistack";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -25,6 +24,7 @@ import { useTeams, useUsers, useConfirmation } from "../../hooks";
 import { MASTER_ENDPOINTS, deleteProject } from "../../api/masterQueries";
 import useServerTable from "../../hooks/useServerTable";
 import { useQueryClient } from "@tanstack/react-query";
+import { formatCurrency, formatDate } from "../../utils/format";
 
 const Projects = () => {
   const theme = useTheme();
@@ -61,23 +61,8 @@ const Projects = () => {
   const validateRequired = (value) => (value ? "" : "This field is required");
 
   // Format currency
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency: "INR",
-    }).format(amount || 0);
-  };
 
   // Format date
-  const formatDate = (date) => {
-    if (!date) return "";
-    try {
-      return dayjs(date).format("DD-MM-YYYY");
-    } catch (error) {
-      console.error("Error formatting date:", error);
-      return "";
-    }
-  };
 
   // Get status chip color
   const getStatusColor = (status) => {

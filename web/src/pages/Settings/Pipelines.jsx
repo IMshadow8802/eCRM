@@ -27,13 +27,15 @@ import {
 } from "../../components/Design/FormComponents";
 
 import { useApiQuery } from "../../hooks/useApiQuery";
+import { useApiMutation } from "../../hooks/useApiMutation";
 import { useConfirmation } from "../../hooks";
-import {
-  SALES_ENDPOINTS,
-  savePipeline,
-  saveStage,
-  deleteStage,
-} from "../../api/salesQueries";
+import { SALES_ENDPOINTS } from "../../api/salesQueries";
+
+// useApiMutation rejects with the API's own message when the server refuses
+// the write; a transport failure arrives as an axios error whose message
+// ("Network Error") is no use to anyone, so that keeps the generic fallback.
+const errorText = (error, fallback) =>
+  error.isAxiosError ? error.response?.data?.message || fallback : error.message;
 
 // Same config engine serves both modules; the tab switches the Entity key.
 const ENTITY_OPTIONS = [
@@ -62,14 +64,12 @@ const Pipelines = () => {
   const [isPipelineModalOpen, setIsPipelineModalOpen] = useState(false);
   const [pipelineForm, setPipelineForm] = useState(emptyPipelineForm);
   const [pipelineErrors, setPipelineErrors] = useState({});
-  const [isSavingPipeline, setIsSavingPipeline] = useState(false);
 
   const [stageSearch, setStageSearch] = useState("");
   const [isStageModalOpen, setIsStageModalOpen] = useState(false);
   const [editingStage, setEditingStage] = useState(null);
   const [stageForm, setStageForm] = useState(emptyStageForm);
   const [stageErrors, setStageErrors] = useState({});
-  const [isSavingStage, setIsSavingStage] = useState(false);
 
   const query = useApiQuery({
     queryKey: ["pipelines", entity],
@@ -120,29 +120,22 @@ const Pipelines = () => {
   const handleCreatePipeline = () => setIsPipelineModalOpen(true);
   const closePipelineModal = () => setIsPipelineModalOpen(false);
 
-  const handlePipelineSubmit = async () => {
+  const pipelineMutation = useApiMutation({
+    endpoint: SALES_ENDPOINTS.config.savePipeline,
+    successMessage: "Pipeline created successfully!",
+    invalidateQueries: [["pipelines", entity]],
+    onSuccess: closePipelineModal,
+    showErrorMessage: false,
+    onError: (error) =>
+      enqueueSnackbar(errorText(error, "Failed to create pipeline"), { variant: "error" }),
+  });
+
+  const handlePipelineSubmit = () => {
     if (!pipelineForm.Name.trim()) {
       setPipelineErrors({ Name: "Pipeline name is required" });
       return;
     }
-    setIsSavingPipeline(true);
-    try {
-      const response = await savePipeline({ Id: 0, Entity: entity, Name: pipelineForm.Name.trim() });
-      if (response.data.success) {
-        enqueueSnackbar("Pipeline created successfully!", { variant: "success" });
-        closePipelineModal();
-        query.refetch();
-      } else {
-        enqueueSnackbar(response.data.message || "Failed to create pipeline", { variant: "error" });
-      }
-    } catch (error) {
-      console.error("Error saving pipeline:", error);
-      enqueueSnackbar(error.response?.data?.message || "Failed to create pipeline", {
-        variant: "error",
-      });
-    } finally {
-      setIsSavingPipeline(false);
-    }
+    pipelineMutation.mutate({ Id: 0, Entity: entity, Name: pipelineForm.Name.trim() });
   };
 
   // Selecting a pipeline drills into its stages.
@@ -193,39 +186,38 @@ const Pipelines = () => {
     if (stageErrors[field]) setStageErrors((prev) => ({ ...prev, [field]: "" }));
   };
 
-  const handleStageSubmit = async () => {
+  const stageMutation = useApiMutation({
+    endpoint: SALES_ENDPOINTS.config.saveStage,
+    successMessage: `Stage ${editingStage ? "updated" : "created"} successfully!`,
+    invalidateQueries: [["pipelines", entity]],
+    onSuccess: closeStageModal,
+    showErrorMessage: false,
+    onError: (error) =>
+      enqueueSnackbar(errorText(error, "Failed to save stage"), { variant: "error" }),
+  });
+
+  const deleteStageMutation = useApiMutation({
+    endpoint: SALES_ENDPOINTS.config.deleteStage,
+    successMessage: "Stage deleted successfully!",
+    invalidateQueries: [["pipelines", entity]],
+    showErrorMessage: false,
+    onError: (error) =>
+      enqueueSnackbar(errorText(error, "Failed to delete stage!"), { variant: "error" }),
+  });
+
+  const handleStageSubmit = () => {
     if (!stageForm.Name.trim()) {
       setStageErrors({ Name: "Stage name is required" });
       return;
     }
-    setIsSavingStage(true);
-    try {
-      const payload = {
-        Id: editingStage?.Id || 0,
-        PipelineId: selectedPipelineId,
-        Name: stageForm.Name.trim(),
-        SortOrder: Number(stageForm.SortOrder) || 0,
-        StageType: stageForm.StageType,
-        Color: stageForm.Color || null,
-      };
-      const response = await saveStage(payload);
-      if (response.data.success) {
-        enqueueSnackbar(`Stage ${editingStage ? "updated" : "created"} successfully!`, {
-          variant: "success",
-        });
-        closeStageModal();
-        query.refetch();
-      } else {
-        enqueueSnackbar(response.data.message || "Failed to save stage", { variant: "error" });
-      }
-    } catch (error) {
-      console.error("Error saving stage:", error);
-      enqueueSnackbar(error.response?.data?.message || "Failed to save stage", {
-        variant: "error",
-      });
-    } finally {
-      setIsSavingStage(false);
-    }
+    stageMutation.mutate({
+      Id: editingStage?.Id || 0,
+      PipelineId: selectedPipelineId,
+      Name: stageForm.Name.trim(),
+      SortOrder: Number(stageForm.SortOrder) || 0,
+      StageType: stageForm.StageType,
+      Color: stageForm.Color || null,
+    });
   };
 
   const handleDeleteStage = useCallback(
@@ -234,26 +226,10 @@ const Pipelines = () => {
         title: "Delete Stage",
         message: `Are you sure you want to delete "${stage.Name}"? This action cannot be undone.`,
         confirmText: "Delete Stage",
-        onConfirm: async () => {
-          try {
-            const response = await deleteStage({ Id: stage.Id });
-            if (response.data.success) {
-              enqueueSnackbar("Stage deleted successfully!", { variant: "success" });
-              query.refetch();
-            } else {
-              enqueueSnackbar(response.data.message || "Failed to delete stage", {
-                variant: "error",
-              });
-            }
-          } catch (error) {
-            console.error("Error deleting stage:", error);
-            enqueueSnackbar("Failed to delete stage!", { variant: "error" });
-            throw error;
-          }
-        },
+        onConfirm: () => deleteStageMutation.mutateAsync({ Id: stage.Id }),
       });
     },
-    [confirmation, enqueueSnackbar, query]
+    [confirmation, deleteStageMutation]
   );
 
   return (
@@ -344,7 +320,7 @@ const Pipelines = () => {
           onCancel={closePipelineModal}
           onSubmit={handlePipelineSubmit}
           submitText="Create Pipeline"
-          isLoading={isSavingPipeline}
+          isLoading={pipelineMutation.isPending}
         />
       </FormModal>
 
@@ -394,7 +370,7 @@ const Pipelines = () => {
           onCancel={closeStageModal}
           onSubmit={handleStageSubmit}
           submitText={editingStage ? "Update Stage" : "Create Stage"}
-          isLoading={isSavingStage}
+          isLoading={stageMutation.isPending}
         />
       </FormModal>
 
