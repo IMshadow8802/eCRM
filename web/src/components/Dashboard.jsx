@@ -20,6 +20,7 @@ import SparkBar from "./Charts/SparkBar";
 import SparkLine from "./Charts/SparkLine";
 import Gauge from "./Charts/Gauge";
 import { useApiQuery } from "../hooks/useApiQuery";
+import { PLATFORM_ENDPOINTS } from "../api/platformQueries";
 
 const KPI_CONFIG = {
   TotalLeads:      { color: "blue",  icon: PeopleOutlined,        title: "Total Leads" },
@@ -86,7 +87,7 @@ const Tile = ({ children, title, subtitle, spanCol = 4, spanRow = 1 }) => (
 const Dashboard = () => {
   const { data: dashboardData, isLoading } = useApiQuery({
     queryKey: ["dashboard"],
-    endpoint: "/api/reports/getDashboard",
+    endpoint: PLATFORM_ENDPOINTS.reports.getDashboard,
     params: {},
     enabled: true,
   });

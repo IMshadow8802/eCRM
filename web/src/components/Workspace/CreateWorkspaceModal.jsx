@@ -13,6 +13,7 @@ import {
 import { useApiMutation } from "../../hooks/useApiMutation";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { WORKSPACE_ENDPOINTS } from "../../api/workspaceQueries";
+import { MASTER_ENDPOINTS } from "../../api/masterQueries";
 import { toUserOptions } from "../../utils/userShape";
 import useAuthStore from "../../stores/useAuthStore";
 
@@ -54,7 +55,7 @@ export default function CreateWorkspaceModal({
   // when the modal opens so switching to shared feels instant.
   const { data: usersPayload } = useApiQuery({
     queryKey: ["users", "pick-list"],
-    endpoint: "/api/users/fetchUsers",
+    endpoint: MASTER_ENDPOINTS.users.fetchUsers,
     params: { PageNumber: 1, PageSize: 200 },
     enabled: open,
     showErrorMessage: false,
@@ -66,7 +67,7 @@ export default function CreateWorkspaceModal({
   // Projects list — only needed for project type.
   const { data: projectsPayload } = useApiQuery({
     queryKey: ["projects", "pick-list"],
-    endpoint: "/api/projects/fetchProjects",
+    endpoint: MASTER_ENDPOINTS.projects.fetchProjects,
     params: { PageNumber: 1, PageSize: 200 },
     enabled: open && type === "project",
     showErrorMessage: false,

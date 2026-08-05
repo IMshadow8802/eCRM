@@ -24,6 +24,7 @@ import {
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { useApiMutation } from "../../hooks/useApiMutation";
 import { TASK_ENDPOINTS } from "../../api/taskQueries";
+import { PLATFORM_ENDPOINTS } from "../../api/platformQueries";
 import { WORKSPACE_ENDPOINTS } from "../../api/workspaceQueries";
 import useWorkspaceStore from "../../stores/useWorkspaceStore";
 import WorkspaceSwitcher from "../../components/Workspace/WorkspaceSwitcher";
@@ -134,7 +135,7 @@ export default function TaskBoard() {
 
   const { data: columnsPayload } = useApiQuery({
     queryKey: ["kanban-columns", workspaceId],
-    endpoint: "/api/kanban/fetchKanbanColumns",
+    endpoint: PLATFORM_ENDPOINTS.kanban.fetchKanbanColumns,
     params: { WorkspaceId: workspaceId, PageNumber: 1, PageSize: 100 },
     enabled: Boolean(workspaceId),
     showErrorMessage: false,

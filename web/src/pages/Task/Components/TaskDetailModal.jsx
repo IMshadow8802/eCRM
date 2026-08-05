@@ -1,76 +1,48 @@
-import { useEffect, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { enqueueSnackbar } from "notistack";
+import { useState } from "react";
 import dayjs from "dayjs";
 import {
   Lock,
-  Pin,
-  PinOff,
-  Trash2,
-  Reply,
-  Send,
-  CornerDownRight,
   Save as SaveIcon,
-  CheckSquare,
-  Square,
-  Plus,
   Clock,
-  Link2,
-  GitBranch,
   CheckCircle2,
-  Pencil,
-  History,
-  X as XIcon,
 } from "lucide-react";
 
 import {
   Modal,
   Button,
-  IconButton,
   TextInput,
   TextArea,
   NumberInput,
   DateField,
   Combobox,
   Chip,
-  Avatar,
   Tabs,
-  Tooltip,
   Skeleton,
-  EmptyState,
 } from "../../../components/ui";
-import UserAvatar from "../../../components/ui/UserAvatar";
-import { toUserOptions, getUserId } from "../../../utils/userShape";
 import Attachments from "../../../components/Attachments";
+import { TASK_ENDPOINTS } from "../../../api/taskQueries";
+import { PLATFORM_ENDPOINTS } from "../../../api/platformQueries";
 import { useApiQuery } from "../../../hooks/useApiQuery";
-import { useApiMutation } from "../../../hooks/useApiMutation";
 import useAuthStore from "../../../stores/useAuthStore";
 import useWorkspaceStore from "../../../stores/useWorkspaceStore";
 import useWorkspaceMemberOptions from "../../../hooks/useWorkspaceMemberOptions";
-import { assigneeIdsOf, isAssignee, sameAssignees } from "../../../utils/taskAssignees";
+import { isAssignee } from "../../../utils/taskAssignees";
 
-const PRIORITY_TONE = {
-  low: "info",
-  medium: "warning",
-  high: "error",
-  critical: "error",
-};
-
-const PRIORITY_OPTIONS = [
-  { value: "low", label: "Low" },
-  { value: "medium", label: "Medium" },
-  { value: "high", label: "High" },
-  { value: "critical", label: "Critical" },
-];
+import { PRIORITY_TONE, PRIORITY_OPTIONS } from "./TaskDetail/helpers";
+import useTaskDraft from "./TaskDetail/useTaskDraft";
+import useTaskChecklist from "./TaskDetail/useTaskChecklist";
+import useTaskComments from "./TaskDetail/useTaskComments";
+import useTaskDependencies from "./TaskDetail/useTaskDependencies";
+import useTaskTimeEntries from "./TaskDetail/useTaskTimeEntries";
+import ChecklistPanel from "./TaskDetail/ChecklistPanel";
+import CommentsPanel from "./TaskDetail/CommentsPanel";
+import DependenciesPanel from "./TaskDetail/DependenciesPanel";
+import HistoryPanel from "./TaskDetail/HistoryPanel";
+import TimePanel from "./TaskDetail/TimePanel";
+import LogTimeModal from "./TaskDetail/LogTimeModal";
 
 export default function TaskDetailModal({ taskId, open, onClose }) {
-  const queryClient = useQueryClient();
   const [tab, setTab] = useState("details");
-  const [newComment, setNewComment] = useState("");
-  const [replyTo, setReplyTo] = useState(null);
-  // Comment ids with a delete in flight (lockout) + the comment being edited.
-  const [pendingComments, setPendingComments] = useState(() => new Set());
-  const [editingComment, setEditingComment] = useState(null); // { Id, text }
   const currentUserId = useAuthStore((s) => s.user?.UserId ?? s.UserId);
   const canEditOthers = useWorkspaceStore((s) => s.canEditOthersTasks)();
   const canCreateTasks = useWorkspaceStore((s) => s.canCreateTasks)();
@@ -81,7 +53,7 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
 
   const { data: taskPayload, refetch: refetchTask } = useApiQuery({
     queryKey: ["task", taskId],
-    endpoint: "/api/tasks/fetchTasks",
+    endpoint: TASK_ENDPOINTS.tasks.fetchTasks,
     params: { Id: taskId },
     enabled: Boolean(taskId && open),
     showErrorMessage: false,
@@ -90,7 +62,7 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
 
   const { data: columnsPayload } = useApiQuery({
     queryKey: ["kanban-columns", task?.WorkspaceId],
-    endpoint: "/api/kanban/fetchKanbanColumns",
+    endpoint: PLATFORM_ENDPOINTS.kanban.fetchKanbanColumns,
     params: { WorkspaceId: task?.WorkspaceId, PageNumber: 1, PageSize: 100 },
     enabled: Boolean(task?.WorkspaceId && open),
     showErrorMessage: false,
@@ -109,25 +81,32 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
     enabled: Boolean(taskId && open) && !isPersonal,
   });
 
-  // Draft state — mirrors task on load so user can edit + save at once.
-  const [draft, setDraft] = useState(null);
-  useEffect(() => {
-    if (!task) return;
-    const normPriority = String(task.Priority ?? "medium").toLowerCase();
-    setDraft({
-      Title: task.Title ?? "",
-      Description: task.Description ?? "",
-      ColumnId: task.ColumnId ?? null,
-      Priority: PRIORITY_OPTIONS.some((o) => o.value === normPriority)
-        ? normPriority
-        : "medium",
-      AssigneeIds: assigneeIdsOf(task),
-      DueDate: task.DueDate ? String(task.DueDate).slice(0, 10) : "",
-      EstimatedHours: Number(task.EstimatedHours ?? 0),
-      LoggedHours: Number(task.LoggedHours ?? 0),
-      Progress: Number(task.Progress ?? 0),
-    });
-  }, [task?.Id, task?.UpdatedDate, task?.Priority]);
+  // One hook per feature concern — each owns its queries, mutations and the
+  // handlers its panel needs.
+  const details = useTaskDraft({
+    task,
+    isPersonal,
+    currentUserId,
+    onClose,
+    refetchTask,
+  });
+  const { draft, setDraft } = details;
+  const checklist = useTaskChecklist(taskId, task, open);
+  const commentThread = useTaskComments(taskId, task, open);
+  const deps = useTaskDependencies(taskId, task, open);
+  const time = useTaskTimeEntries(taskId, task, open);
+
+  // History tab — the task's audit trail (added/ticked/edited/deleted, by whom,
+  // when), read from the shared activity log. Reuses tblActivityLog; no new
+  // table. Fetch it lazily (only once the tab is opened) to keep the modal light.
+  const { data: activityPayload } = useApiQuery({
+    queryKey: ["task", taskId, "activity"],
+    endpoint: TASK_ENDPOINTS.activity.getTaskActivity,
+    params: { TaskId: taskId, PageNumber: 1, PageSize: 100 },
+    enabled: Boolean(taskId && open && tab === "history"),
+    showErrorMessage: false,
+  });
+  const activities = activityPayload?.activities ?? [];
 
   const canEditThisTask =
     task && (canEditOthers || task.CreatedByUserId === currentUserId);
@@ -153,394 +132,6 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
   // This used to be gated on canEditThisTask, which is stricter, so an assigned
   // member saw the button disabled on the very work they were tracking.
   const canLogTime = isPersonal || canCreateTasks || canProgressThisTask;
-
-  const isDirty = draft && task && (
-    draft.Title !== (task.Title ?? "") ||
-    draft.Description !== (task.Description ?? "") ||
-    draft.ColumnId !== (task.ColumnId ?? null) ||
-    draft.Priority !== (task.Priority ?? "medium") ||
-    !sameAssignees(draft.AssigneeIds, assigneeIdsOf(task)) ||
-    draft.DueDate !== (task.DueDate ? String(task.DueDate).slice(0, 10) : "") ||
-    Number(draft.EstimatedHours) !== Number(task.EstimatedHours ?? 0) ||
-    Number(draft.LoggedHours) !== Number(task.LoggedHours ?? 0) ||
-    Number(draft.Progress) !== Number(task.Progress ?? 0)
-  );
-
-  const saveDraft = async () => {
-    if (!task || !draft) return;
-    try {
-      await saveMutation.mutateAsync({
-        Id: task.Id,
-        Title: draft.Title.trim() || task.Title,
-        Description: draft.Description,
-        WorkspaceId: task.WorkspaceId,
-        ColumnId: draft.ColumnId,
-        ProjectId: task.ProjectId,
-        ParentTaskId: task.ParentTaskId,
-        AssigneeIds: isPersonal ? [currentUserId] : draft.AssigneeIds,
-        TeamId: task.TeamId,
-        Priority: draft.Priority,
-        Type: task.Type,
-        DueDate: draft.DueDate || null,
-        EstimatedHours: draft.EstimatedHours,
-        LoggedHours: draft.LoggedHours,
-        Progress: draft.Progress,
-        IsBlocked: task.IsBlocked,
-        Labels: task.Labels,
-        Watchers: task.Watchers,
-      });
-      enqueueSnackbar("Task saved", { variant: "success" });
-      queryClient.invalidateQueries({ queryKey: ["tasks"], refetchType: "all" });
-      queryClient.invalidateQueries({
-        queryKey: ["kanban-columns"],
-        refetchType: "all",
-      });
-      // The single-task cache backs the modal itself; drop it so the next
-      // open re-fetches fresh instead of hydrating from a stale entry.
-      queryClient.removeQueries({ queryKey: ["task", task.Id] });
-      onClose?.();
-    } catch {
-      refetchTask();
-    }
-  };
-
-  const { data: commentsPayload, refetch: refetchComments } = useApiQuery({
-    queryKey: ["task", taskId, "comments"],
-    endpoint: "/api/tasks/getTaskComments",
-    params: { TaskId: taskId, PageNumber: 1, PageSize: 100 },
-    enabled: Boolean(taskId && open),
-    showErrorMessage: false,
-  });
-  const comments = commentsPayload?.comments ?? [];
-
-  const { data: depsPayload, refetch: refetchDeps } = useApiQuery({
-    queryKey: ["task", taskId, "deps"],
-    endpoint: "/api/tasks/fetchTaskDependencies",
-    params: { TaskId: taskId },
-    enabled: Boolean(taskId && open),
-    showErrorMessage: false,
-  });
-  const blockers = depsPayload?.blockers ?? [];
-  const dependents = depsPayload?.dependents ?? [];
-
-  const { data: checklistPayload, refetch: refetchChecklist } = useApiQuery({
-    queryKey: ["task", taskId, "checklist"],
-    endpoint: "/api/tasks/getTaskChecklist",
-    params: { TaskId: taskId },
-    enabled: Boolean(taskId && open),
-    showErrorMessage: false,
-  });
-  const checklistItems =
-    checklistPayload?.checklist ?? checklistPayload?.items ?? [];
-
-  // History tab — the task's audit trail (added/ticked/edited/deleted, by whom,
-  // when), read from the shared activity log. Reuses tblActivityLog; no new
-  // table. Fetch it lazily (only once the tab is opened) to keep the modal light.
-  const { data: activityPayload } = useApiQuery({
-    queryKey: ["task", taskId, "activity"],
-    endpoint: "/api/tasks/getTaskActivity",
-    params: { TaskId: taskId, PageNumber: 1, PageSize: 100 },
-    enabled: Boolean(taskId && open && tab === "history"),
-    showErrorMessage: false,
-  });
-  const activities = activityPayload?.activities ?? [];
-
-  // Piggy-back on a workspace-wide fetchTasks to populate the dependency
-  // picker. Cheap at expected board size.
-  const { data: workspaceTasksPayload } = useApiQuery({
-    queryKey: ["tasks-all", task?.WorkspaceId],
-    endpoint: "/api/tasks/fetchTasks",
-    params: {
-      WorkspaceId: task?.WorkspaceId,
-      PageNumber: 1,
-      PageSize: 200,
-    },
-    enabled: Boolean(task?.WorkspaceId && open),
-    showErrorMessage: false,
-  });
-  const workspaceTasks = workspaceTasksPayload?.tasks ?? [];
-  const potentialDepOptions = workspaceTasks
-    .filter((t) => t.Id !== task?.Id)
-    .map((t) => ({ value: t.Id, label: `#${t.Id} · ${t.Title}` }));
-
-  const { data: timeEntriesPayload, refetch: refetchTimeEntries } = useApiQuery({
-    queryKey: ["task", taskId, "time"],
-    endpoint: "/api/tasks/getTaskTimeEntries",
-    params: { TaskId: taskId },
-    enabled: Boolean(taskId && open),
-    showErrorMessage: false,
-  });
-  const timeEntries =
-    timeEntriesPayload?.timeEntries ?? timeEntriesPayload?.entries ?? [];
-  const loggedHoursTotal = timeEntries.reduce(
-    (sum, e) => sum + Number(e.Hours ?? 0),
-    0,
-  );
-
-  // Auto-progress: driven entirely by checklist completion.
-  const autoProgress = (() => {
-    if (checklistItems.length > 0) {
-      const done = checklistItems.filter((c) => c.IsCompleted).length;
-      return Math.round((done / checklistItems.length) * 100);
-    }
-    return null; // no checklist; manual applies
-  })();
-
-  const saveMutation = useApiMutation({
-    endpoint: "/api/tasks/saveTask",
-    showSuccessMessage: false,
-  });
-  const addCommentMutation = useApiMutation({
-    endpoint: "/api/tasks/addTaskComment",
-    showSuccessMessage: false,
-  });
-  const deleteCommentMutation = useApiMutation({
-    endpoint: "/api/tasks/deleteTaskComment",
-    showSuccessMessage: false,
-  });
-  const pinCommentMutation = useApiMutation({
-    endpoint: "/api/tasks/pinTaskComment",
-    showSuccessMessage: false,
-  });
-  const saveChecklistMutation = useApiMutation({
-    endpoint: "/api/tasks/saveTaskChecklist",
-    showSuccessMessage: false,
-  });
-  const deleteChecklistMutation = useApiMutation({
-    endpoint: "/api/tasks/deleteTaskChecklist",
-    showSuccessMessage: false,
-  });
-  const logTimeMutation = useApiMutation({
-    endpoint: "/api/tasks/logTaskTime",
-    showSuccessMessage: false,
-  });
-  const deleteTimeMutation = useApiMutation({
-    endpoint: "/api/tasks/deleteTaskTimeEntry",
-    showSuccessMessage: false,
-  });
-  const addDependencyMutation = useApiMutation({
-    endpoint: "/api/tasks/addTaskDependency",
-    showSuccessMessage: false,
-  });
-  const removeDependencyMutation = useApiMutation({
-    endpoint: "/api/tasks/removeTaskDependency",
-    showSuccessMessage: false,
-  });
-  // Checklist handlers
-  const [newChecklistItem, setNewChecklistItem] = useState("");
-  // Ids with a save/delete in flight. Locking the row stops a rapid second
-  // click from firing a duplicate write against an already-changed/removed
-  // item — that double-fire was the "click again, it fails" 404.
-  const [pendingChecklist, setPendingChecklist] = useState(() => new Set());
-  const checklistKey = ["task", taskId, "checklist"];
-  const lockChecklist = (id, on) =>
-    setPendingChecklist((s) => {
-      const n = new Set(s);
-      if (on) n.add(id);
-      else n.delete(id);
-      return n;
-    });
-  // Optimistically patch the cached checklist so the row moves instantly
-  // instead of after the round-trip; returns the previous value for rollback.
-  const patchChecklistCache = (fn) => {
-    const prev = queryClient.getQueryData(checklistKey);
-    queryClient.setQueryData(checklistKey, (old) =>
-      old ? { ...old, checklist: fn(old.checklist ?? old.items ?? []) } : old,
-    );
-    return prev;
-  };
-
-  const addChecklistItem = async () => {
-    const text = newChecklistItem.trim();
-    if (!text || !task) return;
-    try {
-      await saveChecklistMutation.mutateAsync({
-        Id: 0,
-        TaskId: task.Id,
-        ItemText: text,
-        IsCompleted: false,
-        SortOrder: 0,
-        WorkspaceId: task.WorkspaceId, // realtime emit-routing hint
-      });
-      setNewChecklistItem("");
-      refetchChecklist();
-    } catch {}
-  };
-  const toggleChecklistItem = async (item) => {
-    if (pendingChecklist.has(item.Id)) return; // already in flight
-    lockChecklist(item.Id, true);
-    const prev = patchChecklistCache((list) =>
-      list.map((c) =>
-        c.Id === item.Id ? { ...c, IsCompleted: !c.IsCompleted } : c,
-      ),
-    );
-    try {
-      await saveChecklistMutation.mutateAsync({
-        Id: item.Id,
-        TaskId: task.Id,
-        ItemText: item.ItemText,
-        IsCompleted: !item.IsCompleted,
-        SortOrder: item.SortOrder ?? 0,
-        WorkspaceId: task.WorkspaceId, // realtime emit-routing hint
-      });
-      refetchChecklist();
-    } catch {
-      queryClient.setQueryData(checklistKey, prev); // rollback
-    } finally {
-      lockChecklist(item.Id, false);
-    }
-  };
-  const removeChecklistItem = async (item) => {
-    if (pendingChecklist.has(item.Id)) return;
-    lockChecklist(item.Id, true);
-    const prev = patchChecklistCache((list) =>
-      list.filter((c) => c.Id !== item.Id),
-    );
-    try {
-      await deleteChecklistMutation.mutateAsync({
-        Id: item.Id,
-        TaskId: task.Id, // server needs it to authorize; the SP only returns it after deleting
-        WorkspaceId: task.WorkspaceId,
-      });
-      refetchChecklist();
-    } catch {
-      queryClient.setQueryData(checklistKey, prev); // rollback
-    } finally {
-      lockChecklist(item.Id, false);
-    }
-  };
-
-  // Dependencies add/remove
-  const [blockerPick, setBlockerPick] = useState(null);
-  const [dependentPick, setDependentPick] = useState(null);
-  const addBlocker = async () => {
-    if (!blockerPick?.value) return;
-    try {
-      await addDependencyMutation.mutateAsync({
-        TaskId: task.Id,
-        DependsOnTaskId: blockerPick.value,
-        Type: "blocks",
-        WorkspaceId: task.WorkspaceId, // realtime emit-routing hint
-      });
-      setBlockerPick(null);
-      refetchDeps();
-      enqueueSnackbar("Blocker added", { variant: "success" });
-    } catch {}
-  };
-  const addDependent = async () => {
-    if (!dependentPick?.value) return;
-    try {
-      await addDependencyMutation.mutateAsync({
-        TaskId: dependentPick.value,
-        DependsOnTaskId: task.Id,
-        Type: "blocks",
-        WorkspaceId: task.WorkspaceId, // realtime emit-routing hint
-      });
-      setDependentPick(null);
-      refetchDeps();
-      enqueueSnackbar("Dependent added", { variant: "success" });
-    } catch {}
-  };
-  const removeDependency = async (taskId, dependsOnId) => {
-    try {
-      await removeDependencyMutation.mutateAsync({
-        TaskId: taskId,
-        DependsOnTaskId: dependsOnId,
-        WorkspaceId: task.WorkspaceId, // realtime emit-routing hint
-      });
-      refetchDeps();
-    } catch {}
-  };
-
-  // Time logging
-  const [logOpen, setLogOpen] = useState(false);
-  const [logHours, setLogHours] = useState(0);
-  const [logNote, setLogNote] = useState("");
-  const submitLogTime = async () => {
-    const hours = Number(logHours);
-    if (!hours || hours <= 0) {
-      enqueueSnackbar("Enter hours greater than 0", { variant: "warning" });
-      return;
-    }
-    try {
-      await logTimeMutation.mutateAsync({
-        TaskId: task.Id,
-        Hours: hours,
-        Description: logNote || null,
-        WorkDate: dayjs().format("YYYY-MM-DD"),
-        WorkspaceId: task.WorkspaceId, // realtime emit-routing hint
-      });
-      setLogOpen(false);
-      setLogHours(0);
-      setLogNote("");
-      refetchTimeEntries();
-      enqueueSnackbar("Time logged", { variant: "success" });
-    } catch {}
-  };
-  const removeTimeEntry = async (entry) => {
-    try {
-      await deleteTimeMutation.mutateAsync({
-        Id: entry.Id,
-        TaskId: task.Id, // realtime emit-routing hints
-        WorkspaceId: task.WorkspaceId,
-      });
-      refetchTimeEntries();
-    } catch {}
-  };
-
-
-  const submitComment = async () => {
-    const text = newComment.trim();
-    if (!text) return;
-    try {
-      await addCommentMutation.mutateAsync({
-        TaskId: taskId,
-        Comment: text,
-        ParentCommentId: replyTo || null,
-        WorkspaceId: task?.WorkspaceId, // realtime emit-routing hint
-      });
-      setNewComment("");
-      setReplyTo(null);
-      refetchComments();
-    } catch {}
-  };
-
-  // Edit reuses addTaskComment with Id>0 (sp_SaveTaskComment updates on Id>0,
-  // guarded by edit_own_comment). No separate endpoint needed.
-  const submitEditComment = async () => {
-    const text = editingComment?.text?.trim();
-    if (!text || !editingComment) return;
-    try {
-      await addCommentMutation.mutateAsync({
-        Id: editingComment.Id,
-        TaskId: taskId,
-        Comment: text,
-        WorkspaceId: task?.WorkspaceId,
-      });
-      setEditingComment(null);
-      refetchComments();
-    } catch {}
-  };
-
-  const deleteCommentById = async (c) => {
-    if (pendingComments.has(c.Id)) return; // in flight — ignore double-tap
-    setPendingComments((s) => new Set(s).add(c.Id));
-    try {
-      await deleteCommentMutation.mutateAsync({
-        Id: c.Id,
-        TaskId: task.Id, // authorize + history log + emit routing
-        WorkspaceId: task.WorkspaceId,
-      });
-      refetchComments();
-    } catch {
-    } finally {
-      setPendingComments((s) => {
-        const n = new Set(s);
-        n.delete(c.Id);
-        return n;
-      });
-    }
-  };
 
   if (!open) return null;
 
@@ -616,22 +207,22 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
               {
                 value: "checklist",
                 label: "Checklist",
-                badge: checklistItems.length,
+                badge: checklist.checklistItems.length,
               },
               {
                 value: "comments",
                 label: "Comments",
-                badge: comments.length,
+                badge: commentThread.comments.length,
               },
               {
                 value: "deps",
                 label: "Dependencies",
-                badge: blockers.length + dependents.length,
+                badge: deps.blockers.length + deps.dependents.length,
               },
               {
                 value: "time",
                 label: "Time",
-                badge: timeEntries.length,
+                badge: time.timeEntries.length,
               },
               { value: "history", label: "History" },
             ]}
@@ -777,10 +368,10 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
                         }}
                       >
                         <Chip
-                          label={`${loggedHoursTotal.toFixed(2)} h`}
+                          label={`${time.loggedHoursTotal.toFixed(2)} h`}
                           tone={
                             draft.EstimatedHours > 0 &&
-                            loggedHoursTotal > draft.EstimatedHours
+                            time.loggedHoursTotal > draft.EstimatedHours
                               ? "error"
                               : "default"
                           }
@@ -791,7 +382,7 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
                           variant="ghost"
                           size="sm"
                           leftIcon={<Clock size={14} />}
-                          onClick={() => setLogOpen(true)}
+                          onClick={() => time.setLogOpen(true)}
                           disabled={!canLogTime}
                           data-testid="log-time-btn"
                         >
@@ -802,12 +393,14 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
                     <div style={{ flex: 1 }}>
                       <NumberInput
                         label={
-                          autoProgress != null
-                            ? `Progress — auto ${autoProgress}%`
+                          checklist.autoProgress != null
+                            ? `Progress — auto ${checklist.autoProgress}%`
                             : "Progress (%)"
                         }
                         value={
-                          autoProgress != null ? autoProgress : draft.Progress
+                          checklist.autoProgress != null
+                            ? checklist.autoProgress
+                            : draft.Progress
                         }
                         onChange={(e) =>
                           setDraft((d) => ({
@@ -821,9 +414,9 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
                         min={0}
                         max={100}
                         step={5}
-                        disabled={!canEditThisTask || autoProgress != null}
+                        disabled={!canEditThisTask || checklist.autoProgress != null}
                         hint={
-                          autoProgress != null
+                          checklist.autoProgress != null
                             ? "Driven by checklist — tick each item to progress"
                             : undefined
                         }
@@ -847,342 +440,53 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
               )}
 
               {tab === "checklist" && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {checklistItems.length === 0 ? (
-                    <EmptyState
-                      icon={<CheckSquare size={28} />}
-                      title="No checklist yet"
-                      description="Break this task into quick steps. Tick them off as you go."
-                      size="sm"
-                    />
-                  ) : (
-                    checklistItems.map((it) => (
-                      <ChecklistRow
-                        key={it.Id}
-                        item={it}
-                        canToggle={canProgressThisTask}
-                        canDelete={canManageArtifacts}
-                        pending={pendingChecklist.has(it.Id)}
-                        onToggle={() => toggleChecklistItem(it)}
-                        onDelete={() => removeChecklistItem(it)}
-                      />
-                    ))
-                  )}
-                  {canManageArtifacts && (
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: 8,
-                        alignItems: "center",
-                        marginTop: 6,
-                      }}
-                    >
-                      <TextInput
-                        value={newChecklistItem}
-                        onChange={(e) => setNewChecklistItem(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") addChecklistItem();
-                        }}
-                        placeholder="Add a step…"
-                        size="sm"
-                        data-testid="checklist-input"
-                      />
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        leftIcon={<Plus size={14} />}
-                        onClick={addChecklistItem}
-                        loading={saveChecklistMutation.isPending}
-                        data-testid="checklist-add"
-                      >
-                        Add
-                      </Button>
-                    </div>
-                  )}
-                </div>
+                <ChecklistPanel
+                  checklist={checklist}
+                  canProgressThisTask={canProgressThisTask}
+                  canManageArtifacts={canManageArtifacts}
+                />
               )}
 
               {tab === "time" && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      fontSize: 13,
-                    }}
-                  >
-                    <div>
-                      Total logged:{" "}
-                      <strong>{loggedHoursTotal.toFixed(2)} h</strong>
-                      {draft?.EstimatedHours > 0 && (
-                        <>
-                          {" "}/ {draft.EstimatedHours.toFixed(2)} h estimated
-                        </>
-                      )}
-                    </div>
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      leftIcon={<Clock size={14} />}
-                      onClick={() => setLogOpen(true)}
-                      disabled={!canLogTime}
-                    >
-                      Log time
-                    </Button>
-                  </div>
-                  {timeEntries.length === 0 ? (
-                    <EmptyState
-                      icon={<Clock size={28} />}
-                      title="No time logged"
-                      description="Track real hours as you work so the team sees actuals vs estimate."
-                      size="sm"
-                    />
-                  ) : (
-                    timeEntries.map((e) => (
-                      <TimeEntryRow
-                        key={e.Id}
-                        entry={e}
-                        canEdit={
-                          canEditThisTask || e.UserId === currentUserId
-                        }
-                        onDelete={() => removeTimeEntry(e)}
-                      />
-                    ))
-                  )}
-                </div>
+                <TimePanel
+                  time={time}
+                  estimatedHours={draft?.EstimatedHours}
+                  canLogTime={canLogTime}
+                  canEditThisTask={canEditThisTask}
+                  currentUserId={currentUserId}
+                />
               )}
 
               {tab === "comments" && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  {comments.length === 0 ? (
-                    <EmptyState
-                      title="No comments yet"
-                      description="Kick off the thread. Ping the assignee, ask a question, share context."
-                      size="sm"
-                    />
-                  ) : (
-                    comments.map((c) => (
-                      <CommentBubble
-                        key={c.Id}
-                        comment={c}
-                        currentUserId={currentUserId}
-                        pending={pendingComments.has(c.Id)}
-                        isEditing={editingComment?.Id === c.Id}
-                        editingText={editingComment?.text ?? ""}
-                        onEditText={(v) =>
-                          setEditingComment((e) => ({ ...e, text: v }))
-                        }
-                        onStartEdit={() =>
-                          setEditingComment({ Id: c.Id, text: c.Comment })
-                        }
-                        onSaveEdit={submitEditComment}
-                        onCancelEdit={() => setEditingComment(null)}
-                        onReply={() => setReplyTo(c.Id)}
-                        onDelete={() => deleteCommentById(c)}
-                        onTogglePin={() =>
-                          pinCommentMutation
-                            .mutateAsync({
-                              CommentId: c.Id,
-                              IsPinned: !c.IsPinned,
-                              TaskId: task.Id, // realtime emit-routing hints
-                              WorkspaceId: task.WorkspaceId,
-                            })
-                            .then(refetchComments)
-                        }
-                      />
-                    ))
-                  )}
-
-                  <div
-                    style={{
-                      borderTop: "1px solid var(--color-surface-200)",
-                      paddingTop: 12,
-                    }}
-                  >
-                    {replyTo && (
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
-                          fontSize: 12,
-                          color: "var(--color-surface-500)",
-                          marginBottom: 8,
-                        }}
-                      >
-                        <CornerDownRight size={12} />
-                        Replying to comment #{replyTo}
-                        <Button
-                          variant="text"
-                          size="sm"
-                          onClick={() => setReplyTo(null)}
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    )}
-                    <TextArea
-                      value={newComment}
-                      onChange={(e) => setNewComment(e.target.value)}
-                      placeholder={
-                        replyTo ? "Write a reply…" : "Write a comment…"
-                      }
-                      rows={3}
-                      autoGrow
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && (e.metaKey || e.ctrlKey))
-                          submitComment();
-                      }}
-                    />
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "flex-end",
-                        marginTop: 8,
-                      }}
-                    >
-                      <Button
-                        variant="primary"
-                        onClick={submitComment}
-                        disabled={!newComment.trim()}
-                        rightIcon={<Send size={14} />}
-                        data-testid="comment-submit"
-                      >
-                        Send
-                      </Button>
-                    </div>
-                  </div>
-                </div>
+                <CommentsPanel
+                  comments={commentThread}
+                  currentUserId={currentUserId}
+                />
               )}
 
               {tab === "deps" && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-                  <DepSection
-                    title={`Blocked by (${blockers.length})`}
-                    items={blockers}
-                    emptyText="No blockers"
-                    tone="error"
-                    canEdit={canEditThisTask}
-                    onRemove={(d) => removeDependency(task.Id, d.TaskId)}
-                  />
-                  {canEditThisTask && (
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: 8,
-                        alignItems: "center",
-                      }}
-                    >
-                      <div style={{ flex: 1 }}>
-                        <Combobox
-                          options={potentialDepOptions.filter(
-                            (o) =>
-                              !blockers.some((b) => b.TaskId === o.value),
-                          )}
-                          value={blockerPick}
-                          onChange={setBlockerPick}
-                          placeholder="Pick a task that blocks this one"
-                          size="sm"
-                          data-testid="blocker-pick"
-                        />
-                      </div>
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        leftIcon={<Link2 size={14} />}
-                        onClick={addBlocker}
-                        disabled={!blockerPick}
-                        loading={addDependencyMutation.isPending}
-                        data-testid="add-blocker-btn"
-                      >
-                        Add blocker
-                      </Button>
-                    </div>
-                  )}
-
-                  <DepSection
-                    title={`Blocking (${dependents.length})`}
-                    items={dependents}
-                    emptyText="Nothing waiting on this task"
-                    tone="info"
-                    canEdit={canEditThisTask}
-                    onRemove={(d) => removeDependency(d.TaskId, task.Id)}
-                  />
-                  {canEditThisTask && (
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: 8,
-                        alignItems: "center",
-                      }}
-                    >
-                      <div style={{ flex: 1 }}>
-                        <Combobox
-                          options={potentialDepOptions.filter(
-                            (o) =>
-                              !dependents.some((d) => d.TaskId === o.value),
-                          )}
-                          value={dependentPick}
-                          onChange={setDependentPick}
-                          placeholder="Pick a task that waits on this one"
-                          size="sm"
-                          data-testid="dependent-pick"
-                        />
-                      </div>
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        leftIcon={<GitBranch size={14} />}
-                        onClick={addDependent}
-                        disabled={!dependentPick}
-                        loading={addDependencyMutation.isPending}
-                        data-testid="add-dependent-btn"
-                      >
-                        Add dependent
-                      </Button>
-                    </div>
-                  )}
-                </div>
+                <DependenciesPanel
+                  deps={deps}
+                  taskId={task.Id}
+                  canEdit={canEditThisTask}
+                />
               )}
 
-              {tab === "history" && (
-                <div
-                  style={{ display: "flex", flexDirection: "column" }}
-                  data-testid="task-history"
-                >
-                  {activities.length === 0 ? (
-                    <EmptyState
-                      icon={<History size={28} />}
-                      title="No history yet"
-                      description="Every change — added, ticked, edited, deleted — shows up here with who did it and when."
-                      size="sm"
-                    />
-                  ) : (
-                    activities.map((a, i) => (
-                      <ActivityRow
-                        key={a.Id}
-                        activity={a}
-                        isLast={i === activities.length - 1}
-                      />
-                    ))
-                  )}
-                </div>
-              )}
+              {tab === "history" && <HistoryPanel activities={activities} />}
             </div>
         )}
       </Modal.Body>
       {task && tab === "details" && canEditThisTask && (
         <Modal.Footer>
-          <Button variant="ghost" onClick={onClose} disabled={saveMutation.isPending}>
+          <Button variant="ghost" onClick={onClose} disabled={details.isSaving}>
             Close
           </Button>
           <Button
             variant="primary"
             leftIcon={<SaveIcon size={14} />}
-            onClick={saveDraft}
-            disabled={!isDirty}
-            loading={saveMutation.isPending}
+            onClick={details.saveDraft}
+            disabled={!details.isDirty}
+            loading={details.isSaving}
             data-testid="task-save-btn"
           >
             Save changes
@@ -1191,477 +495,7 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
       )}
     </Modal>
 
-    <Modal
-      open={logOpen}
-      onClose={() => setLogOpen(false)}
-      size="sm"
-      data-testid="log-time-modal"
-    >
-        <Modal.Header
-          title="Log time"
-          subtitle={task ? `On "${task.Title}"` : ""}
-          icon={<Clock size={18} />}
-          onClose={() => setLogOpen(false)}
-        />
-        <Modal.Body>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <NumberInput
-              label="Hours"
-              value={logHours}
-              onChange={(e) => setLogHours(Number(e.target.value) || 0)}
-              min={0}
-              step={0.25}
-              autoFocus
-              data-testid="log-time-hours"
-            />
-            <TextArea
-              label="Note (optional)"
-              value={logNote}
-              onChange={(e) => setLogNote(e.target.value)}
-              rows={3}
-              placeholder="What did you work on?"
-            />
-          </div>
-        </Modal.Body>
-        <Modal.Footer>
-          <Button variant="ghost" onClick={() => setLogOpen(false)}>
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            onClick={submitLogTime}
-            loading={logTimeMutation.isPending}
-            data-testid="log-time-submit"
-          >
-            Log
-          </Button>
-        </Modal.Footer>
-      </Modal>
+    <LogTimeModal time={time} task={task} />
     </>
-  );
-}
-
-function CommentBubble({
-  comment: c,
-  currentUserId,
-  pending,
-  isEditing,
-  editingText,
-  onEditText,
-  onStartEdit,
-  onSaveEdit,
-  onCancelEdit,
-  onReply,
-  onDelete,
-  onTogglePin,
-}) {
-  const mine = c.UserId === currentUserId;
-  const canModify = mine && !c.IsDeleted;
-  return (
-    <div
-      data-testid={`comment-${c.Id}`}
-      style={{
-        display: "flex",
-        gap: 12,
-        padding: "6px 0",
-        marginLeft: c.ParentCommentId ? 28 : 0,
-      }}
-    >
-      <UserAvatar userId={c.UserId} name={c.UserName} size="sm" />
-      {/* Feed layout: avatar rail + content. Pinned comments keep a subtle
-          tint instead of every comment sitting in its own heavy box. */}
-      <div
-        style={{
-          flex: 1,
-          minWidth: 0,
-          ...(c.IsPinned
-            ? {
-                background: "var(--color-warning-50)",
-                border: "1px solid var(--color-warning-500)",
-                borderRadius: 10,
-                padding: "8px 10px",
-              }
-            : {}),
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            marginBottom: 6,
-          }}
-        >
-        <span
-          style={{
-            fontSize: 14,
-            fontWeight: 700,
-            color: "var(--color-surface-900)",
-          }}
-        >
-          {c.UserName}
-        </span>
-        {c.IsEdited ? (
-          <span style={{ fontSize: 11, color: "var(--color-surface-400)" }}>
-            edited
-          </span>
-        ) : null}
-        <span
-          style={{
-            fontSize: 11,
-            color: "var(--color-surface-400)",
-            marginLeft: "auto",
-          }}
-        >
-          {dayjs(c.CreatedDate).format("DD/MM/YYYY, hh:mm A")}
-        </span>
-        <Tooltip title={c.IsPinned ? "Unpin" : "Pin"}>
-          <IconButton
-            size="sm"
-            variant="ghost"
-            onClick={onTogglePin}
-            data-testid={`pin-${c.Id}`}
-            aria-label={c.IsPinned ? "Unpin comment" : "Pin comment"}
-          >
-            {c.IsPinned ? <Pin size={14} /> : <PinOff size={14} />}
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Reply">
-          <IconButton
-            size="sm"
-            variant="ghost"
-            onClick={onReply}
-            aria-label="Reply"
-          >
-            <Reply size={14} />
-          </IconButton>
-        </Tooltip>
-        {canModify && !isEditing && (
-          <Tooltip title="Edit">
-            <IconButton
-              size="sm"
-              variant="ghost"
-              onClick={onStartEdit}
-              data-testid={`edit-${c.Id}`}
-              aria-label="Edit comment"
-            >
-              <Pencil size={14} />
-            </IconButton>
-          </Tooltip>
-        )}
-        {canModify && (
-          <Tooltip title="Delete">
-            <IconButton
-              size="sm"
-              variant="destructive"
-              onClick={onDelete}
-              disabled={pending}
-              data-testid={`delete-${c.Id}`}
-              aria-label="Delete comment"
-            >
-              <Trash2 size={14} />
-            </IconButton>
-          </Tooltip>
-        )}
-      </div>
-      {isEditing ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <TextArea
-            value={editingText}
-            onChange={(e) => onEditText(e.target.value)}
-            rows={3}
-            autoGrow
-            data-testid={`edit-input-${c.Id}`}
-          />
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <Button
-              variant="text"
-              size="sm"
-              leftIcon={<XIcon size={14} />}
-              onClick={onCancelEdit}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              leftIcon={<SaveIcon size={14} />}
-              onClick={onSaveEdit}
-              disabled={!editingText.trim()}
-              data-testid={`edit-save-${c.Id}`}
-            >
-              Save
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <div
-          style={{
-            fontSize: 14,
-            fontWeight: 400,
-            lineHeight: 1.5,
-            color: c.IsDeleted
-              ? "var(--color-surface-400)"
-              : "var(--color-surface-700)",
-            fontStyle: c.IsDeleted ? "italic" : "normal",
-          }}
-        >
-          {c.Comment}
-        </div>
-      )}
-      {c.ReadByUserIds && (
-        <div
-          style={{
-            fontSize: 11,
-            color: "var(--color-surface-400)",
-            marginTop: 6,
-          }}
-        >
-          Seen by {c.ReadByUserIds.split(",").length}
-        </div>
-      )}
-      </div>
-    </div>
-  );
-}
-
-// One event in the History timeline: avatar + connector rail on the left, then
-// who · what on one line, an optional old→new line, and a muted timestamp.
-function ActivityRow({ activity: a, isLast }) {
-  // Only a genuine transition (both sides present) — a bare NewValue just
-  // repeats the item text already in the description, so skip it.
-  const changed = a.OldValue && a.NewValue && a.OldValue !== a.NewValue;
-  return (
-    <div style={{ display: "flex", gap: 12, alignItems: "stretch" }}>
-      {/* Rail: avatar with a line running down to the next event. */}
-      <div
-        style={{ display: "flex", flexDirection: "column", alignItems: "center" }}
-      >
-        <UserAvatar userId={a.UserId} name={a.UserName} size="sm" />
-        {!isLast && (
-          <div
-            style={{
-              flex: 1,
-              width: 2,
-              marginTop: 6,
-              borderRadius: 2,
-              background: "var(--color-surface-200)",
-            }}
-          />
-        )}
-      </div>
-
-      <div style={{ flex: 1, minWidth: 0, paddingBottom: isLast ? 2 : 18 }}>
-        {/* One line only — a checklist item can be a whole paragraph; the name
-            plus a snippet is enough to tell which event this was. */}
-        <div
-          style={{
-            fontSize: 13,
-            lineHeight: 1.4,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-          title={`${a.UserName || "Someone"} ${a.Description || a.Action}`}
-        >
-          <span style={{ fontWeight: 600 }}>{a.UserName || "Someone"}</span>{" "}
-          <span style={{ color: "var(--color-surface-600)" }}>
-            {a.Description || a.Action}
-          </span>
-        </div>
-        {changed && (
-          <div
-            style={{
-              fontSize: 12,
-              color: "var(--color-surface-500)",
-              marginTop: 2,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {a.OldValue ? `${a.OldValue} → ` : ""}
-            {a.NewValue}
-          </div>
-        )}
-        <div
-          style={{
-            fontSize: 11,
-            color: "var(--color-surface-400)",
-            marginTop: 3,
-          }}
-        >
-          {a.CreatedDate ? dayjs(a.CreatedDate).format("DD/MM/YYYY, hh:mm A") : ""}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DepSection({ title, items, emptyText, tone, canEdit, onRemove }) {
-  return (
-    <div>
-      <div
-        style={{
-          fontSize: 13,
-          fontWeight: 600,
-          marginBottom: 8,
-          color: "var(--color-surface-600)",
-        }}
-      >
-        {title}
-      </div>
-      {items.length === 0 ? (
-        <div
-          style={{
-            fontSize: 13,
-            color: "var(--color-surface-400)",
-            fontStyle: "italic",
-          }}
-        >
-          {emptyText}
-        </div>
-      ) : (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {items.map((d) => {
-            const done = Boolean(d.IsCompleted);
-            return (
-              <Chip
-                key={d.TaskId}
-                label={`${d.Title} — ${done ? "done" : d.ColumnTitle || "open"}`}
-                tone={done ? "success" : tone}
-                variant="tonal"
-                size="md"
-                onDelete={canEdit ? () => onRemove?.(d) : undefined}
-              />
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// canToggle and canDelete are separate on purpose: the assignee may tick items
-// (change_status) but not add or remove them (edit_fields) — mirrors the server.
-// `pending` = a save/delete for this row is in flight. Locking the controls
-// while pending stops the double-tap that fired a duplicate write at an
-// already-changed item.
-function ChecklistRow({ item, canToggle, canDelete, pending, onToggle, onDelete }) {
-  const canTick = canToggle && !pending;
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "6px 8px",
-        borderRadius: 8,
-        opacity: pending ? 0.6 : 1,
-      }}
-    >
-      <button
-        type="button"
-        onClick={canTick ? onToggle : undefined}
-        disabled={!canTick}
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          border: "none",
-          background: "transparent",
-          cursor: canTick ? "pointer" : "default",
-          color: item.IsCompleted ? "#10B981" : "#94A3B8",
-          padding: 0,
-        }}
-        data-testid={`checklist-toggle-${item.Id}`}
-      >
-        {item.IsCompleted ? <CheckSquare size={18} /> : <Square size={18} />}
-      </button>
-      <span
-        style={{
-          flex: 1,
-          fontSize: 14,
-          color: "var(--color-surface-700)",
-          textDecoration: item.IsCompleted ? "line-through" : "none",
-          opacity: item.IsCompleted ? 0.6 : 1,
-        }}
-      >
-        {item.ItemText}
-      </span>
-      {canDelete && (
-        <IconButton
-          size="sm"
-          variant="ghost"
-          onClick={onDelete}
-          disabled={pending}
-          aria-label="Remove item"
-        >
-          <Trash2 size={14} />
-        </IconButton>
-      )}
-    </div>
-  );
-}
-
-function TimeEntryRow({ entry, canEdit, onDelete }) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "8px 12px",
-        borderRadius: 8,
-        border: "1px solid rgba(148,163,184,0.18)",
-      }}
-    >
-      <Clock size={14} style={{ color: "#6366F1" }} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 600 }}>
-          {Number(entry.Hours ?? 0).toFixed(2)} h
-          {entry.WorkDate && (
-            <span
-              style={{
-                fontWeight: 400,
-                marginLeft: 8,
-                color: "var(--color-surface-500)",
-              }}
-            >
-              {dayjs(entry.WorkDate).format("DD-MM-YYYY")}
-            </span>
-          )}
-        </div>
-        {entry.Description && (
-          <div
-            style={{
-              fontSize: 12,
-              color: "var(--color-surface-500)",
-              marginTop: 2,
-              wordBreak: "break-word",
-            }}
-          >
-            {entry.Description}
-          </div>
-        )}
-        {entry.UserFullName && (
-          <div
-            style={{ fontSize: 11, color: "var(--color-surface-400)", marginTop: 2 }}
-          >
-            {entry.UserFullName}
-          </div>
-        )}
-      </div>
-      {canEdit && (
-        <IconButton
-          size="sm"
-          variant="ghost"
-          onClick={onDelete}
-          aria-label="Delete time entry"
-        >
-          <Trash2 size={14} />
-        </IconButton>
-      )}
-    </div>
   );
 }

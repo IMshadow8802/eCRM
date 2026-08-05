@@ -23,6 +23,7 @@ import {
   addWorkspaceMember,
   setWorkspaceMemberRole,
 } from "../../api/workspaceQueries";
+import { MASTER_ENDPOINTS } from "../../api/masterQueries";
 import { toUserOptions } from "../../utils/userShape";
 import useAuthStore from "../../stores/useAuthStore";
 
@@ -192,7 +193,7 @@ export default function WorkspaceSettingsModal({
   // users; the SP rejects non-members with a clear message.
   const { data: usersPayload } = useApiQuery({
     queryKey: ["users", "pick-list"],
-    endpoint: "/api/users/fetchUsers",
+    endpoint: MASTER_ENDPOINTS.users.fetchUsers,
     params: { PageNumber: 1, PageSize: 200 },
     enabled: Boolean(workspace) && (canShare || canTransfer || canManageMembers),
     showErrorMessage: false,

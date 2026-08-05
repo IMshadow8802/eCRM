@@ -18,6 +18,16 @@ export const PLATFORM_ENDPOINTS = {
     loginUser: "/api/auth/loginUser",
     logoutUser: "/api/auth/logoutUser",
   },
+  /**
+   * The home dashboard, which spans both modules — sales pipeline and support
+   * volume in one SP. It lives here rather than in salesQueries or
+   * supportQueries because it belongs to neither; the module-specific reports
+   * stay with their module (SALES_ENDPOINTS.reports,
+   * SUPPORT_ENDPOINTS.reports).
+   */
+  reports: {
+    getDashboard: "/api/reports/getDashboard",
+  },
 };
 
 // ponytail: same one-line factory as the other query modules.
@@ -38,3 +48,6 @@ export const markAllNotificationsRead = post(
 // Auth
 export const loginUser = post(PLATFORM_ENDPOINTS.auth.loginUser);
 export const logoutUser = post(PLATFORM_ENDPOINTS.auth.logoutUser);
+
+// Reports
+export const getDashboard = post(PLATFORM_ENDPOINTS.reports.getDashboard);

@@ -668,6 +668,41 @@ describe("TaskDetailModal", () => {
     );
   });
 
+  // Two events so the timeline rail (drawn on every row but the last) renders,
+  // and the second carries neither a user nor a description so the "Someone" +
+  // bare-Action fallbacks are exercised.
+  it("History draws the connector rail and falls back when fields are missing", async () => {
+    server.use(
+      http.post(`*/api/tasks/getTaskActivity`, async () =>
+        HttpResponse.json({
+          success: true,
+          message: "ok",
+          responseCode: 200,
+          data: {
+            activities: [
+              {
+                Id: 3,
+                UserName: "Alice",
+                Action: "Created",
+                Description: "created the task",
+                CreatedDate: new Date().toISOString(),
+              },
+              { Id: 4, Action: "Archived" },
+            ],
+            pagination: { currentPage: 1, pageSize: 100, totalRecords: 2, totalPages: 1 },
+          },
+        }),
+      ),
+    );
+    renderModal(501);
+    await screen.findByText("Task 501");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: /History/i }));
+    expect(await screen.findByText(/created the task/i)).toBeInTheDocument();
+    expect(screen.getByText("Someone")).toBeInTheDocument();
+    expect(screen.getByText("Archived")).toBeInTheDocument();
+  });
+
   // F4 rollback: a failed tick unwinds the optimistic flip and unlocks the row.
   it("rolls back and re-enables the checklist toggle when the save fails", async () => {
     seedOneChecklistItem();
@@ -852,5 +887,128 @@ describe("TaskDetailModal", () => {
     await user.click(screen.getByRole("tab", { name: /Time/i }));
     expect(await screen.findByText(/did the thing/i)).toBeInTheDocument();
     expect(screen.getAllByText(/2\.50 h/i).length).toBeGreaterThan(0);
+  });
+
+  it("Time tab shows the work date and who logged it", async () => {
+    server.use(
+      http.post(`*/api/tasks/getTaskTimeEntries`, async () =>
+        HttpResponse.json({
+          success: true,
+          message: "ok",
+          responseCode: 200,
+          data: {
+            timeEntries: [
+              {
+                Id: 82,
+                TaskId: 501,
+                UserId: 1,
+                Hours: 1.5,
+                WorkDate: "2026-07-02",
+                UserFullName: "Alice Smith",
+              },
+            ],
+          },
+        }),
+      ),
+    );
+    renderModal(501);
+    await screen.findByText("Task 501");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: /Time/i }));
+    expect(await screen.findByText("02-07-2026")).toBeInTheDocument();
+    expect(screen.getByText("Alice Smith")).toBeInTheDocument();
+  });
+
+  it("logging time posts the hours plus the emit-routing hints", async () => {
+    let logBody;
+    server.use(
+      http.post(`*/api/tasks/logTaskTime`, async ({ request }) => {
+        logBody = await request.json();
+        return HttpResponse.json({ success: true, message: "ok", responseCode: 201 });
+      }),
+    );
+    renderModal(501);
+    await screen.findByText("Task 501");
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId("log-time-btn"));
+    const hours = await screen.findByTestId("log-time-hours");
+    const inner = hours.querySelector("input") || hours;
+    await user.clear(inner);
+    await user.type(inner, "3");
+    await user.click(screen.getByTestId("log-time-submit"));
+    await waitFor(() => {
+      expect(logBody).toMatchObject({ TaskId: 501, Hours: 3, WorkspaceId: 100 });
+    });
+  });
+
+  // The dependency picker is fed by a workspace-wide fetchTasks, so a second
+  // task has to exist for either direction to be addable.
+  const seedSecondTask = () =>
+    taskFixture.seed({
+      Id: 502,
+      Title: "Other task",
+      WorkspaceId: 100,
+      ColumnId: 1,
+      ColumnTitle: "To Do",
+      Priority: "low",
+      CreatedByUserId: 1,
+    });
+
+  const pickDependency = async (user, testId, optionName) => {
+    const pick = await screen.findByTestId(testId);
+    await user.click(pick.querySelector("[role='combobox']") ?? pick);
+    await user.click(await screen.findByRole("option", { name: optionName }));
+  };
+
+  it("adding a blocker posts the dependency with the blocks type", async () => {
+    let depBody;
+    seedSecondTask();
+    server.use(
+      http.post(`*/api/tasks/addTaskDependency`, async ({ request }) => {
+        depBody = await request.json();
+        return HttpResponse.json({ success: true, message: "ok", responseCode: 201 });
+      }),
+    );
+    renderModal(501);
+    await screen.findByText("Task 501");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: /Dependencies/i }));
+    await pickDependency(user, "blocker-pick", /Other task/i);
+    await user.click(screen.getByTestId("add-blocker-btn"));
+    await waitFor(() => {
+      expect(depBody).toMatchObject({
+        TaskId: 501,
+        DependsOnTaskId: 502,
+        Type: "blocks",
+        WorkspaceId: 100,
+      });
+    });
+  });
+
+  // Adding a dependent flips the direction: the OTHER task is the one that
+  // gains a blocker, so TaskId/DependsOnTaskId are the reverse of above.
+  it("adding a dependent posts the dependency in the reverse direction", async () => {
+    let depBody;
+    seedSecondTask();
+    server.use(
+      http.post(`*/api/tasks/addTaskDependency`, async ({ request }) => {
+        depBody = await request.json();
+        return HttpResponse.json({ success: true, message: "ok", responseCode: 201 });
+      }),
+    );
+    renderModal(501);
+    await screen.findByText("Task 501");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: /Dependencies/i }));
+    await pickDependency(user, "dependent-pick", /Other task/i);
+    await user.click(screen.getByTestId("add-dependent-btn"));
+    await waitFor(() => {
+      expect(depBody).toMatchObject({
+        TaskId: 502,
+        DependsOnTaskId: 501,
+        Type: "blocks",
+        WorkspaceId: 100,
+      });
+    });
   });
 });
