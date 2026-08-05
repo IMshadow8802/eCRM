@@ -1,5 +1,5 @@
 // src/pages/auth/Login.jsx
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSnackbar } from "notistack";
 import { Helmet } from "react-helmet-async";
@@ -15,6 +15,7 @@ export default function Login() {
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const passwordRef = useRef(null);
   const [remember, setRemember] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const { login, isAuthenticated, menuRights } = useAuthStore();
@@ -164,9 +165,25 @@ export default function Login() {
                   autoFocus
                   placeholder="your.handle, email or mobile"
                   leftAdornment={<Mail size={16} />}
+                  /*
+                   * A <form> with two text inputs and a submit button submits
+                   * on Enter from EITHER of them — that is the browser's
+                   * implicit submission, not something this form asked for. So
+                   * typing a username and pressing Enter, which is how most
+                   * people fill a login form, submitted with an empty password
+                   * and (the form being noValidate) got an error toast back.
+                   * Enter here advances to the password instead; Enter from
+                   * the password still submits, untouched.
+                   */
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter") return;
+                    e.preventDefault();
+                    passwordRef.current?.focus();
+                  }}
                 />
 
                 <TextInput
+                  ref={passwordRef}
                   label="Password"
                   name="password"
                   type={showPassword ? "text" : "password"}

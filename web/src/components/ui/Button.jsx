@@ -152,6 +152,19 @@ const Button = forwardRef(function Button(
       }}
       {...rest}
     >
+      {/*
+        Centred on both axes, not parked at the left padding edge.
+
+        It used to be `left: sz.paddingInline` — the slot a leftIcon occupies —
+        which only looks deliberate on a narrow button whose label is still
+        visible. The label is hidden below, so on a fullWidth button that read
+        as a small spinner jammed against the left edge of a wide empty bar.
+
+        `translate(-50%, -50%)` because left/top place the spinner's corner at
+        the centre; the transform pulls it back by half its own size. The
+        absolute position keeps it out of flow so the hidden label continues to
+        hold the button's width.
+      */}
       {loading && (
         <CircularProgress
           size={sz.fontSize}
@@ -159,7 +172,9 @@ const Button = forwardRef(function Button(
           sx={{
             color: v.color,
             position: "absolute",
-            left: sz.paddingInline,
+            left: "50%",
+            top: "50%",
+            transform: "translate(-50%, -50%)",
           }}
           data-testid={testId ? `${testId}-spinner` : undefined}
         />

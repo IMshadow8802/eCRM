@@ -49,6 +49,35 @@ describe("Button", () => {
     expect(screen.getByTestId("btn-spinner")).toBeInTheDocument();
   });
 
+  /**
+   * Regression: the spinner was `position: absolute; left: <paddingInline>` —
+   * pinned to the left padding edge where a leftIcon would sit. With the label
+   * hidden, a fullWidth button showed a small spinner jammed against its left
+   * edge and nothing else. It has to be centred on both axes, which means
+   * left/top 50% plus a translate back by half its own size.
+   */
+  it("centres the spinner rather than pinning it to the left edge", () => {
+    wrap(
+      <Button loading fullWidth size="lg" data-testid="btn">
+        Sign in
+      </Button>,
+    );
+    const spinner = screen.getByTestId("btn-spinner");
+    expect(spinner).toHaveStyle({
+      position: "absolute",
+      left: "50%",
+      top: "50%",
+      transform: "translate(-50%, -50%)",
+    });
+  });
+
+  it("keeps the label in the layout while loading so the button cannot resize", () => {
+    // Hidden, not unmounted — removing it would collapse the button to the
+    // width of the spinner and make it jump on every submit.
+    wrap(<Button loading>Sign in</Button>);
+    expect(screen.getByText("Sign in")).toBeInTheDocument();
+  });
+
   it("renders all variants without crashing", () => {
     for (const variant of [
       "primary",

@@ -197,4 +197,64 @@ describe("Login", () => {
       expect(navigate).toHaveBeenCalledWith("/tasks", { replace: true }),
     );
   });
+
+  /**
+   * Keyboard path. These are regressions for a form that could only be driven
+   * with the mouse or Tab.
+   *
+   * The Enter one is the important one. This is a plain <form> with two text
+   * inputs and a submit button, so the browser's implicit submission fired on
+   * Enter ANYWHERE in it — pressing Enter after typing a username submitted
+   * with an empty password, and because the form is noValidate the browser
+   * skipped `required` and handleSubmit answered with an error toast. Typing a
+   * username and pressing Enter is the single most common way to fill a login
+   * form, and it produced an error.
+   */
+  it("focuses the username field on arrival", () => {
+    renderWithProviders(<Login />, { router: true });
+    expect(screen.getByLabelText(/Username \/ Email \/ Mobile/i)).toHaveFocus();
+  });
+
+  it("moves Enter from the username to the password instead of submitting", async () => {
+    renderWithProviders(<Login />, { router: true });
+    const user = userEvent.setup();
+
+    await user.type(
+      screen.getByLabelText(/Username \/ Email \/ Mobile/i),
+      "alice@example.com{Enter}",
+    );
+
+    expect(screen.getByLabelText(/^Password/i)).toHaveFocus();
+    // The whole point: no request, and no "enter your username and password".
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("submits on Enter from the password field", async () => {
+    post.mockResolvedValue(loginResponse([]));
+    renderWithProviders(<Login />, { router: true });
+    const user = userEvent.setup();
+
+    await user.type(
+      screen.getByLabelText(/Username \/ Email \/ Mobile/i),
+      "alice@example.com{Enter}",
+    );
+    await user.type(screen.getByLabelText(/^Password/i), "secret{Enter}");
+
+    await waitFor(() => expect(post).toHaveBeenCalledOnce());
+  });
+
+  it("still refuses to submit when the password is empty", async () => {
+    // Tab past the password rather than Enter — the guard must survive the
+    // Enter change, since Enter no longer reaches submit from the username.
+    renderWithProviders(<Login />, { router: true });
+    const user = userEvent.setup();
+
+    await user.type(
+      screen.getByLabelText(/Username \/ Email \/ Mobile/i),
+      "alice@example.com",
+    );
+    await user.click(screen.getByRole("button", { name: /Sign in/i }));
+
+    expect(post).not.toHaveBeenCalled();
+  });
 });
