@@ -117,8 +117,6 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   // Why the last compose submit failed. Cleared when the sheet is opened
   // again, so a stale reason never greets the next entry.
   const [composeError, setComposeError] = useState<string | null>(null);
-  // Ticking/removing a step happens inline on the details tab, not in a sheet.
-  const [checklistError, setChecklistError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const composeRef = useRef<SheetRef>(null);
@@ -180,26 +178,20 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   };
 
   // Ticking a box and adding a step are the same endpoint but not the same
-  // failure: a rejected tick silently un-ticks itself, which reads as the app
-  // ignoring the tap, so it needs a line of its own rather than the compose
-  // sheet's (that sheet is not even open).
+  // failure. A rejected tick un-ticks itself, which reads as the app ignoring
+  // the tap — and the compose sheet is not even open to carry the reason. It
+  // goes to a toast rather than a line under the list: by the time the request
+  // comes back the finger has moved on, and a message at the bottom of a
+  // scrolled list is one nobody sees.
   const toggleItem = useMutation({
     mutationFn: saveTaskChecklist,
-    onError: (err) =>
-      setChecklistError(apiErrorMessage(err, "Could not update that step.")),
-    onSuccess: () => {
-      setChecklistError(null);
-      invalidate();
-    },
+    onError: (err) => toast.error(apiErrorMessage(err, "Could not update that step.")),
+    onSuccess: invalidate,
   });
   const removeItem = useMutation({
     mutationFn: deleteTaskChecklist,
-    onError: (err) =>
-      setChecklistError(apiErrorMessage(err, "Could not remove that step.")),
-    onSuccess: () => {
-      setChecklistError(null);
-      invalidate();
-    },
+    onError: (err) => toast.error(apiErrorMessage(err, "Could not remove that step.")),
+    onSuccess: invalidate,
   });
   const addItem = useMutation({
     mutationFn: saveTaskChecklist,
@@ -545,11 +537,6 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
         />
       ) : null}
 
-      {tab === "checklist" && checklistError ? (
-        <Text variant="caption" color="danger" style={styles.inlineError}>
-          {checklistError}
-        </Text>
-      ) : null}
 
       {tab === "files" ? (
         <AttachmentList
@@ -696,7 +683,6 @@ function Meta({
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  inlineError: { paddingHorizontal: SCREEN_PADDING, paddingTop: spacing[2] },
   centre: {
     flex: 1,
     alignItems: "center",

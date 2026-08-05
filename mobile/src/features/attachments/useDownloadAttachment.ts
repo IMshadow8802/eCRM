@@ -18,19 +18,27 @@ import type { Attachment } from "../../types/api";
  * that can open the type. An APK shared this way lands in the installer, which
  * is what "download the build" actually means on a phone.
  */
-export function useDownloadAttachment() {
+/**
+ * Failures are REPORTED, not stored.
+ *
+ * This used to hold its own `error` string, which the list then rendered in a
+ * line at the bottom of the screen — easy to miss after tapping a row further
+ * up, and it outlived the moment it described. Every failure here is the
+ * outcome of an action whose surface has already gone (the share sheet closed,
+ * or never opened), which is exactly what a toast is for. The caller passes
+ * `toast.error`.
+ */
+export function useDownloadAttachment(onError: (message: string) => void) {
   const [busyId, setBusyId] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   const download = async (attachment: Attachment) => {
     const request = attachmentDownloadRequest(attachment.Id);
     if (!request) {
-      setError("You are signed out. Sign in and try again.");
+      onError("You are signed out. Sign in and try again.");
       return;
     }
 
     setBusyId(attachment.Id);
-    setError(null);
     try {
       // Its own folder under cache: two attachments can share a file name, and
       // writing both to the cache root would have one silently overwrite the
@@ -50,10 +58,10 @@ export function useDownloadAttachment() {
           dialogTitle: attachment.FileName,
         });
       } else {
-        setError("This device has no way to open or save the file.");
+        onError("This device has no way to open or save the file.");
       }
     } catch (err) {
-      setError(
+      onError(
         err instanceof Error && err.message
           ? `Download failed: ${err.message}`
           : "Download failed. Check your connection and try again.",
@@ -63,5 +71,5 @@ export function useDownloadAttachment() {
     }
   };
 
-  return { download, busyId, error, clearError: () => setError(null) };
+  return { download, busyId };
 }

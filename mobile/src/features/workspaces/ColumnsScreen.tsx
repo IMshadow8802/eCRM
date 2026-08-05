@@ -13,9 +13,10 @@ import { apiErrorMessage } from "../../api/errors";
 import { fetchTasks } from "../../api/taskQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import type { KanbanColumn } from "../../types/api";
-import { colors, radius, shadows, spacing, SCREEN_PADDING } from "../../theme";
+import { colors, radius, spacing, SCREEN_PADDING } from "../../theme";
 import {
   ActionSheet,
+  Card,
   ComposeSheet,
   Dialog,
   EmptyState,
@@ -23,9 +24,9 @@ import {
   Screen,
   ScreenHeader,
   Text,
+  useToast,
   type SheetAction,
   type SheetRef,
-  useToast,
 } from "../../ui";
 
 type Props = StackScreenProps<RootStackParamList, "Columns">;
@@ -166,7 +167,7 @@ export default function ColumnsScreen({ route, navigation }: Props) {
           )
         }
         renderItem={({ item }) => (
-          <View style={styles.row}>
+          <Card style={styles.row}>
             <View
               style={[
                 styles.dot,
@@ -200,7 +201,7 @@ export default function ColumnsScreen({ route, navigation }: Props) {
             >
               <Trash2 size={19} color={colors.danger} />
             </Pressable>
-          </View>
+          </Card>
         )}
       />
 
@@ -268,15 +269,9 @@ const styles = StyleSheet.create({
     gap: spacing[3],
   },
   listEmpty: { flexGrow: 1 },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[3],
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    padding: spacing[4],
-    ...shadows.md,
-  },
+  // Surface (background, radius, shadow, press physics) belongs to ui/Card —
+  // this is only how the row lays its children out.
+  row: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
   dot: { width: 12, height: 12, borderRadius: radius.full },
   text: { flex: 1, gap: spacing[1] },
 });

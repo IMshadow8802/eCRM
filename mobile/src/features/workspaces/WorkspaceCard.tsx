@@ -15,8 +15,12 @@ import {
 } from "lucide-react-native";
 
 import type { Workspace, WorkspaceRole, WorkspaceType } from "../../types/api";
-import { colors, radius, spacing } from "../../theme";
-import { Card, Text } from "../../ui";
+import { colors, spacing } from "../../theme";
+import {
+  Card,
+  Glyph,
+  Text,
+} from "../../ui";
 
 /**
  * Each workspace type gets its own glyph and colour so the list scans fast.
@@ -72,9 +76,7 @@ function WorkspaceCardBase({ workspace, onPress }: WorkspaceCardProps) {
 
   return (
     <Card onPress={() => onPress(workspace)} style={styles.row}>
-      <View style={[styles.glyph, { backgroundColor: colors[type.color] }]}>
-        <type.Icon size={19} color={colors.textOnBrand} />
-      </View>
+      <Glyph icon={type.Icon} tint={colors[type.color]} size="md" />
 
       <View style={styles.main}>
         <View style={styles.titleRow}>
@@ -134,13 +136,6 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center" },
   // 38, not 46. The glyph is a label for the row, not its subject — at 46 it
   // was the heaviest thing on the card and pulled the eye off the board's name.
-  glyph: {
-    width: 38,
-    height: 38,
-    borderRadius: radius.full,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   main: { flex: 1, gap: spacing[1] },
   titleRow: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
   title: { flexShrink: 1 },

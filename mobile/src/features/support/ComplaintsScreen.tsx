@@ -12,9 +12,7 @@ import {
 } from "lucide-react-native";
 import type { StackScreenProps } from "@react-navigation/stack";
 
-import { fetchLookups, fetchPipelines, LOOKUP_KIND } from "../../api/configQueries";
 import { fetchTickets, moveTicketStage } from "../../api/ticketQueries";
-import { fetchUserDirectory } from "../../api/userQueries";
 import { apiErrorMessage } from "../../api/errors";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import type { PipelineStage, Ticket } from "../../types/api";
@@ -34,11 +32,8 @@ import {
   useToast,
 } from "../../ui";
 import { ComplaintCard } from "./ComplaintCard";
-import {
-  lookupMap,
-  needsResolution,
-  stageRoles,
-} from "./ticketHelpers";
+import { lookupMap, needsResolution } from "./ticketHelpers";
+import { useTicketRefData } from "./useTicketRefData";
 
 type Props = StackScreenProps<RootStackParamList, "Complaints">;
 
@@ -79,26 +74,16 @@ export default function ComplaintsScreen({ navigation }: Props) {
   });
 
   // The ticket row carries ids, not names — sp_FetchTickets joins nothing.
-  const { data: pipeline } = useQuery({
-    queryKey: ["pipelines", "ticket"],
-    queryFn: () => fetchPipelines({ Entity: "ticket" }),
-  });
-  const { data: categories } = useQuery({
-    queryKey: ["lookups", LOOKUP_KIND.ticketCategory],
-    queryFn: () => fetchLookups({ Kind: LOOKUP_KIND.ticketCategory }),
-  });
-  const { data: priorities } = useQuery({
-    queryKey: ["lookups", LOOKUP_KIND.priority],
-    queryFn: () => fetchLookups({ Kind: LOOKUP_KIND.priority }),
-  });
-  const { data: resolutions } = useQuery({
-    queryKey: ["lookups", LOOKUP_KIND.resolution],
-    queryFn: () => fetchLookups({ Kind: LOOKUP_KIND.resolution }),
-  });
-  const { data: directory } = useQuery({
-    queryKey: ["users", "directory"],
-    queryFn: () => fetchUserDirectory(),
-  });
+  // Scoped to the default pipeline: this is the board.
+  const {
+    categories,
+    priorities,
+    resolutions,
+    directory,
+    defaultPipeline: activePipeline,
+    roles,
+  } = useTicketRefData("default");
+
 
   const move = useMutation({
     mutationFn: moveTicketStage,
@@ -129,22 +114,7 @@ export default function ComplaintsScreen({ navigation }: Props) {
     [ticketsQuery.data],
   );
 
-  // A company can run more than one support pipeline; the board shows the
-  // default one, exactly as the web board does.
-  const activePipeline = useMemo(
-    () =>
-      (pipeline?.pipelines ?? []).find((p) => p.IsDefault) ??
-      pipeline?.pipelines?.[0] ??
-      null,
-    [pipeline],
-  );
-
-  const roles = useMemo(
-    () => stageRoles(pipeline?.stages, activePipeline?.Id ?? null),
-    [pipeline, activePipeline],
-  );
-
-  // Already scoped to activePipeline by stageRoles above.
+  // Already scoped to the default pipeline by useTicketRefData above.
   const stages = roles.ordered;
 
   // A "No stage" column only exists when something is actually in it — an
@@ -237,7 +207,9 @@ export default function ComplaintsScreen({ navigation }: Props) {
       }),
   }));
 
-  const loading = ticketsQuery.isLoading || !pipeline;
+  // Waiting on the pipeline as well as the tickets: a board rendered before its
+  // stages arrive has no columns to put anything in.
+  const loading = ticketsQuery.isLoading || !activePipeline;
 
   return (
     <Screen>

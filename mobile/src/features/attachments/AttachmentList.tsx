@@ -28,8 +28,17 @@ import {
 } from "../../api/attachmentQueries";
 import { apiErrorMessage } from "../../api/errors";
 import type { Attachment, AttachmentEntity } from "../../types/api";
-import { colors, radius, shadows, spacing, SCREEN_PADDING } from "../../theme";
-import { Dialog, Fab, Sheet, Text, useToast, type SheetRef } from "../../ui";
+import { colors, radius, spacing, SCREEN_PADDING } from "../../theme";
+import {
+  Card,
+  Dialog,
+  Fab,
+  Glyph,
+  Sheet,
+  Text,
+  useToast,
+  type SheetRef,
+} from "../../ui";
 import FileViewer from "./FileViewer";
 import { fileMeta, humanSize, MAX_UPLOAD_BYTES } from "./attachmentHelpers";
 import { useDownloadAttachment } from "./useDownloadAttachment";
@@ -52,7 +61,7 @@ export default function AttachmentList({
   const [viewing, setViewing] = useState<Attachment | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Attachment | null>(null);
-  const { download, busyId, error: downloadError, clearError } = useDownloadAttachment();
+  const { download, busyId } = useDownloadAttachment(toast.error);
 
   const queryKey = ["attachments", entity, entityId];
   const { data, isLoading } = useQuery({
@@ -63,7 +72,7 @@ export default function AttachmentList({
   const upload = useMutation({
     mutationFn: uploadAttachment,
     onSuccess: () => queryClient.invalidateQueries({ queryKey }),
-    onError: (err) => setError(apiErrorMessage(err, "Upload failed.")),
+    onError: (err) => toast.error(apiErrorMessage(err, "Upload failed.")),
   });
 
   const remove = useMutation({
@@ -162,13 +171,8 @@ export default function AttachmentList({
         renderItem={({ item: a }) => {
           const { Icon, tint } = fileMeta(a.FileName, a.MimeType);
           return (
-            <Pressable
-              style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-              onPress={() => setViewing(a)}
-            >
-              <View style={[styles.glyph, { backgroundColor: colors[tint] }]}>
-                <Icon size={18} color={colors.textOnBrand} />
-              </View>
+            <Card style={styles.row} onPress={() => setViewing(a)}>
+              <Glyph icon={Icon} tint={colors[tint]} size="sm" />
 
               <View style={styles.rowText}>
                 <Text variant="body" numberOfLines={1}>
@@ -211,24 +215,25 @@ export default function AttachmentList({
                   <Trash2 size={19} color={colors.danger} />
                 </Pressable>
               ) : null}
-            </Pressable>
+            </Card>
           );
         }}
       />
 
-      {error || downloadError ? (
+      {/* Only the messages you have to ACT on stay here: the file was too big,
+          or camera/photo access is off and has to be turned on in Settings.
+          Those are instructions, and they should sit still while you go and
+          follow them. Outcomes — upload failed, download failed — are toasts. */}
+      {error ? (
         <Pressable
           style={styles.error}
-          onPress={() => {
-            setError(null);
-            clearError();
-          }}
+          onPress={() => setError(null)}
           accessibilityLabel="Dismiss the error"
           accessibilityRole="button"
         >
           <CircleAlert size={16} color={colors.danger} />
           <Text variant="caption" color="danger" style={styles.errorText}>
-            {error ?? downloadError}
+            {error}
           </Text>
         </Pressable>
       ) : null}
@@ -289,23 +294,9 @@ const styles = StyleSheet.create({
   container: { flex: 1, paddingHorizontal: SCREEN_PADDING },
   // Clears the FAB so the last row is never hidden behind it.
   list: { gap: spacing[3], paddingBottom: spacing[20] },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[3],
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: spacing[3],
-    ...shadows.sm,
-  },
-  rowPressed: { backgroundColor: colors.surfacePressed },
-  glyph: {
-    width: 36,
-    height: 36,
-    borderRadius: radius.full,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  // ui/Card owns the surface and the press physics — a colour tint for pressed
+  // is exactly what Card replaced (§9.5: press SINKS, it does not shade).
+  row: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
   rowText: { flex: 1, gap: spacing[1] },
   // A fixed box so the spinner that replaces the icon mid-download does not
   // shift the row width.

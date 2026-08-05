@@ -21,7 +21,12 @@ import { StyleSheet, View } from "react-native";
 
 import type { Task, TaskPriority } from "../../types/api";
 import { colors, radius, spacing } from "../../theme";
-import { Avatar, Card, Text } from "../../ui";
+import {
+  Avatar,
+  Card,
+  Glyph,
+  Text,
+} from "../../ui";
 import {
   assigneesOf,
   checklistProgress,
@@ -149,9 +154,7 @@ function TaskCardBase({
   return (
     <Card onPress={() => onPress(task)} onLongPress={onLongPress ? () => onLongPress(task) : undefined}>
       <View style={styles.row}>
-        <View style={[styles.glyph, { backgroundColor: ink }]}>
-          <Icon size={20} color={colors.textOnBrand} />
-        </View>
+        <Glyph icon={Icon} tint={ink} size="lg" />
 
         <View style={styles.main}>
           <Text
@@ -250,13 +253,6 @@ export default TaskCard;
 
 const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
-  glyph: {
-    width: 42,
-    height: 42,
-    borderRadius: radius.full,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   main: { flex: 1, gap: spacing[1] },
   subRow: {
     flexDirection: "row",

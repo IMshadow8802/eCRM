@@ -25,7 +25,6 @@ import {
 } from "lucide-react-native";
 import type { StackScreenProps } from "@react-navigation/stack";
 
-import { fetchLookups, fetchPipelines, LOOKUP_KIND } from "../../api/configQueries";
 import {
   deleteTicket,
   fetchTicketDetail,
@@ -33,7 +32,6 @@ import {
 } from "../../api/ticketQueries";
 import { fetchCalls, logCall, type CallDirection } from "../../api/callQueries";
 import { apiErrorMessage } from "../../api/errors";
-import { fetchUserDirectory } from "../../api/userQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import type { CustomFieldValue, PipelineStage } from "../../types/api";
 import { colors, radius, spacing, SCREEN_PADDING } from "../../theme";
@@ -62,9 +60,9 @@ import {
   needsResolution,
   priorityTone,
   stageOf,
-  stageRoles,
   LIFECYCLE_LABEL,
 } from "./ticketHelpers";
+import { useTicketRefData } from "./useTicketRefData";
 
 type Props = StackScreenProps<RootStackParamList, "ComplaintDetail">;
 type Tab = "details" | "files" | "history";
@@ -90,30 +88,11 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
     queryFn: () => fetchTicketDetail({ TicketId: ticketId }),
   });
 
-  const { data: pipeline } = useQuery({
-    queryKey: ["pipelines", "ticket"],
-    queryFn: () => fetchPipelines({ Entity: "ticket" }),
-  });
-  const { data: categories } = useQuery({
-    queryKey: ["lookups", LOOKUP_KIND.ticketCategory],
-    queryFn: () => fetchLookups({ Kind: LOOKUP_KIND.ticketCategory }),
-  });
-  const { data: priorities } = useQuery({
-    queryKey: ["lookups", LOOKUP_KIND.priority],
-    queryFn: () => fetchLookups({ Kind: LOOKUP_KIND.priority }),
-  });
-  const { data: resolutions } = useQuery({
-    queryKey: ["lookups", LOOKUP_KIND.resolution],
-    queryFn: () => fetchLookups({ Kind: LOOKUP_KIND.resolution }),
-  });
-  const { data: outcomes } = useQuery({
-    queryKey: ["lookups", LOOKUP_KIND.callOutcome],
-    queryFn: () => fetchLookups({ Kind: LOOKUP_KIND.callOutcome }),
-  });
-  const { data: directory } = useQuery({
-    queryKey: ["users", "directory"],
-    queryFn: () => fetchUserDirectory(),
-  });
+  // Scoped to the pipeline this ticket is actually in — not the default one.
+  // The move sheet and the Resolved/Closed labels are built from these, and
+  // offering a stage from another pipeline moves the ticket out of its own.
+  const { categories, priorities, resolutions, outcomes, directory, roles } =
+    useTicketRefData(detailQuery.data?.ticket?.PipelineId ?? null);
   // sp_LogCall's activity row only says "Outbound call logged" — the notes and
   // outcome live on tblCall. Fetching them is what makes a logged call
   // readable rather than just countable.
@@ -122,14 +101,6 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
     queryFn: () => fetchCalls({ TicketId: ticketId }),
   });
 
-  // Scoped to the pipeline this ticket is actually in — not the default one.
-  // The move sheet and the Resolved/Closed labels below are built from these,
-  // and offering a stage from another pipeline moves the ticket out of its own.
-  const ticketPipelineId = detailQuery.data?.ticket?.PipelineId ?? null;
-  const roles = useMemo(
-    () => stageRoles(pipeline?.stages, ticketPipelineId),
-    [pipeline, ticketPipelineId],
-  );
   const categoryNames = useMemo(() => lookupMap(categories), [categories]);
   const priorityNames = useMemo(() => lookupMap(priorities), [priorities]);
   const resolutionNames = useMemo(() => lookupMap(resolutions), [resolutions]);

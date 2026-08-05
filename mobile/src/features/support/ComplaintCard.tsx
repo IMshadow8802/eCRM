@@ -14,8 +14,13 @@ import {
 } from "lucide-react-native";
 
 import type { Ticket } from "../../types/api";
-import { colors, radius, spacing } from "../../theme";
-import { Card, Chip, Text } from "../../ui";
+import { colors, spacing } from "../../theme";
+import {
+  Card,
+  Chip,
+  Glyph,
+  Text,
+} from "../../ui";
 import { relativeTime } from "../tasks/taskHelpers";
 import {
   channelLabel,
@@ -94,9 +99,7 @@ function ComplaintCardBase({
       onLongPress={onLongPress ? () => onLongPress(ticket) : undefined}
     >
       <View style={styles.row}>
-        <View style={[styles.glyph, { backgroundColor: ink }]}>
-          <Icon size={20} color={colors.textOnBrand} />
-        </View>
+        <Glyph icon={Icon} tint={ink} size="lg" />
 
         <View style={styles.main}>
           <Text variant="h3" numberOfLines={1}>
@@ -153,13 +156,6 @@ export default ComplaintCard;
 
 const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
-  glyph: {
-    width: 42,
-    height: 42,
-    borderRadius: radius.full,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   main: { flex: 1, gap: spacing[1] },
   subRow: {
     flexDirection: "row",

@@ -7,10 +7,9 @@ import type {
   StackScreenProps,
 } from "@react-navigation/stack";
 
-import { fetchCustomFields, fetchLookups, LOOKUP_KIND } from "../../api/configQueries";
+import { fetchCustomFields } from "../../api/configQueries";
 import { fetchTicketDetail, saveTicket } from "../../api/ticketQueries";
 import { apiErrorMessage } from "../../api/errors";
-import { fetchUserDirectory } from "../../api/userQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import type { CustomFieldDef, Ticket, TicketDetail } from "../../types/api";
 import { colors, spacing, SCREEN_PADDING } from "../../theme";
@@ -32,6 +31,7 @@ import {
   missingRequired,
   serialiseCustomFields,
 } from "./ticketHelpers";
+import { useTicketRefData } from "./useTicketRefData";
 
 type Props = StackScreenProps<RootStackParamList, "ComplaintForm">;
 type Nav = StackNavigationProp<RootStackParamList, "ComplaintForm">;
@@ -110,18 +110,9 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
   );
   const [error, setError] = useState<string | null>(null);
 
-  const { data: categories } = useQuery({
-    queryKey: ["lookups", LOOKUP_KIND.ticketCategory],
-    queryFn: () => fetchLookups({ Kind: LOOKUP_KIND.ticketCategory }),
-  });
-  const { data: priorities } = useQuery({
-    queryKey: ["lookups", LOOKUP_KIND.priority],
-    queryFn: () => fetchLookups({ Kind: LOOKUP_KIND.priority }),
-  });
-  const { data: directory } = useQuery({
-    queryKey: ["users", "directory"],
-    queryFn: () => fetchUserDirectory(),
-  });
+  // The form only picks a category, a priority and an assignee — no stage, so
+  // there is nothing here to scope to a pipeline.
+  const { categories, priorities, directory } = useTicketRefData("all");
   const { data: defs } = useQuery({
     queryKey: ["custom-fields", "ticket"],
     queryFn: () => fetchCustomFields({ Entity: "ticket" }),

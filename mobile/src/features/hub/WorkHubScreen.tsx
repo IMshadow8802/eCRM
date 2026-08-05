@@ -13,21 +13,22 @@ import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { StackNavigationProp } from "@react-navigation/stack";
 
-import { fetchPipelines } from "../../api/configQueries";
 import { fetchTickets } from "../../api/ticketQueries";
 import { fetchWorkspaces } from "../../api/workspaceQueries";
-import { lifecycleOf, stageRoles } from "../support/ticketHelpers";
+import { lifecycleOf } from "../support/ticketHelpers";
+import { useTicketRefData } from "../support/useTicketRefData";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
 import { canSeeAny, visibleRoutes } from "../../utils/menuAccess";
+import { colors, spacing, SCREEN_PADDING, TAB_BAR_CLEARANCE } from "../../theme";
 import {
-  colors,
-  radius,
-  spacing,
-  SCREEN_PADDING,
-  TAB_BAR_CLEARANCE,
-} from "../../theme";
-import { Card, Chip, EmptyState, Screen, Text } from "../../ui";
+  Card,
+  Chip,
+  EmptyState,
+  Glyph,
+  Screen,
+  Text,
+} from "../../ui";
 
 type Nav = StackNavigationProp<RootStackParamList>;
 
@@ -83,19 +84,15 @@ export default function WorkHubScreen() {
     queryKey: ["tickets", ""],
     queryFn: () => fetchTickets({ PageSize: 200, SearchTerm: null }),
   });
-  const { data: pipeline } = useQuery({
-    queryKey: ["pipelines", "ticket"],
-    queryFn: () => fetchPipelines({ Entity: "ticket" }),
-  });
 
   const boardCount = (workspaces ?? []).filter(
     (w) => w.MyInviteStatus !== "pending" && !w.IsArchived,
   ).length;
 
-  // Deliberately NOT scoped to one pipeline: this is a count across every
-  // support pipeline, and scoping would silently drop tickets outside the
-  // default one. Only StageType is read here, which is per-stage anyway.
-  const roles = useMemo(() => stageRoles(pipeline?.stages), [pipeline]);
+  // "all" on purpose: this is a count across every support pipeline, and
+  // scoping would silently drop tickets outside the default one rather than
+  // counting them. Only StageType is read here, which is per-stage anyway.
+  const { roles } = useTicketRefData("all");
   const openComplaints = useMemo(
     () =>
       (tickets?.data?.tickets ?? []).filter(
@@ -199,11 +196,7 @@ export default function WorkHubScreen() {
                     pressed && styles.rowPressed,
                   ]}
                 >
-                  <View
-                    style={[styles.glyph, { backgroundColor: colors[entry.tint] }]}
-                  >
-                    <entry.Icon size={20} color={colors.textOnBrand} />
-                  </View>
+                  <Glyph icon={entry.Icon} tint={colors[entry.tint]} size="md" />
 
                   <View style={styles.rowText}>
                     <View style={styles.labelRow}>
@@ -263,13 +256,6 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.divider,
   },
   rowPressed: { backgroundColor: colors.surfacePressed },
-  glyph: {
-    width: 42,
-    height: 42,
-    borderRadius: radius.full,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   rowText: { flex: 1, gap: spacing[1] },
   labelRow: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
 });
