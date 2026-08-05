@@ -19,6 +19,7 @@ import Attachments from "../../components/Attachments";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { useApiMutation } from "../../hooks/useApiMutation";
 import { useUsers } from "../../hooks";
+import { useLookups } from "../../hooks/useLookups";
 import { findUserById, getUserName } from "../../utils/userShape";
 import { SUPPORT_ENDPOINTS } from "../../api/supportQueries";
 import Timeline from "../Sales/Timeline";
@@ -90,27 +91,10 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
   // category/assignee display names client-side, like LeadDetail does.
   const { data: usersData } = useUsers({ PageSize: 1000 });
   const users = usersData?.users || [];
-  const { data: prioritiesData } = useApiQuery({
-    queryKey: ["ticket-lookups", "priority"],
-    endpoint: SUPPORT_ENDPOINTS.config.fetchLookups,
-    params: { Kind: "priority" },
-    showErrorMessage: false,
-  });
-  const priorities = prioritiesData?.lookups || [];
-  const { data: categoriesData } = useApiQuery({
-    queryKey: ["ticket-lookups", "ticket_category"],
-    endpoint: SUPPORT_ENDPOINTS.config.fetchLookups,
-    params: { Kind: "ticket_category" },
-    showErrorMessage: false,
-  });
-  const categories = categoriesData?.lookups || [];
-  const { data: resolutionsData } = useApiQuery({
-    queryKey: ["ticket-lookups", "resolution"],
-    endpoint: SUPPORT_ENDPOINTS.config.fetchLookups,
-    params: { Kind: "resolution" },
-    showErrorMessage: false,
-  });
-  const resolutions = resolutionsData?.lookups || [];
+  const quiet = { showErrorMessage: false };
+  const { lookups: priorities } = useLookups("priority", quiet);
+  const { lookups: categories } = useLookups("ticket_category", quiet);
+  const { lookups: resolutions } = useLookups("resolution", quiet);
   const { data: pipelinesData } = useApiQuery({
     queryKey: ["support-pipelines", "ticket"],
     endpoint: SUPPORT_ENDPOINTS.config.fetchPipelines,
@@ -129,13 +113,7 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
     showErrorMessage: false,
   });
   const calls = callsData?.calls || [];
-  const { data: outcomesData } = useApiQuery({
-    queryKey: ["ticket-lookups", "call_outcome"],
-    endpoint: SUPPORT_ENDPOINTS.config.fetchLookups,
-    params: { Kind: "call_outcome" },
-    showErrorMessage: false,
-  });
-  const outcomes = outcomesData?.lookups || [];
+  const { lookups: outcomes } = useLookups("call_outcome", quiet);
 
   const ticket = data?.ticket ?? null;
   const activity = data?.activity ?? [];

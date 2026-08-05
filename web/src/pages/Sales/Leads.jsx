@@ -13,6 +13,7 @@ import { HELP_GUIDES } from "../../data/helpGuides";
 import useServerTable from "../../hooks/useServerTable";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { useUsers } from "../../hooks";
+import { useLookups } from "../../hooks/useLookups";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
 import { formatCurrency, formatDate } from "../../utils/format";
 import { findUserById, getUserName } from "../../utils/userShape";
@@ -42,12 +43,7 @@ const Leads = () => {
   // sp_FetchLeads returns raw SourceId/StageId (no name join), so the
   // filters/columns need their own display source: lookups (Kind=lead_source)
   // for Source, and fetchPipelines' stages recordset for Stage.
-  const { data: sourcesData } = useApiQuery({
-    queryKey: ["lead-sources"],
-    endpoint: SALES_ENDPOINTS.config.fetchLookups,
-    params: { Kind: "lead_source" },
-  });
-  const sources = sourcesData?.lookups || [];
+  const { lookups: sources } = useLookups("lead_source");
 
   const { data: pipelinesData } = useApiQuery({
     queryKey: ["sales-pipelines", "lead"],

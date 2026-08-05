@@ -10,6 +10,7 @@ import Attachments from "../../components/Attachments";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { useApiMutation } from "../../hooks/useApiMutation";
 import { useUsers } from "../../hooks";
+import { useLookups } from "../../hooks/useLookups";
 import { findUserById, getUserName } from "../../utils/userShape";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
 import Timeline from "./Timeline";
@@ -87,13 +88,9 @@ export default function LeadDetail({ leadId: leadIdProp }) {
   // stage/owner/source display names client-side like Leads.jsx does.
   const { data: usersData } = useUsers({ PageSize: 1000 });
   const users = usersData?.users || [];
-  const { data: sourcesData } = useApiQuery({
-    queryKey: ["lead-sources"],
-    endpoint: SALES_ENDPOINTS.config.fetchLookups,
-    params: { Kind: "lead_source" },
+  const { lookups: sources } = useLookups("lead_source", {
     showErrorMessage: false,
   });
-  const sources = sourcesData?.lookups || [];
   const { data: pipelinesData } = useApiQuery({
     queryKey: ["sales-pipelines", "lead"],
     endpoint: SALES_ENDPOINTS.config.fetchPipelines,
@@ -106,14 +103,10 @@ export default function LeadDetail({ leadId: leadIdProp }) {
   const activity = data?.activity ?? [];
 
   // Lost-reason lookup, only worth a request once the lead is actually lost.
-  const { data: lostReasonsData } = useApiQuery({
-    queryKey: ["lost-reasons"],
-    endpoint: SALES_ENDPOINTS.config.fetchLookups,
-    params: { Kind: "lost_reason" },
+  const { lookups: lostReasons } = useLookups("lost_reason", {
     enabled: Boolean(lead?.LostReasonId),
     showErrorMessage: false,
   });
-  const lostReasons = lostReasonsData?.lookups || [];
 
   const stageName = stages.find((s) => s.Id === lead?.StageId)?.Name;
   const ownerName = getUserName(findUserById(users, lead?.OwnerId));

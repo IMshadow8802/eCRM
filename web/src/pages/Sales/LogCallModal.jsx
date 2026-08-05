@@ -2,8 +2,8 @@ import { useState } from "react";
 import { PhoneCall } from "lucide-react";
 
 import { Modal, Button, Combobox, TextArea, DateField } from "../../components/ui";
-import { useApiQuery } from "../../hooks/useApiQuery";
 import { useApiMutation } from "../../hooks/useApiMutation";
+import { useLookups } from "../../hooks/useLookups";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
 
 /**
@@ -17,17 +17,11 @@ export default function LogCallModal({ open, onClose, leadId, ticketId, onLogged
   const [notes, setNotes] = useState("");
   const [nextFollowupDate, setNextFollowupDate] = useState("");
 
-  const { data: lookupsPayload } = useApiQuery({
-    queryKey: ["lookups", "call_outcome"],
-    endpoint: SALES_ENDPOINTS.config.fetchLookups,
-    params: { Kind: "call_outcome" },
+  const { lookups } = useLookups("call_outcome", {
     enabled: Boolean(open),
     showErrorMessage: false,
   });
-  const outcomeOptions = (lookupsPayload?.lookups ?? []).map((l) => ({
-    value: l.Id,
-    label: l.Value,
-  }));
+  const outcomeOptions = lookups.map((l) => ({ value: l.Id, label: l.Value }));
 
   const logCallMutation = useApiMutation({
     endpoint: SALES_ENDPOINTS.calls.logCall,

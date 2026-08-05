@@ -15,6 +15,7 @@ import { HELP_GUIDES } from "../../data/helpGuides";
 import useServerTable from "../../hooks/useServerTable";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { useUsers } from "../../hooks";
+import { useLookups } from "../../hooks/useLookups";
 import { SUPPORT_ENDPOINTS } from "../../api/supportQueries";
 import { findUserById, getUserName } from "../../utils/userShape";
 
@@ -42,23 +43,13 @@ const Tickets = () => {
 
   // sp_FetchTickets returns raw lookup/stage ids (no name join), so the
   // filters/columns resolve display names from lookups + pipeline stages.
-  const { data: prioritiesData } = useApiQuery({
-    queryKey: ["ticket-priorities"],
-    endpoint: SUPPORT_ENDPOINTS.config.fetchLookups,
-    params: { Kind: "priority" },
-  });
-  const priorities = prioritiesData?.lookups || [];
+  const { lookups: priorities } = useLookups("priority");
   const priorityById = useMemo(
     () => new Map(priorities.map((p) => [p.Id, p.Value])),
     [priorities]
   );
 
-  const { data: categoriesData } = useApiQuery({
-    queryKey: ["ticket-categories"],
-    endpoint: SUPPORT_ENDPOINTS.config.fetchLookups,
-    params: { Kind: "ticket_category" },
-  });
-  const categories = categoriesData?.lookups || [];
+  const { lookups: categories } = useLookups("ticket_category");
   const categoryById = useMemo(
     () => new Map(categories.map((c) => [c.Id, c.Value])),
     [categories]

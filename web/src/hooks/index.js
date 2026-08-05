@@ -9,5 +9,6 @@ export { useTokenMonitor } from './useTokenMonitor.jsx';
 // UI hooks
 export { useConfirmation } from './useConfirmation.jsx';
 
-// Shared pick-list queries (teams / users)
+// Shared pick-list queries (teams / users / config lookups)
 export { useTeams, useUsers } from './useTaskData.jsx';
+export { useLookups } from './useLookups.jsx';

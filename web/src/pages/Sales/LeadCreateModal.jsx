@@ -12,6 +12,7 @@ import Attachments from "../../components/Attachments";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { useApiMutation } from "../../hooks/useApiMutation";
 import { useUsers } from "../../hooks";
+import { useLookups } from "../../hooks/useLookups";
 import { getUserName } from "../../utils/userShape";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
 
@@ -95,14 +96,10 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
   const { data: usersData } = useUsers({ PageSize: 1000 });
   const users = usersData?.users || [];
 
-  const { data: sourcesData } = useApiQuery({
-    queryKey: ["lead-sources"],
-    endpoint: SALES_ENDPOINTS.config.fetchLookups,
-    params: { Kind: "lead_source" },
+  const { lookups: sources } = useLookups("lead_source", {
     enabled: Boolean(open),
     showErrorMessage: false,
   });
-  const sources = sourcesData?.lookups || [];
 
   const { data: pipelinesData } = useApiQuery({
     queryKey: ["sales-pipelines", "lead"],

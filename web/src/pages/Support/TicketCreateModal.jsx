@@ -9,6 +9,7 @@ import Attachments from "../../components/Attachments";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { useApiMutation } from "../../hooks/useApiMutation";
 import { useUsers } from "../../hooks";
+import { useLookups } from "../../hooks/useLookups";
 import { getUserName } from "../../utils/userShape";
 import { SUPPORT_ENDPOINTS } from "../../api/supportQueries";
 
@@ -49,20 +50,9 @@ export default function TicketCreateModal({ open, onClose, onCreated }) {
   const { data: usersData } = useUsers({ PageSize: 1000 });
   const users = usersData?.users || [];
 
-  const { data: categoriesData } = useApiQuery({
-    queryKey: ["ticket-lookups", "ticket_category"],
-    endpoint: SUPPORT_ENDPOINTS.config.fetchLookups,
-    params: { Kind: "ticket_category" },
-    enabled: open,
-    showErrorMessage: false,
-  });
-  const { data: prioritiesData } = useApiQuery({
-    queryKey: ["ticket-lookups", "priority"],
-    endpoint: SUPPORT_ENDPOINTS.config.fetchLookups,
-    params: { Kind: "priority" },
-    enabled: open,
-    showErrorMessage: false,
-  });
+  const whileOpen = { enabled: open, showErrorMessage: false };
+  const { lookups: categories } = useLookups("ticket_category", whileOpen);
+  const { lookups: priorities } = useLookups("priority", whileOpen);
   const { data: defsData } = useApiQuery({
     queryKey: ["custom-field-defs", "ticket"],
     endpoint: SUPPORT_ENDPOINTS.config.fetchCustomFields,
@@ -71,8 +61,8 @@ export default function TicketCreateModal({ open, onClose, onCreated }) {
     showErrorMessage: false,
   });
 
-  const categoryOpts = (categoriesData?.lookups || []).map((l) => ({ value: l.Id, label: l.Value }));
-  const priorityOpts = (prioritiesData?.lookups || []).map((l) => ({ value: l.Id, label: l.Value }));
+  const categoryOpts = categories.map((l) => ({ value: l.Id, label: l.Value }));
+  const priorityOpts = priorities.map((l) => ({ value: l.Id, label: l.Value }));
   const assigneeOpts = users.map((u) => ({ value: u.Id, label: getUserName(u) || u.Username }));
   const defs = defsData?.customFields || [];
 
