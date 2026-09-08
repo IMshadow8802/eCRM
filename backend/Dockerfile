@@ -1,7 +1,9 @@
-FROM node:20-alpine
+FROM node:22-alpine
 WORKDIR /app
 
-RUN npm install -g pnpm
+# Pinned: pnpm 11 imports node:sqlite (needs Node >= 22.13), and an unpinned
+# major that cannot read lockfileVersion 9.0 would fail --frozen-lockfile.
+RUN npm install -g pnpm@11.24.0
 
 # Install prod deps from the locked manifest first (cached layer).
 # pnpm-workspace.yaml is needed so --frozen-lockfile matches the workspace
