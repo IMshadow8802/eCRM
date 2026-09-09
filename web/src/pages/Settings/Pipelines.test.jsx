@@ -87,76 +87,53 @@ describe("Pipelines page", () => {
     seedPipelines([
       {
         Id: 9,
-        Entity: "lead",
-        Name: "Sales Pipeline",
+        Entity: "ticket",
+        Name: "Support Pipeline",
         IsDefault: true,
         Stages: [
           { Id: 41, Name: "New", SortOrder: 1, StageType: "open", Color: "#3B82F6" },
-          { Id: 42, Name: "Qualified", SortOrder: 2, StageType: "open", Color: "#F59E0B" },
+          { Id: 42, Name: "In Progress", SortOrder: 2, StageType: "open", Color: "#F59E0B" },
         ],
       },
+      // A leftover lead pipeline: the page is tickets-only, so it must not show.
       {
         Id: 10,
-        Entity: "ticket",
-        Name: "Support",
+        Entity: "lead",
+        Name: "Old Sales Pipeline",
         IsDefault: true,
         Stages: [{ Id: 51, Name: "Open", SortOrder: 1, StageType: "open", Color: "#3B82F6" }],
       },
     ]);
   });
 
-  it("lists pipelines for Entity='lead' by default", async () => {
+  it("lists ticket pipelines only", async () => {
     renderPage();
-    expect(await screen.findByText("Sales Pipeline")).toBeInTheDocument();
-    expect(screen.queryByText("Support")).not.toBeInTheDocument();
-    await waitFor(() => expect(lastFetchBody).toEqual({ Entity: "lead" }));
-  });
-
-  it("switches to the Tickets tab and fetches with Entity='ticket'", async () => {
-    renderPage();
-    await screen.findByText("Sales Pipeline");
-
-    const user = userEvent.setup();
-    await user.click(screen.getByTestId("pipeline-entity-tabs-ticket"));
-
-    expect(await screen.findByText("Support")).toBeInTheDocument();
-    expect(screen.queryByText("Sales Pipeline")).not.toBeInTheDocument();
+    expect(await screen.findByText("Support Pipeline")).toBeInTheDocument();
+    expect(screen.queryByText("Old Sales Pipeline")).not.toBeInTheDocument();
     await waitFor(() => expect(lastFetchBody).toEqual({ Entity: "ticket" }));
   });
 
-  it("creates a pipeline under the active entity (Entity='ticket')", async () => {
+  it("no longer offers an entity switch — tickets only until spec 2", async () => {
     renderPage();
-    await screen.findByText("Sales Pipeline");
-
-    const user = userEvent.setup();
-    await user.click(screen.getByTestId("pipeline-entity-tabs-ticket"));
-    await screen.findByText("Support");
-
-    await user.click(screen.getByTestId("master-grid-create"));
-    await user.type(await screen.findByLabelText(/Pipeline Name/), "Escalations");
-    await user.click(screen.getByRole("button", { name: /create pipeline/i }));
-
-    await waitFor(() => {
-      expect(lastSavePipelineBody).toMatchObject({ Id: 0, Entity: "ticket", Name: "Escalations" });
-    });
-    expect(await screen.findByText("Escalations")).toBeInTheDocument();
+    await waitFor(() => expect(lastFetchBody).toEqual({ Entity: "ticket" }));
+    expect(screen.queryByTestId("pipeline-entity-tabs")).toBeNull();
   });
 
   it("drills into a pipeline and lists its stages", async () => {
     renderPage();
-    await screen.findByText("Sales Pipeline");
+    await screen.findByText("Support Pipeline");
 
     const user = userEvent.setup();
     await user.click(screen.getByTestId("master-grid-edit-9"));
 
     expect(await screen.findByText("New")).toBeInTheDocument();
-    expect(screen.getByText("Qualified")).toBeInTheDocument();
-    expect(screen.getByText(/Stages — Sales Pipeline/)).toBeInTheDocument();
+    expect(screen.getByText("In Progress")).toBeInTheDocument();
+    expect(screen.getByText(/Stages — Support Pipeline/)).toBeInTheDocument();
   });
 
   it("edits a stage's SortOrder/StageType/Color and calls saveStage", async () => {
     renderPage();
-    await screen.findByText("Sales Pipeline");
+    await screen.findByText("Support Pipeline");
 
     const user = userEvent.setup();
     await user.click(screen.getByTestId("master-grid-edit-9"));
@@ -191,7 +168,7 @@ describe("Pipelines page", () => {
 
   it("creates a new stage under the selected pipeline via saveStage", async () => {
     renderPage();
-    await screen.findByText("Sales Pipeline");
+    await screen.findByText("Support Pipeline");
 
     const user = userEvent.setup();
     await user.click(screen.getByTestId("master-grid-edit-9"));
@@ -209,7 +186,7 @@ describe("Pipelines page", () => {
 
   it("deletes a stage after confirmation", async () => {
     renderPage();
-    await screen.findByText("Sales Pipeline");
+    await screen.findByText("Support Pipeline");
 
     const user = userEvent.setup();
     await user.click(screen.getByTestId("master-grid-edit-9"));
@@ -224,35 +201,35 @@ describe("Pipelines page", () => {
 
   it("navigates back to the pipeline list", async () => {
     renderPage();
-    await screen.findByText("Sales Pipeline");
+    await screen.findByText("Support Pipeline");
 
     const user = userEvent.setup();
     await user.click(screen.getByTestId("master-grid-edit-9"));
     await screen.findByText("New");
 
     await user.click(screen.getByTestId("pipelines-back-button"));
-    expect(await screen.findByText("Sales Pipeline")).toBeInTheDocument();
+    expect(await screen.findByText("Support Pipeline")).toBeInTheDocument();
     expect(screen.queryByText("New")).not.toBeInTheDocument();
   });
 
   it("creates a new pipeline via savePipeline", async () => {
     renderPage();
-    await screen.findByText("Sales Pipeline");
+    await screen.findByText("Support Pipeline");
 
     const user = userEvent.setup();
     await user.click(screen.getByTestId("master-grid-create"));
-    await user.type(await screen.findByLabelText(/Pipeline Name/), "Support Pipeline");
+    await user.type(await screen.findByLabelText(/Pipeline Name/), "Escalations");
     await user.click(screen.getByRole("button", { name: /create pipeline/i }));
 
     await waitFor(() => {
-      expect(lastSavePipelineBody).toMatchObject({ Id: 0, Entity: "lead", Name: "Support Pipeline" });
+      expect(lastSavePipelineBody).toMatchObject({ Id: 0, Entity: "ticket", Name: "Escalations" });
     });
-    expect(await screen.findByText("Support Pipeline")).toBeInTheDocument();
+    expect(await screen.findByText("Escalations")).toBeInTheDocument();
   });
 
   it("requires a pipeline name before saving", async () => {
     renderPage();
-    await screen.findByText("Sales Pipeline");
+    await screen.findByText("Support Pipeline");
 
     const user = userEvent.setup();
     await user.click(screen.getByTestId("master-grid-create"));
@@ -269,11 +246,11 @@ describe("Pipelines page", () => {
       ),
     );
     renderPage();
-    await screen.findByText("Sales Pipeline");
+    await screen.findByText("Support Pipeline");
 
     const user = userEvent.setup();
     await user.click(screen.getByTestId("master-grid-create"));
-    await user.type(await screen.findByLabelText(/Pipeline Name/), "Sales Pipeline");
+    await user.type(await screen.findByLabelText(/Pipeline Name/), "Support Pipeline");
     await user.click(screen.getByRole("button", { name: /create pipeline/i }));
 
     expect(await screen.findByText("Duplicate pipeline")).toBeInTheDocument();
@@ -286,7 +263,7 @@ describe("Pipelines page", () => {
       ),
     );
     renderPage();
-    await screen.findByText("Sales Pipeline");
+    await screen.findByText("Support Pipeline");
 
     const user = userEvent.setup();
     await user.click(screen.getByTestId("master-grid-edit-9"));
@@ -306,7 +283,7 @@ describe("Pipelines page", () => {
       ),
     );
     renderPage();
-    await screen.findByText("Sales Pipeline");
+    await screen.findByText("Support Pipeline");
 
     const user = userEvent.setup();
     await user.click(screen.getByTestId("master-grid-edit-9"));
@@ -321,7 +298,7 @@ describe("Pipelines page", () => {
 
   it("requires a stage name before saving", async () => {
     renderPage();
-    await screen.findByText("Sales Pipeline");
+    await screen.findByText("Support Pipeline");
 
     const user = userEvent.setup();
     await user.click(screen.getByTestId("master-grid-edit-9"));
@@ -337,7 +314,7 @@ describe("Pipelines page", () => {
   it("falls back to a generic error when the savePipeline request errors", async () => {
     server.use(http.post("*/api/config/savePipeline", () => HttpResponse.error()));
     renderPage();
-    await screen.findByText("Sales Pipeline");
+    await screen.findByText("Support Pipeline");
 
     const user = userEvent.setup();
     await user.click(screen.getByTestId("master-grid-create"));
@@ -350,7 +327,7 @@ describe("Pipelines page", () => {
   it("falls back to a generic error when the deleteStage request errors", async () => {
     server.use(http.post("*/api/config/deleteStage", () => HttpResponse.error()));
     renderPage();
-    await screen.findByText("Sales Pipeline");
+    await screen.findByText("Support Pipeline");
 
     const user = userEvent.setup();
     await user.click(screen.getByTestId("master-grid-edit-9"));

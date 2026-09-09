@@ -54,12 +54,17 @@ export default function useServerTable({
     return () => clearTimeout(t);
   }, [globalFilter, debounceMs]);
 
-  // Reset to first page whenever the search text changes.
+  // Callers rebuild extraParams on every render, so compare by value, not by
+  // identity — otherwise this resets paging on every keystroke elsewhere.
+  const extraParamsKey = JSON.stringify(extraParams);
+
+  // Reset to first page whenever the search text or the filters change: page 3
+  // of the unfiltered set is empty once the set shrinks under it.
   useEffect(() => {
     setPagination((prev) =>
       prev.pageIndex === 0 ? prev : { ...prev, pageIndex: 0 }
     );
-  }, [debouncedFilter]);
+  }, [debouncedFilter, extraParamsKey]);
 
   const requestParams = useMemo(
     () => ({

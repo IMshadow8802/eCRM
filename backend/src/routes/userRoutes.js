@@ -21,4 +21,8 @@ router.post("/me/changePassword", requirePayload, userController.changeMyPasswor
 // Company roster for client-side avatar lookup in feeds.
 router.post("/directory", allowEmptyPayload, userController.directory);
 
+// Transfer pick-lists — any authenticated user; the roster SP scopes itself.
+router.post("/fetchAssignableUsers", allowEmptyPayload, userController.assignableUsers);
+router.post("/fetchBranches", allowEmptyPayload, userController.branches);
+
 module.exports = router;

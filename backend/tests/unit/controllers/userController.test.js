@@ -487,3 +487,95 @@ describe("userController.directory", () => {
     spy.mockRestore();
   });
 });
+
+describe("userController.save threads ReportsTo", () => {
+  it("passes ReportsTo through, null when absent", async () => {
+    database.executeStoredProcedure.mockResolvedValue(
+      spResult([{ ResponseCode: 201, ResponseMess: "ok", UserId: 9 }]),
+    );
+    await userController.save(
+      baseReq({ body: { Username: "bob", Password: "h", FullName: "Bob", ReportsTo: 4 } }),
+      mockRes(),
+    );
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({ ReportsTo: 4 });
+
+    await userController.save(
+      baseReq({ body: { Username: "cat", Password: "h", FullName: "Cat" } }),
+      mockRes(),
+    );
+    expect(database.executeStoredProcedure.mock.calls[1][1]).toMatchObject({ ReportsTo: null });
+  });
+
+  it("surfaces the SP's loop refusal as a 400", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 400, ResponseMess: "Reporting line would loop back to this user" }]),
+    );
+    const res = mockRes();
+    await userController.save(
+      baseReq({ body: { Id: 4, Username: "bob", FullName: "Bob", ReportsTo: 9 } }),
+      res,
+    );
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json.mock.calls[0][0].message).toMatch(/loop/);
+  });
+});
+
+describe("userController.assignableUsers", () => {
+  it("calls the roster SP for the caller and strips the envelope", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ Id: 3, FullName: "Ravi", BranchId: 2, ResponseCode: 200, ResponseMess: "ok" }]),
+    );
+    const res = mockRes();
+    await userController.assignableUsers(baseReq({ body: {} }), res);
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_FetchAssignableUsers", {
+      UserId: 7, CompId: 1, BranchId: null,
+    });
+    expect(res.json.mock.calls[0][0].data.users).toEqual([{ Id: 3, FullName: "Ravi", BranchId: 2 }]);
+  });
+
+  it("forwards a destination BranchId for cross-branch pickers", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(spResult([]));
+    await userController.assignableUsers(baseReq({ body: { BranchId: "4" } }), mockRes());
+    expect(database.executeStoredProcedure.mock.calls[0][1].BranchId).toBe(4);
+  });
+
+  it("500s on DB error", async () => {
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("x"));
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    const res = mockRes();
+    await userController.assignableUsers(baseReq({ body: {} }), res);
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json.mock.calls[0][0]).toMatchObject({
+      success: false,
+      code: "ASSIGNABLE_USERS_ERROR",
+    });
+    spy.mockRestore();
+  });
+});
+
+describe("userController.branches", () => {
+  it("returns the branch list", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ Id: 1, BranchName: "Pune" }, { Id: 2, BranchName: "Nashik" }]),
+    );
+    const res = mockRes();
+    await userController.branches(baseReq(), res);
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_FetchBranches", {});
+    expect(res.json.mock.calls[0][0].data.branches).toEqual([
+      { Id: 1, BranchName: "Pune" }, { Id: 2, BranchName: "Nashik" },
+    ]);
+  });
+
+  it("500s on DB error", async () => {
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("x"));
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    const res = mockRes();
+    await userController.branches(baseReq(), res);
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json.mock.calls[0][0]).toMatchObject({
+      success: false,
+      code: "BRANCHES_ERROR",
+    });
+    spy.mockRestore();
+  });
+});

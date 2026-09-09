@@ -33,6 +33,8 @@ jest.mock("../../../src/controllers/userController", () => ({
   updateMyProfile: jest.fn((req, res) => res.status(200).json({ success: true })),
   changeMyPassword: jest.fn((req, res) => res.status(200).json({ success: true })),
   directory: jest.fn((req, res) => res.status(200).json({ success: true })),
+  assignableUsers: jest.fn((req, res) => res.status(200).json({ success: true })),
+  branches: jest.fn((req, res) => res.status(200).json({ success: true })),
 }));
 
 const express = require("express");
@@ -96,12 +98,17 @@ describe("userRoutes admin gate", () => {
     expect(userController.delete).toHaveBeenCalledTimes(1);
   });
 
-  // Reading the roster is not gated — assignee dropdowns across the app need it.
-  it("does NOT gate fetchUsers", async () => {
+  // Reading the roster is not gated — assignee dropdowns and transfer
+  // pick-lists across the app need it.
+  it.each([
+    ["/api/users/fetchUsers", "fetch"],
+    ["/api/users/fetchAssignableUsers", "assignableUsers"],
+    ["/api/users/fetchBranches", "branches"],
+  ])("does NOT gate %s", async (path, method) => {
     asEmployee();
-    const r = await request(app).post("/api/users/fetchUsers").send({});
+    const r = await request(app).post(path).send({});
     expect(r.status).toBe(200);
-    expect(userController.fetch).toHaveBeenCalledTimes(1);
+    expect(userController[method]).toHaveBeenCalledTimes(1);
   });
 
   it.each([

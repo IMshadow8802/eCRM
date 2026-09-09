@@ -211,11 +211,11 @@ sql/              # NNN_*.sql — pending, user-applied scripts only (see §0.2)
 
 ### Sales (config engine)
 - Per-company **config engine**: typed-EAV custom fields (`tblCustomFieldDef`/`tblCustomFieldValue`), configurable pipelines/stages (`tblPipeline`/`tblPipelineStage`), generic lookups (`tblLookup`) — all keyed by an `Entity` discriminator (`'lead'` / `'ticket'`).
-- Leads (`tblLeads`), manual call logging (`tblCall`), follow-ups (`tblFollowUp`), unified activity timeline (`tblLeadActivity`). Pipeline board, leads table, lead detail, Settings, reports.
+- Leads (`tblLeads`), manual call logging (`tblCall`), follow-ups (`tblFollowUp`), unified activity timeline (`tblLeadActivity`). Leads are a flat `lead_status` lookup (no pipeline since 2026-09-08; the pipeline engine now serves tickets only). Follow-ups are activities on `tblFollowUp`; ownership moves only through `sp_TransferLead` with a reason + remarks; `tblUser.ReportsTo` drives Team scope.
 
 ### Support (ticketing)
 - Reuses the config engine via `Entity='ticket'`. `tblTicket` + `tblTicketActivity`. `tblCall.TicketId` links calls to tickets. Ticket board, table, detail, Settings, reports.
-- **Stage is the single source of truth for the ticket lifecycle** (mirrors leads' `sp_MoveLeadStage`). Two-step terminal flow: first `won` stage = **Resolved** (awaiting customer confirmation, requires a `ResolutionId`), final `won` stage (highest SortOrder) = **Closed**, `lost` = **Rejected** (`ClosedAt` stamped, no resolution — never solved). Moving back to an `open` stage clears `ResolvedAt`/`ClosedAt`/`ResolutionId` = reopen. All transitions go through `sp_MoveTicketStage`; `sp_ResolveTicket`/`sp_CloseTicket`/`sp_ReopenTicket` are shortcuts into it — **never write those timestamps directly**.
+- **Stage is the single source of truth for the ticket lifecycle** (the lead equivalent, `sp_MoveLeadStage`, was retired 2026-09-08 when leads went flat). Two-step terminal flow: first `won` stage = **Resolved** (awaiting customer confirmation, requires a `ResolutionId`), final `won` stage (highest SortOrder) = **Closed**, `lost` = **Rejected** (`ClosedAt` stamped, no resolution — never solved). Moving back to an `open` stage clears `ResolvedAt`/`ClosedAt`/`ResolutionId` = reopen. All transitions go through `sp_MoveTicketStage`; `sp_ResolveTicket`/`sp_CloseTicket`/`sp_ReopenTicket` are shortcuts into it — **never write those timestamps directly**.
 - **SLA was removed entirely** (2026-07-16): no `tblSLARule`, no `SLADueAt`, no breach chips/filters/report. Speed is measured instead via `sp_ResolutionSummary.AvgResolutionMins`. Do not reintroduce SLA plumbing.
 
 ---

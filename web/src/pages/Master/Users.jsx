@@ -44,6 +44,12 @@ const Users = () => {
       { accessorKey: "JobTitle", header: "Job Title", size: 150 },
       { accessorKey: "GroupName", header: "User Group", size: 120 },
       {
+        accessorKey: "ReportsToName",
+        header: "Reports To",
+        size: 140,
+        Cell: ({ cell }) => cell.getValue() || "—",
+      },
+      {
         accessorKey: "HourlyRate",
         header: "Hourly Rate",
         size: 100,
@@ -111,6 +117,7 @@ const Users = () => {
       Mobile: row.original.Mobile ?? "",
       HourlyRate: row.original.HourlyRate,
       GroupId: row.original.GroupId || 0,
+      ReportsTo: row.original.ReportsTo ?? null,
       UserActive: row.original.IsActive,
       IsAdmin: row.original.IsAdmin,
       AllowDay: row.original.AllowDay || 0,

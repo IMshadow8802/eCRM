@@ -93,20 +93,12 @@ export const HELP_GUIDES = {
     titleEn: "How to manage Leads",
     steps: [
       {
-        hi: "Stage / Owner / Source फ़िल्टर का उपयोग करके लीड्स को ढूँढें और छाँटें।",
-        en: "Use the Stage / Owner / Source filters to find and narrow down leads.",
+        hi: "Status / Owner / Product / Source फ़िल्टर और presets (My leads, Overdue, Unassigned) से लीड्स ढूँढें।",
+        en: "Use the Status / Owner / Product / Source filters and the presets (My leads, Overdue, Unassigned) to find leads.",
       },
       {
         hi: "किसी लीड की पंक्ति (row) पर क्लिक करके उसका विवरण, custom fields और activity timeline देखें।",
         en: "Click a lead row to open its detail — core info, custom fields and activity timeline.",
-      },
-      {
-        hi: "लीड के अंदर 'Log Call' पर क्लिक करके कॉल रिकॉर्ड करें और अगला follow-up शेड्यूल करें।",
-        en: "Inside a lead, click 'Log Call' to record a call and schedule the next follow-up.",
-      },
-      {
-        hi: "Pipeline बोर्ड खोलकर लीड्स को stages में खींचें — won या lost में ले जाएं।",
-        en: "Open the Pipeline board to drag leads across stages — into won or lost.",
       },
     ],
   },
@@ -119,12 +111,12 @@ export const HELP_GUIDES = {
         en: "Follow-ups are your scheduled next touchpoints with leads.",
       },
       {
-        hi: "जब आप किसी लीड पर कॉल लॉग करते समय अगली तारीख डालते हैं, तो फॉलो-अप अपने आप बन जाता है।",
-        en: "A follow-up is created automatically when you log a call with a next date.",
+        hi: "Today / Overdue / Upcoming टैब से देखें कि आज क्या करना है, क्या देर हो चुका है, और आगे क्या आ रहा है।",
+        en: "Use the Today / Overdue / Upcoming tabs to see what is due now, what is late, and what is next.",
       },
       {
-        hi: "किसी फॉलो-अप को खोलकर उसका status (Pending/Done) और remarks अपडेट करें।",
-        en: "Open a follow-up to update its status (Pending/Done) and remarks.",
+        hi: "बातचीत होने पर Log करें (remarks ज़रूरी हैं); नहीं हो पाई तो कारण के साथ Skip करें।",
+        en: "Log a follow-up once it happens (remarks are required); Skip it with a reason if it didn't.",
       },
     ],
   },

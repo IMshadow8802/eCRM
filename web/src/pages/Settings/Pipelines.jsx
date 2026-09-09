@@ -1,6 +1,6 @@
 // src/pages/Settings/Pipelines.jsx
 //
-// Company-admin page: list lead pipelines, drill into one to manage its
+// Company-admin page: list ticket pipelines, drill into one to manage its
 // stages. Same CRUD-master pattern as CustomFields.jsx.
 //
 // fetchPipelines returns two arrays: `pipelines` and a flat `stages` list
@@ -15,7 +15,6 @@ import { useSnackbar } from "notistack";
 import PageHeader from "../../components/ui/PageHeader";
 import MasterChipGrid from "../../components/MasterChipGrid";
 import ConfirmationDialog from "../../components/ConfirmationDialog";
-import Tabs from "../../components/ui/Tabs";
 import {
   FormModal,
   FormContainer,
@@ -37,12 +36,6 @@ import { SALES_ENDPOINTS } from "../../api/salesQueries";
 const errorText = (error, fallback) =>
   error.isAxiosError ? error.response?.data?.message || fallback : error.message;
 
-// Same config engine serves both modules; the tab switches the Entity key.
-const ENTITY_OPTIONS = [
-  { value: "lead", label: "Leads" },
-  { value: "ticket", label: "Tickets" },
-];
-
 const STAGE_TYPE_OPTIONS = [
   { value: "open", label: "Open" },
   { value: "won", label: "Won" },
@@ -56,7 +49,7 @@ const Pipelines = () => {
   const { enqueueSnackbar } = useSnackbar();
   const confirmation = useConfirmation();
 
-  const [entity, setEntity] = useState(ENTITY_OPTIONS[0].value);
+  const entity = "ticket"; // leads have no pipeline since spec 1; spec 2 retires this page
   const [view, setView] = useState("pipelines"); // 'pipelines' | 'stages'
   const [selectedPipelineId, setSelectedPipelineId] = useState(null);
 
@@ -76,16 +69,6 @@ const Pipelines = () => {
     endpoint: SALES_ENDPOINTS.config.fetchPipelines,
     params: { Entity: entity },
   });
-
-  // Switching entity always lands back on the pipeline list — the drilled-in
-  // pipeline belongs to the other entity.
-  const handleEntityChange = (next) => {
-    setEntity(next);
-    setView("pipelines");
-    setSelectedPipelineId(null);
-    setPipelineSearch("");
-    setStageSearch("");
-  };
 
   const pipelines = query.data?.pipelines || [];
   const pipelineItems = useMemo(() => {
@@ -236,7 +219,7 @@ const Pipelines = () => {
     <Box sx={{ display: "flex", flexDirection: "column", flexGrow: 1 }}>
       <PageHeader
         title="Pipelines"
-        subtitle="Configure the pipelines and stages your leads and tickets move through."
+        subtitle="Ticket pipelines and their stages."
       />
       <Helmet>
         <title>PRD Infotech | Pipelines</title>
@@ -244,12 +227,6 @@ const Pipelines = () => {
 
       {view === "pipelines" ? (
         <Box sx={{ mt: 1.5, display: "flex", flexDirection: "column", gap: 1.5 }}>
-          <Tabs
-            value={entity}
-            onChange={handleEntityChange}
-            items={ENTITY_OPTIONS}
-            data-testid="pipeline-entity-tabs"
-          />
           <MasterChipGrid
             items={pipelineItems}
             nameKey="Name"
@@ -309,7 +286,7 @@ const Pipelines = () => {
                 label="Pipeline Name"
                 value={pipelineForm.Name}
                 onChange={(e) => setPipelineForm({ Name: e.target.value })}
-                placeholder="e.g. Sales Pipeline"
+                placeholder="e.g. Support Pipeline"
                 error={pipelineErrors.Name}
                 required
               />

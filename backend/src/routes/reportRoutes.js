@@ -15,7 +15,7 @@ router.post("/getConvertedSummary", allowEmptyPayload, reportController.getConve
 // .LeadDate / .LeadStatus — columns dropped when leads moved to the config
 // engine — so both threw on every call and had done for months. Nothing in web
 // or mobile called either. See backend/sql/069_tenancy_guards.sql.
-router.post("/pipelineFunnel", allowEmptyPayload, reportController.pipelineFunnel);
+router.post("/leadsByStatus", allowEmptyPayload, reportController.leadsByStatus);
 router.post("/callsPerUser", allowEmptyPayload, reportController.callsPerUser);
 router.post("/conversionBySource", allowEmptyPayload, reportController.conversionBySource);
 router.post("/ticketsByCategory", allowEmptyPayload, reportController.ticketsByCategory);

@@ -73,46 +73,41 @@ class ReportController {
     }
   }
 
-  async pipelineFunnel(req, res) {
+  async leadsByStatus(req, res) {
     try {
-      const { CompId, BranchId } = req.user;
-      const { PipelineId = null } = req.body;
-
-      const result = await database.executeStoredProcedure("sp_PipelineFunnel", {
-        CompId,
+      const { BranchId = null } = req.body;
+      const result = await database.executeStoredProcedure("sp_LeadsByStatus", {
+        CompId: req.user.CompId,
         BranchId,
-        PipelineId,
+        AccessibleBranchIdsJson: scopeJson(req),
       });
-
       return res.status(200).json({
         success: true,
-        message: "Pipeline funnel fetched successfully",
+        message: "Leads by status fetched successfully",
         responseCode: 200,
-        data: { funnel: result.recordsets[0] },
+        data: { statuses: result.recordsets[0] },
         timestamp: new Date().toISOString(),
       });
     } catch (err) {
-      console.error("Pipeline funnel error:", err);
+      console.error("Leads by status error:", err);
       return res.status(500).json({
-        success: false,
-        message: "Failed to fetch pipeline funnel",
-        code: "PIPELINE_FUNNEL_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
+        success: false, message: "Failed to fetch leads by status",
+        code: "LEADS_BY_STATUS_ERROR", responseCode: 500, timestamp: new Date().toISOString(),
       });
     }
   }
 
   async callsPerUser(req, res) {
     try {
-      const { CompId, BranchId } = req.user;
-      const { FromDate = null, ToDate = null } = req.body;
+      const { CompId } = req.user;
+      const { BranchId = null, FromDate = null, ToDate = null } = req.body;
 
       const result = await database.executeStoredProcedure("sp_CallsPerUser", {
         CompId,
         BranchId,
         FromDate,
         ToDate,
+        AccessibleBranchIdsJson: scopeJson(req),
       });
 
       return res.status(200).json({
@@ -136,11 +131,13 @@ class ReportController {
 
   async conversionBySource(req, res) {
     try {
-      const { CompId, BranchId } = req.user;
+      const { CompId } = req.user;
+      const { BranchId = null } = req.body;
 
       const result = await database.executeStoredProcedure("sp_ConversionBySource", {
         CompId,
         BranchId,
+        AccessibleBranchIdsJson: scopeJson(req),
       });
 
       return res.status(200).json({

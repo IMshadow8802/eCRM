@@ -144,16 +144,23 @@ in every project workspace**. HR editing the sales team's sprint board.
 
 Tracked, deliberately not built yet:
 
-- **Write path is ungated.** `moveLeadStage`, `transferLead`, `deleteLeads`,
-  `moveTicketStage`, `resolveTicket`, `closeTicket`, `reopenTicket`,
-  `deleteTicket` do not check ownership — a `Self`-scoped user can still mutate
-  another user's record by posting its Id. Needs ownership checks inside the
-  mutation SPs.
 - **Menu rights are not enforced server-side.** No route checks
   `tblGroupAccess`; menu rights only drive sidebar visibility. The API serves
   any authenticated caller. The department axis is therefore advisory until this
   lands.
 - **Login/logout are not audited.**
+- **Two lead reports are still unscoped.** `sp_CallsPerUser` and
+  `sp_ConversionBySource` gain `@AccessibleBranchIdsJson` in
+  `backend/sql/073_products_menu_report_scope.sql` — **pending apply**. The
+  controller already sends the param; until the script is applied a narrow
+  scope (Branch/Team/Self) still sees company-wide report rows.
+- **`tblBranch` has no `CompId`**, so `sp_FetchBranches` is company-blind: the
+  branch pick-list returns every branch in the database. Harmless on today's
+  single-company deployment, wrong the moment a second company exists.
+- **`canCrossBranch` is not gated in the web.** Login does not return
+  `DataScope`, so the client cannot tell a manager from a Team/Self user and
+  renders the branch picker for everyone — the server then 403s the transfer
+  (`assertCanAssign`). Correct, but a dead-end control. Spec 2.
 
 ---
 
@@ -167,3 +174,5 @@ Tracked, deliberately not built yet:
 | Extra branch grants | `tblUserBranchAccess` (MultiBranch only) |
 | Scope resolution | `sp_FetchAccessibleBranchIds` → `middleware/permission.js` → `req.scope` |
 | Task permissions | `sp_CheckTaskPermission` |
+| Transfer target rules | `middleware/permission.js` → `assertCanAssign` (roster via `sp_FetchAssignableUsers`; cross-branch + unassign = DataScope Branch and up) |
+| Reporting line | `tblUser.ReportsTo`; `Team` scope = self + subtree (`sp_FetchAccessibleBranchIds`) |

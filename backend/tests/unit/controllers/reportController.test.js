@@ -122,70 +122,60 @@ describe("reportController.getConvertedSummary", () => {
   });
 });
 
-describe("reportController.pipelineFunnel", () => {
-  it("calls sp_PipelineFunnel with CompId/BranchId + PipelineId and returns stage rows", async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce({
-      recordsets: [[{ StageId: 1, StageName: "New", LeadCount: 10 }]],
-    });
-    const req = baseReq({ body: { PipelineId: 3 } });
+describe("reportController.leadsByStatus", () => {
+  it("passes an optional BranchId filter plus the caller's scope", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ StatusId: 1, LeadCount: 2 }]] });
     const res = mockRes();
-    await reportController.pipelineFunnel(req, res);
-
-    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_PipelineFunnel", {
-      CompId: 5,
-      BranchId: 2,
-      PipelineId: 3,
+    await reportController.leadsByStatus(
+      { user: { CompId: 5, BranchId: 2 }, scope: { branchIds: [2, 3] }, body: { BranchId: 3 } },
+      res,
+    );
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_LeadsByStatus", {
+      CompId: 5, BranchId: 3, AccessibleBranchIdsJson: "[2,3]",
     });
-    expect(res.status).toHaveBeenCalledWith(200);
-    const json = res.json.mock.calls[0][0];
-    expect(json.success).toBe(true);
-    expect(json.data.funnel).toEqual([{ StageId: 1, StageName: "New", LeadCount: 10 }]);
+    expect(res.json.mock.calls[0][0].data.statuses).toEqual([{ StatusId: 1, LeadCount: 2 }]);
   });
 
-  it("defaults PipelineId to null when absent from body", async () => {
+  it("defaults BranchId and AccessibleBranchIdsJson to null when no filter/scope given", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[]] });
-    const req = baseReq();
     const res = mockRes();
-    await reportController.pipelineFunnel(req, res);
-
-    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
-      "sp_PipelineFunnel",
-      expect.objectContaining({ PipelineId: null }),
-    );
-    expect(res.json.mock.calls[0][0].data.funnel).toEqual([]);
+    await reportController.leadsByStatus({ user: { CompId: 5 }, body: {} }, res);
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_LeadsByStatus", {
+      CompId: 5, BranchId: null, AccessibleBranchIdsJson: null,
+    });
   });
 
   it("handles DB error as 500", async () => {
     database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
-    const req = baseReq();
     const res = mockRes();
-    await reportController.pipelineFunnel(req, res);
+    await reportController.leadsByStatus({ user: { CompId: 5 }, body: {} }, res);
     expect(res.status).toHaveBeenCalledWith(500);
     expect(res.json.mock.calls[0][0].success).toBe(false);
   });
 });
 
 describe("reportController.callsPerUser", () => {
-  it("calls sp_CallsPerUser with CompId/BranchId + date range and returns rows", async () => {
+  it("calls sp_CallsPerUser with CompId + body's BranchId + date range and returns rows", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [[{ UserId: 7, FullName: "Jane", CallCount: 12 }]],
     });
-    const req = baseReq({ body: { FromDate: "2026-06-01", ToDate: "2026-06-30" } });
+    const req = baseReq({ scope: { branchIds: [2, 3] }, body: { BranchId: 3, FromDate: "2026-06-01", ToDate: "2026-06-30" } });
     const res = mockRes();
     await reportController.callsPerUser(req, res);
 
     expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_CallsPerUser", {
       CompId: 5,
-      BranchId: 2,
+      BranchId: 3,
       FromDate: "2026-06-01",
       ToDate: "2026-06-30",
+      AccessibleBranchIdsJson: "[2,3]",
     });
     expect(res.status).toHaveBeenCalledWith(200);
     const json = res.json.mock.calls[0][0];
     expect(json.data.calls).toEqual([{ UserId: 7, FullName: "Jane", CallCount: 12 }]);
   });
 
-  it("defaults FromDate/ToDate to null when absent from body", async () => {
+  it("defaults FromDate/ToDate/BranchId to null when absent from body", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[]] });
     const req = baseReq();
     const res = mockRes();
@@ -193,8 +183,16 @@ describe("reportController.callsPerUser", () => {
 
     expect(database.executeStoredProcedure).toHaveBeenCalledWith(
       "sp_CallsPerUser",
-      expect.objectContaining({ FromDate: null, ToDate: null }),
+      expect.objectContaining({ FromDate: null, ToDate: null, BranchId: null, AccessibleBranchIdsJson: null }),
     );
+  });
+
+  // The caller's OWN branch was being passed as the filter — that is the bug
+  // ROLES.md names. A filter is a dropdown, not a scope.
+  it("filters by the body's BranchId, not the caller's", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[]] });
+    await reportController.callsPerUser({ user: { CompId: 5, BranchId: 2 }, scope: {}, body: {} }, mockRes());
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({ CompId: 5, BranchId: null });
   });
 
   it("handles DB error as 500", async () => {
@@ -208,21 +206,36 @@ describe("reportController.callsPerUser", () => {
 });
 
 describe("reportController.conversionBySource", () => {
-  it("calls sp_ConversionBySource with CompId/BranchId and returns per-source rows", async () => {
+  it("calls sp_ConversionBySource with CompId + body's BranchId and returns per-source rows incl. Qualified/Lost counts", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
-      recordsets: [[{ SourceId: 1, SourceName: "Website", Total: 50, Won: 8 }]],
+      recordsets: [[{ SourceId: 1, SourceName: "Website", Total: 50, Won: 8, QualifiedCount: 20, LostCount: 5 }]],
     });
-    const req = baseReq();
+    const req = baseReq({ scope: { branchIds: [2, 3] }, body: { BranchId: 3 } });
     const res = mockRes();
     await reportController.conversionBySource(req, res);
 
     expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_ConversionBySource", {
       CompId: 5,
-      BranchId: 2,
+      BranchId: 3,
+      AccessibleBranchIdsJson: "[2,3]",
     });
     expect(res.status).toHaveBeenCalledWith(200);
     const json = res.json.mock.calls[0][0];
-    expect(json.data.conversion).toEqual([{ SourceId: 1, SourceName: "Website", Total: 50, Won: 8 }]);
+    expect(json.data.conversion).toEqual([
+      { SourceId: 1, SourceName: "Website", Total: 50, Won: 8, QualifiedCount: 20, LostCount: 5 },
+    ]);
+  });
+
+  it("defaults BranchId to null when absent from body — not the caller's own branch", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[]] });
+    const req = baseReq();
+    const res = mockRes();
+    await reportController.conversionBySource(req, res);
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_ConversionBySource", {
+      CompId: 5,
+      BranchId: null,
+      AccessibleBranchIdsJson: null,
+    });
   });
 
   it("handles DB error as 500", async () => {

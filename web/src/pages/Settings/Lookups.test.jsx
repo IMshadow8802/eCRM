@@ -110,6 +110,25 @@ describe("Lookups page", () => {
     await waitFor(() => expect(lastFetchBody).toMatchObject({ Kind: "resolution" }));
   });
 
+  // Spec 1 replaced the lead pipeline with a status list, and added product
+  // categories + transfer reasons — all three are plain lookups.
+  it.each([
+    ["lead_status", "Lead Statuses"],
+    ["product_category", "Product Categories"],
+    ["transfer_reason", "Transfer Reasons"],
+  ])("offers a %s tab that fetches that Kind", async (kind, label) => {
+    renderPage();
+    await screen.findByText("Website");
+
+    const tab = screen.getByTestId(`lookup-kind-tabs-${kind}`);
+    expect(tab).toHaveTextContent(label);
+
+    const user = userEvent.setup();
+    await user.click(tab);
+
+    await waitFor(() => expect(lastFetchBody).toMatchObject({ Kind: kind }));
+  });
+
   it("creates a resolution via saveLookup with Kind='resolution'", async () => {
     renderPage();
     await screen.findByText("Website");

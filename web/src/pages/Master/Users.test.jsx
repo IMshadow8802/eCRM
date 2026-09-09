@@ -115,11 +115,24 @@ describe("Users page", () => {
       "Email",
       "JobTitle",
       "GroupName",
+      "ReportsToName",
       "HourlyRate",
       "IsActive",
       "IsAdmin",
       "CreatedDate",
     ]);
+  });
+
+  // Reports To is a plain read column fed by fetchUsers' ReportsToName (a
+  // server-side join) — nothing to pick here, just render what came back.
+  it("renders the Reports To cell, falling back when the user has no manager", () => {
+    renderPage();
+    const cols = useServerTable.mock.calls.at(-1)[0].columns;
+    const cell = (value) => ({ cell: { getValue: () => value } });
+    const reportsToCell = cols.find((c) => c.accessorKey === "ReportsToName").Cell;
+
+    expect(reportsToCell(cell("Meera Manager"))).toBe("Meera Manager");
+    expect(reportsToCell(cell(null))).toBe("—");
   });
 
   it("passes a bulk PageSize when populating the user-groups dropdown", () => {
@@ -170,6 +183,67 @@ describe("Users page", () => {
       Username: "Vikas",
       Mobile: "7972627064",
     });
+  });
+
+  // ReportsTo drives the manager picker's prefill on edit — leaving it out of
+  // handleEdit would silently reopen every edit at "no manager".
+  it("carries ReportsTo into the edit form so the manager picker prefills", async () => {
+    renderPage();
+    const cfg = useServerTable.mock.calls.at(-1)[0];
+
+    const row = {
+      original: {
+        Id: 11,
+        Username: "Vikas",
+        FullName: "Vikas Jaiswal",
+        Email: "vikas@jaiswal.com",
+        Mobile: "7972627064",
+        JobTitle: "Engineer",
+        HourlyRate: 12.5,
+        GroupId: 8,
+        ReportsTo: 4,
+        IsActive: true,
+        IsAdmin: false,
+        AllowDay: 0,
+        UserIp: "",
+      },
+    };
+
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>{cfg.renderRowActions({ row })}</MemoryRouter>
+      </QueryClientProvider>
+    );
+    await userEvent.click(screen.getByRole("button", { name: /edit/i }));
+
+    expect(UserForm).toHaveBeenCalled();
+    expect(UserForm.mock.calls.at(-1)[0].editingUser).toMatchObject({ ReportsTo: 4 });
+  });
+
+  it("defaults ReportsTo to null when the row has no manager", async () => {
+    renderPage();
+    const cfg = useServerTable.mock.calls.at(-1)[0];
+
+    const row = {
+      original: {
+        Id: 12,
+        Username: "NoManager",
+        FullName: "No Manager",
+        GroupId: 8,
+        ReportsTo: null,
+        IsActive: true,
+        IsAdmin: false,
+      },
+    };
+
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>{cfg.renderRowActions({ row })}</MemoryRouter>
+      </QueryClientProvider>
+    );
+    await userEvent.click(screen.getByRole("button", { name: /edit/i }));
+
+    expect(UserForm.mock.calls.at(-1)[0].editingUser).toMatchObject({ ReportsTo: null });
   });
 
   it("renders the derived cells (rate, status, admin, date)", () => {

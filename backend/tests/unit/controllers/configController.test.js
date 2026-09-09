@@ -186,18 +186,28 @@ describe("configController.deleteStage", () => {
 });
 
 describe("configController.saveLookup", () => {
-  it("calls sp_SaveLookup with CompId + CreatedBy", async () => {
+  it("calls sp_SaveLookup with CompId, defaulting SortOrder and Code (no CreatedBy — the SP doesn't declare it)", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordset: [{ ResponseCode: 200, ResponseMess: "Saved", Id: 11 }],
     });
     const req = baseReq({ body: { Id: 0, Kind: "industry", Value: "Retail" } });
     const res = mockRes();
     await configController.saveLookup(req, res);
-    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
-      "sp_SaveLookup",
-      expect.objectContaining({ Kind: "industry", Value: "Retail", CompId: 5, CreatedBy: 7 }),
-    );
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_SaveLookup", {
+      Id: 0, CompId: 5, Kind: "industry", Value: "Retail", SortOrder: 0, Code: null,
+    });
     expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it("sends exactly the SP's parameters, Code included, and drops unknown keys", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordset: [{ Id: 3, ResponseCode: 200, ResponseMess: "Lookup created successfully" }],
+    });
+    const req = baseReq({ body: { Id: 0, Kind: "lead_status", Value: "Warm", SortOrder: 3, Code: "open", Junk: 1 } });
+    await configController.saveLookup(req, mockRes());
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_SaveLookup", {
+      Id: 0, CompId: 5, Kind: "lead_status", Value: "Warm", SortOrder: 3, Code: "open",
+    });
   });
 });
 

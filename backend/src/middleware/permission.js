@@ -275,6 +275,56 @@ async function assertRecordAccess(req, res, entity, entityId, level = "view") {
   }
 }
 
+// Transfer target guard.
+//
+// Three rules from the spec, in order of cheapness:
+//   1. Unassigning (no target) and moving to another branch are manager acts:
+//      DataScope Branch / MultiBranch / Company / All. Team and Self cannot.
+//   2. A target must be someone sp_FetchAssignableUsers lists for the caller —
+//      their subtree + their manager for Team/Self, their readable branches for
+//      the wide scopes, or the destination branch's roster when @BranchId is
+//      supplied. The dropdown on the client is a convenience; this is the gate.
+//
+// Sends its own 403 (or 500 on lookup failure) and returns false; true = proceed.
+const WIDE_SCOPES = new Set(["All", "Company", "MultiBranch", "Branch"]);
+
+async function assertCanAssign(req, res, { toUserId, toBranchId }) {
+  const target = Number(toUserId) || null;
+  const branch = Number(toBranchId) || null;
+  const wide = WIDE_SCOPES.has(req.scope?.dataScope);
+
+  if (!target && !wide) {
+    responseHelper.error(res, "Only a manager can leave a lead unassigned", "FORBIDDEN", 403);
+    return false;
+  }
+  if (branch && !wide) {
+    responseHelper.error(
+      res,
+      "Only a branch manager or above can move a lead to another branch",
+      "FORBIDDEN",
+      403,
+    );
+    return false;
+  }
+  if (!target) return true;
+
+  try {
+    const result = await database.executeStoredProcedure("sp_FetchAssignableUsers", {
+      UserId: req.user.UserId,
+      CompId: req.user.CompId,
+      BranchId: branch,
+    });
+    const rows = result.recordsets?.[0] ?? result.recordset ?? [];
+    if (rows.some((r) => Number(r.Id) === target)) return true;
+    responseHelper.error(res, "You cannot assign leads to that user", "FORBIDDEN", 403);
+    return false;
+  } catch (err) {
+    console.error("assertCanAssign failed:", err.message);
+    responseHelper.error(res, "Failed to verify assignment target");
+    return false;
+  }
+}
+
 module.exports = {
   HIERARCHY,
   loadScope,
@@ -289,4 +339,5 @@ module.exports = {
   canWriteBranch,
   canReadBranch,
   assertRecordAccess,
+  assertCanAssign,
 };

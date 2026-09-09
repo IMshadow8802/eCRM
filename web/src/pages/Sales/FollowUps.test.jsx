@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -9,70 +9,23 @@ import dayjs from "dayjs";
 
 import { buildTheme } from "../../theme";
 
-const FIXTURE_LEADS = [
-  { Id: 101, Name: "Acme Corp" },
-  { Id: 102, Name: "Globex" },
-];
-
-const FIXTURE_FOLLOWUPS = [
-  {
-    Id: 11,
-    LeadId: 101,
-    NextFollowupDate: "2026-07-10",
-    FollowupType: "Call",
-    Status: "Pending",
-    Remarks: "Send quote",
-  },
-  {
-    Id: 12,
-    LeadId: 999,
-    NextFollowupDate: null,
-    FollowupType: null,
-    Status: null,
-    Remarks: null,
-  },
-  {
-    Id: 13,
-    LeadId: 102,
-    NextFollowupDate: "2026-07-01",
-    FollowupType: "Visit",
-    Status: "Done",
-    Remarks: "Wrapped up",
-  },
+// The queue is a work list, not a lead list: an open row can be logged,
+// skipped or deleted; a logged one is history and carries no actions.
+const ROWS = [
+  { Id: 21, LeadId: 9, LeadName: "Sharma", Type: "call", DueAt: "2026-09-01T00:00:00Z", Status: "open", AssignedToName: "Bob", IsOverdue: true },
+  { Id: 20, LeadId: 9, LeadName: "Sharma", Type: "visit", DueAt: "2026-08-30T00:00:00Z", Status: "done", Outcome: "Connected", Remarks: "ok" },
 ];
 
 const mockNavigate = vi.fn();
-vi.mock("react-router-dom", async () => {
-  const actual = await vi.importActual("react-router-dom");
-  return { ...actual, useNavigate: () => mockNavigate };
-});
+vi.mock("react-router-dom", async () => ({ ...(await vi.importActual("react-router-dom")), useNavigate: () => mockNavigate }));
 
+// The page's job is to hand useServerTable the right config; the row actions
+// come back out through the mocked table so clicks drive the page's own state.
 vi.mock("../../hooks/useServerTable", () => ({
   __esModule: true,
-  default: vi.fn(() => ({
-    table: { __options: { data: FIXTURE_FOLLOWUPS } },
-    data: FIXTURE_FOLLOWUPS,
-    isLoading: false,
-    isFetching: false,
-    error: null,
-    refetch: vi.fn(),
-    totalRecords: FIXTURE_FOLLOWUPS.length,
-  })),
-}));
-
-vi.mock("../../hooks/useApiQuery", () => ({
-  useApiQuery: vi.fn(() => ({ data: { leads: FIXTURE_LEADS } })),
-}));
-
-const mutation = vi.hoisted(() => ({
-  mutate: vi.fn(),
-  mutateAsync: vi.fn().mockResolvedValue({}),
-}));
-vi.mock("../../hooks/useApiMutation", () => ({
-  useApiMutation: vi.fn(() => ({
-    mutate: mutation.mutate,
-    mutateAsync: mutation.mutateAsync,
-    isPending: false,
+  default: vi.fn((cfg) => ({
+    table: { __options: { data: ROWS, renderRowActions: cfg.renderRowActions } },
+    data: ROWS, isLoading: false, isFetching: false, error: null, refetch: vi.fn(), totalRecords: ROWS.length,
   })),
 }));
 
@@ -81,289 +34,141 @@ vi.mock("material-react-table", () => ({
     <div data-testid="mrt-root">
       {(table?.__options?.data ?? []).map((row) => (
         <div key={row.Id} data-testid={`followup-row-${row.Id}`}>
-          {row.Remarks}
+          {row.LeadName}
+          {table.__options.renderRowActions?.({ row: { original: row } })}
         </div>
       ))}
     </div>
   ),
 }));
 
-import FollowUps, { isFollowupOverdue } from "./FollowUps";
+vi.mock("./LogFollowUpModal", () => ({
+  __esModule: true,
+  default: ({ open, followUp }) => (open ? <div data-testid="log-modal">{String(followUp?.Id)}</div> : null),
+}));
+
+// useApiMutation is real here — the assertions are about the bodies that reach
+// the wire, so the shared apiClient is what gets stubbed.
+const post = vi.fn();
+vi.mock("../../utils/axiosConfig", () => ({ __esModule: true, apiClient: { post: (...args) => post(...args) } }));
+
+vi.mock("notistack", async () => ({ ...(await vi.importActual("notistack")), enqueueSnackbar: vi.fn() }));
+
+import FollowUps from "./FollowUps";
 import useServerTable from "../../hooks/useServerTable";
-import { useApiQuery } from "../../hooks/useApiQuery";
-import { useApiMutation } from "../../hooks/useApiMutation";
 
 const renderPage = () =>
   render(
     <ThemeProvider theme={buildTheme("light")}>
       <QueryClientProvider client={new QueryClient()}>
-        <MemoryRouter>
-          <FollowUps />
-        </MemoryRouter>
+        <MemoryRouter><FollowUps /></MemoryRouter>
       </QueryClientProvider>
-    </ThemeProvider>
+    </ThemeProvider>,
   );
 
-// Row-action buttons come from the useServerTable config; render them inside
-// the page's providers so clicks drive the page's state (modals etc).
-const renderRowActions = (followup) => {
-  const cfg = useServerTable.mock.calls.at(-1)[0];
-  render(
-    <ThemeProvider theme={buildTheme("light")}>
-      {cfg.renderRowActions({ row: { original: followup } })}
-    </ThemeProvider>
-  );
-};
+const lastCfg = () => useServerTable.mock.calls.at(-1)[0];
+const lastExtraParams = () => lastCfg().extraParams;
+const cellOf = (key) => lastCfg().columns.find((c) => c.accessorKey === key).Cell;
+const withTheme = (node) => render(<ThemeProvider theme={buildTheme("light")}>{node}</ThemeProvider>);
 
-const pickOption = async (testId, optionName) => {
-  const user = userEvent.setup();
-  await user.click(screen.getByTestId(`${testId}-input`));
-  await user.click(await screen.findByRole("option", { name: optionName }));
-};
-
-const YESTERDAY = dayjs().subtract(1, "day").format("YYYY-MM-DD");
-const TOMORROW = dayjs().add(1, "day").format("YYYY-MM-DD");
-
-describe("Sales Follow-ups page", () => {
+describe("Follow-ups queue", () => {
   beforeEach(() => {
     useServerTable.mockClear();
-    useApiQuery.mockClear();
-    useApiMutation.mockClear();
-    mutation.mutate.mockClear();
-    mutation.mutateAsync.mockClear();
     mockNavigate.mockClear();
+    post.mockReset();
+    post.mockResolvedValue({ data: { success: true, data: {} } });
   });
 
-  it("wires useServerTable to fetchFollowups with dataKey=followups, LeadId:0 and no status filter", () => {
+  it("defaults to Today and maps the three tabs onto fetch params", async () => {
     renderPage();
-    const cfg = useServerTable.mock.calls.at(-1)[0];
-    expect(cfg.endpoint).toBe("/api/followups/fetchFollowups");
-    expect(cfg.dataKey).toBe("followups");
-    expect(cfg.extraParams).toEqual({ LeadId: 0, Status: null });
-    expect(cfg.enableRowActions).toBe(true);
+    const today = dayjs().format("YYYY-MM-DD");
+    expect(lastExtraParams()).toEqual({ LeadId: 0, Status: "open", DueFrom: today, DueTo: today });
+    const user = userEvent.setup();
+    await user.click(screen.getByText("Overdue"));
+    expect(lastExtraParams()).toEqual({ LeadId: 0, Overdue: true });
+    await user.click(screen.getByText("Upcoming"));
+    expect(lastExtraParams()).toEqual({ LeadId: 0, Status: "open", DueFrom: dayjs().add(1, "day").format("YYYY-MM-DD") });
+    await user.click(screen.getByText("All"));
+    expect(lastExtraParams()).toEqual({ LeadId: 0 });
   });
 
-  it("defines the follow-up columns in order", () => {
+  it("Log opens the modal for an open row; done rows have no Log/Skip/Delete", async () => {
     renderPage();
-    const cfg = useServerTable.mock.calls.at(-1)[0];
-    const keys = cfg.columns.map((c) => c.accessorKey);
-    expect(keys).toEqual([
-      "LeadId",
-      "NextFollowupDate",
-      "FollowupType",
-      "Status",
-      "Remarks",
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("log-followup-21"));
+    expect(screen.getByTestId("log-modal")).toHaveTextContent("21");
+    expect(screen.queryByTestId("log-followup-20")).toBeNull();
+    expect(screen.queryByTestId("skip-followup-20")).toBeNull();
+  });
+
+  it("Skip requires remarks and posts skipFollowUp", async () => {
+    renderPage();
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("skip-followup-21"));
+    expect(screen.getByTestId("skip-submit")).toBeDisabled();
+    await user.type(screen.getByTestId("skip-remarks"), "Customer travelling");
+    await user.click(screen.getByTestId("skip-submit"));
+    await waitFor(() => expect(post).toHaveBeenCalledWith("/api/followups/skipFollowUp", { Id: 21, Remarks: "Customer travelling" }));
+  });
+
+  it("Delete confirms first, then posts deleteFollowup with just the Id", async () => {
+    renderPage();
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("delete-followup-21"));
+    expect(await screen.findByTestId("delete-followup-modal")).toBeInTheDocument();
+    expect(post).not.toHaveBeenCalled();
+    await user.click(screen.getByTestId("delete-followup-confirm"));
+    await waitFor(() => expect(post).toHaveBeenCalledWith("/api/followups/deleteFollowup", { Id: 21 }));
+  });
+
+  it("cancelling either prompt posts nothing", async () => {
+    renderPage();
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("skip-followup-21"));
+    await user.click(screen.getAllByRole("button", { name: "Cancel" })[0]);
+    await user.click(screen.getByTestId("delete-followup-21"));
+    await user.click(screen.getAllByRole("button", { name: "Cancel" })[0]);
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("renders the queue columns: lead + mobile, due date, type, assignee, status, outcome", () => {
+    renderPage();
+    expect(lastCfg().columns.map((c) => c.accessorKey)).toEqual([
+      "LeadName", "DueAt", "Type", "AssignedToName", "Status", "Remarks",
     ]);
+
+    const named = withTheme(cellOf("LeadName")({ row: { original: { LeadName: "Sharma", LeadMobile: "9990001111" } } }));
+    expect(named.container).toHaveTextContent("Sharma · 9990001111");
+    expect(withTheme(cellOf("LeadName")({ row: { original: { LeadName: "Sharma" } } })).container).toHaveTextContent("Sharma");
+
+    // Overdue is a server verdict (IsOverdue), not a client date comparison.
+    const late = withTheme(cellOf("DueAt")({ row: { original: { IsOverdue: true } }, cell: { getValue: () => "2026-09-01T00:00:00Z" } }));
+    expect(late.container.querySelector("span")).toHaveTextContent("01-09-2026");
+    expect(late.container.querySelector("span").style.fontWeight).toBe("600");
+    const onTime = withTheme(cellOf("DueAt")({ row: { original: { IsOverdue: false } }, cell: { getValue: () => null } }));
+    expect(onTime.container.querySelector("span").style.fontWeight).toBe("");
+    expect(onTime.container).toHaveTextContent("—");
+
+    expect(cellOf("Type")({ cell: { getValue: () => "call" } })).toBe("Call");
+    expect(cellOf("Type")({ cell: { getValue: () => "webinar" } })).toBe("webinar");
+    expect(cellOf("AssignedToName")({ cell: { getValue: () => "Bob" } })).toBe("Bob");
+    expect(cellOf("AssignedToName")({ cell: { getValue: () => null } })).toBe("—");
+
+    withTheme(cellOf("Status")({ cell: { getValue: () => "open" } }));
+    expect(screen.getByText("open")).toBeInTheDocument();
+    withTheme(cellOf("Status")({ cell: { getValue: () => "done" } }));
+    expect(screen.getByText("done")).toBeInTheDocument();
+
+    expect(cellOf("Remarks")({ row: { original: { Outcome: "Connected", Remarks: "ok" } } })).toBe("Connected — ok");
+    expect(cellOf("Remarks")({ row: { original: {} } })).toBe("—");
   });
 
-  it("renders rows from the server table", () => {
+  it("a row click opens that follow-up's lead", () => {
     renderPage();
-    expect(screen.getByTestId("followup-row-11")).toBeInTheDocument();
-    expect(screen.getByText("Send quote")).toBeInTheDocument();
-  });
-
-  it("resolves the Lead column to its name and falls back to Lead #id", () => {
-    renderPage();
-    const cfg = useServerTable.mock.calls.at(-1)[0];
-    const leadCol = cfg.columns.find((c) => c.accessorKey === "LeadId");
-    expect(leadCol.Cell({ cell: { getValue: () => 101 } })).toBe("Acme Corp");
-    expect(leadCol.Cell({ cell: { getValue: () => 999 } })).toBe("Lead #999");
-    expect(leadCol.Cell({ cell: { getValue: () => null } })).toBe("—");
-  });
-
-  it("formats NextFollowupDate and falls back to a dash", () => {
-    // Format unified 2026-08-05: the Sales pages rendered DD-MMM-YYYY while the
-    // Master pages rendered DD-MM-YYYY, so the same date looked different
-    // depending on which page you opened. utils/format.js settles it on
-    // DD-MM-YYYY; the "—" placeholder for a missing date is kept here because a
-    // blank table cell reads as a rendering fault.
-    renderPage();
-    const cfg = useServerTable.mock.calls.at(-1)[0];
-    const dateCol = cfg.columns.find((c) => c.accessorKey === "NextFollowupDate");
-    const { container } = render(
-      dateCol.Cell({
-        row: { original: { NextFollowupDate: "2026-07-10", Status: "Done" } },
-        cell: { getValue: () => "2026-07-10" },
-      })
-    );
-    expect(container).toHaveTextContent("10-07-2026");
-    const { container: empty } = render(
-      dateCol.Cell({ row: { original: {} }, cell: { getValue: () => null } })
-    );
-    expect(empty).toHaveTextContent("—");
-  });
-
-  it("defaults an empty Status to Pending", () => {
-    renderPage();
-    const cfg = useServerTable.mock.calls.at(-1)[0];
-    const statusCol = cfg.columns.find((c) => c.accessorKey === "Status");
-    expect(statusCol.Cell({ cell: { getValue: () => "Done" } })).toBe("Done");
-    expect(statusCol.Cell({ cell: { getValue: () => null } })).toBe("Pending");
-  });
-
-  it("bulk-loads leads to resolve names", () => {
-    renderPage();
-    const call = useApiQuery.mock.calls.find(
-      ([cfg]) => cfg.endpoint === "/api/leads/fetchLeads"
-    );
-    expect(call[0].params).toEqual({ PageNumber: 1, PageSize: 1000 });
-  });
-
-  it("drives the Status param from the status filter", async () => {
-    renderPage();
-    await pickOption("filter-status", "Done");
-    const cfg = useServerTable.mock.calls.at(-1)[0];
-    expect(cfg.extraParams).toEqual({ LeadId: 0, Status: "Done" });
-  });
-
-  it("navigates to the lead detail route when a row is clicked", () => {
-    renderPage();
-    const cfg = useServerTable.mock.calls.at(-1)[0];
-    const rowProps = cfg.muiTableBodyRowProps({ row: { original: { LeadId: 42 } } });
-    rowProps.onClick();
-    expect(mockNavigate).toHaveBeenCalledWith("/sales/leads/42");
-  });
-
-  describe("overdue highlighting", () => {
-    it("flags a past-due pending follow-up, but not done/future/undated ones", () => {
-      expect(
-        isFollowupOverdue({ NextFollowupDate: YESTERDAY, Status: "Pending" })
-      ).toBe(true);
-      // No status yet counts as Pending.
-      expect(isFollowupOverdue({ NextFollowupDate: YESTERDAY, Status: null })).toBe(true);
-      expect(isFollowupOverdue({ NextFollowupDate: YESTERDAY, Status: "Done" })).toBe(false);
-      expect(
-        isFollowupOverdue({ NextFollowupDate: TOMORROW, Status: "Pending" })
-      ).toBe(false);
-      expect(isFollowupOverdue({ NextFollowupDate: null, Status: "Pending" })).toBe(false);
-    });
-
-    it("tints overdue rows via muiTableBodyRowProps", () => {
-      renderPage();
-      const cfg = useServerTable.mock.calls.at(-1)[0];
-      const overdue = cfg.muiTableBodyRowProps({
-        row: { original: { NextFollowupDate: YESTERDAY, Status: "Pending" } },
-      });
-      expect(overdue.sx.backgroundColor).toBeTruthy();
-      const fine = cfg.muiTableBodyRowProps({
-        row: { original: { NextFollowupDate: YESTERDAY, Status: "Done" } },
-      });
-      expect(fine.sx.backgroundColor).toBeUndefined();
-    });
-  });
-
-  describe("row actions", () => {
-    it("Mark done saves the row back with Status Done", async () => {
-      renderPage();
-      renderRowActions(FIXTURE_FOLLOWUPS[0]);
-      const user = userEvent.setup();
-      await user.click(screen.getByTestId("complete-followup-11"));
-      expect(mutation.mutate).toHaveBeenCalledWith({
-        Id: 11,
-        LeadId: 101,
-        NextFollowupDate: "2026-07-10",
-        FollowupType: "Call",
-        Remarks: "Send quote",
-        Status: "Done",
-      });
-    });
-
-    it("hides Mark done on a follow-up that is already done", () => {
-      renderPage();
-      renderRowActions(FIXTURE_FOLLOWUPS[2]);
-      expect(screen.queryByTestId("complete-followup-13")).not.toBeInTheDocument();
-      expect(screen.getByTestId("reschedule-followup-13")).toBeInTheDocument();
-      expect(screen.getByTestId("delete-followup-13")).toBeInTheDocument();
-    });
-
-    it("Reschedule opens a date prompt and saves the row with the picked date", async () => {
-      renderPage();
-      renderRowActions(FIXTURE_FOLLOWUPS[0]);
-      const user = userEvent.setup();
-      await user.click(screen.getByTestId("reschedule-followup-11"));
-      expect(await screen.findByTestId("reschedule-modal")).toBeInTheDocument();
-      // Date prefilled from the row, so save is immediately possible.
-      await user.click(screen.getByTestId("reschedule-submit"));
-      expect(mutation.mutateAsync).toHaveBeenCalledWith(
-        expect.objectContaining({
-          Id: 11,
-          NextFollowupDate: "2026-07-10",
-          Status: "Pending",
-        })
-      );
-    });
-
-    it("Delete asks for confirmation before calling deleteFollowup", async () => {
-      renderPage();
-      renderRowActions(FIXTURE_FOLLOWUPS[0]);
-      const user = userEvent.setup();
-      await user.click(screen.getByTestId("delete-followup-11"));
-      expect(await screen.findByTestId("delete-followup-modal")).toBeInTheDocument();
-      expect(mutation.mutateAsync).not.toHaveBeenCalled();
-      await user.click(screen.getByTestId("delete-followup-confirm"));
-      expect(mutation.mutateAsync).toHaveBeenCalledWith({ Id: 11 });
-    });
-
-    it("cancelling the delete prompt calls nothing", async () => {
-      renderPage();
-      renderRowActions(FIXTURE_FOLLOWUPS[0]);
-      const user = userEvent.setup();
-      await user.click(screen.getByTestId("delete-followup-11"));
-      await screen.findByTestId("delete-followup-modal");
-      await user.click(screen.getByRole("button", { name: "Cancel" }));
-      expect(mutation.mutateAsync).not.toHaveBeenCalled();
-    });
-
-    it("colors only overdue dates red in the date cell", () => {
-      renderPage();
-      const cfg = useServerTable.mock.calls.at(-1)[0];
-      const dateCol = cfg.columns.find((c) => c.accessorKey === "NextFollowupDate");
-      const { container: overdue } = render(
-        dateCol.Cell({
-          row: { original: { NextFollowupDate: YESTERDAY, Status: "Pending" } },
-          cell: { getValue: () => YESTERDAY },
-        })
-      );
-      expect(overdue.querySelector("span").style.color).not.toBe("");
-      const { container: fine } = render(
-        dateCol.Cell({
-          row: { original: { NextFollowupDate: TOMORROW, Status: "Pending" } },
-          cell: { getValue: () => TOMORROW },
-        })
-      );
-      expect(fine.querySelector("span").style.color).toBe("");
-    });
-
-    it("Mark done on a row with null fields defaults them in the payload", async () => {
-      renderPage();
-      renderRowActions(FIXTURE_FOLLOWUPS[1]);
-      const user = userEvent.setup();
-      await user.click(screen.getByTestId("complete-followup-12"));
-      expect(mutation.mutate).toHaveBeenCalledWith({
-        Id: 12,
-        LeadId: 999,
-        NextFollowupDate: null,
-        FollowupType: null,
-        Remarks: null,
-        Status: "Done",
-      });
-    });
-
-    it("Reschedule on a row with no stored date starts empty and blocks save", async () => {
-      renderPage();
-      renderRowActions(FIXTURE_FOLLOWUPS[1]);
-      const user = userEvent.setup();
-      await user.click(screen.getByTestId("reschedule-followup-12"));
-      expect(await screen.findByTestId("reschedule-modal")).toBeInTheDocument();
-      expect(screen.getByTestId("reschedule-submit")).toBeDisabled();
-      expect(mutation.mutateAsync).not.toHaveBeenCalled();
-    });
-
-    it("wires save and delete mutations to the follow-up endpoints", () => {
-      renderPage();
-      const endpoints = useApiMutation.mock.calls.map(([cfg]) => cfg.endpoint);
-      expect(endpoints).toContain("/api/followups/saveFollowup");
-      expect(endpoints).toContain("/api/followups/deleteFollowup");
-    });
+    lastCfg().muiTableBodyRowProps({ row: { original: { LeadId: 9 } } }).onClick();
+    expect(mockNavigate).toHaveBeenCalledWith("/sales/leads/9");
+    expect(lastCfg().getRowId({ Id: 21 })).toBe(21);
+    expect(lastCfg().dataKey).toBe("followups");
+    expect(lastCfg().endpoint).toBe("/api/followups/fetchFollowups");
   });
 });

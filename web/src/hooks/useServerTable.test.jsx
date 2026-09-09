@@ -150,4 +150,46 @@ describe("useServerTable", () => {
       vi.useRealTimers();
     }
   });
+
+  // A filter change shrinks the result set, so the page you were on may not
+  // exist any more — page 3 of "Overdue" is an empty table.
+  it("resets to page 1 when extraParams change", () => {
+    const { result, rerender } = renderHook(
+      ({ extraParams }) => useServerTable({ ...baseConfig, extraParams }),
+      { initialProps: { extraParams: { StatusId: null } } }
+    );
+
+    act(() => {
+      result.current.table.__options.onPaginationChange({
+        pageIndex: 2,
+        pageSize: 25,
+      });
+    });
+    expect(useApiQuery.mock.calls.at(-1)[0].params.PageNumber).toBe(3);
+
+    rerender({ extraParams: { StatusId: 7 } });
+
+    const last = useApiQuery.mock.calls.at(-1)[0];
+    expect(last.params.PageNumber).toBe(1);
+    expect(last.params.StatusId).toBe(7);
+  });
+
+  it("keeps the current page when extraParams are rebuilt with equal values", () => {
+    const { result, rerender } = renderHook(
+      ({ extraParams }) => useServerTable({ ...baseConfig, extraParams }),
+      { initialProps: { extraParams: { StatusId: 7 } } }
+    );
+
+    act(() => {
+      result.current.table.__options.onPaginationChange({
+        pageIndex: 2,
+        pageSize: 25,
+      });
+    });
+
+    // Same values, brand-new object identity — what every caller's render does.
+    rerender({ extraParams: { StatusId: 7 } });
+
+    expect(useApiQuery.mock.calls.at(-1)[0].params.PageNumber).toBe(3);
+  });
 });

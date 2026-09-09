@@ -15,6 +15,7 @@ const ticketRoutes = require("../routes/ticketRoutes");
 const reportRoutes = require("../routes/reportRoutes");
 const userBranchAccessRoutes = require("../routes/userBranchAccessRoutes");
 const configRoutes = require("../routes/configRoutes");
+const productRoutes = require("../routes/productRoutes");
 const attachmentRoutes = require("../routes/attachmentRoutes");
 const { success, dbErrors } = require("../utils/responseHelper");
 const database = require("./database");
@@ -42,6 +43,7 @@ function setupRoutes(app) {
   app.use("/api/reports", reportRoutes);
   app.use("/api/user-branch-access", userBranchAccessRoutes);
   app.use("/api/config", configRoutes);
+  app.use("/api/products", productRoutes);
   app.use("/api/attachments", attachmentRoutes);
 
   app.get("/health", (req, res) => {

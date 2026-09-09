@@ -13,7 +13,9 @@ describe("ConversionBySource report", () => {
         HttpResponse.json({
           success: true,
           data: {
-            conversion: [{ SourceId: 1, SourceName: "Website", TotalLeads: 50, WonCount: 8 }],
+            conversion: [
+              { SourceId: 1, SourceName: "Website", TotalLeads: 50, QualifiedCount: 8, WonCount: 8, LostCount: 4 },
+            ],
           },
         })
       )
@@ -36,7 +38,9 @@ describe("ConversionBySource report", () => {
         HttpResponse.json({
           success: true,
           data: {
-            conversion: [{ SourceId: 9, SourceName: "Billboard", TotalLeads: 0, WonCount: 0 }],
+            conversion: [
+              { SourceId: 9, SourceName: "Billboard", TotalLeads: 0, QualifiedCount: 0, WonCount: 0, LostCount: 0 },
+            ],
           },
         })
       )
@@ -47,6 +51,47 @@ describe("ConversionBySource report", () => {
     const table = await screen.findByTestId("conversion-by-source-table");
     expect(within(table).getByText("—")).toBeInTheDocument();
     expect(within(table).queryByText("NaN%")).not.toBeInTheDocument();
+  });
+
+  it("defaults Qualified and Lost to 0 when a source omits them", async () => {
+    server.use(
+      http.post("*/api/reports/conversionBySource", () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            conversion: [{ SourceId: 3, SourceName: "Referral", TotalLeads: 5 }],
+          },
+        })
+      )
+    );
+
+    renderWithProviders(<ConversionBySource />);
+
+    const table = await screen.findByTestId("conversion-by-source-table");
+    const cells = within(table).getAllByText("0");
+    expect(cells.length).toBeGreaterThanOrEqual(2);
+    expect(table).toHaveTextContent("0%");
+  });
+
+  it("shows Qualified and the rate per source", async () => {
+    server.use(
+      http.post("*/api/reports/conversionBySource", () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            conversion: [
+              { SourceId: 5, SourceName: "Website", TotalLeads: 10, QualifiedCount: 4, WonCount: 0, LostCount: 2 },
+            ],
+          },
+        })
+      )
+    );
+
+    renderWithProviders(<ConversionBySource />);
+
+    const table = await screen.findByTestId("conversion-by-source-table");
+    expect(table).toHaveTextContent("Qualified");
+    expect(table).toHaveTextContent("40%");
   });
 
   it("shows an empty state when there is no conversion data", async () => {

@@ -2,11 +2,12 @@
 import { useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { Box } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import { MaterialReactTable } from "material-react-table";
 import { useNavigate } from "react-router-dom";
-import { ArrowRightLeft, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowRightLeft, Pencil, Plus, Trash2, Users } from "lucide-react";
 
-import { Button, Combobox, IconButton, Tooltip } from "../../components/ui";
+import { Button, Combobox, IconButton, Tooltip, Tabs, Chip } from "../../components/ui";
 import PageHeader from "../../components/ui/PageHeader";
 import HelpGuide from "../../components/HelpGuide";
 import { HELP_GUIDES } from "../../data/helpGuides";
@@ -14,244 +15,124 @@ import useServerTable from "../../hooks/useServerTable";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { useUsers } from "../../hooks";
 import { useLookups } from "../../hooks/useLookups";
+import useAuthStore from "../../stores/useAuthStore";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
 import { formatCurrency, formatDate } from "../../utils/format";
-import { findUserById, getUserName } from "../../utils/userShape";
+import { getUserName } from "../../utils/userShape";
+import { LEAD_PRESETS, presetParams, isActiveCode } from "./leadStatus";
 import LeadCreateModal from "./LeadCreateModal";
 import TransferLeadModal from "./TransferLeadModal";
 import DeleteLeadModal from "./DeleteLeadModal";
 
+const EMPTY_FILTERS = { StatusId: "", ProductId: "", OwnerId: "", SourceId: "", BranchId: "" };
+const num = (v) => (v === "" ? null : Number(v));
+
 const Leads = () => {
   const navigate = useNavigate();
+  const theme = useTheme();
+  const userId = useAuthStore((s) => s.user?.UserId ?? s.UserId);
 
-  // Create modal + per-row edit/transfer/delete targets (null = closed).
+  const [preset, setPreset] = useState("all");
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [createOpen, setCreateOpen] = useState(false);
   const [editLead, setEditLead] = useState(null);
-  const [transferLead, setTransferLead] = useState(null);
+  const [transferIds, setTransferIds] = useState([]);
   const [deleteLead, setDeleteLead] = useState(null);
 
-  // Filter state forwarded verbatim as StageId/OwnerId/SourceId — sp_FetchLeads
-  // treats each as an optional exact-match filter (null = no filter).
-  const [filters, setFilters] = useState({ StageId: "", OwnerId: "", SourceId: "" });
-  // Combobox hands back the selected option (or null when cleared).
-  const setFilterValue = (key) => (opt) =>
-    setFilters((prev) => ({ ...prev, [key]: opt?.value ?? "" }));
+  const setFilterValue = (key) => (opt) => setFilters((prev) => ({ ...prev, [key]: opt?.value ?? "" }));
 
   const { data: usersData } = useUsers({ PageSize: 1000 });
-  const users = usersData?.users || [];
-
-  // sp_FetchLeads returns raw SourceId/StageId (no name join), so the
-  // filters/columns need their own display source: lookups (Kind=lead_source)
-  // for Source, and fetchPipelines' stages recordset for Stage.
+  const { lookups: statuses } = useLookups("lead_status");
   const { lookups: sources } = useLookups("lead_source");
+  const { data: productsData } = useApiQuery({ queryKey: ["products", "active"], endpoint: SALES_ENDPOINTS.products.fetchProducts, params: { PageSize: 200, IsActive: true } });
+  const { data: branchData } = useApiQuery({ queryKey: ["branches"], endpoint: SALES_ENDPOINTS.users.fetchBranches, showErrorMessage: false });
 
-  const { data: pipelinesData } = useApiQuery({
-    queryKey: ["sales-pipelines", "lead"],
-    endpoint: SALES_ENDPOINTS.config.fetchPipelines,
-    params: { Entity: "lead" },
-  });
-  const stages = pipelinesData?.stages || [];
-  const stageById = useMemo(
-    () => new Map(stages.map((s) => [s.Id, s.Name])),
-    [stages]
-  );
+  const opts = {
+    status: useMemo(() => statuses.map((s) => ({ value: s.Id, label: s.Value })), [statuses]),
+    product: useMemo(() => (productsData?.products ?? []).map((p) => ({ value: p.Id, label: p.Name })), [productsData]),
+    owner: useMemo(() => (usersData?.users ?? []).map((u) => ({ value: u.Id, label: getUserName(u) || u.Username })), [usersData]),
+    source: useMemo(() => sources.map((s) => ({ value: s.Id, label: s.Value })), [sources]),
+    branch: useMemo(() => (branchData?.branches ?? []).map((b) => ({ value: b.Id, label: b.BranchName })), [branchData]),
+  };
+  const optById = (list, v) => list.find((o) => o.value === v) ?? null;
 
-  // Filter option lists ({value,label}) for the Combobox filters.
-  const stageOpts = useMemo(() => stages.map((s) => ({ value: s.Id, label: s.Name })), [stages]);
-  const sourceOpts = useMemo(() => sources.map((s) => ({ value: s.Id, label: s.Value })), [sources]);
-  const ownerOpts = useMemo(
-    () => users.map((u) => ({ value: u.Id, label: getUserName(u) || u.Username })),
-    [users]
-  );
-  const optById = (opts, v) => opts.find((o) => o.value === v) ?? null;
+  // Every label comes from the SP now; no client-side id → name resolution.
+  const overdueSx = { color: theme.tokens.error.main, fontWeight: 600 };
+  const columns = useMemo(() => [
+    { accessorKey: "Name", header: "Name", enableSorting: true },
+    { accessorKey: "Company", header: "Company", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "—" },
+    { accessorKey: "MobileNo", header: "Mobile", enableSorting: false },
+    { accessorKey: "City", header: "City", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "—" },
+    { accessorKey: "StatusName", header: "Status", enableSorting: false,
+      Cell: ({ row }) => <Chip label={row.original.StatusName || "—"} size="sm" tone={isActiveCode(row.original.StatusCode) ? "primary" : "default"} /> },
+    { accessorKey: "ProductName", header: "Product", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "—" },
+    { accessorKey: "OwnerName", header: "Owner", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "Unassigned" },
+    { accessorKey: "EstValue", header: "Est. Value", enableSorting: true, Cell: ({ cell }) => formatCurrency(cell.getValue(), { empty: "—" }) },
+    { accessorKey: "NextFollowupDate", header: "Next Follow-up", enableSorting: true,
+      Cell: ({ row, cell }) => <span style={row.original.IsOverdue ? overdueSx : undefined}>{formatDate(cell.getValue(), { empty: "—" })}</span> },
+  ], [overdueSx.color]);
 
-  const columns = useMemo(
-    () => [
-      { accessorKey: "Name", header: "Name", enableSorting: true },
-      { accessorKey: "MobileNo", header: "Mobile", enableSorting: false },
-      { accessorKey: "Email", header: "Email", enableSorting: false },
-      {
-        accessorKey: "StageId",
-        header: "Stage",
-        enableSorting: false,
-        Cell: ({ cell }) => {
-          const value = cell.getValue();
-          return stageById.get(value) || (value ? `Stage #${value}` : "—");
-        },
-      },
-      {
-        accessorKey: "OwnerId",
-        header: "Owner",
-        enableSorting: false,
-        Cell: ({ cell }) => {
-          const user = findUserById(users, cell.getValue());
-          return user ? getUserName(user) || "—" : "—";
-        },
-      },
-      {
-        accessorKey: "EstValue",
-        header: "Est. Value",
-        enableSorting: true,
-        Cell: ({ cell }) => formatCurrency(cell.getValue(), { empty: "—" }),
-      },
-      {
-        accessorKey: "NextFollowupDate",
-        header: "Next Follow-up",
-        enableSorting: true,
-        Cell: ({ cell }) => formatDate(cell.getValue(), { empty: "—" }),
-      },
-    ],
-    [users, stageById]
-  );
-
-  const extraParams = useMemo(
-    () => ({
-      StageId: filters.StageId === "" ? null : Number(filters.StageId),
-      OwnerId: filters.OwnerId === "" ? null : Number(filters.OwnerId),
-      SourceId: filters.SourceId === "" ? null : Number(filters.SourceId),
-    }),
-    [filters]
-  );
+  const extraParams = useMemo(() => ({
+    StatusId: num(filters.StatusId), ProductId: num(filters.ProductId), OwnerId: num(filters.OwnerId),
+    SourceId: num(filters.SourceId), BranchId: num(filters.BranchId),
+    ...presetParams(preset, userId),
+  }), [filters, preset, userId]);
 
   const { table } = useServerTable({
-    columns,
-    queryKey: "leads",
-    endpoint: SALES_ENDPOINTS.leads.fetchLeads,
-    dataKey: "leads",
-    extraParams,
-    initialPageSize: 25,
-    getRowId: (row) => row.Id,
-    enableRowActions: true,
-    displayColumnDefOptions: {
-      "mrt-row-actions": { grow: false, header: "Actions" },
-    },
-    muiTableBodyRowProps: ({ row }) => ({
-      hover: true,
-      sx: { cursor: "pointer" },
-      onClick: () => navigate(`/sales/leads/${row.original.Id}`),
-    }),
-    // Row actions live inside the clickable row, so each button stops
-    // propagation to avoid also navigating to the lead detail.
+    columns, queryKey: "leads", endpoint: SALES_ENDPOINTS.leads.fetchLeads, dataKey: "leads", extraParams,
+    initialPageSize: 25, getRowId: (row) => row.Id,
+    enableRowSelection: true, enableRowActions: true,
+    displayColumnDefOptions: { "mrt-row-actions": { grow: false, header: "Actions" } },
+    muiTableBodyRowProps: ({ row }) => ({ hover: true, sx: { cursor: "pointer" }, onClick: () => navigate(`/sales/leads/${row.original.Id}`) }),
     renderRowActions: ({ row }) => (
       <Box sx={{ display: "flex", gap: 0.5 }} onClick={(e) => e.stopPropagation()}>
-        <Tooltip title="Edit">
-          <IconButton
-            size="sm"
-            variant="ghost"
-            aria-label="Edit lead"
-            data-testid={`edit-lead-${row.original.Id}`}
-            onClick={() => setEditLead(row.original)}
-          >
-            <Pencil size={16} />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Transfer">
-          <IconButton
-            size="sm"
-            variant="ghost"
-            aria-label="Transfer lead"
-            data-testid={`transfer-lead-${row.original.Id}`}
-            onClick={() => setTransferLead(row.original)}
-          >
-            <ArrowRightLeft size={16} />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Delete">
-          <IconButton
-            size="sm"
-            variant="ghost"
-            aria-label="Delete lead"
-            data-testid={`delete-lead-${row.original.Id}`}
-            onClick={() => setDeleteLead(row.original)}
-          >
-            <Trash2 size={16} />
-          </IconButton>
-        </Tooltip>
+        <Tooltip title="Edit"><IconButton size="sm" variant="ghost" aria-label="Edit lead" data-testid={`edit-lead-${row.original.Id}`} onClick={() => setEditLead(row.original)}><Pencil size={16} /></IconButton></Tooltip>
+        <Tooltip title="Transfer"><IconButton size="sm" variant="ghost" aria-label="Transfer lead" data-testid={`transfer-lead-${row.original.Id}`} onClick={() => setTransferIds([row.original.Id])}><ArrowRightLeft size={16} /></IconButton></Tooltip>
+        <Tooltip title="Delete"><IconButton size="sm" variant="ghost" aria-label="Delete lead" data-testid={`delete-lead-${row.original.Id}`} onClick={() => setDeleteLead(row.original)}><Trash2 size={16} /></IconButton></Tooltip>
       </Box>
     ),
     muiTableContainerProps: { sx: { maxHeight: "500px" } },
   });
 
+  const selectedIds = Object.keys(table.getState?.()?.rowSelection ?? {}).map(Number);
+
   return (
     <Box sx={{ display: "flex", flexDirection: "column", flexGrow: 1 }}>
       <PageHeader
         title="Leads"
-        subtitle="Prospective customers moving through your pipeline."
+        subtitle="Every prospect, who holds it, and what happens next."
         actions={
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            <Button
-              variant="primary"
-              size="sm"
-              leftIcon={<Plus size={14} />}
-              onClick={() => setCreateOpen(true)}
-              data-testid="new-lead-btn"
-            >
-              New Lead
-            </Button>
+            {selectedIds.length > 0 && (
+              <Button variant="tonal" size="sm" leftIcon={<Users size={14} />} onClick={() => setTransferIds(selectedIds)} data-testid="bulk-reassign-btn">
+                Reassign {selectedIds.length}
+              </Button>
+            )}
+            <Button variant="primary" size="sm" leftIcon={<Plus size={14} />} onClick={() => setCreateOpen(true)} data-testid="new-lead-btn">New Lead</Button>
             <HelpGuide guide={HELP_GUIDES.leads} />
           </Box>
         }
       />
-      <Helmet>
-        <title>PRD Infotech | Leads</title>
-      </Helmet>
+      <Helmet><title>PRD Infotech | Leads</title></Helmet>
+
+      <Box sx={{ mt: 1 }}><Tabs value={preset} onChange={setPreset} items={LEAD_PRESETS} data-testid="lead-presets" /></Box>
+
       <Box sx={{ display: "flex", gap: 1, mt: 1, mb: 0.5, flexWrap: "wrap" }}>
-        <Box sx={{ width: 170 }}>
-          <Combobox
-            size="sm"
-            placeholder="All stages"
-            options={stageOpts}
-            value={optById(stageOpts, filters.StageId)}
-            onChange={setFilterValue("StageId")}
-            data-testid="filter-stage"
-          />
-        </Box>
-        <Box sx={{ width: 180 }}>
-          <Combobox
-            size="sm"
-            placeholder="All owners"
-            options={ownerOpts}
-            value={optById(ownerOpts, filters.OwnerId)}
-            onChange={setFilterValue("OwnerId")}
-            data-testid="filter-owner"
-          />
-        </Box>
-        <Box sx={{ width: 180 }}>
-          <Combobox
-            size="sm"
-            placeholder="All sources"
-            options={sourceOpts}
-            value={optById(sourceOpts, filters.SourceId)}
-            onChange={setFilterValue("SourceId")}
-            data-testid="filter-source"
-          />
-        </Box>
-      </Box>
-      <Box sx={{ width: "100%", overflowX: "auto" }}>
-        <MaterialReactTable table={table} />
+        <Box sx={{ width: 170 }}><Combobox size="sm" placeholder="All statuses" options={opts.status} value={optById(opts.status, filters.StatusId)} onChange={setFilterValue("StatusId")} data-testid="filter-status" /></Box>
+        <Box sx={{ width: 180 }}><Combobox size="sm" placeholder="All products" options={opts.product} value={optById(opts.product, filters.ProductId)} onChange={setFilterValue("ProductId")} data-testid="filter-product" /></Box>
+        <Box sx={{ width: 180 }}><Combobox size="sm" placeholder="All owners" options={opts.owner} value={optById(opts.owner, filters.OwnerId)} onChange={setFilterValue("OwnerId")} data-testid="filter-owner" /></Box>
+        <Box sx={{ width: 170 }}><Combobox size="sm" placeholder="All sources" options={opts.source} value={optById(opts.source, filters.SourceId)} onChange={setFilterValue("SourceId")} data-testid="filter-source" /></Box>
+        <Box sx={{ width: 170 }}><Combobox size="sm" placeholder="All branches" options={opts.branch} value={optById(opts.branch, filters.BranchId)} onChange={setFilterValue("BranchId")} data-testid="filter-branch" /></Box>
       </Box>
 
-      <LeadCreateModal
-        open={createOpen || Boolean(editLead)}
-        lead={editLead}
-        onClose={() => {
-          setCreateOpen(false);
-          setEditLead(null);
-        }}
-      />
+      <Box sx={{ width: "100%", overflowX: "auto" }}><MaterialReactTable table={table} /></Box>
 
-      <TransferLeadModal
-        open={Boolean(transferLead)}
-        leadId={transferLead?.Id}
-        onClose={() => setTransferLead(null)}
-      />
-
-      <DeleteLeadModal
-        open={Boolean(deleteLead)}
-        leadId={deleteLead?.Id}
-        leadName={deleteLead?.Name}
-        onClose={() => setDeleteLead(null)}
-      />
+      <LeadCreateModal open={createOpen || Boolean(editLead)} lead={editLead} onClose={() => { setCreateOpen(false); setEditLead(null); }} />
+      {/* canCrossBranch is always on here: the server (assertCanAssign) is the
+          gate and answers a Team/Self caller with a clear 403. The prop exists
+          so spec 2 can hide the picker once DataScope reaches the client. */}
+      <TransferLeadModal open={transferIds.length > 0} leadIds={transferIds} canCrossBranch onClose={() => setTransferIds([])} onTransferred={() => table.resetRowSelection?.()} />
+      <DeleteLeadModal open={Boolean(deleteLead)} leadId={deleteLead?.Id} leadName={deleteLead?.Name} onClose={() => setDeleteLead(null)} />
     </Box>
   );
 };

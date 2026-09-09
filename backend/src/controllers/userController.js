@@ -33,6 +33,7 @@ class UserController {
         HourlyRate = 0,
         GroupId = 8, // Default to General Users
         Mobile = null,
+        ReportsTo = null,
       } = req.body;
 
       // Hash before it ever reaches the DB. Login bcrypt-compares against this
@@ -57,6 +58,7 @@ class UserController {
         CompId: req.user.CompId,
         BranchId: req.user.BranchId,
         Mobile,
+        ReportsTo: positiveInt(ReportsTo),
       });
 
       const spResponse = firstRow(result);
@@ -306,6 +308,33 @@ class UserController {
     },
     "Failed to fetch directory",
     "DIRECTORY_ERROR",
+  );
+
+  // Who the caller may hand a lead to. Body { BranchId } lists a destination
+  // branch's roster for cross-branch transfers; the RIGHT to do that is checked
+  // in assertCanAssign at transfer time, not here — this only lists.
+  assignableUsers = asyncRoute(
+    async (req, res) => {
+      const result = await database.executeStoredProcedure("sp_FetchAssignableUsers", {
+        UserId: req.user.UserId,
+        CompId: req.user.CompId,
+        BranchId: positiveInt(req.body?.BranchId),
+      });
+      const users = cleanSpRows(result.recordsets?.[0] ?? []);
+      return success(res, "Assignable users retrieved", { users });
+    },
+    "Failed to fetch assignable users",
+    "ASSIGNABLE_USERS_ERROR",
+  );
+
+  // Branch pick-list for cross-branch transfers. Any authenticated user.
+  branches = asyncRoute(
+    async (req, res) => {
+      const result = await database.executeStoredProcedure("sp_FetchBranches", {});
+      return success(res, "Branches retrieved", { branches: result.recordsets?.[0] ?? [] });
+    },
+    "Failed to fetch branches",
+    "BRANCHES_ERROR",
   );
 }
 

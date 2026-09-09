@@ -15,7 +15,7 @@ const ConversionBySource = () => {
   return (
     <ReportPage
       title="CONVERSION BY SOURCE REPORT"
-      subtitle="Total leads vs won, per lead source."
+      subtitle="Leads per source and how many reached Qualified. Won lands here in spec 3."
       documentTitle="Conversion By Source Report"
       testId="conversion-by-source"
       isLoading={isLoading}
@@ -29,7 +29,7 @@ const ConversionBySource = () => {
         xKey="SourceName"
         bars={[
           { key: "TotalLeads", name: "Total" },
-          { key: "WonCount", name: "Won", tone: "success" },
+          { key: "QualifiedCount", name: "Qualified", tone: "success" },
         ]}
       />
       <ReportTable
@@ -39,14 +39,15 @@ const ConversionBySource = () => {
         columns={[
           { header: "Source", cell: (r) => r.SourceName },
           { header: "Total", align: "right", cell: (r) => r.TotalLeads },
-          { header: "Won", align: "right", cell: (r) => r.WonCount },
+          { header: "Qualified", align: "right", cell: (r) => r.QualifiedCount ?? 0 },
+          { header: "Lost", align: "right", cell: (r) => r.LostCount ?? 0 },
           {
-            header: "Win Rate",
+            header: "Rate",
             align: "right",
             // Guarded because a source with no leads would divide by zero and
             // render "NaN%".
             cell: (r) =>
-              r.TotalLeads ? `${Math.round((r.WonCount / r.TotalLeads) * 100)}%` : "—",
+              r.TotalLeads ? `${Math.round((100 * (r.QualifiedCount ?? 0)) / r.TotalLeads)}%` : "—",
           },
         ]}
       />

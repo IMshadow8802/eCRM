@@ -39,6 +39,7 @@ const CONTROLLERS = path.join(__dirname, "../../../src/controllers");
  *   sp_NotifyCommentAdded        @CommentId, @ActorUserId  — fan-out, post-write
  *   sp_NotifyTaskAssigned        @TaskId, @ActorUserId, @AssigneeUserId
  *   sp_UpdateOwnProfile          @UserId, ...              — own row by definition
+ *   sp_FetchBranches             (none)                    — tblBranch has no CompId column; SP declares no params (backend/sql/072_menu_pipeline_row.sql)
  *
  * Before adding to this list: confirm the procedure really has no @CompId
  * parameter, and that its remaining parameters bound the caller to their own
@@ -55,6 +56,7 @@ const EXEMPT = new Set([
   "sp_NotifyCommentAdded",
   "sp_NotifyTaskAssigned",
   "sp_UpdateOwnProfile",
+  "sp_FetchBranches",
 ]);
 
 /** `executeStoredProcedure("sp_Name", { ...params })` — name plus param block. */

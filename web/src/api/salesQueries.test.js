@@ -8,9 +8,46 @@ import { apiClient } from "../utils/axiosConfig";
 import * as salesQueries from "./salesQueries";
 import { SALES_ENDPOINTS } from "./salesQueries";
 
+describe("SALES_ENDPOINTS", () => {
+  it("exposes the spec-1 lead contract and nothing from the pipeline era", () => {
+    expect(SALES_ENDPOINTS.leads).toEqual({
+      saveLeads: "/api/leads/saveLeads",
+      fetchLeads: "/api/leads/fetchLeads",
+      fetchLeadDetail: "/api/leads/fetchLeadDetail",
+      setLeadStatus: "/api/leads/setLeadStatus",
+      transferLead: "/api/leads/transferLead",
+      bulkTransferLeads: "/api/leads/bulkTransferLeads",
+      deleteLeads: "/api/leads/deleteLeads",
+    });
+    expect(SALES_ENDPOINTS.followups).toEqual({
+      fetchFollowups: "/api/followups/fetchFollowups",
+      scheduleFollowUp: "/api/followups/scheduleFollowUp",
+      completeFollowUp: "/api/followups/completeFollowUp",
+      skipFollowUp: "/api/followups/skipFollowUp",
+      deleteFollowup: "/api/followups/deleteFollowup",
+    });
+    expect(SALES_ENDPOINTS.products).toEqual({
+      saveProduct: "/api/products/saveProduct",
+      fetchProducts: "/api/products/fetchProducts",
+      deleteProduct: "/api/products/deleteProduct",
+    });
+    expect(SALES_ENDPOINTS.users).toEqual({
+      fetchAssignableUsers: "/api/users/fetchAssignableUsers",
+      fetchBranches: "/api/users/fetchBranches",
+    });
+    expect(SALES_ENDPOINTS.reports.leadsByStatus).toBe("/api/reports/leadsByStatus");
+    expect(SALES_ENDPOINTS.reports).not.toHaveProperty("pipelineFunnel");
+  });
+
+  it("keeps the config + calls endpoints Support still reads", () => {
+    expect(SALES_ENDPOINTS.config.fetchPipelines).toBe("/api/config/fetchPipelines");
+    expect(SALES_ENDPOINTS.calls.logCall).toBe("/api/calls/logCall");
+  });
+});
+
 // Every fetcher is the same `post(endpoint)` factory (see salesQueries.js) —
-// one table-driven test proves the pattern for all 20 rather than hand
-// duplicating the same assertion 20 times.
+// one table-driven test proves the pattern for all of them rather than hand
+// duplicating the same assertion 25 times.
 const FETCHERS = {
   saveCustomField: SALES_ENDPOINTS.config.saveCustomField,
   fetchCustomFields: SALES_ENDPOINTS.config.fetchCustomFields,
@@ -22,15 +59,26 @@ const FETCHERS = {
   saveLookup: SALES_ENDPOINTS.config.saveLookup,
   fetchLookups: SALES_ENDPOINTS.config.fetchLookups,
   deleteLookup: SALES_ENDPOINTS.config.deleteLookup,
+  saveProduct: SALES_ENDPOINTS.products.saveProduct,
+  fetchProducts: SALES_ENDPOINTS.products.fetchProducts,
+  deleteProduct: SALES_ENDPOINTS.products.deleteProduct,
+  fetchAssignableUsers: SALES_ENDPOINTS.users.fetchAssignableUsers,
+  fetchBranches: SALES_ENDPOINTS.users.fetchBranches,
   saveLeads: SALES_ENDPOINTS.leads.saveLeads,
   fetchLeads: SALES_ENDPOINTS.leads.fetchLeads,
-  deleteLeads: SALES_ENDPOINTS.leads.deleteLeads,
-  transferLead: SALES_ENDPOINTS.leads.transferLead,
   fetchLeadDetail: SALES_ENDPOINTS.leads.fetchLeadDetail,
-  moveLeadStage: SALES_ENDPOINTS.leads.moveLeadStage,
+  setLeadStatus: SALES_ENDPOINTS.leads.setLeadStatus,
+  transferLead: SALES_ENDPOINTS.leads.transferLead,
+  bulkTransferLeads: SALES_ENDPOINTS.leads.bulkTransferLeads,
+  deleteLeads: SALES_ENDPOINTS.leads.deleteLeads,
   logCall: SALES_ENDPOINTS.calls.logCall,
   fetchCalls: SALES_ENDPOINTS.calls.fetchCalls,
-  pipelineFunnel: SALES_ENDPOINTS.reports.pipelineFunnel,
+  fetchFollowups: SALES_ENDPOINTS.followups.fetchFollowups,
+  scheduleFollowUp: SALES_ENDPOINTS.followups.scheduleFollowUp,
+  completeFollowUp: SALES_ENDPOINTS.followups.completeFollowUp,
+  skipFollowUp: SALES_ENDPOINTS.followups.skipFollowUp,
+  deleteFollowup: SALES_ENDPOINTS.followups.deleteFollowup,
+  leadsByStatus: SALES_ENDPOINTS.reports.leadsByStatus,
   callsPerUser: SALES_ENDPOINTS.reports.callsPerUser,
   conversionBySource: SALES_ENDPOINTS.reports.conversionBySource,
 };
@@ -52,5 +100,11 @@ describe("salesQueries", () => {
   it("defaults params to {} when called with no arguments", async () => {
     await salesQueries.fetchLeads();
     expect(apiClient.post).toHaveBeenCalledWith(SALES_ENDPOINTS.leads.fetchLeads, {});
+  });
+
+  it("no longer exports the retired pipeline-era fetchers", () => {
+    expect(salesQueries.moveLeadStage).toBeUndefined();
+    expect(salesQueries.saveFollowup).toBeUndefined();
+    expect(salesQueries.pipelineFunnel).toBeUndefined();
   });
 });

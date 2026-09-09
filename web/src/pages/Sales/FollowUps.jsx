@@ -1,138 +1,117 @@
 // src/pages/Sales/FollowUps.jsx
-// Standalone work-queue of ALL follow-ups across leads. sp_FetchFollowUp with
-// LeadId:0 returns every follow-up (paged); row-click opens the lead's detail.
-// Rows can be marked done, rescheduled, or deleted in place.
+// The follow-up work queue across every lead the caller can see. The four
+// views are the only question a rep asks of this page — what is due now, what
+// is late, what is next — so they are tabs over fetchFollowups' own filters
+// rather than a filter bar the user has to assemble.
 import { useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { Box } from "@mui/material";
 import { MaterialReactTable } from "material-react-table";
 import { useNavigate } from "react-router-dom";
-import { CalendarClock, Check, Trash2 } from "lucide-react";
+import { CheckCircle2, SkipForward, Trash2 } from "lucide-react";
 import dayjs from "dayjs";
 
-import {
-  Button,
-  Combobox,
-  DateField,
-  IconButton,
-  Modal,
-  Tooltip,
-} from "../../components/ui";
+import { Button, IconButton, Modal, TextArea, Tooltip, Tabs, Chip } from "../../components/ui";
 import PageHeader from "../../components/ui/PageHeader";
 import HelpGuide from "../../components/HelpGuide";
 import { HELP_GUIDES } from "../../data/helpGuides";
 import useServerTable from "../../hooks/useServerTable";
-import { useApiQuery } from "../../hooks/useApiQuery";
 import { useApiMutation } from "../../hooks/useApiMutation";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
 import { formatDate } from "../../utils/format";
+import { FOLLOWUP_TYPES } from "./leadStatus";
+import LogFollowUpModal from "./LogFollowUpModal";
 
-// A follow-up with no status yet counts as Pending (matches sp_FetchFollowUp's
-// ISNULL(Status,'Pending') filter).
-export const isFollowupOverdue = (f) =>
-  Boolean(f?.NextFollowupDate) &&
-  dayjs(f.NextFollowupDate).isBefore(dayjs(), "day") &&
-  (f?.Status || "Pending") !== "Done";
-
-// sp_FetchFollowUp's @Status is an exact-match filter (054).
-const STATUS_OPTS = [
-  { value: "Pending", label: "Pending" },
-  { value: "Done", label: "Done" },
+const VIEWS = [
+  { value: "today", label: "Today" },
+  { value: "overdue", label: "Overdue" },
+  { value: "upcoming", label: "Upcoming" },
+  { value: "all", label: "All" },
 ];
 
-// sp_SaveFollowUp updates every column it's given, so send the row back
-// unchanged apart from what the action modifies.
-const rowPayload = (f) => ({
-  Id: f.Id,
-  LeadId: f.LeadId,
-  NextFollowupDate: f.NextFollowupDate
-    ? dayjs(f.NextFollowupDate).format("YYYY-MM-DD")
-    : null,
-  FollowupType: f.FollowupType ?? null,
-  Remarks: f.Remarks ?? null,
-  Status: f.Status || "Pending",
-});
+// Overdue is the server's verdict (IsOverdue / @Overdue), not a client date
+// comparison — the queue and the badge must not disagree across a timezone.
+const viewParams = (view) => {
+  const today = dayjs().format("YYYY-MM-DD");
+  switch (view) {
+    case "today":
+      return { LeadId: 0, Status: "open", DueFrom: today, DueTo: today };
+    case "overdue":
+      return { LeadId: 0, Overdue: true };
+    case "upcoming":
+      return { LeadId: 0, Status: "open", DueFrom: dayjs().add(1, "day").format("YYYY-MM-DD") };
+    default:
+      return { LeadId: 0 };
+  }
+};
+
+const typeLabel = (t) => FOLLOWUP_TYPES.find((x) => x.value === t)?.label ?? t;
 
 const FollowUps = () => {
   const navigate = useNavigate();
+  const [view, setView] = useState("today");
+  const [logging, setLogging] = useState(null);
+  const [skipping, setSkipping] = useState(null);
+  const [skipRemarks, setSkipRemarks] = useState("");
+  const [deleting, setDeleting] = useState(null);
 
-  const [status, setStatus] = useState("");
-  const [reschedule, setReschedule] = useState(null); // follow-up row being rescheduled
-  const [newDate, setNewDate] = useState("");
-  const [deleteTarget, setDeleteTarget] = useState(null); // follow-up row pending delete
-
-  // sp_FetchFollowUp returns LeadId but no lead name, so resolve names from a
-  // bulk lead load (same pattern Leads.jsx uses for owners/stages).
-  const { data: leadsData } = useApiQuery({
-    queryKey: ["followup-leads"],
-    endpoint: SALES_ENDPOINTS.leads.fetchLeads,
-    params: { PageNumber: 1, PageSize: 1000 },
-  });
-  const leadNameById = useMemo(
-    () => new Map((leadsData?.leads || []).map((l) => [l.Id, l.Name])),
-    [leadsData]
-  );
-
-  const saveMutation = useApiMutation({
-    endpoint: SALES_ENDPOINTS.followups.saveFollowup,
-    successMessage: "Follow-up updated",
-    invalidateQueries: [["followups"]],
+  const skipMutation = useApiMutation({
+    endpoint: SALES_ENDPOINTS.followups.skipFollowUp,
+    successMessage: "Follow-up skipped",
+    invalidateQueries: [["followups"], ["leads"]],
   });
   const deleteMutation = useApiMutation({
     endpoint: SALES_ENDPOINTS.followups.deleteFollowup,
     successMessage: "Follow-up deleted",
-    invalidateQueries: [["followups"]],
+    invalidateQueries: [["followups"], ["leads"]],
   });
 
-  const markDone = (f) =>
-    saveMutation.mutate({ ...rowPayload(f), Status: "Done" });
-
-  const submitReschedule = async () => {
-    if (!reschedule || !newDate) return;
-    await saveMutation.mutateAsync({
-      ...rowPayload(reschedule),
-      NextFollowupDate: newDate,
-    });
-    setReschedule(null);
-    setNewDate("");
+  // Remarks are required: the server 400s without them, and a skipped
+  // follow-up with no reason tells the next person nothing.
+  const submitSkip = async () => {
+    if (!skipping || !skipRemarks.trim()) return;
+    await skipMutation.mutateAsync({ Id: skipping.Id, Remarks: skipRemarks.trim() });
+    setSkipping(null);
+    setSkipRemarks("");
   };
-
   const submitDelete = async () => {
-    if (!deleteTarget) return;
-    await deleteMutation.mutateAsync({ Id: deleteTarget.Id });
-    setDeleteTarget(null);
+    if (!deleting) return;
+    await deleteMutation.mutateAsync({ Id: deleting.Id });
+    setDeleting(null);
   };
 
   const columns = useMemo(
     () => [
       {
-        accessorKey: "LeadId",
+        accessorKey: "LeadName",
         header: "Lead",
         enableSorting: false,
-        Cell: ({ cell }) => {
-          const id = cell.getValue();
-          return leadNameById.get(id) || (id ? `Lead #${id}` : "—");
-        },
+        Cell: ({ row }) => (
+          <span>
+            {row.original.LeadName}
+            {row.original.LeadMobile ? ` · ${row.original.LeadMobile}` : ""}
+          </span>
+        ),
       },
       {
-        accessorKey: "NextFollowupDate",
-        header: "Next Follow-up",
+        accessorKey: "DueAt",
+        header: "Due",
         enableSorting: true,
         Cell: ({ row, cell }) => (
-          <span
-            style={
-              isFollowupOverdue(row?.original)
-                ? { color: "#DC2626", fontWeight: 600 }
-                : undefined
-            }
-          >
+          <span style={row.original.IsOverdue ? { color: "#DC2626", fontWeight: 600 } : undefined}>
             {formatDate(cell.getValue(), { empty: "—" })}
           </span>
         ),
       },
       {
-        accessorKey: "FollowupType",
+        accessorKey: "Type",
         header: "Type",
+        enableSorting: false,
+        Cell: ({ cell }) => typeLabel(cell.getValue()),
+      },
+      {
+        accessorKey: "AssignedToName",
+        header: "Assigned to",
         enableSorting: false,
         Cell: ({ cell }) => cell.getValue() || "—",
       },
@@ -140,22 +119,25 @@ const FollowUps = () => {
         accessorKey: "Status",
         header: "Status",
         enableSorting: false,
-        Cell: ({ cell }) => cell.getValue() || "Pending",
+        Cell: ({ cell }) => (
+          <Chip
+            label={cell.getValue()}
+            size="sm"
+            tone={cell.getValue() === "open" ? "primary" : "default"}
+          />
+        ),
       },
       {
         accessorKey: "Remarks",
-        header: "Remarks",
+        header: "Outcome / remarks",
         enableSorting: false,
-        Cell: ({ cell }) => cell.getValue() || "—",
+        Cell: ({ row }) => [row.original.Outcome, row.original.Remarks].filter(Boolean).join(" — ") || "—",
       },
     ],
-    [leadNameById]
+    []
   );
 
-  const extraParams = useMemo(
-    () => ({ LeadId: 0, Status: status || null }),
-    [status]
-  );
+  const extraParams = useMemo(() => viewParams(view), [view]);
 
   const { table } = useServerTable({
     columns,
@@ -166,66 +148,30 @@ const FollowUps = () => {
     initialPageSize: 25,
     getRowId: (row) => row.Id,
     enableRowActions: true,
-    displayColumnDefOptions: {
-      "mrt-row-actions": { grow: false, header: "Actions" },
-    },
+    displayColumnDefOptions: { "mrt-row-actions": { grow: false, header: "Actions" } },
     muiTableBodyRowProps: ({ row }) => ({
       hover: true,
-      sx: {
-        cursor: "pointer",
-        // Overdue = due before today and still pending: tint the whole row.
-        ...(isFollowupOverdue(row.original) && {
-          backgroundColor: "rgba(239, 68, 68, 0.08)",
-        }),
-      },
+      sx: { cursor: "pointer" },
       onClick: () => navigate(`/sales/leads/${row.original.LeadId}`),
     }),
-    // Actions live inside the clickable row — stop propagation so a click
-    // doesn't also navigate to the lead.
+    // A logged follow-up is history: nothing to do, nothing to delete.
     renderRowActions: ({ row }) => {
       const f = row.original;
-      const done = (f.Status || "Pending") === "Done";
+      if (f.Status !== "open") return null;
       return (
         <Box sx={{ display: "flex", gap: 0.5 }} onClick={(e) => e.stopPropagation()}>
-          {!done && (
-            <Tooltip title="Mark done">
-              <IconButton
-                size="sm"
-                variant="ghost"
-                aria-label="Mark follow-up done"
-                data-testid={`complete-followup-${f.Id}`}
-                onClick={() => markDone(f)}
-              >
-                <Check size={16} />
-              </IconButton>
-            </Tooltip>
-          )}
-          <Tooltip title="Reschedule">
-            <IconButton
-              size="sm"
-              variant="ghost"
-              aria-label="Reschedule follow-up"
-              data-testid={`reschedule-followup-${f.Id}`}
-              onClick={() => {
-                setReschedule(f);
-                setNewDate(
-                  f.NextFollowupDate
-                    ? dayjs(f.NextFollowupDate).format("YYYY-MM-DD")
-                    : ""
-                );
-              }}
-            >
-              <CalendarClock size={16} />
+          <Tooltip title="Log">
+            <IconButton size="sm" variant="ghost" aria-label="Log follow-up" data-testid={`log-followup-${f.Id}`} onClick={() => setLogging(f)}>
+              <CheckCircle2 size={16} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Skip">
+            <IconButton size="sm" variant="ghost" aria-label="Skip follow-up" data-testid={`skip-followup-${f.Id}`} onClick={() => setSkipping(f)}>
+              <SkipForward size={16} />
             </IconButton>
           </Tooltip>
           <Tooltip title="Delete">
-            <IconButton
-              size="sm"
-              variant="ghost"
-              aria-label="Delete follow-up"
-              data-testid={`delete-followup-${f.Id}`}
-              onClick={() => setDeleteTarget(f)}
-            >
+            <IconButton size="sm" variant="ghost" aria-label="Delete follow-up" data-testid={`delete-followup-${f.Id}`} onClick={() => setDeleting(f)}>
               <Trash2 size={16} />
             </IconButton>
           </Tooltip>
@@ -239,88 +185,55 @@ const FollowUps = () => {
     <Box sx={{ display: "flex", flexDirection: "column", flexGrow: 1 }}>
       <PageHeader
         title="Follow-ups"
-        subtitle="Every scheduled follow-up across your leads, in one work queue."
+        subtitle="What is due, what is late, what is next — across every lead you can see."
         actions={<HelpGuide guide={HELP_GUIDES.followups} />}
       />
       <Helmet>
         <title>PRD Infotech | Follow-ups</title>
       </Helmet>
-      <Box sx={{ display: "flex", gap: 1, mt: 1, mb: 0.5, flexWrap: "wrap" }}>
-        <Box sx={{ width: 180 }}>
-          <Combobox
-            size="sm"
-            placeholder="All statuses"
-            options={STATUS_OPTS}
-            value={STATUS_OPTS.find((o) => o.value === status) ?? null}
-            onChange={(opt) => setStatus(opt?.value ?? "")}
-            data-testid="filter-status"
-          />
-        </Box>
+      <Box sx={{ mt: 1 }}>
+        <Tabs value={view} onChange={setView} items={VIEWS} data-testid="followup-views" />
       </Box>
-      <Box sx={{ width: "100%", overflowX: "auto" }}>
+      <Box sx={{ width: "100%", overflowX: "auto", mt: 1 }}>
         <MaterialReactTable table={table} />
       </Box>
 
-      <Modal
-        open={Boolean(reschedule)}
-        onClose={() => setReschedule(null)}
-        size="sm"
-        data-testid="reschedule-modal"
-      >
-        <Modal.Header
-          title="Reschedule follow-up"
-          icon={<CalendarClock size={18} />}
-          onClose={() => setReschedule(null)}
-        />
+      <LogFollowUpModal open={Boolean(logging)} followUp={logging} onClose={() => setLogging(null)} />
+
+      <Modal open={Boolean(skipping)} onClose={() => setSkipping(null)} size="sm" data-testid="skip-modal">
+        <Modal.Header title="Skip follow-up" icon={<SkipForward size={18} />} onClose={() => setSkipping(null)} />
         <Modal.Body>
-          <DateField
-            label="New date"
+          <TextArea
+            label="Why?"
             required
-            value={newDate}
-            onChange={setNewDate}
-            data-testid="reschedule-date"
+            value={skipRemarks}
+            onChange={(e) => setSkipRemarks(e.target.value)}
+            data-testid="skip-remarks"
           />
         </Modal.Body>
         <Modal.Footer>
-          <Button variant="ghost" onClick={() => setReschedule(null)}>
-            Cancel
-          </Button>
+          <Button variant="ghost" onClick={() => setSkipping(null)}>Cancel</Button>
           <Button
             variant="primary"
-            onClick={submitReschedule}
-            disabled={!newDate}
-            loading={saveMutation.isPending}
-            data-testid="reschedule-submit"
+            onClick={submitSkip}
+            disabled={!skipRemarks.trim()}
+            loading={skipMutation.isPending}
+            data-testid="skip-submit"
           >
-            Save
+            Skip
           </Button>
         </Modal.Footer>
       </Modal>
 
-      <Modal
-        open={Boolean(deleteTarget)}
-        onClose={() => setDeleteTarget(null)}
-        size="sm"
-        data-testid="delete-followup-modal"
-      >
-        <Modal.Header
-          title="Delete follow-up?"
-          icon={<Trash2 size={18} />}
-          onClose={() => setDeleteTarget(null)}
-        />
+      <Modal open={Boolean(deleting)} onClose={() => setDeleting(null)} size="sm" data-testid="delete-followup-modal">
+        <Modal.Header title="Delete follow-up?" icon={<Trash2 size={18} />} onClose={() => setDeleting(null)} />
         <Modal.Body>
           <div style={{ fontSize: 14 }}>
-            This removes the follow-up
-            {deleteTarget?.NextFollowupDate
-              ? ` scheduled for ${formatDate(deleteTarget.NextFollowupDate, { empty: "—" })}`
-              : ""}
-            . This cannot be undone.
+            Removes the open follow-up due {formatDate(deleting?.DueAt, { empty: "—" })}. Logged ones are history and cannot be deleted.
           </div>
         </Modal.Body>
         <Modal.Footer>
-          <Button variant="ghost" onClick={() => setDeleteTarget(null)}>
-            Cancel
-          </Button>
+          <Button variant="ghost" onClick={() => setDeleting(null)}>Cancel</Button>
           <Button
             variant="destructive"
             onClick={submitDelete}

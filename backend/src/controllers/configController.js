@@ -110,9 +110,20 @@ const configController = {
     return runSp(res, "sp_DeleteStage", { ...req.body, CompId }, "Failed to delete stage", req, delLog(req, "PipelineStage", "Stage"));
   },
 
+  // Explicit list, not `...req.body`: sp_SaveLookup declares exactly these, and
+  // node-mssql sends every key it is given — a stray one is a hard error from
+  // SQL Server, not an ignored extra.
   saveLookup(req, res) {
-    const { CompId, UserId } = req.user;
-    return runSp(res, "sp_SaveLookup", { ...req.body, CompId, CreatedBy: UserId }, "Failed to save lookup", req, saveLog(req, "Lookup", "Lookup"));
+    const { CompId } = req.user;
+    const { Id = 0, Kind, Value, SortOrder = 0, Code = null } = req.body;
+    return runSp(
+      res,
+      "sp_SaveLookup",
+      { Id: Number(Id) || 0, CompId, Kind, Value, SortOrder: Number(SortOrder) || 0, Code: Code || null },
+      "Failed to save lookup",
+      req,
+      saveLog(req, "Lookup", "Lookup"),
+    );
   },
 
   fetchLookups(req, res) {

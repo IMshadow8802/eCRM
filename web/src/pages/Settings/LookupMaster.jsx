@@ -29,6 +29,7 @@ import {
   FormRow,
   FormInput,
   FormNumberInput,
+  FormSelect,
   FormButtons,
 } from "../../components/Design/FormComponents";
 
@@ -43,7 +44,18 @@ import { SALES_ENDPOINTS } from "../../api/salesQueries";
 const errorText = (error, fallback) =>
   error.isAxiosError ? error.response?.data?.message || fallback : error.message;
 
-const emptyForm = { Value: "", SortOrder: "0" };
+// Only Kind='lead_status' carries a Code, and sp_SaveLookup validates it
+// against exactly this set — the lead lifecycle branches on the code, never on
+// the (renameable, per-company) label. "converted" is absent on purpose: it is
+// stamped by the convert action, not something an admin hands out.
+const STATUS_CODES = [
+  { value: "open", label: "Open — still being worked" },
+  { value: "qualified", label: "Qualified — ready to convert" },
+  { value: "lost", label: "Lost — needs a reason" },
+  { value: "junk", label: "Junk" },
+];
+
+const emptyForm = { Value: "", SortOrder: "0", Code: "open" };
 
 export default function LookupMaster({
   title,
@@ -77,6 +89,7 @@ export default function LookupMaster({
       setFormData({
         Value: editingLookup.Value || "",
         SortOrder: String(editingLookup.SortOrder ?? 0),
+        Code: editingLookup.Code || "open",
       });
     } else {
       setFormData(emptyForm);
@@ -144,6 +157,7 @@ export default function LookupMaster({
       Kind: activeKind,
       Value: formData.Value.trim(),
       SortOrder: Number(formData.SortOrder) || 0,
+      ...(activeKind === "lead_status" ? { Code: formData.Code } : {}),
     });
   };
 
@@ -219,6 +233,17 @@ export default function LookupMaster({
                 onChange={(e) => handleChange("SortOrder", e.target.value)}
               />
             </FormRow>
+            {activeKind === "lead_status" && (
+              <FormRow columns={1}>
+                <FormSelect
+                  label="Code"
+                  value={formData.Code}
+                  onChange={(e) => handleChange("Code", e.target.value)}
+                  options={STATUS_CODES}
+                  required
+                />
+              </FormRow>
+            )}
           </FormContainer>
         </div>
 

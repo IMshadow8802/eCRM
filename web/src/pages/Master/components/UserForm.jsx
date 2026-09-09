@@ -6,7 +6,8 @@ import * as z from "zod";
 import { useSnackbar } from "notistack";
 import { useQueryClient } from "@tanstack/react-query";
 import useAuthStore from "../../../stores/useAuthStore";
-import { saveUser } from "../../../api/masterQueries";
+import { saveUser, MASTER_ENDPOINTS } from "../../../api/masterQueries";
+import { useApiQuery } from "../../../hooks/useApiQuery";
 import {
   FormModal,
   FormContainer,
@@ -47,6 +48,7 @@ const buildUserFormSchema = (isEditing) =>
   IsAdmin: z.boolean().optional(),
   AllowDay: z.coerce.number().optional(),
   UserIp: z.string().optional().or(z.literal("")),
+  ReportsTo: z.number().nullable().optional(),
   });
 
 const UserForm = ({
@@ -59,6 +61,20 @@ const UserForm = ({
   const { enqueueSnackbar } = useSnackbar();
   const queryClient = useQueryClient();
   const { CompId, BranchId, UserId } = useAuthStore();
+
+  // The reporting line: one manager per user (Zoho / Salesforce "Reports To").
+  // Drives Team-scope visibility and, in spec 2, escalation. A user cannot
+  // report to themselves; the SP also refuses any loop further up.
+  const { data: directoryData } = useApiQuery({
+    queryKey: ["userDirectory"],
+    endpoint: MASTER_ENDPOINTS.users.directory,
+    params: {},
+    staleTime: 10 * 60 * 1000,
+    showErrorMessage: false,
+  });
+  const reportsToOptions = (directoryData?.users ?? [])
+    .filter((u) => u.Id !== editingUser?.Id)
+    .map((u) => ({ value: String(u.Id), label: u.FullName }));
 
   // Initialize default values
   const getDefaultValues = () => {
@@ -83,6 +99,7 @@ const UserForm = ({
       IsAdmin: false,
       AllowDay: 0,
       UserIp: "",
+      ReportsTo: null,
     };
   };
 
@@ -119,6 +136,7 @@ const UserForm = ({
         Id: editingUser ? editingUser.Id : 0,
         CompId: CompId,
         BranchId: BranchId,
+        ReportsTo: data.ReportsTo ?? null,
         // Don't send password if editing and it's empty
         ...(editingUser && !data.Password && { Password: undefined }),
       };
@@ -147,8 +165,14 @@ const UserForm = ({
       }
     } catch (error) {
       console.error("Error saving user:", error);
+      // The SP refuses a reporting-loop with a real 400 + message (e.g.
+      // "Reporting line would loop"). Axios rejects with that body under
+      // error.response.data.message — read it first, same as useApiQuery
+      // does, or the toast just shows the generic HTTP status text.
+      const reason =
+        error.response?.data?.message || error.message || "Unknown error";
       enqueueSnackbar(
-        `Failed to ${editingUser ? "update" : "create"} user: ${error.message || "Unknown error"}`,
+        `Failed to ${editingUser ? "update" : "create"} user: ${reason}`,
         { variant: "error" }
       );
     }
@@ -299,6 +323,25 @@ const UserForm = ({
                   placeholder="Select user group"
                   error={errors.GroupId?.message}
                   required
+                />
+              )}
+            />
+          </div>
+
+          {/* Row: Reports To */}
+          <div className="grid grid-cols-2 gap-4">
+            <Controller
+              control={control}
+              name="ReportsTo"
+              render={({ field }) => (
+                <FormSelect
+                  label="Reports To"
+                  value={field.value == null ? "" : String(field.value)}
+                  onChange={(e) => field.onChange(e.target.value === "" ? null : parseInt(e.target.value, 10))}
+                  onBlur={field.onBlur}
+                  options={reportsToOptions}
+                  placeholder="No manager (top of the chain)"
+                  error={errors.ReportsTo?.message}
                 />
               )}
             />

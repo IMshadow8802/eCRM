@@ -7,6 +7,11 @@ import LookupMaster from "./LookupMaster";
 
 const KIND_OPTIONS = [
   { value: "lead_source", label: "Lead Sources" },
+  // Spec 1: the lead lifecycle is a status list, not a pipeline; products and
+  // transfers get their own lists too.
+  { value: "lead_status", label: "Lead Statuses" },
+  { value: "product_category", label: "Product Categories" },
+  { value: "transfer_reason", label: "Transfer Reasons" },
   { value: "call_outcome", label: "Call Outcomes" },
   { value: "lost_reason", label: "Lost Reasons" },
   // tblTicket.ResolutionId points at Kind='resolution' (required to resolve
@@ -17,7 +22,7 @@ const KIND_OPTIONS = [
 const Lookups = () => (
   <LookupMaster
     title="Lookups"
-    subtitle="Manage lead source, call outcome, lost-reason and ticket-resolution lists."
+    subtitle="Manage lead status, source, product category, transfer reason, call outcome, lost-reason and ticket-resolution lists."
     documentTitle="Lookups"
     noun="Lookup"
     kinds={KIND_OPTIONS}

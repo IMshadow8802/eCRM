@@ -5,261 +5,165 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "@mui/material/styles";
-
 import { buildTheme } from "../../theme";
 
-const FIXTURE_USERS = [
-  { Id: 1, Username: "alice", FullName: "Alice" },
-  { Id: 2, Username: "bob", FullName: "Bob" },
-];
-
 const FIXTURE_LEADS = [
-  {
-    Id: 101,
-    Name: "Acme Corp",
-    MobileNo: "9990001111",
-    Email: "acme@example.com",
-    StageId: 3,
-    OwnerId: 2,
-    EstValue: 50000,
-    NextFollowupDate: "2026-07-10",
-  },
+  { Id: 101, Name: "Acme Corp", MobileNo: "9990001111", City: "Pune", StatusName: "Contacted", StatusCode: "open",
+    ProductName: "TV 43in", OwnerName: "Bob", EstValue: 50000, NextFollowupDate: "2026-07-10", IsOverdue: true },
 ];
-
+let rowSelection = {};
 const mockNavigate = vi.fn();
-vi.mock("react-router-dom", async () => {
-  const actual = await vi.importActual("react-router-dom");
-  return { ...actual, useNavigate: () => mockNavigate };
-});
-
+vi.mock("react-router-dom", async () => ({ ...(await vi.importActual("react-router-dom")), useNavigate: () => mockNavigate }));
 vi.mock("../../hooks/useServerTable", () => ({
   __esModule: true,
   default: vi.fn(() => ({
-    table: { __options: { data: FIXTURE_LEADS } },
-    data: FIXTURE_LEADS,
-    isLoading: false,
-    isFetching: false,
-    error: null,
-    refetch: vi.fn(),
-    totalRecords: FIXTURE_LEADS.length,
+    table: { __options: { data: FIXTURE_LEADS }, getState: () => ({ rowSelection }), resetRowSelection: vi.fn() },
+    data: FIXTURE_LEADS, isLoading: false, isFetching: false, error: null, refetch: vi.fn(), totalRecords: 1,
   })),
 }));
-
 vi.mock("../../hooks", () => ({
-  useUsers: vi.fn(() => ({ data: { users: FIXTURE_USERS } })),
-  // Attachments (rendered inside the create modal) pulls useConfirmation.
-  useConfirmation: vi.fn(() => ({
-    confirmationState: { open: false },
-    showConfirmation: vi.fn(),
-    hideConfirmation: vi.fn(),
-    handleConfirm: vi.fn(),
-    confirmDelete: vi.fn(),
+  useUsers: vi.fn(() => ({ data: { users: [{ Id: 2, Username: "bob", FullName: "Bob" }] } })),
+  useConfirmation: vi.fn(() => ({ confirmationState: { open: false }, showConfirmation: vi.fn(), hideConfirmation: vi.fn(), handleConfirm: vi.fn(), confirmDelete: vi.fn() })),
+}));
+vi.mock("../../hooks/useLookups", () => ({
+  useLookups: vi.fn((kind) => ({
+    lookups: kind === "lead_status"
+      ? [{ Id: 11, Value: "New", Code: "open" }, { Id: 15, Value: "Lost", Code: "lost" }]
+      : [{ Id: 5, Value: "Website" }],
   })),
 }));
-
 vi.mock("../../hooks/useApiQuery", () => ({
   useApiQuery: vi.fn((cfg) => {
-    if (cfg?.endpoint === "/api/config/fetchPipelines") {
-      return {
-        data: {
-          pipelines: [{ Id: 9, Name: "Sales", IsDefault: true }],
-          stages: [
-            { Id: 3, PipelineId: 9, Name: "Qualified" },
-            { Id: 4, PipelineId: 9, Name: "Won" },
-          ],
-        },
-      };
-    }
-    return {
-      data: {
-        lookups: [
-          { Id: 5, Value: "Website" },
-          { Id: 6, Value: "Referral" },
-        ],
-      },
-    };
+    if (cfg?.endpoint === "/api/products/fetchProducts") return { data: { products: [{ Id: 2, Name: "TV 43in" }] } };
+    if (cfg?.endpoint === "/api/users/fetchBranches") return { data: { branches: [{ Id: 2, BranchName: "Pune" }] } };
+    return { data: {} };
   }),
 }));
-
+vi.mock("../../stores/useAuthStore", () => ({ __esModule: true, default: (sel) => sel({ user: { UserId: 7 }, UserId: 7 }) }));
 vi.mock("material-react-table", () => ({
   MaterialReactTable: ({ table }) => (
     <div data-testid="mrt-root">
-      {(table?.__options?.data ?? []).map((row) => (
-        <div key={row.Id} data-testid={`lead-row-${row.Id}`}>
-          {row.Name}
-        </div>
-      ))}
+      {(table?.__options?.data ?? []).map((row) => <div key={row.Id} data-testid={`lead-row-${row.Id}`}>{row.Name}</div>)}
     </div>
   ),
 }));
+vi.mock("./TransferLeadModal", () => ({ __esModule: true, default: vi.fn(({ open, leadIds }) => (open ? <div data-testid="transfer-modal">{leadIds.join(",")}</div> : null)) }));
 
 import Leads from "./Leads";
 import useServerTable from "../../hooks/useServerTable";
-import { useUsers } from "../../hooks";
-import { useApiQuery } from "../../hooks/useApiQuery";
 
-const renderPage = () =>
-  render(
-    <ThemeProvider theme={buildTheme("light")}>
-      <QueryClientProvider client={new QueryClient()}>
-        <MemoryRouter>
-          <Leads />
-        </MemoryRouter>
-      </QueryClientProvider>
-    </ThemeProvider>
-  );
+const renderPage = () => render(
+  <ThemeProvider theme={buildTheme("light")}><QueryClientProvider client={new QueryClient()}><MemoryRouter><Leads /></MemoryRouter></QueryClientProvider></ThemeProvider>,
+);
+const lastCfg = () => useServerTable.mock.calls.at(-1)[0];
+const lastExtraParams = () => lastCfg().extraParams;
+const cellOf = (key) => lastCfg().columns.find((c) => c.accessorKey === key).Cell;
 
-// Filters are Combobox (Autocomplete): open, then pick an option by name.
-const pickOption = async (testId, optionName) => {
-  const user = userEvent.setup();
-  await user.click(screen.getByTestId(`${testId}-input`));
-  await user.click(await screen.findByRole("option", { name: optionName }));
-};
+describe("Leads page (spec 1)", () => {
+  beforeEach(() => { rowSelection = {}; useServerTable.mockClear(); mockNavigate.mockClear(); });
 
-describe("Sales Leads page", () => {
-  beforeEach(() => {
-    useServerTable.mockClear();
-    useUsers.mockClear();
-    useApiQuery.mockClear();
-    mockNavigate.mockClear();
-  });
-
-  it("wires useServerTable to /api/leads/fetchLeads with dataKey=leads", () => {
+  it("renders presets and the five filters", () => {
     renderPage();
-    const cfg = useServerTable.mock.calls.at(-1)[0];
-    expect(cfg.endpoint).toBe("/api/leads/fetchLeads");
-    expect(cfg.dataKey).toBe("leads");
+    for (const p of ["All", "My leads", "Overdue", "Unassigned", "Lost"]) expect(screen.getByRole("tab", { name: p })).toBeInTheDocument();
+    for (const id of ["filter-status", "filter-product", "filter-owner", "filter-source", "filter-branch"]) expect(screen.getByTestId(`${id}-input`)).toBeInTheDocument();
+    expect(lastExtraParams()).toEqual({ StatusId: null, ProductId: null, OwnerId: null, SourceId: null, BranchId: null });
   });
 
-  it("defines the core lead columns in order", () => {
-    renderPage();
-    const cfg = useServerTable.mock.calls.at(-1)[0];
-    const keys = cfg.columns.map((c) => c.accessorKey);
-    expect(keys).toEqual([
-      "Name",
-      "MobileNo",
-      "Email",
-      "StageId",
-      "OwnerId",
-      "EstValue",
-      "NextFollowupDate",
-    ]);
-  });
-
-  it("renders rows from the server table", () => {
-    renderPage();
-    expect(screen.getByTestId("lead-row-101")).toBeInTheDocument();
-    expect(screen.getByText("Acme Corp")).toBeInTheDocument();
-  });
-
-  it("resolves the Stage column to its name and falls back to a dash", () => {
-    renderPage();
-    const cfg = useServerTable.mock.calls.at(-1)[0];
-    const stageCol = cfg.columns.find((c) => c.accessorKey === "StageId");
-    expect(stageCol.Cell({ cell: { getValue: () => 3 } })).toBe("Qualified");
-    expect(stageCol.Cell({ cell: { getValue: () => null } })).toBe("—");
-  });
-
-  it("resolves the Owner column against the bulk-loaded users list", () => {
-    renderPage();
-    const cfg = useServerTable.mock.calls.at(-1)[0];
-    const ownerCol = cfg.columns.find((c) => c.accessorKey === "OwnerId");
-    expect(ownerCol.Cell({ cell: { getValue: () => 2 } })).toBe("Bob");
-    expect(ownerCol.Cell({ cell: { getValue: () => null } })).toBe("—");
-  });
-
-  it("formats EstValue as INR currency and falls back to a dash", () => {
-    renderPage();
-    const cfg = useServerTable.mock.calls.at(-1)[0];
-    const valueCol = cfg.columns.find((c) => c.accessorKey === "EstValue");
-    expect(valueCol.Cell({ cell: { getValue: () => 50000 } })).toContain("50,000");
-    expect(valueCol.Cell({ cell: { getValue: () => null } })).toBe("—");
-  });
-
-  it("formats NextFollowupDate and falls back to a dash", () => {
-    // Format unified 2026-08-05: the Sales pages rendered DD-MMM-YYYY while the
-    // Master pages rendered DD-MM-YYYY, so the same date looked different
-    // depending on which page you opened. utils/format.js settles it on
-    // DD-MM-YYYY; the "—" placeholder for a missing date is kept here because a
-    // blank table cell reads as a rendering fault.
-    renderPage();
-    const cfg = useServerTable.mock.calls.at(-1)[0];
-    const dateCol = cfg.columns.find((c) => c.accessorKey === "NextFollowupDate");
-    expect(dateCol.Cell({ cell: { getValue: () => "2026-07-10" } })).toBe("10-07-2026");
-    expect(dateCol.Cell({ cell: { getValue: () => null } })).toBe("—");
-  });
-
-  it("bulk-loads users and lead-source lookups for the filter bar", () => {
-    renderPage();
-    expect(useUsers).toHaveBeenCalledWith({ PageSize: 1000 });
-    const call = useApiQuery.mock.calls.find(
-      ([cfg]) => cfg.endpoint === "/api/config/fetchLookups"
-    );
-    expect(call[0].params).toEqual({ Kind: "lead_source" });
-  });
-
-  it("forwards OwnerId when the owner filter changes", async () => {
-    renderPage();
-    await pickOption("filter-owner", "Bob");
-    const cfg = useServerTable.mock.calls.at(-1)[0];
-    expect(cfg.extraParams).toEqual({ StageId: null, OwnerId: 2, SourceId: null });
-  });
-
-  it("forwards SourceId when the source filter changes", async () => {
-    renderPage();
-    await pickOption("filter-source", "Referral");
-    const cfg = useServerTable.mock.calls.at(-1)[0];
-    expect(cfg.extraParams).toEqual({ StageId: null, OwnerId: null, SourceId: 6 });
-  });
-
-  it("forwards StageId when the stage filter changes", async () => {
-    renderPage();
-    await pickOption("filter-stage", "Qualified");
-    const cfg = useServerTable.mock.calls.at(-1)[0];
-    expect(cfg.extraParams).toEqual({ StageId: 3, OwnerId: null, SourceId: null });
-  });
-
-  it("navigates to the lead detail route when a row is clicked", () => {
-    renderPage();
-    const cfg = useServerTable.mock.calls.at(-1)[0];
-    const rowProps = cfg.muiTableBodyRowProps({ row: { original: { Id: 42 } } });
-    rowProps.onClick();
-    expect(mockNavigate).toHaveBeenCalledWith("/sales/leads/42");
-  });
-
-  it("renders a New Lead button that opens the create modal", async () => {
+  it("Overdue preset sends Overdue:true; My leads sends the caller's OwnerId", async () => {
     renderPage();
     const user = userEvent.setup();
-    await user.click(screen.getByTestId("new-lead-btn"));
-    expect(await screen.findByTestId("lead-create-modal")).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "Overdue" }));
+    expect(lastExtraParams()).toMatchObject({ Overdue: true });
+    await user.click(screen.getByRole("tab", { name: "My leads" }));
+    expect(lastExtraParams()).toMatchObject({ OwnerId: 7 });
   });
 
-  it("enables per-row Edit, Transfer and Delete actions", () => {
+  it("status column shows the label the SP returned", () => {
     renderPage();
-    const cfg = useServerTable.mock.calls.at(-1)[0];
-    expect(cfg.enableRowActions).toBe(true);
-    render(
-      <ThemeProvider theme={buildTheme("light")}>
-        {cfg.renderRowActions({ row: { original: { Id: 101, Name: "Acme" } } })}
-      </ThemeProvider>
+    const col = useServerTable.mock.calls.at(-1)[0].columns.find((c) => c.accessorKey === "StatusName");
+    expect(col).toBeTruthy();
+    expect(useServerTable.mock.calls.at(-1)[0].columns.some((c) => c.accessorKey === "StageId")).toBe(false);
+  });
+
+  it("shows Reassign only with a selection and hands the ids to the modal", async () => {
+    rowSelection = { 101: true, 102: true };
+    renderPage();
+    const btn = screen.getByTestId("bulk-reassign-btn");
+    expect(btn).toHaveTextContent("Reassign 2");
+    await userEvent.setup().click(btn);
+    expect(screen.getByTestId("transfer-modal")).toHaveTextContent("101,102");
+
+    // The ids above are only lead ids because the table is keyed by Id. Drop
+    // getRowId and MRT keys selection by row index, so this would post [0,1].
+    expect(lastCfg().getRowId({ Id: 101 })).toBe(101);
+    expect(lastCfg().enableRowSelection).toBe(true);
+  });
+
+  it("hides Reassign with nothing selected", () => {
+    renderPage();
+    expect(screen.queryByTestId("bulk-reassign-btn")).toBeNull();
+  });
+
+  // --- coverage of the cell renderers + row wiring (MRT itself is mocked) ---
+
+  it("narrows on a filter without losing the other four", async () => {
+    renderPage();
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("filter-product-input"));
+    await user.click(await screen.findByRole("option", { name: "TV 43in" }));
+    expect(lastExtraParams()).toEqual({ StatusId: null, ProductId: 2, OwnerId: null, SourceId: null, BranchId: null });
+  });
+
+  it("renders the server labels and their empty fallbacks", () => {
+    renderPage();
+    const theme = buildTheme("light");
+    const withTheme = (node) => render(<ThemeProvider theme={theme}>{node}</ThemeProvider>);
+
+    expect(cellOf("Company")({ cell: { getValue: () => null } })).toBe("—");
+    expect(cellOf("City")({ cell: { getValue: () => "Pune" } })).toBe("Pune");
+    expect(cellOf("ProductName")({ cell: { getValue: () => null } })).toBe("—");
+    expect(cellOf("OwnerName")({ cell: { getValue: () => null } })).toBe("Unassigned");
+    expect(cellOf("EstValue")({ cell: { getValue: () => 50000 } })).toContain("50,000");
+
+    withTheme(cellOf("StatusName")({ row: { original: { StatusName: "New", StatusCode: "open" } } }));
+    expect(screen.getByText("New")).toBeInTheDocument();
+    withTheme(cellOf("StatusName")({ row: { original: {} } }));
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+
+    const { container } = withTheme(
+      cellOf("NextFollowupDate")({ row: { original: { IsOverdue: true } }, cell: { getValue: () => "2026-07-10" } })
     );
-    expect(screen.getByTestId("edit-lead-101")).toBeInTheDocument();
-    expect(screen.getByTestId("transfer-lead-101")).toBeInTheDocument();
-    expect(screen.getByTestId("delete-lead-101")).toBeInTheDocument();
+    expect(container.querySelector("span")).toHaveTextContent("10-07-2026");
+    expect(container.querySelector("span").style.fontWeight).toBe("600");
+    const onTime = withTheme(
+      cellOf("NextFollowupDate")({ row: { original: { IsOverdue: false } }, cell: { getValue: () => null } })
+    );
+    expect(onTime.container.querySelector("span").style.fontWeight).toBe("");
   });
 
-  it("row Edit action opens the modal in edit mode, prefilled with the lead", async () => {
+  it("row click navigates to the lead detail and row actions open the modals", async () => {
     renderPage();
-    const cfg = useServerTable.mock.calls.at(-1)[0];
+    const cfg = lastCfg();
+    cfg.muiTableBodyRowProps({ row: { original: { Id: 42 } } }).onClick();
+    expect(mockNavigate).toHaveBeenCalledWith("/sales/leads/42");
+
     render(
       <ThemeProvider theme={buildTheme("light")}>
         {cfg.renderRowActions({ row: { original: FIXTURE_LEADS[0] } })}
       </ThemeProvider>
     );
     const user = userEvent.setup();
+    await user.click(screen.getByTestId("transfer-lead-101"));
+    expect(screen.getByTestId("transfer-modal")).toHaveTextContent("101");
+    await user.click(screen.getByTestId("delete-lead-101"));
+    expect(await screen.findByTestId("delete-lead-modal")).toBeInTheDocument();
     await user.click(screen.getByTestId("edit-lead-101"));
     expect(await screen.findByTestId("lead-create-modal")).toBeInTheDocument();
-    expect(screen.getByText("Edit Lead")).toBeInTheDocument();
-    expect(screen.getByTestId("lead-name")).toHaveValue("Acme Corp");
+  });
+
+  it("New Lead opens the create modal", async () => {
+    renderPage();
+    await userEvent.setup().click(screen.getByTestId("new-lead-btn"));
+    expect(await screen.findByTestId("lead-create-modal")).toBeInTheDocument();
   });
 });

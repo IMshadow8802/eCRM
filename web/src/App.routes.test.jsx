@@ -32,10 +32,10 @@ afterEach(() => {
 // they hit the 404 catch-all.
 describe("section landing redirects", () => {
   it.each([
-    ["/sales", "/sales/pipeline"],
+    ["/sales", "/sales/leads"],
     ["/support", "/support/board"],
     ["/settings", "/settings/custom-fields"],
-    ["/reports", "/reports/pipeline-funnel"],
+    ["/reports", "/reports/leads-by-status"],
     ["/admin", "/users"],
   ])("%s is wired to a SectionRedirect falling back to %s", (from, fallback) => {
     const route = routesConfig.find((r) => r.path === from);
@@ -57,8 +57,8 @@ describe("section landing redirects", () => {
     );
   });
 
-  // REGRESSION: these were fixed <Navigate to="/sales/pipeline">, so a user
-  // granted Leads but not Pipeline got bounced onto a page they can't open.
+  // REGRESSION: these were a fixed <Navigate>, so a user granted Follow-ups
+  // but not the fallback page got bounced onto a page they can't open.
   it("sends the user to the first child they are actually granted", () => {
     setRights([
       menu(14, 0, "Sales", "/sales"),
@@ -68,9 +68,9 @@ describe("section landing redirects", () => {
       <Routes>
         <Route
           path="/sales"
-          element={<SectionRedirect prefix="/sales" fallback="/sales/pipeline" />}
+          element={<SectionRedirect prefix="/sales" fallback="/sales/leads" />}
         />
-        <Route path="/sales/pipeline" element={<Landed name="pipeline" />} />
+        <Route path="/sales/leads" element={<Landed name="leads" />} />
         <Route path="/sales/follow-ups" element={<Landed name="follow-ups" />} />
       </Routes>,
       { route: "/sales" },
@@ -84,13 +84,13 @@ describe("section landing redirects", () => {
       <Routes>
         <Route
           path="/sales"
-          element={<SectionRedirect prefix="/sales" fallback="/sales/pipeline" />}
+          element={<SectionRedirect prefix="/sales" fallback="/sales/leads" />}
         />
-        <Route path="/sales/pipeline" element={<Landed name="pipeline" />} />
+        <Route path="/sales/leads" element={<Landed name="leads" />} />
       </Routes>,
       { route: "/sales" },
     );
-    expect(screen.getByTestId("landed")).toHaveTextContent("pipeline");
+    expect(screen.getByTestId("landed")).toHaveTextContent("leads");
   });
 });
 
@@ -131,5 +131,28 @@ describe("HomeRedirect", () => {
     setRights([]);
     renderHome();
     expect(screen.getByTestId("no-access")).toBeInTheDocument();
+  });
+});
+
+// Spec 1 retired the lead pipeline board and its funnel report: the paths
+// survive only as redirects so existing bookmarks land somewhere useful.
+describe("spec-1 routes", () => {
+  const paths = routesConfig.map((r) => r.path);
+
+  it("has no pipeline page, only a redirect", () => {
+    const pipeline = routesConfig.find((r) => r.path === "/sales/pipeline");
+    expect(pipeline.element.type.name).toBe("Navigate");
+    expect(pipeline.element.props.to).toBe("/sales/leads");
+  });
+
+  it("redirects the funnel report to leads-by-status", () => {
+    const funnel = routesConfig.find((r) => r.path === "/reports/pipeline-funnel");
+    expect(funnel.element.type.name).toBe("Navigate");
+    expect(funnel.element.props.to).toBe("/reports/leads-by-status");
+  });
+
+  it("registers products and leads-by-status", () => {
+    expect(paths).toContain("/settings/products");
+    expect(paths).toContain("/reports/leads-by-status");
   });
 });

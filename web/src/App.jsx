@@ -31,15 +31,15 @@ const Teams = lazy(() => import("./pages/Master/Teams"));
 const Projects = lazy(() => import("./pages/Master/Projects"));
 const Groups = lazy(() => import("./pages/Master/Groups"));
 
-// Sales module (config-driven pipeline, leads, calls, follow-ups)
-const Pipeline = lazy(() => import("./pages/Sales/Pipeline"));
+// Sales module (leads, calls, follow-ups, products)
 const SalesLeads = lazy(() => import("./pages/Sales/Leads"));
 const LeadDetail = lazy(() => import("./pages/Sales/LeadDetail"));
 const SalesFollowUps = lazy(() => import("./pages/Sales/FollowUps"));
 const CustomFields = lazy(() => import("./pages/Settings/CustomFields"));
 const PipelineSettings = lazy(() => import("./pages/Settings/Pipelines"));
 const Lookups = lazy(() => import("./pages/Settings/Lookups"));
-const PipelineFunnel = lazy(() => import("./pages/Reports/PipelineFunnel"));
+const Products = lazy(() => import("./pages/Settings/Products"));
+const LeadsByStatus = lazy(() => import("./pages/Reports/LeadsByStatus"));
 const CallsPerUser = lazy(() => import("./pages/Reports/CallsPerUser"));
 const ConversionBySource = lazy(() => import("./pages/Reports/ConversionBySource"));
 
@@ -61,11 +61,11 @@ export const routesConfig = [
   // Section landing redirects — the sidebar parent items (and rail-mode
   // flyout headers) navigate to the bare section path, which would otherwise
   // hit the 404 catch-all. Each goes to its first *granted* child, so a user
-  // with Leads but not Pipeline isn't bounced onto a page they can't see.
-  { path: "/sales", element: <SectionRedirect prefix="/sales" fallback="/sales/pipeline" /> },
+  // with Follow-ups but not Leads isn't bounced onto a page they can't see.
+  { path: "/sales", element: <SectionRedirect prefix="/sales" fallback="/sales/leads" /> },
   { path: "/support", element: <SectionRedirect prefix="/support" fallback="/support/board" /> },
   { path: "/settings", element: <SectionRedirect prefix="/settings" fallback="/settings/custom-fields" /> },
-  { path: "/reports", element: <SectionRedirect prefix="/reports" fallback="/reports/pipeline-funnel" /> },
+  { path: "/reports", element: <SectionRedirect prefix="/reports" fallback="/reports/leads-by-status" /> },
   { path: "/admin", element: <SectionRedirect prefix="/admin" fallback="/users" /> },
   { path: "/dashboard/*", element: <ProtectedRoute element={<Dashboard />} /> },
   { path: "/tasks/*", element: <ProtectedRoute element={<Task />} /> },
@@ -74,15 +74,18 @@ export const routesConfig = [
   { path: "/teams/*", element: <ProtectedRoute element={<Teams />} /> },
   { path: "/projects/*", element: <ProtectedRoute element={<Projects />} /> },
   { path: "/groups/*", element: <ProtectedRoute element={<Groups />} /> },
-  // Sales module — config-driven pipeline, leads, calls, follow-ups, reports.
-  { path: "/sales/pipeline", element: <ProtectedRoute element={<Pipeline />} /> },
+  // Sales module — leads, calls, follow-ups, products, reports.
+  // The pipeline board is gone (spec 1). Bookmarks land on the list.
+  { path: "/sales/pipeline", element: <Navigate to="/sales/leads" replace /> },
   { path: "/sales/leads", element: <ProtectedRoute element={<SalesLeads />} /> },
   { path: "/sales/leads/:leadId", element: <ProtectedRoute element={<LeadDetail />} /> },
   { path: "/sales/follow-ups", element: <ProtectedRoute element={<SalesFollowUps />} /> },
   { path: "/settings/custom-fields", element: <ProtectedRoute element={<CustomFields />} /> },
   { path: "/settings/pipelines", element: <ProtectedRoute element={<PipelineSettings />} /> },
   { path: "/settings/lookups", element: <ProtectedRoute element={<Lookups />} /> },
-  { path: "/reports/pipeline-funnel", element: <ProtectedRoute element={<PipelineFunnel />} /> },
+  { path: "/settings/products", element: <ProtectedRoute element={<Products />} /> },
+  { path: "/reports/pipeline-funnel", element: <Navigate to="/reports/leads-by-status" replace /> },
+  { path: "/reports/leads-by-status", element: <ProtectedRoute element={<LeadsByStatus />} /> },
   { path: "/reports/calls-per-user", element: <ProtectedRoute element={<CallsPerUser />} /> },
   { path: "/reports/conversion-by-source", element: <ProtectedRoute element={<ConversionBySource />} /> },
   // Support / ticketing module.

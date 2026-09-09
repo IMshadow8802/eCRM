@@ -6,67 +6,85 @@ import { enqueueSnackbar } from "notistack";
 import { Pencil, UserPlus } from "lucide-react";
 import dayjs from "dayjs";
 
-import { Modal, Button, TextInput, NumberInput, DateField, Combobox } from "../../components/ui";
+import {
+  Modal,
+  Button,
+  TextInput,
+  TextArea,
+  NumberInput,
+  DateField,
+  Combobox,
+} from "../../components/ui";
 import DynamicField from "../../components/DynamicField";
 import Attachments from "../../components/Attachments";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { useApiMutation } from "../../hooks/useApiMutation";
-import { useUsers } from "../../hooks";
 import { useLookups } from "../../hooks/useLookups";
-import { getUserName } from "../../utils/userShape";
+import { useAssignableUsers } from "../../hooks/useAssignableUsers";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
-
-// A required foreign-key selector: the Combobox stores the raw id (or null),
-// so validation only needs to reject null.
-const requiredId = (label) =>
-  z
-    .number()
-    .nullable()
-    .refine((v) => v != null, `${label} is required`);
 
 // Only the columns sp_SaveLead accepts. CompId/BranchId/UserId are injected
 // server-side by leadController.save — never sent from here.
 const schema = z.object({
   Name: z.string().trim().min(1, "Name is required"),
+  Company: z.string().optional(),
   MobileNo: z.string().trim().min(1, "Mobile number is required"),
   AltMobile: z.string().optional(),
   Email: z.union([z.string().email("Invalid email"), z.literal("")]).optional(),
+  Address: z.string().optional(),
+  City: z.string().optional(),
+  State: z.string().optional(),
+  Pincode: z.string().optional(),
   SourceId: z.number().nullable().optional(),
-  PipelineId: requiredId("Pipeline"),
-  StageId: requiredId("Stage"),
-  OwnerId: requiredId("Owner"),
+  ProductId: z.number().nullable().optional(),
+  StatusId: z.number().nullable().optional(),
+  OwnerId: z.number().nullable().optional(),
   EstValue: z.string().optional(),
-  NextFollowupDate: z.string().optional(),
+  Remarks: z.string().optional(),
+  FirstFollowupAt: z.string().optional(),
 });
+
+const today = () => dayjs().format("YYYY-MM-DD");
 
 const EMPTY = {
   Name: "",
+  Company: "",
   MobileNo: "",
   AltMobile: "",
   Email: "",
+  Address: "",
+  City: "",
+  State: "",
+  Pincode: "",
   SourceId: null,
-  PipelineId: null,
-  StageId: null,
+  ProductId: null,
+  StatusId: null,
   OwnerId: null,
   EstValue: "",
-  NextFollowupDate: "",
+  Remarks: "",
+  FirstFollowupAt: today(),
 };
 
 // Map a fetched lead row (sp_FetchLeads / sp_FetchLeadDetail shape) onto the
-// form's value shape.
+// form's value shape. Status/owner/first-follow-up are create-time only, so
+// they stay blank here and are never sent on update.
 const leadToForm = (lead) => ({
   Name: lead.Name ?? "",
+  Company: lead.Company ?? "",
   MobileNo: lead.MobileNo ?? "",
   AltMobile: lead.AltMobile ?? "",
   Email: lead.Email ?? "",
+  Address: lead.Address ?? "",
+  City: lead.City ?? "",
+  State: lead.State ?? "",
+  Pincode: lead.Pincode ?? "",
   SourceId: lead.SourceId ?? null,
-  PipelineId: lead.PipelineId ?? null,
-  StageId: lead.StageId ?? null,
-  OwnerId: lead.OwnerId ?? null,
+  ProductId: lead.ProductId ?? null,
+  StatusId: null,
+  OwnerId: null,
   EstValue: lead.EstValue == null ? "" : String(lead.EstValue),
-  NextFollowupDate: lead.NextFollowupDate
-    ? dayjs(lead.NextFollowupDate).format("YYYY-MM-DD")
-    : "",
+  Remarks: lead.Remarks ?? "",
+  FirstFollowupAt: "",
 });
 
 /**
@@ -81,35 +99,37 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
   const {
     control,
     handleSubmit,
-    watch,
     setValue,
     reset,
     formState: { errors },
   } = useForm({ resolver: zodResolver(schema), defaultValues: EMPTY });
 
-  const pipelineId = watch("PipelineId");
-
   // Custom-field values keyed by FieldId — mirrors LeadDetail's local draft.
   const [custom, setCustom] = useState({});
   const attachmentsRef = useRef(null);
 
-  const { data: usersData } = useUsers({ PageSize: 1000 });
-  const users = usersData?.users || [];
+  // Only owners the server will accept: sp_FetchAssignableUsers is the same
+  // roster leadController.save re-checks, so a pick can't come back 403.
+  const { users } = useAssignableUsers({ enabled: Boolean(open) && !isEdit });
 
   const { lookups: sources } = useLookups("lead_source", {
     enabled: Boolean(open),
     showErrorMessage: false,
   });
 
-  const { data: pipelinesData } = useApiQuery({
-    queryKey: ["sales-pipelines", "lead"],
-    endpoint: SALES_ENDPOINTS.config.fetchPipelines,
-    params: { Entity: "lead" },
+  const { lookups: statuses } = useLookups("lead_status", {
+    enabled: Boolean(open) && !isEdit,
+    showErrorMessage: false,
+  });
+
+  const { data: productsData } = useApiQuery({
+    queryKey: ["products", "active"],
+    endpoint: SALES_ENDPOINTS.products.fetchProducts,
+    params: { PageSize: 200, IsActive: true },
     enabled: Boolean(open),
     showErrorMessage: false,
   });
-  const pipelines = pipelinesData?.pipelines || [];
-  const stages = pipelinesData?.stages || [];
+  const products = productsData?.products ?? [];
 
   const { data: defsData } = useApiQuery({
     queryKey: ["custom-field-defs", "lead"],
@@ -120,23 +140,20 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
   });
   const fieldDefs = defsData?.customFields || [];
 
-  const pipelineOpts = useMemo(
-    () => pipelines.map((p) => ({ value: p.Id, label: p.Name })),
-    [pipelines]
-  );
-  const stageOpts = useMemo(
-    () =>
-      stages
-        .filter((s) => s.PipelineId === pipelineId)
-        .map((s) => ({ value: s.Id, label: s.Name })),
-    [stages, pipelineId]
-  );
   const sourceOpts = useMemo(
     () => sources.map((s) => ({ value: s.Id, label: s.Value })),
     [sources]
   );
+  const statusOpts = useMemo(
+    () => statuses.map((s) => ({ value: s.Id, label: s.Value })),
+    [statuses]
+  );
+  const productOpts = useMemo(
+    () => products.map((p) => ({ value: p.Id, label: p.Name })),
+    [products]
+  );
   const ownerOpts = useMemo(
-    () => users.map((u) => ({ value: u.Id, label: getUserName(u) || u.Username })),
+    () => users.map((u) => ({ value: u.Id, label: u.FullName })),
     [users]
   );
 
@@ -144,15 +161,17 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
   useEffect(() => {
     if (!open) return;
     reset(lead?.Id ? leadToForm(lead) : EMPTY);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, lead?.Id, reset]);
 
-  // Default to the company's default pipeline once pipelines load.
+  // New leads start in the first 'open' status unless the user picks another.
   useEffect(() => {
-    if (!open || pipelineId != null || pipelines.length === 0) return;
-    const def = pipelines.find((p) => p.IsDefault) ?? pipelines[0];
-    if (def) setValue("PipelineId", def.Id);
-  }, [open, pipelineId, pipelines, setValue]);
+    if (!open || isEdit || statuses.length === 0) return;
+    const first =
+      [...statuses]
+        .filter((s) => s.Code === "open")
+        .sort((a, b) => a.SortOrder - b.SortOrder)[0] ?? statuses[0];
+    setValue("StatusId", first.Id);
+  }, [open, isEdit, statuses, setValue]);
 
   // Seed blank custom-field draft when defs load / modal opens. Key the effect
   // on a stable primitive (the def-id signature), NOT the defsData object —
@@ -167,7 +186,6 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
         def.Type === "checkbox" ? false : def.Type === "dropdown" ? null : "";
     });
     setCustom(seeded);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, defsKey]);
 
   const saveMutation = useApiMutation({
@@ -192,15 +210,27 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
       const saved = await saveMutation.mutateAsync({
         Id: lead?.Id ?? 0,
         Name: values.Name.trim(),
+        Company: values.Company?.trim() || null,
         MobileNo: values.MobileNo.trim(),
         AltMobile: values.AltMobile?.trim() || null,
         Email: values.Email?.trim() || null,
+        Address: values.Address?.trim() || null,
+        City: values.City?.trim() || null,
+        State: values.State?.trim() || null,
+        Pincode: values.Pincode?.trim() || null,
         SourceId: values.SourceId ?? null,
-        PipelineId: values.PipelineId,
-        StageId: values.StageId,
-        OwnerId: values.OwnerId,
+        ProductId: values.ProductId ?? null,
         EstValue: values.EstValue === "" ? null : Number(values.EstValue),
-        NextFollowupDate: values.NextFollowupDate || null,
+        Remarks: values.Remarks?.trim() || null,
+        // Ownership and status are create-time only; edits move them through
+        // Transfer and the status dropdown, never through this form.
+        ...(isEdit
+          ? {}
+          : {
+              StatusId: values.StatusId ?? null,
+              OwnerId: values.OwnerId ?? null,
+              FirstFollowupAt: values.FirstFollowupAt || null,
+            }),
         // Edit touches base fields only — null CustomJSON makes sp_SaveLead
         // skip the custom-value merge, so stored custom fields survive.
         CustomJSON: isEdit ? null : JSON.stringify(customJson),
@@ -301,6 +331,71 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
             />
             <Controller
               control={control}
+              name="Company"
+              render={({ field }) => (
+                <TextInput
+                  label="Company"
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  data-testid="lead-company"
+                />
+              )}
+            />
+            <Controller
+              control={control}
+              name="Address"
+              render={({ field }) => (
+                <TextInput
+                  label="Address"
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  data-testid="lead-address"
+                />
+              )}
+            />
+            <Controller
+              control={control}
+              name="City"
+              render={({ field }) => (
+                <TextInput
+                  label="City"
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  data-testid="lead-city"
+                />
+              )}
+            />
+            <Controller
+              control={control}
+              name="State"
+              render={({ field }) => (
+                <TextInput
+                  label="State"
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  data-testid="lead-state"
+                />
+              )}
+            />
+            <Controller
+              control={control}
+              name="Pincode"
+              render={({ field }) => (
+                <TextInput
+                  label="Pincode"
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  data-testid="lead-pincode"
+                />
+              )}
+            />
+            <Controller
+              control={control}
               name="SourceId"
               render={({ field }) => (
                 <Combobox
@@ -315,53 +410,15 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
             />
             <Controller
               control={control}
-              name="OwnerId"
+              name="ProductId"
               render={({ field }) => (
                 <Combobox
-                  label="Owner"
-                  required
-                  options={ownerOpts}
-                  value={ownerOpts.find((o) => o.value === field.value) ?? null}
+                  label="Product"
+                  options={productOpts}
+                  value={productOpts.find((o) => o.value === field.value) ?? null}
                   onChange={(opt) => field.onChange(opt?.value ?? null)}
-                  placeholder="Assign an owner"
-                  error={errors.OwnerId?.message}
-                  data-testid="lead-owner"
-                />
-              )}
-            />
-            <Controller
-              control={control}
-              name="PipelineId"
-              render={({ field }) => (
-                <Combobox
-                  label="Pipeline"
-                  required
-                  options={pipelineOpts}
-                  value={pipelineOpts.find((o) => o.value === field.value) ?? null}
-                  onChange={(opt) => {
-                    field.onChange(opt?.value ?? null);
-                    // Clear stage when pipeline changes — stages are pipeline-scoped.
-                    setValue("StageId", null);
-                  }}
-                  placeholder="Pick a pipeline"
-                  error={errors.PipelineId?.message}
-                  data-testid="lead-pipeline"
-                />
-              )}
-            />
-            <Controller
-              control={control}
-              name="StageId"
-              render={({ field }) => (
-                <Combobox
-                  label="Stage"
-                  required
-                  options={stageOpts}
-                  value={stageOpts.find((o) => o.value === field.value) ?? null}
-                  onChange={(opt) => field.onChange(opt?.value ?? null)}
-                  placeholder="Pick a stage"
-                  error={errors.StageId?.message}
-                  data-testid="lead-stage"
+                  placeholder="Interested in…"
+                  data-testid="lead-product"
                 />
               )}
             />
@@ -377,19 +434,65 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
                 />
               )}
             />
-            <Controller
-              control={control}
-              name="NextFollowupDate"
-              render={({ field }) => (
-                <DateField
-                  label="Next follow-up"
-                  value={field.value}
-                  onChange={field.onChange}
-                  data-testid="lead-followup-date"
+            {!isEdit && (
+              <>
+                <Controller
+                  control={control}
+                  name="StatusId"
+                  render={({ field }) => (
+                    <Combobox
+                      label="Status"
+                      options={statusOpts}
+                      value={statusOpts.find((o) => o.value === field.value) ?? null}
+                      onChange={(opt) => field.onChange(opt?.value ?? null)}
+                      data-testid="lead-status"
+                    />
+                  )}
                 />
-              )}
-            />
+                <Controller
+                  control={control}
+                  name="OwnerId"
+                  render={({ field }) => (
+                    <Combobox
+                      label="Owner"
+                      options={ownerOpts}
+                      value={ownerOpts.find((o) => o.value === field.value) ?? null}
+                      onChange={(opt) => field.onChange(opt?.value ?? null)}
+                      placeholder="Leave blank to assign later"
+                      data-testid="lead-owner"
+                    />
+                  )}
+                />
+                <Controller
+                  control={control}
+                  name="FirstFollowupAt"
+                  render={({ field }) => (
+                    <DateField
+                      label="First follow-up"
+                      value={field.value}
+                      onChange={field.onChange}
+                      data-testid="lead-followup-date"
+                    />
+                  )}
+                />
+              </>
+            )}
           </div>
+
+          <Controller
+            control={control}
+            name="Remarks"
+            render={({ field }) => (
+              <TextArea
+                label="Remarks"
+                value={field.value}
+                onChange={field.onChange}
+                onBlur={field.onBlur}
+                placeholder="Anything the next person should know"
+                data-testid="lead-remarks"
+              />
+            )}
+          />
 
           {!isEdit && fieldDefs.length > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
