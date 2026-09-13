@@ -35,7 +35,16 @@ describe("SALES_ENDPOINTS", () => {
       fetchAssignableUsers: "/api/users/fetchAssignableUsers",
       fetchBranches: "/api/users/fetchBranches",
     });
-    expect(SALES_ENDPOINTS.reports.leadsByStatus).toBe("/api/reports/leadsByStatus");
+    expect(SALES_ENDPOINTS.reports).toEqual({
+      funnel: "/api/reports/funnel",
+      followUpCompliance: "/api/reports/followUpCompliance",
+      activity: "/api/reports/activity",
+      lost: "/api/reports/lost",
+      aging: "/api/reports/aging",
+      transfers: "/api/reports/transfers",
+      pipelineValue: "/api/reports/pipelineValue",
+      leaderboard: "/api/reports/leaderboard",
+    });
     expect(SALES_ENDPOINTS.reports).not.toHaveProperty("pipelineFunnel");
   });
 
@@ -78,9 +87,14 @@ const FETCHERS = {
   completeFollowUp: SALES_ENDPOINTS.followups.completeFollowUp,
   skipFollowUp: SALES_ENDPOINTS.followups.skipFollowUp,
   deleteFollowup: SALES_ENDPOINTS.followups.deleteFollowup,
-  leadsByStatus: SALES_ENDPOINTS.reports.leadsByStatus,
-  callsPerUser: SALES_ENDPOINTS.reports.callsPerUser,
-  conversionBySource: SALES_ENDPOINTS.reports.conversionBySource,
+  funnel: SALES_ENDPOINTS.reports.funnel,
+  followUpCompliance: SALES_ENDPOINTS.reports.followUpCompliance,
+  activity: SALES_ENDPOINTS.reports.activity,
+  lost: SALES_ENDPOINTS.reports.lost,
+  aging: SALES_ENDPOINTS.reports.aging,
+  transfers: SALES_ENDPOINTS.reports.transfers,
+  pipelineValue: SALES_ENDPOINTS.reports.pipelineValue,
+  leaderboard: SALES_ENDPOINTS.reports.leaderboard,
 };
 
 describe("salesQueries", () => {
@@ -102,9 +116,12 @@ describe("salesQueries", () => {
     expect(apiClient.post).toHaveBeenCalledWith(SALES_ENDPOINTS.leads.fetchLeads, {});
   });
 
-  it("no longer exports the retired pipeline-era fetchers", () => {
+  it("no longer exports the retired pipeline-era or spec-1 report fetchers", () => {
     expect(salesQueries.moveLeadStage).toBeUndefined();
     expect(salesQueries.saveFollowup).toBeUndefined();
     expect(salesQueries.pipelineFunnel).toBeUndefined();
+    expect(salesQueries.leadsByStatus).toBeUndefined();
+    expect(salesQueries.callsPerUser).toBeUndefined();
+    expect(salesQueries.conversionBySource).toBeUndefined();
   });
 });

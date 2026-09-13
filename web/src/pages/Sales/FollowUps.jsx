@@ -8,7 +8,7 @@ import { Helmet } from "react-helmet-async";
 import { Box } from "@mui/material";
 import { MaterialReactTable } from "material-react-table";
 import { useNavigate } from "react-router-dom";
-import { CheckCircle2, SkipForward, Trash2 } from "lucide-react";
+import { CheckCircle2, Eye, SkipForward, Trash2 } from "lucide-react";
 import dayjs from "dayjs";
 
 import { Button, IconButton, Modal, TextArea, Tooltip, Tabs, Chip } from "../../components/ui";
@@ -86,9 +86,26 @@ const FollowUps = () => {
         accessorKey: "LeadName",
         header: "Lead",
         enableSorting: false,
+        // The name reads as a link because it is one — the whole history sits
+        // one click away and nothing on the row said so.
         Cell: ({ row }) => (
           <span>
-            {row.original.LeadName}
+            <Box
+              component="span"
+              data-testid={`lead-link-${row.original.Id}`}
+              sx={{
+                color: "primary.main",
+                fontWeight: 600,
+                cursor: "pointer",
+                "&:hover": { textDecoration: "underline" },
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate(`/sales/leads/${row.original.LeadId}`);
+              }}
+            >
+              {row.original.LeadName}
+            </Box>
             {row.original.LeadMobile ? ` · ${row.original.LeadMobile}` : ""}
           </span>
         ),
@@ -134,7 +151,7 @@ const FollowUps = () => {
         Cell: ({ row }) => [row.original.Outcome, row.original.Remarks].filter(Boolean).join(" — ") || "—",
       },
     ],
-    []
+    [navigate]
   );
 
   const extraParams = useMemo(() => viewParams(view), [view]);
@@ -154,27 +171,36 @@ const FollowUps = () => {
       sx: { cursor: "pointer" },
       onClick: () => navigate(`/sales/leads/${row.original.LeadId}`),
     }),
-    // A logged follow-up is history: nothing to do, nothing to delete.
+    // A logged follow-up is history: nothing to do, nothing to delete — but
+    // its lead is still worth opening, so the eye is on every row.
     renderRowActions: ({ row }) => {
       const f = row.original;
-      if (f.Status !== "open") return null;
       return (
         <Box sx={{ display: "flex", gap: 0.5 }} onClick={(e) => e.stopPropagation()}>
-          <Tooltip title="Log">
-            <IconButton size="sm" variant="ghost" aria-label="Log follow-up" data-testid={`log-followup-${f.Id}`} onClick={() => setLogging(f)}>
-              <CheckCircle2 size={16} />
+          <Tooltip title="View lead & history">
+            <IconButton size="sm" variant="ghost" tone="primary" aria-label="View lead" data-testid={`view-lead-${f.Id}`} onClick={() => navigate(`/sales/leads/${f.LeadId}`)}>
+              <Eye size={16} />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Skip">
-            <IconButton size="sm" variant="ghost" aria-label="Skip follow-up" data-testid={`skip-followup-${f.Id}`} onClick={() => setSkipping(f)}>
-              <SkipForward size={16} />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Delete">
-            <IconButton size="sm" variant="ghost" aria-label="Delete follow-up" data-testid={`delete-followup-${f.Id}`} onClick={() => setDeleting(f)}>
-              <Trash2 size={16} />
-            </IconButton>
-          </Tooltip>
+          {f.Status === "open" && (
+            <>
+              <Tooltip title="Log this follow-up">
+                <IconButton size="sm" variant="ghost" tone="success" aria-label="Log follow-up" data-testid={`log-followup-${f.Id}`} onClick={() => setLogging(f)}>
+                  <CheckCircle2 size={16} />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Skip with a remark">
+                <IconButton size="sm" variant="ghost" tone="warning" aria-label="Skip follow-up" data-testid={`skip-followup-${f.Id}`} onClick={() => setSkipping(f)}>
+                  <SkipForward size={16} />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Delete">
+                <IconButton size="sm" variant="ghost" tone="error" aria-label="Delete follow-up" data-testid={`delete-followup-${f.Id}`} onClick={() => setDeleting(f)}>
+                  <Trash2 size={16} />
+                </IconButton>
+              </Tooltip>
+            </>
+          )}
         </Box>
       );
     },

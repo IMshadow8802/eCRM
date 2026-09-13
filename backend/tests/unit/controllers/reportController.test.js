@@ -284,3 +284,57 @@ describe("reportController ticket reports", () => {
     expect(res.status).toHaveBeenCalledWith(500);
   });
 });
+
+// --- Spec 4a: the eight report endpoints, all through reportKit.runReport ---
+
+const REPORT_METHODS = [
+  ["funnel", "sp_RptFunnel", "source"],
+  ["followUpCompliance", "sp_RptFollowUpCompliance", "owner"],
+  ["activity", "sp_RptActivity", "owner"],
+  ["lost", "sp_RptLost", "reason"],
+  ["aging", "sp_RptAging", "owner"],
+  ["transfers", "sp_RptTransfers", "reason"],
+  ["pipelineValue", "sp_RptPipelineValue", "status"],
+  ["leaderboard", "sp_RptLeaderboard", "owner"],
+];
+
+describe.each(REPORT_METHODS)("reportController.%s", (method, sp, defaultGroupBy) => {
+  it(`calls ${sp} with CompId, the parsed args and the caller's scope`, async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[{ A: 1 }], [{ GroupKey: 1, GroupLabel: "x" }], [{ Bucket: "2026-09-01" }]],
+    });
+    const res = mockRes();
+    await reportController[method](
+      baseReq({ scope: { branchIds: [2], ownerIds: [7] }, body: { FromDate: "2026-08-01", ToDate: "2026-08-31" } }),
+      res,
+    );
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith(sp, {
+      CompId: 5,
+      FromDate: "2026-08-01", ToDate: "2026-08-31", DateBasis: "created", GroupBy: defaultGroupBy,
+      BranchId: null, OwnerId: null, SourceId: null, ProductId: null,
+      UserId: 7, AccessibleBranchIdsJson: "[2]", OwnerIdsJson: "[7]",
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json.mock.calls[0][0].data).toEqual({
+      kpis: { A: 1 },
+      rows: [{ GroupKey: 1, GroupLabel: "x" }],
+      trend: [{ Bucket: "2026-09-01" }],
+      range: { from: "2026-08-01", to: "2026-08-31", basis: "created", groupBy: defaultGroupBy },
+    });
+  });
+
+  it("400s on a GroupBy outside this report's whitelist", async () => {
+    const res = mockRes();
+    await reportController[method](baseReq({ body: { GroupBy: "nope" } }), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  it("500s when the SP throws", async () => {
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
+    const res = mockRes();
+    await reportController[method](baseReq({ body: { FromDate: "2026-08-01", ToDate: "2026-08-31" } }), res);
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json.mock.calls[0][0]).toMatchObject({ success: false, code: "REPORT_ERROR" });
+  });
+});

@@ -35,7 +35,7 @@ describe("section landing redirects", () => {
     ["/sales", "/sales/leads"],
     ["/support", "/support/board"],
     ["/settings", "/settings/custom-fields"],
-    ["/reports", "/reports/leads-by-status"],
+    ["/reports", "/reports/funnel"],
     ["/admin", "/users"],
   ])("%s is wired to a SectionRedirect falling back to %s", (from, fallback) => {
     const route = routesConfig.find((r) => r.path === from);
@@ -134,25 +134,41 @@ describe("HomeRedirect", () => {
   });
 });
 
-// Spec 1 retired the lead pipeline board and its funnel report: the paths
-// survive only as redirects so existing bookmarks land somewhere useful.
-describe("spec-1 routes", () => {
+// Spec 1 retired the lead pipeline board; spec 4a retired the three
+// single-number lead reports. Every old path survives only as a redirect so
+// bookmarks and the one-release-old sidebar rows land somewhere useful.
+describe("retired sales routes", () => {
   const paths = routesConfig.map((r) => r.path);
+  const redirect = (from) => {
+    const route = routesConfig.find((r) => r.path === from);
+    expect(route.element.type.name).toBe("Navigate");
+    return route.element.props.to;
+  };
 
   it("has no pipeline page, only a redirect", () => {
-    const pipeline = routesConfig.find((r) => r.path === "/sales/pipeline");
-    expect(pipeline.element.type.name).toBe("Navigate");
-    expect(pipeline.element.props.to).toBe("/sales/leads");
+    expect(redirect("/sales/pipeline")).toBe("/sales/leads");
   });
 
-  it("redirects the funnel report to leads-by-status", () => {
-    const funnel = routesConfig.find((r) => r.path === "/reports/pipeline-funnel");
-    expect(funnel.element.type.name).toBe("Navigate");
-    expect(funnel.element.props.to).toBe("/reports/leads-by-status");
+  it.each([
+    ["/reports/pipeline-funnel", "/reports/funnel"],
+    ["/reports/leads-by-status", "/reports/funnel"],
+    ["/reports/calls-per-user", "/reports/activity"],
+    ["/reports/conversion-by-source", "/reports/funnel?groupBy=source"],
+  ])("redirects %s to %s", (from, to) => {
+    expect(redirect(from)).toBe(to);
   });
 
-  it("registers products and leads-by-status", () => {
-    expect(paths).toContain("/settings/products");
-    expect(paths).toContain("/reports/leads-by-status");
+  it("registers products and the eight spec-4a report pages (matching tblMenu.Route)", () => {
+    expect(paths).toEqual(expect.arrayContaining([
+      "/settings/products",
+      "/reports/funnel",
+      "/reports/follow-up-compliance",
+      "/reports/activity",
+      "/reports/lost",
+      "/reports/aging",
+      "/reports/transfers",
+      "/reports/pipeline-value",
+      "/reports/leaderboard",
+    ]));
   });
 });

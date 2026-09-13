@@ -149,11 +149,17 @@ Tracked, deliberately not built yet:
   any authenticated caller. The department axis is therefore advisory until this
   lands.
 - **Login/logout are not audited.**
-- **Two lead reports are still unscoped.** `sp_CallsPerUser` and
-  `sp_ConversionBySource` gain `@AccessibleBranchIdsJson` in
-  `backend/sql/073_products_menu_report_scope.sql` — **pending apply**. The
-  controller already sends the param; until the script is applied a narrow
-  scope (Branch/Team/Self) still sees company-wide report rows.
+- **The three spec-1 report SPs (`sp_LeadsByStatus`, `sp_CallsPerUser`,
+  `sp_ConversionBySource`) scope by branch only.** Their endpoints stay one
+  release for the `/reports/*` redirects and then go; the eight `sp_Rpt*`
+  procs (spec 4a, `075`) apply branch AND owner scope like `sp_FetchLeads`.
+- **A Self/Team leaderboard ranks the caller against partial data.**
+  `sp_RptLeaderboard` lists every rep who touched a lead the caller can see,
+  so a Sales Executive sees colleagues whose numbers are only the fragments
+  visible through his own leads — it reads as a real ranking and is not. No
+  rows leak; the fix is in `backend/sql/078_leaderboard_owner_scope.sql`
+  (restrict the rep list to `@OwnerIds` + the caller when owner scope is on)
+  — **pending apply**.
 - **`tblBranch` has no `CompId`**, so `sp_FetchBranches` is company-blind: the
   branch pick-list returns every branch in the database. Harmless on today's
   single-company deployment, wrong the moment a second company exists.

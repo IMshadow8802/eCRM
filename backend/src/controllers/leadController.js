@@ -44,6 +44,10 @@ const transferArgs = (body) => ({
   Remarks: body.Remarks == null ? null : String(body.Remarks).trim(),
 });
 
+// A drill-down from a report carries the range it counted. Anything that is
+// not a plain ISO day is dropped rather than handed to the SP as-is.
+const isoDay = (s) => (typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null);
+
 const leadController = {
   async save(req, res) {
     const { CompId, BranchId, UserId } = req.user;
@@ -72,7 +76,7 @@ const leadController = {
       const {
         BranchId = null, SearchTerm = null,
         StatusId = null, StatusCode = null, ProductId = null, OwnerId = null, SourceId = null,
-        Overdue = false, Unassigned = false,
+        Overdue = false, Unassigned = false, FromDate = null, ToDate = null,
       } = req.body;
       // Clamped, not taken raw: PageSize went straight to the SP, and
       // sp_FetchLeads has no ceiling of its own.
@@ -82,6 +86,7 @@ const leadController = {
         CompId, BranchId, PageNumber, PageSize, SearchTerm,
         StatusId, StatusCode, ProductId, OwnerId, SourceId,
         Overdue: bit(Overdue), Unassigned: bit(Unassigned),
+        FromDate: isoDay(FromDate), ToDate: isoDay(ToDate),
         ...scopeParams(req),
       });
 

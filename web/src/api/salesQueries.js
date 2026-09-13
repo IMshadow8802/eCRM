@@ -48,10 +48,16 @@ export const SALES_ENDPOINTS = {
     skipFollowUp: "/api/followups/skipFollowUp",
     deleteFollowup: "/api/followups/deleteFollowup",
   },
+  // Spec 4a report system — one POST shape, { kpis, rows, trend, range } back.
   reports: {
-    leadsByStatus: "/api/reports/leadsByStatus",
-    callsPerUser: "/api/reports/callsPerUser",
-    conversionBySource: "/api/reports/conversionBySource",
+    funnel: "/api/reports/funnel",
+    followUpCompliance: "/api/reports/followUpCompliance",
+    activity: "/api/reports/activity",
+    lost: "/api/reports/lost",
+    aging: "/api/reports/aging",
+    transfers: "/api/reports/transfers",
+    pipelineValue: "/api/reports/pipelineValue",
+    leaderboard: "/api/reports/leaderboard",
   },
 };
 
@@ -100,7 +106,12 @@ export const completeFollowUp = post(SALES_ENDPOINTS.followups.completeFollowUp)
 export const skipFollowUp = post(SALES_ENDPOINTS.followups.skipFollowUp);
 export const deleteFollowup = post(SALES_ENDPOINTS.followups.deleteFollowup);
 
-// Reports
-export const leadsByStatus = post(SALES_ENDPOINTS.reports.leadsByStatus);
-export const callsPerUser = post(SALES_ENDPOINTS.reports.callsPerUser);
-export const conversionBySource = post(SALES_ENDPOINTS.reports.conversionBySource);
+// Reports (spec 4a)
+export const funnel = post(SALES_ENDPOINTS.reports.funnel);
+export const followUpCompliance = post(SALES_ENDPOINTS.reports.followUpCompliance);
+export const activity = post(SALES_ENDPOINTS.reports.activity);
+export const lost = post(SALES_ENDPOINTS.reports.lost);
+export const aging = post(SALES_ENDPOINTS.reports.aging);
+export const transfers = post(SALES_ENDPOINTS.reports.transfers);
+export const pipelineValue = post(SALES_ENDPOINTS.reports.pipelineValue);
+export const leaderboard = post(SALES_ENDPOINTS.reports.leaderboard);

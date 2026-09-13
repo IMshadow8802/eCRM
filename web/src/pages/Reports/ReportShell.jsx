@@ -37,7 +37,7 @@ import {
  * and those ids are the contract.
  */
 
-export function ReportPage({
+export function ReportShellPage({
   title,
   subtitle,
   documentTitle,
@@ -144,16 +144,43 @@ export function ReportBarChart({ data, xKey, bars, legend = true, height = 260 }
 /**
  * The summary table under each chart. `columns` is
  * `{ header, align, cell(row) }`; `rowKey(row)` supplies the React key, which
- * every page took from its own id column.
+ * every page took from its own id column. Columns may carry a `key` — used for
+ * the React key so two columns can share a header (the Lost report heads two
+ * columns "Reason"); the existing pages pass none and keep header keys.
+ *
+ * `onRowClick` (spec 4a drill-down) makes rows hoverable, clickable and
+ * keyboard-activatable. Without it the table renders exactly as before — no
+ * handler, no cursor, no tab stop — so the ticket reports are untouched.
  */
-export function ReportTable({ rows, columns, rowKey, testId }) {
+export function ReportTable({ rows, columns, rowKey, testId, onRowClick }) {
+  const clickProps = onRowClick
+    ? (row) => ({
+        hover: true,
+        onClick: () => onRowClick(row),
+        // A pointer row that only the mouse can reach is a dead end for
+        // keyboard users, so the row is a real tab stop with Enter/Space on it.
+        // It keeps the implicit role="row": role="button" would drop the row
+        // out of the table for a screen reader and collapse the whole line
+        // into one control named "Website 700", losing the header-to-value
+        // association that is the point of a breakdown table.
+        tabIndex: 0,
+        onKeyDown: (e) => {
+          if (e.key !== "Enter" && e.key !== " ") return;
+          e.preventDefault();
+          onRowClick(row);
+        },
+        style: { cursor: "pointer" },
+        "data-testid": testId ? `${testId}-row` : undefined,
+      })
+    : () => ({});
+
   return (
     <TableContainer component={Paper} variant="outlined" data-testid={testId}>
       <Table size="small">
         <TableHead>
           <TableRow>
             {columns.map((c) => (
-              <TableCell key={c.header} align={c.align}>
+              <TableCell key={c.key ?? c.header} align={c.align}>
                 {c.header}
               </TableCell>
             ))}
@@ -161,9 +188,9 @@ export function ReportTable({ rows, columns, rowKey, testId }) {
         </TableHead>
         <TableBody>
           {rows.map((row) => (
-            <TableRow key={rowKey(row)}>
+            <TableRow key={rowKey(row)} {...clickProps(row)}>
               {columns.map((c) => (
-                <TableCell key={c.header} align={c.align}>
+                <TableCell key={c.key ?? c.header} align={c.align}>
                   {c.cell(row)}
                 </TableCell>
               ))}

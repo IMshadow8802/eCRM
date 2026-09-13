@@ -49,6 +49,7 @@ const IconButton = forwardRef(function IconButton(
   {
     children,
     variant = "ghost",
+    tone,
     size = "md",
     tooltip,
     tooltipPlacement = "bottom",
@@ -63,7 +64,13 @@ const IconButton = forwardRef(function IconButton(
 ) {
   const theme = useTheme();
   const s = SIZE[size] ?? SIZE.md;
-  const v = variantStyles(variant, theme.tokens);
+  // A tone repaints the glyph (and its hover wash) without changing the
+  // variant's shape — "this is the destructive one" rather than a new button.
+  const t = tone ? theme.tokens[tone] : null;
+  const v = {
+    ...variantStyles(variant, theme.tokens),
+    ...(t && { color: t.main, hoverBg: t.subtle }),
+  };
 
   const btn = (
     <motion.button
@@ -74,6 +81,7 @@ const IconButton = forwardRef(function IconButton(
       aria-disabled={disabled}
       aria-label={ariaLabel || tooltip}
       data-testid={testId}
+      data-tone={tone}
       whileTap={disabled ? undefined : { scale: 0.94 }}
       whileHover={disabled ? undefined : { backgroundColor: v.hoverBg }}
       transition={{

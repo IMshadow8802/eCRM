@@ -4,8 +4,8 @@ import { Helmet } from "react-helmet-async";
 import { Box } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { MaterialReactTable } from "material-react-table";
-import { useNavigate } from "react-router-dom";
-import { ArrowRightLeft, Pencil, Plus, Trash2, Users } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { ArrowRightLeft, Eye, Pencil, Plus, Trash2, Users } from "lucide-react";
 
 import { Button, Combobox, IconButton, Tooltip, Tabs, Chip } from "../../components/ui";
 import PageHeader from "../../components/ui/PageHeader";
@@ -19,12 +19,11 @@ import useAuthStore from "../../stores/useAuthStore";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
 import { formatCurrency, formatDate } from "../../utils/format";
 import { getUserName } from "../../utils/userShape";
-import { LEAD_PRESETS, presetParams, isActiveCode } from "./leadStatus";
+import { LEAD_PRESETS, presetParams, isActiveCode, leadsParamsToState } from "./leadStatus";
 import LeadCreateModal from "./LeadCreateModal";
 import TransferLeadModal from "./TransferLeadModal";
 import DeleteLeadModal from "./DeleteLeadModal";
 
-const EMPTY_FILTERS = { StatusId: "", ProductId: "", OwnerId: "", SourceId: "", BranchId: "" };
 const num = (v) => (v === "" ? null : Number(v));
 
 const Leads = () => {
@@ -32,8 +31,17 @@ const Leads = () => {
   const theme = useTheme();
   const userId = useAuthStore((s) => s.user?.UserId ?? s.UserId);
 
-  const [preset, setPreset] = useState("all");
-  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  // A report drill-down lands here with its filters in the URL (spec 4a).
+  // Read once on mount; from then on the page owns its state, so a stray URL
+  // change cannot wipe what the user has typed. This holds only because every
+  // drill arrives from a /reports/* path and so remounts this component —
+  // React Router does NOT remount on a search-string-only change, so an
+  // in-page link to /sales/leads?... would silently do nothing. Don't add one.
+  const [searchParams] = useSearchParams();
+  const [initial] = useState(() => leadsParamsToState(searchParams));
+  const [preset, setPreset] = useState(initial.preset);
+  const [filters, setFilters] = useState(initial.filters);
+  const [range, setRange] = useState(initial.range);
   const [createOpen, setCreateOpen] = useState(false);
   const [editLead, setEditLead] = useState(null);
   const [transferIds, setTransferIds] = useState([]);
@@ -75,8 +83,10 @@ const Leads = () => {
   const extraParams = useMemo(() => ({
     StatusId: num(filters.StatusId), ProductId: num(filters.ProductId), OwnerId: num(filters.OwnerId),
     SourceId: num(filters.SourceId), BranchId: num(filters.BranchId),
+    ...(range.from ? { FromDate: range.from } : {}),
+    ...(range.to ? { ToDate: range.to } : {}),
     ...presetParams(preset, userId),
-  }), [filters, preset, userId]);
+  }), [filters, range, preset, userId]);
 
   const { table } = useServerTable({
     columns, queryKey: "leads", endpoint: SALES_ENDPOINTS.leads.fetchLeads, dataKey: "leads", extraParams,
@@ -85,10 +95,12 @@ const Leads = () => {
     displayColumnDefOptions: { "mrt-row-actions": { grow: false, header: "Actions" } },
     muiTableBodyRowProps: ({ row }) => ({ hover: true, sx: { cursor: "pointer" }, onClick: () => navigate(`/sales/leads/${row.original.Id}`) }),
     renderRowActions: ({ row }) => (
+      // The eye leads: the row already opens the lead, but nothing said so.
       <Box sx={{ display: "flex", gap: 0.5 }} onClick={(e) => e.stopPropagation()}>
-        <Tooltip title="Edit"><IconButton size="sm" variant="ghost" aria-label="Edit lead" data-testid={`edit-lead-${row.original.Id}`} onClick={() => setEditLead(row.original)}><Pencil size={16} /></IconButton></Tooltip>
-        <Tooltip title="Transfer"><IconButton size="sm" variant="ghost" aria-label="Transfer lead" data-testid={`transfer-lead-${row.original.Id}`} onClick={() => setTransferIds([row.original.Id])}><ArrowRightLeft size={16} /></IconButton></Tooltip>
-        <Tooltip title="Delete"><IconButton size="sm" variant="ghost" aria-label="Delete lead" data-testid={`delete-lead-${row.original.Id}`} onClick={() => setDeleteLead(row.original)}><Trash2 size={16} /></IconButton></Tooltip>
+        <Tooltip title="View lead & history"><IconButton size="sm" variant="ghost" tone="primary" aria-label="View lead" data-testid={`view-lead-${row.original.Id}`} onClick={() => navigate(`/sales/leads/${row.original.Id}`)}><Eye size={16} /></IconButton></Tooltip>
+        <Tooltip title="Edit details"><IconButton size="sm" variant="ghost" tone="info" aria-label="Edit lead" data-testid={`edit-lead-${row.original.Id}`} onClick={() => setEditLead(row.original)}><Pencil size={16} /></IconButton></Tooltip>
+        <Tooltip title="Transfer / reassign"><IconButton size="sm" variant="ghost" tone="warning" aria-label="Transfer lead" data-testid={`transfer-lead-${row.original.Id}`} onClick={() => setTransferIds([row.original.Id])}><ArrowRightLeft size={16} /></IconButton></Tooltip>
+        <Tooltip title="Delete"><IconButton size="sm" variant="ghost" tone="error" aria-label="Delete lead" data-testid={`delete-lead-${row.original.Id}`} onClick={() => setDeleteLead(row.original)}><Trash2 size={16} /></IconButton></Tooltip>
       </Box>
     ),
     muiTableContainerProps: { sx: { maxHeight: "500px" } },
@@ -124,6 +136,13 @@ const Leads = () => {
         <Box sx={{ width: 170 }}><Combobox size="sm" placeholder="All sources" options={opts.source} value={optById(opts.source, filters.SourceId)} onChange={setFilterValue("SourceId")} data-testid="filter-source" /></Box>
         <Box sx={{ width: 170 }}><Combobox size="sm" placeholder="All branches" options={opts.branch} value={optById(opts.branch, filters.BranchId)} onChange={setFilterValue("BranchId")} data-testid="filter-branch" /></Box>
       </Box>
+
+      {(range.from || range.to) && (
+        <Box sx={{ mb: 0.5 }}>
+          <Chip tone="info" label={`Created ${formatDate(range.from, { empty: "…" })} – ${formatDate(range.to, { empty: "…" })}`}
+            onDelete={() => setRange({ from: "", to: "" })} data-testid="leads-range-chip" />
+        </Box>
+      )}
 
       <Box sx={{ width: "100%", overflowX: "auto" }}><MaterialReactTable table={table} /></Box>
 

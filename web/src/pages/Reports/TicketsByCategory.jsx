@@ -1,6 +1,6 @@
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { SUPPORT_ENDPOINTS } from "../../api/supportQueries";
-import { ReportPage, ReportBarChart, ReportTable } from "./ReportShell";
+import { ReportShellPage, ReportBarChart, ReportTable } from "./ReportShell";
 
 const TicketsByCategory = () => {
   const { data, isLoading, error } = useApiQuery({
@@ -13,7 +13,7 @@ const TicketsByCategory = () => {
   const rows = data?.categories ?? [];
 
   return (
-    <ReportPage
+    <ReportShellPage
       title="TICKETS BY CATEGORY REPORT"
       subtitle="Ticket count per category."
       documentTitle="Tickets By Category Report"
@@ -38,7 +38,7 @@ const TicketsByCategory = () => {
           { header: "Tickets", align: "right", cell: (r) => r.TicketCount },
         ]}
       />
-    </ReportPage>
+    </ReportShellPage>
   );
 };
 

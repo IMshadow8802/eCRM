@@ -77,4 +77,15 @@ describe("Chip", () => {
     );
     expect(screen.getByTestId("ic")).toBeInTheDocument();
   });
+
+  it("activates on Enter and Space, not on other keys", async () => {
+    const onClick = vi.fn();
+    wrap(<Chip label="7d" onClick={onClick} data-testid="c" />);
+    const chip = screen.getByTestId("c");
+    fireEvent.keyDown(chip, { key: "Enter" });
+    fireEvent.keyDown(chip, { key: " " });
+    expect(onClick).toHaveBeenCalledTimes(2);
+    fireEvent.keyDown(chip, { key: "a" });
+    expect(onClick).toHaveBeenCalledTimes(2);
+  });
 });

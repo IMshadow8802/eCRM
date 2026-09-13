@@ -30,6 +30,14 @@ jest.mock("../../../src/controllers/reportController", () => ({
   conversionBySource: hit("conversionBySource"),
   ticketsByCategory: hit("ticketsByCategory"),
   resolutionSummary: hit("resolutionSummary"),
+  funnel: hit("funnel"),
+  followUpCompliance: hit("followUpCompliance"),
+  activity: hit("activity"),
+  lost: hit("lost"),
+  aging: hit("aging"),
+  transfers: hit("transfers"),
+  pipelineValue: hit("pipelineValue"),
+  leaderboard: hit("leaderboard"),
 }));
 
 const express = require("express");
@@ -44,11 +52,21 @@ describe("reportRoutes", () => {
   it.each([
     ["/api/reports/getDashboard", "getDashboard"],
     ["/api/reports/getConvertedSummary", "getConvertedSummary"],
+    // Spec 1 endpoints — kept one release for the web redirects (spec 4a §4).
     ["/api/reports/leadsByStatus", "leadsByStatus"],
     ["/api/reports/callsPerUser", "callsPerUser"],
     ["/api/reports/conversionBySource", "conversionBySource"],
     ["/api/reports/ticketsByCategory", "ticketsByCategory"],
     ["/api/reports/resolutionSummary", "resolutionSummary"],
+    // Spec 4a
+    ["/api/reports/funnel", "funnel"],
+    ["/api/reports/followUpCompliance", "followUpCompliance"],
+    ["/api/reports/activity", "activity"],
+    ["/api/reports/lost", "lost"],
+    ["/api/reports/aging", "aging"],
+    ["/api/reports/transfers", "transfers"],
+    ["/api/reports/pipelineValue", "pipelineValue"],
+    ["/api/reports/leaderboard", "leaderboard"],
   ])("routes %s to the %s handler", async (path, handler) => {
     const r = await request(app).post(path).send({});
     expect(r.status).toBe(200);

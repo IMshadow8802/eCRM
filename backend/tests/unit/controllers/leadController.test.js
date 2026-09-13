@@ -271,6 +271,17 @@ describe("leadController.fetch filters", () => {
       expect.objectContaining({ Overdue: false, Unassigned: false, StatusCode: null, ProductId: null }),
     );
   });
+
+  // Report drill-downs arrive with the range they counted (spec 4a §5).
+  it("forwards an ISO FromDate/ToDate and nulls anything else", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[], []] });
+    await leadController.fetch(baseReq({ body: { FromDate: "2026-08-01", ToDate: "2026-08-31" } }), mockRes());
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({ FromDate: "2026-08-01", ToDate: "2026-08-31" });
+
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[], []] });
+    await leadController.fetch(baseReq({ body: { FromDate: "01/08/2026", ToDate: 20260831 } }), mockRes());
+    expect(database.executeStoredProcedure.mock.calls[1][1]).toMatchObject({ FromDate: null, ToDate: null });
+  });
 });
 
 describe("leadController.detail", () => {

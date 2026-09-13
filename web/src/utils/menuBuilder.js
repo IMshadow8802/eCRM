@@ -6,7 +6,6 @@ import {
   PersonOutlineOutlined,
   SettingsOutlined,
   AssessmentOutlined,
-  LeaderboardOutlined,
   EventAvailableOutlined,
   ViewKanbanOutlined,
   LabelOutlined,
@@ -27,6 +26,13 @@ import {
   PhoneOutlined,
   TuneOutlined,
   ListAltOutlined,
+  TimelineOutlined,
+  TrendingDownOutlined,
+  HourglassBottomOutlined,
+  SwapHorizOutlined,
+  Inventory2Outlined,
+  EmojiEventsOutlined,
+  PersonSearchOutlined,
 } from "@mui/icons-material";
 
 /**
@@ -48,6 +54,14 @@ export function getMenuIcon(menuTitle) {
   if (title.includes("kanban")) return ViewKanbanOutlined;
   // sales/support module — specific first
   if (title.includes("funnel")) return FilterAltOutlined;
+  // spec 4a report pages — each needs its own keyword or it falls through to
+  // the circle, which is what every unmapped menu row looked like.
+  if (title.includes("activity")) return TimelineOutlined;
+  if (title.includes("lost")) return TrendingDownOutlined;
+  if (title.includes("aging")) return HourglassBottomOutlined;
+  if (title.includes("transfer")) return SwapHorizOutlined;
+  if (title.includes("leaderboard")) return EmojiEventsOutlined;
+  if (title.includes("product")) return Inventory2Outlined;
   if (title.includes("conversion")) return InsightsOutlined;
   if (title.includes("resolution")) return DoneAllOutlined;
   if (title.includes("categor")) return CategoryOutlined;
@@ -62,7 +76,7 @@ export function getMenuIcon(menuTitle) {
   if (title.includes("user")) return PersonOutlineOutlined;
   if (title.includes("status")) return LabelOutlined;
   if (title.includes("source")) return SourceOutlined;
-  if (title.includes("lead")) return LeaderboardOutlined;
+  if (title.includes("lead")) return PersonSearchOutlined;
   if (title.includes("follow")) return EventAvailableOutlined;
   if (title.includes("contact")) return ContactPhoneOutlined;
   if (title.includes("report")) return AssessmentOutlined;

@@ -66,8 +66,18 @@ const Sidebar = ({ collapsed, onToggleCollapsed, mobileOpen, onMobileClose }) =>
     setFlyoutMenu(null);
   };
 
-  const isActive = (path) =>
-    location.pathname === path || location.pathname.startsWith(`${path}/`);
+  // A menu Route may carry a query string (tblMenu row 22 is
+  // /reports/funnel?groupBy=source), so compare the path part and then require
+  // the row's params to be present in the current URL. Comparing the whole
+  // string would leave such a row permanently dark, and comparing search
+  // exactly would blank the highlight the moment a report page writes a filter.
+  const isActive = (path) => {
+    const [pathname, search] = path.split("?");
+    if (location.pathname !== pathname && !location.pathname.startsWith(`${pathname}/`)) return false;
+    if (!search) return true;
+    const here = new URLSearchParams(location.search);
+    return [...new URLSearchParams(search)].every(([k, v]) => here.get(k) === v);
+  };
 
   const navigateTo = (menu, parentPermissions) => {
     setActiveMenuRights(menu.permissions || parentPermissions || null);
@@ -104,6 +114,8 @@ const Sidebar = ({ collapsed, onToggleCollapsed, mobileOpen, onMobileClose }) =>
     const itemBody = (
       <MenuItem
         data-testid={`sidebar-${menu.title}`}
+        // Active was styling only; nothing told a screen reader which page it is on.
+        aria-current={active ? "page" : undefined}
         onClick={handleClick}
         sx={{
           mx: asChild ? 0 : 1,

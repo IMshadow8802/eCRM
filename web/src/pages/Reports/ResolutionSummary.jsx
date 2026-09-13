@@ -1,6 +1,6 @@
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { SUPPORT_ENDPOINTS } from "../../api/supportQueries";
-import { ReportPage, ReportBarChart, ReportTable } from "./ReportShell";
+import { ReportShellPage, ReportBarChart, ReportTable } from "./ReportShell";
 
 const ResolutionSummary = () => {
   const { data, isLoading, error } = useApiQuery({
@@ -13,7 +13,7 @@ const ResolutionSummary = () => {
   const rows = data?.resolutions ?? [];
 
   return (
-    <ReportPage
+    <ReportShellPage
       title="RESOLUTION SUMMARY REPORT"
       subtitle="Ticket count per resolution type."
       documentTitle="Resolution Summary Report"
@@ -38,7 +38,7 @@ const ResolutionSummary = () => {
           { header: "Tickets", align: "right", cell: (r) => r.TicketCount },
         ]}
       />
-    </ReportPage>
+    </ReportShellPage>
   );
 };
 

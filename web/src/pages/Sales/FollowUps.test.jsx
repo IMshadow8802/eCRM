@@ -163,6 +163,40 @@ describe("Follow-ups queue", () => {
     expect(cellOf("Remarks")({ row: { original: {} } })).toBe("—");
   });
 
+  // The owner's complaint: nothing said these icons led anywhere. The eye is
+  // on every row — a logged follow-up still has a history worth opening.
+  it("every row carries an eye that opens the lead, done rows included", async () => {
+    renderPage();
+    const user = userEvent.setup();
+    expect(screen.getByTestId("view-lead-20")).toBeInTheDocument();
+    await user.click(screen.getByTestId("view-lead-20"));
+    expect(mockNavigate).toHaveBeenCalledWith("/sales/leads/9");
+    expect(screen.getByTestId("view-lead-21")).toHaveAttribute("data-tone", "primary");
+  });
+
+  it("colours the three actions by what they do", () => {
+    renderPage();
+    expect(screen.getByTestId("log-followup-21")).toHaveAttribute("data-tone", "success");
+    expect(screen.getByTestId("skip-followup-21")).toHaveAttribute("data-tone", "warning");
+    expect(screen.getByTestId("delete-followup-21")).toHaveAttribute("data-tone", "error");
+  });
+
+  it("the lead name is a link into the lead, not just text", async () => {
+    renderPage();
+    // The row underneath navigates too — the link must swallow the click so
+    // the two handlers don't both fire.
+    const rowClick = vi.fn();
+    const { container } = withTheme(
+      <div onClick={rowClick}>
+        {cellOf("LeadName")({ row: { original: { Id: 21, LeadId: 9, LeadName: "Sharma", LeadMobile: "9990001111" } } })}
+      </div>,
+    );
+    expect(container).toHaveTextContent("Sharma · 9990001111");
+    await userEvent.setup().click(screen.getByTestId("lead-link-21"));
+    expect(mockNavigate).toHaveBeenCalledWith("/sales/leads/9");
+    expect(rowClick).not.toHaveBeenCalled();
+  });
+
   it("a row click opens that follow-up's lead", () => {
     renderPage();
     lastCfg().muiTableBodyRowProps({ row: { original: { LeadId: 9 } } }).onClick();

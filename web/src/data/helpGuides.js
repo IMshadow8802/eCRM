@@ -120,6 +120,24 @@ export const HELP_GUIDES = {
       },
     ],
   },
+  reports: {
+    titleHi: "रिपोर्ट कैसे पढ़ें",
+    titleEn: "How to read a report",
+    steps: [
+      {
+        hi: "ऊपर की chips से अवधि चुनें (7 / 30 / 90 दिन, यह महीना, या Custom तारीखें); Branch / Owner / Source / Product फ़िल्टर संख्याओं को और सीमित करते हैं — कभी बढ़ाते नहीं।",
+        en: "Pick a period with the chips (7 / 30 / 90 days, this month, or Custom dates); the Branch / Owner / Source / Product filters narrow the numbers — they never widen them.",
+      },
+      {
+        hi: "'Group by' टैब से तालिका को source, owner, product, branch आदि के हिसाब से तोड़ें; ऊपर की टाइलें पूरी अवधि का कुल दिखाती हैं।",
+        en: "Use the 'Group by' tabs to break the table down by source, owner, product, branch and so on; the tiles above show the total for the whole period.",
+      },
+      {
+        hi: "किसी पंक्ति पर क्लिक करके उसी अवधि और फ़िल्टर के साथ Leads सूची खोलें — हर संख्या जाँची जा सकती है। 'Export CSV' तालिका डाउनलोड करता है। पेज का URL साझा करने पर वही रिपोर्ट, वही फ़िल्टर खुलते हैं।",
+        en: "Click a row to open the Leads list with the same period and filters — every number can be inspected. 'Export CSV' downloads the table. Sharing the page URL opens the same report with the same filters.",
+      },
+    ],
+  },
   tickets: {
     titleHi: "टिकट कैसे इस्तेमाल करें",
     titleEn: "How to use Tickets",

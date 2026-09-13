@@ -74,6 +74,17 @@ export default function Chip({
       role={onClick ? "button" : undefined}
       onClick={onClick}
       tabIndex={onClick ? 0 : undefined}
+      // A span with role="button" gets no key handling for free, so without
+      // this a keyboard user can focus a clickable chip and never activate it.
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key !== "Enter" && e.key !== " ") return;
+              e.preventDefault();
+              onClick(e);
+            }
+          : undefined
+      }
       data-testid={testId}
       style={{
         display: "inline-flex",

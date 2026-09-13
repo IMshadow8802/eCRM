@@ -21,4 +21,15 @@ router.post("/conversionBySource", allowEmptyPayload, reportController.conversio
 router.post("/ticketsByCategory", allowEmptyPayload, reportController.ticketsByCategory);
 router.post("/resolutionSummary", allowEmptyPayload, reportController.resolutionSummary);
 
+// Spec 4a — the report system. Old lead reports above stay one release for
+// the web redirects, then go.
+router.post("/funnel", allowEmptyPayload, reportController.funnel);
+router.post("/followUpCompliance", allowEmptyPayload, reportController.followUpCompliance);
+router.post("/activity", allowEmptyPayload, reportController.activity);
+router.post("/lost", allowEmptyPayload, reportController.lost);
+router.post("/aging", allowEmptyPayload, reportController.aging);
+router.post("/transfers", allowEmptyPayload, reportController.transfers);
+router.post("/pipelineValue", allowEmptyPayload, reportController.pipelineValue);
+router.post("/leaderboard", allowEmptyPayload, reportController.leaderboard);
+
 module.exports = router;

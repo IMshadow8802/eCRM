@@ -61,6 +61,32 @@ describe("IconButton", () => {
     expect(onClick).not.toHaveBeenCalled();
   });
 
+  it("tone overrides the variant colour and is exposed as data-tone", () => {
+    const hexToRgb = (hex) => {
+      const n = parseInt(hex.slice(1), 16);
+      return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`;
+    };
+    wrap(
+      <IconButton tone="success" data-testid="toned">
+        <span>i</span>
+      </IconButton>,
+    );
+    const btn = screen.getByTestId("toned");
+    expect(btn).toHaveAttribute("data-tone", "success");
+    expect(btn.style.color).toBe(
+      hexToRgb(buildTheme("light").tokens.success.main),
+    );
+  });
+
+  it("carries no data-tone when tone is absent", () => {
+    wrap(
+      <IconButton data-testid="plain">
+        <span>i</span>
+      </IconButton>,
+    );
+    expect(screen.getByTestId("plain")).not.toHaveAttribute("data-tone");
+  });
+
   it("renders in dark mode", () => {
     wrap(
       <IconButton data-testid="dark">

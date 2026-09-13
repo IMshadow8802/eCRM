@@ -39,9 +39,15 @@ const CustomFields = lazy(() => import("./pages/Settings/CustomFields"));
 const PipelineSettings = lazy(() => import("./pages/Settings/Pipelines"));
 const Lookups = lazy(() => import("./pages/Settings/Lookups"));
 const Products = lazy(() => import("./pages/Settings/Products"));
-const LeadsByStatus = lazy(() => import("./pages/Reports/LeadsByStatus"));
-const CallsPerUser = lazy(() => import("./pages/Reports/CallsPerUser"));
-const ConversionBySource = lazy(() => import("./pages/Reports/ConversionBySource"));
+// Sales reports (spec 4a) — one frame, eight config pages.
+const FunnelReport = lazy(() => import("./pages/Reports/Funnel"));
+const FollowUpComplianceReport = lazy(() => import("./pages/Reports/FollowUpCompliance"));
+const ActivityReport = lazy(() => import("./pages/Reports/Activity"));
+const LostReport = lazy(() => import("./pages/Reports/Lost"));
+const AgingReport = lazy(() => import("./pages/Reports/Aging"));
+const TransfersReport = lazy(() => import("./pages/Reports/Transfers"));
+const PipelineValueReport = lazy(() => import("./pages/Reports/PipelineValue"));
+const LeaderboardReport = lazy(() => import("./pages/Reports/Leaderboard"));
 
 // Support / ticketing module (Spec 2)
 const TicketBoard = lazy(() => import("./pages/Support/TicketBoard"));
@@ -65,7 +71,7 @@ export const routesConfig = [
   { path: "/sales", element: <SectionRedirect prefix="/sales" fallback="/sales/leads" /> },
   { path: "/support", element: <SectionRedirect prefix="/support" fallback="/support/board" /> },
   { path: "/settings", element: <SectionRedirect prefix="/settings" fallback="/settings/custom-fields" /> },
-  { path: "/reports", element: <SectionRedirect prefix="/reports" fallback="/reports/leads-by-status" /> },
+  { path: "/reports", element: <SectionRedirect prefix="/reports" fallback="/reports/funnel" /> },
   { path: "/admin", element: <SectionRedirect prefix="/admin" fallback="/users" /> },
   { path: "/dashboard/*", element: <ProtectedRoute element={<Dashboard />} /> },
   { path: "/tasks/*", element: <ProtectedRoute element={<Task />} /> },
@@ -84,10 +90,20 @@ export const routesConfig = [
   { path: "/settings/pipelines", element: <ProtectedRoute element={<PipelineSettings />} /> },
   { path: "/settings/lookups", element: <ProtectedRoute element={<Lookups />} /> },
   { path: "/settings/products", element: <ProtectedRoute element={<Products />} /> },
-  { path: "/reports/pipeline-funnel", element: <Navigate to="/reports/leads-by-status" replace /> },
-  { path: "/reports/leads-by-status", element: <ProtectedRoute element={<LeadsByStatus />} /> },
-  { path: "/reports/calls-per-user", element: <ProtectedRoute element={<CallsPerUser />} /> },
-  { path: "/reports/conversion-by-source", element: <ProtectedRoute element={<ConversionBySource />} /> },
+  // Sales reports (spec 4a). Spec-1 paths redirect: bookmarks and the sidebar
+  // rows that were re-pointed in sql/075 both land on the new pages.
+  { path: "/reports/pipeline-funnel", element: <Navigate to="/reports/funnel" replace /> },
+  { path: "/reports/leads-by-status", element: <Navigate to="/reports/funnel" replace /> },
+  { path: "/reports/calls-per-user", element: <Navigate to="/reports/activity" replace /> },
+  { path: "/reports/conversion-by-source", element: <Navigate to="/reports/funnel?groupBy=source" replace /> },
+  { path: "/reports/funnel", element: <ProtectedRoute element={<FunnelReport />} /> },
+  { path: "/reports/follow-up-compliance", element: <ProtectedRoute element={<FollowUpComplianceReport />} /> },
+  { path: "/reports/activity", element: <ProtectedRoute element={<ActivityReport />} /> },
+  { path: "/reports/lost", element: <ProtectedRoute element={<LostReport />} /> },
+  { path: "/reports/aging", element: <ProtectedRoute element={<AgingReport />} /> },
+  { path: "/reports/transfers", element: <ProtectedRoute element={<TransfersReport />} /> },
+  { path: "/reports/pipeline-value", element: <ProtectedRoute element={<PipelineValueReport />} /> },
+  { path: "/reports/leaderboard", element: <ProtectedRoute element={<LeaderboardReport />} /> },
   // Support / ticketing module.
   { path: "/support/board", element: <ProtectedRoute element={<TicketBoard />} /> },
   { path: "/support/tickets", element: <ProtectedRoute element={<Tickets />} /> },

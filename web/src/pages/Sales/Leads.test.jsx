@@ -52,8 +52,8 @@ vi.mock("./TransferLeadModal", () => ({ __esModule: true, default: vi.fn(({ open
 import Leads from "./Leads";
 import useServerTable from "../../hooks/useServerTable";
 
-const renderPage = () => render(
-  <ThemeProvider theme={buildTheme("light")}><QueryClientProvider client={new QueryClient()}><MemoryRouter><Leads /></MemoryRouter></QueryClientProvider></ThemeProvider>,
+const renderPage = (route) => render(
+  <ThemeProvider theme={buildTheme("light")}><QueryClientProvider client={new QueryClient()}><MemoryRouter initialEntries={route ? [route] : undefined}><Leads /></MemoryRouter></QueryClientProvider></ThemeProvider>,
 );
 const lastCfg = () => useServerTable.mock.calls.at(-1)[0];
 const lastExtraParams = () => lastCfg().extraParams;
@@ -161,9 +161,53 @@ describe("Leads page (spec 1)", () => {
     expect(await screen.findByTestId("lead-create-modal")).toBeInTheDocument();
   });
 
+  // Owner feedback: the row icons were four identical grey glyphs and none of
+  // them said "this opens the lead". The eye leads the row; the rest are toned
+  // by consequence.
+  it("row actions lead with an eye into the lead and are toned by what they do", async () => {
+    renderPage();
+    render(
+      <ThemeProvider theme={buildTheme("light")}>
+        {lastCfg().renderRowActions({ row: { original: FIXTURE_LEADS[0] } })}
+      </ThemeProvider>
+    );
+    const eye = screen.getByTestId("view-lead-101");
+    expect(eye).toHaveAttribute("data-tone", "primary");
+    await userEvent.setup().click(eye);
+    expect(mockNavigate).toHaveBeenCalledWith("/sales/leads/101");
+
+    expect(screen.getByTestId("edit-lead-101")).toHaveAttribute("data-tone", "info");
+    expect(screen.getByTestId("transfer-lead-101")).toHaveAttribute("data-tone", "warning");
+    expect(screen.getByTestId("delete-lead-101")).toHaveAttribute("data-tone", "error");
+  });
+
   it("New Lead opens the create modal", async () => {
     renderPage();
     await userEvent.setup().click(screen.getByTestId("new-lead-btn"));
     expect(await screen.findByTestId("lead-create-modal")).toBeInTheDocument();
+  });
+
+  // Spec 4a: a report number drills into this list with the range it counted.
+  it("seeds filters and the date range from the URL, and the range chip clears it", async () => {
+    renderPage("/sales/leads?StatusId=15&OwnerId=2&from=2026-08-01&to=2026-08-31");
+    expect(lastExtraParams()).toEqual({
+      StatusId: 15, ProductId: null, OwnerId: 2, SourceId: null, BranchId: null,
+      FromDate: "2026-08-01", ToDate: "2026-08-31",
+    });
+    // Numeric ids, not strings: optById compares with ===, so a string would
+    // still post the filter while every Combobox showed its placeholder.
+    expect(screen.getByTestId("filter-status-input")).toHaveValue("Lost");
+    expect(screen.getByTestId("filter-owner-input")).toHaveValue("Bob");
+    const chip = screen.getByTestId("leads-range-chip");
+    expect(chip).toHaveTextContent("01-08-2026 – 31-08-2026");
+    await userEvent.setup().click(screen.getByTestId("leads-range-chip-remove"));
+    expect(lastExtraParams()).not.toHaveProperty("FromDate");
+    expect(screen.queryByTestId("leads-range-chip")).toBeNull();
+  });
+
+  it("Overdue=1 lands on the Overdue preset", () => {
+    renderPage("/sales/leads?Overdue=1");
+    expect(lastExtraParams()).toMatchObject({ Overdue: true });
+    expect(screen.getByRole("tab", { name: "Overdue" })).toHaveAttribute("aria-selected", "true");
   });
 });

@@ -7,7 +7,6 @@ import {
   PersonOutlineOutlined,
   SettingsOutlined,
   AssessmentOutlined,
-  LeaderboardOutlined,
   EventAvailableOutlined,
   ViewKanbanOutlined,
   LabelOutlined,
@@ -27,6 +26,13 @@ import {
   PhoneOutlined,
   TuneOutlined,
   ListAltOutlined,
+  TimelineOutlined,
+  TrendingDownOutlined,
+  HourglassBottomOutlined,
+  SwapHorizOutlined,
+  Inventory2Outlined,
+  EmojiEventsOutlined,
+  PersonSearchOutlined,
 } from "@mui/icons-material";
 import { getMenuIcon, menuPath, buildDynamicMenu } from "./menuBuilder";
 
@@ -41,7 +47,7 @@ describe("getMenuIcon", () => {
     ["Kanban Columns", ViewKanbanOutlined],
     ["Status", LabelOutlined],
     ["Lead Source", SourceOutlined],
-    ["Leads", LeaderboardOutlined],
+    ["Leads", PersonSearchOutlined],
     ["Follow Ups", EventAvailableOutlined],
     ["Contacts", ContactPhoneOutlined],
     ["Reports", AssessmentOutlined],
@@ -61,6 +67,16 @@ describe("getMenuIcon", () => {
     ["Calls per User", PhoneOutlined],
     ["Custom Fields", TuneOutlined],
     ["Lookups", ListAltOutlined],
+    // spec 4a sidebar rows — these were the circles (tblMenu rows 21, 40-46)
+    ["Activity", TimelineOutlined],
+    ["Lost Analysis", TrendingDownOutlined],
+    ["Aging", HourglassBottomOutlined],
+    ["Transfers", SwapHorizOutlined],
+    ["Products", Inventory2Outlined],
+    // "Leaderboard" contains "lead", so it must be matched before it
+    ["Leaderboard", EmojiEventsOutlined],
+    ["Follow-up Compliance", EventAvailableOutlined],
+    ["Pipeline Value", AccountTreeOutlined],
     ["Something Else", CircleOutlined],
     [undefined, CircleOutlined],
   ])("maps %s to the expected icon", (title, expected) => {

@@ -2,6 +2,7 @@ import React from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import userEvent from "@testing-library/user-event";
 
 const mockNavigate = vi.fn();
 vi.mock("react-router-dom", async () => {
@@ -64,6 +65,15 @@ vi.mock("../stores/useAuthStore", () => {
         route: "/sales/pipeline",
         permissions: { canView: true },
       },
+      // tblMenu.Route may carry a query string (spec 4a re-points row 22 to
+      // /reports/funnel?groupBy=source), which the active check must handle.
+      {
+        menuid: 22,
+        parentid: 20,
+        description: "By Source",
+        route: "/sales/leads?groupBy=source",
+        permissions: { canView: true },
+      },
     ],
     setActiveMenuRights: vi.fn(),
   }));
@@ -82,7 +92,7 @@ const renderSidebar = (overrides = {}) => {
   };
   return {
     ...render(
-      <MemoryRouter initialEntries={["/dashboard"]}>
+      <MemoryRouter initialEntries={[overrides.route ?? "/dashboard"]}>
         <Sidebar {...props} />
       </MemoryRouter>
     ),
@@ -101,6 +111,22 @@ describe("Sidebar", () => {
     expect(screen.getByTestId("sidebar-Dashboard")).toBeInTheDocument();
     expect(screen.getByTestId("sidebar-Tasks")).toBeInTheDocument();
     expect(screen.getByTestId("sidebar-Reports")).toBeInTheDocument();
+  });
+
+  it("highlights a menu Route that carries a query string, and only when it matches", async () => {
+    const user = userEvent.setup();
+    // On /sales/leads with no params, the plain child is current, not the
+    // ?groupBy=source one. Before this, a query-carrying row never lit at all.
+    const { unmount } = renderSidebar({ route: "/sales/leads" });
+    await user.click(screen.getByTestId("sidebar-Sales"));
+    expect(screen.getByTestId("sidebar-By Source")).not.toHaveAttribute("aria-current");
+    unmount();
+
+    renderSidebar({ route: "/sales/leads?groupBy=source&preset=7d" });
+    await user.click(screen.getByTestId("sidebar-Sales"));
+    // Extra params (a report page writes its filters into the URL) must not
+    // blank the highlight — the row's own params just have to be present.
+    expect(screen.getByTestId("sidebar-By Source")).toHaveAttribute("aria-current", "page");
   });
 
   it("renders the DB-driven Sales menu (from menuRights, not hardcoded)", () => {

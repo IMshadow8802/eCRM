@@ -1,5 +1,7 @@
 const database = require("../config/database");
 const { scopeJson: serialiseScope } = require("../middleware/permission");
+const { asyncRoute } = require("../utils/controllerKit");
+const { runReport, REPORTS } = require("../utils/reportKit");
 
 /**
  * Was a local copy that collapsed an empty scope to NULL — which sp_Dashboard
@@ -214,4 +216,18 @@ class ReportController {
   }
 }
 
-module.exports = new ReportController();
+const controller = new ReportController();
+
+// Spec 4a: one method per report, every one the same line. Assigned on the
+// instance rather than declared on the class so asyncRoute wraps each once —
+// a thrown SP error becomes one consistent 500, validation stays a 400 inside
+// runReport. REPORTS is the single list; adding a report = one row there.
+for (const [key, { sp }] of Object.entries(REPORTS)) {
+  controller[key] = asyncRoute(
+    (req, res) => runReport(sp, req, res, key),
+    "Failed to fetch report",
+    "REPORT_ERROR",
+  );
+}
+
+module.exports = controller;
