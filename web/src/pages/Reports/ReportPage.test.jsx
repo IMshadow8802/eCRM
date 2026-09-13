@@ -174,6 +174,16 @@ describe("ReportPage", () => {
     expect(cap2.body).toMatchObject({ DateBasis: "closed" });
   });
 
+  it("names a filter id it cannot resolve instead of showing 'All'", async () => {
+    // The filter is applied either way; a control that says "All branches"
+    // while the report is filtered to branch 99999 is the lie worth killing.
+    const cap = mockReportEndpoints("/api/reports/funnel", DATA);
+    renderPage("/reports/funnel?BranchId=99999");
+    await screen.findByTestId("funnel-table");
+    expect(cap.body).toMatchObject({ BranchId: 99999 });
+    expect(screen.getByTestId("report-BranchId-input")).toHaveValue("Unknown (#99999)");
+  });
+
   it("shows the empty state with no rows and disables export", async () => {
     mockReportEndpoints("/api/reports/funnel", reportData());
     renderPage();

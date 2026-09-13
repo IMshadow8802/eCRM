@@ -94,7 +94,17 @@ export default function ReportPage({
     SourceId: sources.map((s) => ({ value: s.Id, label: s.Value })),
     ProductId: (productData?.products ?? []).map((p) => ({ value: p.Id, label: p.Name })),
   };
-  const optById = (list, v) => list.find((o) => o.value === v) ?? null;
+  // A URL can name an id that is not in the caller's pick-list (another
+  // branch, a deleted product, a hand-typed number). The filter IS applied —
+  // toBody posts it and the server ANDs it inside scope — so showing the
+  // placeholder would have the control deny a filter that is demonstrably on,
+  // and the user could neither see nor clear it. Name it instead. The
+  // list.length guard keeps a valid id from flashing "Unknown" while the
+  // pick-lists are still loading.
+  const optById = (list, v) => {
+    if (v === null || v === undefined) return null;
+    return list.find((o) => o.value === v) ?? (list.length ? { value: v, label: `Unknown (#${v})` } : null);
+  };
 
   const body = toBody(filters);
   const { data, isLoading, error } = useApiQuery({

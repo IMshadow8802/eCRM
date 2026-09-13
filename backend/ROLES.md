@@ -153,13 +153,31 @@ Tracked, deliberately not built yet:
   `sp_ConversionBySource`) scope by branch only.** Their endpoints stay one
   release for the `/reports/*` redirects and then go; the eight `sp_Rpt*`
   procs (spec 4a, `075`) apply branch AND owner scope like `sp_FetchLeads`.
-- **A Self/Team leaderboard ranks the caller against partial data.**
-  `sp_RptLeaderboard` lists every rep who touched a lead the caller can see,
-  so a Sales Executive sees colleagues whose numbers are only the fragments
-  visible through his own leads — it reads as a real ranking and is not. No
-  rows leak; the fix is in `backend/sql/078_leaderboard_owner_scope.sql`
-  (restrict the rep list to `@OwnerIds` + the caller when owner scope is on)
-  — **pending apply**.
+- **The leaderboard ranks only reps the caller sees in full.** A ranking has
+  to compare like with like, and `sp_RptLeaderboard` originally listed every
+  rep who touched a visible lead — so a rep's row could be just the fragment
+  of their work visible through the caller's own leads. No rows ever leaked.
+  `078` restricts the rep list to `@OwnerIds` (Self/Team, **applied**
+  2026-09-13); `079_leaderboard_branch_scope.sql` adds the branch half — a
+  rep must belong to a branch in `@BranchIds` — **pending apply**. The caller
+  is always listed; a rep whose branch cannot be resolved fails closed. Every
+  other report groups by owner without this problem: they break down *the
+  leads you can see*, which is a true statement, not a comparison of people.
+- **Team scope is not a superset of a member's Self scope, in the follow-up
+  list.** `sp_FetchFollowUps` matches `f.AssignedTo` in its `@UserId` escape
+  hatch but not against `@OwnerIds`, and never matches `l.CreatedBy` against
+  `@OwnerIds` at all. Measured 2026-09-13: `se_ho_amit` (17, Self) sees 54
+  follow-ups on the Follow-ups page that his own manager `tl_ho_neha` (16,
+  Team) cannot, and `se_ho_sara` (18) 32. A manager seeing less than her direct
+  report is indefensible, but closing it properly touches `sp_FetchFollowUps`
+  **and** `sp_FetchLeads` and changes what lead records a Team lead can open —
+  a scope-model change, not a patch. Until then the three **people** reports
+  (`sp_RptFollowUpCompliance`, `sp_RptActivity`, `sp_RptLeaderboard`) carry
+  `f.AssignedTo`/`f.DoneBy IN @OwnerIds` in their owner half **on purpose** and
+  therefore count more than the Follow-ups page shows (Neha: 748 vs 697). That
+  divergence is deliberate — see the header of `sp_RptFollowUpCompliance` — and
+  crosses no branch boundary: the branch half still `AND`s. Do not "restore
+  the verbatim predicate" without reading it first.
 - **`tblBranch` has no `CompId`**, so `sp_FetchBranches` is company-blind: the
   branch pick-list returns every branch in the database. Harmless on today's
   single-company deployment, wrong the moment a second company exists.

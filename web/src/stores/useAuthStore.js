@@ -225,6 +225,21 @@ const useAuthStore = create(
     {
       name: "auth-storage-eCRM",
       storage: createJSONStorage(() => localStorage),
+      // Persist the session, never the API base URL. Rehydrating that from
+      // localStorage means a single same-origin write (shared machine, kiosk,
+      // extension) points every Authorization header at another host — and it
+      // survives logout, reload and re-login, long after the write is gone.
+      // Keeping it out means it always comes from the module default below.
+      partialize: (s) => ({
+        isAuthenticated: s.isAuthenticated,
+        token: s.token,
+        user: s.user,
+        company: s.company,
+        permissions: s.permissions,
+        loginTimestamp: s.loginTimestamp,
+        menuRights: s.menuRights,
+        activeMenuRights: s.activeMenuRights,
+      }),
       // Bump whenever the persisted user/company shape changes so stale
       // sessions get wiped instead of silently returning undefined keys.
       // v2 = PascalCase canonical shape (matches tblUser columns).

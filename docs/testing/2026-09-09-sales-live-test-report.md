@@ -11,7 +11,7 @@
 | P3 visibility matrix, presets, queues, reports | 53 | 52 (pre-existing lead in Overdue — correct) |
 | P4 cross-branch, MultiBranch grant, per-branch reports | 40 | 40 |
 
-## 1. Test users (all passwords `BigBoss`)
+## 1. Test users (all share one password — see the private ops note, not this file)
 
 | Username | Role (group) | Scope | Branch | Reports to |
 |---|---|---|---|---|
@@ -88,5 +88,5 @@ Existing: `Ayush` (Owner, All). Products created: Gold Chain 22K (₹85,000, 12 
 
 ## 6. Post-test state / next steps
 - `backend/sql/071`–`074` are all applied and verified. Delete on your word (§0.2).
-- Test data stays in prod for your UI walkthrough: log in as any user above with `BigBoss`.
+- Test data stays in prod for your UI walkthrough: log in as any user above with the shared test password.
 - Findings 1–2 are small backend changes; say the word and they go on the queue.

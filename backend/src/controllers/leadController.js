@@ -8,6 +8,7 @@ const {
   assertCanAssign,
 } = require("../middleware/permission");
 const { positiveInt, pageParams } = require("../utils/controllerKit");
+const { parseDay } = require("../utils/reportKit");
 
 // Mutating SPs log their own activity server-side and return exactly one
 // status row: Id + ResponseCode + ResponseMess.
@@ -45,8 +46,11 @@ const transferArgs = (body) => ({
 });
 
 // A drill-down from a report carries the range it counted. Anything that is
-// not a plain ISO day is dropped rather than handed to the SP as-is.
-const isoDay = (s) => (typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null);
+// not a plain ISO day is dropped rather than handed to the SP as-is. Uses
+// reportKit's round-trip parse, not a bare regex: 2026-02-30 matches the shape
+// but is not a date, and reaching @FromDate DATE with it is a 500 where the
+// report it drilled from answers 400.
+const isoDay = (s) => (typeof s === "string" && parseDay(s) ? s : null);
 
 const leadController = {
   async save(req, res) {

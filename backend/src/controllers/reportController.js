@@ -1,24 +1,17 @@
 const database = require("../config/database");
-const { scopeJson: serialiseScope } = require("../middleware/permission");
-const { asyncRoute } = require("../utils/controllerKit");
+const { scopeParams } = require("../middleware/permission");
+const { asyncRoute, positiveInt } = require("../utils/controllerKit");
 const { runReport, REPORTS } = require("../utils/reportKit");
-
-/**
- * Was a local copy that collapsed an empty scope to NULL — which sp_Dashboard
- * and sp_ConvertedSummary both read as "no branch filter", so the user with the
- * narrowest scope got the widest dashboard. Delegates to the shared serialiser
- * now, which keeps `[]` as an empty allow-list.
- */
-function scopeJson(req) {
-  return serialiseScope(req.scope?.branchIds);
-}
 
 class ReportController {
   async getDashboard(req, res) {
     try {
+      // sp_Dashboard used to get the branch axis only (sql/081 adds @UserId +
+      // @OwnerIdsJson), so a Self-scope rep was handed their whole branch:
+      // 222 leads where the funnel report showed the correct 133.
       const result = await database.executeStoredProcedure("sp_Dashboard", {
         CompId: req.user.CompId,
-        AccessibleBranchIdsJson: scopeJson(req),
+        ...scopeParams(req),
       });
 
       // ponytail: extra recordsets ship in sql/055 — guard so the old SP (KPIs only) doesn't 500
@@ -49,126 +42,18 @@ class ReportController {
     }
   }
 
-  async getConvertedSummary(req, res) {
-    try {
-      const result = await database.executeStoredProcedure("sp_ConvertedSummary", {
-        CompId: req.user.CompId,
-        AccessibleBranchIdsJson: scopeJson(req),
-      });
-
-      return res.status(200).json({
-        success: true,
-        message: "Converted summary fetched successfully",
-        responseCode: 200,
-        data: { summary: result.recordsets[0][0] },
-        timestamp: new Date().toISOString(),
-      });
-    } catch (err) {
-      console.error("Converted summary error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to fetch converted summary",
-        code: "CONVERTED_SUMMARY_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
-
-  async leadsByStatus(req, res) {
-    try {
-      const { BranchId = null } = req.body;
-      const result = await database.executeStoredProcedure("sp_LeadsByStatus", {
-        CompId: req.user.CompId,
-        BranchId,
-        AccessibleBranchIdsJson: scopeJson(req),
-      });
-      return res.status(200).json({
-        success: true,
-        message: "Leads by status fetched successfully",
-        responseCode: 200,
-        data: { statuses: result.recordsets[0] },
-        timestamp: new Date().toISOString(),
-      });
-    } catch (err) {
-      console.error("Leads by status error:", err);
-      return res.status(500).json({
-        success: false, message: "Failed to fetch leads by status",
-        code: "LEADS_BY_STATUS_ERROR", responseCode: 500, timestamp: new Date().toISOString(),
-      });
-    }
-  }
-
-  async callsPerUser(req, res) {
-    try {
-      const { CompId } = req.user;
-      const { BranchId = null, FromDate = null, ToDate = null } = req.body;
-
-      const result = await database.executeStoredProcedure("sp_CallsPerUser", {
-        CompId,
-        BranchId,
-        FromDate,
-        ToDate,
-        AccessibleBranchIdsJson: scopeJson(req),
-      });
-
-      return res.status(200).json({
-        success: true,
-        message: "Calls per user fetched successfully",
-        responseCode: 200,
-        data: { calls: result.recordsets[0] },
-        timestamp: new Date().toISOString(),
-      });
-    } catch (err) {
-      console.error("Calls per user error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to fetch calls per user",
-        code: "CALLS_PER_USER_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
-
-  async conversionBySource(req, res) {
-    try {
-      const { CompId } = req.user;
-      const { BranchId = null } = req.body;
-
-      const result = await database.executeStoredProcedure("sp_ConversionBySource", {
-        CompId,
-        BranchId,
-        AccessibleBranchIdsJson: scopeJson(req),
-      });
-
-      return res.status(200).json({
-        success: true,
-        message: "Conversion by source fetched successfully",
-        responseCode: 200,
-        data: { conversion: result.recordsets[0] },
-        timestamp: new Date().toISOString(),
-      });
-    } catch (err) {
-      console.error("Conversion by source error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to fetch conversion by source",
-        code: "CONVERSION_BY_SOURCE_ERROR",
-        responseCode: 500,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }
-
   // --- Ticket reports (Spec 2) ---
 
   async ticketsByCategory(req, res) {
     try {
-      const { CompId, BranchId } = req.user;
       const result = await database.executeStoredProcedure("sp_TicketsByCategory", {
-        CompId,
-        BranchId,
+        CompId: req.user.CompId,
+        // The caller's own branch is NOT a visibility gate — req.scope is.
+        // Passing req.user.BranchId showed a Self-scope agent the whole
+        // branch, showed a Company-scope user only their own, and went
+        // company-wide for anyone whose tblUser.BranchId is NULL.
+        BranchId: positiveInt(req.body.BranchId),
+        ...scopeParams(req),
       });
       return res.status(200).json({
         success: true,
@@ -191,10 +76,10 @@ class ReportController {
 
   async resolutionSummary(req, res) {
     try {
-      const { CompId, BranchId } = req.user;
       const result = await database.executeStoredProcedure("sp_ResolutionSummary", {
-        CompId,
-        BranchId,
+        CompId: req.user.CompId,
+        BranchId: positiveInt(req.body.BranchId),
+        ...scopeParams(req),
       });
       return res.status(200).json({
         success: true,

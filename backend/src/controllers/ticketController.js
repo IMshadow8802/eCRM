@@ -1,10 +1,12 @@
 const database = require("../config/database");
 const responseHelper = require("../utils/responseHelper");
 const attachmentController = require("./attachmentController");
+const { positiveInt } = require("../utils/controllerKit");
 const {
   scopeParams,
   canSeeRecord,
   assertRecordAccess,
+  assertCanAssign,
 } = require("../middleware/permission");
 
 // Mutating SPs log their own activity server-side and return one status row.
@@ -24,14 +26,38 @@ async function runSp(res, spName, params, failMessage) {
   }
 }
 
+// Exactly the columns sp_SaveTicket accepts. Anything else in the body is
+// dropped — the whole body used to be spread straight into the SP call.
+const TICKET_FIELDS = [
+  "CustomerName", "ContactPerson", "Contact", "Channel",
+  "CategoryId", "Priority", "PipelineId", "StageId",
+  "AssignedTo", "LinkedLeadId", "Description", "CustomJSON",
+];
+const pick = (body, keys) => Object.fromEntries(keys.map((k) => [k, body[k] ?? null]));
+
 const ticketController = {
-  save(req, res) {
+  async save(req, res) {
     const { CompId, BranchId, UserId } = req.user;
-    const { Id = 0 } = req.body;
+    const Id = positiveInt(req.body.Id) ?? 0;
+    const fields = pick(req.body, TICKET_FIELDS);
+    if (Id > 0) {
+      // This is the whole reason the handler is async now: without it, any
+      // authenticated user could POST an Id and rewrite a ticket they cannot
+      // even read. The lead path has always checked; this one never did.
+      if (!(await assertRecordAccess(req, res, "ticket", Id))) return;
+      // Stage is the single source of truth for the lifecycle (CLAUDE.md §6)
+      // and every transition goes through sp_MoveTicketStage, which stamps
+      // ResolvedAt/ClosedAt and requires a ResolutionId on the first won
+      // stage. Accepting StageId here would skip all of it.
+      fields.StageId = null;
+    }
+    // Assigning is an assignment, on a ticket as much as on a lead.
+    if (fields.AssignedTo
+        && !(await assertCanAssign(req, res, { toUserId: fields.AssignedTo, toBranchId: null }))) return;
     return runSp(
       res,
       "sp_SaveTicket",
-      { ...req.body, Id, CompId, BranchId, UserId },
+      { Id, CompId, BranchId, UserId, ...fields },
       "Failed to save ticket",
     );
   },

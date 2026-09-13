@@ -807,11 +807,19 @@ GO
 --
 -- Contract (spec §3): same twelve params, three result sets, no ResponseCode.
 --
--- Scope: a follow-up is visible when its LEAD is visible (branch scope AND
--- owner scope) OR the caller owns/created the lead OR the follow-up is the
--- caller's own — the same predicate sp_FetchFollowUps (071) uses. The owner
--- list also matches the rep on the follow-up, so a Team lead sees the work his
--- reps did on someone else's lead.
+-- Scope: a follow-up is visible when it sits in an accessible BRANCH and
+-- either its lead is owned by someone in the caller's owner scope OR the
+-- follow-up is ASSIGNED to someone in it -- or the caller owns/created the
+-- lead, or the follow-up is the caller's own.
+--
+-- CORRECTED 2026-09-13 (see 083_compliance_scope_comment.sql, which ships the
+-- same text into the live definition). This paragraph used to claim the
+-- predicate was "the same predicate sp_FetchFollowUps (071) uses". It never
+-- was: the f.AssignedTo IN @OwnerIds disjunct below is deliberate, because
+-- these are PEOPLE reports and the lead-centric list predicate would show a
+-- Team lead fewer of her own rep's activities than both the rep herself and
+-- the rep's branch manager. 083 carries the full reasoning and the measured
+-- numbers.
 --
 -- Dates: compliance is dated on DueAt for @DateBasis='created' and on
 -- COALESCE(DoneAt, DueAt) otherwise; activity has exactly one date (DoneAt)

@@ -24,10 +24,6 @@ jest.mock("../../../src/middleware/permission", () => {
 const hit = (name) => jest.fn((req, res) => res.status(200).json({ success: true, hit: name }));
 jest.mock("../../../src/controllers/reportController", () => ({
   getDashboard: hit("getDashboard"),
-  getConvertedSummary: hit("getConvertedSummary"),
-  leadsByStatus: hit("leadsByStatus"),
-  callsPerUser: hit("callsPerUser"),
-  conversionBySource: hit("conversionBySource"),
   ticketsByCategory: hit("ticketsByCategory"),
   resolutionSummary: hit("resolutionSummary"),
   funnel: hit("funnel"),
@@ -51,11 +47,6 @@ app.use("/api/reports", reportRoutes);
 describe("reportRoutes", () => {
   it.each([
     ["/api/reports/getDashboard", "getDashboard"],
-    ["/api/reports/getConvertedSummary", "getConvertedSummary"],
-    // Spec 1 endpoints — kept one release for the web redirects (spec 4a §4).
-    ["/api/reports/leadsByStatus", "leadsByStatus"],
-    ["/api/reports/callsPerUser", "callsPerUser"],
-    ["/api/reports/conversionBySource", "conversionBySource"],
     ["/api/reports/ticketsByCategory", "ticketsByCategory"],
     ["/api/reports/resolutionSummary", "resolutionSummary"],
     // Spec 4a
@@ -76,5 +67,22 @@ describe("reportRoutes", () => {
   it("no longer exposes pipelineFunnel", async () => {
     const r = await request(app).post("/api/reports/pipelineFunnel").send({ PipelineId: 3 });
     expect(r.status).toBe(404);
+  });
+
+  // Deleted 2026-09-13. sp_CallsPerUser and friends scope by BRANCH only, so a
+  // Self-scope rep could read every colleague's call volume through them — a
+  // softer path to data the spec-4a procs guard with branch AND owner scope.
+  // They were kept "one release for the web redirects", but those redirects are
+  // client-side routes that never call the API, and grep found zero callers in
+  // web/ or mobile/. sp_ConvertedSummary additionally referenced columns that
+  // no longer exist, so it threw on every call.
+  it.each([
+    ["/api/reports/getConvertedSummary"],
+    ["/api/reports/leadsByStatus"],
+    ["/api/reports/callsPerUser"],
+    ["/api/reports/conversionBySource"],
+  ])("no longer serves %s", async (path) => {
+    const res = await request(app).post(path).send({});
+    expect(res.status).toBe(404);
   });
 });

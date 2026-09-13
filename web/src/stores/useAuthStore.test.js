@@ -116,3 +116,16 @@ describe("useAuthStore.checkTokenExpiry", () => {
     expect(useAuthStore.getState().token).not.toBeNull();
   });
 });
+
+describe("useAuthStore persistence", () => {
+  it("never writes API_BASE_URL to localStorage", () => {
+    // A persisted base URL is rehydrated into every Authorization header and
+    // survives logout, so one same-origin write would redirect the token
+    // indefinitely. It must always come from the module default.
+    localStorage.removeItem("auth-storage-eCRM");
+    useAuthStore.setState({ token: "t", isAuthenticated: true, API_BASE_URL: "http://evil.tld" });
+    const written = JSON.parse(localStorage.getItem("auth-storage-eCRM") ?? '{"state":{}}');
+    expect(written.state).not.toHaveProperty("API_BASE_URL");
+    expect(written.state.token).toBe("t");
+  });
+});

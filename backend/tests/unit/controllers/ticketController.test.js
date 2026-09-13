@@ -30,6 +30,55 @@ beforeEach(() => {
   database.executeStoredProcedure.mockReset();
 });
 
+describe("ticketController.save authorisation", () => {
+  // assertRecordAccess reads the ticket through sp_FetchTicketDetail first,
+  // so a guarded update makes two SP calls: the lookup, then the save.
+  const lookup = (ticket) =>
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [ticket ? [ticket] : [], [], [], []],
+    });
+
+  // save was the one mutating endpoint with no guard at all: any authenticated
+  // user could POST {Id: <any ticket>} and rewrite a ticket they cannot even
+  // read, reassign it, or jump its stage. The lead path has always blocked
+  // this; the ticket path never got the same treatment.
+  it("403s an update on a ticket the caller cannot see, without running the SP", async () => {
+    lookup({ Id: 4, BranchId: 9, AssignedTo: 3, CreatedBy: 3 });
+    const req = baseReq({ scope: { branchIds: [2], ownerIds: [7] }, body: { Id: 4, CustomerName: "hijacked" } });
+    const res = mockRes();
+    await ticketController.save(req, res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1); // the lookup only
+  });
+
+  it("never lets save move the lifecycle — StageId goes null on update", async () => {
+    // CLAUDE.md section 6: stage is the single source of truth and every
+    // transition goes through sp_MoveTicketStage, which stamps ResolvedAt /
+    // ClosedAt and demands a ResolutionId on the first won stage. Accepting
+    // StageId here skips all of it.
+    lookup({ Id: 4, BranchId: 2, AssignedTo: 7, CreatedBy: 7 });
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordset: [{ ResponseCode: 200, ResponseMess: "ok", Id: 4 }],
+    });
+    const res = mockRes();
+    await ticketController.save(baseReq({ body: { Id: 4, StageId: 99, CustomerName: "Acme" } }), res);
+    const params = database.executeStoredProcedure.mock.calls[1][1];
+    expect(params).toMatchObject({ Id: 4, StageId: null });
+  });
+
+  it("drops body keys sp_SaveTicket does not declare, and the body cannot override CompId", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordset: [{ ResponseCode: 200, ResponseMess: "ok", Id: 1 }],
+    });
+    const res = mockRes();
+    await ticketController.save(baseReq({ body: { CustomerName: "Acme", CompId: 999, CreatedBy: 1, Nonsense: "x" } }), res);
+    const params = database.executeStoredProcedure.mock.calls[0][1];
+    expect(params.CompId).toBe(5);
+    expect(params).not.toHaveProperty("Nonsense");
+    expect(params).not.toHaveProperty("CreatedBy");
+  });
+});
+
 describe("ticketController.save", () => {
   it("injects CompId/BranchId/UserId, defaults Id=0, forwards CustomJSON + LinkedLeadId", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({

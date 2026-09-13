@@ -10,6 +10,7 @@ const { success, error } = require("./responseHelper");
 const { positiveInt } = require("./controllerKit");
 
 const DATE_BASES = ["created", "closed", "activity"];
+const MAX_RANGE_DAYS = 731; // two years, leap included
 
 // GroupBy whitelist per report — must match the RAISERROR guard at the top of
 // each sp_Rpt*. The SP rejects anything else too, but that surfaces as a 500;
@@ -68,6 +69,12 @@ function parseReportArgs(body = {}, key, today = new Date()) {
   const from = body.FromDate ?? isoDay(daysBefore(toDate, 29));
   if (!parseDay(from)) return { error: "FromDate and ToDate must be YYYY-MM-DD" };
   if (from > to) return { error: "FromDate must not be after ToDate" };
+  // Every report scans tblLeads into a temp table with correlated subqueries
+  // per row, so an unbounded window is a free way to pin the database. Two
+  // years is well past any reporting need.
+  if ((parseDay(to) - parseDay(from)) / 86400000 > MAX_RANGE_DAYS) {
+    return { error: `The date range must be ${MAX_RANGE_DAYS} days or less` };
+  }
 
   const basis = body.DateBasis ?? "created";
   if (!DATE_BASES.includes(basis)) return { error: `DateBasis must be one of ${DATE_BASES.join(", ")}` };
@@ -112,4 +119,4 @@ async function runReport(spName, req, res, key) {
   });
 }
 
-module.exports = { REPORTS, DATE_BASES, parseReportArgs, runReport };
+module.exports = { REPORTS, DATE_BASES, MAX_RANGE_DAYS, parseDay, parseReportArgs, runReport };

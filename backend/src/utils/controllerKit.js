@@ -106,9 +106,10 @@ const pageParams = (body = {}, defaultSize = 10) => {
  * the procedure and it decided for itself what that meant. Returns null so the
  * caller can answer 400 rather than letting the database guess.
  */
+const INT_MAX = 2147483647; // SQL Server INT; beyond this the driver throws a 500
 const positiveInt = (value) => {
   const n = Number(value);
-  return Number.isInteger(n) && n > 0 ? n : null;
+  return Number.isInteger(n) && n > 0 && n <= INT_MAX ? n : null;
 };
 
 module.exports = {

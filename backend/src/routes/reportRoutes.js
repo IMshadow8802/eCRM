@@ -9,20 +9,20 @@ const router = express.Router();
 router.use(verifyToken, loadScope);
 
 router.post("/getDashboard", allowEmptyPayload, reportController.getDashboard);
-router.post("/getConvertedSummary", allowEmptyPayload, reportController.getConvertedSummary);
-// /getFollowupsUserWise and /getLeadSummaryBranchWise were removed on
-// 2026-08-04. Their SPs referenced tblLeads.AssignTo / .FollowupDate /
-// .LeadDate / .LeadStatus — columns dropped when leads moved to the config
-// engine — so both threw on every call and had done for months. Nothing in web
-// or mobile called either. See backend/sql/069_tenancy_guards.sql.
-router.post("/leadsByStatus", allowEmptyPayload, reportController.leadsByStatus);
-router.post("/callsPerUser", allowEmptyPayload, reportController.callsPerUser);
-router.post("/conversionBySource", allowEmptyPayload, reportController.conversionBySource);
+// /getFollowupsUserWise and /getLeadSummaryBranchWise went on 2026-08-04, and
+// /getConvertedSummary, /leadsByStatus, /callsPerUser and /conversionBySource
+// followed on 2026-09-13. The last three scoped by BRANCH only — no owner axis
+// — so a Self-scope rep could read the whole branch through them, and
+// sp_CallsPerUser handed back every colleague's call volume by name. They were
+// meant to survive one release for the /reports/* redirects, but those are
+// client-side routes that never reach the API and nothing in web or mobile
+// called them. sp_ConvertedSummary also referenced tblLeads.LeadStatus and
+// .InvoiceDate, columns that no longer exist, so it threw on every call.
+// The spec-4a procs below carry branch AND owner scope.
 router.post("/ticketsByCategory", allowEmptyPayload, reportController.ticketsByCategory);
 router.post("/resolutionSummary", allowEmptyPayload, reportController.resolutionSummary);
 
-// Spec 4a — the report system. Old lead reports above stay one release for
-// the web redirects, then go.
+// Spec 4a — the report system.
 router.post("/funnel", allowEmptyPayload, reportController.funnel);
 router.post("/followUpCompliance", allowEmptyPayload, reportController.followUpCompliance);
 router.post("/activity", allowEmptyPayload, reportController.activity);
