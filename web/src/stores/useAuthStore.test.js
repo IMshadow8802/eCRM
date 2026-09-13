@@ -118,6 +118,36 @@ describe("useAuthStore.checkTokenExpiry", () => {
 });
 
 describe("useAuthStore persistence", () => {
+  // partialize deliberately omits BranchId/CompId/UserId. That is only safe
+  // because the store's initializer re-derives them from the separate
+  // "userData" key on every load — so a reload must still produce them.
+  // Without this test, dropping them from partialize looks like a silent
+  // regression waiting for the next person who reads s.UserId.
+  it("re-derives the flat ids from userData after a reload, despite not persisting them", async () => {
+    const future = Math.floor(Date.now() / 1000) + 3600;
+    const b64 = (o) => btoa(JSON.stringify(o)).replace(/=+$/, "");
+    const token = `${b64({ alg: "HS256" })}.${b64({ exp: future, UserId: 42 })}.sig`;
+    localStorage.setItem("userData", JSON.stringify({
+      token,
+      user: { Id: 42, CompId: 5, BranchId: 2, FullName: "Amit" },
+      company: { Id: 5 },
+      permissions: { menuItems: [] },
+      loginTimestamp: Date.now(),
+    }));
+    localStorage.removeItem("auth-storage-eCRM");
+
+    vi.resetModules();
+    const fresh = (await import("./useAuthStore")).default;
+    const s = fresh.getState();
+    expect(s.UserId).toBe(42);
+    expect(s.CompId).toBe(5);
+    expect(s.BranchId).toBe(2);
+    expect(s.user.Id).toBe(42);
+    // And the base URL is the module default, never whatever was in storage.
+    expect(s.API_BASE_URL).toBe("https://shadowcodes.in/CRM");
+  });
+
+
   it("never writes API_BASE_URL to localStorage", () => {
     // A persisted base URL is rehydrated into every Authorization header and
     // survives logout, so one same-origin write would redirect the token
