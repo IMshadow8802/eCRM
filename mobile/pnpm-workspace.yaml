@@ -1,2 +1,8 @@
+# pnpm 11 makes every package's postinstall script an explicit decision.
+#
+# unrs-resolver is the native module behind eslint-plugin-import's resolver; its
+# install script fetches the prebuilt binding for this platform. Without it
+# `pnpm lint` cannot resolve imports. It is a dev-only dependency and never
+# ships in a bundle.
 allowBuilds:
-  unrs-resolver: set this to true or false
+  unrs-resolver: true

@@ -64,6 +64,31 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   web: { favicon: "./assets/favicon.png" },
 
   plugins: [
+    // Xcode 27 builds against the iOS 27 SDK, and an app built against it MUST
+    // adopt the UIKit scene lifecycle or it does not launch — a blank screen or
+    // an immediate exit, with nothing in the JS logs to explain it.
+    //
+    // SDK 57 does not do this by default; `enableSceneSupport` moves React
+    // Native startup into Expo's scene delegate and writes the scene manifest
+    // into Info.plist. It requires expo >= 57.0.23 (we are on ~57.0.23 — the
+    // version bump and this flag go together, neither works alone).
+    //
+    // SDK 58 adopts the scene lifecycle itself, so DELETE this whole plugin
+    // entry when upgrading to 58 rather than carrying it forward.
+    //
+    // Not set here, deliberately:
+    //   · ios.deploymentTarget — React Native 0.86.3's own floor is iOS 15.1
+    //     and Xcode 27 does not raise it. Setting a higher one only drops
+    //     devices, so it stays unset until something actually needs it.
+    //   · UIDesignRequiresCompatibility — ignored when building against the
+    //     iOS 27 SDK. The Liquid Glass repaint of standard controls is not
+    //     opt-in and cannot be opted out of; it arrives with the toolchain.
+    [
+      "expo-build-properties",
+      {
+        ios: { enableSceneSupport: true },
+      },
+    ],
     "expo-dev-client",
     "@react-native-community/datetimepicker",
     "expo-sharing",
