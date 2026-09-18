@@ -1,8 +1,9 @@
 const database = require("../config/database");
 const responseHelper = require("../utils/responseHelper");
 const { logActivity, ACTIONS } = require("../utils/activityLogger");
+const { positiveInt } = require("../utils/controllerKit");
 
-// Audit descriptors for config-engine mutations (who changed the pipeline /
+// Audit descriptors for config-engine mutations (who changed the custom
 // fields / lookups, when). save = Created/Updated by Id; delete = Deleted.
 const saveLog = (req, entityType, label) => {
   const isNew = (Number(req.body.Id) || 0) === 0;
@@ -76,50 +77,26 @@ const configController = {
     return runSp(res, "sp_DeleteCustomField", { ...req.body, CompId }, "Failed to delete custom field", req, delLog(req, "CustomField", "Custom field"));
   },
 
-  savePipeline(req, res) {
-    const { CompId, UserId } = req.user;
-    return runSp(res, "sp_SavePipeline", { ...req.body, CompId, CreatedBy: UserId }, "Failed to save pipeline", req, saveLog(req, "Pipeline", "Pipeline"));
-  },
-
-  // sp_FetchPipelines returns 2 result sets (pipelines, then their stages);
-  // both are forwarded so the board/settings can group stages by PipelineId.
-  async fetchPipelines(req, res) {
-    const { CompId } = req.user;
-    try {
-      const result = await database.executeStoredProcedure("sp_FetchPipelines", {
-        CompId,
-        Entity: req.body.Entity,
-      });
-      return responseHelper.success(res, "pipelines fetched successfully", {
-        pipelines: result.recordsets?.[0] || result.recordset || [],
-        stages: result.recordsets?.[1] || [],
-      });
-    } catch (err) {
-      console.error("sp_FetchPipelines error:", err);
-      return responseHelper.error(res, "Failed to fetch pipelines");
-    }
-  },
-
-  saveStage(req, res) {
-    const { CompId, UserId } = req.user;
-    return runSp(res, "sp_SaveStage", { ...req.body, CompId, CreatedBy: UserId }, "Failed to save stage", req, saveLog(req, "PipelineStage", "Stage"));
-  },
-
-  deleteStage(req, res) {
-    const { CompId } = req.user;
-    return runSp(res, "sp_DeleteStage", { ...req.body, CompId }, "Failed to delete stage", req, delLog(req, "PipelineStage", "Stage"));
-  },
-
   // Explicit list, not `...req.body`: sp_SaveLookup declares exactly these, and
   // node-mssql sends every key it is given — a stray one is a hard error from
-  // SQL Server, not an ignored extra.
+  // SQL Server, not an ignored extra. TatHours (spec 2 §1) is hours-per-priority
+  // on Kind='priority'; 0 / blank / junk → NULL, which the SP reads as "no TAT,
+  // never overdue". The Code rule for ticket_status lives in the SP.
   saveLookup(req, res) {
     const { CompId } = req.user;
-    const { Id = 0, Kind, Value, SortOrder = 0, Code = null } = req.body;
+    const { Id = 0, Kind, Value, SortOrder = 0, Code = null, TatHours = null } = req.body;
     return runSp(
       res,
       "sp_SaveLookup",
-      { Id: Number(Id) || 0, CompId, Kind, Value, SortOrder: Number(SortOrder) || 0, Code: Code || null },
+      {
+        Id: Number(Id) || 0,
+        CompId,
+        Kind,
+        Value,
+        SortOrder: Number(SortOrder) || 0,
+        Code: Code || null,
+        TatHours: positiveInt(TatHours),
+      },
       "Failed to save lookup",
       req,
       saveLog(req, "Lookup", "Lookup"),

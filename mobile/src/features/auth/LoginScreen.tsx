@@ -1,7 +1,9 @@
 import { useState } from "react";
 import {
+  Image,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   View,
@@ -9,10 +11,11 @@ import {
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { StatusBar } from "expo-status-bar";
-import { CircleAlert, LayoutDashboard, Lock, User } from "lucide-react-native";
+import { Building2, CircleAlert, LayoutDashboard, Lock, Repeat2, User } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { login as loginRequest } from "../../api/authQueries";
+import { fetchClientConfig } from "../../api/centralQueries";
 import useAuthStore from "../../stores/useAuthStore";
 import { colors, gradients, radius, spacing } from "../../theme";
 import { Button, Input, Text } from "../../ui";
@@ -24,12 +27,51 @@ const FALLBACK_ERROR =
 
 export default function LoginScreen() {
   const setSession = useAuthStore((s) => s.login);
+  const isClientConfigured = useAuthStore((s) => s.isClientConfigured);
+  const companyName = useAuthStore((s) => s.companyName);
+  const boundCode = useAuthStore((s) => s.compCode);
+  const logoURL = useAuthStore((s) => s.logoURL);
+  const setClientConfig = useAuthStore((s) => s.setClientConfig);
+  const clearClientConfig = useAuthStore((s) => s.clearClientConfig);
   const insets = useSafeAreaInsets();
 
+  // Step 1 — which backend. Typed once per install; the store persists it.
+  const [compCode, setCompCode] = useState("");
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // A dead LogoURL in Central must not leave a broken image on the sign-in
+  // screen of every user at that company.
+  const [logoBroken, setLogoBroken] = useState(false);
+
+  const showLogo = isClientConfigured && Boolean(logoURL) && !logoBroken;
+
+  const verifyCompany = async () => {
+    if (busy) return;
+    if (!compCode.trim()) {
+      setError("Enter your company code.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      setClientConfig(await fetchClientConfig(compCode));
+      setCompCode("");
+    } catch (err: any) {
+      setError(err?.message ?? FALLBACK_ERROR);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const switchCompany = () => {
+    clearClientConfig();
+    setLogoBroken(false);
+    setIdentifier("");
+    setPassword("");
+    setError(null);
+  };
 
   // No disabled state on the button. A greyed-out control that never explains
   // itself is worse than one that tells you what is missing when you tap it.
@@ -96,22 +138,74 @@ export default function LoginScreen() {
           showsVerticalScrollIndicator={false}
         >
           {/* Type carries the screen — no card. A panel over a gradient just
-              hides the thing that makes it look good. */}
+              hides the thing that makes it look good.
+
+              The mark is the tenant's logo once we know who they are. That is
+              the payoff for typing a company code: the app becomes theirs,
+              rather than showing the same generic tile to everyone. */}
           <Animated.View entering={FadeInDown.duration(500)} style={styles.head}>
-            <View style={styles.mark}>
-              <LayoutDashboard
-                size={26}
-                color={colors.textOnBrand}
+            {showLogo ? (
+              <Image
+                source={{ uri: logoURL as string }}
+                style={styles.logo}
+                resizeMode="contain"
+                accessibilityLabel={companyName ?? "Company logo"}
+                onError={() => setLogoBroken(true)}
               />
-            </View>
+            ) : (
+              <View style={styles.mark}>
+                <LayoutDashboard size={26} color={colors.textOnBrand} />
+              </View>
+            )}
             <Text variant="h1" color="textOnBrand" style={styles.hello}>
-              Welcome back
-            </Text>
-            <Text variant="body" color="textOnBrandMuted">
-              Sign in to continue to Nexus CRM
+              {isClientConfigured
+                ? (companyName ?? boundCode ?? "Welcome back")
+                : "Which company?"}
             </Text>
           </Animated.View>
 
+          {!isClientConfigured ? (
+            <Animated.View
+              entering={FadeInDown.delay(120).duration(500)}
+              style={styles.form}
+            >
+              <Input
+                tone="onBrand"
+                label="Company code"
+                value={compCode}
+                onChangeText={(t) => {
+                  setCompCode(t.toUpperCase());
+                  if (error) setError(null);
+                }}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                autoComplete="off"
+                placeholder="e.g. PRD"
+                leftIcon={Building2}
+                editable={!busy}
+                onSubmitEditing={verifyCompany}
+                returnKeyType="go"
+              />
+
+              {error ? (
+                <Animated.View entering={FadeIn.duration(200)} style={styles.error}>
+                  <CircleAlert size={18} color={colors.textOnBrand} />
+                  <Text variant="caption" color="textOnBrand" style={styles.errorText}>
+                    {error}
+                  </Text>
+                </Animated.View>
+              ) : null}
+
+              <Button
+                title="Continue"
+                variant="onBrand"
+                onPress={verifyCompany}
+                loading={busy}
+                fullWidth
+                style={styles.submit}
+              />
+            </Animated.View>
+          ) : (
           <Animated.View
             entering={FadeInDown.delay(120).duration(500)}
             style={styles.form}
@@ -174,7 +268,24 @@ export default function LoginScreen() {
               fullWidth
               style={styles.submit}
             />
+
+            {/* A visible way out beats a secret gesture: switching company is
+                rare, but it is the only escape from a mistyped code, so it gets
+                to be a control rather than a line of small print. */}
+            <Pressable
+              onPress={switchCompany}
+              disabled={busy}
+              accessibilityRole="button"
+              accessibilityLabel="Switch company"
+              style={styles.switchRow}
+            >
+              <Repeat2 size={16} color={colors.textOnBrandMuted} />
+              <Text variant="caption" color="textOnBrandMuted">
+                Not {companyName ?? boundCode ?? "this company"}? Switch company
+              </Text>
+            </Pressable>
           </Animated.View>
+          )}
 
           <Animated.View
             entering={FadeIn.delay(400).duration(600)}
@@ -201,7 +312,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: spacing[6],
   },
-  head: { gap: spacing[2], marginBottom: spacing[8] },
+  head: { marginBottom: spacing[8] },
   mark: {
     width: 56,
     height: 56,
@@ -224,5 +335,20 @@ const styles = StyleSheet.create({
   },
   errorText: { flex: 1 },
   submit: { marginTop: spacing[2] },
+  logo: {
+    width: 56,
+    height: 56,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surfaceOnBrand,
+    marginBottom: spacing[4],
+  },
+  switchRow: {
+    marginTop: spacing[3],
+    paddingVertical: spacing[2],
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing[2],
+  },
   footer: { marginTop: spacing[10], gap: spacing[1] },
 });

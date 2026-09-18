@@ -47,6 +47,20 @@ A user in several groups gets their **strongest**: lowest `HierarchyLevel` wins.
 
 ---
 
+### Complaints — write rules (spec 2, 2026-09-16)
+
+| Action | Who |
+|---|---|
+| Read / edit / set status / log call | in scope, **or** assignee, **or** creator (`assertRecordAccess`) |
+| Assign on create · Transfer | target ∈ `sp_FetchAssignableUsers(caller)` (`assertCanAssign`); cross-branch and unassign: wide scopes only |
+| **Reopen** a resolved / closed / rejected complaint | `canReopen`: DataScope ∈ {All, Company, MultiBranch, Branch}, **or** the assignee is in the caller's `ReportsTo` subtree and is not the caller. Remarks required. An agent never reopens their own. |
+| Escalate | must see the ticket; the target must be a `ReportsTo` ancestor of the assignee (SP-enforced) |
+| Delete ticket | `assertRecordAccess` |
+| Customers read / write | any authenticated user of the company |
+| Customer delete | `requireAdmin`, and never while a ticket references it |
+
+---
+
 ## What each DataScope resolves to
 
 `loadScope` middleware → `sp_FetchAccessibleBranchIds` → `req.scope`:

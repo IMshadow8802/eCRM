@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import useAuthStore from "./useAuthStore";
 
 describe("useAuthStore.hasPermission", () => {
@@ -143,19 +143,128 @@ describe("useAuthStore persistence", () => {
     expect(s.CompId).toBe(5);
     expect(s.BranchId).toBe(2);
     expect(s.user.Id).toBe(42);
-    // And the base URL is the module default, never whatever was in storage.
-    expect(s.API_BASE_URL).toBe("https://shadowcodes.in/CRM");
+    // No company code typed yet → no API base, login must ask for the code.
+    expect(s.API_BASE_URL).toBeNull();
+    expect(s.isClientConfigured).toBe(false);
   });
 
+  const persisted = () => JSON.parse(localStorage.getItem("auth-storage-eCRM") ?? '{"state":{}}').state;
 
-  it("never writes API_BASE_URL to localStorage", () => {
-    // A persisted base URL is rehydrated into every Authorization header and
-    // survives logout, so one same-origin write would redirect the token
-    // indefinitely. It must always come from the module default.
+  it("setClientConfig stores the Central row and persists it (the code is typed once)", () => {
     localStorage.removeItem("auth-storage-eCRM");
-    useAuthStore.setState({ token: "t", isAuthenticated: true, API_BASE_URL: "http://evil.tld" });
-    const written = JSON.parse(localStorage.getItem("auth-storage-eCRM") ?? '{"state":{}}');
-    expect(written.state).not.toHaveProperty("API_BASE_URL");
-    expect(written.state.token).toBe("t");
+    useAuthStore.getState().setClientConfig({
+      baseURL: "https://shadowcodes.in/Client2",
+      compCode: "C2",
+      companyName: "Client Two",
+      logoURL: null,
+    });
+    const s = useAuthStore.getState();
+    expect(s.API_BASE_URL).toBe("https://shadowcodes.in/Client2");
+    expect(s.isClientConfigured).toBe(true);
+    expect(s.companyName).toBe("Client Two");
+    expect(persisted()).toMatchObject({ API_BASE_URL: "https://shadowcodes.in/Client2", compCode: "C2", isClientConfigured: true });
+  });
+
+  it("clearClientConfig ends the session and forgets the company", () => {
+    localStorage.setItem("userData", JSON.stringify({ token: "t" }));
+    useAuthStore.setState({ isAuthenticated: true, token: "t", user: { Id: 1 } });
+    useAuthStore.getState().setClientConfig({ baseURL: "https://shadowcodes.in/CRM", compCode: "PRD", companyName: "PRD" });
+    useAuthStore.getState().clearClientConfig();
+    const s = useAuthStore.getState();
+    expect(s.isAuthenticated).toBe(false);
+    expect(s.token).toBeNull();
+    expect(s.API_BASE_URL).toBeNull();
+    expect(s.compCode).toBeNull();
+    expect(s.isClientConfigured).toBe(false);
+    expect(localStorage.getItem("userData")).toBeNull();
+  });
+
+  // The base URL is rehydrated into every Authorization header, so a same-origin
+  // localStorage write must not be able to point the token at another host.
+  // Only Central-hosted origins survive a reload.
+  it("drops a persisted base URL on an untrusted origin at rehydration", async () => {
+    localStorage.removeItem("userData");
+    localStorage.setItem("auth-storage-eCRM", JSON.stringify({
+      state: { API_BASE_URL: "http://evil.tld/CRM", compCode: "PRD", companyName: "x", isClientConfigured: true },
+      version: 4,
+    }));
+    vi.resetModules();
+    const fresh = (await import("./useAuthStore")).default;
+    const s = fresh.getState();
+    expect(s.API_BASE_URL).toBeNull();
+    expect(s.isClientConfigured).toBe(false);
+    expect(s.compCode).toBeNull();
+  });
+
+  it("keeps a persisted base URL on the hosted origin", async () => {
+    localStorage.removeItem("userData");
+    localStorage.setItem("auth-storage-eCRM", JSON.stringify({
+      state: { API_BASE_URL: "https://shadowcodes.in/Client2", compCode: "C2", companyName: "Client Two", isClientConfigured: true },
+      version: 4,
+    }));
+    vi.resetModules();
+    const fresh = (await import("./useAuthStore")).default;
+    const s = fresh.getState();
+    expect(s.API_BASE_URL).toBe("https://shadowcodes.in/Client2");
+    expect(s.isClientConfigured).toBe(true);
+    expect(s.companyName).toBe("Client Two");
+  });
+});
+
+describe("useAuthStore session helpers", () => {
+  const future = Math.floor(Date.now() / 1000) + 3600;
+  const b64 = (o) => btoa(JSON.stringify(o)).replace(/=+$/, "");
+  const token = `${b64({ alg: "HS256" })}.${b64({ exp: future, UserId: 7 })}.sig`;
+  const payload = {
+    token,
+    user: { Id: 7, CompId: 1, BranchId: 3, FullName: "Neha" },
+    company: { Id: 1 },
+    permissions: { rawPermissions: [{ menuid: 1 }], menuItems: [] },
+  };
+
+  beforeEach(() => {
+    localStorage.clear();
+    useAuthStore.getState().logout();
+  });
+
+  it("login seeds the flat ids, menu rights and the userData key", () => {
+    useAuthStore.getState().login(payload);
+    const s = useAuthStore.getState();
+    expect(s.isAuthenticated).toBe(true);
+    expect([s.UserId, s.CompId, s.BranchId]).toEqual([7, 1, 3]);
+    expect(s.menuRights).toEqual([{ menuid: 1 }]);
+    expect(JSON.parse(localStorage.getItem("userData")).user.Id).toBe(7);
+    expect(s.getCurrentUser().Id).toBe(7);
+    expect(s.getUserPermissions()).toEqual(payload.permissions);
+    expect(s.getAuthHeaders().Authorization).toBe(`Bearer ${token}`);
+    expect(s.isTokenExpiring(5)).toBe(false);
+    expect(s.getTokenRemainingSeconds()).toBeGreaterThan(3000);
+    expect(s.getTokenValidation()).toBeTruthy();
+  });
+
+  it("refreshUserData re-reads the userData key", () => {
+    useAuthStore.getState().login(payload);
+    useAuthStore.setState({ user: null, UserId: null });
+    useAuthStore.getState().refreshUserData();
+    expect(useAuthStore.getState().UserId).toBe(7);
+  });
+
+  it("forceLogout clears the session but keeps the company binding", () => {
+    useAuthStore.getState().setClientConfig({ baseURL: "https://shadowcodes.in/CRM", compCode: "PRD", companyName: "PRD" });
+    useAuthStore.getState().login(payload);
+    useAuthStore.getState().forceLogout("test");
+    const s = useAuthStore.getState();
+    expect(s.isAuthenticated).toBe(false);
+    expect(s.token).toBeNull();
+    expect(localStorage.getItem("userData")).toBeNull();
+    expect(s.API_BASE_URL).toBe("https://shadowcodes.in/CRM");
+    expect(s.isClientConfigured).toBe(true);
+  });
+
+  it("without a token the helpers answer empty, not throw", () => {
+    const s = useAuthStore.getState();
+    expect(s.isTokenExpiring()).toBe(true);
+    expect(s.getTokenRemainingSeconds()).toBe(0);
+    expect(s.getTokenValidation()).toBeNull();
   });
 });

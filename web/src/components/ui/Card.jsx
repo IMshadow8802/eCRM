@@ -69,12 +69,19 @@ const Card = forwardRef(function Card(
       }}
       className={className}
       data-testid={testId}
+      // Lets a page assert that everything claiming to be a card really is one
+      // — see the surface test in Dashboard.test.jsx.
+      data-card-surface=""
       style={{
         position: "relative",
         padding: pad,
         borderRadius: theme.radii.lg,
-        backgroundColor: bg,
-        background: variant === "gradient" ? bg : undefined,
+        // ONE key, not two. This was `backgroundColor: bg` followed by
+        // `background: gradient ? bg : undefined` — and `background` is the
+        // shorthand for `background-color`, so the second key won and every
+        // non-gradient card rendered with no background at all. `background`
+        // takes a flat colour and a gradient equally, so one key covers both.
+        background: bg,
         border,
         boxShadow: shadow,
         cursor: clickable ? "pointer" : "default",

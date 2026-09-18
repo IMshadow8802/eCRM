@@ -214,9 +214,7 @@ export default function Products() {
       <Helmet>
         <title>PRD Infotech | Products</title>
       </Helmet>
-      <Box sx={{ mt: 1.5, width: "100%", overflowX: "auto" }}>
-        <MaterialReactTable table={table} />
-      </Box>
+      <MaterialReactTable table={table} />
 
       <FormModal
         open={open}

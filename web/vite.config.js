@@ -26,23 +26,9 @@ export default defineConfig(({ command, mode }) => {
     server: {
       port: 8080,
       open: "/",
-      // Proxy API calls to local backend during development.
-      // Frontend issues relative requests like `/api/auth/loginUser`
-      // (see utils/axiosConfig.js: baseURL is empty in dev) and Vite
-      // forwards them to the Express server.
-      proxy: {
-        "/api": {
-          target: "http://localhost:5001",
-          changeOrigin: true,
-        },
-        // Realtime websocket — SocketProvider connects to the window origin
-        // in dev and this forwards the handshake + ws upgrade to Express.
-        "/socket.io": {
-          target: "http://localhost:5001",
-          changeOrigin: true,
-          ws: true,
-        },
-      },
+      // No API proxy: dev talks to the hosted backend that Central resolves
+      // for the typed company code, exactly like prod (2026-09-16). The
+      // backend's CORS allowlist includes http://localhost:8080 for this.
       // ADD THIS 👇 - This fixes SPA routing in development
       historyApiFallback: {
         index: "/index.html",

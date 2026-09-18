@@ -66,32 +66,32 @@ const renderProvider = () => {
   );
 };
 
+// A socket needs a bound company as well as a token — the target is derived
+// from the Central-resolved API base, in tests as in dev and prod.
 const loginWith = (token = "jwt-abc") =>
   act(() => {
-    useAuthStore.setState({ token, isAuthenticated: true });
+    useAuthStore.setState({ token, isAuthenticated: true, API_BASE_URL: "https://shadowcodes.in/CRM" });
   });
 
 describe("deriveSocketTarget", () => {
-  it("dev: window origin + bare /socket.io (Vite proxy handles the rest)", () => {
-    expect(deriveSocketTarget("https://shadowcodes.in/CRM", true)).toEqual({
-      url: window.location.origin,
-      path: "/socket.io",
-    });
-  });
-
-  it("prod: splits API base into origin + prefixed socket path", () => {
-    expect(deriveSocketTarget("https://shadowcodes.in/CRM", false)).toEqual({
+  it("splits the API base into origin + prefixed socket path (dev and prod alike)", () => {
+    expect(deriveSocketTarget("https://shadowcodes.in/CRM")).toEqual({
       url: "https://shadowcodes.in",
       path: "/CRM/socket.io",
     });
   });
 
-  it("prod: base with trailing slash and no prefix both normalise", () => {
-    expect(deriveSocketTarget("https://shadowcodes.in/CRM/", false)).toEqual({
+  it("no company bound yet → null, so the provider opens nothing", () => {
+    expect(deriveSocketTarget(null)).toBeNull();
+    expect(deriveSocketTarget(undefined)).toBeNull();
+  });
+
+  it("base with trailing slash and no prefix both normalise", () => {
+    expect(deriveSocketTarget("https://shadowcodes.in/CRM/")).toEqual({
       url: "https://shadowcodes.in",
       path: "/CRM/socket.io",
     });
-    expect(deriveSocketTarget("https://api.example.com", false)).toEqual({
+    expect(deriveSocketTarget("https://api.example.com")).toEqual({
       url: "https://api.example.com",
       path: "/socket.io",
     });

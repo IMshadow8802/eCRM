@@ -38,19 +38,30 @@ export const tableDefaults = {
     sx: { tableLayout: "auto", width: "100%" },
   },
 
+  // The table is a card sitting ON the page, not a region cut out of it.
+  //
+  // This used to force `background.default` — the page colour — with a 1px
+  // border and no shadow, which is why every table in the app read as flat and
+  // embedded. `backgroundImage: none` still matters: it kills MRT's internal
+  // `lighten(background.default, 0.05)`, which in dark mode synthesises a
+  // blue-biased navy that matches nothing else on the page.
+  //
+  // Depth is the surface step first (page is one shade darker than card) and
+  // the shadow second. Getting that order wrong is how a card ends up with a
+  // heavy shadow and still looks flat.
   muiTablePaperProps: {
     elevation: 0,
-    // Kill MRT's internal `lighten(background.default, 0.05)` which in dark
-    // mode synthesizes a blue-biased navy that clashes with the rest of the
-    // page. Force the page background so the table Paper blends into the
-    // content area.
     sx: {
-      borderRadius: 2,
+      // The gap above the card lives here, not on each page. Six pages had six
+      // different margins (0, 1, 1.5, 2) between their filters and their table.
+      mt: 2,
+      borderRadius: (theme) => `${theme.radii.xl}px`,
       border: "1px solid",
       borderColor: "divider",
       overflow: "hidden",
-      backgroundColor: "background.default",
+      backgroundColor: "background.paper",
       backgroundImage: "none",
+      boxShadow: (theme) => theme.tokens.shadow.md,
     },
   },
 
@@ -62,7 +73,7 @@ export const tableDefaults = {
 
   muiTableHeadCellProps: {
     sx: {
-      backgroundColor: "background.default",
+      backgroundColor: "background.paper",
       fontWeight: 600,
       fontSize: "0.8rem",
       color: "text.secondary",
@@ -104,19 +115,29 @@ export const tableDefaults = {
     rowsPerPageOptions: [10, 25, 50, 100],
   },
 
+  // Both toolbars are square boxes sitting inside the Paper's rounded corners,
+  // and MRT gives the bottom one a shadow of its own — a hard grey
+  // `0 1px 2px -1px rgba(97,97,97,0.5)` that drew straight across the arc and
+  // made the card's corners read as sharp rectangles. Drop that shadow, and
+  // round each toolbar's outer corners to the same token the Paper uses so no
+  // square child is left sitting in the curve.
   muiTopToolbarProps: {
     sx: {
-      backgroundColor: "background.default",
+      backgroundColor: "background.paper",
       borderBottom: "1px solid",
       borderColor: "divider",
+      boxShadow: "none",
+      borderRadius: (theme) => `${theme.radii.xl}px ${theme.radii.xl}px 0 0`,
     },
   },
 
   muiBottomToolbarProps: {
     sx: {
-      backgroundColor: "background.default",
+      backgroundColor: "background.paper",
       borderTop: "1px solid",
       borderColor: "divider",
+      boxShadow: "none",
+      borderRadius: (theme) => `0 0 ${theme.radii.xl}px ${theme.radii.xl}px`,
     },
   },
 };

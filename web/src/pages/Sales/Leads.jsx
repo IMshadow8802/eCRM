@@ -144,7 +144,7 @@ const Leads = () => {
         </Box>
       )}
 
-      <Box sx={{ width: "100%", overflowX: "auto" }}><MaterialReactTable table={table} /></Box>
+      <MaterialReactTable table={table} />
 
       <LeadCreateModal open={createOpen || Boolean(editLead)} lead={editLead} onClose={() => { setCreateOpen(false); setEditLead(null); }} />
       {/* canCrossBranch is always on here: the server (assertCanAssign) is the

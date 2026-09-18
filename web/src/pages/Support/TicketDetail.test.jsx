@@ -1,392 +1,348 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
+import { http } from "msw";
+import { MemoryRouter } from "react-router-dom";
+
+const mockNavigate = vi.fn();
+vi.mock("react-router-dom", async () => ({ ...(await vi.importActual("react-router-dom")), useNavigate: () => mockNavigate }));
+
+// The four modals have their own test files; here they are stubs that report
+// what TicketDetail handed them and let a test fire their callbacks. Each
+// also exposes its onClose/onLogged so a coverage test can exercise the
+// close handlers TicketDetail wires into them — the brief's own stubs never
+// call `onClose`, which left every one of those closures un-invoked.
+vi.mock("./ResolveTicketModal", () => ({
+  __esModule: true,
+  default: ({ open, status, onClose }) => (open ? (
+    <div data-testid="resolve-modal">
+      status:{status?.value}
+      <button type="button" onClick={onClose}>close-resolve</button>
+    </div>
+  ) : null),
+}));
+vi.mock("./RemarksModal", () => ({
+  __esModule: true,
+  default: ({ open, title, submitLabel, onSubmit, busy, onClose }) =>
+    (open ? (
+      <div data-testid="remarks-modal">
+        <span>{title}</span><span>{submitLabel}</span>{busy ? <span>busy</span> : null}
+        <button type="button" onClick={() => onSubmit("Customer called back")}>remarks-submit</button>
+        <button type="button" onClick={onClose}>close-remarks</button>
+      </div>
+    ) : null),
+}));
+vi.mock("./TransferTicketModal", () => ({
+  __esModule: true,
+  default: ({ open, ticketIds, onClose }) => (open ? (
+    <div data-testid="transfer-modal">{ticketIds.join(",")}<button type="button" onClick={onClose}>close-transfer</button></div>
+  ) : null),
+}));
+vi.mock("./EscalateTicketModal", () => ({
+  __esModule: true,
+  default: ({ open, ticket, onClose }) => (open ? (
+    <div data-testid="escalate-modal">ticket:{ticket?.Id}<button type="button" onClick={onClose}>close-escalate</button></div>
+  ) : null),
+}));
+vi.mock("./TicketCreateModal", () => ({
+  __esModule: true,
+  default: ({ open, ticket, onClose }) => (open ? (
+    <div data-testid="ticket-form-modal">{ticket?.Id}<button type="button" onClick={onClose}>close-edit</button></div>
+  ) : null),
+}));
+vi.mock("../Sales/LogCallModal", () => ({
+  __esModule: true,
+  default: ({ open, ticketId, onClose, onLogged }) => (open ? (
+    <div data-testid="log-call-modal">
+      ticket:{ticketId}
+      <button type="button" onClick={onLogged}>logged-call</button>
+      <button type="button" onClick={onClose}>close-call</button>
+    </div>
+  ) : null),
+}));
 
 import TicketDetail from "./TicketDetail";
 import useAuthStore from "../../stores/useAuthStore";
 import { server } from "../../test/mocks/server";
 import renderWithProviders from "../../test/renderWithProviders";
+import { json, refuse, ticketRow, ticketDetail, mockSupportRefData, mockTicketEndpoints } from "../../test/supportMocks";
 
-const TICKET = {
-  Id: 7,
-  TicketNo: "TKT-0007",
-  CustomerName: "Acme Corp",
-  ContactPerson: "Gurpreet",
-  Contact: "9999999999",
-  Channel: "email",
-  CategoryId: 4,
-  Priority: 2,
-  PipelineId: 9,
-  StageId: 3,
-  AssignedTo: 2,
-  LinkedLeadId: 11,
-  ResolvedAt: null,
-  ClosedAt: null,
-  ResolutionId: null,
-  Description: "Login broken",
-  CreatedAt: "2026-07-01T10:00:00Z",
-  UpdatedAt: "2026-07-01T10:00:00Z",
+const renderDetail = () => renderWithProviders(<TicketDetail ticketId={7} />);
+const pickStatus = async (user, name) => {
+  await user.click(screen.getByTestId("ticket-status-select-input"));
+  await user.click(await screen.findByRole("option", { name }));
 };
 
-const FIELDS = [
-  {
-    FieldId: 1,
-    Label: "Severity",
-    Type: "number",
-    Options: null,
-    IsRequired: false,
-    ValueText: null,
-    ValueNumber: 3,
-    ValueDate: null,
-  },
-  {
-    FieldId: 2,
-    Label: "Module",
-    Type: "dropdown",
-    Options: JSON.stringify(["Auth", "Billing"]),
-    IsRequired: false,
-    ValueText: "Auth",
-    ValueNumber: null,
-    ValueDate: null,
-  },
-];
-
-const ACTIVITY = [
-  { Id: 2, TicketId: 7, UserId: 2, Type: "stage_changed", CreatedAt: "2026-01-02T10:00:00Z", Summary: "Moved to In Progress", MetaJSON: null },
-  { Id: 1, TicketId: 7, UserId: 2, Type: "created", CreatedAt: "2026-01-01T10:00:00Z", Summary: null, MetaJSON: null },
-];
-
-const LINKED_LEAD = { Id: 11, Name: "Acme Corp", MobileNo: "9999999999", Email: "acme@example.com", StageId: 3 };
-
-const toDefs = (fields) =>
-  fields.map((f, i) => ({
-    Id: f.FieldId,
-    Label: f.Label,
-    Type: f.Type,
-    Options: f.Options,
-    IsRequired: f.IsRequired,
-    SortOrder: i,
-  }));
-
-const toValues = (fields) =>
-  fields.map((f) => ({
-    FieldId: f.FieldId,
-    ValueText: f.ValueText,
-    ValueNumber: f.ValueNumber,
-    ValueDate: f.ValueDate,
-  }));
-
-const LOOKUPS = {
-  priority: [{ Id: 2, Value: "High" }],
-  ticket_category: [{ Id: 4, Value: "Billing" }],
-  resolution: [{ Id: 5, Value: "Fixed" }],
-  call_outcome: [{ Id: 8, Value: "Answered" }],
-};
-
-const mockDetail = ({
-  ticket = TICKET,
-  fields = FIELDS,
-  activity = ACTIVITY,
-  linkedLead = LINKED_LEAD,
-  calls = [],
-} = {}) =>
-  server.use(
-    http.post("*/api/calls/fetchCalls", async () =>
-      HttpResponse.json({
-        success: true,
-        responseCode: 200,
-        data: { calls },
-      }),
-    ),
-    http.post("*/api/tickets/fetchTicketDetail", async () =>
-      HttpResponse.json({
-        success: true,
-        message: "ok",
-        responseCode: 200,
-        data: { ticket, fields: toValues(fields), activity, linkedLead },
-      }),
-    ),
-    http.post("*/api/config/fetchCustomFields", async () =>
-      HttpResponse.json({
-        success: true,
-        message: "ok",
-        responseCode: 200,
-        data: { customFields: toDefs(fields) },
-      }),
-    ),
-    http.post("*/api/users/fetchUsers", async () =>
-      HttpResponse.json({
-        success: true,
-        responseCode: 200,
-        data: { users: [{ Id: 2, FullName: "Bob", Username: "bob" }] },
-      }),
-    ),
-    // fetchLookups is keyed by Kind — branch on the request body so
-    // priority/category/resolution each get their own list.
-    http.post("*/api/config/fetchLookups", async ({ request }) => {
-      const { Kind } = await request.json();
-      return HttpResponse.json({
-        success: true,
-        responseCode: 200,
-        data: { lookups: LOOKUPS[Kind] ?? [] },
-      });
-    }),
-    http.post("*/api/config/fetchPipelines", async () =>
-      HttpResponse.json({
-        success: true,
-        responseCode: 200,
-        data: {
-          pipelines: [{ Id: 9, Name: "Support", IsDefault: true }],
-          stages: [{ Id: 3, PipelineId: 9, Name: "In Progress" }],
-        },
-      }),
-    ),
-  );
-
-const mockSaveTicket = (capture) =>
-  server.use(
-    http.post("*/api/tickets/saveTicket", async ({ request }) => {
-      const body = await request.json();
-      capture?.(body);
-      return HttpResponse.json({
-        success: true,
-        message: "Saved",
-        responseCode: 200,
-        data: { Id: 7, ResponseCode: 200, ResponseMess: "Saved" },
-      });
-    }),
-  );
-
-const mockAction = (endpoint, capture) =>
-  server.use(
-    http.post(`*${endpoint}`, async ({ request }) => {
-      const body = await request.json();
-      capture?.(body);
-      return HttpResponse.json({
-        success: true,
-        message: "ok",
-        responseCode: 200,
-        data: { ResponseCode: 200, ResponseMess: "ok" },
-      });
-    }),
-  );
-
-describe("TicketDetail", () => {
+describe("TicketDetail (spec 2)", () => {
   beforeEach(() => {
-    useAuthStore.setState({
-      isAuthenticated: true,
-      token: null,
-      user: { UserId: 1 },
-      UserId: 1,
-      API_BASE_URL: "https://prdinfotech.in/CRM",
-    });
-    mockSaveTicket();
+    mockNavigate.mockClear();
+    useAuthStore.setState({ isAuthenticated: true, token: null, user: { UserId: 17 }, UserId: 17, API_BASE_URL: "https://shadowcodes.in/CRM" });
+    mockSupportRefData();
   });
 
-  it("renders the ticket header with number, customer and stage (no SLA chip — SLA removed)", async () => {
-    mockDetail();
-    renderWithProviders(<TicketDetail ticketId={7} />, { router: false });
+  it("shows the labels the SP returned — number, subject, status, priority, due", async () => {
+    mockTicketEndpoints();
+    renderDetail();
+    expect(screen.getByTestId("ticket-detail-loading")).toBeInTheDocument();
+
     expect(await screen.findByText("TKT-0007")).toBeInTheDocument();
-    expect(screen.getByText("Acme Corp")).toBeInTheDocument();
-    expect(screen.getByTestId("ticket-stage-chip")).toHaveTextContent("In Progress");
-    expect(screen.queryByTestId("ticket-sla-chip")).not.toBeInTheDocument();
+    expect(screen.getByText("Screen flickers on boot")).toBeInTheDocument();
+    expect(screen.getByTestId("ticket-status-chip")).toHaveTextContent("In Progress");
+    expect(screen.getByTestId("ticket-priority-chip")).toHaveTextContent("High");
+    expect(screen.getByTestId("ticket-due-chip")).toBeInTheDocument();
+    expect(screen.queryByTestId("ticket-escalated-chip")).toBeNull();
+    // Nothing on this page resolves an id into a name any more.
+    expect(screen.getByTestId("ticket-core-info")).toHaveTextContent("Billing");
+    expect(screen.getByTestId("ticket-core-info")).toHaveTextContent("Phone");
+    expect(screen.getByTestId("ticket-core-info")).toHaveTextContent("Amit Singh");
   });
 
-  it("renders custom fields via DynamicField populated with their current values", async () => {
-    mockDetail();
-    renderWithProviders(<TicketDetail ticketId={7} />, { router: false });
-    await screen.findByText("TKT-0007");
-    expect(screen.getByLabelText("Severity")).toHaveValue(3);
-    expect(screen.getByLabelText("Module")).toBeInTheDocument();
+  it("an overdue, escalated complaint says so in the header", async () => {
+    mockTicketEndpoints({}, {
+      detail: ticketDetail({ ticket: ticketRow({ IsOverdue: 1, EscalatedTo: 16, EscalatedToName: "Neha Verma", PreviousTickets: 2 }) }),
+    });
+    renderDetail();
+    expect(await screen.findByTestId("ticket-due-chip")).toHaveTextContent("overdue");
+    expect(screen.getByTestId("ticket-escalated-chip")).toHaveTextContent("Neha Verma");
   });
 
-  it("links to the linked lead", async () => {
-    mockDetail();
-    renderWithProviders(<TicketDetail ticketId={7} />, { router: false });
-    await screen.findByText("TKT-0007");
-    const link = screen.getByTestId("linked-lead-link");
+  it("the customer card links to that customer's other complaints", async () => {
+    mockTicketEndpoints({}, { detail: ticketDetail({ ticket: ticketRow({ PreviousTickets: 2, CustomerEmail: "acme@example.com", CustomerCity: "Pune" }) }) });
+    renderDetail();
+    const card = await screen.findByTestId("ticket-customer-card");
+    expect(card).toHaveTextContent("Acme Corp");
+    expect(card).toHaveTextContent("9990001111");
+    expect(card).toHaveTextContent("acme@example.com");
+
+    await userEvent.setup().click(screen.getByTestId("ticket-previous-complaints"));
+    expect(mockNavigate).toHaveBeenCalledWith("/support/customers?customerId=3");
+  });
+
+  // Spec §2: open/onhold moves are free. One endpoint, always.
+  it("moving between active statuses posts setTicketStatus straight away", async () => {
+    const cap = mockTicketEndpoints();
+    renderDetail();
+    await screen.findByTestId("ticket-detail");
+    await pickStatus(userEvent.setup(), "On Hold");
+    await waitFor(() => expect(cap.status).toEqual({ TicketId: 7, StatusId: 63, Remarks: null }));
+  });
+
+  it("re-picking the status it already has does nothing", async () => {
+    const cap = mockTicketEndpoints();
+    renderDetail();
+    await screen.findByTestId("ticket-detail");
+    await pickStatus(userEvent.setup(), "In Progress");
+    expect(cap.status).toBeUndefined();
+  });
+
+  it("a resolved status opens the resolve prompt with THAT status id", async () => {
+    const cap = mockTicketEndpoints();
+    renderDetail();
+    await screen.findByTestId("ticket-detail");
+    await pickStatus(userEvent.setup(), "Resolved");
+    expect(await screen.findByTestId("resolve-modal")).toHaveTextContent("status:64");
+    expect(cap.status).toBeUndefined();
+  });
+
+  // Straight-to-closed needs a resolution too (spec §2), so it reuses the
+  // same prompt; resolved -> closed needs neither and posts directly.
+  it("closing an ACTIVE complaint asks for a resolution first", async () => {
+    const cap = mockTicketEndpoints();
+    renderDetail();
+    await screen.findByTestId("ticket-detail");
+    await pickStatus(userEvent.setup(), "Closed");
+    expect(await screen.findByTestId("resolve-modal")).toHaveTextContent("status:65");
+    expect(cap.status).toBeUndefined();
+  });
+
+  it("closing a RESOLVED complaint posts straight away — the customer confirmed", async () => {
+    const cap = mockTicketEndpoints({}, {
+      detail: ticketDetail({ ticket: ticketRow({ StatusId: 64, StatusName: "Resolved", StatusCode: "resolved", ResolvedAt: "2026-09-16T09:00:00Z", ResolutionId: 8, ResolutionName: "Fixed" }) }),
+    });
+    renderDetail();
+    await screen.findByTestId("ticket-detail");
+    await pickStatus(userEvent.setup(), "Closed");
+    await waitFor(() => expect(cap.status).toEqual({ TicketId: 7, StatusId: 65, Remarks: null }));
+    expect(screen.queryByTestId("resolve-modal")).toBeNull();
+  });
+
+  it("a rejected status asks for remarks and posts them with the move", async () => {
+    const cap = mockTicketEndpoints();
+    renderDetail();
+    await screen.findByTestId("ticket-detail");
+    const user = userEvent.setup();
+    await pickStatus(user, "Rejected");
+
+    const modal = await screen.findByTestId("remarks-modal");
+    expect(modal).toHaveTextContent("Reject complaint");
+    expect(cap.status).toBeUndefined();
+
+    await user.click(screen.getByText("remarks-submit"));
+    await waitFor(() => expect(cap.status).toEqual({ TicketId: 7, StatusId: 66, Remarks: "Customer called back" }));
+  });
+
+  // Spec §2 + §6: reopening is a manager's act. The client always asks for
+  // remarks; the server decides whether the caller may.
+  it("reopening a closed complaint asks for remarks, and a 403 keeps the prompt open with the server's words", async () => {
+    mockTicketEndpoints({}, { detail: ticketDetail({ ticket: ticketRow({ StatusId: 65, StatusName: "Closed", StatusCode: "closed", ClosedAt: "2026-09-16T12:00:00Z" }) }) });
+    server.use(http.post("*/api/tickets/setTicketStatus", () => refuse("Reopening requires a manager", 403)));
+    renderDetail();
+    await screen.findByTestId("ticket-detail");
+    const user = userEvent.setup();
+
+    await pickStatus(user, "In Progress");
+    const modal = await screen.findByTestId("remarks-modal");
+    expect(modal).toHaveTextContent("Reopen complaint");
+
+    await user.click(screen.getByText("remarks-submit"));
+    // The axios interceptor also toasts a generic "Access denied" for every
+    // 403; what matters is that the SP's own sentence reaches the user.
+    expect(await screen.findByText("Reopening requires a manager")).toBeInTheDocument();
+    expect(screen.getByTestId("remarks-modal")).toBeInTheDocument();
+  });
+
+  it("the buttons open the call log, the transfer, the escalation and the editor", async () => {
+    mockTicketEndpoints();
+    renderDetail();
+    await screen.findByTestId("ticket-detail");
+    const user = userEvent.setup();
+
+    await user.click(screen.getByTestId("log-call-btn"));
+    expect(screen.getByTestId("log-call-modal")).toHaveTextContent("ticket:7");
+    await user.click(screen.getByTestId("transfer-ticket-btn"));
+    expect(screen.getByTestId("transfer-modal")).toHaveTextContent("7");
+    await user.click(screen.getByTestId("escalate-ticket-btn"));
+    expect(screen.getByTestId("escalate-modal")).toHaveTextContent("ticket:7");
+    await user.click(screen.getByTestId("edit-ticket-btn"));
+    expect(screen.getByTestId("ticket-form-modal")).toHaveTextContent("7");
+  });
+
+  it("the timeline tab shows the activity, the call and the assignment trail", async () => {
+    mockTicketEndpoints({}, {
+      detail: ticketDetail({
+        activity: [
+          { Id: 1, Type: "created", Summary: "Complaint created", CreatedAt: "2026-09-15T10:00:00Z", UserName: "Amit Singh" },
+          { Id: 2, Type: "escalated", Summary: "Escalated to Neha Verma — customer is angry", CreatedAt: "2026-09-16T09:00:00Z", UserName: "Amit Singh" },
+          { Id: 3, Type: "call", Summary: "Outbound call logged", CreatedAt: "2026-09-16T11:00:00Z", UserName: "Amit Singh" },
+        ],
+      }),
+    });
+    server.use(http.post("*/api/calls/fetchCalls", () => json({ calls: [{ Id: 31, Direction: "out", Notes: "Promised a visit Friday", OutcomeId: 50, Duration: 4, CalledAt: "2026-09-16T11:00:00Z" }] })));
+    renderDetail();
+    await screen.findByTestId("ticket-detail");
+
+    // 3 activity rows + 1 real call, but the 'call' activity row is replaced
+    // by (not added to) the real call — the badge must count what renders
+    // (3), not activity.length + calls.length (4).
+    expect(await screen.findByTestId("ticket-detail-tabs-timeline")).toHaveTextContent("Timeline3");
+
+    await userEvent.setup().click(screen.getByRole("tab", { name: /Timeline/ }));
+    const items = await screen.findAllByTestId("timeline-item");
+    expect(items).toHaveLength(3);
+    expect(items[1]).toHaveTextContent("Escalated");
+    // The thin "a call happened" row is replaced by what was actually said.
+    expect(screen.getByText("Outgoing call")).toBeInTheDocument();
+    expect(screen.getByText(/Promised a visit Friday/)).toBeInTheDocument();
+    expect(screen.getByText(/Answered/)).toBeInTheDocument();
+    expect(screen.getByTestId("assignment-item")).toHaveTextContent("Amit Singh");
+    expect(screen.getByTestId("assignment-item")).toHaveTextContent("Assigned on creation");
+  });
+
+  it("renders the stored custom fields read-only, from the detail's own recordset", async () => {
+    mockTicketEndpoints({}, {
+      detail: ticketDetail({ fields: [
+        { FieldId: 1, FieldKey: "sev", Label: "Severity", Type: "number", ValueText: null, ValueNumber: 3, ValueDate: null },
+        { FieldId: 2, FieldKey: "mod", Label: "Module", Type: "text", ValueText: "Auth", ValueNumber: null, ValueDate: null },
+      ] }),
+    });
+    renderDetail();
+    expect(await screen.findByTestId("ticket-custom-fields")).toHaveTextContent("Severity");
+    expect(screen.getByTestId("ticket-custom-fields")).toHaveTextContent("Module");
+    expect(screen.getByTestId("ticket-custom-fields")).toHaveTextContent("Auth");
+    // Editing moved into the create/edit modal — no draft, no save button here.
+    expect(screen.queryByTestId("save-custom-fields-btn")).toBeNull();
+  });
+
+  it("hides the custom-field card when the company has configured none", async () => {
+    mockTicketEndpoints();
+    renderDetail();
+    await screen.findByTestId("ticket-detail");
+    expect(screen.queryByTestId("ticket-custom-fields")).toBeNull();
+  });
+
+  it("shows the linked lead link when the complaint tracks one", async () => {
+    mockTicketEndpoints({}, {
+      detail: ticketDetail({ ticket: ticketRow({ LinkedLeadId: 11 }), linkedLead: { Id: 11, Name: "Acme Corp Lead" } }),
+    });
+    renderDetail();
+    const link = await screen.findByTestId("linked-lead-link");
     expect(link).toHaveAttribute("href", "/sales/leads/11");
   });
 
-  it("omits the linked-lead link when there is no linked lead", async () => {
-    mockDetail({ linkedLead: null });
-    renderWithProviders(<TicketDetail ticketId={7} />, { router: false });
-    await screen.findByText("TKT-0007");
-    expect(screen.queryByTestId("linked-lead-link")).not.toBeInTheDocument();
-  });
-
-  it("Timeline tab lists activity chronologically", async () => {
-    mockDetail();
-    renderWithProviders(<TicketDetail ticketId={7} />, { router: false });
-    await screen.findByText("TKT-0007");
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: /Timeline/i }));
-    const items = await screen.findAllByTestId("timeline-item");
-    expect(items).toHaveLength(2);
-    expect(items[0]).toHaveTextContent("Created");
-    expect(items[1]).toHaveTextContent("Stage changed");
-  });
-
-  // A ticket call used to be written and then unreachable — sp_FetchCalls had
-  // no @TicketId and sp_LogCall wrote no ticket activity (fixed in SQL 067).
-  // The timeline must now show what was said, not just that a call happened.
-  it("Timeline shows a logged call's notes, outcome and duration", async () => {
-    mockDetail({
-      activity: [
-        { Id: 1, Type: "created", Summary: "Ticket created", CreatedAt: "2026-01-01T09:00:00Z" },
-        { Id: 2, Type: "call", Summary: "Outbound call logged", CreatedAt: "2026-01-02T09:00:00Z" },
-      ],
-      calls: [
-        {
-          Id: 31,
-          Direction: "out",
-          Notes: "Customer will send the invoice",
-          OutcomeId: 8,
-          Duration: 4,
-          CalledAt: "2026-01-02T09:00:00Z",
-        },
-      ],
+  // Regression: a raw <a href> ignores the app's router basename ("/prdcrm/"
+  // in prod — App.jsx) and 404s. Rendering under a basename here proves the
+  // link goes through router navigation (react-router's Link), not a plain
+  // anchor — a raw <a href="/sales/leads/11"> would render that literal path
+  // with no basename prefix and fail this assertion.
+  it("the linked-lead link goes through router navigation, so it keeps the app's basename", async () => {
+    mockTicketEndpoints({}, {
+      detail: ticketDetail({ ticket: ticketRow({ LinkedLeadId: 11 }), linkedLead: { Id: 11, Name: "Acme Corp Lead" } }),
     });
-    renderWithProviders(<TicketDetail ticketId={7} />, { router: false });
-    await screen.findByText("TKT-0007");
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: /Timeline/i }));
-
-    expect(await screen.findByText("Outgoing call")).toBeInTheDocument();
-    expect(screen.getByText(/Customer will send the invoice/)).toBeInTheDocument();
-    expect(screen.getByText(/Answered/)).toBeInTheDocument();
-    expect(screen.getByText(/4 min/)).toBeInTheDocument();
-    // The thin activity row is replaced, not duplicated alongside it.
-    expect(screen.queryByText("Outbound call logged")).not.toBeInTheDocument();
-    expect(screen.getAllByTestId("timeline-item")).toHaveLength(2);
-  });
-
-  // Two-step lifecycle: open -> Resolve; resolved -> Close (customer
-  // confirmed) or Reopen; closed -> Reopen only.
-  it("open ticket: only Resolve is offered (Close needs a resolution first)", async () => {
-    mockDetail();
-    renderWithProviders(<TicketDetail ticketId={7} />, { router: false });
-    await screen.findByText("TKT-0007");
-    expect(screen.getByTestId("resolve-btn")).toBeInTheDocument();
-    expect(screen.queryByTestId("close-btn")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("reopen-btn")).not.toBeInTheDocument();
-  });
-
-  it("resolved ticket: Close and Reopen are offered, Resolve is gone", async () => {
-    mockDetail({ ticket: { ...TICKET, ResolvedAt: "2026-07-05T10:00:00Z", ResolutionId: 5 } });
-    renderWithProviders(<TicketDetail ticketId={7} />, { router: false });
-    await screen.findByText("TKT-0007");
-    expect(screen.getByTestId("close-btn")).toBeInTheDocument();
-    expect(screen.getByTestId("reopen-btn")).toBeInTheDocument();
-    expect(screen.queryByTestId("resolve-btn")).not.toBeInTheDocument();
-  });
-
-  it("closed ticket: only Reopen is offered", async () => {
-    mockDetail({
-      ticket: { ...TICKET, ResolvedAt: "2026-07-05T10:00:00Z", ClosedAt: "2026-07-06T10:00:00Z" },
-    });
-    renderWithProviders(<TicketDetail ticketId={7} />, { router: false });
-    await screen.findByText("TKT-0007");
-    expect(screen.getByTestId("reopen-btn")).toBeInTheDocument();
-    expect(screen.queryByTestId("resolve-btn")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("close-btn")).not.toBeInTheDocument();
-  });
-
-  it("Resolve modal requires a resolution and submits resolveTicket with the picked ResolutionId", async () => {
-    let captured;
-    mockDetail();
-    mockAction("/api/tickets/resolveTicket", (body) => {
-      captured = body;
-    });
-    renderWithProviders(<TicketDetail ticketId={7} />, { router: false });
-    await screen.findByText("TKT-0007");
-
-    const user = userEvent.setup();
-    await user.click(screen.getByTestId("resolve-btn"));
-
-    const submit = await screen.findByTestId("resolve-submit");
-    expect(submit).toBeDisabled();
-
-    await user.click(screen.getByTestId("resolution-combobox-input"));
-    await user.click(await screen.findByText("Fixed"));
-
-    expect(submit).not.toBeDisabled();
-    await user.click(submit);
-
-    await waitFor(() => expect(captured).toBeTruthy());
-    expect(captured).toEqual(expect.objectContaining({ TicketId: 7, ResolutionId: 5 }));
-  });
-
-  it("Close action submits closeTicket with the ticket id", async () => {
-    let captured;
-    mockDetail({ ticket: { ...TICKET, ResolvedAt: "2026-07-05T10:00:00Z", ResolutionId: 5 } });
-    mockAction("/api/tickets/closeTicket", (body) => {
-      captured = body;
-    });
-    renderWithProviders(<TicketDetail ticketId={7} />, { router: false });
-    await screen.findByText("TKT-0007");
-    const user = userEvent.setup();
-    await user.click(screen.getByTestId("close-btn"));
-    await waitFor(() => expect(captured).toBeTruthy());
-    expect(captured).toEqual(expect.objectContaining({ TicketId: 7 }));
-  });
-
-  it("Reopen action submits reopenTicket with the ticket id", async () => {
-    let captured;
-    mockDetail({ ticket: { ...TICKET, ClosedAt: "2026-07-05T10:00:00Z" } });
-    mockAction("/api/tickets/reopenTicket", (body) => {
-      captured = body;
-    });
-    renderWithProviders(<TicketDetail ticketId={7} />, { router: false });
-    await screen.findByText("TKT-0007");
-    const user = userEvent.setup();
-    await user.click(screen.getByTestId("reopen-btn"));
-    await waitFor(() => expect(captured).toBeTruthy());
-    expect(captured).toEqual(expect.objectContaining({ TicketId: 7 }));
-  });
-
-  it("editing a custom field and saving posts saveTicket with an updated CustomJSON", async () => {
-    let captured;
-    mockDetail();
-    mockSaveTicket((body) => {
-      captured = body;
-    });
-    renderWithProviders(<TicketDetail ticketId={7} />, { router: false });
-    await screen.findByText("TKT-0007");
-
-    const user = userEvent.setup();
-    const input = screen.getByLabelText("Severity");
-    await user.clear(input);
-    await user.type(input, "5");
-
-    const saveBtn = screen.getByTestId("save-custom-fields-btn");
-    expect(saveBtn).not.toBeDisabled();
-    await user.click(saveBtn);
-
-    await waitFor(() => expect(captured).toBeTruthy());
-    expect(captured.Id).toBe(7);
-    const customJson = JSON.parse(captured.CustomJSON);
-    expect(customJson).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ fieldId: 1, type: "number", value: "5" }),
-        expect.objectContaining({ fieldId: 2, type: "dropdown", value: "Auth" }),
-      ]),
+    renderWithProviders(
+      <MemoryRouter basename="/prdcrm" initialEntries={["/prdcrm/support/tickets/7"]}>
+        <TicketDetail ticketId={7} />
+      </MemoryRouter>,
+      { router: false },
     );
+    const link = await screen.findByTestId("linked-lead-link");
+    expect(link).toHaveAttribute("href", "/prdcrm/sales/leads/11");
   });
 
-  it("Log Call button opens the LogCallModal", async () => {
-    mockDetail();
-    renderWithProviders(<TicketDetail ticketId={7} />, { router: false });
-    await screen.findByText("TKT-0007");
+  it("says 'Never assigned' when the complaint has no assignment history", async () => {
+    mockTicketEndpoints({}, { detail: ticketDetail({ assignments: [] }) });
+    renderDetail();
+    await screen.findByTestId("ticket-detail");
+    await userEvent.setup().click(screen.getByRole("tab", { name: /Timeline/ }));
+    expect(await screen.findByText("Never assigned.")).toBeInTheDocument();
+  });
+
+  it("closing the log-call, transfer, escalate and edit modals clears them, and a logged call refetches", async () => {
+    mockTicketEndpoints();
+    renderDetail();
+    await screen.findByTestId("ticket-detail");
     const user = userEvent.setup();
+
     await user.click(screen.getByTestId("log-call-btn"));
-    expect(await screen.findByTestId("log-call-modal")).toBeInTheDocument();
+    await user.click(screen.getByText("logged-call"));
+    await user.click(screen.getByText("close-call"));
+    expect(screen.queryByTestId("log-call-modal")).toBeNull();
+
+    await user.click(screen.getByTestId("transfer-ticket-btn"));
+    await user.click(screen.getByText("close-transfer"));
+    expect(screen.queryByTestId("transfer-modal")).toBeNull();
+
+    await user.click(screen.getByTestId("escalate-ticket-btn"));
+    await user.click(screen.getByText("close-escalate"));
+    expect(screen.queryByTestId("escalate-modal")).toBeNull();
+
+    await user.click(screen.getByTestId("edit-ticket-btn"));
+    await user.click(screen.getByText("close-edit"));
+    expect(screen.queryByTestId("ticket-form-modal")).toBeNull();
   });
 
-  it("renders a loading skeleton before the ticket has loaded", () => {
-    mockDetail();
-    renderWithProviders(<TicketDetail ticketId={7} />, { router: false });
-    expect(screen.getByTestId("ticket-detail-loading")).toBeInTheDocument();
+  it("closing the resolve and remarks prompts clears them without posting a status", async () => {
+    const cap = mockTicketEndpoints();
+    renderDetail();
+    await screen.findByTestId("ticket-detail");
+    const user = userEvent.setup();
+
+    await pickStatus(user, "Resolved");
+    await user.click(await screen.findByText("close-resolve"));
+    expect(screen.queryByTestId("resolve-modal")).toBeNull();
+
+    await pickStatus(user, "Rejected");
+    await user.click(await screen.findByText("close-remarks"));
+    expect(screen.queryByTestId("remarks-modal")).toBeNull();
+    expect(cap.status).toBeUndefined();
   });
 });

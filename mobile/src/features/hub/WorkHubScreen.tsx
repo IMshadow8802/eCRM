@@ -15,8 +15,6 @@ import type { StackNavigationProp } from "@react-navigation/stack";
 
 import { fetchTickets } from "../../api/ticketQueries";
 import { fetchWorkspaces } from "../../api/workspaceQueries";
-import { lifecycleOf } from "../support/ticketHelpers";
-import { useTicketRefData } from "../support/useTicketRefData";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
 import { canSeeAny, visibleRoutes } from "../../utils/menuAccess";
@@ -73,33 +71,20 @@ export default function WorkHubScreen() {
     queryFn: () => fetchWorkspaces({ PageSize: 100 }),
   });
 
-  // Both counts share their query keys with the screens they lead to, so the
-  // hub warms the cache rather than paying for a second fetch.
-  //
-  // PageSize must match ComplaintsScreen's exactly. It did not — the hub asked
-  // for 100 and the screen for 200 under the same key, so whichever mounted
-  // first won: opening the hub before Complaints silently capped that list at
-  // 100 rows. Sharing a key means sharing the parameters too.
-  const { data: tickets } = useQuery({
-    queryKey: ["tickets", ""],
-    queryFn: () => fetchTickets({ PageSize: 200, SearchTerm: null }),
+  // A count, not a list: PageSize 1 and read the total. Under its OWN key —
+  // this used to share the Complaints list's key, which meant sharing its
+  // parameters too, and the two disagreed once (hub 100 rows, screen 200;
+  // whichever mounted first won). "active" = open + onhold, company-scoped by
+  // the SP exactly as the list is.
+  const { data: activeTickets } = useQuery({
+    queryKey: ["tickets", "active-count"],
+    queryFn: () => fetchTickets({ StatusCode: "active", PageSize: 1 }),
   });
+  const openComplaints = activeTickets?.data?.pagination.totalRecords ?? 0;
 
   const boardCount = (workspaces ?? []).filter(
     (w) => w.MyInviteStatus !== "pending" && !w.IsArchived,
   ).length;
-
-  // "all" on purpose: this is a count across every support pipeline, and
-  // scoping would silently drop tickets outside the default one rather than
-  // counting them. Only StageType is read here, which is per-stage anyway.
-  const { roles } = useTicketRefData("all");
-  const openComplaints = useMemo(
-    () =>
-      (tickets?.data?.tickets ?? []).filter(
-        (t) => lifecycleOf(t, roles) === "open",
-      ).length,
-    [tickets, roles],
-  );
 
   const sections: HubSection[] = [
     {
@@ -130,7 +115,7 @@ export default function WorkHubScreen() {
           detail: openComplaints
             ? `${openComplaints} open`
             : "Log and track customer issues",
-          routes: ["/support", "/support/tickets", "/support/board"],
+          routes: ["/support", "/support/tickets", "/support/customers"],
           ready: true,
           go: (nav) => nav.navigate("Complaints"),
         },

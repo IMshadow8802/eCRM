@@ -21,10 +21,10 @@ const createAxiosInstance = () => {
     (config) => {
       const { token, API_BASE_URL } = useAuthStore.getState();
 
-      // In dev, leave baseURL empty so requests are relative (e.g. `/api/...`)
-      // and get forwarded by Vite's proxy → http://localhost:5001 (see
-      // vite.config.js). In prod we use the persisted store URL.
-      config.baseURL = import.meta.env.DEV ? "" : API_BASE_URL;
+      // Dev and prod alike talk to the backend Central resolved for the typed
+      // company code — there is no Vite proxy and no localhost backend
+      // (2026-09-16). Null only before the code step; login is gated on it.
+      config.baseURL = API_BASE_URL ?? undefined;
 
       // Once the session is being torn down, nothing else goes out. This used
       // to be missing, and it is what made the storm self-sustaining: the

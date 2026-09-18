@@ -48,8 +48,15 @@ describe("SALES_ENDPOINTS", () => {
     expect(SALES_ENDPOINTS.reports).not.toHaveProperty("pipelineFunnel");
   });
 
-  it("keeps the config + calls endpoints Support still reads", () => {
-    expect(SALES_ENDPOINTS.config.fetchPipelines).toBe("/api/config/fetchPipelines");
+  it("keeps lookups + custom fields for Support and drops the pipeline engine", () => {
+    expect(SALES_ENDPOINTS.config).toEqual({
+      saveCustomField: "/api/config/saveCustomField",
+      fetchCustomFields: "/api/config/fetchCustomFields",
+      deleteCustomField: "/api/config/deleteCustomField",
+      saveLookup: "/api/config/saveLookup",
+      fetchLookups: "/api/config/fetchLookups",
+      deleteLookup: "/api/config/deleteLookup",
+    });
     expect(SALES_ENDPOINTS.calls.logCall).toBe("/api/calls/logCall");
   });
 });
@@ -61,10 +68,6 @@ const FETCHERS = {
   saveCustomField: SALES_ENDPOINTS.config.saveCustomField,
   fetchCustomFields: SALES_ENDPOINTS.config.fetchCustomFields,
   deleteCustomField: SALES_ENDPOINTS.config.deleteCustomField,
-  savePipeline: SALES_ENDPOINTS.config.savePipeline,
-  fetchPipelines: SALES_ENDPOINTS.config.fetchPipelines,
-  saveStage: SALES_ENDPOINTS.config.saveStage,
-  deleteStage: SALES_ENDPOINTS.config.deleteStage,
   saveLookup: SALES_ENDPOINTS.config.saveLookup,
   fetchLookups: SALES_ENDPOINTS.config.fetchLookups,
   deleteLookup: SALES_ENDPOINTS.config.deleteLookup,
@@ -123,5 +126,10 @@ describe("salesQueries", () => {
     expect(salesQueries.leadsByStatus).toBeUndefined();
     expect(salesQueries.callsPerUser).toBeUndefined();
     expect(salesQueries.conversionBySource).toBeUndefined();
+    // spec 2: the pipeline engine is dropped in 086.
+    expect(salesQueries.savePipeline).toBeUndefined();
+    expect(salesQueries.fetchPipelines).toBeUndefined();
+    expect(salesQueries.saveStage).toBeUndefined();
+    expect(salesQueries.deleteStage).toBeUndefined();
   });
 });

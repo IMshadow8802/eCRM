@@ -108,4 +108,31 @@ describe("Priorities page", () => {
     expect(await screen.findByTestId("master-grid-empty")).toBeInTheDocument();
     expect(screen.getByText(/priorities yet/i)).toBeInTheDocument();
   });
+
+  // Spec 2 §2: the priority's TAT is what stamps a complaint's due date.
+  it("creates a priority with its TAT hours", async () => {
+    renderPage();
+    await screen.findByText("High");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("master-grid-create"));
+    await user.type(await screen.findByLabelText(/Value/), "Urgent");
+    await user.type(screen.getByLabelText(/TAT hours/), "4");
+    await user.click(screen.getByRole("button", { name: /create priority/i }));
+
+    await waitFor(() => expect(lastSaveBody).toMatchObject({ Id: 0, Kind: "priority", Value: "Urgent", TatHours: 4 }));
+  });
+
+  it("carries an existing TAT through an edit", async () => {
+    seedLookups({ priority: [{ Id: 1, Kind: "priority", Value: "High", SortOrder: 1, TatHours: 24 }] });
+    renderPage();
+    await screen.findByText("High");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("master-grid-edit-1"));
+    expect(await screen.findByLabelText(/TAT hours/)).toHaveValue("24");
+    await user.click(screen.getByRole("button", { name: /update priority/i }));
+
+    await waitFor(() => expect(lastSaveBody).toMatchObject({ Id: 1, Kind: "priority", TatHours: 24 }));
+  });
 });

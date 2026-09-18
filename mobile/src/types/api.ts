@@ -52,13 +52,6 @@ export type AttachmentEntity = "task" | "ticket" | "lead";
 /** The config engine's discriminator. One set of tables serves both modules. */
 export type ConfigEntity = "lead" | "ticket";
 
-/**
- * A stage's role in the lifecycle. `open` is in-flight; `won` is a successful
- * end; `lost` is a rejection. Support reads them as Open → Resolved → Closed
- * and Rejected — see ticketHelpers for how the two `won` stages are told apart.
- */
-export type StageType = "open" | "won" | "lost";
-
 export type CustomFieldType =
   | "text"
   | "number"
@@ -124,6 +117,14 @@ export interface Permissions {
   rawPermissions: MenuItem[];
   totalMenuItems: number;
   hasAdminAccess: boolean;
+}
+
+/** What Central hands back for a company code — see api/centralQueries.ts. */
+export interface ClientConfig {
+  baseURL: string;
+  compCode: string;
+  companyName: string | null;
+  logoURL: string | null;
 }
 
 export interface LoginData {
@@ -316,7 +317,13 @@ export interface KanbanColumn {
 
 /**
  * A row of tblLookup. `Kind` is the list it belongs to — `ticket_category`,
- * `priority`, `resolution`, `call_outcome`, `lead_source`, `lost_reason`.
+ * `ticket_status`, `ticket_channel`, `priority`, `resolution`, `call_outcome`,
+ * `transfer_reason`, `lead_source`, `lost_reason`.
+ *
+ * `Code` is the stable key on the kinds that branch on one (`lead_status`,
+ * `ticket_status`). Labels are the company's and editable, so nothing in this
+ * app matches on `Value`. `TatHours` is meaningful on `priority` only — hours
+ * from logging to a complaint's due time; NULL means "no clock".
  *
  * Note that a ticket's Priority is a lookup **Id**, not the string enum tasks
  * use. The two modules genuinely differ here; do not unify them.
@@ -328,28 +335,8 @@ export interface Lookup {
   Value: string;
   SortOrder: number | null;
   IsActive: boolean;
-}
-
-export interface Pipeline {
-  Id: number;
-  CompId: number;
-  Entity: ConfigEntity;
-  Name: string;
-  IsDefault: boolean;
-  IsActive: boolean;
-  CreatedAt: string;
-}
-
-export interface PipelineStage {
-  Id: number;
-  CompId: number;
-  PipelineId: number;
-  Name: string;
-  SortOrder: number;
-  StageType: StageType;
-  /** Hex from the DB, drawn straight onto the stage chip. */
-  Color: string | null;
-  IsActive: boolean;
+  Code: string | null;
+  TatHours?: number | null;
 }
 
 /**
@@ -386,53 +373,108 @@ export interface CustomFieldValue {
 // ----------------------------------------------------------------- ticket
 
 /**
- * A row of tblTicket, as returned by sp_FetchTickets and sp_FetchTicketDetail.
+ * tblLookup Kind='ticket_status' codes — the ONLY key the lifecycle branches
+ * on. Active = open | onhold. Terminal = resolved | closed | rejected.
+ */
+export type TicketStatusCode = "open" | "onhold" | "resolved" | "closed" | "rejected";
+
+/**
+ * A row of sp_FetchTickets RS1 — wider than tblTicket. Since 086 the SP joins
+ * every name a screen shows (status, priority, category, channel, product,
+ * customer, assignee, escalation target, branch), so a row renders on its own;
+ * the lookups are fetched only to fill pickers.
  *
- * NOTE what is absent: the SP joins nothing. There is no StageName,
- * CategoryName, PriorityName or AssigneeName — every one of those is an id
- * that the client resolves against the lookups and stages it fetched
- * separately. The web does the same. Do not add them here without adding the
- * joins to the procedure first.
- *
- * `Priority` and `CategoryId` are tblLookup ids. `ResolvedAt`/`ClosedAt`/
- * `ResolutionId` are stamped by sp_MoveTicketStage and must never be written
- * directly — stage is the single source of truth for the lifecycle.
+ * `IsOverdue` is computed by the SP (`Code IN ('open','onhold') AND DueAt <
+ * GETDATE()`) and never stored. `ResolvedAt` / `ClosedAt` / `ResolutionId` and
+ * the reopen `DueAt` are written only by sp_SetTicketStatus — the client never
+ * sends them, and `saveTicket` is never used to change a status.
  */
 export interface Ticket {
   Id: number;
   CompId: number;
   BranchId: number;
+  BranchName: string | null;
   TicketNo: string;
+  Subject: string;
+  CustomerId: number;
   CustomerName: string | null;
+  CustomerMobile: string | null;
+  /** "Reported by" — optional, prefilled from the customer on create. */
   ContactPerson: string | null;
   Contact: string | null;
-  Channel: string | null;
+  ChannelId: number | null;
+  ChannelName: string | null;
   CategoryId: number | null;
+  CategoryName: string | null;
+  /** A tblLookup id (Kind = 'priority'). */
   Priority: number | null;
-  PipelineId: number | null;
-  StageId: number | null;
+  PriorityName: string | null;
+  ProductId: number | null;
+  ProductName: string | null;
+  StatusId: number;
+  StatusName: string | null;
+  StatusCode: TicketStatusCode;
   AssignedTo: number | null;
+  AssigneeName: string | null;
+  AssigneeAvatar: string | null;
+  AssignedAt: string | null;
+  /** NULL when the priority carries no TAT — such a ticket is never overdue. */
+  DueAt: string | null;
+  IsOverdue: boolean;
+  AgeHours: number | null;
+  EscalatedTo: number | null;
+  EscalatedToName: string | null;
+  EscalatedAt: string | null;
   LinkedLeadId: number | null;
   ResolvedAt: string | null;
   ClosedAt: string | null;
   ResolutionId: number | null;
+  ResolutionName: string | null;
   Description: string | null;
+  CreatedBy: number | null;
   CreatedAt: string;
   UpdatedAt: string | null;
-  /** Detail only — the list SP does not select these. */
-  CreatedBy?: number | null;
+  /** Detail only — sp_FetchTicketDetail RS1 adds these; the list SP does not. */
   EditBy?: number | null;
+  CustomerContactPerson?: string | null;
+  CustomerEmail?: string | null;
+  CustomerCity?: string | null;
+  CustomerAddress?: string | null;
+  /** How many other complaints this customer has raised. */
+  PreviousTickets?: number | null;
 }
 
-/** A row of tblTicketActivity. `MetaJSON` carries per-type detail. */
+/** A row of tblTicketActivity (sp_FetchTicketDetail RS3), author joined. */
 export interface TicketActivityEntry {
   Id: number;
   TicketId: number;
   UserId: number | null;
+  UserName: string | null;
+  UserAvatar: string | null;
+  /** created · updated · status · resolved · closed · rejected · reopened · assigned · escalated · call */
   Type: string;
   Summary: string | null;
   MetaJSON: string | null;
   CreatedAt: string;
+}
+
+/** A row of tblTicketAssignment (RS4) — one per transfer, names joined. */
+export interface TicketAssignment {
+  Id: number;
+  FromUserId: number | null;
+  FromUserName: string | null;
+  ToUserId: number | null;
+  ToUserName: string | null;
+  FromBranchId: number | null;
+  FromBranchName: string | null;
+  ToBranchId: number | null;
+  ToBranchName: string | null;
+  ReasonId: number | null;
+  Reason: string | null;
+  Remarks: string;
+  AssignedBy: number | null;
+  AssignedByName: string | null;
+  AssignedAt: string;
 }
 
 /**
@@ -457,21 +499,58 @@ export interface Call {
   CreatedAt: string;
 }
 
-/** The lead a ticket was raised from, when there is one. */
+/** The lead a ticket was raised from, when there is one (RS5). */
 export interface LinkedLead {
   Id: number;
   Name: string | null;
   MobileNo: string | null;
   Email: string | null;
-  StageId: number | null;
+  StatusId: number | null;
 }
 
-/** sp_FetchTicketDetail returns four result sets; the controller names them. */
+/** sp_FetchTicketDetail returns five result sets; the controller names them. */
 export interface TicketDetail {
   ticket: Ticket | null;
   fields: CustomFieldValue[];
   activity: TicketActivityEntry[];
+  assignments: TicketAssignment[];
   linkedLead: LinkedLead | null;
+}
+
+/** A row of sp_FetchCustomers RS1 — tblCustomer plus branch name and counts. */
+export interface Customer {
+  Id: number;
+  CompId: number;
+  BranchId: number;
+  BranchName: string | null;
+  /** The business or the person. */
+  Name: string;
+  ContactPerson: string | null;
+  Mobile: string | null;
+  AltMobile: string | null;
+  Email: string | null;
+  Address: string | null;
+  City: string | null;
+  State: string | null;
+  Pincode: string | null;
+  Remarks: string | null;
+  IsActive: boolean;
+  OpenTickets: number;
+  TotalTickets: number;
+  LastTicketAt: string | null;
+  CreatedAt: string;
+  UpdatedAt: string | null;
+}
+
+/** sp_FetchEscalationTargets — the chain of command above a user, nearest first. */
+export interface EscalationTarget {
+  Id: number;
+  FullName: string;
+  JobTitle: string | null;
+  BranchId: number | null;
+  BranchName: string | null;
+  /** 1 = direct manager. */
+  Depth: number;
 }
 
 // ------------------------------------------------------- misc collections
@@ -508,4 +587,28 @@ export interface DirectoryUser {
   Username: string | null;
   Avatar: string | null;
   JobTitle: string | null;
+}
+
+/** /api/users/fetchAssignableUsers — who the caller may hand a record to. */
+export interface AssignableUser {
+  Id: number;
+  FullName: string;
+  Avatar: string | null;
+  JobTitle: string | null;
+  BranchId: number | null;
+  BranchName: string | null;
+  ReportsTo: number | null;
+}
+
+/** A row of sp_FetchProducts RS1 (tblProduct + category name). */
+export interface Product {
+  Id: number;
+  CompId: number;
+  Name: string;
+  Code: string | null;
+  CategoryId: number | null;
+  CategoryName: string | null;
+  UnitPrice: number | null;
+  MarginPct: number | null;
+  IsActive: boolean;
 }

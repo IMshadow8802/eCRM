@@ -44,18 +44,31 @@ import { SALES_ENDPOINTS } from "../../api/salesQueries";
 const errorText = (error, fallback) =>
   error.isAxiosError ? error.response?.data?.message || fallback : error.message;
 
-// Only Kind='lead_status' carries a Code, and sp_SaveLookup validates it
-// against exactly this set — the lead lifecycle branches on the code, never on
-// the (renameable, per-company) label. "converted" is absent on purpose: it is
-// stamped by the convert action, not something an admin hands out.
-const STATUS_CODES = [
-  { value: "open", label: "Open — still being worked" },
-  { value: "qualified", label: "Qualified — ready to convert" },
-  { value: "lost", label: "Lost — needs a reason" },
-  { value: "junk", label: "Junk" },
-];
+// Some kinds carry a machine Code behind an editable, per-company label, and
+// sp_SaveLookup validates the set per Kind. Table, not a chain of ifs: the
+// lifecycle that branches on these codes lives in one place on each side.
+// lead_status omits "converted" on purpose — it is stamped by the convert
+// action, not handed out by an admin.
+const CODE_OPTIONS = {
+  lead_status: [
+    { value: "open", label: "Open — still being worked" },
+    { value: "qualified", label: "Qualified — ready to convert" },
+    { value: "lost", label: "Lost — needs a reason" },
+    { value: "junk", label: "Junk" },
+  ],
+  ticket_status: [
+    { value: "open", label: "Open — being worked" },
+    { value: "onhold", label: "On hold — waiting on the customer" },
+    { value: "resolved", label: "Resolved — needs a resolution" },
+    { value: "closed", label: "Closed — the customer confirmed" },
+    { value: "rejected", label: "Rejected — never solved" },
+  ],
+};
 
-const emptyForm = { Value: "", SortOrder: "0", Code: "open" };
+// Kind='priority' carries the TAT hours that stamp a complaint's DueAt.
+const TAT_KIND = "priority";
+
+const emptyForm = { Value: "", SortOrder: "0", Code: "open", TatHours: "" };
 
 export default function LookupMaster({
   title,
@@ -90,6 +103,7 @@ export default function LookupMaster({
         Value: editingLookup.Value || "",
         SortOrder: String(editingLookup.SortOrder ?? 0),
         Code: editingLookup.Code || "open",
+        TatHours: editingLookup.TatHours == null ? "" : String(editingLookup.TatHours),
       });
     } else {
       setFormData(emptyForm);
@@ -129,6 +143,9 @@ export default function LookupMaster({
     return Object.keys(next).length === 0;
   };
 
+  const codeOptions = CODE_OPTIONS[activeKind] ?? null;
+  const hasTat = activeKind === TAT_KIND;
+
   const lower = noun.toLowerCase();
 
   const saveMutation = useApiMutation({
@@ -157,7 +174,10 @@ export default function LookupMaster({
       Kind: activeKind,
       Value: formData.Value.trim(),
       SortOrder: Number(formData.SortOrder) || 0,
-      ...(activeKind === "lead_status" ? { Code: formData.Code } : {}),
+      ...(codeOptions ? { Code: formData.Code } : {}),
+      // NULL, not 0: "no TAT" means this priority never makes a complaint
+      // overdue (spec 2 §2), while 0 would mean "due on arrival".
+      ...(hasTat ? { TatHours: formData.TatHours === "" ? null : Number(formData.TatHours) } : {}),
     });
   };
 
@@ -233,14 +253,25 @@ export default function LookupMaster({
                 onChange={(e) => handleChange("SortOrder", e.target.value)}
               />
             </FormRow>
-            {activeKind === "lead_status" && (
+            {codeOptions && (
               <FormRow columns={1}>
                 <FormSelect
                   label="Code"
                   value={formData.Code}
                   onChange={(e) => handleChange("Code", e.target.value)}
-                  options={STATUS_CODES}
+                  options={codeOptions}
                   required
+                />
+              </FormRow>
+            )}
+            {hasTat && (
+              <FormRow columns={1}>
+                <FormNumberInput
+                  label="TAT hours"
+                  value={formData.TatHours}
+                  onChange={(e) => handleChange("TatHours", e.target.value)}
+                  helperText="Hours from when a complaint is raised to its due date. Leave blank for no due date."
+                  maxLength={5}
                 />
               </FormRow>
             )}

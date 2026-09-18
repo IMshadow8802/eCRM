@@ -238,9 +238,7 @@ const Teams = () => {
       <Helmet>
         <title>PRD Infotech | Teams</title>
       </Helmet>
-      <Box sx={{ mt: 2, width: "100%", overflowX: "auto" }}>
-        <MaterialReactTable table={table} />
-      </Box>
+      <MaterialReactTable table={table} />
       {/* Team creation/edit modal */}
       <TeamForm
         open={isModalOpen}

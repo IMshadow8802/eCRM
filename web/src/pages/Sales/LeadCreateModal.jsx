@@ -15,6 +15,7 @@ import {
   DateField,
   Combobox,
 } from "../../components/ui";
+import FormGrid from "../../components/ui/FormGrid";
 import DynamicField from "../../components/DynamicField";
 import Attachments from "../../components/Attachments";
 import { useApiQuery } from "../../hooks/useApiQuery";
@@ -253,7 +254,7 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
   };
 
   return (
-    <Modal open={open} onClose={handleClose} size="lg" data-testid="lead-create-modal">
+    <Modal open={open} onClose={handleClose} size="xl" data-testid="lead-create-modal">
       <Modal.Header
         title={isEdit ? "Edit Lead" : "New Lead"}
         icon={isEdit ? <Pencil size={18} /> : <UserPlus size={18} />}
@@ -265,13 +266,7 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
           onSubmit={handleSubmit(onSubmit)}
           style={{ display: "flex", flexDirection: "column", gap: 16 }}
         >
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-              gap: 16,
-            }}
-          >
+          <FormGrid>
             <Controller
               control={control}
               name="Name"
@@ -477,7 +472,7 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
                 />
               </>
             )}
-          </div>
+          </FormGrid>
 
           <Controller
             control={control}
@@ -497,13 +492,7 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
           {!isEdit && fieldDefs.length > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Custom fields</h3>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-                  gap: 16,
-                }}
-              >
+              <FormGrid>
                 {fieldDefs.map((def) => (
                   <DynamicField
                     key={def.Id}
@@ -512,7 +501,7 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
                     onChange={(v) => setCustom((c) => ({ ...c, [def.Id]: v }))}
                   />
                 ))}
-              </div>
+              </FormGrid>
             </div>
           )}
 

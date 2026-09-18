@@ -1,10 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { cleanup, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const post = vi.fn();
 vi.mock("../../utils/axiosConfig", () => ({
   apiClient: { post: (...args) => post(...args) },
+}));
+
+const fetchClientConfig = vi.fn();
+vi.mock("../../api/centralQueries", () => ({
+  fetchClientConfig: (...a) => fetchClientConfig(...a),
 }));
 
 const navigate = vi.fn();
@@ -40,15 +45,92 @@ const signIn = async () => {
   await user.click(screen.getByRole("button", { name: /Sign in/i }));
 };
 
+const BOUND = {
+  isClientConfigured: true,
+  API_BASE_URL: "https://shadowcodes.in/CRM",
+  companyName: "PRD Infotech",
+  compCode: "PRD",
+  logoURL: null,
+};
+const UNBOUND = {
+  isClientConfigured: false,
+  API_BASE_URL: null,
+  companyName: null,
+  compCode: null,
+  logoURL: null,
+};
+
 beforeEach(() => {
   post.mockReset();
   navigate.mockReset();
+  fetchClientConfig.mockReset();
+  useAuthStore.setState(BOUND);
 });
 
 afterEach(() => {
   cleanup();
   localStorage.clear();
-  useAuthStore.setState({ isAuthenticated: false, menuRights: [] });
+  useAuthStore.setState({ isAuthenticated: false, menuRights: [], ...UNBOUND });
+});
+
+describe("Login — company code step", () => {
+  beforeEach(() => useAuthStore.setState(UNBOUND));
+
+  it("asks for the company code first; the credentials form is not there yet", () => {
+    renderWithProviders(<Login />, { router: true });
+    expect(screen.getByLabelText(/Company code/i)).toHaveFocus();
+    expect(screen.queryByLabelText(/Username \/ Email \/ Mobile/i)).toBeNull();
+  });
+
+  it("an empty code is refused without asking Central", async () => {
+    renderWithProviders(<Login />, { router: true });
+    await userEvent.setup().click(screen.getByRole("button", { name: /Continue/i }));
+    expect(fetchClientConfig).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/Company code/i)).toBeInTheDocument();
+  });
+
+  it("a valid code binds the company and reveals the credentials form", async () => {
+    fetchClientConfig.mockResolvedValueOnce({
+      baseURL: "https://shadowcodes.in/Client2",
+      compCode: "C2",
+      companyName: "Client Two",
+      logoURL: null,
+    });
+    renderWithProviders(<Login />, { router: true });
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/Company code/i), "c2");
+    await user.click(screen.getByRole("button", { name: /Continue/i }));
+
+    expect(fetchClientConfig).toHaveBeenCalledWith("C2");
+    expect(await screen.findByLabelText(/Username \/ Email \/ Mobile/i)).toBeInTheDocument();
+    expect(within(screen.getByTestId("company-chip")).getByText("Client Two")).toBeInTheDocument();
+    expect(useAuthStore.getState().API_BASE_URL).toBe("https://shadowcodes.in/Client2");
+    expect(useAuthStore.getState().isClientConfigured).toBe(true);
+  });
+
+  it("shows the lookup error and stays on the code step", async () => {
+    fetchClientConfig.mockRejectedValueOnce(
+      Object.assign(new Error("Company not found. Check the code."), { kind: "not_found" }),
+    );
+    renderWithProviders(<Login />, { router: true });
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/Company code/i), "NOPE");
+    await user.click(screen.getByRole("button", { name: /Continue/i }));
+
+    expect(await screen.findByText(/Company not found/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Company code/i)).toBeInTheDocument();
+    expect(useAuthStore.getState().isClientConfigured).toBe(false);
+  });
+
+  it("Switch company forgets the binding and returns to the code step", async () => {
+    useAuthStore.setState(BOUND);
+    renderWithProviders(<Login />, { router: true });
+    expect(within(screen.getByTestId("company-chip")).getByText("PRD Infotech")).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: /Switch company/i }));
+    expect(screen.getByLabelText(/Company code/i)).toBeInTheDocument();
+    expect(useAuthStore.getState().isClientConfigured).toBe(false);
+    expect(useAuthStore.getState().API_BASE_URL).toBeNull();
+  });
 });
 
 describe("Login", () => {
@@ -241,6 +323,90 @@ describe("Login", () => {
     await user.type(screen.getByLabelText(/^Password/i), "secret{Enter}");
 
     await waitFor(() => expect(post).toHaveBeenCalledOnce());
+  });
+
+  it("reveals and re-hides the password", async () => {
+    renderWithProviders(<Login />, { router: true });
+    const user = userEvent.setup();
+    const field = screen.getByLabelText(/^Password/i);
+    expect(field).toHaveAttribute("type", "password");
+
+    await user.click(screen.getByRole("button", { name: /Show password/i }));
+    expect(field).toHaveAttribute("type", "text");
+
+    await user.click(screen.getByRole("button", { name: /Hide password/i }));
+    expect(field).toHaveAttribute("type", "password");
+  });
+
+  // fireEvent, not userEvent: ui/Checkbox hides the native input behind its own
+  // box, so a pointer interaction lands on an element with pointer-events: none.
+  it("lets Remember me be turned off", () => {
+    renderWithProviders(<Login />, { router: true });
+    const box = screen.getByLabelText(/Remember me/i);
+    expect(box).toBeChecked();
+    fireEvent.click(box);
+    expect(box).not.toBeChecked();
+  });
+
+  /**
+   * Errors live in the form, not in a toast.
+   *
+   * notistack snackbars auto-dismiss. On a login page that is exactly wrong:
+   * this is the one screen a user cannot navigate away from when they are
+   * stuck, and the reason has to stay readable while they retype. These tests
+   * assert the message is still in the document after the request settles,
+   * which a snackbar would not guarantee.
+   */
+  describe("failure messages stay on the screen", () => {
+    it("keeps a rejected credential message in the form", async () => {
+      post.mockResolvedValueOnce({
+        data: { success: false, responseCode: 401, message: "Incorrect password" },
+      });
+
+      renderWithProviders(<Login />, { router: true });
+      await signIn();
+
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent("Incorrect password");
+    });
+
+    it("explains an empty form rather than failing silently", async () => {
+      renderWithProviders(<Login />, { router: true });
+      await userEvent.setup().click(screen.getByRole("button", { name: /Sign in/i }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        /username\/email\/mobile and password/i,
+      );
+      expect(post).not.toHaveBeenCalled();
+    });
+
+    it("clears the message as soon as the user starts fixing it", async () => {
+      renderWithProviders(<Login />, { router: true });
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: /Sign in/i }));
+      expect(await screen.findByRole("alert")).toBeInTheDocument();
+
+      await user.type(screen.getByLabelText(/Username \/ Email \/ Mobile/i), "a");
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
+
+    it("names a network failure as one, so nobody retypes a correct password", async () => {
+      post.mockRejectedValueOnce({ request: {} });
+
+      renderWithProviders(<Login />, { router: true });
+      await signIn();
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(/Network error/i);
+    });
+
+    it("falls back to a plain message when the error is neither", async () => {
+      post.mockRejectedValueOnce(new Error("boom"));
+
+      renderWithProviders(<Login />, { router: true });
+      await signIn();
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(/Error logging in/i);
+    });
   });
 
   it("still refuses to submit when the password is empty", async () => {

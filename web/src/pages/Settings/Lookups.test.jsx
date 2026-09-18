@@ -116,6 +116,10 @@ describe("Lookups page", () => {
     ["lead_status", "Lead Statuses"],
     ["product_category", "Product Categories"],
     ["transfer_reason", "Transfer Reasons"],
+    // Spec 2: complaints get a flat status list with a Code, and the channel
+    // stops being a string hardcoded in two clients.
+    ["ticket_status", "Complaint Statuses"],
+    ["ticket_channel", "Complaint Channels"],
   ])("offers a %s tab that fetches that Kind", async (kind, label) => {
     renderPage();
     await screen.findByText("Website");
@@ -145,6 +149,23 @@ describe("Lookups page", () => {
       expect(lastSaveBody).toMatchObject({ Id: 0, Kind: "resolution", Value: "Duplicate" });
     });
     expect(await screen.findByText("Duplicate")).toBeInTheDocument();
+  });
+
+  it("creates a complaint status with its Code", async () => {
+    renderPage();
+    await screen.findByText("Website");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("lookup-kind-tabs-ticket_status"));
+    await user.click(screen.getByTestId("master-grid-create"));
+    await user.type(await screen.findByLabelText(/Value/), "Waiting on parts");
+    await user.click(screen.getByLabelText(/Code/));
+    await user.click(await screen.findByRole("option", { name: /On hold/ }));
+    await user.click(screen.getByRole("button", { name: /create lookup/i }));
+
+    await waitFor(() =>
+      expect(lastSaveBody).toMatchObject({ Id: 0, Kind: "ticket_status", Value: "Waiting on parts", Code: "onhold" })
+    );
   });
 
   it("creates a lookup in the active Kind via saveLookup", async () => {

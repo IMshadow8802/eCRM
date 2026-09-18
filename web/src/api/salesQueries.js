@@ -10,10 +10,6 @@ export const SALES_ENDPOINTS = {
     saveCustomField: "/api/config/saveCustomField",
     fetchCustomFields: "/api/config/fetchCustomFields",
     deleteCustomField: "/api/config/deleteCustomField",
-    savePipeline: "/api/config/savePipeline",
-    fetchPipelines: "/api/config/fetchPipelines",
-    saveStage: "/api/config/saveStage",
-    deleteStage: "/api/config/deleteStage",
     saveLookup: "/api/config/saveLookup",
     fetchLookups: "/api/config/fetchLookups",
     deleteLookup: "/api/config/deleteLookup",
@@ -65,14 +61,10 @@ export const SALES_ENDPOINTS = {
 // logic exists yet, so one factory beats 30 hand-written near-duplicates.
 const post = (endpoint) => (params = {}) => apiClient.post(endpoint, params);
 
-// Config (custom fields, pipelines, stages, lookups)
+// Config (custom fields, lookups) — the pipeline engine was dropped in 086 (spec 2).
 export const saveCustomField = post(SALES_ENDPOINTS.config.saveCustomField);
 export const fetchCustomFields = post(SALES_ENDPOINTS.config.fetchCustomFields);
 export const deleteCustomField = post(SALES_ENDPOINTS.config.deleteCustomField);
-export const savePipeline = post(SALES_ENDPOINTS.config.savePipeline);
-export const fetchPipelines = post(SALES_ENDPOINTS.config.fetchPipelines);
-export const saveStage = post(SALES_ENDPOINTS.config.saveStage);
-export const deleteStage = post(SALES_ENDPOINTS.config.deleteStage);
 export const saveLookup = post(SALES_ENDPOINTS.config.saveLookup);
 export const fetchLookups = post(SALES_ENDPOINTS.config.fetchLookups);
 export const deleteLookup = post(SALES_ENDPOINTS.config.deleteLookup);

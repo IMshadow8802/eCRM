@@ -33,6 +33,7 @@ import {
   Inventory2Outlined,
   EmojiEventsOutlined,
   PersonSearchOutlined,
+  PeopleOutlined,
 } from "@mui/icons-material";
 
 /**
@@ -53,6 +54,8 @@ export function getMenuIcon(menuTitle) {
   if (title.includes("user group")) return AdminPanelSettingsOutlined;
   if (title.includes("kanban")) return ViewKanbanOutlined;
   // sales/support module — specific first
+  // spec 2: the Customers row under Support (086 adds tblMenu row + grants).
+  if (title.includes("customer")) return PeopleOutlined;
   if (title.includes("funnel")) return FilterAltOutlined;
   // spec 4a report pages — each needs its own keyword or it falls through to
   // the circle, which is what every unmapped menu row looked like.
@@ -124,7 +127,7 @@ export function buildDynamicMenu(menuRights) {
   );
 
   // A menu row's `route` (from tblMenu.Route) wins when present so nested SPA
-  // routes like /support/board work; legacy rows without a Route fall back to
+  // routes like /support/customers work; legacy rows without a Route fall back to
   // the title-slug path.
   return parentMenus.map((parent) => {
     const children = childMenus.filter((c) => c.parentid === parent.menuid);

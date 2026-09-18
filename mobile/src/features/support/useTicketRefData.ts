@@ -1,106 +1,77 @@
 import { useQueries } from "@tanstack/react-query";
 
-import { fetchLookups, fetchPipelines, LOOKUP_KIND } from "../../api/configQueries";
-import { fetchUserDirectory } from "../../api/userQueries";
-import type { DirectoryUser, Lookup, Pipeline, PipelineStage } from "../../types/api";
-import { stageRoles, type StageRoles } from "./ticketHelpers";
+import { fetchLookups, LOOKUP_KIND } from "../../api/configQueries";
+import { fetchAssignableUsers } from "../../api/userQueries";
+import type { AssignableUser, Lookup } from "../../types/api";
 
 /**
- * The reference data every complaint screen needs.
+ * The reference data every complaint screen needs — for PICKERS only.
  *
- * sp_FetchTickets joins nothing — a ticket row carries CategoryId, Priority,
- * StageId and AssignedTo as bare ids — so each screen was opening the same
- * four to six queries just to turn those numbers into words. The list, the
- * detail and the form all did it, with the resolution and call-outcome lists
- * appearing in some and not others depending on what that screen showed.
+ * Since 086 sp_FetchTickets joins every name a row displays (StatusName,
+ * PriorityName, AssigneeName, …), so nothing here is needed to render a card
+ * or a fact. What remains is the set of lists a screen offers as choices: the
+ * status sheet and filter chips, the resolve / transfer / call sheets, and the
+ * form's selects.
  *
- * The query keys are unchanged and stay per-kind (`["lookups", kind]`), so
- * this shares React Query's cache with anything already fetching them rather
- * than introducing a second copy — moving between the three screens still
- * costs nothing.
+ * The query keys stay per-kind (`["lookups", kind]`), so this shares React
+ * Query's cache with anything already fetching them rather than introducing a
+ * second copy — moving between the three screens still costs nothing.
  *
  * `useQueries` rather than a stack of `useQuery` calls: the set is fixed, and
  * one array keeps the screens from drifting apart again over which lists they
  * happen to ask for.
  */
 export interface TicketRefData {
+  /** ticket_status rows in SortOrder — each carries its Code. */
+  statuses: Lookup[];
   categories: Lookup[];
+  /** Each carries TatHours; the form shows "due in Nh" off it. */
   priorities: Lookup[];
+  channels: Lookup[];
   resolutions: Lookup[];
-  outcomes: Lookup[];
-  directory: DirectoryUser[];
-  pipelines: Pipeline[];
-  /** The company's default ticket pipeline, or its first — what a board shows. */
-  defaultPipeline: Pipeline | null;
-  stages: PipelineStage[];
-  /** Stage roles, scoped per the `scope` argument. */
-  roles: StageRoles;
+  transferReasons: Lookup[];
+  callOutcomes: Lookup[];
+  /**
+   * Who the caller may assign or transfer to. Server-scoped: own subtree plus
+   * own manager for Team/Self, readable branches for wide scopes. Offering
+   * anyone else earns a 403 from assertCanAssign at save time.
+   */
+  users: AssignableUser[];
 }
 
-/**
- * Which pipeline the returned `roles` describe. Spelled out rather than left
- * to a bare optional id, because all three answers are wanted somewhere and
- * picking the wrong one is silent:
- *
- *   "default"  the board's pipeline — the list and board screens
- *   a number   one specific pipeline — a detail screen uses the ticket's own,
- *              so its move sheet cannot offer stages the ticket may not enter
- *   "all"      every pipeline at once. Only correct for a count, where scoping
- *              would drop tickets outside the default pipeline rather than
- *              counting them.
- */
-export type RefScope = number | null | "default" | "all";
+const lookup = (kind: string) => ({
+  queryKey: ["lookups", kind],
+  queryFn: () => fetchLookups({ Kind: kind }),
+});
 
-export function useTicketRefData(scope: RefScope = "all"): TicketRefData {
-  const results = useQueries({
+export function useTicketRefData(): TicketRefData {
+  return useQueries({
     queries: [
+      lookup(LOOKUP_KIND.ticketStatus),
+      lookup(LOOKUP_KIND.ticketCategory),
+      lookup(LOOKUP_KIND.priority),
+      lookup(LOOKUP_KIND.ticketChannel),
+      lookup(LOOKUP_KIND.resolution),
+      lookup(LOOKUP_KIND.transferReason),
+      lookup(LOOKUP_KIND.callOutcome),
       {
-        queryKey: ["pipelines", "ticket"],
-        queryFn: () => fetchPipelines({ Entity: "ticket" }),
+        queryKey: ["users", "assignable"],
+        queryFn: () => fetchAssignableUsers(),
       },
-      {
-        queryKey: ["lookups", LOOKUP_KIND.ticketCategory],
-        queryFn: () => fetchLookups({ Kind: LOOKUP_KIND.ticketCategory }),
-      },
-      {
-        queryKey: ["lookups", LOOKUP_KIND.priority],
-        queryFn: () => fetchLookups({ Kind: LOOKUP_KIND.priority }),
-      },
-      {
-        queryKey: ["lookups", LOOKUP_KIND.resolution],
-        queryFn: () => fetchLookups({ Kind: LOOKUP_KIND.resolution }),
-      },
-      {
-        queryKey: ["lookups", LOOKUP_KIND.callOutcome],
-        queryFn: () => fetchLookups({ Kind: LOOKUP_KIND.callOutcome }),
-      },
-      { queryKey: ["users", "directory"], queryFn: () => fetchUserDirectory() },
     ],
     // Derived here rather than in each screen's own useMemo — useQueries only
     // re-runs this when a result actually changes.
-    combine: (r) => {
-      const pipelines = r[0]?.data?.pipelines ?? [];
-      return {
-        pipelines,
-        defaultPipeline: pipelines.find((p) => p.IsDefault) ?? pipelines[0] ?? null,
-        stages: r[0]?.data?.stages ?? [],
-        categories: r[1]?.data ?? [],
-        priorities: r[2]?.data ?? [],
-        resolutions: r[3]?.data ?? [],
-        outcomes: r[4]?.data ?? [],
-        directory: r[5]?.data ?? [],
-      };
-    },
+    combine: (r) => ({
+      statuses: r[0]?.data ?? [],
+      categories: r[1]?.data ?? [],
+      priorities: r[2]?.data ?? [],
+      channels: r[3]?.data ?? [],
+      resolutions: r[4]?.data ?? [],
+      transferReasons: r[5]?.data ?? [],
+      callOutcomes: r[6]?.data ?? [],
+      users: r[7]?.data ?? [],
+    }),
   });
-
-  const pipelineId =
-    scope === "all"
-      ? null
-      : scope === "default"
-        ? (results.defaultPipeline?.Id ?? null)
-        : scope;
-
-  return { ...results, roles: stageRoles(results.stages, pipelineId) };
 }
 
 export default useTicketRefData;

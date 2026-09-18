@@ -73,3 +73,32 @@ describe("assertCanAssign", () => {
     expect(res.status).toHaveBeenCalledWith(500);
   });
 });
+
+// The guard is shared by leads and tickets (spec 2 §3); the copy must not
+// name either. The web shows these strings verbatim in a toast.
+describe("assertCanAssign messages are entity-neutral", () => {
+  it("unassign below Branch scope", async () => {
+    const res = mockRes();
+    await assertCanAssign(req("Self"), res, { toUserId: null });
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "Only a manager can leave a record unassigned" }),
+    );
+  });
+
+  it("cross-branch below Branch scope", async () => {
+    const res = mockRes();
+    await assertCanAssign(req("Team"), res, { toUserId: 9, toBranchId: 4 });
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "Only a branch manager or above can move a record to another branch" }),
+    );
+  });
+
+  it("target outside the roster", async () => {
+    roster([3]);
+    const res = mockRes();
+    await assertCanAssign(req("Team"), res, { toUserId: 9 });
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "You cannot assign records to that user" }),
+    );
+  });
+});

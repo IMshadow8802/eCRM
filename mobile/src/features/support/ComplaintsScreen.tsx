@@ -1,149 +1,142 @@
-import { useCallback, useDeferredValue, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useMemo, useState } from "react";
 import { FlatList, StyleSheet, View } from "react-native";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  ArrowRightLeft,
-  Ban,
-  CircleCheck,
-  CloudOff,
-  Headset,
-  Plus,
-  Search,
-} from "lucide-react-native";
+import { useQuery } from "@tanstack/react-query";
+import { CloudOff, Headset, Plus, Search } from "lucide-react-native";
 import type { StackScreenProps } from "@react-navigation/stack";
 
-import { fetchTickets, moveTicketStage } from "../../api/ticketQueries";
-import { apiErrorMessage } from "../../api/errors";
+import { fetchTickets, type FetchTicketsParams } from "../../api/ticketQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
-import type { PipelineStage, Ticket } from "../../types/api";
-import { colors, radius, spacing, SCREEN_PADDING } from "../../theme";
+import useAuthStore from "../../stores/useAuthStore";
+import type { Ticket } from "../../types/api";
+import { colors, spacing, SCREEN_PADDING } from "../../theme";
 import {
-  ActionSheet,
-  BoardColumns,
+  ChipGroup,
   EmptyState,
   Fab,
   Input,
   Refresher,
   Screen,
   ScreenHeader,
-  Text,
-  type SheetAction,
-  type SheetRef,
-  useToast,
+  Segmented,
 } from "../../ui";
 import { ComplaintCard } from "./ComplaintCard";
-import { lookupMap, needsResolution } from "./ticketHelpers";
 import { useTicketRefData } from "./useTicketRefData";
 
 type Props = StackScreenProps<RootStackParamList, "Complaints">;
 
-/** Tickets whose StageId is missing or points at a retired stage. */
-const NO_STAGE_ID = -1;
+/** The four queues — WHICH rows. A status chip then narrows within one. */
+type Queue = "mine" | "team" | "overdue" | "escalated";
+
+const QUEUES: { value: Queue; label: string }[] = [
+  { value: "mine", label: "Mine" },
+  { value: "team", label: "Team" },
+  { value: "overdue", label: "Overdue" },
+  { value: "escalated", label: "Escalated" },
+];
+
+const SUBTITLE: Record<Queue, string> = {
+  mine: "assigned to you",
+  team: "in your team",
+  overdue: "overdue",
+  escalated: "escalated",
+};
+
+const EMPTY: Record<Queue, { title: string; message: string }> = {
+  mine: {
+    title: "Nothing on your plate",
+    message: "Complaints assigned to you that are still open show up here.",
+  },
+  team: {
+    title: "No open complaints",
+    message: "Everything you can see is resolved, closed or rejected.",
+  },
+  overdue: {
+    title: "Nothing overdue",
+    message: "Every open complaint is inside its due time.",
+  },
+  escalated: {
+    title: "Nothing escalated",
+    message: "Complaints escalated to you, or overdue under you, land here.",
+  },
+};
+
+/** "active" = every open/onhold status; a number = one ticket_status id. */
+type StatusFilter = "active" | number;
 
 /**
- * The complaints board — the web's ticket board, on a phone.
+ * Which server-side filters each queue is, in one place, so the header count
+ * and the list cannot disagree about what "Mine" means.
  *
- * The web splits this into a Tickets table and a TicketBoard. Mobile does not:
- * a table on a 360px screen is a worse version of a list, and the board
- * already answers the only question a phone gets asked — what is where, and
- * move this one along. One screen, no separate table.
+ *   mine       assigned to me, still active
+ *   team       everything I can see, still active — scope is the SP's
+ *   overdue    non-terminal and past DueAt (the SP computes it; never stored)
+ *   escalated  non-terminal and (escalated to me OR overdue) — a manager's queue
  *
- * Columns are the default pipeline's stages, which is why there is no
- * Open/Mine/All filter: the stage IS the filter, and it is the same lifecycle
- * the web board shows.
+ * A status chip other than "Active" replaces StatusCode with StatusId: sending
+ * both would AND them, and "Resolved" within "active" is the empty set.
+ */
+function queueParams(
+  queue: Queue,
+  status: StatusFilter,
+  userId: number | null,
+  term: string,
+): FetchTicketsParams {
+  return {
+    PageSize: 200,
+    SearchTerm: term || null,
+    AssignedTo: queue === "mine" ? userId : null,
+    StatusCode: status === "active" ? "active" : null,
+    StatusId: status === "active" ? null : status,
+    Overdue: queue === "overdue",
+    Escalated: queue === "escalated",
+  };
+}
+
+/**
+ * The complaints queue — a list, not a board.
+ *
+ * The board went with the pipeline engine (086). A stage column answered
+ * "what is where"; a flat status with a due date answers the question a phone
+ * is actually asked — what is mine, what is late, what has been pushed up to
+ * me — and those are the four segments. Sorting is the server's:
+ * overdue first, then by due time.
  */
 export default function ComplaintsScreen({ navigation }: Props) {
-  const queryClient = useQueryClient();
-  const toast = useToast();
+  const userId = useAuthStore((s) => s.UserId);
 
+  const [queue, setQueue] = useState<Queue>("mine");
+  const [status, setStatus] = useState<StatusFilter>("active");
   const [search, setSearch] = useState("");
-  const [moving, setMoving] = useState<Ticket | null>(null);
-  const [pendingStage, setPendingStage] = useState<PipelineStage | null>(null);
 
-  const stageRef = useRef<SheetRef>(null);
-  const resolutionRef = useRef<SheetRef>(null);
-
-  // Deferred rather than debounced with a timer: React holds the old board on
-  // screen while the new query resolves, so typing never blanks it and there is
-  // no timeout to clean up.
+  // Deferred rather than debounced with a timer: React keeps the old list on
+  // screen while the new query resolves, so typing never blanks it and there
+  // is no timeout to clean up.
   const term = useDeferredValue(search.trim());
 
+  const params = useMemo(
+    () => queueParams(queue, status, userId, term),
+    [queue, status, userId, term],
+  );
+
   const ticketsQuery = useQuery({
-    queryKey: ["tickets", term],
-    queryFn: () => fetchTickets({ PageSize: 200, SearchTerm: term || null }),
+    queryKey: ["tickets", params],
+    queryFn: () => fetchTickets(params),
   });
 
-  // The ticket row carries ids, not names — sp_FetchTickets joins nothing.
-  // Scoped to the default pipeline: this is the board.
-  const {
-    categories,
-    priorities,
-    resolutions,
-    directory,
-    defaultPipeline: activePipeline,
-    roles,
-  } = useTicketRefData("default");
+  // Only the status list is needed here — every name on a card is on the row.
+  const { statuses } = useTicketRefData();
 
-
-  const move = useMutation({
-    mutationFn: moveTicketStage,
-    // Same state the success path clears. Leaving `pendingStage` set after a
-    // refusal keeps the resolution prompt up over a ticket that never moved.
-    onError: (err) => {
-      setMoving(null);
-      setPendingStage(null);
-      toast.error(apiErrorMessage(err, "Could not move that complaint."));
-    },
-    onSuccess: () => {
-      setMoving(null);
-      setPendingStage(null);
-      queryClient.invalidateQueries({ queryKey: ["tickets"] });
-      queryClient.invalidateQueries({ queryKey: ["ticket"] });
-    },
-  });
-
-  const categoryNames = useMemo(() => lookupMap(categories), [categories]);
-  const priorityNames = useMemo(() => lookupMap(priorities), [priorities]);
-  const people = useMemo(
-    () => new Map((directory ?? []).map((u) => [u.Id, u.FullName])),
-    [directory],
+  const statusOptions = useMemo(
+    () => [
+      { value: "active" as StatusFilter, label: "Active" },
+      ...statuses.map((s) => ({ value: s.Id as StatusFilter, label: s.Value })),
+    ],
+    [statuses],
   );
 
-  const tickets = useMemo(
-    () => ticketsQuery.data?.data?.tickets ?? [],
-    [ticketsQuery.data],
-  );
-
-  // Already scoped to the default pipeline by useTicketRefData above.
-  const stages = roles.ordered;
-
-  // A "No stage" column only exists when something is actually in it — an
-  // empty extra column on a small screen is a wasted swipe.
-  const columns = useMemo(() => {
-    const known = new Set(stages.map((s) => s.Id));
-    const orphans = tickets.some(
-      (t) => t.StageId == null || !known.has(t.StageId),
-    );
-    if (!orphans) return stages;
-    return [
-      ...stages,
-      { Id: NO_STAGE_ID, Name: "No stage", Color: null } as PipelineStage,
-    ];
-  }, [stages, tickets]);
-
-  const byStage = useMemo(() => {
-    const known = new Set(columns.map((c) => c.Id));
-    const map = new Map<number, Ticket[]>();
-    for (const column of columns) map.set(column.Id, []);
-    for (const ticket of tickets) {
-      const key =
-        ticket.StageId != null && known.has(ticket.StageId)
-          ? ticket.StageId
-          : NO_STAGE_ID;
-      map.get(key)?.push(ticket);
-    }
-    return map;
-  }, [columns, tickets]);
+  const tickets = ticketsQuery.data?.data?.tickets ?? [];
+  const total = ticketsQuery.data?.data?.pagination.totalRecords ?? tickets.length;
+  const narrowed = status !== "active" || term.length > 0;
 
   const openTicket = useCallback(
     (ticket: Ticket) =>
@@ -151,182 +144,77 @@ export default function ComplaintsScreen({ navigation }: Props) {
     [navigation],
   );
 
-  const promptMove = useCallback((ticket: Ticket) => {
-    setMoving(ticket);
-    stageRef.current?.present();
-  }, []);
-
-  /**
-   * Entering the first `won` stage needs a resolution — the SP rejects the
-   * move without one, and a silent failure would read as the app ignoring the
-   * tap. So that move opens a second sheet instead of firing.
-   */
-  const pickStage = (target: PipelineStage) => {
-    if (!moving) return;
-    if (needsResolution(target, roles) && !moving.ResolutionId) {
-      setPendingStage(target);
-      resolutionRef.current?.present();
-      return;
-    }
-    move.mutate({ TicketId: moving.Id, StageId: target.Id });
-  };
-
-  const stageActions: SheetAction[] = stages.map((s) => ({
-    key: String(s.Id),
-    label: s.Name,
-    sublabel:
-      s.Id === roles.resolved?.Id
-        ? "Fixed — awaiting the customer"
-        : s.Id === roles.closed?.Id
-          ? "Done and confirmed"
-          : s.StageType === "lost"
-            ? "Closed without a fix"
-            : undefined,
-    icon:
-      s.StageType === "lost"
-        ? Ban
-        : s.StageType === "won"
-          ? CircleCheck
-          : ArrowRightLeft,
-    tone: s.StageType === "lost" ? "danger" : undefined,
-    selected: moving?.StageId === s.Id,
-    onPress: () => pickStage(s),
-  }));
-
-  const resolutionActions: SheetAction[] = (resolutions ?? []).map((r) => ({
-    key: String(r.Id),
-    label: r.Value,
-    icon: CircleCheck,
-    onPress: () =>
-      moving &&
-      pendingStage &&
-      move.mutate({
-        TicketId: moving.Id,
-        StageId: pendingStage.Id,
-        ResolutionId: r.Id,
-      }),
-  }));
-
-  // Waiting on the pipeline as well as the tickets: a board rendered before its
-  // stages arrive has no columns to put anything in.
-  const loading = ticketsQuery.isLoading || !activePipeline;
-
   return (
     <Screen>
       <ScreenHeader
         title="Complaints"
-        subtitle={
-          activePipeline
-            ? `${tickets.length} on ${activePipeline.Name}`
-            : `${tickets.length} logged`
-        }
+        subtitle={`${total} ${SUBTITLE[queue]}`}
         tint="danger"
         onBack={navigation.goBack}
       />
 
       <View style={styles.controls}>
+        <Segmented value={queue} options={QUEUES} onChange={setQueue} />
+        <ChipGroup
+          label="Filter by status"
+          value={status}
+          options={statusOptions}
+          onChange={setStatus}
+        />
         <Input
           value={search}
           onChangeText={setSearch}
-          placeholder="Customer, contact or ticket no."
+          placeholder="Ticket no., subject, customer or mobile"
           leftIcon={Search}
           autoCorrect={false}
           returnKeyType="search"
         />
       </View>
 
-      {!loading && !columns.length ? (
-        <EmptyState
-          icon={ticketsQuery.isError ? CloudOff : Headset}
-          title={
-            ticketsQuery.isError
-              ? "Couldn't load complaints"
-              : "No support pipeline"
-          }
-          message={
-            ticketsQuery.isError
-              ? "Pull down to try again."
-              : "Set up a pipeline and its stages on the web, then the board appears here."
-          }
-        />
-      ) : (
-        <BoardColumns
-          columns={columns}
-          keyOf={(column) => String(column.Id)}
-          renderColumn={(column) => {
-            const cards = byStage.get(column.Id) ?? [];
-            return (
-              <>
-                <View style={styles.columnHeader}>
-                  <View
-                    style={[
-                      styles.dot,
-                      { backgroundColor: column.Color ?? colors.primary },
-                    ]}
-                  />
-                  <Text variant="h3" numberOfLines={1} style={styles.columnTitle}>
-                    {column.Name}
-                  </Text>
-                  <View style={styles.count}>
-                    <Text variant="caption" color="textSecondary">
-                      {cards.length}
-                    </Text>
-                  </View>
-                </View>
-
-                <FlatList
-                  data={cards}
-                  keyExtractor={(ticket) => String(ticket.Id)}
-                  contentContainerStyle={styles.cards}
-                  showsVerticalScrollIndicator={false}
-                  keyboardShouldPersistTaps="handled"
-                  refreshControl={
-                    <Refresher
-                      refreshing={ticketsQuery.isRefetching && !loading}
-                      onRefresh={ticketsQuery.refetch}
-                    />
-                  }
-                  ListEmptyComponent={
-                    <Text variant="secondary" style={styles.columnEmpty}>
-                      {term ? "Nothing matches here." : "Nothing here yet."}
-                    </Text>
-                  }
-                  renderItem={({ item }) => (
-                    <ComplaintCard
-                      ticket={item}
-                      roles={roles}
-                      categories={categoryNames}
-                      priorities={priorityNames}
-                      people={people}
-                      onPress={openTicket}
-                      onLongPress={promptMove}
-                      showStage={false}
-                    />
-                  )}
-                />
-              </>
-            );
-          }}
-        />
-      )}
+      <FlatList
+        data={tickets}
+        keyExtractor={(ticket) => String(ticket.Id)}
+        contentContainerStyle={[styles.list, !tickets.length && styles.listEmpty]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <Refresher
+            refreshing={ticketsQuery.isRefetching && !ticketsQuery.isLoading}
+            onRefresh={ticketsQuery.refetch}
+          />
+        }
+        renderItem={({ item }) => (
+          <View style={styles.cardWrap}>
+            <ComplaintCard ticket={item} onPress={openTicket} />
+          </View>
+        )}
+        ListEmptyComponent={
+          ticketsQuery.isLoading ? null : (
+            <EmptyState
+              icon={ticketsQuery.isError ? CloudOff : Headset}
+              title={
+                ticketsQuery.isError
+                  ? "Couldn't load complaints"
+                  : narrowed
+                    ? "Nothing matches"
+                    : EMPTY[queue].title
+              }
+              message={
+                ticketsQuery.isError
+                  ? "Pull down to try again."
+                  : narrowed
+                    ? "Try another status, or clear the search."
+                    : EMPTY[queue].message
+              }
+            />
+          )
+        }
+      />
 
       <Fab
         icon={Plus}
         accessibilityLabel="Log a complaint"
         onPress={() => navigation.navigate("ComplaintForm", {})}
-      />
-
-      <ActionSheet
-        ref={stageRef}
-        title={moving ? `Move ${moving.TicketNo}` : "Move to stage"}
-        actions={stageActions}
-        emptyMessage="This company has no support pipeline configured."
-      />
-      <ActionSheet
-        ref={resolutionRef}
-        title="How was it resolved?"
-        actions={resolutionActions}
-        emptyMessage="No resolutions are configured. Add them on the web first."
       />
     </Screen>
   );
@@ -337,29 +225,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: SCREEN_PADDING,
     paddingTop: spacing[4],
     paddingBottom: spacing[3],
+    gap: spacing[3],
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.divider,
   },
-  columnHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[2],
-    paddingHorizontal: spacing[1],
-    paddingBottom: spacing[3],
-  },
-  dot: { width: 10, height: 10, borderRadius: radius.full },
-  columnTitle: { flex: 1 },
-  count: {
-    minWidth: 26,
-    paddingHorizontal: spacing[2],
-    paddingVertical: 1,
-    borderRadius: radius.full,
-    backgroundColor: colors.surface,
-    alignItems: "center",
-  },
-  // Clears the FAB so the last card in a full column stays reachable.
-  // Cards on a board carry no shadow (see ui/boardSurface), so this gap is
-  // pure breathing room rather than shadow clearance.
-  cards: { gap: spacing[5], paddingBottom: spacing[20] },
-  columnEmpty: { paddingHorizontal: spacing[1] },
+  // Clears the FAB so the last card stays reachable.
+  list: { paddingTop: spacing[4], paddingBottom: spacing[20] },
+  listEmpty: { flexGrow: 1 },
+  // 20 between cards: the gap has to out-reach the card shadow, or stacked
+  // shadows meet and the list reads as one grey slab (My Work does the same).
+  cardWrap: { paddingHorizontal: SCREEN_PADDING, paddingBottom: spacing[5] },
 });

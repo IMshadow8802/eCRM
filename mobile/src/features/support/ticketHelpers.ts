@@ -2,184 +2,126 @@ import type {
   CustomFieldDef,
   CustomFieldValue,
   Lookup,
-  PipelineStage,
-  StageType,
   Ticket,
+  TicketStatusCode,
 } from "../../types/api";
-
-/**
- * sp_SaveTicket takes Channel as a plain varchar(20) — no lookup drives it —
- * so the list of channels is a UI constant, matching the web's exactly.
- */
-export const CHANNELS = [
-  { value: "phone", label: "Phone" },
-  { value: "whatsapp", label: "WhatsApp" },
-  { value: "email", label: "Email" },
-  { value: "web", label: "Web" },
-  { value: "chat", label: "Chat" },
-] as const;
-
-export const channelLabel = (channel: string | null): string =>
-  CHANNELS.find((c) => c.value === channel)?.label ?? channel ?? "—";
+import type { ChipTone } from "../../ui";
 
 // ---------------------------------------------------------------- lookups
 
-/** `{Id: Value}` for resolving the raw ids a ticket row carries. */
+/** `{Id: Value}` for the few ids a row does not carry a name for. */
 export const lookupMap = (lookups: Lookup[] | undefined): Map<number, string> =>
   new Map((lookups ?? []).map((l) => [l.Id, l.Value]));
 
 export const asOptions = (lookups: Lookup[] | undefined) =>
   (lookups ?? []).map((l) => ({ value: l.Id, label: l.Value }));
 
+// --------------------------------------------------------------- lifecycle
+
+const CODES: ReadonlySet<string> = new Set<TicketStatusCode>([
+  "open",
+  "onhold",
+  "resolved",
+  "closed",
+  "rejected",
+]);
+
+/**
+ * Normalises whatever the API sent to one of the five codes. sp_SaveLookup
+ * rejects anything else for `ticket_status`, so the fallback only ever meets a
+ * NULL — read as open, the one reading that cannot hide work.
+ */
+export const asStatusCode = (
+  code: string | null | undefined,
+): TicketStatusCode =>
+  code && CODES.has(code) ? (code as TicketStatusCode) : "open";
+
+/**
+ * Where a ticket sits, read from its status CODE — never from its label
+ * (per-company, editable) and never from its timestamps.
+ */
+export const lifecycleOf = (
+  ticket: Pick<Ticket, "StatusCode">,
+): TicketStatusCode => asStatusCode(ticket.StatusCode);
+
+/** Still being worked: open or on hold. */
+export const isActive = (code: TicketStatusCode): boolean =>
+  code === "open" || code === "onhold";
+
+/** Resolved, closed or rejected — nothing left to do unless it is reopened. */
+export const isTerminal = (code: TicketStatusCode): boolean => !isActive(code);
+
+export const STATUS_TONE: Record<TicketStatusCode, ChipTone> = {
+  open: "info",
+  onhold: "warning",
+  resolved: "success",
+  closed: "neutral",
+  rejected: "danger",
+};
+
+export const statusTone = (code: TicketStatusCode): ChipTone =>
+  STATUS_TONE[code];
+
 /**
  * Priority is a per-company lookup row, so its *name* is the only thing that
  * can be matched on — there is no enum and ids differ between companies.
  * Anything unrecognised falls back to neutral rather than guessing.
  */
-export function priorityTone(
-  name: string | undefined,
-): "danger" | "warning" | "success" | "textSecondary" {
+export function priorityTone(name: string | null | undefined): ChipTone {
   const key = (name ?? "").toLowerCase();
   if (key.includes("urgent") || key.includes("critical")) return "danger";
   if (key.includes("high")) return "danger";
   if (key.includes("medium") || key.includes("normal")) return "warning";
   if (key.includes("low")) return "success";
-  return "textSecondary";
+  return "neutral";
 }
 
-// --------------------------------------------------------------- lifecycle
+// --------------------------------------------------------------------- TAT
 
-export type Lifecycle = "open" | "resolved" | "closed" | "rejected" | "unknown";
-
-export const LIFECYCLE_LABEL: Record<Lifecycle, string> = {
-  open: "Open",
-  resolved: "Resolved",
-  closed: "Closed",
-  rejected: "Rejected",
-  unknown: "No stage",
+/** "45m" / "4h" / "3d" — whole units, never "1.5h". */
+const span = (ms: number): string => {
+  const mins = Math.max(1, Math.round(Math.abs(ms) / 60_000));
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 48) return `${hrs}h`;
+  return `${Math.round(hrs / 24)}d`;
 };
 
-/** Order the sections appear in. Open first — that is the work. */
-export const LIFECYCLE_ORDER: Lifecycle[] = [
-  "open",
-  "resolved",
-  "closed",
-  "rejected",
-  "unknown",
-];
-
 /**
- * The two-step terminal flow, derived rather than hardcoded.
+ * "Due in 4h" / "Overdue by 2d", or null.
  *
- * A support pipeline ends in two `won` stages: the FIRST (lowest SortOrder) is
- * **Resolved** — fixed, awaiting the customer's confirmation, and requires a
- * ResolutionId. The LAST is **Closed**. A `lost` stage is **Rejected**: closed
- * without ever being solved, so it carries no resolution.
- *
- * Stage names are per-company and editable, so matching on the word "Resolved"
- * would break the moment someone renames it. SortOrder within StageType is the
- * only stable signal.
+ * Null for a terminal ticket (the clock has stopped) and when the priority has
+ * no TAT (`DueAt` NULL — such a ticket is never overdue). `overdue` is taken
+ * from the row's `IsOverdue` alone, which the SP computes against its own
+ * clock — the device clock never decides overdue, it only phrases the gap
+ * (`gap`, via `span()`, for the "in 4h" / "by 2d" wording). A phone with a
+ * wrong clock would otherwise disagree with the server, the web and every
+ * other client about what is late. `DueAt` is a datetime instant (the backend
+ * runs `useUTC: false`, pinned to Asia/Kolkata), so plain `new Date()` parsing
+ * is right here — unlike a task's date-only DueDate.
  */
-export interface StageRoles {
-  ordered: PipelineStage[];
-  first: PipelineStage | null;
-  resolved: PipelineStage | null;
-  closed: PipelineStage | null;
-  rejected: PipelineStage | null;
-}
-
-/**
- * @param stages     every stage fetchPipelines returned — it hands back the
- *                   stages of ALL the entity's pipelines in one flat list.
- * @param pipelineId scope the roles to one pipeline. Pass it whenever the
- *                   answer is about a particular ticket or board.
- *
- * The filter is not optional in spirit, only in signature. A company may run
- * more than one support pipeline, and without scoping, `resolved` is the first
- * `won` stage across ALL of them and `closed` the last — so a ticket resolved
- * in pipeline B gets compared against pipeline A's stages and renders under the
- * wrong lifecycle, while the move sheet offers stages the ticket cannot go to.
- * The web boards have always filtered by `PipelineId`; this is the same guard.
- *
- * Omit it only when the question genuinely spans pipelines — counting open
- * tickets, say, where scoping would drop every ticket outside the default
- * pipeline instead of counting it.
- */
-export function stageRoles(
-  stages: PipelineStage[] | undefined,
-  pipelineId?: number | null,
-): StageRoles {
-  const scoped =
-    pipelineId == null
-      ? (stages ?? [])
-      : (stages ?? []).filter((s) => s.PipelineId === pipelineId);
-  const ordered = [...scoped].sort(
-    (a, b) => (a.SortOrder ?? 0) - (b.SortOrder ?? 0),
-  );
-  const won = ordered.filter((s) => s.StageType === "won");
-
+export function dueLabel(
+  ticket: Pick<Ticket, "DueAt" | "IsOverdue" | "StatusCode">,
+  now = new Date(),
+): { label: string; overdue: boolean } | null {
+  if (!ticket.DueAt || isTerminal(lifecycleOf(ticket))) return null;
+  const due = new Date(ticket.DueAt).getTime();
+  if (Number.isNaN(due)) return null;
+  const gap = due - now.getTime();
+  const overdue = Boolean(ticket.IsOverdue);
   return {
-    ordered,
-    first: ordered.find((s) => s.StageType === "open") ?? ordered[0] ?? null,
-    resolved: won[0] ?? null,
-    // One `won` stage means resolved and closed are the same thing; a pipeline
-    // is allowed to be that simple.
-    closed: won[won.length - 1] ?? null,
-    rejected: ordered.find((s) => s.StageType === "lost") ?? null,
+    label: overdue ? `Overdue by ${span(gap)}` : `Due in ${span(gap)}`,
+    overdue,
   };
 }
 
-/** Where a ticket sits, read from its stage — never from its timestamps. */
-export function lifecycleOf(
-  ticket: Pick<Ticket, "StageId">,
-  roles: StageRoles,
-): Lifecycle {
-  if (ticket.StageId == null) return "unknown";
-  const stage = roles.ordered.find((s) => s.Id === ticket.StageId);
-  if (!stage) return "unknown";
-  if (stage.StageType === "lost") return "rejected";
-  if (stage.StageType === "open") return "open";
-  return stage.Id === roles.closed?.Id && roles.closed?.Id !== roles.resolved?.Id
-    ? "closed"
-    : stage.Id === roles.resolved?.Id
-      ? "resolved"
-      : "closed";
-}
-
-export const stageOf = (
-  ticket: Pick<Ticket, "StageId">,
-  roles: StageRoles,
-): PipelineStage | null =>
-  roles.ordered.find((s) => s.Id === ticket.StageId) ?? null;
-
-/** Entering the Resolved stage needs a reason; every other move does not. */
-export const needsResolution = (
-  stage: PipelineStage,
-  roles: StageRoles,
-): boolean => stage.Id === roles.resolved?.Id;
-
-export const STAGE_TONE: Record<StageType, "info" | "success" | "danger"> = {
-  open: "info",
-  won: "success",
-  lost: "danger",
-};
-
-/** Group tickets by lifecycle, preserving the server's order within each. */
-export function groupByLifecycle(
-  tickets: Ticket[],
-  roles: StageRoles,
-): { lifecycle: Lifecycle; tickets: Ticket[] }[] {
-  const buckets = new Map<Lifecycle, Ticket[]>();
-  for (const ticket of tickets) {
-    const key = lifecycleOf(ticket, roles);
-    const list = buckets.get(key);
-    if (list) list.push(ticket);
-    else buckets.set(key, [ticket]);
-  }
-  return LIFECYCLE_ORDER.filter((l) => buckets.get(l)?.length).map(
-    (lifecycle) => ({ lifecycle, tickets: buckets.get(lifecycle)! }),
-  );
-}
+/** "4h" / "3 days" for a priority's TatHours — the form's hint. Null = no clock. */
+export const tatLabel = (hours: number | null | undefined): string | null =>
+  hours == null
+    ? null
+    : hours < 48
+      ? `${hours}h`
+      : `${Math.round(hours / 24)} days`;
 
 // ------------------------------------------------------------ custom fields
 

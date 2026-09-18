@@ -168,3 +168,33 @@ describe("Timeline", () => {
     expect(items[2]).toHaveTextContent("Stage changed");
   });
 });
+
+// Spec 2 gave complaints four activity types sales never wrote. The map is
+// the label AND the icon; anything unmapped keeps the old de-underscored type,
+// which is what the legacy `stage_changed` rows still need.
+describe("Timeline activity types", () => {
+  it.each([
+    ["created", "Created"],
+    ["updated", "Updated"],
+    ["status", "Status changed"],
+    ["assigned", "Assigned"],
+    ["resolved", "Resolved"],
+    ["closed", "Closed"],
+    ["rejected", "Rejected"],
+    ["reopened", "Reopened"],
+    ["escalated", "Escalated"],
+  ])("labels %s as %s and gives it an icon", (type, label) => {
+    wrap(<Timeline activity={[{ Id: 1, Type: type, CreatedAt: "2026-09-16T10:00:00Z" }]} />);
+    const item = screen.getByTestId("timeline-item");
+    expect(item).toHaveTextContent(label);
+    expect(item).toHaveAttribute("data-type", type);
+    expect(item.querySelector("svg")).toBeTruthy();
+  });
+
+  it("keeps an unmapped legacy type readable", () => {
+    wrap(<Timeline activity={[{ Id: 1, Type: "stage_changed", CreatedAt: "2026-09-16T10:00:00Z" }]} />);
+    const item = screen.getByTestId("timeline-item");
+    expect(item).toHaveTextContent("Stage changed");
+    expect(item.querySelector("svg")).toBeTruthy();
+  });
+});

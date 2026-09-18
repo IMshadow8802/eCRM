@@ -169,7 +169,11 @@ export const palettes = {
     gradient: {
       heroCTA: `linear-gradient(135deg, ${indigo[600]} 0%, ${pink[500]} 100%)`,
       heroCTAHover: `linear-gradient(135deg, ${indigo[700]} 0%, ${pink[600]} 100%)`,
-      loginPanel: `linear-gradient(135deg, ${indigo[600]} 0%, ${pink[500]} 50%, ${amber[400]} 100%)`,
+      // Deep and near-monochrome on purpose. This was indigo → pink → amber,
+      // which on a full-height panel reads as a fruit salad rather than a
+      // product. Slate and indigo are neighbours, so the ramp stays one
+      // colour getting deeper, and white text sits at ~8:1 on every stop.
+      loginPanel: `linear-gradient(150deg, ${slate[900]} 0%, ${indigo[900]} 55%, ${indigo[800]} 100%)`,
       statAccent: `linear-gradient(135deg, ${indigo[500]} 0%, ${pink[400]} 100%)`,
       emptyBlob: `radial-gradient(circle at 30% 30%, ${indigo[100]} 0%, transparent 60%), radial-gradient(circle at 70% 70%, ${pink[100]} 0%, transparent 60%)`,
     },
@@ -251,7 +255,7 @@ export const palettes = {
     gradient: {
       heroCTA: `linear-gradient(135deg, ${indigo[500]} 0%, ${pink[500]} 100%)`,
       heroCTAHover: `linear-gradient(135deg, ${indigo[400]} 0%, ${pink[400]} 100%)`,
-      loginPanel: `linear-gradient(135deg, ${indigo[700]} 0%, ${pink[700]} 50%, ${amber[700]} 100%)`,
+      loginPanel: `linear-gradient(150deg, ${slate[950]} 0%, ${indigo[900]} 60%, ${slate[900]} 100%)`,
       statAccent: `linear-gradient(135deg, ${indigo[400]} 0%, ${pink[400]} 100%)`,
       emptyBlob: `radial-gradient(circle at 30% 30%, rgba(99,102,241,0.18) 0%, transparent 60%), radial-gradient(circle at 70% 70%, rgba(236,72,153,0.16) 0%, transparent 60%)`,
     },

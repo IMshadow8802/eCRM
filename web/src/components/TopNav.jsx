@@ -149,6 +149,9 @@ const TopNav = ({ onOpenMobileSidebar }) => {
               navigate(`/tasks?taskId=${n.EntityId}`);
             } else if (entity === "comment" && n?.EntityId) {
               navigate(`/tasks?commentId=${n.EntityId}`);
+            } else if (entity === "ticket" && n?.EntityId) {
+              // ticket_assigned / ticket_escalated (spec 2) — open the complaint.
+              navigate(`/support/tickets/${n.EntityId}`);
             } else if (entity === "workspace") {
               // Workspace invites had no handler at all — clicking the bell
               // item did nothing. WorkspaceSwitcher auto-prompts any pending

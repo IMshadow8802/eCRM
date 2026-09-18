@@ -63,6 +63,33 @@ describe("Dashboard", () => {
     useApiQuery.mockReset();
   });
 
+  /**
+   * One card surface on this page, not two.
+   *
+   * The four KPI cards go through `ui/Card`; the bento tiles hand-rolled their
+   * own surface in a Box. They agreed on being white and on nothing else — 16px
+   * radius against 36px, a shadow against no shadow, 20px padding against 16px,
+   * a lift on hover against a border-colour change. Side by side in one
+   * viewport the top row read as a different component from everything under
+   * it, which is what "the top 4 cards look odd" means.
+   *
+   * Asserted by comparing the two rows to each other rather than to fixed
+   * numbers, so retuning the card retunes both.
+   */
+  it("gives the KPI cards and the bento tiles the same surface", () => {
+    useApiQuery.mockReturnValue({ data: REAL, isLoading: false });
+    const { container } = renderPage();
+    const cards = [...container.querySelectorAll("[data-card-surface]")];
+    expect(cards.length).toBeGreaterThan(5); // 4 KPI + the tiles
+
+    const shape = (el) => {
+      const cs = getComputedStyle(el);
+      return { radius: cs.borderRadius, shadow: cs.boxShadow, border: cs.border };
+    };
+    const first = shape(cards[0]);
+    for (const el of cards.slice(1)) expect(shape(el)).toEqual(first);
+  });
+
   it("shows the sample-data hint on all five big charts when no data comes back", () => {
     useApiQuery.mockReturnValue({ data: undefined, isLoading: false });
     renderPage();

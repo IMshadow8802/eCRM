@@ -48,7 +48,7 @@ user runs `ssh myserver`, `rsync`, `docker …`, or anything that touches the bo
 - Full deploy recipe in §8.
 
 ### 0.7 Other standing rules
-- **MUI v9**: this repo is on `@mui/material@9` — use `slotProps` (not `InputProps`/`inputProps`/`renderTags`). Reuse the shared `ui/` components (`Combobox`, `TextInput`, `DateField`, `Modal`, `PageHeader`, …) and `FormSelect`/`FormInput` (which wrap them) instead of raw MUI selects.
+- **MUI v9**: this repo is on `@mui/material@9` — use `slotProps` (not `InputProps`/`inputProps`/`renderTags`). **`@mui/x-date-pickers@9` renders no OutlinedInput at all**: a `DatePicker` field is a `MuiPickersInputBase-root` wrapping contenteditable `<span>` sections, so styling `.MuiOutlinedInput-root`/`.MuiOutlinedInput-input` matches nothing and fails silently — which is how every date field in the app rendered at MUI's defaults beside token-sized controls until 2026-09-17. Style `.MuiPickersInputBase-root` (doubled, and `!important` on font-size: MUI puts its own `0.9333rem` on a sibling class of the same element) and `.MuiPickersInputBase-sectionsContainer`. The picker ignores `placeholder` too — it draws its own `DD-MM-YYYY` mask — so a date filter needs a real label, and a filter row must then label every control or none. Reuse the shared `ui/` components (`Combobox`, `TextInput`, `DateField`, `Modal`, `PageHeader`, …) and `FormSelect`/`FormInput` (which wrap them) instead of raw MUI selects.
 - **Multi-tenancy**: every DB query and SP is filtered by `CompId` (+ `BranchId` where relevant). Never leak across companies.
 - **Build phasing for big features**: all SQL first (one batch, user-applied), then backend controllers/routes, then web (fan out to parallel agents by page). Verify page↔SP contracts against the live DB, not just mocked tests.
 - **Audit-style feedback**: when the user asks "is X production-ready / right / dumb", lead with UX/architecture critique, not a feature checklist.
@@ -59,7 +59,7 @@ user runs `ssh myserver`, `rsync`, `docker …`, or anything that touches the bo
 
 **Multi-platform CRM.** Monorepo with three apps sharing one backend API + auth:
 
-- **`web/`** — React 19 + Vite SPA, deployed under `/CRM/`.
+- **`web/`** — React 19 + Vite SPA, deployed under `/prdcrm/` (one build serves every company; the company code decides the backend).
 - **`backend/`** — Node.js + Express 5 REST API over SQL Server (all CRUD via stored procedures).
 - **`mobile/`** — React Native + Expo app (feature parity in progress).
 
@@ -78,7 +78,7 @@ interceptors, standardized JSON responses, `CompId`/`BranchId` multi-tenancy.
 
 ### web/ (port 8080)
 ```bash
-pnpm dev                      # dev server (Vite, HMR)
+pnpm dev                      # dev server (Vite, HMR) — talks to the hosted API for the company code you type
 pnpm build                    # production build → dist-web/
 pnpm exec vitest run          # run tests once (exits) — preferred in CI/agents
 pnpm test                     # vitest watch
@@ -122,7 +122,8 @@ EAS**. Full detail in §9.
 - **Request path (backend):** route → controller → `database.executeStoredProcedure(name, params)` → SQL Server → `responseHelper` → client.
 - **State:** Zustand + persistence (web: `localStorage`, mobile: `AsyncStorage`). Key stores: `useAuthStore` (auth, user, permissions, menuRights, API base URL), `useWorkspaceStore`, `useTaskStore`, `useKanbanStore`.
 - **API:** Axios instance with interceptors — injects the JWT, handles 401 (redirect via `utils/redirectToLogin.js`; auth-endpoint 401s skipped via `utils/authRedirectGuard.js`).
-- **API base URL:** prod `https://shadowcodes.in/CRM` (`prdinfotech.in` is dead — do not reintroduce it); web dev proxies `/api/*` → `http://localhost:5001`, mobile overrides via `EXPO_PUBLIC_API_BASE_URL`.
+- **API base URL comes from Central, per company code** (2026-09-16). Neither client hardcodes a backend host. Login is two steps: company code → `GET https://shadowcodes.in/Central/api/clients/<CODE>?appType=ECRM_ADMIN|ECRM_EMP` (`PRDInfotech.dbo.tblCompURL`) → `{BaseURL, Company, LogoURL}` into the auth store (`setClientConfig`, persisted; `clearClientConfig` = "Switch company", also ends the session) → then username/password against `${API_BASE_URL}/api/auth/loginUser`. Web: `config/central.js` + `api/centralQueries.js`; the store's `merge` drops any persisted URL outside `TRUSTED_API_ORIGINS`. Mobile: `config/env.ts` + `api/centralQueries.ts`; the store pushes the URL down with `setApiBaseUrl` (same pattern as the token). **Web dev uses the same hosted backend** — no Vite proxy, no localhost backend (the backend CORS allowlist carries `http://localhost:8080`); mobile dev override `EXPO_PUBLIC_API_BASE_URL` skips the code step. `prdinfotech.in` is dead — do not reintroduce it. PRD's backend is `https://shadowcodes.in/CRM`; SolarCRM's is `https://shadowcodes.in/SolarCRM`.
+- **Central's `PrimaryColor` is NOT for this app — never wire it in** (2026-09-17). The column exists in `tblCompURL` for another product; `fetchClientConfig` deliberately does not map it, neither auth store holds it, and `web/src/api/centralQueries.test.js` pins that by feeding a colour in and asserting the exact mapped object without one. The sign-in screen is always **our** brand — web uses the `gradient.loginPanel` design token, mobile `gradients.brand`. `LogoURL` **is** used: the web panel and the mobile header show the tenant's logo, each falling back when the URL is dead. Sign-in is a split canvas on web (`pages/auth/BrandPanel.jsx`) and the gradient screen on mobile; login errors render **in the form**, never only in a snackbar — the login page is the one screen a user cannot navigate away from while stuck.
 
 ### Standard API response
 ```json
@@ -151,7 +152,7 @@ Full reference: **`backend/ROLES.md`**. The essentials — do not violate these:
 - Optional filters (`@BranchId`, `@OwnerId`, `@AssignedTo`) **narrow within** scope; a filter must never widen visibility.
 - **`IsAdmin` is a role property, not a level** — it lives on `tblUserGroups` and only Owner + Admin have it. **Never derive it from `HierarchyLevel <= 2`**: the level-2 heads (Sales/Support/HR) would gain the `sp_CheckTaskPermission` admin bypass, i.e. read/write on every task in every workspace.
 - **Tasks are membership-governed, not scope-governed** (see §6) — branch is an optional *filter* there, never a *gate*. `sp_FetchTask` once `AND`-ed branch scope with membership, which blinded cross-branch workspace members. Don't reintroduce it.
-- **Known-open** (tracked in `ROLES.md`): the write path (`moveStage`/`transfer`/`delete`/`resolve`/`close`/`reopen`) does not check ownership; menu rights are **not enforced server-side** (sidebar-only) — the department axis is advisory until that lands.
+- **Write-path ownership is gated, not open.** Lead writes (`save`/`setStatus`/`transfer`/`bulkTransfer`/`delete`) and complaint writes (`setStatus`/`resolve`/`close`/`reject`/`reopen`/`transfer`/`bulkTransfer`/`escalate`/`delete`) all run through `assertRecordAccess` (plus `assertCanAssign` on an assignee, `canReopen` on a complaint reopen) — `ticketController.delete` was the one gap, closed 2026-09-17 (spec 2). **Known-open** (tracked in `ROLES.md`): menu rights are **not enforced server-side** (sidebar-only) — the department axis is advisory until that lands.
 
 ### Database conventions (SQL Server)
 - All CRUD via stored procedures. Naming: `sp_[Action][Entity]` (`sp_SaveLead`, `sp_FetchTickets`, `sp_DeleteTask`).
@@ -182,7 +183,7 @@ src/
   data/           # static data (helpGuides.js, ...)
   App.jsx         # routes (BrowserRouter, basename="/CRM/")
 ```
-- Routing: `BrowserRouter` basename `/CRM/`. Section parents (`/sales`, `/support`, `/settings`, `/reports`) redirect to their first child so bare paths don't 404.
+- Routing: `BrowserRouter` basename `/prdcrm/` (= Vite `base`; `public/web.config` rewrites to it). Section parents (`/sales`, `/support`, `/settings`, `/reports`) redirect to their first child so bare paths don't 404.
 - Data fetching: `useApiQuery`/`useApiMutation` (TanStack Query); server tables via `useServerTable` + `material-react-table`.
 - Charts: `recharts` (use numeric `height`, never `height="100%"`).
 - Forms: React Hook Form + Zod; render via `ui/` components / `FormSelect`/`FormInput`.
@@ -210,14 +211,14 @@ sql/              # NNN_*.sql — pending, user-applied scripts only (see §0.2)
 - Completion is **derived from the checklist** (`tblTaskChecklist`) — `IsDone` column retired; never reintroduce. Dependencies are hard blocks.
 
 ### Sales (config engine)
-- Per-company **config engine**: typed-EAV custom fields (`tblCustomFieldDef`/`tblCustomFieldValue`), configurable pipelines/stages (`tblPipeline`/`tblPipelineStage`), generic lookups (`tblLookup`) — all keyed by an `Entity` discriminator (`'lead'` / `'ticket'`).
-- Leads (`tblLeads`), manual call logging (`tblCall`), follow-ups (`tblFollowUp`), unified activity timeline (`tblLeadActivity`). Leads are a flat `lead_status` lookup (no pipeline since 2026-09-08; the pipeline engine now serves tickets only). Follow-ups are activities on `tblFollowUp`; ownership moves only through `sp_TransferLead` with a reason + remarks; `tblUser.ReportsTo` drives Team scope.
+- Per-company **config engine**: typed-EAV custom fields (`tblCustomFieldDef`/`tblCustomFieldValue`) and generic lookups (`tblLookup`, with a machine `Code` and, for `priority`, `TatHours`) — keyed by an `Entity`/`Kind` discriminator (`'lead'` / `'ticket'`). The pipeline/stage engine (`tblPipeline`/`tblPipelineStage`) was deleted 2026-09-16 (`086`); nothing has stages any more.
+- Leads (`tblLeads`), manual call logging (`tblCall`), follow-ups (`tblFollowUp`), unified activity timeline (`tblLeadActivity`). Leads are a flat `lead_status` lookup (no pipeline since 2026-09-08). Follow-ups are activities on `tblFollowUp`; ownership moves only through `sp_TransferLead` with a reason + remarks; `tblUser.ReportsTo` drives Team scope.
 - **Sales reports (spec 4a, 2026-09-10):** eight read-only `sp_Rpt*` procs share one contract (12 params · RS1 KPIs · RS2 `GroupKey/GroupLabel` breakdown · RS3 `Bucket` trend) and apply the `sp_FetchLeads` scope predicate (branch **and** owner). `tblLeadStatusHistory` is written only by `sp_SaveLead` (insert) and `sp_SetLeadStatus` — never elsewhere. Backend: `utils/reportKit.js` (`parseReportArgs` whitelists GroupBy per report → 400). Web: one frame `pages/Reports/ReportPage.jsx`, filters in the URL, drill-down = `/sales/leads?…` (Leads reads `StatusCode/StatusId/SourceId/ProductId/OwnerId/BranchId/Overdue/Unassigned/from/to`). A drill carries the filter-bar ids, and the date range only when `DateBasis` is `created` — `sp_FetchLeads` narrows on `CreatedAt`, so a `closed`/`activity` range would open a different set than the row counted. Demo data: `076` seed (deterministic, `DEMO %`), `077` removes it.
 
-### Support (ticketing)
-- Reuses the config engine via `Entity='ticket'`. `tblTicket` + `tblTicketActivity`. `tblCall.TicketId` links calls to tickets. Ticket board, table, detail, Settings, reports.
-- **Stage is the single source of truth for the ticket lifecycle** (the lead equivalent, `sp_MoveLeadStage`, was retired 2026-09-08 when leads went flat). Two-step terminal flow: first `won` stage = **Resolved** (awaiting customer confirmation, requires a `ResolutionId`), final `won` stage (highest SortOrder) = **Closed**, `lost` = **Rejected** (`ClosedAt` stamped, no resolution — never solved). Moving back to an `open` stage clears `ResolvedAt`/`ClosedAt`/`ResolutionId` = reopen. All transitions go through `sp_MoveTicketStage`; `sp_ResolveTicket`/`sp_CloseTicket`/`sp_ReopenTicket` are shortcuts into it — **never write those timestamps directly**.
-- **SLA was removed entirely** (2026-07-16): no `tblSLARule`, no `SLADueAt`, no breach chips/filters/report. Speed is measured instead via `sp_ResolutionSummary.AvgResolutionMins`. Do not reintroduce SLA plumbing.
+### Support (complaints)
+- **Customer is a record** (`tblCustomer`, spec 2, 2026-09-16): name / contact person / mobile (unique per company while active) / email / address. A ticket has `CustomerId NOT NULL`; `ContactPerson`/`Contact` on the ticket are an optional "reported by" override. Customers are company-wide readable (dedupe), writable by any user, soft-deleted by admins only, never while a ticket references them. Lead → customer conversion is spec 3.
+- **Tickets are flat** (`tblTicket.StatusId` → `tblLookup` `Kind='ticket_status'`), no board, no pipeline. **`Code` is the only branching key**: `open` / `onhold` (active) · `resolved` / `closed` / `rejected` (terminal). Labels are the company's and editable; never match on a label. **One engine writes the lifecycle: `sp_SetTicketStatus`** — `resolved` needs `ResolutionId` + remarks, `rejected` needs remarks, terminal → active is a **reopen** (remarks required, `@AllowReopen` must be 1, TAT clock restarts). `sp_Resolve/Close/Reject/ReopenTicket` are shortcuts into it. `ResolvedAt`/`ClosedAt`/`ResolutionId`/`DueAt` are never written elsewhere; `tblTicketStatusHistory` is written only there (plus the create row). Assignment moves only through `sp_TransferTicket`/`sp_BulkTransferTickets` (reason + remarks → `tblTicketAssignment`); `sp_SaveTicket` ignores `AssignedTo` on update.
+- **TAT and escalation.** `priority.TatHours` → `tblTicket.DueAt` at create (anchor-preserving re-stamp on priority change, restart on reopen). **Overdue is computed on read** (`Code IN ('open','onhold') AND DueAt < GETDATE()`), never stored, no scheduler. `sp_EscalateTicket` flags a senior (`EscalatedTo` must be a `ReportsTo` ancestor of the assignee; ticket stays with the agent; `ticket_escalated` in-app notification). A manager's *Escalated* queue = non-terminal AND (`EscalatedTo = me` OR overdue in my subtree). **Reopen gate** lives in `permission.canReopen`: wide scope, or the assignee is in the caller's subtree and is not the caller. The 2026-07-16 SLA-engine removal stands: no `tblSLARule`, no business hours, no breach report — `TatHours` is the whole of it.
 
 ---
 
@@ -225,7 +226,8 @@ sql/              # NNN_*.sql — pending, user-applied scripts only (see §0.2)
 - `GET /health` — uptime/memory. `GET /test-db` — DB connectivity. `GET /api` — HTML route docs.
 
 ## 8. Deployment
-- **Backend**: **Docker Compose** (single `crm` service, `node:20-alpine`, `backend/Dockerfile` + `backend/docker-compose.yml`) on the aaPanel server (SSH alias **`myserver`**, host `prdinfotech`). App binds `0.0.0.0:$PORT` in-container (`HOST` env); nginx on the box reverse-proxies the public domain → host port `5001`. **Host-port convention: the CRM API always uses the 5000 range** (`5001`, then `5002`, … for further instances) — the `30xx`/`80xx` ranges on the server belong to the eStock docker cluster and PM2 apps; never collide with them.
+- **Backend**: **Docker Compose, one image, one container per client** (`backend/Dockerfile` + `backend/docker-compose.yml`, `node:22-alpine`) on the aaPanel server (SSH alias **`myserver`**, host `prdinfotech`). The code has zero client awareness — a client is whichever DB its container's env file points at; isolation is by database + container (own port, env file, uploads dir, CPU/memory cap). Services today: `crm` = PRD (`5001`, `.env.prd`, `./CRMUploads`, DB `eCRM+`, path `/CRM/`) · `crm_solar` = SolarCRM (`5002`, `.env.solarcrm`, `./SolarCRMUploads`, DB `SolarCRM`, path `/SolarCRM/`). App binds `0.0.0.0:$PORT` in-container (`HOST` env); nginx maps each public path → its host port. **Host ports: CRM stays in `5001`–`5099`** (`51xx` = Kitty, `30xx` = eStock, `80xx` = Attendance; never collide).
+  - **New client checklist (no code change):** ① clone a DB (`backend/sql/088` pattern: `BACKUP … COPY_ONLY` + `RESTORE … WITH MOVE`) and reset its tenant data (`089` pattern) · ② `.env.<client>` on the server (copy `.env.prd`, change `DB_NAME`, `PORT`, fresh `JWT_SECRET`; git- and docker-ignored) · ③ one compose block (copy `crm_solar`) · ④ one nginx file (below) · ⑤ two `tblCompURL` rows in `PRDInfotech` (`ECRM_ADMIN` + `ECRM_EMP`, same `BaseURL`) — `087` pattern. Deploy one client: `docker compose up -d --build <service>`; the others are untouched.
   - **Deploy is user-run only** (per §0.6 — Claude gives commands, never runs `ssh`/`rsync`/`docker`). Transport is always `rsync` (add `-n` to preview). Remote dir: `REMOTE=/www/wwwroot/shadowcodes.in/CRM` on `myserver` (confirm once, then it's fixed).
   - **Recipe** (from `backend/`):
     ```bash
@@ -233,10 +235,11 @@ sql/              # NNN_*.sql — pending, user-applied scripts only (see §0.2)
     # 1. code + deploy config + prod env (env travels with the code)
     rsync -avzc src/ myserver:$REMOTE/src/
     rsync -avzc package.json pnpm-lock.yaml pnpm-workspace.yaml Dockerfile docker-compose.yml .dockerignore .env.prd myserver:$REMOTE/
-    # 2. build + (re)start just the crm service, then tail
+    # 2. build + (re)start ONE service, then tail (crm = PRD, crm_solar = SolarCRM)
     ssh myserver "cd $REMOTE && docker compose up -d --build crm && docker compose logs crm --tail=50"
     ```
-  - `.env.prd` = local prod env, rsync'd up; git-ignored + `.dockerignore`d, loaded at runtime via compose `env_file` (never baked into the image). SQL scripts are **never** shipped/applied by the container — run by hand per §0.2. The `pm2:*` npm scripts + `ecosystem.config.js` are **local-dev only** and `.dockerignore`d out of the image.
+    `src/` is shared by every client container, so a code deploy is `rsync src/` once, then `up -d --build <service>` per client you want on the new code. `.env.solarcrm` travels like `.env.prd` (add it to the rsync line).
+  - `.env.prd` / `.env.solarcrm` = local prod envs, rsync'd up; git-ignored + `.dockerignore`d, loaded at runtime via compose `env_file` (never baked into the image). Same DB server/login for both today; `DB_NAME`, `PORT`, `JWT_SECRET` differ. SQL scripts are **never** shipped/applied by the container — run by hand per §0.2. The `pm2:*` npm scripts + `ecosystem.config.js` are **local-dev only** and `.dockerignore`d out of the image.
   - **Public HTTPS via nginx (aaPanel)** — the container only listens on `127.0.0.1:5001`; nginx maps `https://shadowcodes.in/CRM/` → it. aaPanel auto-includes `proxy/shadowcodes.in/*.conf` (line `include …/proxy/shadowcodes.in/*.conf;` in the site conf), so a proxy = **one file** in that dir. **This is already set up** (`CRM.conf`, path `/CRM/` → `:5001`). To recreate/replicate for a new instance, write the file, test, reload:
     ```bash
     cat > /www/server/panel/vhost/nginx/proxy/shadowcodes.in/CRM.conf << 'EOF'
@@ -261,8 +264,9 @@ sql/              # NNN_*.sql — pending, user-applied scripts only (see §0.2)
     nginx -t && nginx -s reload
     curl -s https://shadowcodes.in/CRM/health   # expect 200 JSON
     ```
+    A second client is the same file with the path and port changed: `SolarCRM.conf`, `location ^~ /SolarCRM/ { proxy_pass http://127.0.0.1:5002/; … }`, `set $static_fileSolarCRM`.
     Gotchas: **`nginx -s reload` is mandatory** — editing the conf alone does nothing (a stale reload was the one 404 we hit). `location ^~ /CRM/` (prefix, high-priority) beats the SPA's `location /`. The deploy dir `…/shadowcodes.in/CRM` sits inside the web docroot but the `^~` proxy location overrides static file handling, so it's fine. Public API base for the **web frontend** = `https://shadowcodes.in/CRM` (not the dead `prdinfotech.in/CRM`).
-- **Web**: Vite build (`pnpm build` → `dist-web/`), base + router basename `/CRM/`. Deployed on a **separate IIS server** under `/CRM/` — upload the contents of `dist-web/`; the bundled `public/web.config` does the SPA URL-rewrite (`→ /CRM/index.html`) so deep-link refreshes don't 404. API base is dynamic: dev → Vite proxy to `localhost:5001`; prod → `API_BASE_URL` in `useAuthStore` (`https://shadowcodes.in/CRM`, the Linux API box — separate from the IIS web host).
+- **Web**: Vite build (`pnpm build` → `dist-web/`), base + router basename `/prdcrm/`. **One build for every company** — deployed on a **separate IIS server** under `/prdcrm/`; upload the contents of `dist-web/`; the bundled `public/web.config` does the SPA URL-rewrite so deep-link refreshes don't 404. API base is whatever Central returned for the typed company code (`useAuthStore.API_BASE_URL`, persisted) — in dev too; there is no Vite proxy.
 - **Mobile**: **no EAS, no OTA.** Local builds only — `expo prebuild` then Xcode
   / Gradle. See §9.
 
@@ -270,7 +274,7 @@ sql/              # NNN_*.sql — pending, user-applied scripts only (see §0.2)
 
 ## 9. Mobile (`mobile/`)
 
-React Native + Expo SDK 57, **TypeScript**, rebuilt from scratch on
+React Native + Expo SDK 57 (**57.0.23** — see the Xcode 27 note below), **TypeScript**, rebuilt from scratch on
 `feat/mobile-rewrite` (2026-08-02). Spec:
 `docs/superpowers/specs/2026-08-02-mobile-task-app-rewrite-design.md`.
 
@@ -279,23 +283,18 @@ Scope order: **Phase A** full task management ✅ → **Phase B** support/compla
 (Users/Teams/Projects/Settings/Reports) is **permanently web-only**, not
 deferred.
 
-**Config engine on mobile** (`src/api/configQueries.ts`): lookups, pipelines +
-stages, and custom-field definitions are read-only here — configuring them is
-admin desk work and stays on the web. `Entity`/`Kind` discriminate, so Phase C
-reuses the same fetchers with `Entity: 'lead'`.
+**Config engine on mobile** (`src/api/configQueries.ts`): lookups and
+custom-field definitions are read-only here — configuring them is admin desk
+work and stays on the web. `Entity`/`Kind` discriminate, so Phase C reuses the
+same fetchers with `Entity: 'lead'`.
 
-**Ticket lifecycle is derived, never hardcoded** (`features/support/ticketHelpers.ts`).
-Stage names are per-company and editable, so `stageRoles()` resolves Resolved /
-Closed / Rejected from `StageType` + `SortOrder`: first `won` = Resolved
-(requires a `ResolutionId`), last `won` = Closed, `lost` = Rejected. Matching on
-the word "Resolved" breaks the moment someone renames a stage. Every transition
-goes through `moveTicketStage`; `saveTicket` sends `StageId: null` so the SP's
-`ISNULL(@StageId, StageId)` keeps the ticket where it is.
-
-**Known gap — do not build call logging on a ticket.** `sp_LogCall` accepts a
-`TicketId` but writes no ticket activity, and `sp_FetchCalls` filters by
-`LeadId` only. A call logged against a complaint is invisible everywhere. Fix
-the backend first, or the button is write-only.
+**Ticket lifecycle keys on `StatusCode`, never on a label**
+(`features/support/ticketHelpers.ts`). Status names are per-company and
+editable; `lifecycleOf(ticket)` reads `ticket.StatusCode` (`open` / `onhold`
+active, `resolved` / `closed` / `rejected` terminal). Every move calls
+`setTicketStatus` — one endpoint — and the server answers 403 when the move is
+a reopen the caller may not make; show that message, do not pre-empt it.
+`saveTicket` never sends a status or, on edit, an assignee.
 
 ### 9.1 Build & release — no EAS, no app.json
 
@@ -314,6 +313,23 @@ nothing, since the config has no meaningful types.
 regenerated. Anything hand-edited inside them is destroyed by the next
 prebuild, so every native setting (permissions, plugins, icons, bundle ids,
 `Info.plist` strings) must be expressed in `app.config.ts`.
+
+**Xcode 27 / iOS 27 (2026-09-18).** An app built against the iOS 27 SDK must
+adopt the **UIKit scene lifecycle** or it does not launch — blank screen, no
+JS error. SDK 57 is not scene-based by default, so `app.config.ts` carries
+`expo-build-properties` with `ios.enableSceneSupport: true`, which moves RN
+startup into Expo's scene delegate and writes `UIApplicationSceneManifest`
+into Info.plist. It needs **expo >= 57.0.23** — the flag and the version go
+together, neither works alone. **SDK 58 adopts the scene lifecycle itself:
+delete that plugin entry on upgrade, do not carry it forward.**
+Two things deliberately NOT configured: `ios.deploymentTarget` (RN 0.86.3's
+own floor is iOS 15.1 and Xcode 27 does not raise it — setting a higher one
+only drops devices), and `UIDesignRequiresCompatibility` (**ignored** when
+building against the iOS 27 SDK, so the Liquid Glass repaint of standard
+controls arrives with the toolchain and cannot be opted out of).
+`pnpm-workspace.yaml` exists only to answer pnpm 11's build-script prompt for
+`unrs-resolver` (eslint's native import resolver); without it `expo install`
+aborts.
 
 ```bash
 pnpm exec expo prebuild --clean          # regenerate android/ + ios/
@@ -483,15 +499,14 @@ There is no `@dnd-kit` on React Native; gestures go through
   Avoid `react-native-draggable-flatlist` — stale, and it breaks on Reanimated 4.
 - **Between kanban columns**: **do not build drag.** Four columns on a 360px
   screen makes a drop target a few pixels wide. Use long-press → "Move to…"
-  `Sheet` → `moveTaskColumn` / `moveTicketStage`. Same endpoint, same gate, far
-  better on a phone.
-- **Both boards share `ui/BoardColumns`** — the horizontal snapping strip.
+  `Sheet` → `moveTaskColumn`, the same endpoint and gate a drag on web would
+  hit — far better on a phone.
+- **The task board uses `ui/BoardColumns`** — the horizontal snapping strip.
   Column width and gap must agree exactly or every swipe lands a few pixels off
   and the drift compounds; that arithmetic lives there and nowhere else.
-- **Mobile has no table view.** The web splits Support into a Tickets table and
-  a TicketBoard; mobile ships only the board. A table on 360px is a worse list,
-  and the board already answers what a phone gets asked — what is where, and
-  move this one along.
+- **Complaints are a list on both clients** (spec 2, 2026-09-16): presets
+  (Mine · Team · Overdue · Escalated) + status chips + search. There is no
+  ticket board anywhere any more; `BoardColumns` serves tasks only.
 
 ### 9.7 Standing constraints
 
@@ -502,9 +517,10 @@ There is no `@dnd-kit` on React Native; gestures go through
 - **No realtime, no push, no offline** in Phase A. Freshness comes from
   refetch-on-app-focus, wired via `AppState` → React Query's `focusManager`
   (its default is browser-only and does nothing on native).
-- API base is `https://shadowcodes.in/CRM`, overridable via
-  `EXPO_PUBLIC_API_BASE_URL` in `mobile/.env.local` for pointing at a local
-  backend — use the LAN IP, not `localhost` (on a phone that is the phone).
+- API base comes from Central via the company code (see §3); one build serves
+  every company. `EXPO_PUBLIC_API_BASE_URL` in `mobile/.env.local` is the dev
+  override that skips the code step — use the LAN IP, not `localhost` (on a
+  phone that is the phone).
 - Attachments: `Entity` must be appended to `FormData` **before** the file part
   — multer reads `req.body.Entity` while the stream is parsed, so file-first
   lands the upload in `uploads/misc/`.

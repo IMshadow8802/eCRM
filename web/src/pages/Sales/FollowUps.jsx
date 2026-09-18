@@ -220,9 +220,7 @@ const FollowUps = () => {
       <Box sx={{ mt: 1 }}>
         <Tabs value={view} onChange={setView} items={VIEWS} data-testid="followup-views" />
       </Box>
-      <Box sx={{ width: "100%", overflowX: "auto", mt: 1 }}>
-        <MaterialReactTable table={table} />
-      </Box>
+      <MaterialReactTable table={table} />
 
       <LogFollowUpModal open={Boolean(logging)} followUp={logging} onClose={() => setLogging(null)} />
 

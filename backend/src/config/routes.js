@@ -12,6 +12,7 @@ const leadRoutes = require("../routes/leadRoutes");
 const followupRoutes = require("../routes/followupRoutes");
 const callRoutes = require("../routes/callRoutes");
 const ticketRoutes = require("../routes/ticketRoutes");
+const customerRoutes = require("../routes/customerRoutes");
 const reportRoutes = require("../routes/reportRoutes");
 const userBranchAccessRoutes = require("../routes/userBranchAccessRoutes");
 const configRoutes = require("../routes/configRoutes");
@@ -34,6 +35,7 @@ function setupRoutes(app) {
   app.use("/api/followups", followupRoutes);
   app.use("/api/calls", callRoutes);
   app.use("/api/tickets", ticketRoutes);
+  app.use("/api/customers", customerRoutes);
   // /api/sources and /api/status were removed on 2026-08-04. They were the
   // pre-config-engine Status and LeadSource lists, superseded by tblLookup, and
   // no client had called them for months. Their SPs take no @CompId — not

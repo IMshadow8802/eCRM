@@ -139,6 +139,10 @@ const requireMinLevel = (level) => (req, res, next) => {
 // which also catches the level-2 department heads (Sales/Support/HR). IsAdmin
 // lives on tblUserGroups and is a role property, not a rank; user management can
 // mint IsAdmin accounts, so it needs the narrow check.
+//
+// Six route groups share this guard now (users, user groups, branch access,
+// products, config lookups/custom fields, customer deletion), so the refusal
+// says nothing about which one — it is rendered verbatim by both clients.
 const requireAdmin = (req, res, next) => {
   if (!req.scope) {
     return res.status(403).json({
@@ -152,7 +156,7 @@ const requireAdmin = (req, res, next) => {
   if (!req.scope.isAdmin) {
     return res.status(403).json({
       success: false,
-      message: "Only an administrator can manage users",
+      message: "This action is restricted to administrators",
       code: "INSUFFICIENT_ROLE",
       responseCode: 403,
       timestamp: new Date().toISOString(),
@@ -235,7 +239,12 @@ const ENTITY_LOOKUP = {
 
 async function assertRecordAccess(req, res, entity, entityId, level = "view") {
   try {
-    let allowed = false;
+    // What the caller gets on success: the record itself for lead/ticket, so
+    // a controller that needs the assignee (the reopen gate, spec 2 §3) has it
+    // without a second round-trip; a plain true for tasks, where the
+    // permission SP answers yes/no and there is no row to hand over. Callers
+    // only ever test truthiness.
+    let granted = false;
 
     if (entity === "task") {
       const result = await database.executeStoredProcedure(
@@ -249,7 +258,7 @@ async function assertRecordAccess(req, res, entity, entityId, level = "view") {
         },
       );
       const row = result.recordsets?.[0]?.[0] ?? result.recordset?.[0];
-      allowed = row?.Allowed === true || row?.Allowed === 1;
+      granted = row?.Allowed === true || row?.Allowed === 1;
     } else if (ENTITY_LOOKUP[entity]) {
       const { sp, idParam, ownerField } = ENTITY_LOOKUP[entity];
       const result = await database.executeStoredProcedure(sp, {
@@ -257,10 +266,10 @@ async function assertRecordAccess(req, res, entity, entityId, level = "view") {
         [idParam]: Number(entityId) || 0,
       });
       const record = result.recordsets?.[0]?.[0] || null;
-      allowed = canSeeRecord(req, record, ownerField);
+      granted = canSeeRecord(req, record, ownerField) ? record : false;
     }
 
-    if (allowed) return true;
+    if (granted) return granted;
     responseHelper.error(
       res,
       `You do not have access to this ${entity}`,
@@ -294,13 +303,13 @@ async function assertCanAssign(req, res, { toUserId, toBranchId }) {
   const wide = WIDE_SCOPES.has(req.scope?.dataScope);
 
   if (!target && !wide) {
-    responseHelper.error(res, "Only a manager can leave a lead unassigned", "FORBIDDEN", 403);
+    responseHelper.error(res, "Only a manager can leave a record unassigned", "FORBIDDEN", 403);
     return false;
   }
   if (branch && !wide) {
     responseHelper.error(
       res,
-      "Only a branch manager or above can move a lead to another branch",
+      "Only a branch manager or above can move a record to another branch",
       "FORBIDDEN",
       403,
     );
@@ -316,7 +325,7 @@ async function assertCanAssign(req, res, { toUserId, toBranchId }) {
     });
     const rows = result.recordsets?.[0] ?? result.recordset ?? [];
     if (rows.some((r) => Number(r.Id) === target)) return true;
-    responseHelper.error(res, "You cannot assign leads to that user", "FORBIDDEN", 403);
+    responseHelper.error(res, "You cannot assign records to that user", "FORBIDDEN", 403);
     return false;
   } catch (err) {
     console.error("assertCanAssign failed:", err.message);
@@ -324,6 +333,23 @@ async function assertCanAssign(req, res, { toUserId, toBranchId }) {
     return false;
   }
 }
+
+// Reopen gate (spec 2 §3 Rules). Reopening a resolved / closed / rejected
+// complaint is a manager's act: the wide scopes always may; a Team lead only
+// for a ticket assigned to someone in their subtree — never their own, never
+// an unassigned one; a Self agent never. Pure: the controller already fetched
+// the ticket through assertRecordAccess, so this is a lookup on req.scope.
+//
+// The controller passes the answer as @AllowReopen on EVERY status call and
+// sp_SetTicketStatus alone decides whether the requested move IS a reopen —
+// Node never inspects status codes.
+const canReopen = (req, record) => {
+  if (WIDE_SCOPES.has(req.scope?.dataScope)) return true;
+  const assignee = Number(record?.AssignedTo) || null;
+  if (!assignee || assignee === Number(req.user?.UserId)) return false;
+  const { ownerIds } = req.scope || {};
+  return Array.isArray(ownerIds) && ownerIds.includes(assignee);
+};
 
 module.exports = {
   HIERARCHY,
@@ -340,4 +366,5 @@ module.exports = {
   canReadBranch,
   assertRecordAccess,
   assertCanAssign,
+  canReopen,
 };

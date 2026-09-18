@@ -36,7 +36,6 @@ const SalesLeads = lazy(() => import("./pages/Sales/Leads"));
 const LeadDetail = lazy(() => import("./pages/Sales/LeadDetail"));
 const SalesFollowUps = lazy(() => import("./pages/Sales/FollowUps"));
 const CustomFields = lazy(() => import("./pages/Settings/CustomFields"));
-const PipelineSettings = lazy(() => import("./pages/Settings/Pipelines"));
 const Lookups = lazy(() => import("./pages/Settings/Lookups"));
 const Products = lazy(() => import("./pages/Settings/Products"));
 // Sales reports (spec 4a) — one frame, eight config pages.
@@ -50,8 +49,8 @@ const PipelineValueReport = lazy(() => import("./pages/Reports/PipelineValue"));
 const LeaderboardReport = lazy(() => import("./pages/Reports/Leaderboard"));
 
 // Support / ticketing module (Spec 2)
-const TicketBoard = lazy(() => import("./pages/Support/TicketBoard"));
 const Tickets = lazy(() => import("./pages/Support/Tickets"));
+const Customers = lazy(() => import("./pages/Support/Customers"));
 const TicketDetail = lazy(() => import("./pages/Support/TicketDetail"));
 const TicketCategories = lazy(() => import("./pages/Settings/TicketCategories"));
 const Priorities = lazy(() => import("./pages/Settings/Priorities"));
@@ -69,7 +68,7 @@ export const routesConfig = [
   // hit the 404 catch-all. Each goes to its first *granted* child, so a user
   // with Follow-ups but not Leads isn't bounced onto a page they can't see.
   { path: "/sales", element: <SectionRedirect prefix="/sales" fallback="/sales/leads" /> },
-  { path: "/support", element: <SectionRedirect prefix="/support" fallback="/support/board" /> },
+  { path: "/support", element: <SectionRedirect prefix="/support" fallback="/support/tickets" /> },
   { path: "/settings", element: <SectionRedirect prefix="/settings" fallback="/settings/custom-fields" /> },
   { path: "/reports", element: <SectionRedirect prefix="/reports" fallback="/reports/funnel" /> },
   { path: "/admin", element: <SectionRedirect prefix="/admin" fallback="/users" /> },
@@ -87,7 +86,6 @@ export const routesConfig = [
   { path: "/sales/leads/:leadId", element: <ProtectedRoute element={<LeadDetail />} /> },
   { path: "/sales/follow-ups", element: <ProtectedRoute element={<SalesFollowUps />} /> },
   { path: "/settings/custom-fields", element: <ProtectedRoute element={<CustomFields />} /> },
-  { path: "/settings/pipelines", element: <ProtectedRoute element={<PipelineSettings />} /> },
   { path: "/settings/lookups", element: <ProtectedRoute element={<Lookups />} /> },
   { path: "/settings/products", element: <ProtectedRoute element={<Products />} /> },
   // Sales reports (spec 4a). Spec-1 paths redirect: bookmarks and the sidebar
@@ -104,10 +102,12 @@ export const routesConfig = [
   { path: "/reports/transfers", element: <ProtectedRoute element={<TransfersReport />} /> },
   { path: "/reports/pipeline-value", element: <ProtectedRoute element={<PipelineValueReport />} /> },
   { path: "/reports/leaderboard", element: <ProtectedRoute element={<LeaderboardReport />} /> },
-  // Support / ticketing module.
-  { path: "/support/board", element: <ProtectedRoute element={<TicketBoard />} /> },
+  // Support / complaints module (spec 2). The stage board is gone; its path
+  // redirects so bookmarks and a stale sidebar row land on the list.
+  { path: "/support/board", element: <Navigate to="/support/tickets" replace /> },
   { path: "/support/tickets", element: <ProtectedRoute element={<Tickets />} /> },
   { path: "/support/tickets/:ticketId", element: <ProtectedRoute element={<TicketDetail />} /> },
+  { path: "/support/customers", element: <ProtectedRoute element={<Customers />} /> },
   { path: "/settings/ticket-categories", element: <ProtectedRoute element={<TicketCategories />} /> },
   { path: "/settings/priorities", element: <ProtectedRoute element={<Priorities />} /> },
   { path: "/reports/tickets-by-category", element: <ProtectedRoute element={<TicketsByCategory />} /> },

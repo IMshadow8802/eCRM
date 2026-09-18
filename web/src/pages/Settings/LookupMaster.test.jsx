@@ -241,3 +241,107 @@ describe("LookupMaster — shared CRUD", () => {
     expect(screen.getByText("New")).toBeInTheDocument();
   });
 });
+
+// Spec 2: ticket_status carries a Code exactly as lead_status does (the
+// complaint lifecycle branches on it, never on the renameable label), and
+// priority carries the TAT hours that stamp a complaint's due date.
+describe("LookupMaster — ticket_status Code and priority TAT", () => {
+  const TICKET_STATUS = [{ value: "ticket_status", label: "Complaint Statuses" }];
+  const PRIORITY = [{ value: "priority", label: "Priorities" }];
+
+  beforeEach(() => {
+    lastSaveBody = undefined;
+    useAuthStore.setState({
+      isAuthenticated: true,
+      token: null,
+      user: { UserId: 1 },
+      API_BASE_URL: "https://shadowcodes.in/CRM",
+    });
+    seed({
+      ticket_status: [{ Id: 62, Kind: "ticket_status", Value: "In Progress", SortOrder: 2, Code: "open" }],
+      priority: [{ Id: 3, Kind: "priority", Value: "High", SortOrder: 3, TatHours: 24 }],
+    });
+  });
+
+  it("offers the five complaint codes and sends the picked one", async () => {
+    renderMaster(TICKET_STATUS, "Status");
+    await screen.findByText("In Progress");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByText("New Status"));
+    await user.type(await screen.findByLabelText(/Value/), "Waiting on parts");
+    await user.click(screen.getByLabelText(/Code/));
+    expect(await screen.findByRole("option", { name: /Resolved/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Rejected/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: /On hold/ }));
+    await user.click(screen.getByRole("button", { name: "Create Status" }));
+
+    await waitFor(() =>
+      expect(lastSaveBody).toEqual({
+        Id: 0, Kind: "ticket_status", Value: "Waiting on parts", SortOrder: 0, Code: "onhold",
+      })
+    );
+  });
+
+  // A status edited without its Code re-sent would be re-coded "open", and the
+  // complaint lifecycle would silently lose its Resolved/Closed buckets.
+  it("seeds the editing row's Code and sends it back unchanged", async () => {
+    renderMaster(TICKET_STATUS, "Status");
+    await screen.findByText("In Progress");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("master-grid-edit-62"));
+    expect(await screen.findByLabelText(/Code/)).toHaveValue("Open — being worked");
+
+    await user.click(screen.getByRole("button", { name: "Update Status" }));
+    await waitFor(() => expect(lastSaveBody).toMatchObject({ Id: 62, Value: "In Progress", Code: "open" }));
+  });
+
+  it("shows TAT hours for priorities and sends them", async () => {
+    renderMaster(PRIORITY, "Priority");
+    await screen.findByText("High");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByText("New Priority"));
+    await user.type(await screen.findByLabelText(/Value/), "Urgent");
+    await user.type(screen.getByLabelText(/TAT hours/), "4");
+    // A priority has no Code — sp_SaveLookup validates codes per Kind.
+    expect(screen.queryByLabelText(/Code/)).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Create Priority" }));
+
+    await waitFor(() =>
+      expect(lastSaveBody).toEqual({
+        Id: 0, Kind: "priority", Value: "Urgent", SortOrder: 0, TatHours: 4,
+      })
+    );
+  });
+
+  it("seeds an existing TAT on edit, and a blank one means no due date at all", async () => {
+    renderMaster(PRIORITY, "Priority");
+    await screen.findByText("High");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("master-grid-edit-3"));
+    expect(await screen.findByLabelText(/TAT hours/)).toHaveValue("24");
+
+    await user.clear(screen.getByLabelText(/TAT hours/));
+    await user.click(screen.getByRole("button", { name: "Update Priority" }));
+    // null, not 0 — 0 would mean "due the moment it is raised".
+    await waitFor(() => expect(lastSaveBody).toMatchObject({ Id: 3, Kind: "priority", TatHours: null }));
+  });
+
+  it("sends neither Code nor TatHours for a plain kind", async () => {
+    seed({ lead_source: [{ Id: 1, Kind: "lead_source", Value: "Website", SortOrder: 1 }] });
+    renderMaster(LEAD_SOURCE, "Source");
+    await screen.findByText("Website");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByText("New Source"));
+    await user.type(await screen.findByLabelText(/Value/), "Referral");
+    expect(screen.queryByLabelText(/Code/)).toBeNull();
+    expect(screen.queryByLabelText(/TAT hours/)).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Create Source" }));
+
+    await waitFor(() => expect(lastSaveBody).toEqual({ Id: 0, Kind: "lead_source", Value: "Referral", SortOrder: 0 }));
+  });
+});

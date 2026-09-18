@@ -224,6 +224,13 @@ describe("TopNav notification routing", () => {
     expect(mockNavigate).toHaveBeenCalledWith("/tasks");
   });
 
+  // Spec 2: escalation + assignment notifications carry EntityType 'ticket'.
+  it("opens a ticket notification on the complaint's page", () => {
+    renderTopNav();
+    capturedOnOpenEntity({ EntityType: "ticket", EntityId: 7 });
+    expect(mockNavigate).toHaveBeenCalledWith("/support/tickets/7");
+  });
+
   it("ignores a notification with no usable entity", () => {
     renderTopNav();
     capturedOnOpenEntity({ EntityType: "task" }); // no EntityId

@@ -139,28 +139,32 @@ export const HELP_GUIDES = {
     ],
   },
   tickets: {
-    titleHi: "टिकट कैसे इस्तेमाल करें",
-    titleEn: "How to use Tickets",
+    titleHi: "शिकायतें (Tickets) कैसे संभालें",
+    titleEn: "How to handle complaints (Tickets)",
     steps: [
       {
-        hi: "ग्राहक की शिकायत के लिए customer name, priority और category के साथ टिकट बनाएं।",
-        en: "Raise a ticket for a customer complaint with customer name, priority and category.",
+        hi: "ऊपर के टैब से अपनी सूची चुनें — My queue (मुझे सौंपी गई), My team, Unassigned, Overdue (समय सीमा पार), Escalated, On hold, Closed, All। Status / Priority / Category / Channel / Product / Assignee / Branch फ़िल्टर और तारीख सीमा से और छाँटें।",
+        en: "Pick a list from the tabs — My queue (assigned to me), My team, Unassigned, Overdue (past due), Escalated, On hold, Closed, All. Narrow further with the Status / Priority / Category / Channel / Product / Assignee / Branch filters and the date range.",
       },
       {
-        hi: "Stage / Priority / Category / Assignee फ़िल्टर से टिकट ढूँढें।",
-        en: "Use the Stage / Priority / Category / Assignee filters to find tickets.",
+        hi: "'New ticket' में ग्राहक का मोबाइल या नाम टाइप करें — मौजूदा ग्राहक चुनें या '+ New customer' से तुरंत बनाएं। विषय, category, priority (priority से due date तय होती है), channel, product, विवरण और फ़ोटो जोड़ें।",
+        en: "In 'New ticket' type the customer's mobile or name — pick an existing customer or create one inline with '+ New customer'. Add the subject, category, priority (the priority sets the due date), channel, product, description and photos.",
       },
       {
-        hi: "किसी टिकट पर क्लिक करके उसे खोलें — कॉल लॉग करें, fields एडिट करें, और Resolve करें।",
-        en: "Click a ticket to open it — log calls, edit fields, and Resolve it.",
+        hi: "समय सीमा पार होने पर शिकायत हर सूची में लाल 'overdue' दिखती है और मैनेजर को Escalated में मिलती है। किसी वरिष्ठ को सीधे भेजने के लिए 'Escalate' दबाएं (remarks ज़रूरी) — शिकायत आपके पास ही रहती है, वरिष्ठ को सूचना जाती है।",
+        en: "Past its due date a complaint shows a red 'overdue' on every list and appears in the manager's Escalated tab. To flag a senior directly press 'Escalate' (remarks required) — the complaint stays with you, the senior is notified.",
       },
       {
-        hi: "पहले Resolve करें (कैसे ठीक हुआ चुनें), फिर ग्राहक की पुष्टि के बाद Close करें। ज़रूरत पड़ने पर Reopen करें।",
-        en: "Resolve first (pick how it was fixed), then Close once the customer confirms. Reopen if it comes back.",
+        hi: "'Transfer' से शिकायत किसी और को दें — कारण और remarks ज़रूरी हैं और इतिहास में दर्ज होते हैं। सूची में कई शिकायतें चुनकर एक साथ 'Reassign' करें।",
+        en: "Use 'Transfer' to hand a complaint to someone else — a reason and remarks are required and go into its history. Select several rows in the list to 'Reassign' them together.",
       },
       {
-        hi: "टिकट को stages में खींचने के लिए Ticket Board का उपयोग करें।",
-        en: "Use the Ticket Board to drag tickets across stages.",
+        hi: "शीर्षक के status ड्रॉपडाउन से जीवनचक्र चलाएं: Resolved के लिए resolution + remarks, Rejected के लिए remarks, Closed = ग्राहक ने पुष्टि की। बंद शिकायत को Reopen सिर्फ़ मैनेजर कर सकता है (remarks के साथ) — due date फिर से शुरू होती है।",
+        en: "Drive the lifecycle from the status dropdown in the header: Resolved needs a resolution + remarks, Rejected needs remarks, Closed = the customer confirmed. Only a manager can Reopen a closed complaint (with remarks) — the due date restarts.",
+      },
+      {
+        hi: "Customers पेज पर हर ग्राहक की प्रोफ़ाइल और उसकी सारी शिकायतें देखें; शिकायत के ग्राहक कार्ड से 'N previous complaints' पर क्लिक करके वहीं पहुँचें।",
+        en: "The Customers page shows every customer's profile and all their complaints; click 'N previous complaints' on a complaint's customer card to get there.",
       },
     ],
   },

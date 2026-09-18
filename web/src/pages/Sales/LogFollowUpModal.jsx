@@ -3,6 +3,7 @@ import { CheckCircle2 } from "lucide-react";
 import dayjs from "dayjs";
 
 import { Modal, Button, Combobox, TextArea, DateField, NumberInput } from "../../components/ui";
+import FormGrid from "../../components/ui/FormGrid";
 import { useApiMutation } from "../../hooks/useApiMutation";
 import { useLookups } from "../../hooks/useLookups";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
@@ -61,10 +62,10 @@ export default function LogFollowUpModal({ open, onClose, followUp, onLogged }) 
   const typeLabel = FOLLOWUP_TYPES.find((t) => t.value === followUp?.Type)?.label ?? "Follow-up";
 
   return (
-    <Modal open={open} onClose={onClose} size="md" data-testid="log-followup-modal">
+    <Modal open={open} onClose={onClose} size="lg" data-testid="log-followup-modal">
       <Modal.Header title={`Log ${typeLabel}${due ? ` · due ${due}` : ""}`} icon={<CheckCircle2 size={18} />} onClose={onClose} />
       <Modal.Body>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 16 }}>
+        <FormGrid>
           <Combobox label="Outcome" options={outcomeOptions} value={outcome} onChange={setOutcome} placeholder="What happened?" data-testid="followup-outcome" />
           {isCall && (
             <>
@@ -84,7 +85,7 @@ export default function LogFollowUpModal({ open, onClose, followUp, onLogged }) 
           </div>
           <Combobox label="Next follow-up" options={FOLLOWUP_TYPES} value={nextType} onChange={setNextType} data-testid="followup-next-type" />
           <DateField label="Next date" value={nextDate} onChange={setNextDate} data-testid="followup-next-date" />
-        </div>
+        </FormGrid>
       </Modal.Body>
       <Modal.Footer>
         <Button variant="ghost" onClick={onClose} disabled={mutation.isPending}>Cancel</Button>

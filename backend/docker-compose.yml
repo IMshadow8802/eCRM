@@ -1,35 +1,74 @@
-# Nexus CRM backend — single service.
-# Multi-tenancy is handled inside the app (CompId/BranchId), one DB, one
-# container — NOT one-container-per-client like eStock. To host a second
-# isolated instance, copy this block and change container_name/ports/env_file.
+# Nexus CRM backend — one image, one container per client (2026-09-16).
+#
+# The code has zero client awareness: it reads process.env only, so a client is
+# whichever database its container points at. Isolation is by database and by
+# container (own port, own env file, own uploads dir, own CPU/memory cap), not by
+# row filters. Every block below builds the SAME Dockerfile; only five things
+# differ per client:
+#   container_name · ports · PORT · env_file · uploads volume
+#
+# New client = new DB (backend/sql/088 clones one) + .env.<client> on the server
+# (never in git) + one block here + one nginx file
+# (/www/server/panel/vhost/nginx/proxy/shadowcodes.in/<Client>.conf mapping
+# location ^~ /<Client>/ → 127.0.0.1:<port>/) + two tblCompURL rows in Central.
+# No code change. Host ports for the CRM stay in 5001–5099 (51xx = Kitty,
+# 30xx = eStock, 80xx = Attendance).
+#
+# Deploy one client:  docker compose up -d --build <service>   — others untouched.
+x-crm: &crm
+  build: .
+  restart: always
+  environment: &crm-env
+    NODE_ENV: production
+    HOST: 0.0.0.0
+    # node:22-alpine defaults to UTC; pin to IST so node-mssql (useUTC:false)
+    # reads SQL Server's IST wall-clock timestamps correctly.
+    TZ: Asia/Kolkata
+  networks:
+    - nexus_network
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+  # One client's runaway query cannot starve the others.
+  deploy:
+    resources:
+      limits:
+        cpus: "1.0"
+        memory: 512M
+
 services:
+  # PRD Infotech — https://shadowcodes.in/CRM  (CompCode PRD)
   crm:
-    build: .
+    <<: *crm
     container_name: nexus_crm
-    restart: always
     ports:
       - "5001:5001"
     environment:
-      NODE_ENV: production
+      <<: *crm-env
       PORT: 5001
-      HOST: 0.0.0.0
-      # node:22-alpine defaults to UTC; pin to IST so node-mssql (useUTC:false)
-      # reads SQL Server's IST wall-clock timestamps correctly.
-      TZ: Asia/Kolkata
     env_file:
       - .env.prd
     volumes:
       # Per-client uploads: the app always writes to /app/uploads; each client
       # container mounts its own host dir here, so files never cross clients and
-      # survive rebuilds. Copy this block + rename the host dir for a new client.
+      # survive rebuilds.
       - ./CRMUploads:/app/uploads
-    networks:
-      - nexus_network
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+
+  # SolarCRM — https://shadowcodes.in/SolarCRM  (CompCode SOLAR, DB SolarCRM)
+  crm_solar:
+    <<: *crm
+    container_name: nexus_crm_solar
+    ports:
+      - "5002:5002"
+    environment:
+      <<: *crm-env
+      PORT: 5002
+    env_file:
+      - .env.solarcrm
+    volumes:
+      - ./SolarCRMUploads:/app/uploads
 
 networks:
   nexus_network:

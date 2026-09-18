@@ -1,148 +1,86 @@
 import { memo } from "react";
 import { StyleSheet, View } from "react-native";
-import {
-  CircleCheck,
-  CircleDot,
-  CircleX,
-  Flag,
-  Hash,
-  MessageSquare,
-  Phone,
-  Tag,
-  User,
-  type LucideIcon,
-} from "lucide-react-native";
+import { ArrowUpRight, Clock, Flag, Hash, User } from "lucide-react-native";
 
 import type { Ticket } from "../../types/api";
 import { colors, spacing } from "../../theme";
-import {
-  Card,
-  Chip,
-  Glyph,
-  Text,
-} from "../../ui";
+import { Card, Chip, Text } from "../../ui";
 import { relativeTime } from "../tasks/taskHelpers";
-import {
-  channelLabel,
-  lifecycleOf,
-  priorityTone,
-  stageOf,
-  type StageRoles,
-} from "./ticketHelpers";
-
-/** The glyph mirrors where the ticket sits, so a list scans by shape not text. */
-const LIFECYCLE_ICON: Record<string, LucideIcon> = {
-  open: CircleDot,
-  resolved: CircleCheck,
-  closed: CircleCheck,
-  rejected: CircleX,
-  unknown: CircleDot,
-};
+import { dueLabel, lifecycleOf, priorityTone, statusTone } from "./ticketHelpers";
 
 interface ComplaintCardProps {
   ticket: Ticket;
-  roles: StageRoles;
-  categories: Map<number, string>;
-  priorities: Map<number, string>;
-  people: Map<number, string>;
   onPress: (ticket: Ticket) => void;
-  /** Board view uses this for "move stage" — there is no drag on a phone. */
-  onLongPress?: (ticket: Ticket) => void;
-  /** Hide the stage pill inside a stage column, where it says nothing new. */
-  showStage?: boolean;
 }
 
-function Stat({
-  Icon,
-  value,
-  tone = "textMuted",
-}: {
-  Icon: LucideIcon;
-  value: string;
-  tone?: keyof typeof colors;
-}) {
+/**
+ * One complaint in the list. Everything on it comes off the row — since 086
+ * sp_FetchTickets joins the names — so the card takes no lookup maps.
+ *
+ * Reads top-down the way a queue is scanned: what is wrong (Subject), whose
+ * it is (number + customer), then the chips that say how urgent it is —
+ * status, priority, the TAT clock (red once it has run out) and a flag when a
+ * senior has been pulled in. Who holds it and how old it is close the card.
+ */
+function ComplaintCardBase({ ticket, onPress }: ComplaintCardProps) {
+  const code = lifecycleOf(ticket);
+  const due = dueLabel(ticket);
+
   return (
-    <View style={styles.stat}>
-      <Icon size={13} color={colors[tone]} />
-      <Text variant="caption" color={tone} numberOfLines={1}>
-        {value}
+    <Card onPress={() => onPress(ticket)}>
+      <Text variant="h3" numberOfLines={2}>
+        {ticket.Subject}
       </Text>
-    </View>
-  );
-}
 
-function ComplaintCardBase({
-  ticket,
-  roles,
-  categories,
-  priorities,
-  people,
-  onPress,
-  onLongPress,
-  showStage = true,
-}: ComplaintCardProps) {
-  const stage = stageOf(ticket, roles);
-  const lifecycle = lifecycleOf(ticket, roles);
-  const Icon = LIFECYCLE_ICON[lifecycle] ?? CircleDot;
-
-  // The stage's own colour comes from tblPipelineStage, so a company that
-  // recolours its pipeline on the web sees it here without a mobile release.
-  const ink = stage?.Color ?? colors.neutralIcon;
-
-  const priority = ticket.Priority ? priorities.get(ticket.Priority) : undefined;
-  const category = ticket.CategoryId ? categories.get(ticket.CategoryId) : undefined;
-  const assignee = ticket.AssignedTo ? people.get(ticket.AssignedTo) : undefined;
-
-  return (
-    <Card
-      onPress={() => onPress(ticket)}
-      onLongPress={onLongPress ? () => onLongPress(ticket) : undefined}
-    >
       <View style={styles.row}>
-        <Glyph icon={Icon} tint={ink} size="lg" />
+        <Hash size={13} color={colors.textMuted} />
+        <Text variant="caption" color="textMuted">
+          {ticket.TicketNo}
+        </Text>
+        <Text variant="caption" color="textMuted">
+          ·
+        </Text>
+        <Text
+          variant="caption"
+          color="textSecondary"
+          numberOfLines={1}
+          style={styles.grow}
+        >
+          {ticket.CustomerName || "Unnamed customer"}
+        </Text>
+      </View>
 
-        <View style={styles.main}>
-          <Text variant="h3" numberOfLines={1}>
-            {ticket.CustomerName || "Unnamed customer"}
-          </Text>
-          <View style={styles.subRow}>
-            <Stat Icon={Hash} value={ticket.TicketNo} />
-            {ticket.ContactPerson ? (
-              <Stat Icon={User} value={ticket.ContactPerson} />
-            ) : null}
-          </View>
-        </View>
-
-        {showStage && stage ? (
-          <Chip label={stage.Name} color={ink} maxWidth={110} />
+      <View style={styles.chips}>
+        <Chip label={ticket.StatusName ?? code} tone={statusTone(code)} />
+        {ticket.PriorityName ? (
+          <Chip
+            label={ticket.PriorityName}
+            icon={Flag}
+            tone={priorityTone(ticket.PriorityName)}
+          />
+        ) : null}
+        {due ? (
+          <Chip
+            label={due.label}
+            icon={Clock}
+            tone={due.overdue ? "danger" : "neutral"}
+          />
+        ) : null}
+        {ticket.EscalatedTo ? (
+          <Chip label="Escalated" icon={ArrowUpRight} tone="primary" />
         ) : null}
       </View>
 
-      {ticket.Description ? (
-        <Text variant="secondary" numberOfLines={2}>
-          {ticket.Description}
+      <View style={styles.row}>
+        <User size={13} color={colors.textMuted} />
+        <Text
+          variant="caption"
+          color={ticket.AssigneeName ? "textSecondary" : "textMuted"}
+          numberOfLines={1}
+          style={styles.grow}
+        >
+          {ticket.AssigneeName ?? "Unassigned"}
         </Text>
-      ) : null}
-
-      <View style={styles.stats}>
-        {priority ? (
-          <Stat Icon={Flag} value={priority} tone={priorityTone(priority)} />
-        ) : null}
-        {category ? <Stat Icon={Tag} value={category} /> : null}
-        {ticket.Channel ? (
-          <Stat
-            Icon={ticket.Channel === "phone" ? Phone : MessageSquare}
-            value={channelLabel(ticket.Channel)}
-          />
-        ) : null}
-        <Stat
-          Icon={User}
-          value={assignee ?? "Unassigned"}
-          tone={assignee ? "textSecondary" : "textMuted"}
-        />
-
-        <View style={styles.spacer} />
-
         <Text variant="caption" color="textMuted">
           {relativeTime(ticket.CreatedAt)}
         </Text>
@@ -155,20 +93,12 @@ export const ComplaintCard = memo(ComplaintCardBase);
 export default ComplaintCard;
 
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
-  main: { flex: 1, gap: spacing[1] },
-  subRow: {
+  row: { flexDirection: "row", alignItems: "center", gap: spacing[1] },
+  grow: { flex: 1 },
+  chips: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[3],
     flexWrap: "wrap",
+    gap: spacing[2],
   },
-  stats: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[3],
-    flexWrap: "wrap",
-  },
-  stat: { flexDirection: "row", alignItems: "center", gap: spacing[1] },
-  spacer: { flex: 1 },
 });

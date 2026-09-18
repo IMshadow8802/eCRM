@@ -41,14 +41,32 @@ export default function useAppTable(options = {}) {
   });
 }
 
-function mergeSxProps(base, override) {
+/**
+ * Merge one MRT `mui*Props` value onto the shared default.
+ *
+ * Exported for its own tests: the function-override branch is the whole reason
+ * this exists, and proving it merges is far cheaper than rendering MRT.
+ *
+ * MRT allows these props to be a function of the row/cell, which is how the
+ * "click a row to open it" pages wire themselves up. This used to return the
+ * override as-is in that case, throwing the shared config away — so on exactly
+ * the pages with clickable rows, the default hover tint silently vanished.
+ * Now a function override is wrapped, so the base still applies underneath.
+ */
+export function mergeSxProps(base, override) {
   if (!override) return base;
-  if (typeof override === "function" || typeof base === "function") {
-    return override || base;
+
+  // The common case: two plain objects.
+  if (typeof base !== "function" && typeof override !== "function") {
+    return { ...base, ...override, sx: { ...base?.sx, ...override?.sx } };
   }
-  return {
-    ...base,
-    ...override,
-    sx: { ...(base?.sx || {}), ...(override?.sx || {}) },
+
+  // Either side may be a function of the row, so the merged value has to be one
+  // too — resolve whichever sides need the row, then merge the results.
+  const resolve = (v, args) => (typeof v === "function" ? v(...args) : v) || {};
+  return (...args) => {
+    const under = resolve(base, args);
+    const over = resolve(override, args);
+    return { ...under, ...over, sx: { ...under.sx, ...over.sx } };
   };
 }

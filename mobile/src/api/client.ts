@@ -7,7 +7,7 @@
 // payload changes there is exactly one file to open.
 import axios, { type AxiosRequestConfig } from "axios";
 
-import { API_BASE_URL, REQUEST_TIMEOUT_MS } from "../config/env";
+import { DEV_API_BASE_URL, REQUEST_TIMEOUT_MS } from "../config/env";
 import type { ApiEnvelope } from "../types/api";
 
 // Set by the auth store at startup and on login/logout. The store is NOT
@@ -15,6 +15,17 @@ import type { ApiEnvelope } from "../types/api";
 // (store -> client -> store) breaks Metro's module graph.
 let authToken: string | null = null;
 let onUnauthorized: (() => void) | null = null;
+
+// Which backend this install talks to. Pushed down by the auth store after the
+// company-code step (and on rehydrate), same pattern as the token. The dev
+// override always wins so a laptop build never asks Central.
+let apiBaseUrl: string | null = DEV_API_BASE_URL;
+
+export const setApiBaseUrl = (url: string | null): void => {
+  apiBaseUrl = DEV_API_BASE_URL ?? url ?? null;
+};
+
+export const getApiBaseUrl = (): string | null => apiBaseUrl;
 
 export const setAuthToken = (token: string | null): void => {
   authToken = token || null;
@@ -36,12 +47,16 @@ export const shouldSkipAuthRedirect = (url = ""): boolean =>
   AUTH_ENDPOINTS.some((endpoint) => String(url).includes(endpoint));
 
 export const apiClient = axios.create({
-  baseURL: API_BASE_URL,
   timeout: REQUEST_TIMEOUT_MS,
   headers: { "Content-Type": "application/json" },
 });
 
 apiClient.interceptors.request.use((config) => {
+  // Per request, not at create time: the base URL is not known until the
+  // company code has been verified, and "Switch company" changes it.
+  if (apiBaseUrl) {
+    config.baseURL = apiBaseUrl;
+  }
   if (authToken) {
     config.headers.Authorization = `Bearer ${authToken}`;
   }

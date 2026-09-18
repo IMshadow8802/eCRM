@@ -33,7 +33,7 @@ afterEach(() => {
 describe("section landing redirects", () => {
   it.each([
     ["/sales", "/sales/leads"],
-    ["/support", "/support/board"],
+    ["/support", "/support/tickets"],
     ["/settings", "/settings/custom-fields"],
     ["/reports", "/reports/funnel"],
     ["/admin", "/users"],
@@ -49,10 +49,11 @@ describe("section landing redirects", () => {
     const paths = routesConfig.map((r) => r.path);
     expect(paths).toEqual(
       expect.arrayContaining([
-        "/support/board",
         "/support/tickets",
         "/support/tickets/:ticketId",
+        "/support/customers",
         "/settings/ticket-categories",
+        "/settings/priorities",
       ]),
     );
   });
@@ -170,5 +171,23 @@ describe("retired sales routes", () => {
       "/reports/pipeline-value",
       "/reports/leaderboard",
     ]));
+  });
+});
+
+// Spec 2 retired the ticket stage board and the pipeline engine. The board
+// path survives as a redirect (bookmarks, the one-release-old sidebar row);
+// the pipelines settings page has no successor and is simply gone.
+describe("retired support routes", () => {
+  const paths = routesConfig.map((r) => r.path);
+
+  it("redirects /support/board to the tickets list", () => {
+    const route = routesConfig.find((r) => r.path === "/support/board");
+    expect(route.element.type.name).toBe("Navigate");
+    expect(route.element.props.to).toBe("/support/tickets");
+    expect(route.element.props.replace).toBe(true);
+  });
+
+  it("has no pipelines settings route", () => {
+    expect(paths).not.toContain("/settings/pipelines");
   });
 });

@@ -7,6 +7,32 @@ import {
   isTokenExpiringSoon,
   validateToken,
 } from "../utils/tokenUtils";
+import { isTrustedApiUrl } from "../config/central";
+
+// Which backend this browser talks to. Filled by the company-code step on the
+// login page from Central (see api/centralQueries.js) and persisted, so the
+// code is typed once per browser. Null = ask for the code.
+const CLIENT_EMPTY = {
+  API_BASE_URL: null,
+  compCode: null,
+  companyName: null,
+  logoURL: null,
+  isClientConfigured: false,
+};
+
+const SESSION_EMPTY = {
+  isAuthenticated: false,
+  BranchId: null,
+  CompId: null,
+  UserId: null,
+  token: null,
+  user: null,
+  company: null,
+  permissions: null,
+  loginTimestamp: null,
+  menuRights: [],
+  activeMenuRights: null,
+};
 
 const getUserDataFromLocalStorage = () => {
   const userData = JSON.parse(localStorage.getItem("userData"));
@@ -51,12 +77,27 @@ const useAuthStore = create(
         company: initialState.company,
         permissions: initialState.permissions,
         loginTimestamp: initialState.loginTimestamp,
-        API_BASE_URL: "https://shadowcodes.in/CRM", // prod API (nginx → :5001)
+        ...CLIENT_EMPTY,
         menuRights: initialState.permissions?.rawPermissions || [],
         activeMenuRights: null,
 
         setMenuRights: (rights) => set({ menuRights: rights }),
         setActiveMenuRights: (rights) => set({ activeMenuRights: rights }),
+
+        setClientConfig: ({ baseURL, compCode, companyName, logoURL }) =>
+          set({
+            API_BASE_URL: baseURL,
+            compCode: compCode ?? null,
+            companyName: companyName ?? null,
+            logoURL: logoURL ?? null,
+            isClientConfigured: true,
+          }),
+
+        // "Switch company": a different backend means a different session too.
+        clearClientConfig: () => {
+          localStorage.removeItem("userData");
+          set({ ...SESSION_EMPTY, ...CLIENT_EMPTY });
+        },
 
         login: (responseData) => {
           const { token, user, company, permissions } = responseData;
@@ -102,19 +143,7 @@ const useAuthStore = create(
           localStorage.removeItem("userData");
 
           // Reset all state
-          set({
-            isAuthenticated: false,
-            BranchId: null,
-            CompId: null,
-            UserId: null,
-            token: null,
-            user: null,
-            company: null,
-            permissions: null,
-            loginTimestamp: null,
-            menuRights: [],
-            activeMenuRights: null,
-          });
+          set({ ...SESSION_EMPTY });
         },
 
         // ponytail: `logoutWithApi(apiClient)` lived here with zero callers —
@@ -206,30 +235,17 @@ const useAuthStore = create(
         forceLogout: (reason = "Session expired") => {
           console.warn(`Forced logout: ${reason}`);
           localStorage.removeItem("userData");
-          set({
-            isAuthenticated: false,
-            BranchId: null,
-            CompId: null,
-            UserId: null,
-            token: null,
-            user: null,
-            company: null,
-            permissions: null,
-            loginTimestamp: null,
-            menuRights: [],
-            activeMenuRights: null,
-          });
+          set({ ...SESSION_EMPTY });
         },
       };
     },
     {
       name: "auth-storage-eCRM",
       storage: createJSONStorage(() => localStorage),
-      // Persist the session, never the API base URL. Rehydrating that from
-      // localStorage means a single same-origin write (shared machine, kiosk,
-      // extension) points every Authorization header at another host — and it
-      // survives logout, reload and re-login, long after the write is gone.
-      // Keeping it out means it always comes from the module default below.
+      // The session AND the company binding persist. The base URL is
+      // rehydrated into every Authorization header, so `merge` below refuses
+      // any stored URL that is not on a Central-hosted origin — a same-origin
+      // localStorage write cannot redirect the token to another host.
       partialize: (s) => ({
         isAuthenticated: s.isAuthenticated,
         token: s.token,
@@ -239,11 +255,24 @@ const useAuthStore = create(
         loginTimestamp: s.loginTimestamp,
         menuRights: s.menuRights,
         activeMenuRights: s.activeMenuRights,
+        API_BASE_URL: s.API_BASE_URL,
+        compCode: s.compCode,
+        companyName: s.companyName,
+        logoURL: s.logoURL,
+        isClientConfigured: s.isClientConfigured,
       }),
-      // Bump whenever the persisted user/company shape changes so stale
-      // sessions get wiped instead of silently returning undefined keys.
-      // v2 = PascalCase canonical shape (matches tblUser columns).
-      version: 2,
+      merge: (persisted, current) => {
+        const p = persisted || {};
+        const trusted = isTrustedApiUrl(p.API_BASE_URL);
+        return { ...current, ...p, ...(trusted ? {} : CLIENT_EMPTY) };
+      },
+      // Bump whenever the persisted shape changes so stale sessions get wiped
+      // instead of silently returning undefined keys.
+      // v2 = PascalCase canonical shape. v3 = company binding (2026-09-16):
+      // everyone re-enters their company code once. v4 = primaryColor dropped
+      // (2026-09-17): merge spreads the persisted object, so without a bump a
+      // stale session would re-add a key nothing declares any more.
+      version: 4,
       migrate: () => undefined,
     }
   )

@@ -1,21 +1,50 @@
 import { useMemo } from "react";
 import { useTheme } from "@mui/material/styles";
-import { Clock } from "lucide-react";
+import {
+  CheckCircle2, CircleDot, Clock, Flag, Pencil, PhoneCall, PlusCircle, RotateCcw, UserCheck, XCircle,
+} from "lucide-react";
 import dayjs from "dayjs";
 
 import { EmptyState } from "../../components/ui";
 
-// tblLeadActivity / tblTicketActivity rows expose `Type`
-// (created|stage_changed|call|...) and a human-readable `Summary`; there is no
-// separate Action/Details column.
+// tblLeadActivity / tblTicketActivity rows expose `Type` and a human-readable
+// `Summary`; there is no separate Action/Details column. Spec 2 added
+// escalated / rejected / reopened / updated on the complaint side — the map is
+// the label AND the icon, so a glance down the rail reads as a story rather
+// than as ten identical dots.
+const TYPE_META = {
+  created: { label: "Created", Icon: PlusCircle, tone: "primary" },
+  updated: { label: "Updated", Icon: Pencil, tone: "primary" },
+  status: { label: "Status changed", Icon: CircleDot, tone: "info" },
+  assigned: { label: "Assigned", Icon: UserCheck, tone: "info" },
+  resolved: { label: "Resolved", Icon: CheckCircle2, tone: "success" },
+  closed: { label: "Closed", Icon: CheckCircle2, tone: "success" },
+  rejected: { label: "Rejected", Icon: XCircle, tone: "error" },
+  reopened: { label: "Reopened", Icon: RotateCcw, tone: "warning" },
+  escalated: { label: "Escalated", Icon: Flag, tone: "warning" },
+  call: { label: "Call", Icon: PhoneCall, tone: "primary" },
+};
+
 const formatType = (type) =>
   String(type || "activity")
     .replace(/_/g, " ")
     .replace(/^\w/, (c) => c.toUpperCase());
 
+// Anything unmapped keeps the old behaviour — the de-underscored type — which
+// is what the legacy `stage_changed` / `field_changed` rows still need.
+const metaFor = (type) =>
+  TYPE_META[String(type || "").toLowerCase()] ?? { label: formatType(type), Icon: Clock, tone: "primary" };
+
 const activityDate = (item) => item.CreatedAt ?? item.CreatedDate ?? null;
 
 const isCall = (item) => String(item?.Type || "").toLowerCase().includes("call");
+
+// Same de-dup rule the component renders with: a real `calls` array replaces
+// the activity rows of type 'call' rather than adding to them. Exported so a
+// tab badge counts what this component actually shows instead of re-deriving
+// (and drifting from) that rule inline.
+export const timelineCount = (activity = [], calls = []) =>
+  activity.filter((item) => !(calls.length && isCall(item))).length + calls.length;
 
 /**
  * Renders a record's activity trail as a chronological list, oldest first.
@@ -32,21 +61,29 @@ export default function Timeline({ activity = [], calls = [], outcomes = [] }) {
   const p = theme.tokens;
 
   const sorted = useMemo(() => {
-    const outcomeName = (id) =>
-      outcomes.find((o) => o.Id === id)?.Value ?? null;
+    const outcomeName = (id) => outcomes.find((o) => o.Id === id)?.Value ?? null;
 
     const fromActivity = activity
       .filter((item) => !(calls.length && isCall(item)))
-      .map((item, i) => ({
-        key: `a-${item.Id ?? i}`,
-        title: formatType(item.Type),
-        detail: item.Summary,
-        at: activityDate(item),
-      }));
+      .map((item, i) => {
+        const meta = metaFor(item.Type);
+        return {
+          key: `a-${item.Id ?? i}`,
+          type: String(item.Type || "activity").toLowerCase(),
+          title: meta.label,
+          Icon: meta.Icon,
+          tone: meta.tone,
+          detail: item.Summary,
+          at: activityDate(item),
+        };
+      });
 
     const fromCalls = calls.map((call) => ({
       key: `c-${call.Id}`,
+      type: "call",
       title: call.Direction === "in" ? "Incoming call" : "Outgoing call",
+      Icon: PhoneCall,
+      tone: "primary",
       detail:
         [call.Notes, outcomeName(call.OutcomeId), call.Duration ? `${call.Duration} min` : null]
           .filter(Boolean)
@@ -64,58 +101,73 @@ export default function Timeline({ activity = [], calls = [], outcomes = [] }) {
       <EmptyState
         icon={<Clock size={28} />}
         title="No activity yet"
-        description="Calls, stage moves, and field changes on this record will show up here."
+        description="Calls, status moves, transfers and field changes on this record will show up here."
         size="sm"
         data-testid="timeline-empty"
       />
     );
   }
 
+  const toneOf = (tone) =>
+    tone === "default"
+      ? { main: p.text.secondary, subtle: p.surface.subtle }
+      : { main: p[tone]?.main ?? p.primary.main, subtle: p[tone]?.subtle ?? p.primary.subtle };
+
   return (
     <div
       data-testid="lead-timeline"
       style={{ display: "flex", flexDirection: "column", gap: 2 }}
     >
-      {sorted.map((item) => (
-        <div
-          key={item.key}
-          data-testid="timeline-item"
-          style={{
-            position: "relative",
-            display: "flex",
-            gap: 12,
-            padding: "10px 4px 10px 16px",
-            marginLeft: 6,
-            borderLeft: `2px solid ${p.border.default}`,
-          }}
-        >
+      {sorted.map((item) => {
+        const t = toneOf(item.tone);
+        return (
           <div
-            aria-hidden="true"
+            key={item.key}
+            data-testid="timeline-item"
+            data-type={item.type}
             style={{
-              position: "absolute",
-              left: -5,
-              top: 14,
-              width: 8,
-              height: 8,
-              borderRadius: theme.radii.full,
-              backgroundColor: p.primary.main,
+              position: "relative",
+              display: "flex",
+              gap: 12,
+              padding: "10px 4px 10px 20px",
+              marginLeft: 10,
+              borderLeft: `2px solid ${p.border.default}`,
             }}
-          />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: p.text.primary }}>
-              {item.title}
-            </div>
-            {item.detail && (
-              <div style={{ fontSize: 13, color: p.text.secondary, marginTop: 2 }}>
-                {item.detail}
+          >
+            <span
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                left: -11,
+                top: 10,
+                width: 20,
+                height: 20,
+                borderRadius: theme.radii.full,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: t.subtle,
+                color: t.main,
+              }}
+            >
+              <item.Icon size={11} />
+            </span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: p.text.primary }}>
+                {item.title}
               </div>
-            )}
-            <div style={{ fontSize: 11, color: p.text.tertiary, marginTop: 4 }}>
-              {item.at ? dayjs(item.at).format("DD-MM-YYYY HH:mm") : ""}
+              {item.detail && (
+                <div style={{ fontSize: 13, color: p.text.secondary, marginTop: 2 }}>
+                  {item.detail}
+                </div>
+              )}
+              <div style={{ fontSize: 11, color: p.text.tertiary, marginTop: 4 }}>
+                {item.at ? dayjs(item.at).format("DD-MM-YYYY HH:mm") : ""}
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

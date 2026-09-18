@@ -215,9 +215,7 @@ const Users = () => {
       <Helmet>
         <title>PRD Infotech | Users</title>
       </Helmet>
-      <Box sx={{ mt: 2, width: "100%", overflowX: "auto" }}>
-        <MaterialReactTable table={table} />
-      </Box>
+      <MaterialReactTable table={table} />
       <UserForm
         open={isModalOpen}
         onClose={closeModal}

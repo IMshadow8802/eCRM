@@ -46,6 +46,10 @@ const DateField = forwardRef(function DateField(
   const hasError = Boolean(error);
   const helperId = hint || error ? `${id}-help` : undefined;
   const inputHeight = HEIGHT[size] ?? HEIGHT.md;
+  // Must match Combobox/TextInput exactly. This was a hardcoded 14, so a date
+  // sitting in a row of `sm` dropdowns rendered a point larger than every
+  // control beside it — same box, different text.
+  const inputFontSize = size === "sm" ? 13 : size === "lg" ? 15 : 14;
 
   const toDayjs = (v) => (v ? dayjs(v) : null);
   const fromDayjs = (d) => (d && d.isValid() ? d.format("YYYY-MM-DD") : "");
@@ -97,23 +101,48 @@ const DateField = forwardRef(function DateField(
               error: hasError,
               "aria-describedby": helperId,
               "data-testid": testId,
+              // x-date-pickers v9 does NOT render an OutlinedInput. The field is
+              // a `MuiPickersInputBase-root` wrapping contenteditable <span>
+              // sections — there is no `.MuiOutlinedInput-root` and no
+              // `.MuiOutlinedInput-input` in this tree. Styling those classes,
+              // which is what this file did, silently matched nothing: every
+              // date field in the app rendered at MUI's default height and type
+              // size while sitting next to Combobox and TextInput controls that
+              // honour the tokens. Keep these selectors on the Pickers classes.
               sx: {
-                "& .MuiOutlinedInput-root": {
+                // Class doubled deliberately. MUI ships its own font-size on
+                // `.MuiPickersInputBase-root` (0.9333rem, from the theme's
+                // htmlFontSize of 15), which has identical specificity to a
+                // single-class sx rule — so which one wins came down to
+                // stylesheet order, and at size="md" theirs did. Doubling the
+                // selector settles it instead of hoping.
+                "& .MuiPickersInputBase-root.MuiPickersInputBase-root": {
                   borderRadius: `${theme.radii.md}px`,
                   backgroundColor: p.surface.card,
                   minHeight: inputHeight,
                   height: inputHeight,
-                },
-                "& .MuiOutlinedInput-input": {
-                  paddingY: 0,
-                  height: inputHeight - 2,
-                  boxSizing: "border-box",
-                  fontSize: 14,
+                  // Set on the root so the section spans inherit it — they carry
+                  // the visible text, and each one is its own element.
+                  //
+                  // !important because MUI puts its own font-size on a sibling
+                  // class on this very element (`MuiPickersInputBase-inputSizeSmall`,
+                  // 0.9333rem — 14/15 of the browser root, not of ours). Whose
+                  // rule lands then depends on stylesheet order, which is not
+                  // something a design-system primitive should be gambling on.
+                  fontSize: `${inputFontSize}px !important`,
                   fontWeight: 500,
                 },
+                "& .MuiPickersInputBase-sectionsContainer": {
+                  paddingTop: 0,
+                  paddingBottom: 0,
+                  height: inputHeight - 2,
+                  boxSizing: "border-box",
+                  display: "flex",
+                  alignItems: "center",
+                },
                 "& fieldset": { borderColor: p.border.default },
-                "&:hover fieldset": { borderColor: p.border.strong },
-                "&.Mui-focused fieldset": {
+                "& .MuiPickersInputBase-root:hover fieldset": { borderColor: p.border.strong },
+                "& .MuiPickersInputBase-root.Mui-focused fieldset": {
                   borderColor: hasError ? p.error.main : p.border.focus,
                   borderWidth: 1.5,
                 },

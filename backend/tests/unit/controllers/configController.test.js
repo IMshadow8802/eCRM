@@ -1,6 +1,15 @@
 jest.mock("../../../src/config/database", () => ({
   executeStoredProcedure: jest.fn(),
 }));
+// Without this, every runSp(req, log) call fires a second, unrelated
+// sp_SaveActivityLog call through the same mocked database — which the new
+// "nulls a 0 / blank / junk TatHours" test's exhaustive mock.calls walk would
+// trip over. Every other controller test file in this suite already mocks
+// this the same way.
+jest.mock("../../../src/utils/activityLogger", () => ({
+  logActivity: jest.fn().mockResolvedValue(undefined),
+  ACTIONS: { CREATED: "Created", UPDATED: "Updated", DELETED: "Deleted" },
+}));
 
 const database = require("../../../src/config/database");
 const { configController } = require("../../../src/controllers/configController");
@@ -104,110 +113,62 @@ describe("configController.deleteCustomField", () => {
   });
 });
 
-describe("configController.savePipeline", () => {
-  it("calls sp_SavePipeline with CompId + CreatedBy", async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce({
-      recordset: [{ ResponseCode: 200, ResponseMess: "Saved", Id: 9 }],
-    });
-    const req = baseReq({ body: { Id: 0, Entity: "lead", Name: "Sales Pipeline" } });
-    const res = mockRes();
-    await configController.savePipeline(req, res);
-    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
-      "sp_SavePipeline",
-      expect.objectContaining({ Entity: "lead", Name: "Sales Pipeline", CompId: 5, CreatedBy: 7 }),
-    );
-    expect(res.status).toHaveBeenCalledWith(200);
-  });
-});
-
-describe("configController.fetchPipelines", () => {
-  it("calls sp_FetchPipelines with CompId+Entity", async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce({
-      recordset: [{ Id: 1, Name: "Sales Pipeline" }],
-    });
-    const req = baseReq({ body: { Entity: "deal" } });
-    const res = mockRes();
-    await configController.fetchPipelines(req, res);
-    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
-      "sp_FetchPipelines",
-      expect.objectContaining({ CompId: 5, Entity: "deal" }),
-    );
-    const json = res.json.mock.calls[0][0];
-    expect(json.data.pipelines).toEqual([{ Id: 1, Name: "Sales Pipeline" }]);
-  });
-
-  it("forwards the stages result set (2nd recordset) alongside pipelines", async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce({
-      recordset: [{ Id: 1, Name: "Sales Pipeline" }],
-      recordsets: [
-        [{ Id: 1, Name: "Sales Pipeline" }],
-        [{ Id: 41, PipelineId: 1, Name: "New", SortOrder: 1 }],
-      ],
-    });
-    const req = baseReq({ body: { Entity: "lead" } });
-    const res = mockRes();
-    await configController.fetchPipelines(req, res);
-    const json = res.json.mock.calls[0][0];
-    expect(json.data.pipelines).toEqual([{ Id: 1, Name: "Sales Pipeline" }]);
-    expect(json.data.stages).toEqual([{ Id: 41, PipelineId: 1, Name: "New", SortOrder: 1 }]);
-  });
-});
-
-describe("configController.saveStage", () => {
-  it("calls sp_SaveStage with CompId + CreatedBy", async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce({
-      recordset: [{ ResponseCode: 200, ResponseMess: "Saved", Id: 4 }],
-    });
-    const req = baseReq({ body: { Id: 0, PipelineId: 9, Name: "Qualified" } });
-    const res = mockRes();
-    await configController.saveStage(req, res);
-    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
-      "sp_SaveStage",
-      expect.objectContaining({ PipelineId: 9, Name: "Qualified", CompId: 5, CreatedBy: 7 }),
-    );
-    expect(res.status).toHaveBeenCalledWith(200);
-  });
-});
-
-describe("configController.deleteStage", () => {
-  it("calls sp_DeleteStage with CompId", async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce({
-      recordset: [{ ResponseCode: 200, ResponseMess: "Deleted" }],
-    });
-    const req = baseReq({ body: { Id: 4 } });
-    const res = mockRes();
-    await configController.deleteStage(req, res);
-    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
-      "sp_DeleteStage",
-      expect.objectContaining({ Id: 4, CompId: 5 }),
-    );
-    expect(res.status).toHaveBeenCalledWith(200);
-  });
-});
-
 describe("configController.saveLookup", () => {
-  it("calls sp_SaveLookup with CompId, defaulting SortOrder and Code (no CreatedBy — the SP doesn't declare it)", async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce({
-      recordset: [{ ResponseCode: 200, ResponseMess: "Saved", Id: 11 }],
-    });
+  const okRow = (extra = {}) => ({
+    recordset: [{ Id: 11, ResponseCode: 200, ResponseMess: "Saved", ...extra }],
+  });
+
+  it("calls sp_SaveLookup with CompId, defaulting SortOrder, Code and TatHours (no CreatedBy — the SP doesn't declare it)", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(okRow());
     const req = baseReq({ body: { Id: 0, Kind: "industry", Value: "Retail" } });
     const res = mockRes();
     await configController.saveLookup(req, res);
     expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_SaveLookup", {
-      Id: 0, CompId: 5, Kind: "industry", Value: "Retail", SortOrder: 0, Code: null,
+      Id: 0, CompId: 5, Kind: "industry", Value: "Retail", SortOrder: 0, Code: null, TatHours: null,
     });
     expect(res.status).toHaveBeenCalledWith(200);
   });
 
   it("sends exactly the SP's parameters, Code included, and drops unknown keys", async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce({
-      recordset: [{ Id: 3, ResponseCode: 200, ResponseMess: "Lookup created successfully" }],
-    });
+    database.executeStoredProcedure.mockResolvedValueOnce(okRow({ Id: 3, ResponseMess: "Lookup created successfully" }));
     const req = baseReq({ body: { Id: 0, Kind: "lead_status", Value: "Warm", SortOrder: 3, Code: "open", Junk: 1 } });
     await configController.saveLookup(req, mockRes());
     expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_SaveLookup", {
-      Id: 0, CompId: 5, Kind: "lead_status", Value: "Warm", SortOrder: 3, Code: "open",
+      Id: 0, CompId: 5, Kind: "lead_status", Value: "Warm", SortOrder: 3, Code: "open", TatHours: null,
     });
+  });
+
+  // Spec 2 §1: TAT = hours per priority, stored on the lookup row. The web
+  // sends it from a number field, so it may arrive as a string.
+  it("forwards TatHours as an int for a priority", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(okRow({ Id: 3 }));
+    const req = baseReq({ body: { Id: "3", Kind: "priority", Value: "High", SortOrder: 3, TatHours: "24" } });
+    await configController.saveLookup(req, mockRes());
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_SaveLookup", {
+      Id: 3, CompId: 5, Kind: "priority", Value: "High", SortOrder: 3, Code: null, TatHours: 24,
+    });
+  });
+
+  // No TAT = DueAt NULL = never overdue (spec §1). A zero-hour TAT is not a thing.
+  it("nulls a 0 / blank / junk TatHours", async () => {
+    database.executeStoredProcedure.mockResolvedValue(okRow());
+    for (const TatHours of [0, "", "abc", -4]) {
+      await configController.saveLookup(baseReq({ body: { Kind: "priority", Value: "Low", TatHours } }), mockRes());
+    }
+    for (const [, params] of database.executeStoredProcedure.mock.calls) expect(params.TatHours).toBeNull();
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(4);
+  });
+
+  // ticket_status rows carry a Code like lead_status (spec §1). The SP owns the
+  // allowed set and answers 400 — surfaced with its message, not flattened.
+  it("surfaces the SP's 400 for a ticket_status code outside the allowed set", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordset: [{ Id: 0, ResponseCode: 400, ResponseMess: "Code must be one of open, onhold, resolved, closed, rejected" }],
+    });
+    const res = mockRes();
+    await configController.saveLookup(baseReq({ body: { Kind: "ticket_status", Value: "Parked", Code: "paused" } }), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json.mock.calls[0][0]).toMatchObject({ success: false, code: "SP_ERROR", message: expect.stringMatching(/open, onhold/) });
   });
 });
 
@@ -271,5 +232,15 @@ describe("configController.deleteLookup", () => {
     const res = mockRes();
     await configController.deleteLookup(req, res);
     expect(res.status).toHaveBeenCalledWith(500);
+  });
+});
+
+// 086 drops the pipeline engine: sp_SavePipeline / sp_FetchPipelines /
+// sp_SaveStage / sp_DeleteStage and the two tables. The handlers go with them.
+describe("configController pipeline removal", () => {
+  it("no longer exposes the pipeline handlers", () => {
+    for (const m of ["savePipeline", "fetchPipelines", "saveStage", "deleteStage"]) {
+      expect(configController[m]).toBeUndefined();
+    }
   });
 });

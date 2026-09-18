@@ -261,9 +261,7 @@ const Projects = () => {
       <Helmet>
         <title>PRD Infotech | Projects</title>
       </Helmet>
-      <Box sx={{ mt: 2, width: "100%", overflowX: "auto" }}>
-        <MaterialReactTable table={table} />
-      </Box>
+      <MaterialReactTable table={table} />
       {/* Project creation/edit modal */}
       <ProjectForm
         open={isModalOpen}

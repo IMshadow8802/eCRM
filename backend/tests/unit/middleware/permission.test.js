@@ -13,6 +13,7 @@ const {
   canWriteBranch,
   canReadBranch,
   assertRecordAccess,
+  canReopen,
 } = require("../../../src/middleware/permission");
 const { mockRes } = require("../../helpers/mockRes");
 
@@ -110,6 +111,21 @@ describe("permission middleware", () => {
         expect.objectContaining({ code: "INSUFFICIENT_ROLE" })
       );
       expect(next).not.toHaveBeenCalled();
+    });
+
+    // REGRESSION: the refusal used to read "Only an administrator can manage
+    // users" — written when userRoutes was its only caller. It now guards
+    // lookups, custom fields, products and customer deletion too, and the live
+    // pass on 2026-09-17 caught it telling a Support Head that adding a ticket
+    // category was about managing users. The message is shown verbatim in both
+    // clients, so it has to describe the action the caller actually attempted —
+    // which means saying nothing about which one it was.
+    it("refuses without naming user management — it guards six route groups", () => {
+      const res = mockRes();
+      requireAdmin({ scope: { isAdmin: false } }, res, jest.fn());
+      const { message } = res.json.mock.calls[0][0];
+      expect(message).not.toMatch(/user/i);
+      expect(message).toMatch(/administrator/i);
     });
 
     // The distinction that matters: IsAdmin is a role property on
@@ -356,12 +372,16 @@ describe("permission middleware", () => {
       scope: { branchIds: [2], ownerIds: [7], isAdmin: false },
     };
 
-    it("allows a lead the caller owns and fetches it via sp_FetchLeadDetail", async () => {
+    // Spec 2 §3: the guard hands back the row it fetched, so a controller
+    // that needs the assignee (the reopen gate) has it without a second
+    // sp_Fetch*Detail round-trip. Truthiness is what every caller tests.
+    it("allows a lead the caller owns and resolves to the fetched record", async () => {
+      const lead = { Id: 9, BranchId: 2, OwnerId: 7, CreatedBy: 3 };
       database.executeStoredProcedure.mockResolvedValueOnce({
-        recordsets: [[{ Id: 9, BranchId: 2, OwnerId: 7, CreatedBy: 3 }], [], []],
+        recordsets: [[lead], [], []],
       });
       const res = mockRes();
-      await expect(assertRecordAccess(selfReq, res, "lead", 9)).resolves.toBe(true);
+      await expect(assertRecordAccess(selfReq, res, "lead", 9)).resolves.toEqual(lead);
       expect(database.executeStoredProcedure).toHaveBeenCalledWith(
         "sp_FetchLeadDetail",
         { CompId: 5, LeadId: 9 },
@@ -386,17 +406,27 @@ describe("permission middleware", () => {
       expect(res.status).toHaveBeenCalledWith(403);
     });
 
-    it("reads tickets via sp_FetchTicketDetail using AssignedTo as the owner field", async () => {
+    it("reads tickets via sp_FetchTicketDetail using AssignedTo as the owner field, and resolves to the ticket", async () => {
+      const ticket = { Id: 4, BranchId: 9, AssignedTo: 7, CreatedBy: 3 };
       database.executeStoredProcedure.mockResolvedValueOnce({
-        recordsets: [[{ Id: 4, BranchId: 9, AssignedTo: 7, CreatedBy: 3 }], [], [], []],
+        recordsets: [[ticket], [], [], [], []],
       });
       const res = mockRes();
       // Assigned to caller from an out-of-scope branch: assignment beats scope.
-      await expect(assertRecordAccess(selfReq, res, "ticket", 4)).resolves.toBe(true);
+      await expect(assertRecordAccess(selfReq, res, "ticket", 4)).resolves.toEqual(ticket);
       expect(database.executeStoredProcedure).toHaveBeenCalledWith(
         "sp_FetchTicketDetail",
         { CompId: 5, TicketId: 4 },
       );
+    });
+
+    // Tasks have no row to hand back — sp_CheckTaskPermission answers yes/no —
+    // so the task branch keeps resolving to a plain true.
+    it("still resolves to true (not a record) for tasks", async () => {
+      database.executeStoredProcedure.mockResolvedValueOnce({
+        recordsets: [[{ Allowed: true, Reason: "role=owner" }]],
+      });
+      await expect(assertRecordAccess(selfReq, mockRes(), "task", 12)).resolves.toBe(true);
     });
 
     it("routes tasks through sp_CheckTaskPermission and honours a denial even for admins", async () => {
@@ -455,6 +485,49 @@ describe("permission middleware", () => {
       const res = mockRes();
       await expect(assertRecordAccess(selfReq, res, "lead", 9)).resolves.toBe(false);
       expect(res.status).toHaveBeenCalledWith(500);
+    });
+  });
+
+  // Spec 2 §3 Rules — Reopen: a manager's act. Wide scopes always; a Team
+  // lead only for a ticket assigned to someone in their subtree — never their
+  // own, never an unassigned one. Self agents never. Pure: the controller
+  // already fetched the ticket through assertRecordAccess.
+  describe("canReopen", () => {
+    const req = (dataScope, ownerIds, UserId = 16) => ({
+      user: { UserId, CompId: 1 },
+      scope: { dataScope, branchIds: [1], ownerIds },
+    });
+    const ticket = (AssignedTo) => ({ Id: 1, BranchId: 1, AssignedTo, CreatedBy: 16 });
+
+    it.each(["All", "Company", "MultiBranch", "Branch"])(
+      "%s scope may reopen anything — own, unassigned, a stranger's",
+      (scope) => {
+        expect(canReopen(req(scope, null), ticket(16))).toBe(true);
+        expect(canReopen(req(scope, null), ticket(null))).toBe(true);
+        expect(canReopen(req(scope, null), ticket(99))).toBe(true);
+      },
+    );
+
+    it("lets a Team lead reopen a subordinate's ticket", () => {
+      expect(canReopen(req("Team", [16, 17, 18]), ticket(17))).toBe(true);
+    });
+
+    it("refuses a Team lead their own, an unassigned, or an outsider's ticket", () => {
+      const r = req("Team", [16, 17, 18]);
+      expect(canReopen(r, ticket(16))).toBe(false);
+      expect(canReopen(r, ticket(null))).toBe(false);
+      expect(canReopen(r, ticket(21))).toBe(false);
+    });
+
+    it("never lets a Self agent reopen — not even a colleague's ticket they created", () => {
+      expect(canReopen(req("Self", [17], 17), ticket(17))).toBe(false);
+      expect(canReopen(req("Self", [17], 17), { ...ticket(18), CreatedBy: 17 })).toBe(false);
+    });
+
+    it("coerces ids (the driver hands BIGINTs back as strings) and fails closed on a missing scope or record", () => {
+      expect(canReopen(req("Team", [17]), ticket("17"))).toBe(true);
+      expect(canReopen({ user: { UserId: 16 } }, ticket(17))).toBe(false);
+      expect(canReopen(req("Team", [17]), null)).toBe(false);
     });
   });
 });

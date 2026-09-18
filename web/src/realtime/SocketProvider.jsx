@@ -30,14 +30,14 @@ import { dragGuard } from "./dragGuard";
 export const useSocketStatus = create(() => ({ status: "idle" }));
 
 /**
- * Derive where the socket connects, mirroring axiosConfig's dev/prod split:
- * dev → window origin, path "/socket.io" (Vite proxy → localhost:5001);
- * prod → API_BASE_URL "https://shadowcodes.in/CRM" splits into origin
- * "https://shadowcodes.in" + path "/CRM/socket.io" (nginx strips /CRM
+ * Derive where the socket connects from the Central-resolved API base, dev and
+ * prod alike: "https://shadowcodes.in/CRM" splits into origin
+ * "https://shadowcodes.in" + path "/CRM/socket.io" (nginx strips the prefix
  * before the backend sees the request, so the prefix lives in `path`).
+ * No company bound yet (login page before the code step) → null, no socket.
  */
-export function deriveSocketTarget(apiBaseUrl, isDev = import.meta.env.DEV) {
-  if (isDev) return { url: window.location.origin, path: "/socket.io" };
+export function deriveSocketTarget(apiBaseUrl) {
+  if (!apiBaseUrl) return null;
   const parsed = new URL(apiBaseUrl);
   const prefix = parsed.pathname.replace(/\/+$/, "");
   return { url: parsed.origin, path: `${prefix}/socket.io` };
@@ -87,8 +87,9 @@ export default function SocketProvider() {
 
     let socket;
     try {
-      const { url, path } = deriveSocketTarget(useAuthStore.getState().API_BASE_URL);
-      socket = io(url, { path, auth: { token } });
+      const target = deriveSocketTarget(useAuthStore.getState().API_BASE_URL);
+      if (!target) return undefined;
+      socket = io(target.url, { path: target.path, auth: { token } });
     } catch (err) {
       // Bad URL/transport setup must never take the app down.
       console.warn("realtime: socket setup failed", err);

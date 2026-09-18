@@ -2,10 +2,11 @@
 // Only what a phone needs. User administration (saveUser/deleteUser) is
 // deliberately absent — admin-gated desk work, stays on web.
 import { post, postData } from "./client";
-import type { ApiEnvelope, DirectoryUser } from "../types/api";
+import type { ApiEnvelope, AssignableUser, DirectoryUser } from "../types/api";
 
 export const USER_ENDPOINTS = {
   directory: "/api/users/directory",
+  fetchAssignableUsers: "/api/users/fetchAssignableUsers",
   updateProfile: "/api/users/me/updateProfile",
   changePassword: "/api/users/me/changePassword",
 } as const;
@@ -20,6 +21,22 @@ export const fetchUserDirectory = (
   postData<DirectoryUser>(
     USER_ENDPOINTS.directory,
     { SearchTerm: null, ...params },
+    "users",
+  );
+
+/**
+ * Who the caller may hand a record to. sp_FetchAssignableUsers scopes it
+ * (own subtree + own manager for Team/Self; readable branches for wide
+ * scopes) and `assertCanAssign` re-checks membership on every save and
+ * transfer — this is the pick-list, not the gate. `BranchId` lists another
+ * branch's roster for a cross-branch move; mobile never passes it.
+ */
+export const fetchAssignableUsers = (
+  params: { BranchId?: number | null } = {},
+): Promise<AssignableUser[]> =>
+  postData<AssignableUser>(
+    USER_ENDPOINTS.fetchAssignableUsers,
+    { BranchId: null, ...params },
     "users",
   );
 

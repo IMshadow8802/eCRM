@@ -9,6 +9,7 @@ import {
 } from "@mui/icons-material";
 
 import PageHeader from "./ui/PageHeader";
+import Card from "./ui/Card";
 import StatisticsCard from "./StatCard";
 import AreaTrend from "./Charts/AreaTrend";
 import Donut from "./Charts/Donut";
@@ -35,52 +36,59 @@ const KPI_CONFIG = {
  * stacks cleanly.
  */
 const Tile = ({ children, title, subtitle, spanCol = 4, spanRow = 1 }) => (
+  // Grid placement on the outside, surface on the inside. The placement needs
+  // responsive values, and ui/Card writes its sx into an inline style where a
+  // {xs, md} object would mean nothing — so the two jobs stay in two elements.
+  //
+  // The surface itself is NOT hand-rolled here any more. It used to be a Box
+  // with its own radius, border and hover, which is how this page ended up with
+  // two different cards stacked on top of each other.
   <Box
     sx={{
       gridColumn: { xs: "span 12", md: `span ${spanCol}` },
       gridRow: { xs: "auto", md: `span ${spanRow}` },
-      position: "relative",
-      borderRadius: 3,
-      border: "1px solid",
-      borderColor: "divider",
-      backgroundColor: "background.paper",
-      p: 2,
+      // Floor so height:100% charts resolve on xs and on first mount — recharts
+      // needs a definite parent height.
+      minHeight: spanRow * 150,
       display: "flex",
-      flexDirection: "column",
-      gap: 1,
-      overflow: "hidden",
-      minHeight: spanRow * 150, // floor so height:100% charts resolve on xs + first mount (recharts needs a definite parent height)
-      transition:
-        "border-color 240ms cubic-bezier(0.4,0,0.2,1), transform 240ms cubic-bezier(0.4,0,0.2,1)",
-      "&:hover": {
-        borderColor: "primary.main",
-        transform: "translateY(-1px)",
-      },
     }}
   >
-    {(title || subtitle) && (
-      <Box>
-        {title && (
-          <Typography
-            sx={{
-              fontSize: "0.8667rem",
-              fontWeight: 600,
-              color: "text.primary",
-            }}
-          >
-            {title}
-          </Typography>
-        )}
-        {subtitle && (
-          <Typography
-            sx={{ fontSize: "0.7333rem", color: "text.tertiary", mt: 0.25 }}
-          >
-            {subtitle}
-          </Typography>
-        )}
-      </Box>
-    )}
-    <Box sx={{ flex: 1, minHeight: 0 }}>{children}</Box>
+    <Card
+      interactive
+      padding="md"
+      sx={{
+        flex: 1,
+        minWidth: 0,
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+        overflow: "hidden",
+      }}
+    >
+      {(title || subtitle) && (
+        <Box>
+          {title && (
+            <Typography
+              sx={{
+                fontSize: "0.8667rem",
+                fontWeight: 600,
+                color: "text.primary",
+              }}
+            >
+              {title}
+            </Typography>
+          )}
+          {subtitle && (
+            <Typography
+              sx={{ fontSize: "0.7333rem", color: "text.tertiary", mt: 0.25 }}
+            >
+              {subtitle}
+            </Typography>
+          )}
+        </Box>
+      )}
+      <Box sx={{ flex: 1, minHeight: 0 }}>{children}</Box>
+    </Card>
   </Box>
 );
 

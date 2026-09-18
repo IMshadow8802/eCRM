@@ -1,7 +1,6 @@
 // src/api/attachmentQueries.ts
 // Multipart upload + blob download. Mirrors web/src/api/attachmentQueries.js.
-import { apiClient, getAuthToken, post, postData } from "./client";
-import { API_BASE_URL } from "../config/env";
+import { apiClient, getApiBaseUrl, getAuthToken, post, postData } from "./client";
 import type { ApiEnvelope, Attachment, AttachmentEntity } from "../types/api";
 
 export const ATTACHMENT_ENDPOINTS = {
@@ -88,9 +87,10 @@ export const attachmentDownloadRequest = (
   Id: number,
 ): { url: string; headers: Record<string, string> } | null => {
   const token = getAuthToken();
-  if (!token) return null;
+  const base = getApiBaseUrl();
+  if (!token || !base) return null;
   return {
-    url: `${API_BASE_URL}${ATTACHMENT_ENDPOINTS.download}/${Id}`,
+    url: `${base}${ATTACHMENT_ENDPOINTS.download}/${Id}`,
     headers: { Authorization: `Bearer ${token}` },
   };
 };
