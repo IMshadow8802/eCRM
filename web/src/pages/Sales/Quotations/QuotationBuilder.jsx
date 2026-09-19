@@ -296,6 +296,11 @@ export default function QuotationBuilder() {
             {/* Not PageHeader's breadcrumb: it renders plain <a href>, which is a full
                 page load and ignores the router's /prdcrm/ basename. */}
             <Button variant="text" size="sm" leftIcon={<ArrowLeft size={14} />} onClick={() => (dirty ? setAsk("leave") : goToLead())}>Back to lead</Button>
+            {/* Download is not a final-only action. On a phone the preview
+                iframe below may render nothing at all (Chrome on Android has
+                no inline PDF viewer), so on a draft this is the only way to
+                see the document being built. */}
+            {editable && <Button variant="tonal" size="sm" leftIcon={<Download size={14} />} onClick={onDownload}>Download PDF</Button>}
             {editable ? (
               <>
                 <Button variant="ghost" size="sm" leftIcon={<Trash2 size={14} />} onClick={() => setAsk("delete")}>Delete draft</Button>
@@ -338,7 +343,7 @@ export default function QuotationBuilder() {
             action={editable && isAdmin && profile?.IsSet ? (
               <Button size="sm" variant="ghost" loading={saveProfile.isPending} onClick={run(async () => { await saveProfile.mutateAsync(profileFromForm(form, leadId)); })}>Save as our default</Button>
             ) : null}>
-            <Box sx={{ display: "grid", gridTemplateColumns: "88px minmax(0, 1fr)", gap: 2, mb: 2 }}>
+            <Box sx={{ display: "grid", gridTemplateColumns: { xs: "minmax(0, 1fr)", sm: "112px minmax(0, 1fr)" }, gap: 2, mb: 2 }}>
               <ImageSlot label="Logo" data-testid="logo-slot" src={doc.logoSrc} isSample={!c.logoAttachmentId} hidden={c.showLogo === false} disabled={!editable} busy={uploading === "logo"}
                 onUpload={uploadLetterhead("logo")} onRemove={() => setCompany((co) => ({ ...co, showLogo: false }))} onRestore={() => setCompany((co) => ({ ...co, showLogo: true }))} />
               <ImageSlot label="Banner" wide data-testid="header-slot" src={doc.headerSrc} isSample={!c.headerAttachmentId} hidden={c.showHeader === false} disabled={!editable} busy={uploading === "header"}
@@ -377,7 +382,7 @@ export default function QuotationBuilder() {
           </Section>
         </Box>
 
-        <Box sx={{ position: { lg: "sticky" }, top: 16, height: { xs: 560, lg: "calc(100vh - 150px)" } }}>
+        <Box sx={{ position: { lg: "sticky" }, top: 84, height: { xs: 560, lg: "calc(100dvh - 210px)" } }}>
           <PdfPreview Component={templateByCode(form.TemplateCode).Component} doc={doc} onReady={(blob) => { pdfBlob.current = blob; }} />
         </Box>
       </Box>

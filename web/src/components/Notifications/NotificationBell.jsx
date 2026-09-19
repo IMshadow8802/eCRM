@@ -91,9 +91,15 @@ export default function NotificationBell({ onOpenEntity }) {
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         transformOrigin={{ vertical: "top", horizontal: "right" }}
       >
+        {/* MUI's popover paper is capped at `calc(100% - 32px)` of the
+            viewport and clips its own overflow-x, so a hard 360 lost its
+            right-hand 32px on a 360px phone — taking the unread dot and every
+            row's right gutter with it, with no way to scroll to them. Follow
+            the paper instead of fighting it; do NOT raise the paper's cap,
+            that is what keeps the panel on screen. */}
         <div
           style={{
-            width: 360,
+            width: "min(360px, 100%)",
             maxHeight: 480,
             display: "flex",
             flexDirection: "column",

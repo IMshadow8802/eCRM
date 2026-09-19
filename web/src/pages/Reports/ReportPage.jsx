@@ -235,7 +235,7 @@ export default function ReportPage({
       {/* KPI strip */}
       {kpis.length > 0 && (
         <Box
-          sx={{ display: "grid", gap: 1.5, gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}
+          sx={{ display: "grid", gap: 1.5, gridTemplateColumns: { xs: "1fr", sm: "repeat(auto-fill, minmax(150px, 1fr))" } }}
           data-testid="report-kpis"
         >
           {kpis.map((k) => (

@@ -109,3 +109,40 @@ describe("Modal", () => {
     }
   });
 });
+
+// Regression, 2026-09-19: the dialog's height cap was an inline
+// `calc(100vh - 48px)`. `vh` is the viewport with a mobile browser's toolbars
+// HIDDEN, so a tall form modal parked its footer underneath them — and Modal
+// locks body scrolling, which removes the flick that would collapse those
+// toolbars. Save was genuinely unreachable. The cap moved to a stylesheet
+// class because a JS object cannot express the vh→dvh fallback: two identical
+// keys silently collapse to the last one.
+describe("height on a mobile browser", () => {
+  it("takes its cap from the stylesheet class, not an inline vh", () => {
+    wrap(<Modal open onClose={() => {}} title="T" data-testid="m"><Modal.Body>x</Modal.Body></Modal>);
+    const dialog = screen.getByTestId("m");
+    expect(dialog.className).toContain("ui-modal-dialog");
+    expect(dialog.style.maxHeight).toBe("");
+  });
+
+  it("keeps a caller's own className alongside it", () => {
+    wrap(
+      <Modal open onClose={() => {}} title="T" className="mine" data-testid="m">
+        <Modal.Body>x</Modal.Body>
+      </Modal>,
+    );
+    expect(screen.getByTestId("m").className.split(/\s+/)).toEqual(
+      expect.arrayContaining(["ui-modal-dialog", "mine"]),
+    );
+  });
+
+  it("lets the footer's buttons wrap rather than run off the edge", () => {
+    wrap(
+      <Modal open onClose={() => {}} title="T">
+        <Modal.Body>x</Modal.Body>
+        <Modal.Footer><button type="button">Save</button></Modal.Footer>
+      </Modal>,
+    );
+    expect(screen.getByRole("button", { name: "Save" }).parentElement.style.flexWrap).toBe("wrap");
+  });
+});

@@ -47,12 +47,31 @@ export default class ErrorBoundary extends Component {
           The page hit an unexpected error. Your data is safe — reload to
           continue.
         </div>
-        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        {/* These stay plain <button>s on purpose. ui/Button reads
+            `theme.tokens`, which only exists on this app's own theme — so
+            using it here would make the last-resort recovery screen depend on
+            the very machinery that may have just thrown. The styling below is
+            self-contained for the same reason: no theme, no tokens, nothing
+            that can fail a second time. `currentColor` and `font: inherit`
+            keep it looking like the app in both light and dark without
+            reading a palette. */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8, justifyContent: "center" }}>
           <button
             type="button"
             onClick={this.handleDismiss}
             data-testid="error-boundary-dismiss"
-            style={{ padding: "8px 16px", cursor: "pointer" }}
+            style={{
+              font: "inherit",
+              fontWeight: 600,
+              minHeight: 40,
+              padding: "8px 16px",
+              borderRadius: 12,
+              border: "1px solid currentColor",
+              background: "transparent",
+              color: "inherit",
+              opacity: 0.85,
+              cursor: "pointer",
+            }}
           >
             Try again
           </button>
@@ -61,9 +80,15 @@ export default class ErrorBoundary extends Component {
             onClick={this.handleReload}
             data-testid="error-boundary-reload"
             style={{
-              padding: "8px 16px",
-              cursor: "pointer",
+              font: "inherit",
               fontWeight: 600,
+              minHeight: 40,
+              padding: "8px 16px",
+              borderRadius: 12,
+              border: "1px solid currentColor",
+              background: "transparent",
+              color: "inherit",
+              cursor: "pointer",
             }}
           >
             Reload

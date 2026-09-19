@@ -136,3 +136,4 @@ describe("ReportBarChart", () => {
     expect(second.container.firstChild).toBeTruthy();
   });
 });
+

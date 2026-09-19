@@ -39,20 +39,20 @@ export default function LinesEditor({ lines, amounts, products = [], disabled = 
           <Box sx={{ display: "flex", gap: 1, alignItems: "flex-end" }}>
             <Box sx={{ flex: 1 }}><TextInput size="sm" label="Description" value={l.description} onChange={patch(i, "description")} disabled={disabled} /></Box>
             {!disabled && (
-              <Box sx={{ display: "flex" }}>
+              <Box sx={{ display: "flex", gap: 0.5 }}>
                 <IconButton size="sm" aria-label="Move up" disabled={i === 0} onClick={() => move(i, -1)}><ArrowUp size={14} /></IconButton>
                 <IconButton size="sm" aria-label="Move down" disabled={i === lines.length - 1} onClick={() => move(i, 1)}><ArrowDown size={14} /></IconButton>
                 <IconButton size="sm" variant="destructive" aria-label="Remove line" onClick={() => remove(i)}><Trash2 size={14} /></IconButton>
               </Box>
             )}
           </Box>
-          <Box sx={{ display: "grid", gap: 1, gridTemplateColumns: { xs: "repeat(2, minmax(0, 1fr))", sm: "repeat(6, minmax(0, 1fr))" }, alignItems: "end" }}>
+          <Box sx={{ display: "grid", gap: 1, gridTemplateColumns: { xs: "repeat(2, minmax(0, 1fr))", sm: "repeat(3, minmax(0, 1fr))", lg: "repeat(6, minmax(0, 1fr))" }, alignItems: "end" }}>
             <TextInput size="sm" label="HSN/SAC" value={l.hsn} onChange={patch(i, "hsn")} disabled={disabled} />
             <TextInput size="sm" label="Qty" value={l.qty} onChange={patch(i, "qty")} disabled={disabled} {...num} />
             <TextInput size="sm" label="Unit" value={l.unit} onChange={patch(i, "unit")} disabled={disabled} placeholder="Nos" />
             <TextInput size="sm" label="Rate" value={l.rate} onChange={patchRate(i)} disabled={disabled} {...num} />
-            <Box sx={{ display: "flex", alignItems: "flex-end" }}>
-              <Box sx={{ flex: 1 }}><TextInput size="sm" label="Discount" value={l.discountValue} onChange={patch(i, "discountValue")} disabled={disabled} {...num} /></Box>
+            <Box sx={{ display: "flex", alignItems: "flex-end", gridColumn: { sm: "span 2", lg: "span 1" } }}>
+              <Box sx={{ flex: 1, minWidth: 0 }}><TextInput size="sm" label="Discount" value={l.discountValue} onChange={patch(i, "discountValue")} disabled={disabled} {...num} /></Box>
               <button type="button" aria-label="Discount in percent" aria-pressed={l.discountType !== "amt"} disabled={disabled} onClick={() => setType(i, "pct")} style={{ ...seg(l.discountType !== "amt"), borderRadius: "0", marginLeft: 4 }}>%</button>
               <button type="button" aria-label="Discount in rupees" aria-pressed={l.discountType === "amt"} disabled={disabled} onClick={() => setType(i, "amt")} style={{ ...seg(l.discountType === "amt"), borderRadius: "0 8px 8px 0", borderLeft: "none" }}>₹</button>
             </Box>

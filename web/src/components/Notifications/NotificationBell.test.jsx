@@ -113,4 +113,27 @@ describe("NotificationBell", () => {
     await user.click(await screen.findByTestId("notification-bell"));
     expect(await screen.findByText(/All caught up/i)).toBeInTheDocument();
   });
+
+  // Regression, 2026-09-19: the panel was a hard `width: 360`. MUI's popover
+  // paper is capped at `calc(100% - 32px)` of the viewport and clips its own
+  // overflow-x, so on a 360px phone the right-hand 32px was cut off and
+  // unreachable — taking the unread dot and every row's right gutter with it,
+  // which made a read and an unread notification look identical.
+  it("follows the popover paper's width instead of overflowing it", async () => {
+    notificationFixture.seed({
+      NotificationId: 1,
+      Type: "comment_added",
+      Title: "New comment",
+      Body: "Bob commented",
+      EntityType: "comment",
+      EntityId: 900,
+    });
+    renderBell();
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("notification-bell"));
+    await screen.findByText("New comment");
+    const shell = document.querySelector('[style*="min(360px, 100%)"]');
+    expect(shell).toBeTruthy();
+    expect(shell.style.width).toBe("min(360px, 100%)");
+  });
 });

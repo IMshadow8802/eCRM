@@ -1,11 +1,27 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import { useTheme } from "@mui/material/styles";
 import { Link, useNavigate } from "react-router-dom";
-import { Home, ArrowLeft, RefreshCw } from "lucide-react";
+import { Compass, ArrowLeft, RefreshCw, Home } from "lucide-react";
 
 import useAuthStore from "../stores/useAuthStore";
 import { firstAllowedPath } from "../utils/routeAccess";
+import { EmptyState, Button } from "../components/ui";
 
+/**
+ * Shown for any route the app does not know, and built deliberately like its
+ * sibling `NoAccess`: `EmptyState` + `ui/Button`, so it inherits the theme.
+ *
+ * It used to be the one page in the app written in raw Tailwind utilities
+ * against Tailwind's own palette — `bg-white`, `text-gray-900` — which made it
+ * a white slab with near-black text inside a dark shell, the only page that
+ * ignored dark mode. It also carried a `<style jsx>` block; styled-jsx is not
+ * a dependency here, so React 19 rendered it as a plain global `<style>` and
+ * its keyframes leaked into every other page's stylesheet. And `min-h-screen`
+ * inside `<main>` double-counted the TopNav, so a 376px page always scrolled.
+ */
 const NotFound = () => {
+  const theme = useTheme();
+  const p = theme.tokens;
   const navigate = useNavigate();
   const menuRights = useAuthStore((state) => state.menuRights);
   // Same trap as the old login redirect: "Go to Dashboard" dead-ends for anyone
@@ -14,118 +30,71 @@ const NotFound = () => {
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
-    // Change page title when this component mounts
     document.title = "404 - Page Not Found";
-
-    // Trigger entrance animation
     const timer = setTimeout(() => setIsVisible(true), 100);
-
     return () => {
-      // Reset title when component unmounts
       document.title = "eCRM";
       clearTimeout(timer);
     };
   }, []);
 
   return (
-    <div className="min-h-screen w-full bg-white flex items-center justify-center p-4">
-      <div className="text-center max-w-2xl mx-auto">
-        {/* Animated 404 Number */}
-        <div
-          className={`transform transition-all duration-1000 ease-out ${
-            isVisible
-              ? "translate-y-0 opacity-100 scale-100"
-              : "translate-y-8 opacity-0 scale-95"
-          }`}
-        >
-          <div className="relative mb-8">
-            <h1 className="text-9xl md:text-[12rem] font-black text-blue-600 mb-6 animate-float">
-              404
-            </h1>
-            {/* Subtle shadow effect */}
-            <div className="absolute inset-0 text-9xl md:text-[12rem] font-black text-blue-200 opacity-30 blur-xs -z-10 animate-pulse">
-              404
-            </div>
+    <div
+      data-testid="not-found"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 32,
+        minHeight: "60vh",
+        // The entrance, without a stylesheet: one transitioned inline value.
+        opacity: isVisible ? 1 : 0,
+        transform: isVisible ? "translateY(0)" : "translateY(8px)",
+        transition: "opacity 400ms cubic-bezier(0.4,0,0.2,1), transform 400ms cubic-bezier(0.4,0,0.2,1)",
+      }}
+    >
+      <EmptyState
+        icon={<Compass size={32} />}
+        title="Page Not Found"
+        description="The page you're looking for doesn't exist or has been moved."
+        size="lg"
+        action={
+          // The three actions wrap on a phone rather than sitting in one row
+          // that runs off the side.
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
+            {/* A real <a>, not a button that navigates: middle-click and
+                "open in new tab" have to work on the way out of a dead URL.
+                ui/Button renders a <button> and is not polymorphic, so this
+                one borrows the primary tokens directly. */}
+            <Link
+              to={home}
+              data-testid="not-found-home"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                height: 40,
+                paddingInline: 16,
+                borderRadius: theme.radii.md,
+                background: p.primary.main,
+                color: p.primary.contrastText,
+                fontSize: 14,
+                fontWeight: 600,
+                textDecoration: "none",
+              }}
+            >
+              <Home size={16} />
+              Go to my home page
+            </Link>
+            <Button variant="tonal" leftIcon={<ArrowLeft size={16} />} onClick={() => navigate(-1)}>
+              Go Back
+            </Button>
+            <Button variant="ghost" leftIcon={<RefreshCw size={16} />} onClick={() => window.location.reload()}>
+              Refresh
+            </Button>
           </div>
-
-          <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4 animate-fade-in-up">
-            Page Not Found
-          </h2>
-          <p className="text-xl text-gray-600 mb-8 animate-fade-in-up animation-delay-200">
-            The page you're looking for doesn't exist or has been moved.
-          </p>
-        </div>
-
-        {/* Action Buttons */}
-        <div
-          className={`flex flex-col sm:flex-row gap-4 items-center justify-center transform transition-all duration-1000 ease-out ${
-            isVisible
-              ? "translate-y-0 opacity-100"
-              : "translate-y-8 opacity-0"
-          }`}
-          style={{ transitionDelay: '0.3s' }}
-        >
-          <Link
-            to={home}
-            className="group flex items-center gap-3 px-8 py-4 bg-blue-600 text-white font-semibold rounded-lg shadow-lg hover:shadow-xl hover:bg-blue-700 transform hover:scale-105 hover:-translate-y-1 transition-all duration-300"
-          >
-            <Home className="w-5 h-5 group-hover:rotate-12 transition-transform duration-300" />
-            Go to my home page
-          </Link>
-
-          <button
-            onClick={() => navigate(-1)}
-            className="group flex items-center gap-3 px-8 py-4 bg-white text-gray-700 font-semibold rounded-lg shadow-lg hover:shadow-xl border-2 border-gray-200 hover:border-gray-300 transform hover:scale-105 hover:-translate-y-1 transition-all duration-300"
-          >
-            <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform duration-300" />
-            Go Back
-          </button>
-
-          <button
-            onClick={() => window.location.reload()}
-            className="group flex items-center gap-3 px-6 py-4 bg-gray-100 text-gray-700 font-semibold rounded-lg shadow-lg hover:shadow-xl hover:bg-gray-200 transform hover:scale-105 hover:-translate-y-1 transition-all duration-300"
-          >
-            <RefreshCw className="w-5 h-5 group-hover:rotate-180 transition-transform duration-500" />
-            Refresh
-          </button>
-        </div>
-      </div>
-
-      {/* Custom CSS for animations */}
-      <style jsx>{`
-        @keyframes float {
-          0%, 100% {
-            transform: translateY(0px);
-          }
-          50% {
-            transform: translateY(-10px);
-          }
         }
-
-        @keyframes fade-in-up {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-
-        .animate-float {
-          animation: float 3s ease-in-out infinite;
-        }
-
-        .animate-fade-in-up {
-          animation: fade-in-up 0.8s ease-out forwards;
-          opacity: 0;
-        }
-
-        .animation-delay-200 {
-          animation-delay: 0.2s;
-        }
-      `}</style>
+      />
     </div>
   );
 };

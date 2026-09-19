@@ -145,7 +145,20 @@ const Sidebar = ({ collapsed, onToggleCollapsed, mobileOpen, onMobileClose }) =>
             <Icon fontSize="small" />
           </ListItemIcon>
         )}
-        {showLabel && <ListItemText primary={menu.title} />}
+        {showLabel && (
+          <ListItemText
+            primary={menu.title}
+            title={menu.title}
+            sx={{
+              minWidth: 0,
+              "& .MuiListItemText-primary": {
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              },
+            }}
+          />
+        )}
         {showLabel && hasChildren && (
           <ExpandMoreRounded
             fontSize="small"
@@ -369,12 +382,17 @@ const Sidebar = ({ collapsed, onToggleCollapsed, mobileOpen, onMobileClose }) =>
           anchor="left"
           open={mobileOpen}
           onClose={onMobileClose}
-          ModalProps={{ keepMounted: true }}
           slotProps={{
+            root: { keepMounted: true },
             paper: {
               sx: {
                 width: SIDEBAR_WIDTH_EXPANDED,
                 border: "none",
+                // theme.js puts `borderRadius: radii.lg` on every MuiPaper
+                // root, which rounded the two corners that sit against the
+                // screen edge — a drawer flush to the edge with a 16px notch
+                // cut out of it reads as a rendering fault, not a style.
+                borderRadius: 0,
                 backgroundColor: sidebarBg,
                 backgroundImage: "none",
               },
@@ -399,6 +417,7 @@ const Sidebar = ({ collapsed, onToggleCollapsed, mobileOpen, onMobileClose }) =>
           "& .MuiDrawer-paper": {
             width: drawerWidth,
             boxSizing: "border-box",
+            borderRadius: 0,
             borderRight: "1px solid",
             borderColor: "divider",
             backgroundColor: sidebarBg,

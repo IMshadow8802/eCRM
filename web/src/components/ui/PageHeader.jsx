@@ -121,7 +121,14 @@ export default function PageHeader({
           )}
         </div>
         {actions && (
-          <div style={{ display: "inline-flex", gap: 8, flexShrink: 0 }}>
+          // `flexShrink: 0` with no wrap meant a header's buttons could only
+          // ever be one unbroken line: the row above lets the block drop under
+          // the title, but never breaks it internally, so a detail page's
+          // ~570px of actions ran off a 336px screen and `<main>` clipped the
+          // primary button away. Wrapping here fixes every page at once; the
+          // title block's `flex: 1; minWidth: 0` still keeps actions on their
+          // own line wherever there is room.
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
             {actions}
           </div>
         )}

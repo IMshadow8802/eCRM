@@ -14,7 +14,7 @@ function Fact({ label, value }) {
   return (
     <div>
       <div style={{ fontSize: 12, fontWeight: 500, color: p.text.tertiary }}>{label}</div>
-      <div style={{ fontSize: 14, fontWeight: 600, marginTop: 2, color: p.text.primary }}>{value || "—"}</div>
+      <div style={{ fontSize: 14, fontWeight: 600, marginTop: 2, color: p.text.primary, overflowWrap: "anywhere" }}>{value || "—"}</div>
     </div>
   );
 }
@@ -65,7 +65,7 @@ export default function CustomerDetailModal({ customerId, open, onClose, onEdit 
                 <Fact label="Open / total" value={`${customer.OpenTickets ?? 0} / ${customer.TotalTickets ?? 0}`} />
               </div>
               {(address || customer.Remarks) && (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 16 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 16, marginTop: 16 }}>
                   <Fact label="Address" value={address} />
                   <Fact label="Remarks" value={customer.Remarks} />
                 </div>

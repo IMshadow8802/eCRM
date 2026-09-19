@@ -46,3 +46,28 @@ describe("PageHeader", () => {
     expect(screen.getByText("X")).toBeInTheDocument();
   });
 });
+
+// Regression, 2026-09-19: the actions slot was `inline-flex; flexShrink: 0`
+// with no wrap. The row above it wraps, which lets the whole block drop under
+// the title, but never breaks it internally — so a detail page's ~570px of
+// actions ran straight off a 336px screen and `<main>`'s `overflowX: hidden`
+// clipped the primary button away entirely.
+describe("actions overflow", () => {
+  it("lets a crowded action cluster wrap instead of running off screen", () => {
+    wrap(
+      <PageHeader
+        title="Lead"
+        actions={
+          <>
+            <button type="button">Edit</button>
+            <button type="button">Transfer</button>
+            <button type="button">Schedule follow-up</button>
+          </>
+        }
+      />,
+    );
+    const slot = screen.getByRole("button", { name: "Edit" }).parentElement;
+    expect(slot.style.flexWrap).toBe("wrap");
+    expect(slot.style.flexShrink).not.toBe("0");
+  });
+});

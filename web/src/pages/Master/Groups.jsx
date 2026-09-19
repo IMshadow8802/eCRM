@@ -199,7 +199,7 @@ const Groups = () => {
         {/* Left: groups list */}
         <Box
           sx={{
-            width: 280,
+            width: { xs: "100%", sm: 280 },
             flexShrink: 0,
             border: `1px solid ${p.border.default}`,
             borderRadius: `${theme.radii.lg}px`,
@@ -279,7 +279,7 @@ const Groups = () => {
         </Box>
 
         {/* Right: permission matrix */}
-        <Box sx={{ flex: 1, minWidth: 320 }}>
+        <Box sx={{ flex: 1, minWidth: 0, width: { xs: "100%", md: "auto" } }}>
           {!selectedGroup ? (
             <EmptyState
               title="Select a role"

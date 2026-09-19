@@ -47,7 +47,7 @@ function InfoItem({ label, value }) {
   return (
     <div>
       <div style={{ fontSize: 12, fontWeight: 500, color: p.text.tertiary }}>{label}</div>
-      <div style={{ fontSize: 14, fontWeight: 600, marginTop: 2, color: p.text.primary }}>
+      <div style={{ fontSize: 14, fontWeight: 600, marginTop: 2, color: p.text.primary, overflowWrap: "anywhere" }}>
         {value || "—"}
       </div>
     </div>
@@ -256,7 +256,7 @@ export default function LeadDetail({ leadId: leadIdProp }) {
                 {Boolean(lead.LostReason) && <InfoItem label="Lost reason" value={lead.LostReason} />}
               </div>
               {(address || lead.Remarks) && (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 16 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 16, marginTop: 16 }}>
                   <InfoItem label="Address" value={address} />
                   <InfoItem label="Remarks" value={lead.Remarks} />
                 </div>

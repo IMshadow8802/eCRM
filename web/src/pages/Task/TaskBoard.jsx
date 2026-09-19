@@ -4,6 +4,7 @@ import {
   DndContext,
   DragOverlay,
   PointerSensor,
+  TouchSensor,
   KeyboardSensor,
   useSensor,
   useSensors,
@@ -96,8 +97,16 @@ export default function TaskBoard() {
 
   // Distance constraint so a plain click still opens the task (no accidental
   // drag); keyboard sensor keeps drag accessible.
+  //
+  // The touch sensor is not decoration. A card sits inside a column that
+  // scrolls vertically, inside a strip that scrolls horizontally, so on a
+  // phone the browser claimed the gesture as a scroll at exactly the 8px the
+  // pointer sensor was waiting for and fired `pointercancel` — the card never
+  // lifted, with no error and no hint. A long-press delay disambiguates:
+  // a tap still opens the card, a swipe still scrolls, a press-and-hold drags.
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 8 } }),
     useSensor(KeyboardSensor),
   );
 
@@ -300,7 +309,11 @@ export default function TaskBoard() {
   return (
     <div
       style={{
-        padding: 24,
+        // `<main>` already gutters the page (RootLayout `px: {xs: 1.5}`).
+        // Adding 24 on top left 288px for a 300px kanban column, so on a
+        // 360px phone no column was ever fully on screen. Leads and Tickets
+        // add nothing here for the same reason.
+        paddingBlock: 8,
         display: "flex",
         flexDirection: "column",
         height: "100%",

@@ -31,7 +31,7 @@ function InfoItem({ label, value }) {
   return (
     <div>
       <div style={{ fontSize: 12, fontWeight: 500, color: p.text.tertiary }}>{label}</div>
-      <div style={{ fontSize: 14, fontWeight: 600, marginTop: 2, color: p.text.primary }}>{value || "—"}</div>
+      <div style={{ fontSize: 14, fontWeight: 600, marginTop: 2, color: p.text.primary, overflowWrap: "anywhere" }}>{value || "—"}</div>
     </div>
   );
 }

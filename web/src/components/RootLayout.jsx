@@ -45,13 +45,13 @@ function RootLayout({ children }) {
   const closeMobile = () => setMobileOpen(false);
 
   if (isAuthRoute) {
-    return <Box sx={{ minHeight: "100vh" }}>{children}</Box>;
+    return <Box sx={{ minHeight: "100dvh" }}>{children}</Box>;
   }
 
   return (
     <Box
       sx={{
-        minHeight: "100vh",
+        minHeight: "100dvh",
         display: "flex",
         backgroundColor: "background.default",
       }}

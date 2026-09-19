@@ -196,4 +196,21 @@ describe("RichTextEditor", () => {
     setup({ hint: "Shown above the price table" });
     expect(screen.getByText("Shown above the price table")).toBeTruthy();
   });
+
+  // Regression, 2026-09-19: the link form was a non-wrapping row holding a
+  // fixed 220px input plus Apply plus Remove — about 356px. MUI's popover
+  // paper is capped at `calc(100% - 32px)` and clips its overflow-x, so at
+  // 360px the Remove button was sliced off with no way to scroll to it: you
+  // could add a link on a small phone but never clear one.
+  it("wraps the link form so Remove survives a 360px popover", () => {
+    render(themed(<Controlled initial="<p>x</p>" onChange={() => {}} />));
+    fireEvent.click(screen.getByTestId("rich-text-link"));
+    const input = screen.getByTestId("rich-text-href");
+    const form = input.closest("form");
+    expect(form.style.flexWrap).toBe("wrap");
+    expect(form.style.maxWidth).toBe("300px");
+    // Fluid, not a fixed 220 that cannot give way.
+    expect(input.style.width).toBe("100%");
+    expect(screen.getByRole("button", { name: "Remove" })).toBeInTheDocument();
+  });
 });

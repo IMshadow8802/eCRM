@@ -42,7 +42,7 @@ export default function BrandPanel({
         background: theme.tokens.gradient.loginPanel,
         px: { xs: 3, md: 6, lg: 8 },
         py: { xs: 3, md: 6 },
-        minHeight: { xs: "auto", md: "100vh" },
+        minHeight: { xs: "auto", md: "100dvh" },
       }}
     >
       {/* A fine dot grid, barely visible, so a large flat panel has some

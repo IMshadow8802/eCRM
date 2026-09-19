@@ -6,7 +6,7 @@ import Tooltip from "@mui/material/Tooltip";
 import { motion as motionTokens } from "../../styles/tokens";
 
 const SIZE = {
-  sm: { btn: 28, icon: 14 },
+  sm: { btn: 32, icon: 14 },
   md: { btn: 36, icon: 18 },
   lg: { btn: 44, icon: 22 },
 };

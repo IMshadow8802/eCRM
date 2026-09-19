@@ -41,3 +41,25 @@ describe("PdfPreview", () => {
     expect(screen.queryByTitle("Quotation preview")).toBeNull();
   });
 });
+
+// Regression, 2026-09-19: the preview is an <iframe> holding an A4 page with
+// `#toolbar=0`, which strips the viewer's zoom. At 336px that puts 9pt body
+// text at about 6.7 CSS pixels — and a phone may not render a PDF in an
+// iframe at all (Chrome on Android shows an empty box). There was no other
+// route to the document, so a draft could not be read on a phone.
+describe("the escape hatch out of the iframe", () => {
+  it("offers the same file in the browser's own viewer", () => {
+    usePdfPreview.mockReturnValue({ url: "blob:abc", blob: new Blob(), error: null });
+    renderWithProviders(<PdfPreview Component={() => null} doc={{}} />, { router: false });
+    const open = screen.getByTestId("pdf-preview-open");
+    expect(open).toHaveAttribute("href", "blob:abc");
+    expect(open).toHaveAttribute("target", "_blank");
+    expect(open).toHaveAttribute("rel", expect.stringContaining("noreferrer"));
+  });
+
+  it("offers nothing to open while the file is still being drawn", () => {
+    usePdfPreview.mockReturnValue({ url: null, blob: null, error: null });
+    renderWithProviders(<PdfPreview Component={() => null} doc={{}} />, { router: false });
+    expect(screen.queryByTestId("pdf-preview-open")).toBeNull();
+  });
+});

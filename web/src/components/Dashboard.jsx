@@ -46,8 +46,8 @@ const Tile = ({ children, title, subtitle, spanCol = 4, spanRow = 1 }) => (
   // two different cards stacked on top of each other.
   <Box
     sx={{
-      gridColumn: { xs: "span 12", md: `span ${spanCol}` },
-      gridRow: { xs: "auto", md: `span ${spanRow}` },
+      gridColumn: { xs: "span 12", sm: `span ${Math.min(spanCol, 6)}`, md: `span ${spanCol}` },
+      gridRow: { xs: "auto", sm: `span ${spanRow}`, md: `span ${spanRow}` },
       // Floor so height:100% charts resolve on xs and on first mount — recharts
       // needs a definite parent height.
       minHeight: spanRow * 150,
@@ -174,7 +174,7 @@ const Dashboard = () => {
       <Box
         sx={{
           display: "grid",
-          gridTemplateColumns: { xs: "repeat(2, 1fr)", md: "repeat(4, 1fr)" },
+          gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)", md: "repeat(4, 1fr)" },
           gap: 1.5,
           mb: 1.5,
         }}
@@ -203,8 +203,12 @@ const Dashboard = () => {
       <Box
         sx={{
           display: "grid",
-          gridTemplateColumns: { xs: "1fr", md: "repeat(12, 1fr)" },
-          gridAutoRows: { xs: "auto", md: "150px" },
+          // MUI's md is 900, so 768-899 — where the sidebar has already
+          // collapsed to a rail — fell through to the phone layout: nine
+          // full-width tiles and ~2000px of scroll on a screen with room for
+          // six columns.
+          gridTemplateColumns: { xs: "1fr", sm: "repeat(6, 1fr)", md: "repeat(12, 1fr)" },
+          gridAutoRows: { xs: "auto", sm: "150px", md: "150px" },
           gap: 1.5,
         }}
       >

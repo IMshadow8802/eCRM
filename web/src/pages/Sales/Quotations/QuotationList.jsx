@@ -96,11 +96,11 @@ export default function QuotationList() {
       <Helmet><title>PRD Infotech | Quotations</title></Helmet>
 
       <Box sx={{ display: "flex", gap: 1.5, mt: 1.5, flexWrap: "wrap", alignItems: "flex-end" }}>
-        <Box sx={{ width: 170 }}><Combobox size="sm" label="Status" placeholder="All live" options={STATUS_OPTS} value={pick(STATUS_OPTS, filters.Status)} onChange={(o) => set("Status")(o?.value ?? null)} data-testid="filter-status" /></Box>
-        <Box sx={{ width: 190 }}><Combobox size="sm" label="Owner" placeholder="Anyone" options={ownerOpts} value={pick(ownerOpts, filters.OwnerId)} onChange={(o) => set("OwnerId")(o?.value ?? null)} data-testid="filter-owner" /></Box>
-        <Box sx={{ width: 180 }}><Combobox size="sm" label="Branch" placeholder="All branches" options={branchOpts} value={pick(branchOpts, filters.BranchId)} onChange={(o) => set("BranchId")(o?.value ?? null)} data-testid="filter-branch" /></Box>
-        <Box sx={{ width: 160 }}><DateField size="sm" label="From" value={filters.FromDate} onChange={set("FromDate")} data-testid="filter-from" /></Box>
-        <Box sx={{ width: 160 }}><DateField size="sm" label="To" value={filters.ToDate} onChange={set("ToDate")} data-testid="filter-to" /></Box>
+        <Box sx={{ flex: "1 1 150px", maxWidth: 220 }}><Combobox size="sm" label="Status" placeholder="All live" options={STATUS_OPTS} value={pick(STATUS_OPTS, filters.Status)} onChange={(o) => set("Status")(o?.value ?? null)} data-testid="filter-status" /></Box>
+        <Box sx={{ flex: "1 1 150px", maxWidth: 220 }}><Combobox size="sm" label="Owner" placeholder="Anyone" options={ownerOpts} value={pick(ownerOpts, filters.OwnerId)} onChange={(o) => set("OwnerId")(o?.value ?? null)} data-testid="filter-owner" /></Box>
+        <Box sx={{ flex: "1 1 150px", maxWidth: 220 }}><Combobox size="sm" label="Branch" placeholder="All branches" options={branchOpts} value={pick(branchOpts, filters.BranchId)} onChange={(o) => set("BranchId")(o?.value ?? null)} data-testid="filter-branch" /></Box>
+        <Box sx={{ flex: "1 1 150px", maxWidth: 220 }}><DateField size="sm" label="From" value={filters.FromDate} onChange={set("FromDate")} data-testid="filter-from" /></Box>
+        <Box sx={{ flex: "1 1 150px", maxWidth: 220 }}><DateField size="sm" label="To" value={filters.ToDate} onChange={set("ToDate")} data-testid="filter-to" /></Box>
       </Box>
 
       <MaterialReactTable table={table} />

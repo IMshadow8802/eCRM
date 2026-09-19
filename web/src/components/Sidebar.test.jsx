@@ -217,4 +217,29 @@ describe("Sidebar", () => {
       screen.getByTestId("sidebar-Followups User-wise")
     ).toBeInTheDocument();
   });
+
+  // Reported from a phone, 2026-09-19: the drawer had rounded corners on the
+  // two edges that sit against the screen edge, so it read as a panel with a
+  // 16px notch cut out of it rather than a drawer. theme.js puts
+  // `borderRadius: radii.lg` on EVERY MuiPaper root, and the drawer's paper is
+  // a Paper like any other — nothing in Sidebar had asked for the radius.
+  it("squares the mobile drawer against the screen edge", () => {
+    setMatchMedia({ "(max-width:767.98px)": true });
+    const { container } = renderSidebar({ mobileOpen: true });
+    const paper = container.ownerDocument.querySelector(".MuiDrawer-paper");
+    expect(paper).toBeTruthy();
+    // Explicitly not `parseFloat(...) || 0` — that also passes when the
+    // property is absent, so it could never fail.
+    expect(["0", "0px"]).toContain(getComputedStyle(paper).borderRadius);
+  });
+
+  it("squares the permanent drawer too", () => {
+    setMatchMedia({});
+    const { container } = renderSidebar();
+    const paper = container.ownerDocument.querySelector(".MuiDrawer-paper");
+    expect(paper).toBeTruthy();
+    // Explicitly not `parseFloat(...) || 0` — that also passes when the
+    // property is absent, so it could never fail.
+    expect(["0", "0px"]).toContain(getComputedStyle(paper).borderRadius);
+  });
 });

@@ -77,7 +77,7 @@ export default function Drawer({
               bottom: 0,
               [side]: 0,
               width,
-              maxWidth: "100vw",
+              maxWidth: "100%",
               backgroundColor: p.surface.card,
               borderLeft: side === "right" ? `1px solid ${p.border.default}` : undefined,
               borderRight: side === "left" ? `1px solid ${p.border.default}` : undefined,

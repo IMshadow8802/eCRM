@@ -208,3 +208,14 @@ export function drillParams(filters, row) {
     ...(hasKey ? { [key]: row.GroupKey } : {}),
   };
 }
+
+/**
+ * A bar chart's category axis. Resolution and category names are free text the
+ * company writes in Settings — "Replaced under warranty" is a normal one — so
+ * on a 360px axis recharts either overlapped the tick labels or silently
+ * dropped every other one, and the reader could no longer tell which bar was
+ * which. Shortening fits more of them; the chart's Tooltip still shows the
+ * full name, because it reads the raw datum rather than the tick.
+ */
+export const truncTick = (v) =>
+  typeof v === "string" && v.length > 12 ? `${v.slice(0, 11)}\u2026` : v;

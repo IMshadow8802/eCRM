@@ -87,7 +87,7 @@ function AvatarPicker({ value, onChange }) {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(8, 1fr)",
+            gridTemplateColumns: "repeat(auto-fill, minmax(38px, 1fr))",
             gap: 8,
           }}
         >
@@ -122,7 +122,7 @@ function AvatarPicker({ value, onChange }) {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(9, 1fr)",
+            gridTemplateColumns: "repeat(auto-fill, minmax(38px, 1fr))",
             gap: 8,
           }}
         >

@@ -27,8 +27,20 @@ export default function Tabs({
     <div
       role="tablist"
       data-testid={testId}
+      // A tab strip is company-editable in this app: lookup kinds, ticket
+      // presets and report group-bys all come from the DB, so its width is not
+      // something a designer ever fixed. As `inline-flex` with no wrap and no
+      // scroll it simply overflowed, and `<main>` clips rather than scrolls —
+      // so the last tabs were not off-screen, they were gone, with no gesture
+      // that could reach them. Five separate pages lost tabs this way.
+      // It scrolls rather than wraps because that is what a tab bar does;
+      // wrapping would push the page content down a row on every phone.
+      className="ui-tabstrip"
       style={{
-        display: "inline-flex",
+        display: "flex",
+        overflowX: "auto",
+        scrollbarWidth: "none",
+        msOverflowStyle: "none",
         borderBottom: `1px solid ${p.border.default}`,
         gap: 4,
       }}
@@ -48,6 +60,8 @@ export default function Tabs({
               position: "relative",
               minHeight: s.h,
               paddingInline: s.px,
+              flexShrink: 0,
+              whiteSpace: "nowrap",
               border: "none",
               background: "transparent",
               fontSize: s.fz,

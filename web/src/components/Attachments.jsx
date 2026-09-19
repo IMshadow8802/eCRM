@@ -444,7 +444,10 @@ const Attachments = forwardRef(function Attachments(
                 <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13, color: p.text.primary }}>
                   {it.name}
                 </span>
-                <span style={{ fontSize: 12, color: p.text.secondary, flexShrink: 0 }}>
+                {/* The row's fixed chrome leaves about 70px for the name on
+                    a 360px screen. The byte count is the part a phone can do
+                    without — the name is not. */}
+                <span className="attachment-size" style={{ fontSize: 12, color: p.text.secondary, flexShrink: 0 }}>
                   {humanSize(it.size)}
                 </span>
                 {live ? (

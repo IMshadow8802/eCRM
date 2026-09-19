@@ -121,7 +121,7 @@ const MasterChipGrid = ({
                 ),
               },
             }}
-            sx={{ minWidth: 260 }}
+            sx={{ minWidth: { xs: 0, sm: 260 }, flex: { xs: "1 1 100%", sm: "0 1 auto" } }}
           />
           <Chip
             size="small"

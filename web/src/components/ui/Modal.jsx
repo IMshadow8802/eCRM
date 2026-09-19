@@ -108,12 +108,11 @@ function Modal({
               duration: motionTokens.duration.slow / 1000,
               ease: [0.2, 0, 0, 1],
             }}
-            className={className}
+            className={["ui-modal-dialog", className].filter(Boolean).join(" ")}
             style={{
               position: "relative",
               width: "100%",
               maxWidth: widthPx,
-              maxHeight: "calc(100vh - 48px)",
               display: "flex",
               flexDirection: "column",
               backgroundColor: p.surface.card,
@@ -216,6 +215,7 @@ function ModalFooter({ children, align = "right" }) {
         display: "flex",
         alignItems: "center",
         justifyContent: align === "left" ? "flex-start" : align === "between" ? "space-between" : "flex-end",
+        flexWrap: "wrap",
         gap: 8,
         padding: "12px 20px",
         borderTop: `1px solid ${p.border.default}`,

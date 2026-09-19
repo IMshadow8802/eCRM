@@ -171,7 +171,7 @@ const App = () => {
               <ErrorBoundary>
                 <Suspense
                   fallback={
-                    <div className="flex justify-center items-center h-screen">
+                    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "50vh" }}>
                       <HashLoader color={"#4F46E5"} loading={true} size={80} />
                     </div>
                   }

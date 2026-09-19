@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { alpha, useTheme } from '@mui/material/styles';
 import { WifiOff } from 'lucide-react';
 
 /**
@@ -6,6 +7,7 @@ import { WifiOff } from 'lucide-react';
  * Shows a persistent banner when offline that won't go away until connection is restored
  */
 const NetworkStatusBanner = () => {
+  const theme = useTheme();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [offlineStartTime, setOfflineStartTime] = useState(null);
@@ -141,23 +143,28 @@ const NetworkStatusBanner = () => {
   }
 
 
+  // This banner used to be `position: fixed; top: 0; z-index: 9999`, painted
+  // over a sticky TopNav that starts at y=8. At 360px its two halves could not
+  // wrap, so the text ran to three lines and the bar grew past the TopNav
+  // entirely — hiding the hamburger, which is the only way to open the menu on
+  // a phone. Going offline therefore locked a phone user out of navigating,
+  // and `testConnectivity` also trips on a network that merely blocks
+  // google.com, so the lockout could be permanent. It now renders in flow
+  // above the shell: it pushes the app down instead of covering it.
   return (
     <div
+      role="status"
       style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        backgroundColor: '#f44336', // Red background
-        color: 'white',
-        padding: '12px 16px',
-        zIndex: 9999,
+        backgroundColor: theme.palette.error.main,
+        color: theme.palette.error.contrastText,
+        padding: '10px 16px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '8px',
         boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
         fontSize: '14px',
-        fontFamily: 'system-ui, -apple-system, sans-serif'
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -173,15 +180,12 @@ const NetworkStatusBanner = () => {
       </div>
       
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <span style={{ fontSize: '12px', opacity: 0.9 }}>
-          Some features may not work properly
-        </span>
         <button
           onClick={handleRetry}
           disabled={isTestingConnection}
           style={{
-            backgroundColor: 'rgba(255, 255, 255, 0.2)',
-            color: 'white',
+            backgroundColor: alpha(theme.palette.common.white, 0.2),
+            color: 'inherit',
             border: 'none',
             borderRadius: '4px',
             padding: '6px 12px',
@@ -193,11 +197,11 @@ const NetworkStatusBanner = () => {
           }}
           onMouseOver={(e) => {
             if (!isTestingConnection) {
-              e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.3)';
+              e.target.style.backgroundColor = alpha(theme.palette.common.white, 0.3);
             }
           }}
           onMouseOut={(e) => {
-            e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+            e.target.style.backgroundColor = alpha(theme.palette.common.white, 0.2);
           }}
         >
           {isTestingConnection ? 'Testing...' : 'Retry'}

@@ -181,6 +181,19 @@
     font-size: inherit;
   }
 
+  /* iOS Safari zooms the whole page in whenever a focused form control
+     computes to less than 16px, and every control in this app is 13-15px
+     (ui/TextInput SIZE, typoTokens.body). The zoom leaves the layout wider
+     than the screen, so after every tap the user has to pinch back out.
+     Raise controls to 16px on small touch screens only — desktop density is
+     untouched. `!important` is required, not sloppiness: ui/TextInput writes
+     its font-size as an inline style, which nothing else can outrank.
+     `user-scalable=no` is NOT the alternative — iOS has ignored it since
+     iOS 10, and it removes pinch-zoom where it is honoured. */
+  @media (pointer: coarse) and (max-width: 767.98px) {
+    input, select, textarea { font-size: 16px !important; }
+  }
+
   /* Accessible focus ring fallback for non-MUI elements */
   :where(button, a, [role="button"], input, select, textarea):focus-visible {
     outline: 2px solid var(--color-primary-600);
@@ -268,6 +281,23 @@
   z-index: 1700 !important;
 }
 
+/* ui/Modal's height cap. `vh` is the viewport with the mobile browser's
+   toolbars hidden, so a tall modal parked its footer behind them — and Modal
+   locks body scrolling, which removes the flick that would collapse those
+   toolbars, so Save was genuinely unreachable. `dvh` tracks what is visible.
+   Both declarations are kept: an engine that does not know `dvh` drops the
+   second and keeps today's behaviour. This cannot live in the inline style —
+   a JS object keeps only the last of two identical keys. */
+.ui-modal-dialog {
+  max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
+}
+
+/* ui/Tabs scrolls horizontally so a long, DB-driven tab list is reachable on
+   a phone. Firefox and IE get `scrollbar-width`/`-ms-overflow-style` inline;
+   WebKit needs a pseudo-element, which an inline style cannot express. */
+.ui-tabstrip::-webkit-scrollbar { display: none; }
+
 /* ui/RichTextEditor — Tiptap is headless and ships no content styles. */
 .rte-content .tiptap { outline: none; min-height: inherit; }
 .rte-content .tiptap > * + * { margin-top: 0.4em; }
@@ -283,3 +313,21 @@
 .rte-content .tiptap th, .rte-content .tiptap td { border: 1px solid #e2e8f0; padding: 4px 6px; vertical-align: top; }
 .rte-content .tiptap th { background: #f8fafc; font-weight: 700; text-align: left; }
 .rte-content .tiptap .selectedCell { background: #eef2ff; }
+
+/* The rules above hardcode light-mode hexes, so a rich-text table drew a
+   near-white header and light borders straight onto the dark surface. Repeat
+   only the colours under the dark class; everything else is inherited. */
+html.dark .rte-content .tiptap blockquote { border-left-color: #334155; color: #94A3B8; }
+html.dark .rte-content .tiptap hr { border-top-color: #334155; }
+html.dark .rte-content .tiptap a { color: #A5B4FC; }
+html.dark .rte-content .tiptap th,
+html.dark .rte-content .tiptap td { border-color: #334155; }
+html.dark .rte-content .tiptap th { background: #141A2E; }
+html.dark .rte-content .tiptap .selectedCell { background: #1E293B; }
+
+/* components/Attachments — see the note at the call site: on a narrow screen
+   the filename needs the room the byte count was taking. */
+@media (max-width: 479.98px) {
+  .attachment-size { display: none; }
+}
+

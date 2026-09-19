@@ -250,7 +250,11 @@ describe("LeadDetail (spec 1)", () => {
     );
     renderDetail();
     await screen.findByTestId("lead-detail");
-    expect(screen.getByLabelText("Budget")).toHaveValue(5000);
+    // A string, not 5000: NumberInput stopped being <input type="number"> on
+    // 2026-09-19 (the native spinner sat beside its own +/- buttons and ate
+    // the tap target on a phone). type="text" + inputMode="decimal" keeps the
+    // numeric keypad and reports the raw string.
+    expect(screen.getByLabelText("Budget")).toHaveValue("5000");
     expect(screen.getByLabelText(/Renewal date/)).toHaveValue("2026-08-01");
     expect(screen.getByRole("switch")).toBeChecked();
     expect(screen.getByLabelText("Priority")).toHaveValue("Low");

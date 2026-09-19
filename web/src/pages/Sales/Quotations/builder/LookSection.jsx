@@ -9,7 +9,7 @@ export default function LookSection({ templateCode, accent, disabled = false, on
   const p = theme.tokens;
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-      <Box role="radiogroup" aria-label="Template" sx={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 1 }}>
+      <Box role="radiogroup" aria-label="Template" sx={{ display: "grid", gridTemplateColumns: { xs: "minmax(0, 1fr)", sm: "repeat(3, minmax(0, 1fr))" }, gap: 1 }}>
         {TEMPLATES.map((t) => {
           const on = t.code === templateCode;
           return (

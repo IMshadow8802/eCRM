@@ -103,6 +103,12 @@ export default function Chip({
         lineHeight: 1,
         cursor: onClick ? "pointer" : "default",
         whiteSpace: "nowrap",
+        // Lookup and status labels are company-editable, so there is no length
+        // a designer can rely on. Keep the single line, but stop it growing
+        // past what a phone can show.
+        maxWidth: "100%",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
       }}
       {...rest}
     >

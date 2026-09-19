@@ -157,7 +157,7 @@ const Tickets = () => {
         title="Complaints"
         subtitle="Every complaint, who holds it, and when it is due."
         actions={
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
             {selectedIds.length > 0 && (
               <Button variant="tonal" size="sm" leftIcon={<Users size={14} />} onClick={() => setTransferIds(selectedIds)} data-testid="bulk-reassign-btn">
                 Reassign {selectedIds.length}

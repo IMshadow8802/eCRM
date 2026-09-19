@@ -168,10 +168,15 @@ export default function RichTextEditor({
       </Popover>
 
       <Popover open={pop?.kind === "link"} anchorEl={pop?.anchor} onClose={close} data-testid={`${testId}-link-pop`}>
-        <form style={{ padding: 10, display: "flex", gap: 6, alignItems: "center" }}
+        {/* MUI caps a popover's paper at `calc(100% - 32px)` and clips its
+            overflow-x, so this row's 356px (a fixed 220px input + Apply +
+            Remove + padding) lost its Remove button at 360px — you could add
+            a link on a small phone but never clear one. Wrap, and let the
+            input be fluid. */}
+        <form style={{ padding: 10, display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", maxWidth: 300 }}
           onSubmit={(e) => { e.preventDefault(); if (href.trim()) run("link", href.trim()); else run("unlink"); close(); }}>
           <input aria-label="Link address" value={href} onChange={(e) => setHref(e.target.value)} placeholder="https://" autoFocus
-            style={{ ...selectStyle, width: 220, height: 30 }} data-testid={`${testId}-href`} />
+            style={{ ...selectStyle, width: "100%", height: 30 }} data-testid={`${testId}-href`} />
           <button type="submit" style={{ ...selectStyle, cursor: "pointer" }}>Apply</button>
           <button type="button" style={{ ...selectStyle, cursor: "pointer" }} onClick={() => { run("unlink"); close(); }}>Remove</button>
         </form>

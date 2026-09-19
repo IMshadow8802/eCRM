@@ -36,8 +36,12 @@ export const FormRow = ({ children, columns = 2, gap = "4", className = "" }) =>
   const colsClass =
     columns === 1
       ? "grid-cols-1"
+      // lg:, not md: — Tailwind's md is 768 but every MUI breakpoint in this
+      // app is md=900, so md: here went two-up in the 768-899 band while the
+      // rest of the page was still stacked. Tailwind's lg (1024) is the
+      // nearest step that never fires before MUI's md.
       : columns === 2
-        ? "grid-cols-1 md:grid-cols-2"
+        ? "grid-cols-1 lg:grid-cols-2"
         : columns === 3
           ? "grid-cols-1 md:grid-cols-3"
           : columns === 4

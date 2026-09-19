@@ -127,7 +127,14 @@ describe("DynamicField", () => {
       </>,
     );
     expect(screen.getByLabelText("T")).toHaveValue("");
-    expect(screen.getByLabelText("N")).toHaveValue(null);
+    // `toHaveValue(null)` is the jest-dom reading of an EMPTY
+    // <input type="number">. NumberInput stopped being one on 2026-09-19:
+    // type="number" drew the browser's own spinner right beside the
+    // component's +/- buttons, two sets of steppers on one field, and on a
+    // phone the native spinner ate the tap target. It is type="text" with
+    // inputMode="decimal" now — same keypad, no spinner — so an empty value
+    // reads as "".
+    expect(screen.getByLabelText("N")).toHaveValue("");
     expect(screen.getByLabelText("D")).toHaveValue("");
   });
 

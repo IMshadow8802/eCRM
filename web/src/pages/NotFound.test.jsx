@@ -54,13 +54,28 @@ describe("NotFound", () => {
     expect(document.title).toBe("eCRM");
   });
 
+  // This used to assert Tailwind's `.opacity-0`/`.opacity-100` classnames,
+  // which existed only to drive a `<style jsx>` block. styled-jsx is not a
+  // dependency here, so React rendered that block as a plain global <style>
+  // and its keyframes leaked into every other page. The entrance is now one
+  // transitioned inline value, so assert the thing the user actually sees.
   it("plays its entrance animation", async () => {
+    renderWithProviders(<NotFound />);
+    const page = screen.getByTestId("not-found");
+    expect(page.style.opacity).toBe("0");
+    await waitFor(() => expect(page.style.opacity).toBe("1"));
+  });
+
+  // Regression, 2026-09-19: the page was raw Tailwind against Tailwind's own
+  // palette, so in dark mode it was a white slab with near-black text inside a
+  // dark shell — the only page in the app that ignored the theme. It also used
+  // `min-h-screen` inside `<main>`, which already sits below the TopNav, so a
+  // ~376px page always showed a scrollbar with nothing below the fold.
+  it("renders through the themed primitives, not hardcoded Tailwind colours", () => {
     const { container } = renderWithProviders(<NotFound />);
-    // Starts hidden, then the mount timer reveals it.
-    expect(container.querySelector(".opacity-0")).toBeTruthy();
-    await waitFor(() =>
-      expect(container.querySelector(".opacity-0")).toBeNull(),
-    );
-    expect(container.querySelector(".opacity-100")).toBeTruthy();
+    const html = container.innerHTML;
+    expect(html).not.toMatch(/bg-white|text-gray-900|text-blue-600/);
+    expect(container.querySelector("style")).toBeNull();
+    expect(screen.getByTestId("not-found").style.minHeight).toBe("60vh");
   });
 });

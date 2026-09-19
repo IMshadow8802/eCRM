@@ -54,7 +54,10 @@ const ConfirmationDialog = ({
       size={maxWidth === "xs" ? "sm" : maxWidth}
       data-testid="confirmation-dialog"
     >
-      <div style={{ padding: "28px 24px 8px", textAlign: "center" }}>
+      {/* Every other Modal consumer wraps its content in Modal.Body, which
+          is the element that scrolls. This one hand-rolled a div, so a long
+          confirmation message had nowhere to go. */}
+      <div style={{ padding: "28px 24px 8px", textAlign: "center", overflowY: "auto", flex: 1 }}>
         <div
           style={{
             display: "inline-flex",

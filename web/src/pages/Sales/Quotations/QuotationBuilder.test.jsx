@@ -307,6 +307,19 @@ describe("QuotationBuilder — issued", () => {
     expect(screen.queryByRole("button", { name: /add line/i })).toBeNull();
   });
 
+  // Regression, 2026-09-19: Download lived only in the non-editable branch.
+  // The preview beside it is an <iframe>, and a phone may render nothing in
+  // one at all (Chrome on Android has no inline PDF viewer), so someone
+  // editing a draft on a phone had no way whatsoever to see the document they
+  // were building.
+  it("offers the download on a draft too, not only on a finalised quotation", async () => {
+    mocks({ q: quotation({ Status: "draft" }) });
+    open();
+    expect(await screen.findByRole("button", { name: /download pdf/i })).toBeInTheDocument();
+    // Still a draft: the draft-only actions are the ones on screen.
+    expect(screen.getByRole("button", { name: /^save$/i })).toBeInTheDocument();
+  });
+
   it("downloads the PDF that is on screen, named for the customer", async () => {
     mocks({ q: final });
     URL.createObjectURL = vi.fn(() => "blob:dl"); URL.revokeObjectURL = vi.fn();

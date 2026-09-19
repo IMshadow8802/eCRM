@@ -54,6 +54,7 @@ export function StatisticsCard({
             justifyContent: "center",
             width: 32,
             height: 32,
+            flexShrink: 0,
             borderRadius: theme.radii.md,
             backgroundColor: gradient
               ? "rgba(255,255,255,0.15)"
@@ -71,6 +72,10 @@ export function StatisticsCard({
             lineHeight: 1.2,
             textTransform: "uppercase",
             letterSpacing: "0.05em",
+            // "TODAY'S FOLLOW-UPS" breaks at the hyphen into three lines in a
+            // narrow tile, and "FOLLOW-" alone is wider than the content box.
+            minWidth: 0,
+            overflowWrap: "anywhere",
           }}
         >
           {title}
@@ -79,12 +84,16 @@ export function StatisticsCard({
 
       <div
         style={{
-          fontSize: 30,
+          // A money KPI like ₹45,23,180.00 is 13 tabular digits — wider than
+          // a two-up tile on a phone, and one unbreakable "word", so it spilled
+          // into the neighbouring card. Let it shrink, then break.
+          fontSize: "clamp(22px, 6vw, 30px)",
           fontWeight: 700,
           color: gradient ? "#FFFFFF" : p.text.primary,
-          lineHeight: 1,
+          lineHeight: 1.1,
           letterSpacing: "-0.02em",
           fontFeatureSettings: "'tnum'",
+          overflowWrap: "anywhere",
         }}
       >
         {value}

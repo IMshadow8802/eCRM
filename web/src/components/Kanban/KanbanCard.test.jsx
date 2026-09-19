@@ -283,3 +283,22 @@ describe("KanbanCard", () => {
     expect(screen.getByText("Late")).toBeInTheDocument();
   });
 });
+
+// Regression, 2026-09-19: @dnd-kit v6 leaves `touch-action` to the draggable.
+// A card sits inside a column that scrolls vertically, inside a strip that
+// scrolls horizontally, so on a phone the browser claimed the gesture as a
+// scroll at exactly the 8px the pointer sensor was waiting for and fired
+// `pointercancel`. The card never lifted — no error, no hint, nothing moved.
+describe("touch dragging", () => {
+  const card = { Id: 77, Title: "Movable" };
+
+  it("takes the touch gesture away from the scrollers when the card can move", () => {
+    renderWithProviders(<KanbanCardView task={card} canDrag />, { router: false });
+    expect(screen.getByTestId("kanban-card-77").style.touchAction).toBe("none");
+  });
+
+  it("leaves scrolling alone on a card the user may not move", () => {
+    renderWithProviders(<KanbanCardView task={card} canDrag={false} />, { router: false });
+    expect(screen.getByTestId("kanban-card-77").style.touchAction).toBe("auto");
+  });
+});

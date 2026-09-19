@@ -84,7 +84,7 @@ export default function Menu({
                 {item.icon && (
                   <span style={{ display: "inline-flex" }}>{item.icon}</span>
                 )}
-                <span style={{ flex: 1 }}>{item.label}</span>
+                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.label}</span>
                 {item.shortcut && (
                   <span
                     style={{

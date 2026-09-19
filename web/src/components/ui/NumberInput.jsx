@@ -58,8 +58,12 @@ const NumberInput = forwardRef(function NumberInput(
   return (
     <TextInput
       ref={ref}
-      type="number"
-      inputMode="numeric"
+      // `type="number"` renders the browser's native spinner, which then
+      // sits beside this component's own +/- buttons — two sets of steppers
+      // on one field, and on a phone the native one eats the tap target.
+      // `inputMode="decimal"` keeps the numeric keypad without the spinner.
+      type="text"
+      inputMode="decimal"
       value={value}
       onChange={handleChange}
       min={min}

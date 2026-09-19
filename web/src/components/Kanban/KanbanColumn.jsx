@@ -103,7 +103,7 @@ export default function KanbanColumn({
         border: `1px solid ${isDropTarget ? p.primary.border : p.border.default}`,
         display: "flex",
         flexDirection: "column",
-        maxHeight: "calc(100vh - 240px)",
+        maxHeight: "calc(100dvh - 240px)",
         transition:
           "background-color 240ms cubic-bezier(0.4,0,0.2,1), border-color 240ms cubic-bezier(0.4,0,0.2,1)",
       }}

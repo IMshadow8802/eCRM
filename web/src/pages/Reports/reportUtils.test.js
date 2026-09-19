@@ -3,8 +3,7 @@ import dayjs from "dayjs";
 
 import {
   PRESETS, DATE_BASES, presetRange, readFilters, writeFilters, toBody,
-  formatValue, toCsv, leadsUrl, drillParams, GROUP_PARAM, idFilters, drillRange,
-} from "./reportUtils";
+  formatValue, toCsv, leadsUrl, drillParams, GROUP_PARAM, idFilters, drillRange, truncTick } from "./reportUtils";
 
 const TODAY = dayjs("2026-09-10");
 const GROUP_BYS = [{ value: "source", label: "Source" }, { value: "owner", label: "Owner" }];
@@ -206,5 +205,26 @@ describe("leadsUrl / drillParams", () => {
     expect(drillParams({ ...f, groupBy: "source", SourceId: 4 }, { GroupKey: null })).toMatchObject({ SourceId: 4 });
     expect(drillParams({ ...f, groupBy: "source" }, { GroupKey: null })).toEqual(drillParams(f, { GroupKey: null }));
     expect(GROUP_PARAM.status).toBe("StatusId");
+  });
+});
+
+// Regression, 2026-09-19: resolution and category names are free text the
+// company writes in Settings ("Replaced under warranty"). Left whole on a
+// 360px X axis, recharts overlapped them or silently dropped every other
+// tick, and the reader could no longer tell which bar was which.
+describe("truncTick", () => {
+  it("leaves a label that already fits alone", () => {
+    expect(truncTick("Hardware")).toBe("Hardware");
+    expect(truncTick("Twelve chars")).toBe("Twelve chars");
+  });
+
+  it("shortens a longer one to twelve characters including the ellipsis", () => {
+    expect(truncTick("Replaced under warranty")).toBe("Replaced un…");
+    expect(truncTick("Replaced under warranty")).toHaveLength(12);
+  });
+
+  it("passes a non-string tick straight through", () => {
+    expect(truncTick(2026)).toBe(2026);
+    expect(truncTick(undefined)).toBeUndefined();
   });
 });

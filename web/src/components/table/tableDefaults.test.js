@@ -107,3 +107,38 @@ describe("tableDefaults", () => {
     ]);
   });
 });
+
+// Regression, 2026-09-19 — the table toolbar and container on a phone.
+describe("small-screen table defaults", () => {
+  // MRT lays its top toolbar out as `space-between` with no wrap and clips its
+  // own overflow, so a 260px floor on the search box painted over the
+  // show/hide-columns and toggle-filters buttons — on every list page, with no
+  // way to reach them.
+  it("lets the search field give way on a phone instead of pinning the toolbar", () => {
+    expect(tableDefaults.muiSearchTextFieldProps.sx.minWidth).toEqual({ xs: 0, sm: 260 });
+    expect(tableDefaults.muiSearchTextFieldProps.sx.width).toEqual({ xs: "100%", sm: "auto" });
+  });
+
+  it("lets the toolbar's action row wrap rather than clip", () => {
+    expect(tableDefaults.muiTopToolbarProps.sx.overflow).toBe("visible");
+    expect(tableDefaults.muiTopToolbarProps.sx["& > div"]).toEqual({ flexWrap: "wrap" });
+  });
+
+  // Without a floor the columns crush to min-content — a six-column list
+  // renders every column at ~40px and cells become stacks of single words —
+  // and the container's own `overflow: auto` never engages.
+  it("gives the table a width floor so it scrolls sideways instead of crushing", () => {
+    expect(tableDefaults.muiTableProps.sx.minWidth).toEqual({ xs: 720, md: "100%" });
+  });
+
+  // The 220px subtrahend assumes desktop chrome. On a phone the stack above
+  // the table is ~350px and every row in it has wrapped, so the page scrolled
+  // and the table scrolled inside it, with a sticky header stuck to a card
+  // that scrolls away.
+  it("drops the height cap on a phone and uses dvh above it", () => {
+    expect(tableDefaults.muiTableContainerProps.sx.maxHeight).toEqual({
+      xs: "none",
+      md: "calc(100dvh - 220px)",
+    });
+  });
+});

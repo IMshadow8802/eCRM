@@ -12,6 +12,18 @@ export default defineConfig(({ command, mode }) => {
 
     plugins: [react()],
 
+    // React and emotion must each resolve to ONE instance. pnpm keeps two
+    // physical copies of @emotion/react in the store (they differ only by a
+    // build-time peer), and a second copy at runtime gives "You are loading
+    // @emotion/react when it is already loaded", then "Invalid hook call"
+    // once two Reacts meet. Deduping costs nothing and removes the class of
+    // failure. (A mid-session dep re-optimisation is the other way to get
+    // there: the open tab ends up holding modules from two optimise runs, and
+    // the cure for that one is a hard reload.)
+    resolve: {
+      dedupe: ["react", "react-dom", "@emotion/react", "@emotion/styled"],
+    },
+
     build: {
       // Output to dist-web directory
       outDir: "dist-web",

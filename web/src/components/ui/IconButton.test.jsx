@@ -97,3 +97,15 @@ describe("IconButton", () => {
     expect(screen.getByTestId("dark")).toBeInTheDocument();
   });
 });
+
+// Regression, 2026-09-19: `sm` was 28px. Row actions use it four-wide with a
+// 4px gap (Tickets, Leads, Customers), which is below any touch-target floor
+// and puts Delete a mis-tap away from View.
+it("keeps the small size at a tappable 32px", () => {
+  wrap(
+    <IconButton size="sm" aria-label="Delete"><span /></IconButton>,
+  );
+  const btn = screen.getByRole("button", { name: "Delete" });
+  expect(btn.style.width).toBe("32px");
+  expect(btn.style.height).toBe("32px");
+});

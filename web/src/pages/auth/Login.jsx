@@ -151,7 +151,7 @@ export default function Login() {
       </Helmet>
       <Box
         sx={{
-          minHeight: "100vh",
+          minHeight: "100dvh",
           display: "grid",
           // The brand panel is a column beside the form on a desktop and a
           // strip above it on a phone — never hidden. Whose CRM this is stays

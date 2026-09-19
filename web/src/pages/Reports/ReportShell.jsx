@@ -23,6 +23,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { truncTick } from "./reportUtils";
 
 /**
  * The three pieces every report page was copying: the page shell (header,
@@ -109,7 +110,13 @@ export function ReportBarChart({ data, xKey, bars, legend = true, height = 260 }
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
         <CartesianGrid stroke={p.border.subtle} strokeDasharray="3 3" vertical={false} />
-        <XAxis dataKey={xKey} {...axis} />
+        {/* A resolution or category name is free text the company writes in
+            Settings — "Replaced under warranty" is a normal one. Left whole,
+            recharts either overlaps them or silently drops every other tick on
+            a phone, and the reader can no longer tell which bar is which.
+            Truncating fits more of them; the Tooltip still carries the full
+            name, because it reads the raw datum rather than the tick. */}
+        <XAxis dataKey={xKey} {...axis} tickFormatter={truncTick} />
         <YAxis {...axis} width={32} allowDecimals={false} />
         <Tooltip
           contentStyle={{
