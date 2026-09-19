@@ -22,6 +22,7 @@ import SparkLine from "./Charts/SparkLine";
 import Gauge from "./Charts/Gauge";
 import { useApiQuery } from "../hooks/useApiQuery";
 import { PLATFORM_ENDPOINTS } from "../api/platformQueries";
+import { formatCurrency } from "../utils/format";
 
 const KPI_CONFIG = {
   TotalLeads:      { color: "blue",  icon: PeopleOutlined,        title: "Total Leads" },
@@ -212,7 +213,7 @@ const Dashboard = () => {
           spanCol={8}
           spanRow={2}
           title="Leads this week"
-          subtitle="New leads vs conversions — last 7 days"
+          subtitle={`New leads vs conversions — last 7 days · Won this month: ${statBy("WonMonth")} · ${formatCurrency(statBy("WonValueMonth"))}`}
         >
           <AreaTrend data={leadsTrend} height={160} />
         </Tile>

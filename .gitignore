@@ -104,3 +104,6 @@ out/
 # Runtime file uploads (per-client volume in prod; local multer writes here)
 backend/uploads/
 backend/CRMUploads/
+
+# SDD workspace (git-ignored scratch for plan execution)
+.superpowers/

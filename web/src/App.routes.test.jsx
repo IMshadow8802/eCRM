@@ -49,6 +49,8 @@ describe("section landing redirects", () => {
     const paths = routesConfig.map((r) => r.path);
     expect(paths).toEqual(
       expect.arrayContaining([
+        "/sales/quotations",
+        "/sales/quotations/:quotationId",
         "/support/tickets",
         "/support/tickets/:ticketId",
         "/support/customers",

@@ -37,6 +37,10 @@ function mockTaskPermission(allowed) {
     recordsets: [[{ Allowed: allowed, Reason: "test" }]],
   });
 }
+function mockQuotationLookup(quote) {
+  database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [quote ? [quote] : [], [], []] });
+}
+const draftQuote = { Id: 4, LeadId: 9, Status: "draft", OwnerId: 7, BranchId: 2, CreatedBy: 7 };
 
 describe("attachmentController.save", () => {
   const file = {
@@ -390,5 +394,63 @@ describe("attachmentController.cascadeDelete", () => {
   it("swallows errors (cleanup must not fail the parent delete)", async () => {
     database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
     await expect(attachmentController.cascadeDelete(5, "task", 12)).resolves.toBeUndefined();
+  });
+});
+
+describe("attachmentController — quotation images", () => {
+  const file = { originalname: "site.jpg", filename: "q-1.jpg", size: 2048, mimetype: "image/jpeg", path: "/app/uploads/quotation/q-1.jpg" };
+
+  it("accepts an upload to a draft quotation", async () => {
+    mockQuotationLookup(draftQuote);
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[{ ResponseCode: 201, ResponseMess: "Attachment saved", AttachmentId: 55 }]],
+    });
+    const res = mockRes();
+    await attachmentController.save(baseReq({ body: { Entity: "quotation", EntityId: 4 }, file }), res);
+    expect(res.status).toHaveBeenCalledWith(201);
+    expect(res.json.mock.calls[0][0].data.attachmentId).toBe(55);
+  });
+
+  // An issued quotation is frozen — including its pictures.
+  it("refuses an upload to a quotation that is no longer a draft", async () => {
+    mockQuotationLookup({ ...draftQuote, Status: "final" });
+    const res = mockRes();
+    await attachmentController.save(baseReq({ body: { Entity: "quotation", EntityId: 4 }, file }), res);
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json.mock.calls[0][0].message).toMatch(/only a draft/i);
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1); // the lookup; never sp_SaveAttachment
+  });
+
+  it("refuses to delete a picture from a finalised quotation", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ Id: 55, Entity: "quotation", EntityId: 4 }]] });
+    mockQuotationLookup({ ...draftQuote, Status: "final" });
+    const res = mockRes();
+    await attachmentController.delete(baseReq({ body: { Id: 55 } }), res);
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalledWith("sp_DeleteAttachment", expect.anything());
+  });
+
+  it("deletes a picture from a draft quotation", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ Id: 55, Entity: "quotation", EntityId: 4 }]] });
+    mockQuotationLookup(draftQuote);
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[{ ResponseCode: 200, ResponseMess: "Deleted", Entity: "quotation", StoredName: "q-1.jpg" }]],
+    });
+    const res = mockRes();
+    await attachmentController.delete(baseReq({ body: { Id: 55 } }), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+});
+
+describe("attachmentController — letterhead images", () => {
+  // A finalised quotation re-renders from the attachment id it was issued
+  // with. Deleting a logo would blank every quotation that ever carried it.
+  it("never deletes a quoteprofile image", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ Id: 60, Entity: "quoteprofile", EntityId: 3 }]] });
+    const res = mockRes();
+    await attachmentController.delete(baseReq({ body: { Id: 60 } }), res);
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json.mock.calls[0][0].message).toMatch(/issued quotations/i);
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1); // the row lookup only
   });
 });

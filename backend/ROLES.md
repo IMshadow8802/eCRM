@@ -59,6 +59,14 @@ A user in several groups gets their **strongest**: lowest `HierarchyLevel` wins.
 | Customers read / write | any authenticated user of the company |
 | Customer delete | `requireAdmin`, and never while a ticket references it |
 
+### Leads + quotations — write rules (spec 3, 2026-09-18)
+
+| Action | Who |
+|---|---|
+| `leads/save` (edit) · `leads/setStatus` · `leads/convertLead` · `leads/transfer` · `leads/bulkTransfer` · `leads/delete` | in scope, **or** assignee, **or** creator (`assertRecordAccess`) |
+| `quotations/save` (edit) · `finaliseQuotation` · `reviseQuotation` · `rejectQuotation` · `deleteQuotation` | `assertRecordAccess("quotation", …)`, which gates on the **parent lead** — a quotation carries no `BranchId`/`OwnerId` of its own, so its visibility is always its lead's |
+| `saveQuoteProfile` | open (any authenticated user) while the branch's profile is unset (`IsSet = 0`); **admin-only** once set — `sp_SaveQuoteProfile` checks `@IsAdmin`, which the controller passes as `req.scope.isAdmin` |
+
 ---
 
 ## What each DataScope resolves to

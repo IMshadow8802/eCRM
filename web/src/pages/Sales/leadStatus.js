@@ -1,5 +1,5 @@
 // The lookup's Code is the machine meaning behind an editable label.
-// open | qualified = still being worked; lost | junk | converted = closed.
+// open | qualified = still being worked; lost | junk | converted (won) = closed.
 export const isActiveCode = (code) => code === "open" || code === "qualified";
 
 export const LEAD_PRESETS = [
@@ -7,6 +7,7 @@ export const LEAD_PRESETS = [
   { value: "mine", label: "My leads" },
   { value: "overdue", label: "Overdue" },
   { value: "unassigned", label: "Unassigned" },
+  { value: "won", label: "Won" },
   { value: "lost", label: "Lost" },
 ];
 
@@ -15,6 +16,7 @@ export const presetParams = (preset, userId) => {
     case "mine": return { OwnerId: userId };
     case "overdue": return { Overdue: true };
     case "unassigned": return { Unassigned: true };
+    case "won": return { StatusCode: "converted" };
     case "lost": return { StatusCode: "lost" };
     default: return {};
   }
@@ -46,8 +48,9 @@ export function leadsParamsToState(params) {
   const get = (k) => params.get(k) ?? "";
   const preset = isOn(get("Overdue")) ? "overdue"
     : isOn(get("Unassigned")) ? "unassigned"
-      : get("StatusCode") === "lost" ? "lost"
-        : "all";
+      : get("StatusCode") === "converted" ? "won"
+        : get("StatusCode") === "lost" ? "lost"
+          : "all";
   return {
     preset,
     filters: {

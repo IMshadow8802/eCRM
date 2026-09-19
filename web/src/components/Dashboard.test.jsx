@@ -135,6 +135,27 @@ describe("Dashboard", () => {
     expect(screen.getAllByText("4").length).toBeGreaterThan(0);
   });
 
+  it("shows this month's Won count and value in the leads-trend subtitle", () => {
+    useApiQuery.mockReturnValue({
+      data: {
+        dashboard: [
+          { Type: "WonMonth", Number: 3 },
+          { Type: "WonValueMonth", Number: 545000 },
+        ],
+      },
+      isLoading: false,
+    });
+    renderPage();
+    expect(screen.getByText(/Won this month: 3/)).toBeInTheDocument();
+    expect(screen.getByText(/5,45,000/)).toBeInTheDocument();
+  });
+
+  it("reads 'Won this month: 0' and does not crash when neither Won row comes back", () => {
+    useApiQuery.mockReturnValue({ data: { dashboard: [] }, isLoading: false });
+    expect(() => renderPage()).not.toThrow();
+    expect(screen.getByText(/Won this month: 0/)).toBeInTheDocument();
+  });
+
   it("shows real zeros on the number tiles instead of demo fallbacks", () => {
     useApiQuery.mockReturnValue({
       data: {

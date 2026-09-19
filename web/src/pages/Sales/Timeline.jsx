@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useTheme } from "@mui/material/styles";
 import {
-  CheckCircle2, CircleDot, Clock, Flag, Pencil, PhoneCall, PlusCircle, RotateCcw, UserCheck, XCircle,
+  CheckCircle2, CircleDot, Clock, FileText, Flag, Pencil, PhoneCall, PlusCircle, RotateCcw, UserCheck, XCircle,
 } from "lucide-react";
 import dayjs from "dayjs";
 
@@ -23,6 +23,7 @@ const TYPE_META = {
   reopened: { label: "Reopened", Icon: RotateCcw, tone: "warning" },
   escalated: { label: "Escalated", Icon: Flag, tone: "warning" },
   call: { label: "Call", Icon: PhoneCall, tone: "primary" },
+  quotation: { label: "Quotation", Icon: FileText, tone: "primary" },
 };
 
 const formatType = (type) =>

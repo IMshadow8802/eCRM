@@ -26,6 +26,7 @@ describe("productController.save", () => {
     expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_SaveProduct", {
       Id: 0, CompId: 5, UserId: 7, Name: "TV 43in", Code: "TV43",
       CategoryId: 12, UnitPrice: 45000, MarginPct: 10, IsActive: true,
+      HSNCode: null, TaxPct: null, Unit: null, Description: null,
     });
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json.mock.calls[0][0].data.Id).toBe(3);
@@ -46,6 +47,23 @@ describe("productController.save", () => {
     const res = mockRes();
     await productController.save(baseReq({ Name: "X" }), res);
     expect(res.status).toHaveBeenCalledWith(500);
+  });
+
+  it("forwards HSN, GST %, unit and description; numbers arrive as strings from the web", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ Id: 3, ResponseCode: 200, ResponseMess: "ok" }]] });
+    await productController.save(
+      baseReq({ Name: "5 kW Rooftop", HSNCode: " 8541 ", TaxPct: "12", Unit: "Nos", Description: "Mono PERC" }),
+      mockRes(),
+    );
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({
+      HSNCode: "8541", TaxPct: 12, Unit: "Nos", Description: "Mono PERC",
+    });
+  });
+
+  it("sends null, not 0, for a GST % that was left empty", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ Id: 3, ResponseCode: 200, ResponseMess: "ok" }]] });
+    await productController.save(baseReq({ Name: "x", TaxPct: "" }), mockRes());
+    expect(database.executeStoredProcedure.mock.calls[0][1].TaxPct).toBeNull();
   });
 });
 

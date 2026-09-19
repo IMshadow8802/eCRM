@@ -13,6 +13,7 @@ const {
   canWriteBranch,
   canReadBranch,
   assertRecordAccess,
+  assertCanAssign,
   canReopen,
 } = require("../../../src/middleware/permission");
 const { mockRes } = require("../../helpers/mockRes");
@@ -485,6 +486,201 @@ describe("permission middleware", () => {
       const res = mockRes();
       await expect(assertRecordAccess(selfReq, res, "lead", 9)).resolves.toBe(false);
       expect(res.status).toHaveBeenCalledWith(500);
+    });
+
+    // A quotation has no permission model of its own: sp_FetchQuotationDetail
+    // returns the LEAD's OwnerId / BranchId / CreatedBy, so canSeeRecord
+    // answers for the lead without knowing a quotation exists.
+    it("gates a quotation on its parent lead's visibility", async () => {
+      const quote = { Id: 4, LeadId: 9, Status: "draft", OwnerId: selfReq.user.UserId, BranchId: 2, CreatedBy: 99 };
+      database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[quote], [], []] });
+      await expect(assertRecordAccess(selfReq, mockRes(), "quotation", 4)).resolves.toEqual(quote);
+      expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_FetchQuotationDetail", {
+        CompId: selfReq.user.CompId, QuotationId: 4,
+      });
+    });
+
+    it("403s a quotation whose lead the caller cannot see", async () => {
+      database.executeStoredProcedure.mockResolvedValueOnce({
+        recordsets: [[{ Id: 4, Status: "draft", OwnerId: 999, BranchId: 77, CreatedBy: 999 }], [], []],
+      });
+      const res = mockRes();
+      await expect(assertRecordAccess(selfReq, res, "quotation", 4)).resolves.toBe(false);
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+
+    // The letterhead is the company's. A Self-scoped agent in another branch
+    // must still be able to draw the logo on a quotation.
+    it("lets any user of the company read a quote profile, whatever their scope", async () => {
+      const profile = { Id: 3, CompId: selfReq.user.CompId, BranchId: 77, IsSet: true };
+      database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[profile]] });
+      await expect(assertRecordAccess(selfReq, mockRes(), "quoteprofile", 3)).resolves.toEqual(profile);
+      expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_FetchQuoteProfileById", {
+        CompId: selfReq.user.CompId, ProfileId: 3,
+      });
+    });
+
+    it("403s a quote profile that is not in the caller's company (the SP returns nothing)", async () => {
+      database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[]] });
+      await expect(assertRecordAccess(selfReq, mockRes(), "quoteprofile", 3)).resolves.toBe(false);
+    });
+  });
+
+  // Transfer target guard. Three refusal rules in cheapness order, then a
+  // DB-backed membership check. No isAdmin shortcut anywhere in here —
+  // dataScope alone decides wide vs narrow.
+  describe("assertCanAssign", () => {
+    beforeEach(() => {
+      database.executeStoredProcedure.mockReset();
+    });
+
+    const req = (dataScope, UserId = 7, CompId = 5, extra = {}) => ({
+      user: { UserId, CompId },
+      scope: { dataScope, ...extra },
+    });
+
+    it("refuses to leave a record unassigned under a narrow (Team) scope", async () => {
+      const res = mockRes();
+      await expect(assertCanAssign(req("Team"), res, {})).resolves.toBe(false);
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ message: "Only a manager can leave a record unassigned" }),
+      );
+      expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+    });
+
+    it("refuses to leave a record unassigned under Self scope too", async () => {
+      const res = mockRes();
+      await expect(assertCanAssign(req("Self"), res, { toUserId: 0 })).resolves.toBe(false);
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+
+    it("refuses moving a record to another branch under a narrow scope, even with a target user", async () => {
+      const res = mockRes();
+      await expect(
+        assertCanAssign(req("Team"), res, { toUserId: 3, toBranchId: 9 }),
+      ).resolves.toBe(false);
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: "Only a branch manager or above can move a record to another branch",
+        }),
+      );
+      expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+    });
+
+    it("lets a wide-scope (Company) caller unassign without touching the DB", async () => {
+      const res = mockRes();
+      await expect(assertCanAssign(req("Company"), res, {})).resolves.toBe(true);
+      expect(res.status).not.toHaveBeenCalled();
+      expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+    });
+
+    it("lets a wide-scope (Branch) caller move an unassigned record to another branch", async () => {
+      const res = mockRes();
+      await expect(
+        assertCanAssign(req("Branch"), res, { toBranchId: 9 }),
+      ).resolves.toBe(true);
+      expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+    });
+
+    // Does NOT check req.scope.isAdmin at all — only dataScope decides wide vs
+    // narrow. An IsAdmin user whose scope is still narrow (e.g. mis-provisioned)
+    // gets no bypass here.
+    it("gives no isAdmin bypass — a narrow-scope caller is refused even if isAdmin is true", async () => {
+      const res = mockRes();
+      await expect(
+        assertCanAssign(req("Self", 7, 5, { isAdmin: true }), res, {}),
+      ).resolves.toBe(false);
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+    });
+
+    it("allows a target the caller's assignable-users list includes (in scope)", async () => {
+      database.executeStoredProcedure.mockResolvedValueOnce({
+        recordsets: [[{ Id: 3 }, { Id: 9 }]],
+      });
+      const res = mockRes();
+      await expect(
+        assertCanAssign(req("Team", 7, 5), res, { toUserId: 3 }),
+      ).resolves.toBe(true);
+      expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_FetchAssignableUsers", {
+        UserId: 7, CompId: 5, BranchId: null,
+      });
+      expect(res.status).not.toHaveBeenCalled();
+    });
+
+    it("refuses a target outside the caller's assignable-users list (out of scope)", async () => {
+      database.executeStoredProcedure.mockResolvedValueOnce({
+        recordsets: [[{ Id: 11 }]],
+      });
+      const res = mockRes();
+      await expect(
+        assertCanAssign(req("Team", 7, 5), res, { toUserId: 3 }),
+      ).resolves.toBe(false);
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ message: "You cannot assign records to that user" }),
+      );
+    });
+
+    // Not a distinct code branch — assertCanAssign has no self-assignment
+    // special case. Included because it was asked for: it exercises the same
+    // success path, with the caller's own id in the assignable-users rows.
+    it("allows the caller to assign to themself when the list includes their own id", async () => {
+      database.executeStoredProcedure.mockResolvedValueOnce({
+        recordsets: [[{ Id: 7 }]],
+      });
+      const res = mockRes();
+      await expect(
+        assertCanAssign(req("Team", 7, 5), res, { toUserId: 7 }),
+      ).resolves.toBe(true);
+    });
+
+    it("lets a wide-scope caller reassign AND move branch in one call, passing BranchId through", async () => {
+      database.executeStoredProcedure.mockResolvedValueOnce({
+        recordsets: [[{ Id: 12 }]],
+      });
+      const res = mockRes();
+      await expect(
+        assertCanAssign(req("MultiBranch", 7, 5), res, { toUserId: 12, toBranchId: 9 }),
+      ).resolves.toBe(true);
+      expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_FetchAssignableUsers", {
+        UserId: 7, CompId: 5, BranchId: 9,
+      });
+    });
+
+    it("falls back to the singular `recordset` field when the driver returns that shape", async () => {
+      database.executeStoredProcedure.mockResolvedValueOnce({
+        recordset: [{ Id: 3 }],
+      });
+      const res = mockRes();
+      await expect(
+        assertCanAssign(req("Team", 7, 5), res, { toUserId: 3 }),
+      ).resolves.toBe(true);
+    });
+
+    it("refuses when the SP result carries no rows at all", async () => {
+      database.executeStoredProcedure.mockResolvedValueOnce({});
+      const res = mockRes();
+      await expect(
+        assertCanAssign(req("Team", 7, 5), res, { toUserId: 3 }),
+      ).resolves.toBe(false);
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+
+    it("fails closed (500) and logs when the assignable-users lookup throws", async () => {
+      database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
+      const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+      const res = mockRes();
+      await expect(
+        assertCanAssign(req("Team", 7, 5), res, { toUserId: 3 }),
+      ).resolves.toBe(false);
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ message: "Failed to verify assignment target", code: "SERVER_ERROR" }),
+      );
+      consoleSpy.mockRestore();
     });
   });
 

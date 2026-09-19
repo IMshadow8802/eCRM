@@ -1,6 +1,7 @@
 export { default as Button } from "./Button";
 export { default as IconButton } from "./IconButton";
 export { default as TextInput } from "./TextInput";
+export { default as MobileInput } from "./MobileInput";
 export { default as TextArea } from "./TextArea";
 export { default as NumberInput } from "./NumberInput";
 export { default as Checkbox } from "./Checkbox";

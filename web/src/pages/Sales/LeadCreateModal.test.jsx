@@ -220,7 +220,7 @@ describe("LeadCreateModal", () => {
     renderWithProviders(
       <LeadCreateModal
         open
-        lead={{ Id: 9, Name: "Acme", MobileNo: "9", City: "Pune" }}
+        lead={{ Id: 9, Name: "Acme", MobileNo: "9998887776", City: "Pune" }}
         onClose={() => {}}
       />,
       { router: false },
@@ -230,7 +230,7 @@ describe("LeadCreateModal", () => {
     const user = userEvent.setup();
     await user.click(screen.getByTestId("lead-create-submit"));
     await waitFor(() => expect(captured).toBeTruthy());
-    expect(captured).toMatchObject({ Id: 9, City: "Pune", CustomJSON: null });
+    expect(captured).toMatchObject({ Id: 9, City: "Pune", MobileNo: "9998887776", CustomJSON: null });
     expect(captured.OwnerId).toBeUndefined();
     expect(captured.StatusId).toBeUndefined();
     expect(captured.FirstFollowupAt).toBeUndefined();
@@ -250,6 +250,20 @@ describe("LeadCreateModal", () => {
     expect(await screen.findByText("Name is required")).toBeInTheDocument();
     expect(screen.getByText("Mobile number is required")).toBeInTheDocument();
     expect(screen.getByText("Invalid email")).toBeInTheDocument();
+    expect(saveSpy).not.toHaveBeenCalled();
+  }, 20000);
+
+  it("rejects a mobile that isn't ten digits and posts nothing", async () => {
+    const saveSpy = vi.fn();
+    mockSave(saveSpy);
+    renderWithProviders(<LeadCreateModal open onClose={() => {}} />, { router: false });
+    const user = userEvent.setup();
+
+    await user.type(screen.getByTestId("lead-name"), "Sharma");
+    await user.type(screen.getByTestId("lead-mobile"), "12345");
+    await user.click(screen.getByTestId("lead-create-submit"));
+
+    expect(await screen.findByText("Mobile number must be 10 digits")).toBeInTheDocument();
     expect(saveSpy).not.toHaveBeenCalled();
   }, 20000);
 });

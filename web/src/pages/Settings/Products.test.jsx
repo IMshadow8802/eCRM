@@ -101,7 +101,7 @@ describe("Products page", () => {
     expect(cfg.getRowId({ Id: 7 })).toBe(7);
   });
 
-  it("creates a product with numeric price and margin", async () => {
+  it("creates a product with numeric price, margin and tax fields", async () => {
     post.mockResolvedValue({ data: { success: true, data: { Id: 3 } } });
     renderPage();
     const user = userEvent.setup();
@@ -112,6 +112,10 @@ describe("Products page", () => {
     await user.click(await screen.findByRole("option", { name: "Electronics" }));
     await user.type(screen.getByLabelText(/Unit price/), "45000");
     await user.type(screen.getByLabelText(/Margin/), "10");
+    await user.type(screen.getByLabelText(/HSN/), "8528");
+    await user.type(screen.getByLabelText(/GST %/), "18");
+    await user.type(screen.getByLabelText(/^Unit$/), "Nos");
+    await user.type(screen.getByLabelText(/Description/), "43-inch LED TV");
     await user.click(screen.getByRole("button", { name: "Create Product" }));
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith("/api/products/saveProduct", {
@@ -122,6 +126,10 @@ describe("Products page", () => {
         UnitPrice: 45000,
         MarginPct: 10,
         IsActive: true,
+        HSNCode: "8528",
+        TaxPct: 18,
+        Unit: "Nos",
+        Description: "43-inch LED TV",
       })
     );
   });
@@ -134,6 +142,32 @@ describe("Products page", () => {
     await user.type(screen.getByLabelText(/Margin/), "150");
     await user.click(screen.getByRole("button", { name: "Create Product" }));
     expect(screen.getByText(/between 0 and 100/)).toBeInTheDocument();
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("rejects a GST % over 100 before posting", async () => {
+    renderPage();
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("new-product-btn"));
+    await user.type(screen.getByLabelText(/^Name/), "X");
+    await user.type(screen.getByLabelText(/GST %/), "101");
+    await user.click(screen.getByRole("button", { name: "Create Product" }));
+    expect(screen.getByText("GST % must be between 0 and 100")).toBeInTheDocument();
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  // HSNCode is VARCHAR(10) in the DB — a longer value must be rejected with a
+  // readable message, not truncated (maxLength would silently store a
+  // different, wrong-but-plausible code on paste) and not left to surface as
+  // a raw SQL failure.
+  it("rejects an HSN/SAC code longer than 10 characters before posting", async () => {
+    renderPage();
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("new-product-btn"));
+    await user.type(screen.getByLabelText(/^Name/), "X");
+    await user.type(screen.getByLabelText(/HSN/), "12345678901");
+    await user.click(screen.getByRole("button", { name: "Create Product" }));
+    expect(screen.getByText(/at most 10 characters/)).toBeInTheDocument();
     expect(post).not.toHaveBeenCalled();
   });
 
@@ -186,6 +220,10 @@ describe("Products page", () => {
         UnitPrice: 32000,
         MarginPct: 12,
         IsActive: false,
+        HSNCode: null,
+        TaxPct: null,
+        Unit: null,
+        Description: null,
       })
     );
   });
@@ -205,6 +243,10 @@ describe("Products page", () => {
         UnitPrice: null,
         MarginPct: null,
         IsActive: true,
+        HSNCode: null,
+        TaxPct: null,
+        Unit: null,
+        Description: null,
       })
     );
   });
@@ -302,6 +344,7 @@ describe("Products columns", () => {
       "CategoryName",
       "UnitPrice",
       "MarginPct",
+      "TaxPct",
       "IsActive",
     ]);
   });
@@ -316,6 +359,8 @@ describe("Products columns", () => {
     expect(cellOf("UnitPrice")(cell(null))).toBe("—");
     expect(cellOf("MarginPct")(cell(10))).toBe("10%");
     expect(cellOf("MarginPct")(cell(null))).toBe("—");
+    expect(cellOf("TaxPct")(cell(18))).toBe("18%");
+    expect(cellOf("TaxPct")(cell(null))).toBe("—");
 
     // The status cell is the design-system Chip, which reads theme.tokens —
     // a bare render() has no theme, so wrap it like the row-actions helper does.

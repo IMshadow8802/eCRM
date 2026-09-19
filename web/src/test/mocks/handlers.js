@@ -62,6 +62,17 @@ export const handlers = [
       data: { attachments: [] },
     }),
   ),
+  http.post(`*/api/quotations/fetchQuotations`, async () =>
+    HttpResponse.json({
+      success: true,
+      message: "ok",
+      responseCode: 200,
+      data: {
+        quotations: [],
+        pagination: { currentPage: 1, pageSize: 25, totalRecords: 0, totalPages: 0 },
+      },
+    }),
+  ),
   http.post(`*/api/projects/fetchProjects`, async () =>
     HttpResponse.json({
       success: true,

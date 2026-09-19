@@ -14,6 +14,7 @@ import {
   NumberInput,
   DateField,
   Combobox,
+  MobileInput,
 } from "../../components/ui";
 import FormGrid from "../../components/ui/FormGrid";
 import DynamicField from "../../components/DynamicField";
@@ -23,14 +24,15 @@ import { useApiMutation } from "../../hooks/useApiMutation";
 import { useLookups } from "../../hooks/useLookups";
 import { useAssignableUsers } from "../../hooks/useAssignableUsers";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
+import { mobileSchema } from "../../utils/mobile";
 
 // Only the columns sp_SaveLead accepts. CompId/BranchId/UserId are injected
 // server-side by leadController.save — never sent from here.
 const schema = z.object({
   Name: z.string().trim().min(1, "Name is required"),
   Company: z.string().optional(),
-  MobileNo: z.string().trim().min(1, "Mobile number is required"),
-  AltMobile: z.string().optional(),
+  MobileNo: mobileSchema({ required: true }),
+  AltMobile: mobileSchema({ label: "Alternate mobile" }),
   Email: z.union([z.string().email("Invalid email"), z.literal("")]).optional(),
   Address: z.string().optional(),
   City: z.string().optional(),
@@ -286,7 +288,7 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
               control={control}
               name="MobileNo"
               render={({ field }) => (
-                <TextInput
+                <MobileInput
                   label="Mobile"
                   required
                   value={field.value}
@@ -301,11 +303,12 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
               control={control}
               name="AltMobile"
               render={({ field }) => (
-                <TextInput
+                <MobileInput
                   label="Alternate mobile"
                   value={field.value}
                   onChange={field.onChange}
                   onBlur={field.onBlur}
+                  error={errors.AltMobile?.message}
                   data-testid="lead-alt-mobile"
                 />
               )}

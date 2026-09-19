@@ -1,4 +1,5 @@
-// Multipart upload handling for attachments (tasks / tickets / leads).
+// Multipart upload handling for attachments (tasks / tickets / leads /
+// quotation pictures / branch letterheads).
 // Files always land under a relative `uploads/<entity>/` dir → inside the
 // container that's /app/uploads/<entity>/, which is the per-client host volume
 // mounted by docker-compose. Same code, different host dir per client.
@@ -8,7 +9,8 @@ const crypto = require("crypto");
 const multer = require("multer");
 
 const UPLOAD_ROOT = path.join(process.cwd(), "uploads");
-const ENTITIES = new Set(["task", "ticket", "lead"]);
+// Keep in step with sp_SaveAttachment's whitelist (backend/sql/091 §4).
+const ENTITIES = new Set(["task", "ticket", "lead", "quotation", "quoteprofile"]);
 const MAX_SIZE = 200 * 1024 * 1024; // 200 MB — release APKs run 20-150 MB
 
 // mime + extension whitelist — never trust the client mime alone, so both must
@@ -57,8 +59,20 @@ const storage = multer.diskStorage({
   },
 });
 
+// A quotation's pictures are drawn into a PDF, and @react-pdf/renderer can only
+// draw PNG and JPEG. Handed a WebP it logs "Not valid image extension" and
+// renders the page WITHOUT the image — no exception, nothing the user can see.
+// Found in the live pass 2026-09-19: a WebP logo uploaded happily and the
+// letterhead simply came out blank. WebP stays legal everywhere else (a task or
+// a complaint shows its attachments in a browser, which draws WebP fine).
+const PDF_IMAGE_ENTITIES = new Set(["quotation", "quoteprofile"]);
+const PDF_IMAGE_EXT = new Set([".png", ".jpg", ".jpeg"]);
+
 function fileFilter(req, file, cb) {
   const ext = path.extname(file.originalname).toLowerCase();
+  if (PDF_IMAGE_ENTITIES.has(safeEntity(req)) && !PDF_IMAGE_EXT.has(ext)) {
+    return cb(new Error("NOT_A_PDF_IMAGE"));
+  }
   if (EXT_ONLY.has(ext)) return cb(null, true);
   const exts = ALLOWED[file.mimetype];
   if (!exts || !exts.includes(ext)) {
@@ -77,6 +91,8 @@ module.exports = {
   MAX_SIZE_MB: MAX_SIZE / (1024 * 1024),
   ALLOWED,
   EXT_ONLY,
+  PDF_IMAGE_ENTITIES,
+  PDF_IMAGE_EXT,
   fileFilter,
   safeEntity,
   storage,

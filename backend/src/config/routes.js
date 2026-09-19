@@ -9,6 +9,7 @@ const kanbanRoutes = require("../routes/kanbanRoutes");
 const workspaceRoutes = require("../routes/workspaceRoutes");
 const notificationRoutes = require("../routes/notificationRoutes");
 const leadRoutes = require("../routes/leadRoutes");
+const quotationRoutes = require("../routes/quotationRoutes");
 const followupRoutes = require("../routes/followupRoutes");
 const callRoutes = require("../routes/callRoutes");
 const ticketRoutes = require("../routes/ticketRoutes");
@@ -32,6 +33,7 @@ function setupRoutes(app) {
   app.use("/api/workspaces", workspaceRoutes);
   app.use("/api/notifications", notificationRoutes);
   app.use("/api/leads", leadRoutes);
+  app.use("/api/quotations", quotationRoutes);
   app.use("/api/followups", followupRoutes);
   app.use("/api/calls", callRoutes);
   app.use("/api/tickets", ticketRoutes);

@@ -31,6 +31,7 @@ jest.mock("../../../src/controllers/leadController", () => ({
   transfer: hit("transfer"),
   bulkTransfer: hit("bulkTransfer"),
   delete: hit("delete"),
+  convert: hit("convert"),
 }));
 
 const express = require("express");
@@ -50,6 +51,7 @@ describe("leadRoutes", () => {
     ["/api/leads/transferLead", { LeadId: 9, ToUserId: 3 }, "transfer"],
     ["/api/leads/bulkTransferLeads", { LeadIds: [9] }, "bulkTransfer"],
     ["/api/leads/deleteLeads", { Id: 9 }, "delete"],
+    ["/api/leads/convertLead", { LeadId: 9, WonValue: 4000 }, "convert"],
   ])("routes %s to the %s handler", async (path, body, handler) => {
     const r = await request(app).post(path).send(body);
     expect(r.status).toBe(200);

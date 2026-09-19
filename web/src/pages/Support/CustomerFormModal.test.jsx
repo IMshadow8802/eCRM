@@ -34,7 +34,7 @@ describe("CustomerFormModal", () => {
     await waitFor(() => expect(cap.save).toBeTruthy());
     expect(cap.save).toEqual({
       Id: 0, Name: "Beta Ltd", ContactPerson: "Rohan", Mobile: "8880001111", AltMobile: null, Email: null,
-      Address: null, City: "Pune", State: null, Pincode: null, Remarks: null,
+      Address: null, City: "Pune", State: null, Pincode: null, GSTIN: null, Remarks: null,
     });
     // The mock answers Id 44 — the picker needs the row with its new id, not a refetch.
     expect(onSaved).toHaveBeenCalledWith({ ...cap.save, Id: 44 });
@@ -61,7 +61,7 @@ describe("CustomerFormModal", () => {
     await waitFor(() => expect(cap.save).toMatchObject({ Name: "Nameless Shop", Mobile: null, Email: "shop@example.com" }));
   });
 
-  it("rejects letters in a mobile and a malformed email", async () => {
+  it("strips letters from a typed mobile and rejects it for being short, alongside a malformed email", async () => {
     const cap = mockCustomerEndpoints();
     renderModal();
     const user = userEvent.setup();
@@ -69,7 +69,9 @@ describe("CustomerFormModal", () => {
     await user.type(screen.getByTestId("customer-Mobile"), "98abc");
     await user.type(screen.getByTestId("customer-Email"), "not-an-email");
     await user.click(screen.getByTestId("customer-form-submit"));
-    expect(await screen.findByText("Digits only")).toBeInTheDocument();
+    // "98abc" is cleaned down to just its digits ("98") as it's typed.
+    expect(screen.getByTestId("customer-Mobile")).toHaveValue("98");
+    expect(await screen.findByText("Mobile number must be 10 digits")).toBeInTheDocument();
     expect(screen.getByText("Invalid email")).toBeInTheDocument();
     expect(cap.save).toBeUndefined();
   });
@@ -112,6 +114,20 @@ describe("CustomerFormModal", () => {
     expect(await screen.findByText("A customer with this mobile already exists")).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByTestId("customer-form-modal")).toBeInTheDocument();
+  });
+
+  it("posts GSTIN upper-cased", async () => {
+    const cap = mockCustomerEndpoints();
+    renderModal();
+    const user = userEvent.setup();
+
+    await user.type(screen.getByTestId("customer-Name"), "Beta Ltd");
+    await user.type(screen.getByTestId("customer-Mobile"), "8880001111");
+    await user.type(screen.getByTestId("customer-GSTIN"), "24abcde1234f1z5");
+    await user.click(screen.getByTestId("customer-form-submit"));
+
+    await waitFor(() => expect(cap.save).toBeTruthy());
+    expect(cap.save.GSTIN).toBe("24ABCDE1234F1Z5");
   });
 
   it("Cancel closes without posting", async () => {

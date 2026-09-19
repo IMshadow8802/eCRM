@@ -161,6 +161,16 @@ describe("LookupMaster — shared CRUD", () => {
     });
   });
 
+  // Every new company sees this before it has added a single lookup row for
+  // a kind — the empty state, not just the populated one, needs a test.
+  it("shows the empty state when a kind has no rows", async () => {
+    seed({});
+    renderMaster(LEAD_SOURCE, "Source");
+
+    expect(await screen.findByTestId("master-grid-empty")).toBeInTheDocument();
+    expect(screen.getByText("No lead sources yet — create the first one.")).toBeInTheDocument();
+  });
+
   it("requires a value before saving", async () => {
     renderMaster(LEAD_STATUS, "Status");
     await screen.findByText("New");
@@ -239,6 +249,61 @@ describe("LookupMaster — shared CRUD", () => {
 
     expect(await screen.findByText("Status is in use")).toBeInTheDocument();
     expect(screen.getByText("New")).toBeInTheDocument();
+  });
+});
+
+// Task 3/18: sp_SaveLookup ignores any attempt to re-code the "converted" row
+// and sp_DeleteLookup refuses to remove it — the screen should not offer what
+// will be refused.
+describe("LookupMaster — Won lock", () => {
+  beforeEach(() => {
+    lastSaveBody = undefined;
+    useAuthStore.setState({
+      isAuthenticated: true,
+      token: null,
+      user: { UserId: 1 },
+      API_BASE_URL: "https://shadowcodes.in/CRM",
+    });
+    seed({
+      lead_status: [
+        { Id: 21, Kind: "lead_status", Value: "New", SortOrder: 1, Code: "open" },
+        { Id: 24, Kind: "lead_status", Value: "Won", SortOrder: 5, Code: "converted" },
+      ],
+    });
+  });
+
+  it("shows a disabled Code field reading 'Won —' when editing the converted row", async () => {
+    renderMaster(LEAD_STATUS, "Status");
+    await screen.findByText("Won");
+
+    await userEvent.setup().click(screen.getByTestId("master-grid-edit-24"));
+    const codeField = await screen.findByLabelText(/Code/);
+    expect(codeField).toHaveValue("Won — set when a lead is converted");
+    expect(codeField).toBeDisabled();
+  });
+
+  it("hides the delete action on the Won row but keeps it for others", async () => {
+    renderMaster(LEAD_STATUS, "Status");
+    await screen.findByText("Won");
+
+    expect(screen.queryByTestId("master-grid-delete-24")).toBeNull();
+    expect(screen.getByTestId("master-grid-delete-21")).toBeInTheDocument();
+  });
+
+  it("posts a rename of the Won row with its Code unchanged", async () => {
+    renderMaster(LEAD_STATUS, "Status");
+    await screen.findByText("Won");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("master-grid-edit-24"));
+    const valueField = await screen.findByLabelText(/Value/);
+    await user.clear(valueField);
+    await user.type(valueField, "Closed-Won");
+    await user.click(screen.getByRole("button", { name: "Update Status" }));
+
+    await waitFor(() =>
+      expect(lastSaveBody).toMatchObject({ Value: "Closed-Won", Code: "converted" })
+    );
   });
 });
 

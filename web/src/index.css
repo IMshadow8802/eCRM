@@ -267,3 +267,19 @@
 .notistack-SnackbarContainer {
   z-index: 1700 !important;
 }
+
+/* ui/RichTextEditor — Tiptap is headless and ships no content styles. */
+.rte-content .tiptap { outline: none; min-height: inherit; }
+.rte-content .tiptap > * + * { margin-top: 0.4em; }
+.rte-content .tiptap p { margin: 0; }
+.rte-content .tiptap h1 { font-size: 1.5em; margin: 0.4em 0 0.2em; }
+.rte-content .tiptap h2 { font-size: 1.25em; margin: 0.4em 0 0.2em; }
+.rte-content .tiptap h3 { font-size: 1.1em; margin: 0.4em 0 0.2em; }
+.rte-content .tiptap ul, .rte-content .tiptap ol { padding-left: 1.4em; margin: 0.2em 0; }
+.rte-content .tiptap blockquote { margin: 0.4em 0; padding-left: 0.8em; border-left: 3px solid #cbd5e1; color: #64748b; }
+.rte-content .tiptap hr { border: none; border-top: 1px solid #e2e8f0; margin: 0.8em 0; }
+.rte-content .tiptap a { color: #4f46e5; text-decoration: underline; }
+.rte-content .tiptap table { border-collapse: collapse; width: 100%; table-layout: fixed; margin: 0.5em 0; }
+.rte-content .tiptap th, .rte-content .tiptap td { border: 1px solid #e2e8f0; padding: 4px 6px; vertical-align: top; }
+.rte-content .tiptap th { background: #f8fafc; font-weight: 700; text-align: left; }
+.rte-content .tiptap .selectedCell { background: #eef2ff; }

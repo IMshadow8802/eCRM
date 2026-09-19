@@ -117,6 +117,45 @@ describe("upload middleware", () => {
     });
   });
 
+  // Found in the live pass, 2026-09-19: a WebP logo uploaded happily, and the
+  // PDF then rendered with no logo at all — @react-pdf/renderer logs "Not valid
+  // image extension" and draws nothing, without throwing. The customer gets a
+  // letterhead with a hole in it and nobody is told why.
+  describe("fileFilter — a quotation picture must be something a PDF can draw", () => {
+    const forEntity = (Entity, originalname, mimetype) => {
+      const cb = jest.fn();
+      fileFilter({ body: { Entity } }, { originalname, mimetype }, cb);
+      return cb;
+    };
+
+    it.each([["quotation"], ["quoteprofile"]])("refuses a WebP for %s", (entity) => {
+      expect(forEntity(entity, "logo.webp", "image/webp").mock.calls[0][0]).toMatchObject({
+        message: "NOT_A_PDF_IMAGE",
+      });
+    });
+
+    it.each([
+      ["quoteprofile", "logo.png", "image/png"],
+      ["quoteprofile", "logo.jpg", "image/jpeg"],
+      ["quotation", "site.jpeg", "image/jpeg"],
+    ])("still takes %s %s", (entity, name, mime) => {
+      expect(forEntity(entity, name, mime)).toHaveBeenCalledWith(null, true);
+    });
+
+    // A PDF is a fine attachment on a lead; it is not a letterhead.
+    it("refuses a PDF as a quotation picture", () => {
+      expect(forEntity("quoteprofile", "terms.pdf", "application/pdf").mock.calls[0][0]).toMatchObject({
+        message: "NOT_A_PDF_IMAGE",
+      });
+    });
+
+    // The rule is scoped: everywhere else a WebP is shown in a browser, which
+    // draws it perfectly well.
+    it.each([["task"], ["ticket"], ["lead"]])("leaves WebP alone for %s", (entity) => {
+      expect(forEntity(entity, "shot.webp", "image/webp")).toHaveBeenCalledWith(null, true);
+    });
+  });
+
   describe("safeEntity", () => {
     it.each(["task", "ticket", "lead"])("maps %s to its own directory", (e) => {
       expect(safeEntity({ body: { Entity: e } })).toBe(e);
@@ -204,8 +243,9 @@ describe("upload middleware", () => {
   });
 
   describe("exports", () => {
-    it("keeps the entity whitelist unchanged", () => {
-      expect([...ENTITIES].sort()).toEqual(["lead", "task", "ticket"]);
+    // Keep in step with sp_SaveAttachment's whitelist (091 §4).
+    it("accepts quotation and quoteprofile uploads", () => {
+      expect([...ENTITIES].sort()).toEqual(["lead", "quotation", "quoteprofile", "task", "ticket"]);
     });
 
     it("still whitelists the original document and media mimes", () => {

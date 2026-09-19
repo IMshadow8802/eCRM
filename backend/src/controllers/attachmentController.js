@@ -26,6 +26,13 @@ function unlinkQuiet(p) {
   });
 }
 
+// An issued quotation is frozen, pictures included; and a letterhead image is
+// never deleted, because every quotation issued with it re-renders from its id.
+const refusal = (res, message) => res.status(409).json({
+  success: false, message, code: "CONFLICT", responseCode: 409, timestamp: new Date().toISOString(),
+});
+const DRAFT_ONLY = "Only a draft quotation's pictures can be changed";
+
 class AttachmentController {
   // POST /api/attachments/save  (multipart: file + Entity + EntityId)
   // Multer has already written the file to disk by the time this runs.
@@ -49,16 +56,23 @@ class AttachmentController {
       }
 
       // The caller must have write access to the parent record — lead/ticket
-      // via scope, task via workspace membership (personal stays private).
+      // via scope, task via workspace membership (personal stays private),
+      // quotation through its parent lead, quoteprofile company-wide (every
+      // agent who may quote must be able to draw the letterhead).
       //
       // Tasks use manage_attachments rather than the coarse "write": a
       // checklist step routinely needs a document against it, so holding the
       // evidence belongs to whoever is doing the work, not only to whoever
       // defined it. assertRecordAccess ignores the level for lead/ticket, so
       // those paths are unaffected.
-      if (!(await assertRecordAccess(req, res, String(Entity), Number(EntityId), ATTACH_LEVEL(Entity)))) {
+      const parent = await assertRecordAccess(req, res, String(Entity), Number(EntityId), ATTACH_LEVEL(Entity));
+      if (!parent) {
         unlinkQuiet(file.path); // 403 already sent → clean the just-written file
         return;
+      }
+      if (String(Entity) === "quotation" && parent.Status !== "draft") {
+        unlinkQuiet(file.path);
+        return refusal(res, DRAFT_ONLY);
       }
 
       let result;
@@ -226,7 +240,13 @@ class AttachmentController {
           code: "NOT_FOUND", responseCode: 404, timestamp: new Date().toISOString(),
         });
       }
-      if (!(await assertRecordAccess(req, res, row.Entity, row.EntityId, ATTACH_LEVEL(row.Entity)))) return;
+      if (row.Entity === "quoteprofile") {
+        return refusal(res, "Letterhead images are kept — issued quotations still use them");
+      }
+
+      const parent = await assertRecordAccess(req, res, row.Entity, row.EntityId, ATTACH_LEVEL(row.Entity));
+      if (!parent) return;
+      if (row.Entity === "quotation" && parent.Status !== "draft") return refusal(res, DRAFT_ONLY);
 
       const result = await database.executeStoredProcedure("sp_DeleteAttachment", {
         Id, CompId: req.user.CompId,

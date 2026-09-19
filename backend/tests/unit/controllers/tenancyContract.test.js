@@ -67,7 +67,7 @@ const CALL = /executeStoredProcedure\(\s*"([^"]+)"\s*,\s*\{(.*?)\n\s*\}\s*[,)]/g
 /**
  * `runSp(res, "sp_Name", { ...params }, ...)` / `fetchRows(res, "sp_Name",
  * { ...params }, dataKey)` — the per-controller write/read wrappers (ticket/
- * customer/config/lead/call controllers use runSp; configController also has
+ * customer/config/lead/call/quotation controllers use runSp; configController also has
  * fetchRows for sp_FetchCustomFields / sp_FetchLookups) that themselves call
  * executeStoredProcedure(spName, params) with spName as a variable, which is
  * exactly why CALL above never sees these: there is no string literal at
@@ -201,7 +201,7 @@ function jsFilesIn(dir) {
 
 /**
  * Every wrapper found today, verified by hand:
- *   runSp               (ticket/customer/lead/call/config controllers) —
+ *   runSp               (ticket/customer/lead/call/config/quotation controllers) —
  *                        checked by WRAPPER_CALL above, per call site.
  *   fetchRows           (configController)                             — same.
  *   runReport           (reportKit, every sp_Rpt* endpoint)             —
@@ -223,6 +223,7 @@ const KNOWN_WRAPPERS = new Set([
   "ticketController.js:runSp",
   "customerController.js:runSp",
   "leadController.js:runSp",
+  "quotationController.js:runSp",
   "callController.js:runSp",
   "configController.js:runSp",
   "configController.js:fetchRows",

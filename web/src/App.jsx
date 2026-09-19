@@ -35,6 +35,8 @@ const Groups = lazy(() => import("./pages/Master/Groups"));
 const SalesLeads = lazy(() => import("./pages/Sales/Leads"));
 const LeadDetail = lazy(() => import("./pages/Sales/LeadDetail"));
 const SalesFollowUps = lazy(() => import("./pages/Sales/FollowUps"));
+const QuotationBuilder = lazy(() => import("./pages/Sales/Quotations/QuotationBuilder"));
+const QuotationList = lazy(() => import("./pages/Sales/Quotations/QuotationList"));
 const CustomFields = lazy(() => import("./pages/Settings/CustomFields"));
 const Lookups = lazy(() => import("./pages/Settings/Lookups"));
 const Products = lazy(() => import("./pages/Settings/Products"));
@@ -84,6 +86,14 @@ export const routesConfig = [
   { path: "/sales/pipeline", element: <Navigate to="/sales/leads" replace /> },
   { path: "/sales/leads", element: <ProtectedRoute element={<SalesLeads />} /> },
   { path: "/sales/leads/:leadId", element: <ProtectedRoute element={<LeadDetail />} /> },
+  // Task 17. Lazy on purpose: it's a plain filtered list (no PDF chain in its
+  // import graph — QUOTE_STATUS comes from quoteStatus.js, not LeadQuotations),
+  // so opening it costs nothing beyond its own chunk.
+  { path: "/sales/quotations", element: <ProtectedRoute element={<QuotationList />} /> },
+  // Spec 3. Lazy on purpose: this IS the chunk that imports the PDF engine
+  // (templates.js -> @react-pdf/renderer), so it costs the rest of the app
+  // nothing until a quotation is actually opened.
+  { path: "/sales/quotations/:quotationId", element: <ProtectedRoute element={<QuotationBuilder />} /> },
   { path: "/sales/follow-ups", element: <ProtectedRoute element={<SalesFollowUps />} /> },
   { path: "/settings/custom-fields", element: <ProtectedRoute element={<CustomFields />} /> },
   { path: "/settings/lookups", element: <ProtectedRoute element={<Lookups />} /> },

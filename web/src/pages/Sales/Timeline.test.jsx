@@ -49,6 +49,26 @@ describe("Timeline", () => {
     expect(screen.getByText("Budget changed to 5000")).toBeInTheDocument();
   });
 
+  // Spec 3: a lead's activity trail carries quotation events (created,
+  // finalised, accepted, …) as ordinary rows, labelled and iconed like any
+  // other type.
+  it("renders a quotation activity's summary", () => {
+    wrap(
+      <Timeline
+        activity={[
+          {
+            Id: 1,
+            Type: "quotation",
+            Summary: "Quotation QT-2627-0042 finalised",
+            CreatedAt: "2026-09-18T10:00:00Z",
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByText("Quotation")).toBeInTheDocument();
+    expect(screen.getByText("Quotation QT-2627-0042 finalised")).toBeInTheDocument();
+  });
+
   it("falls back to a generic label when Type is missing", () => {
     wrap(<Timeline activity={[{ Id: 1, CreatedAt: "2026-01-01T10:00:00Z" }]} />);
     expect(screen.getByText("Activity")).toBeInTheDocument();
@@ -183,6 +203,7 @@ describe("Timeline activity types", () => {
     ["rejected", "Rejected"],
     ["reopened", "Reopened"],
     ["escalated", "Escalated"],
+    ["quotation", "Quotation"],
   ])("labels %s as %s and gives it an icon", (type, label) => {
     wrap(<Timeline activity={[{ Id: 1, Type: type, CreatedAt: "2026-09-16T10:00:00Z" }]} />);
     const item = screen.getByTestId("timeline-item");

@@ -22,6 +22,7 @@ import {
   FormNumberInput,
   FormSelect,
   FormCheckbox,
+  FormTextarea,
   FormButtons,
 } from "../../components/Design/FormComponents";
 import useServerTable from "../../hooks/useServerTable";
@@ -31,7 +32,18 @@ import { useConfirmation } from "../../hooks";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
 import { formatCurrency } from "../../utils/format";
 
-const EMPTY = { Name: "", Code: "", CategoryId: "", UnitPrice: "", MarginPct: "", IsActive: true };
+const EMPTY = {
+  Name: "",
+  Code: "",
+  CategoryId: "",
+  UnitPrice: "",
+  MarginPct: "",
+  IsActive: true,
+  HSNCode: "",
+  TaxPct: "",
+  Unit: "",
+  Description: "",
+};
 
 const toForm = (p) => ({
   Name: p.Name ?? "",
@@ -40,6 +52,10 @@ const toForm = (p) => ({
   UnitPrice: p.UnitPrice == null ? "" : String(p.UnitPrice),
   MarginPct: p.MarginPct == null ? "" : String(p.MarginPct),
   IsActive: Boolean(p.IsActive),
+  HSNCode: p.HSNCode ?? "",
+  TaxPct: p.TaxPct == null ? "" : String(p.TaxPct),
+  Unit: p.Unit ?? "",
+  Description: p.Description ?? "",
 });
 
 // A refusal from the SP carries a message worth showing; a transport failure
@@ -71,6 +87,11 @@ export default function Products() {
       {
         accessorKey: "MarginPct",
         header: "Margin %",
+        Cell: ({ cell }) => (cell.getValue() == null ? "—" : `${cell.getValue()}%`),
+      },
+      {
+        accessorKey: "TaxPct",
+        header: "GST %",
         Cell: ({ cell }) => (cell.getValue() == null ? "—" : `${cell.getValue()}%`),
       },
       {
@@ -172,6 +193,10 @@ export default function Products() {
       next.MarginPct = "Margin must be between 0 and 100";
     if (form.UnitPrice !== "" && Number(form.UnitPrice) < 0)
       next.UnitPrice = "Price cannot be negative";
+    if (form.TaxPct !== "" && (Number(form.TaxPct) < 0 || Number(form.TaxPct) > 100))
+      next.TaxPct = "GST % must be between 0 and 100";
+    if (form.HSNCode.trim().length > 10)
+      next.HSNCode = "HSN / SAC can be at most 10 characters";
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -186,6 +211,10 @@ export default function Products() {
       UnitPrice: form.UnitPrice === "" ? null : Number(form.UnitPrice),
       MarginPct: form.MarginPct === "" ? null : Number(form.MarginPct),
       IsActive: Boolean(form.IsActive),
+      HSNCode: form.HSNCode.trim() || null,
+      TaxPct: form.TaxPct === "" ? null : Number(form.TaxPct),
+      Unit: form.Unit.trim() || null,
+      Description: form.Description.trim() || null,
     });
   };
 
@@ -261,6 +290,36 @@ export default function Products() {
                 onChange={set("MarginPct")}
                 error={errors.MarginPct}
                 placeholder="Profit % reports use"
+              />
+            </FormRow>
+            <FormRow columns={2}>
+              <FormInput
+                label="HSN / SAC"
+                value={form.HSNCode}
+                onChange={set("HSNCode")}
+                error={errors.HSNCode}
+              />
+              <FormNumberInput
+                label="GST %"
+                value={form.TaxPct}
+                onChange={set("TaxPct")}
+                error={errors.TaxPct}
+              />
+            </FormRow>
+            <FormRow columns={1}>
+              <FormInput
+                label="Unit"
+                value={form.Unit}
+                onChange={set("Unit")}
+                placeholder="Nos, Set, Kg…"
+              />
+            </FormRow>
+            <FormRow columns={1}>
+              <FormTextarea
+                label="Description"
+                value={form.Description}
+                onChange={set("Description")}
+                helperText="Printed on quotations under the product name"
               />
             </FormRow>
             <FormRow columns={1}>

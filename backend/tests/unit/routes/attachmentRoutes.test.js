@@ -69,6 +69,18 @@ describe("attachmentRoutes — upload error translation", () => {
     expect(attachmentController.save).not.toHaveBeenCalled();
   });
 
+  // A quotation picture the PDF engine cannot draw must say so in the words the
+  // user needs, not the generic "Unsupported file type" — the file IS supported
+  // everywhere else in the app, which is exactly what makes the refusal puzzling.
+  it("400s a quotation picture a PDF cannot draw, and explains why", async () => {
+    multerYields(new Error("NOT_A_PDF_IMAGE"));
+    const r = await request(app).post("/api/attachments/save");
+    expect(r.status).toBe(400);
+    expect(r.body.code).toBe("NOT_A_PDF_IMAGE");
+    expect(r.body.message).toMatch(/PNG or a JPEG/i);
+    expect(attachmentController.save).not.toHaveBeenCalled();
+  });
+
   it("400s any other multer failure without leaking its message", async () => {
     multerYields(new Error("ENOSPC: no space left on device"));
     const r = await request(app).post("/api/attachments/save");

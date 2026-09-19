@@ -235,6 +235,15 @@ const TASK_ACTION = { view: "view_task", write: "edit_fields" };
 const ENTITY_LOOKUP = {
   lead: { sp: "sp_FetchLeadDetail", idParam: "LeadId", ownerField: "OwnerId" },
   ticket: { sp: "sp_FetchTicketDetail", idParam: "TicketId", ownerField: "AssignedTo" },
+  // A quotation has no permission model of its own. sp_FetchQuotationDetail
+  // returns its LEAD's OwnerId / BranchId / CreatedBy under those names, so
+  // canSeeRecord answers for the lead: whoever can see the lead can see its
+  // quotations, and a transferred lead carries them along.
+  quotation: { sp: "sp_FetchQuotationDetail", idParam: "QuotationId", ownerField: "OwnerId" },
+  // The branch letterhead (logo + header image). Company-wide on purpose:
+  // every agent who may write a quotation must be able to draw it, whatever
+  // their data scope. The SP's CompId filter is the whole gate.
+  quoteprofile: { sp: "sp_FetchQuoteProfileById", idParam: "ProfileId", companyWide: true },
 };
 
 async function assertRecordAccess(req, res, entity, entityId, level = "view") {
@@ -260,13 +269,15 @@ async function assertRecordAccess(req, res, entity, entityId, level = "view") {
       const row = result.recordsets?.[0]?.[0] ?? result.recordset?.[0];
       granted = row?.Allowed === true || row?.Allowed === 1;
     } else if (ENTITY_LOOKUP[entity]) {
-      const { sp, idParam, ownerField } = ENTITY_LOOKUP[entity];
+      const { sp, idParam, ownerField, companyWide } = ENTITY_LOOKUP[entity];
       const result = await database.executeStoredProcedure(sp, {
         CompId: req.user.CompId,
         [idParam]: Number(entityId) || 0,
       });
       const record = result.recordsets?.[0]?.[0] || null;
-      granted = canSeeRecord(req, record, ownerField) ? record : false;
+      granted = companyWide
+        ? record || false
+        : canSeeRecord(req, record, ownerField) ? record : false;
     }
 
     if (granted) return granted;

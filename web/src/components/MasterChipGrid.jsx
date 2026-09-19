@@ -33,6 +33,9 @@ import {
  *   onCreate        - click handler for the "+" button
  *   onEdit(item)    - edit handler per tile
  *   onDelete(item)  - delete handler per tile
+ *   canDelete(item) - optional predicate; false hides the delete action for
+ *                     that tile entirely (not merely disables it). Defaults
+ *                     to always-true.
  *   createLabel     - button label (e.g. "New Source")
  *   emptyLabel      - shown when items is empty
  *   color           - accent color for the tile avatar (defaults to primary.main)
@@ -65,6 +68,7 @@ const MasterChipGrid = ({
   onCreate,
   onEdit,
   onDelete,
+  canDelete,
   createLabel = "New",
   emptyLabel = "No items yet",
   totalCount,
@@ -287,19 +291,21 @@ const MasterChipGrid = ({
                       <EditRounded fontSize="small" />
                     </IconButton>
                   </Tooltip>
-                  <Tooltip title="Delete">
-                    <IconButton
-                      size="small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDelete?.(item);
-                      }}
-                      data-testid={`master-grid-delete-${id}`}
-                      sx={{ color: "error.main" }}
-                    >
-                      <DeleteRounded fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
+                  {(!canDelete || canDelete(item)) && (
+                    <Tooltip title="Delete">
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDelete?.(item);
+                        }}
+                        data-testid={`master-grid-delete-${id}`}
+                        sx={{ color: "error.main" }}
+                      >
+                        <DeleteRounded fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  )}
                 </Box>
               </Card>
             );

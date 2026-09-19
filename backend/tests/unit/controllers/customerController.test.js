@@ -45,9 +45,9 @@ describe("customerController.save", () => {
     await customerController.save(baseReq({ body: { ...FULL, CompId: 999, IsActive: 0, Junk: "x" } }), res);
     expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_SaveCustomer", {
       Id: 0, CompId: 5, BranchId: 2, UserId: 7,
-      Name: "Sharma Traders", ContactPerson: "Rakesh Sharma", Mobile: "98765 43210", AltMobile: null,
+      Name: "Sharma Traders", ContactPerson: "Rakesh Sharma", Mobile: "9876543210", AltMobile: null,
       Email: "rakesh@sharma.in", Address: "12 MG Road", City: "Ghaziabad", State: "UP", Pincode: "201010",
-      Remarks: "Walk-in regular",
+      Remarks: "Walk-in regular", GSTIN: null,
     });
     const params = database.executeStoredProcedure.mock.calls[0][1];
     expect(params).not.toHaveProperty("IsActive");
@@ -84,8 +84,22 @@ describe("customerController.save", () => {
   it("accepts email-only and mobile-only customers", async () => {
     database.executeStoredProcedure.mockResolvedValue(okRow());
     await customerController.save(baseReq({ body: { Name: "A", Email: "a@x.in" } }), mockRes());
-    await customerController.save(baseReq({ body: { Name: "B", Mobile: "9" } }), mockRes());
+    await customerController.save(baseReq({ body: { Name: "B", Mobile: "9876500000" } }), mockRes());
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(2);
+  });
+
+  it("400s a mobile that cannot be ten digits, before touching the DB", async () => {
+    const res = mockRes();
+    await customerController.save(baseReq({ body: { Name: "B", Mobile: "111" } }), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json.mock.calls[0][0].message).toBe("Mobile number must be 10 digits");
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  it("forwards the GSTIN, upper-cased and unspaced", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(okRow());
+    await customerController.save(baseReq({ body: { ...FULL, GSTIN: " 24abcde1234f1z5 " } }), mockRes());
+    expect(database.executeStoredProcedure.mock.calls[0][1].GSTIN).toBe("24ABCDE1234F1Z5");
   });
 
   // Spec §1: unique filtered index on (CompId, Mobile) WHERE IsActive = 1 —

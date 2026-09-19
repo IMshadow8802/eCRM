@@ -15,14 +15,17 @@ function handleUpload(req, res, next) {
     if (err) {
       const tooBig = err.code === "LIMIT_FILE_SIZE";
       const badType = err.message === "UNSUPPORTED_FILE_TYPE";
+      const notPdfImage = err.message === "NOT_A_PDF_IMAGE";
       return res.status(400).json({
         success: false,
         message: tooBig
           ? `File exceeds the ${MAX_SIZE_MB}MB limit`
-          : badType
-            ? "Unsupported file type"
-            : "Upload failed",
-        code: tooBig ? "FILE_TOO_LARGE" : badType ? "UNSUPPORTED_FILE_TYPE" : "UPLOAD_ERROR",
+          : notPdfImage
+            ? "A quotation picture must be a PNG or a JPEG — a PDF cannot draw anything else"
+            : badType
+              ? "Unsupported file type"
+              : "Upload failed",
+        code: tooBig ? "FILE_TOO_LARGE" : notPdfImage ? "NOT_A_PDF_IMAGE" : badType ? "UNSUPPORTED_FILE_TYPE" : "UPLOAD_ERROR",
         responseCode: 400,
         timestamp: new Date().toISOString(),
       });

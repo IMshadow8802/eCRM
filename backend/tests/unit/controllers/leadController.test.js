@@ -48,7 +48,7 @@ function mockRoster(...ids) {
 }
 
 const EDIT_BODY = {
-  Id: 9, Name: "Acme", Company: "Acme Ltd", MobileNo: "9", City: "Pune", Pincode: "411001",
+  Id: 9, Name: "Acme", Company: "Acme Ltd", MobileNo: "9825012345", City: "Pune", Pincode: "411001",
   ProductId: 2, StatusId: 5, OwnerId: 3, EstValue: 50000, Remarks: "hot", FirstFollowupAt: "2026-09-10",
 };
 
@@ -130,6 +130,36 @@ describe("leadController.save", () => {
     const res = mockRes();
     await leadController.save(baseReq({ body: { Id: 0, Name: "X" } }), res);
     expect(res.status).toHaveBeenCalledWith(500);
+  });
+
+  // REGRESSION (2026-09-18): nothing normalised a mobile, so '+91 98250 12345'
+  // and '9825012345' were two different leads and, after conversion, two
+  // different customers.
+  it("normalises the mobiles to ten digits before the SP sees them", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordset: [{ ResponseCode: 200, ResponseMess: "Saved", Id: 44 }],
+    });
+    await leadController.save(
+      baseReq({ body: { ...EDIT_BODY, Id: 0, OwnerId: null, MobileNo: "+91 98250-12345", AltMobile: "098250 99999" } }),
+      mockRes(),
+    );
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({
+      MobileNo: "9825012345", AltMobile: "9825099999",
+    });
+  });
+
+  it("400s a mobile that cannot be ten digits, before touching the DB", async () => {
+    const res = mockRes();
+    await leadController.save(baseReq({ body: { ...EDIT_BODY, Id: 0, MobileNo: "12345" } }), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json.mock.calls[0][0]).toMatchObject({ code: "VALIDATION_ERROR", message: "Mobile number must be 10 digits" });
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  it("names the alternate mobile when that is the bad one", async () => {
+    const res = mockRes();
+    await leadController.save(baseReq({ body: { ...EDIT_BODY, Id: 0, AltMobile: "111" } }), res);
+    expect(res.json.mock.calls[0][0].message).toBe("Alternate mobile must be 10 digits");
   });
 });
 
@@ -541,5 +571,96 @@ describe("leadController.delete", () => {
     const res = mockRes();
     await leadController.delete(req, res);
     expect(res.status).toHaveBeenCalledWith(500);
+  });
+});
+
+describe("leadController.convert", () => {
+  const wonRow = { recordset: [{ Id: 9, ResponseCode: 200, ResponseMess: "Lead marked won", CustomerId: 31, WonValue: 4000 }] };
+
+  // Small leads are won with no quotation at all (spec decision 6).
+  it("wins a lead without a quotation, on the typed value", async () => {
+    mockLeadLookup(visibleLead);
+    database.executeStoredProcedure.mockResolvedValueOnce(wonRow);
+    const res = mockRes();
+    await leadController.convert(baseReq({ body: { LeadId: 9, WonValue: "4000", Remarks: " paid by UPI " } }), res);
+    expect(database.executeStoredProcedure.mock.calls[1]).toEqual(["sp_ConvertLead", {
+      CompId: 5, LeadId: 9, UserId: 7, WonValue: 4000, Remarks: "paid by UPI", QuotationId: null,
+    }]);
+    expect(res.json.mock.calls[0][0].data).toMatchObject({ CustomerId: 31, WonValue: 4000 });
+  });
+
+  // With a quotation the SP takes the value from it. The controller sends what
+  // it was given and does not pre-empt that rule.
+  it("accepts a quotation by id", async () => {
+    mockLeadLookup(visibleLead);
+    database.executeStoredProcedure.mockResolvedValueOnce(wonRow);
+    await leadController.convert(baseReq({ body: { LeadId: 9, QuotationId: "42" } }), mockRes());
+    expect(database.executeStoredProcedure.mock.calls[1][1]).toMatchObject({ QuotationId: 42, WonValue: null });
+  });
+
+  it("400s without a quotation AND without a value, before the DB", async () => {
+    const res = mockRes();
+    await leadController.convert(baseReq({ body: { LeadId: 9 } }), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json.mock.calls[0][0].message).toBe("Enter the value this lead was won for");
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  it.each([["-1"], ["abc"]])("400s a value of %p", async (WonValue) => {
+    const res = mockRes();
+    await leadController.convert(baseReq({ body: { LeadId: 9, WonValue } }), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  it("accepts a value of zero — a free replacement is still a win", async () => {
+    mockLeadLookup(visibleLead);
+    database.executeStoredProcedure.mockResolvedValueOnce(wonRow);
+    await leadController.convert(baseReq({ body: { LeadId: 9, WonValue: 0 } }), mockRes());
+    expect(database.executeStoredProcedure.mock.calls[1][1].WonValue).toBe(0);
+  });
+
+  it("403s a lead the caller cannot see", async () => {
+    mockLeadLookup({ Id: 9, BranchId: 9, OwnerId: 3, CreatedBy: 3 });
+    const res = mockRes();
+    await leadController.convert(baseReq({ body: { LeadId: 9, WonValue: 100 } }), res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
+  });
+
+  it("surfaces the SP's 409 (lead is lost / quotation not final)", async () => {
+    mockLeadLookup(visibleLead);
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordset: [{ Id: 9, ResponseCode: 409, ResponseMess: "Only a finalised quotation can be accepted" }],
+    });
+    const res = mockRes();
+    await leadController.convert(baseReq({ body: { LeadId: 9, QuotationId: 42 } }), res);
+    expect(res.status).toHaveBeenCalledWith(409);
+  });
+
+  // A quotation supplies its own value — the SP ignores WonValue when one is
+  // given, so a stale/junk WonValue must not block an otherwise valid win.
+  it("ignores a junk WonValue when a quotation governs the win", async () => {
+    mockLeadLookup(visibleLead);
+    database.executeStoredProcedure.mockResolvedValueOnce(wonRow);
+    const res = mockRes();
+    await leadController.convert(baseReq({ body: { LeadId: 9, QuotationId: 42, WonValue: "not-a-number" } }), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(database.executeStoredProcedure.mock.calls[1][0]).toBe("sp_ConvertLead");
+  });
+
+  // Pins the rule down: the same junk value, with no quotation to supply the
+  // number instead, is still rejected.
+  it("still rejects that junk value with no quotation to cover it", async () => {
+    const res = mockRes();
+    await leadController.convert(baseReq({ body: { LeadId: 9, WonValue: "not-a-number" } }), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  it.each([[undefined], ["abc"]])("400s a LeadId of %p, before the DB", async (LeadId) => {
+    const res = mockRes();
+    await leadController.convert(baseReq({ body: { LeadId, WonValue: 100 } }), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
   });
 });

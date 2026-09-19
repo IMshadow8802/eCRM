@@ -75,7 +75,10 @@ const Leads = () => {
       Cell: ({ row }) => <Chip label={row.original.StatusName || "—"} size="sm" tone={isActiveCode(row.original.StatusCode) ? "primary" : "default"} /> },
     { accessorKey: "ProductName", header: "Product", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "—" },
     { accessorKey: "OwnerName", header: "Owner", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "Unassigned" },
-    { accessorKey: "EstValue", header: "Est. Value", enableSorting: true, Cell: ({ cell }) => formatCurrency(cell.getValue(), { empty: "—" }) },
+    { accessorKey: "EstValue", header: "Value", enableSorting: true,
+      Cell: ({ row }) => (row.original.StatusCode === "converted"
+        ? <strong>{formatCurrency(row.original.WonValue, { empty: "—" })}</strong>
+        : formatCurrency(row.original.EstValue, { empty: "—" })) },
     { accessorKey: "NextFollowupDate", header: "Next Follow-up", enableSorting: true,
       Cell: ({ row, cell }) => <span style={row.original.IsOverdue ? overdueSx : undefined}>{formatDate(cell.getValue(), { empty: "—" })}</span> },
   ], [overdueSx.color]);

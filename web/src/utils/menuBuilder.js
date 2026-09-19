@@ -34,6 +34,7 @@ import {
   EmojiEventsOutlined,
   PersonSearchOutlined,
   PeopleOutlined,
+  RequestQuoteOutlined,
 } from "@mui/icons-material";
 
 /**
@@ -56,6 +57,9 @@ export function getMenuIcon(menuTitle) {
   // sales/support module — specific first
   // spec 2: the Customers row under Support (086 adds tblMenu row + grants).
   if (title.includes("customer")) return PeopleOutlined;
+  // 091 §10: the Quotations row under Sales. "quotation" is checked before
+  // "lead" so a menu row titled "Lead Quotations" wouldn't fall through.
+  if (title.includes("quotation")) return RequestQuoteOutlined;
   if (title.includes("funnel")) return FilterAltOutlined;
   // spec 4a report pages — each needs its own keyword or it falls through to
   // the circle, which is what every unmapped menu row looked like.

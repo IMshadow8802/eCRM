@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useTheme } from "@mui/material/styles";
-import { ArrowRightLeft, CalendarPlus, Pencil, Save as SaveIcon } from "lucide-react";
+import { ArrowRightLeft, CalendarPlus, Pencil, Save as SaveIcon, Trophy } from "lucide-react";
 import dayjs from "dayjs";
 
 import { PageHeader, Card, Chip, Button, Tabs, EmptyState, Skeleton, Combobox, Modal, DateField } from "../../components/ui";
@@ -11,11 +11,14 @@ import { useApiQuery } from "../../hooks/useApiQuery";
 import { useApiMutation } from "../../hooks/useApiMutation";
 import { useLookups } from "../../hooks/useLookups";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
+import { formatCurrency } from "../../utils/format";
 import { FOLLOWUP_TYPES } from "./leadStatus";
 import Timeline from "./Timeline";
 import LogFollowUpModal from "./LogFollowUpModal";
 import TransferLeadModal from "./TransferLeadModal";
 import LeadCreateModal from "./LeadCreateModal";
+import WonDialog from "./Quotations/WonDialog";
+import LeadQuotations from "./Quotations/LeadQuotations";
 
 // fetchLeadDetail's `fields` recordset only carries the stored value columns
 // (ValueText/ValueNumber/ValueDate) for fields that HAVE a value — it has no
@@ -67,6 +70,8 @@ export default function LeadDetail({ leadId: leadIdProp }) {
   const [scheduleType, setScheduleType] = useState(FOLLOWUP_TYPES[0]);
   const [scheduleDate, setScheduleDate] = useState("");
   const [draft, setDraft] = useState({});
+  const [wonOpen, setWonOpen] = useState(false);
+  const [quoteCount, setQuoteCount] = useState(0);
 
   // sp_FetchLeadDetail joins the labels itself (StatusName, OwnerName,
   // ProductName, SourceName, BranchName), so this page resolves nothing
@@ -88,12 +93,13 @@ export default function LeadDetail({ leadId: leadIdProp }) {
   const assignments = data?.assignments ?? [];
   const openFollowups = followups.filter((f) => f.Status === "open");
 
-  // `converted` is not a status you pick — it is the outcome of the conversion
-  // flow, and setLeadStatus refuses it. Offering it here would only ever
-  // produce a server error. `junk` stays: the SP accepts it as a manual
-  // terminal status.
+  // `converted` (Won) IS offered — the owner asked for it to be an ordinary
+  // choice — but it is the one status that never goes through setLeadStatus,
+  // which refuses it ("Use convert…"). Picking it opens WonDialog, which posts
+  // to convertLead: one engine writes a win, whether it arrives from here or
+  // from "Accepted" on a quotation.
   const statusOpts = useMemo(
-    () => statuses.filter((s) => s.Code !== "converted").map((s) => ({ value: s.Id, label: s.Value, code: s.Code })),
+    () => statuses.map((s) => ({ value: s.Id, label: s.Value, code: s.Code })),
     [statuses],
   );
   const lostOpts = useMemo(() => lostReasons.map((r) => ({ value: r.Id, label: r.Value })), [lostReasons]);
@@ -164,6 +170,7 @@ export default function LeadDetail({ leadId: leadIdProp }) {
   // Lost needs a reason — the SP refuses without one, so ask before posting.
   const onStatusPick = (opt) => {
     if (!opt || opt.value === lead?.StatusId) return;
+    if (opt.code === "converted") { setWonOpen(true); return; }
     if (opt.code === "lost") { setLostPick(opt); setLostReason(null); return; }
     statusMutation.mutate({ LeadId: leadId, StatusId: opt.value, LostReasonId: null });
   };
@@ -214,12 +221,26 @@ export default function LeadDetail({ leadId: leadIdProp }) {
       <Tabs value={tab} onChange={setTab} data-testid="lead-detail-tabs" items={[
         { value: "details", label: "Details" },
         { value: "followups", label: "Follow-ups", badge: openFollowups.length },
+        { value: "quotations", label: "Quotations", badge: quoteCount },
         { value: "history", label: "History", badge: activity.length },
       ]} />
 
       <div style={{ marginTop: 20 }}>
         {tab === "details" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            {lead.StatusCode === "converted" && (
+              <Card variant="outlined" padding="md" data-testid="won-banner">
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <Trophy size={20} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 15, fontWeight: 700 }}>Won for {formatCurrency(lead.WonValue, { empty: "—" })}</div>
+                    <div style={{ fontSize: 13, marginTop: 2 }}>
+                      {fmt(lead.WonAt)}{lead.CustomerName ? ` · customer: ${lead.CustomerName}` : ""}
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            )}
             <Card data-testid="lead-core-info">
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 16 }}>
                 <InfoItem label="Mobile" value={lead.MobileNo} />
@@ -319,6 +340,8 @@ export default function LeadDetail({ leadId: leadIdProp }) {
           </div>
         )}
 
+        <div hidden={tab !== "quotations"}><LeadQuotations lead={lead} onCount={setQuoteCount} /></div>
+
         {tab === "history" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
             <Card>
@@ -364,6 +387,7 @@ export default function LeadDetail({ leadId: leadIdProp }) {
       <LogFollowUpModal open={Boolean(logging)} followUp={logging} onClose={() => setLogging(null)} onLogged={refetch} />
       <TransferLeadModal open={transferOpen} leadIds={[leadId]} canCrossBranch onClose={() => setTransferOpen(false)} onTransferred={refetch} />
       <LeadCreateModal open={editOpen} lead={lead} onClose={() => setEditOpen(false)} onSaved={refetch} />
+      <WonDialog open={wonOpen} lead={lead} onClose={() => setWonOpen(false)} onWon={refetch} />
     </div>
   );
 }

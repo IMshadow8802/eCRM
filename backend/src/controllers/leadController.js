@@ -8,6 +8,7 @@ const {
   assertCanAssign,
 } = require("../middleware/permission");
 const { positiveInt, pageParams } = require("../utils/controllerKit");
+const { applyMobiles } = require("../utils/mobile");
 const { parseDay } = require("../utils/reportKit");
 
 // Mutating SPs log their own activity server-side and return exactly one
@@ -57,6 +58,10 @@ const leadController = {
     const { CompId, BranchId, UserId } = req.user;
     const Id = positiveInt(req.body.Id) ?? 0;
     const fields = pick(req.body, LEAD_FIELDS);
+    // Before anything touches the DB. sp_ConvertLead matches a customer on this
+    // column, so it has to mean one thing: ten digits (utils/mobile.js).
+    const mobileError = applyMobiles(fields, [["MobileNo", "Mobile number"], ["AltMobile", "Alternate mobile"]]);
+    if (mobileError) return responseHelper.validationError(res, mobileError);
     if (Id > 0) {
       if (!(await assertRecordAccess(req, res, "lead", Id))) return;
       // Ownership moves through transfer (history), status through setStatus
@@ -144,6 +149,37 @@ const leadController = {
       "sp_SetLeadStatus",
       { CompId, LeadId, StatusId, LostReasonId, UserId },
       "Failed to update lead status",
+    );
+  },
+
+  // The move sp_SetLeadStatus refuses ("Use convert to move a lead to
+  // Converted"). One engine writes a win: an accepted quotation and "Won" in
+  // the status dropdown both land here. With a QuotationId the SP takes the
+  // value from the quotation and ignores WonValue; without one the agent's
+  // number is the value — small leads are won with no quotation at all.
+  async convert(req, res) {
+    const { CompId, UserId } = req.user;
+    const LeadId = positiveInt(req.body.LeadId);
+    const QuotationId = positiveInt(req.body.QuotationId);
+    const raw = req.body.WonValue;
+    const hasValue = !(raw === null || raw === undefined || raw === "");
+    const WonValue = hasValue ? Number(raw) : null;
+    if (!LeadId) return responseHelper.validationError(res, "LeadId is required");
+    // A quotation supplies its own value — the SP takes it from the taxable
+    // total and ignores WonValue entirely, so a stale/junk WonValue alongside
+    // a real QuotationId must not block an otherwise valid win. Only without a
+    // quotation must WonValue be a real amount (zero is one — a free
+    // replacement is still a win).
+    if (!QuotationId && (!hasValue || !Number.isFinite(WonValue) || WonValue < 0)) {
+      return responseHelper.validationError(res, "Enter the value this lead was won for");
+    }
+    if (!(await assertRecordAccess(req, res, "lead", LeadId, "write"))) return;
+    const Remarks = blank(req.body.Remarks) ? null : String(req.body.Remarks).trim();
+    return runSp(
+      res,
+      "sp_ConvertLead",
+      { CompId, LeadId, UserId, WonValue, Remarks, QuotationId },
+      "Failed to mark the lead won",
     );
   },
 

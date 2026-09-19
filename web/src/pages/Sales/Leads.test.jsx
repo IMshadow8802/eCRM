@@ -123,7 +123,7 @@ describe("Leads page (spec 1)", () => {
     expect(cellOf("City")({ cell: { getValue: () => "Pune" } })).toBe("Pune");
     expect(cellOf("ProductName")({ cell: { getValue: () => null } })).toBe("—");
     expect(cellOf("OwnerName")({ cell: { getValue: () => null } })).toBe("Unassigned");
-    expect(cellOf("EstValue")({ cell: { getValue: () => 50000 } })).toContain("50,000");
+    expect(cellOf("EstValue")({ row: { original: { StatusCode: "open", EstValue: 50000 } } })).toContain("50,000");
 
     withTheme(cellOf("StatusName")({ row: { original: { StatusName: "New", StatusCode: "open" } } }));
     expect(screen.getByText("New")).toBeInTheDocument();
@@ -139,6 +139,20 @@ describe("Leads page (spec 1)", () => {
       cellOf("NextFollowupDate")({ row: { original: { IsOverdue: false } }, cell: { getValue: () => null } })
     );
     expect(onTime.container.querySelector("span").style.fontWeight).toBe("");
+  });
+
+  // A won lead's "Value" column shows what it actually closed for, not the
+  // estimate that was on it before the deal was struck.
+  it("shows a converted row's WonValue instead of its EstValue", () => {
+    renderPage();
+    const theme = buildTheme("light");
+    render(
+      <ThemeProvider theme={theme}>
+        {cellOf("EstValue")({ row: { original: { StatusCode: "converted", EstValue: 50000, WonValue: 47500 } } })}
+      </ThemeProvider>,
+    );
+    expect(screen.getByText("₹47,500.00")).toBeInTheDocument();
+    expect(screen.queryByText(/50,000/)).not.toBeInTheDocument();
   });
 
   it("row click navigates to the lead detail and row actions open the modals", async () => {

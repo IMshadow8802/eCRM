@@ -17,7 +17,10 @@ const num = (v) => (v === "" || v == null ? null : Number(v));
 class ProductController {
   save = asyncRoute(
     async (req, res) => {
-      const { Id = 0, Name, Code = null, CategoryId = null, UnitPrice = null, MarginPct = null, IsActive = true } = req.body;
+      const {
+        Id = 0, Name, Code = null, CategoryId = null, UnitPrice = null, MarginPct = null, IsActive = true,
+        HSNCode = null, TaxPct = null, Unit = null, Description = null,
+      } = req.body;
       const result = await database.executeStoredProcedure("sp_SaveProduct", {
         Id: positiveInt(Id) ?? 0,
         CompId: req.user.CompId,
@@ -28,6 +31,10 @@ class ProductController {
         UnitPrice: num(UnitPrice),
         MarginPct: num(MarginPct),
         IsActive: Boolean(IsActive),
+        HSNCode: HSNCode == null || String(HSNCode).trim() === "" ? null : String(HSNCode).trim(),
+        TaxPct: num(TaxPct),
+        Unit: Unit == null || String(Unit).trim() === "" ? null : String(Unit).trim(),
+        Description: Description == null || String(Description).trim() === "" ? null : String(Description).trim(),
       });
       const row = firstRow(result);
       if (!spOk(row)) return error(res, spMessage(row, "Failed to save product"), "SP_ERROR", spStatus(row));

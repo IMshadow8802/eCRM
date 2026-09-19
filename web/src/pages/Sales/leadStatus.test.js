@@ -14,9 +14,10 @@ describe("leadStatus helpers", () => {
     expect(presetParams("mine", 7)).toEqual({ OwnerId: 7 });
     expect(presetParams("overdue")).toEqual({ Overdue: true });
     expect(presetParams("unassigned")).toEqual({ Unassigned: true });
+    expect(presetParams("won")).toEqual({ StatusCode: "converted" });
     expect(presetParams("lost")).toEqual({ StatusCode: "lost" });
     expect(presetParams("all")).toEqual({});
-    expect(LEAD_PRESETS.map((p) => p.value)).toEqual(["all", "mine", "overdue", "unassigned", "lost"]);
+    expect(LEAD_PRESETS.map((p) => p.value)).toEqual(["all", "mine", "overdue", "unassigned", "won", "lost"]);
   });
 });
 
@@ -34,6 +35,7 @@ describe("leadsParamsToState", () => {
   it("maps Overdue / Unassigned / StatusCode=lost onto the presets", () => {
     expect(leadsParamsToState(p("Overdue=1")).preset).toBe("overdue");
     expect(leadsParamsToState(p("Unassigned=true")).preset).toBe("unassigned");
+    expect(leadsParamsToState(p("StatusCode=converted")).preset).toBe("won");
     expect(leadsParamsToState(p("StatusCode=lost")).preset).toBe("lost");
     expect(leadsParamsToState(p("")).preset).toBe("all");
   });

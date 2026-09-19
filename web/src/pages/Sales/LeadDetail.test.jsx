@@ -42,6 +42,7 @@ const mocks = (cap = {}) => server.use(
       : [{ Id: 1, Value: "Price" }] });
   }),
   http.post("*/api/leads/setLeadStatus", async ({ request }) => { cap.status = await request.json(); return json({ Id: 9, ResponseCode: 200 }); }),
+  http.post("*/api/leads/convertLead", async ({ request }) => { cap.convert = await request.json(); return json({ Id: 9, CustomerId: 31, WonValue: 50000 }); }),
 );
 
 const renderDetail = () => renderWithProviders(
@@ -142,9 +143,11 @@ describe("LeadDetail (spec 1)", () => {
   });
 
   // A picked-but-not-applied status must not linger in the input: the header
-  // would then contradict the chip beside it. `converted` is the conversion
-  // flow's outcome, not a status you pick — setLeadStatus refuses it.
-  it("hides Converted and re-shows the real status when the lost prompt is dismissed", async () => {
+  // would then contradict the chip beside it. `converted` (Won) IS offered
+  // now — the owner wanted it as an ordinary choice — but it never reaches
+  // setLeadStatus (which refuses it); picking it opens WonDialog instead
+  // (see the "offers Won…" regression guard below).
+  it("offers Converted and re-shows the real status when the lost prompt is dismissed", async () => {
     const cap = {};
     mocks(cap);
     renderDetail();
@@ -152,7 +155,7 @@ describe("LeadDetail (spec 1)", () => {
     const user = userEvent.setup();
     await user.click(screen.getByTestId("lead-status-select-input"));
     expect(await screen.findByRole("option", { name: "Lost" })).toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: "Converted" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: "Converted" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("option", { name: "Lost" }));
     fireEvent.keyDown(document, { key: "Escape" });
@@ -281,4 +284,36 @@ describe("LeadDetail (spec 1)", () => {
       { fieldId: 6, type: "text", value: "" },
     ]);
   }, 15000);
+
+  // REGRESSION GUARD for the rule, not a bug: Won is offered like any status,
+  // and must NEVER reach setLeadStatus (which refuses it) — it goes to convert.
+  it("offers Won in the dropdown, and routes it to convertLead instead of setLeadStatus", async () => {
+    const cap = {};
+    mocks(cap);
+    renderDetail();
+    await screen.findByTestId("lead-detail");
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("lead-status-select-input"));
+    await user.click(await screen.findByRole("option", { name: "Converted" }));
+    expect(await screen.findByTestId("won-dialog")).toBeInTheDocument();
+    expect(cap.status).toBeUndefined();
+    fireEvent.click(screen.getByRole("button", { name: /mark won/i }));
+    await waitFor(() => expect(cap.convert).toMatchObject({ LeadId: 9, WonValue: 50000, QuotationId: null }));
+  });
+
+  it("shows what a won lead was won for", async () => {
+    mocks();
+    server.use(http.post("*/api/leads/fetchLeadDetail", async () => json({ ...DETAIL, lead: { ...LEAD, StatusCode: "converted", StatusName: "Won", WonValue: 270000, WonAt: "2026-09-18T10:00:00Z", CustomerName: "Ramesh Patel" } })));
+    renderDetail();
+    // formatCurrency groups Indian-style: 270000 -> "2,70,000.00", not "270,000".
+    expect(await screen.findByTestId("won-banner")).toHaveTextContent("2,70,000");
+  });
+
+  it("has a Quotations tab", async () => {
+    mocks();
+    renderDetail();
+    await screen.findByTestId("lead-detail");
+    fireEvent.click(screen.getByRole("tab", { name: /quotations/i }));
+    expect(await screen.findByTestId("lead-quotations")).toBeVisible();
+  });
 });

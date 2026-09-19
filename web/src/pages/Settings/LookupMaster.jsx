@@ -47,8 +47,10 @@ const errorText = (error, fallback) =>
 // Some kinds carry a machine Code behind an editable, per-company label, and
 // sp_SaveLookup validates the set per Kind. Table, not a chain of ifs: the
 // lifecycle that branches on these codes lives in one place on each side.
-// lead_status omits "converted" on purpose — it is stamped by the convert
-// action, not handed out by an admin.
+// lead_status omits "converted" on purpose: an admin cannot CREATE a Won
+// status — every company has exactly one, seeded by 091 and written to only
+// by the convert engine. The seeded row shows up in the list like any other;
+// its label and order are the company's to change, its code is not.
 const CODE_OPTIONS = {
   lead_status: [
     { value: "open", label: "Open — still being worked" },
@@ -67,6 +69,12 @@ const CODE_OPTIONS = {
 
 // Kind='priority' carries the TAT hours that stamp a complaint's DueAt.
 const TAT_KIND = "priority";
+
+// The one lead_status row the convert engine owns. sp_SaveLookup ignores any
+// attempt to re-code it and sp_DeleteLookup refuses to remove it — the screen
+// should not offer what will be refused.
+const WON_CODE = "converted";
+const WON_ONLY_OPTION = [{ value: WON_CODE, label: "Won — set when a lead is converted" }];
 
 const emptyForm = { Value: "", SortOrder: "0", Code: "open", TatHours: "" };
 
@@ -222,6 +230,7 @@ export default function LookupMaster({
           onCreate={handleCreate}
           onEdit={handleEdit}
           onDelete={handleDelete}
+          canDelete={(item) => item.Code !== WON_CODE}
           createLabel={`New ${noun}`}
           emptyLabel={`No ${activeLabel.toLowerCase()} yet — create the first one.`}
           totalCount={items.length}
@@ -259,7 +268,8 @@ export default function LookupMaster({
                   label="Code"
                   value={formData.Code}
                   onChange={(e) => handleChange("Code", e.target.value)}
-                  options={codeOptions}
+                  options={editingLookup?.Code === WON_CODE ? WON_ONLY_OPTION : codeOptions}
+                  disabled={editingLookup?.Code === WON_CODE}
                   required
                 />
               </FormRow>

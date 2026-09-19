@@ -6,6 +6,7 @@ const database = require("../config/database");
 const responseHelper = require("../utils/responseHelper");
 const { scopeParams } = require("../middleware/permission");
 const { positiveInt, pageParams } = require("../utils/controllerKit");
+const { applyMobiles } = require("../utils/mobile");
 
 // Mutating SPs return exactly one status row: Id + ResponseCode + ResponseMess.
 // A non-200 code (400 validation, 409 duplicate mobile / tickets attached) is
@@ -28,7 +29,7 @@ async function runSp(res, spName, params, failMessage) {
 // undeclared parameter outright.
 const CUSTOMER_FIELDS = [
   "Name", "ContactPerson", "Mobile", "AltMobile", "Email",
-  "Address", "City", "State", "Pincode", "Remarks",
+  "Address", "City", "State", "Pincode", "Remarks", "GSTIN",
 ];
 const pick = (body, keys) => Object.fromEntries(keys.map((k) => [k, body[k] ?? null]));
 const blank = (s) => !s || !String(s).trim();
@@ -48,6 +49,10 @@ const customerController = {
     if (blank(fields.Mobile) && blank(fields.Email)) {
       return responseHelper.validationError(res, "Mobile or Email is required");
     }
+    const mobileError = applyMobiles(fields, [["Mobile", "Mobile number"], ["AltMobile", "Alternate mobile"]]);
+    if (mobileError) return responseHelper.validationError(res, mobileError);
+    // Stored the way it is printed on a registration: upper case, no spaces.
+    fields.GSTIN = trimmed(fields.GSTIN)?.toUpperCase().replace(/\s+/g, "") ?? null;
     return runSp(
       res,
       "sp_SaveCustomer",

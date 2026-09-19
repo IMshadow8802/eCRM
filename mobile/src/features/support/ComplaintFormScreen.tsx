@@ -442,9 +442,10 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
               <Input
                 label="Mobile"
                 value={newCustomer.Mobile}
-                onChangeText={(v) => setNewField("Mobile", v)}
+                onChangeText={(v) => setNewField("Mobile", v.replace(/\D/g, "").slice(0, 10))}
                 placeholder="10-digit number"
-                keyboardType="phone-pad"
+                keyboardType="number-pad"
+                maxLength={10}
                 hint="A mobile number or an email is required."
               />
               <Input

@@ -34,6 +34,7 @@ import {
   EmojiEventsOutlined,
   PersonSearchOutlined,
   PeopleOutlined,
+  RequestQuoteOutlined,
 } from "@mui/icons-material";
 import { getMenuIcon, menuPath, buildDynamicMenu } from "./menuBuilder";
 
@@ -60,6 +61,8 @@ describe("getMenuIcon", () => {
     ["Ticket Board", ConfirmationNumberOutlined],
     ["Tickets", ConfirmationNumberOutlined],
     ["Customers", PeopleOutlined],
+    // 091 §10: the Quotations row under Sales.
+    ["Quotations", RequestQuoteOutlined],
     ["Pipeline", AccountTreeOutlined],
     ["Pipeline Funnel", FilterAltOutlined],
     ["Conversion by Source", InsightsOutlined],
