@@ -98,8 +98,8 @@ function queueParams(
  * The board went with the pipeline engine (086). A stage column answered
  * "what is where"; a flat status with a due date answers the question a phone
  * is actually asked — what is mine, what is late, what has been pushed up to
- * me — and those are the four segments. Sorting is the server's:
- * overdue first, then by due time.
+ * me — and those are the four segments. Sorting is the server's: newest
+ * first, except Overdue and Escalated, which go most-overdue first (092).
  */
 export default function ComplaintsScreen({ navigation }: Props) {
   const userId = useAuthStore((s) => s.UserId);
