@@ -181,19 +181,6 @@
     font-size: inherit;
   }
 
-  /* iOS Safari zooms the whole page in whenever a focused form control
-     computes to less than 16px, and every control in this app is 13-15px
-     (ui/TextInput SIZE, typoTokens.body). The zoom leaves the layout wider
-     than the screen, so after every tap the user has to pinch back out.
-     Raise controls to 16px on small touch screens only — desktop density is
-     untouched. `!important` is required, not sloppiness: ui/TextInput writes
-     its font-size as an inline style, which nothing else can outrank.
-     `user-scalable=no` is NOT the alternative — iOS has ignored it since
-     iOS 10, and it removes pinch-zoom where it is honoured. */
-  @media (pointer: coarse) and (max-width: 767.98px) {
-    input, select, textarea { font-size: 16px !important; }
-  }
-
   /* Accessible focus ring fallback for non-MUI elements */
   :where(button, a, [role="button"], input, select, textarea):focus-visible {
     outline: 2px solid var(--color-primary-600);
@@ -331,3 +318,42 @@ html.dark .rte-content .tiptap .selectedCell { background: #1E293B; }
   .attachment-size { display: none; }
 }
 
+/* ============================================================
+   Touch: stop iOS Safari's focus-zoom
+   ============================================================
+   iOS Safari zooms the whole page in whenever a focused form control computes
+   to less than 16px, and every control here is 13-15px (ui/TextInput SIZE,
+   typoTokens.body). After the zoom the layout is wider than the screen, so the
+   user pinches back out after every field — on every screen that has an input.
+
+   Three things about this block are deliberate:
+
+   - It is UNLAYERED. An `@layer base` rule would lose: when two declarations
+     are both `!important`, layer order is reversed, so an unlayered
+     `!important` (which is what emotion injects, and what ui/DateField uses to
+     pin its own font-size) beats a layered one. This has to sit outside the
+     layer to win.
+   - `max-width: 1024px`, not the phone breakpoint. Every modern phone in
+     LANDSCAPE is 667-932px wide and still `pointer: coarse`, so a narrower
+     query let the zoom come straight back the moment the user rotated.
+   - The date-picker selector is quadrupled. @mui/x-date-pickers v9 renders no
+     <input> at all — the field is a `MuiPickersInputBase-root` wrapping
+     contenteditable <span> sections — so `input, select, textarea` cannot
+     reach it, and ui/DateField pins those spans with its own `!important` at
+     two-class specificity. Four classes outrank it.
+
+   `user-scalable=no` is NOT the alternative: iOS has ignored it since iOS 10,
+   and where it is honoured it removes pinch-zoom entirely. */
+@media (pointer: coarse) and (max-width: 1024px) {
+  input, select, textarea { font-size: 16px !important; }
+
+  .MuiPickersInputBase-root.MuiPickersInputBase-root.MuiPickersInputBase-root.MuiPickersInputBase-root,
+  .MuiPickersSectionList-root,
+  .MuiPickersSectionList-section {
+    font-size: 16px !important;
+  }
+
+  /* Tiptap's editing surface is a contenteditable <div>, which zooms on focus
+     for the same reason and is reachable by no input selector. */
+  .rte-content .tiptap { font-size: 16px; }
+}

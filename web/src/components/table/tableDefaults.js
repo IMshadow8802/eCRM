@@ -41,7 +41,12 @@ export const tableDefaults = {
     // the floor is what makes it engage, so the table scrolls sideways like a
     // table instead of being squeezed to fit. A page with fewer columns can
     // override this downward.
-    sx: { tableLayout: "auto", width: "100%", minWidth: { xs: 720, md: "100%" } },
+    // `sm`, not `md`: MUI's md is 900, so a 720px floor bracketed at md was
+    // live across the whole tablet band — 768px portrait has 676px of content
+    // behind a rail sidebar, or 504px with it expanded, and the table was
+    // forced to scroll where it previously fitted. The floor exists for
+    // phones, so it ends at the phone breakpoint.
+    sx: { tableLayout: "auto", width: "100%", minWidth: { xs: 720, sm: "100%" } },
   },
 
   // The table is a card sitting ON the page, not a region cut out of it.
@@ -79,7 +84,10 @@ export const tableDefaults = {
       // scrolled *and* the table scrolled inside it — with the sticky header
       // sticky only to the card, which scrolls away. Let the table be as tall
       // as its rows on a phone and keep the cap where the assumption holds.
-      maxHeight: { xs: "none", md: "calc(100dvh - 220px)" },
+      // Same bracketing, same reason: dropping the cap is a phone measure. At
+      // md it left every tablet scrolling the page instead of the container,
+      // with the sticky header never engaging.
+      maxHeight: { xs: "none", sm: "calc(100dvh - 220px)" },
     },
   },
 
@@ -122,7 +130,7 @@ export const tableDefaults = {
     // buttons on the right — show/hide columns, toggle filters — were painted
     // over rather than scrolled off. 260 + 80 + gap is 356px in a 320px box on
     // a 360px phone. Let the field give way there and take the full row.
-    sx: { minWidth: { xs: 0, sm: 260 }, width: { xs: "100%", sm: "auto" } },
+    sx: { minWidth: { xs: 0, sm: 260 } },
   },
 
   muiPaginationProps: {

@@ -16,10 +16,13 @@ export default function ImageSlot({ label, src, isSample = false, hidden = false
   return (
     <div data-testid={testId} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       {/* `Chip` is nowrap, so the old 26-character label was ~164px of
-          unshrinkable content inside an 88px grid track — it ran across
-          the gap and the next slot painted over it. Short label, and let
-          the header wrap; the hint under the section title carries the
-          rest of the sentence. */}
+          unshrinkable content inside an 88px grid track — it ran across the
+          gap and the next slot painted over it, which made the one thing
+          explaining a disabled Finalise button the illegible part. The full
+          instruction is not lost: quoteForm's `blockers` carries "Replace the
+          sample logo, or remove it", rendered by QuotationBuilder as
+          `finalise-blockers`. Do not delete that banner on the strength of
+          this chip. */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span style={{ fontSize: 13, fontWeight: 500, color: p.text.secondary }}>{label}</span>
         {isSample && !hidden && <Chip label="Sample" size="sm" tone="warning" />}

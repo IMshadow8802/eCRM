@@ -284,21 +284,23 @@ describe("KanbanCard", () => {
   });
 });
 
-// Regression, 2026-09-19: @dnd-kit v6 leaves `touch-action` to the draggable.
-// A card sits inside a column that scrolls vertically, inside a strip that
-// scrolls horizontally, so on a phone the browser claimed the gesture as a
-// scroll at exactly the 8px the pointer sensor was waiting for and fired
-// `pointercancel`. The card never lifted — no error, no hint, nothing moved.
+// Regression, 2026-09-19: a card sits inside a column that scrolls vertically,
+// inside a strip that scrolls horizontally, and on a phone the browser claimed
+// every gesture as a scroll before the drag could start. The first attempt at
+// a fix set `touch-action: none` here, which made it worse — it told the
+// browser it may not scroll, so an aborted drag left a dead gesture and any
+// 8px swipe on a card began a drag instead of scrolling the column. The card
+// must NOT constrain touch-action; the disambiguation belongs to the sensors
+// (MouseSensor + a delayed TouchSensor in TaskBoard).
 describe("touch dragging", () => {
   const card = { Id: 77, Title: "Movable" };
 
-  it("takes the touch gesture away from the scrollers when the card can move", () => {
-    renderWithProviders(<KanbanCardView task={card} canDrag />, { router: false });
-    expect(screen.getByTestId("kanban-card-77").style.touchAction).toBe("none");
-  });
-
-  it("leaves scrolling alone on a card the user may not move", () => {
-    renderWithProviders(<KanbanCardView task={card} canDrag={false} />, { router: false });
-    expect(screen.getByTestId("kanban-card-77").style.touchAction).toBe("auto");
+  it.each([[true], [false]])("leaves touch-action to the browser (canDrag=%s)", (canDrag) => {
+    renderWithProviders(<KanbanCardView task={card} canDrag={canDrag} />, { router: false });
+    // Asserted on the attribute, not `style.touchAction`, which reads
+    // `undefined` in jsdom whether the property is absent or empty — an
+    // assertion that could not fail.
+    expect(screen.getByTestId("kanban-card-77").getAttribute("style"))
+      .not.toMatch(/touch-action/);
   });
 });

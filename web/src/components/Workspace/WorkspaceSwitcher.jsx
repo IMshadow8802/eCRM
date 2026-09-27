@@ -321,6 +321,10 @@ export default function WorkspaceSwitcher() {
             <span
               style={{
                 flex: 1,
+                // Load-bearing: a flex item will not shrink below its content,
+                // so textOverflow below does nothing without this and a long
+                // workspace name grows the switcher past the screen instead.
+                minWidth: 0,
                 fontWeight: 600,
                 overflow: "hidden",
                 textOverflow: "ellipsis",

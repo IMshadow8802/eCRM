@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Box, useMediaQuery } from "@mui/material";
 import { useLocation } from "react-router-dom";
+import NetworkStatusBanner from "./NetworkStatusBanner";
 import TopNav from "./TopNav";
 import Sidebar from "./Sidebar";
 import useAuthStore from "../stores/useAuthStore";
@@ -45,7 +46,12 @@ function RootLayout({ children }) {
   const closeMobile = () => setMobileOpen(false);
 
   if (isAuthRoute) {
-    return <Box sx={{ minHeight: "100dvh" }}>{children}</Box>;
+    return (
+      <Box sx={{ minHeight: "100dvh" }}>
+        <NetworkStatusBanner />
+        {children}
+      </Box>
+    );
   }
 
   return (
@@ -75,6 +81,12 @@ function RootLayout({ children }) {
           minWidth: 0,
         }}
       >
+        {/* Inside the content column, not beside the sidebar: MUI renders a
+            permanent Drawer as `position: fixed`, so a banner rendered above
+            this column would be painted over by it on desktop. Above TopNav so
+            it never covers the hamburger — the only way into the menu on a
+            phone. */}
+        <NetworkStatusBanner />
         {isAuthenticated && <TopNav onOpenMobileSidebar={openMobile} />}
         <Box
           component="main"

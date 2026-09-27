@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
+  MouseSensor,
   TouchSensor,
   KeyboardSensor,
   useSensor,
@@ -98,14 +98,21 @@ export default function TaskBoard() {
   // Distance constraint so a plain click still opens the task (no accidental
   // drag); keyboard sensor keeps drag accessible.
   //
-  // The touch sensor is not decoration. A card sits inside a column that
-  // scrolls vertically, inside a strip that scrolls horizontally, so on a
-  // phone the browser claimed the gesture as a scroll at exactly the 8px the
-  // pointer sensor was waiting for and fired `pointercancel` — the card never
-  // lifted, with no error and no hint. A long-press delay disambiguates:
-  // a tap still opens the card, a swipe still scrolls, a press-and-hold drags.
+  // MouseSensor, NOT PointerSensor. A card sits inside a column that scrolls
+  // vertically, inside a strip that scrolls horizontally, and on a phone the
+  // browser used to claim the gesture as a scroll at exactly the 8px the
+  // pointer sensor was waiting for — the card never lifted, no error, no hint.
+  //
+  // PointerSensor cannot be part of the answer: it binds onPointerDown, which
+  // fires before onTouchStart on every touch device, so it wins the gesture
+  // and the TouchSensor's delay never runs. MouseSensor binds onMouseDown and
+  // so never claims a touch, which lets the delay do its job: under 220ms is a
+  // tap, a move past 8px inside that window aborts the sensor and the browser
+  // scrolls, and a press-and-hold drags. `touch-action` stays at its default
+  // for the same reason — telling the browser it may not scroll would turn
+  // that abort into a dead gesture.
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 8 } }),
     useSensor(KeyboardSensor),
   );

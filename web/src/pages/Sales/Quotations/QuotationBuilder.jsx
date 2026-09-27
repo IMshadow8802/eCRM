@@ -382,7 +382,7 @@ export default function QuotationBuilder() {
           </Section>
         </Box>
 
-        <Box sx={{ position: { lg: "sticky" }, top: 84, height: { xs: 560, lg: "calc(100dvh - 210px)" } }}>
+        <Box sx={{ position: { lg: "sticky" }, top: 16, height: { xs: 560, lg: "calc(100dvh - 150px)" } }}>
           <PdfPreview Component={templateByCode(form.TemplateCode).Component} doc={doc} onReady={(blob) => { pdfBlob.current = blob; }} />
         </Box>
       </Box>

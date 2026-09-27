@@ -36,6 +36,16 @@ const NumberInput = forwardRef(function NumberInput(
     });
   };
 
+  // type="text" costs the native spinner AND the arrow-key stepping that came
+  // with it. The spinner was the point; the stepping is not something to drop
+  // silently, so it is re-implemented here, along with the spinbutton role and
+  // value attributes a screen reader lost at the same time.
+  const handleKeyDown = (e) => {
+    if (disabled) return;
+    if (e.key === "ArrowUp") { e.preventDefault(); bump(step); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); bump(-step); }
+  };
+
   const handleChange = (e) => {
     const v = e.target.value;
     if (v === "" || v === "-") {
@@ -64,6 +74,11 @@ const NumberInput = forwardRef(function NumberInput(
       // `inputMode="decimal"` keeps the numeric keypad without the spinner.
       type="text"
       inputMode="decimal"
+      role="spinbutton"
+      onKeyDown={handleKeyDown}
+      aria-valuenow={numeric === "" ? undefined : numeric}
+      aria-valuemin={min}
+      aria-valuemax={max}
       value={value}
       onChange={handleChange}
       min={min}

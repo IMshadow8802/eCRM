@@ -86,3 +86,72 @@ both browser MCPs need Chrome stable, so every finding here is code-level:
 measured from declared widths, breakpoints and the known clipping behaviour of
 `<main>`, not from a screenshot. The defect classes are code-level too, but the
 result should be eyeballed on localhost at 360px before it ships.
+
+---
+
+# Verification round — same day, after `57ed681`
+
+Three agents re-read the commit adversarially ("assume it is wrong"), one swept
+the repo for leftovers of the same defect classes, and one closed the coverage
+gaps. **The commit had five regressions and four inert changes in it.** They are
+fixed; this section records them so the same mistakes are recognisable later.
+
+## Regressions the first pass shipped
+
+| What | Why it was wrong |
+|---|---|
+| **Kanban touch drag** | `PointerSensor` binds `onPointerDown`, which fires *before* `onTouchStart` on every touch device, so it claimed the gesture and the delayed `TouchSensor` never ran. With `touch-action: none` on the card, any 8px swipe starting on a card began a drag instead of scrolling the column — the opposite of the commit message's claim. Now `MouseSensor` + `TouchSensor`, `touch-action` untouched: dnd-kit's documented pairing for a delay constraint. |
+| **Offline banner** | Moving it in-flow put it *beside* the sidebar, and MUI renders a permanent Drawer as `position: fixed` for every variant — so on desktop the sidebar painted over the message. A desktop user saw a red bar with a lone Retry button and no text. Now rendered inside the content column, above TopNav. |
+| **`ui/Chip` truncation** | `text-overflow` applies to block containers; a Chip is `inline-flex`, so the ellipsis never drew — but the `overflow: hidden` did, giving a hard mid-letter clip and cutting the delete button off. Truncation moved onto the flex item, as `ui/Menu` already did correctly. |
+| **Table `minWidth`** | Bracketed at MUI `md` (900), so a 720px floor meant for phones was live across the whole tablet band: 768px portrait has 676px of content behind a rail sidebar. This is the *same* breakpoint error the commit fixed one file over. Rebracketed to `sm`. |
+| **`truncTick`** | Shipped to every viewport, so a 1920px report axis read "Replaced un…" where it used to read the whole category name. Now guarded by `breakpoints.down("md")`. |
+
+## Changes that did nothing
+
+- **`PageHeader`'s wrap** was inert on the three pages it was written for —
+  LeadDetail, Leads and ReportPage each hand the slot **one** non-wrapping row,
+  so there was nothing to break. Fixed at each call site.
+- **The iOS 16px rule** missed every date field (x-date-pickers v9 renders no
+  `<input>` — the field is contenteditable `<span>`s) and every phone in
+  landscape (667–932px). It also had to move out of `@layer base`: when two
+  declarations are both `!important`, layer order reverses, so a layered rule
+  loses to the unlayered one emotion injects.
+- **`useAppTable` never merged `muiTableProps`**, so `Master/Users` — which
+  passes its own — silently skipped the table fix entirely.
+- **`FormRow` `md:` → `lg:`** was wrong-premise: all 24 call sites are inside
+  fixed-width modals, so no viewport breakpoint is the right axis, and `lg`
+  only lost the two-column layout across a wider band. Reverted.
+
+## Also corrected
+
+`NumberInput` lost arrow-key stepping and the `spinbutton` role with
+`type="number"` — both re-implemented. Two grids were forced to one column on a
+phone *after* `StatCard` was taught in the same commit to survive a narrow tile;
+both reverted to two-up. The quotation preview's sticky offset was computed
+against the viewport when `<main>` is the scroll container. `Groups`' permission
+matrix got a `minWidth` so it scrolls instead of crushing. `ErrorBoundary`'s two
+buttons had become visually identical. And an `ImageSlot` comment justified
+itself with a hint that does not say what the comment claimed — the real
+explanation lives in the finalise blockers.
+
+## Gates, measured
+
+| Gate | Result |
+|---|---|
+| Full suite | **167 files, 1,926 tests, 0 failures** |
+| Coverage (global floor 60%) | **93.11% stmts · 89.32% branch · 82.55% funcs** |
+| Every file touched by this work | ≥80% line **and** branch |
+| `pnpm lint` | 0 errors (10 pre-existing warnings) |
+| `pnpm build` | passes; no PDF engine or Tiptap in any eagerly-preloaded chunk |
+
+`TaskBoard.jsx` is 88.49% statements / 90.78% branch but **47% functions** — the
+uncovered block is the three drag handlers, which need a simulated drag. The
+§0.4 gate is line and branch, both of which it clears; the function gap is
+stated rather than hidden.
+
+## Still not verified, and it cannot be from here
+
+No live pixel verification: this machine has no Chrome, only Brave and Arc, and
+both browser MCPs require Chrome stable. Everything above is measured from code
+and from library sources in `node_modules`. **Open the built app at 360px, at
+768px, and on a real iPhone before calling it done.**

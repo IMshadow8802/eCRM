@@ -279,7 +279,7 @@ const Groups = () => {
         </Box>
 
         {/* Right: permission matrix */}
-        <Box sx={{ flex: 1, minWidth: 0, width: { xs: "100%", md: "auto" } }}>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
           {!selectedGroup ? (
             <EmptyState
               title="Select a role"
@@ -316,7 +316,10 @@ const Groups = () => {
               </Box>
 
               <Box sx={{ overflowX: "auto", border: `1px solid ${p.border.default}`, borderRadius: `${theme.radii.lg}px` }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+                {/* A permission matrix cannot usefully shrink: it is a menu name plus four
+                    checkbox columns. Give it a floor so the pane scrolls it deliberately
+                    instead of crushing the name column to nothing first. */}
+                <table style={{ width: "100%", minWidth: 560, borderCollapse: "collapse", fontSize: 14 }}>
                   <thead>
                     <tr style={{ backgroundColor: p.surface.subtle }}>
                       <th style={{ textAlign: "left", padding: "10px 14px", color: p.text.secondary }}>

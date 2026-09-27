@@ -167,3 +167,44 @@ describe("NumberInput", () => {
     // (we don't force a real target-value set here; sanity only)
   });
 });
+
+// Regression, 2026-09-19: this stopped being <input type="number"> because the
+// native spinner sat beside the component's own +/- buttons and ate the tap
+// target on a phone. Two things came free with that type and had to be put
+// back by hand — arrow-key stepping, and the spinbutton role a screen reader
+// uses to announce the value and its bounds.
+describe("what type=number used to provide", () => {
+  it("steps up and down on the arrow keys", () => {
+    const onChange = vi.fn();
+    wrap(<NumberInput value="5" onChange={onChange} step={1} />);
+    const input = screen.getByRole("spinbutton");
+
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+    expect(onChange.mock.calls[0][0].target.value).toBe("6");
+
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(onChange.mock.calls[1][0].target.value).toBe("4");
+  });
+
+  it("honours min and max while stepping", () => {
+    const onChange = vi.fn();
+    wrap(<NumberInput value="0" onChange={onChange} min={0} max={10} />);
+    fireEvent.keyDown(screen.getByRole("spinbutton"), { key: "ArrowDown" });
+    expect(onChange.mock.calls[0][0].target.value).toBe("0");
+  });
+
+  it("does not step while disabled", () => {
+    const onChange = vi.fn();
+    wrap(<NumberInput value="5" onChange={onChange} disabled />);
+    fireEvent.keyDown(screen.getByRole("spinbutton"), { key: "ArrowUp" });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("announces its value and bounds", () => {
+    wrap(<NumberInput value="5" onChange={() => {}} min={1} max={9} />);
+    const input = screen.getByRole("spinbutton");
+    expect(input).toHaveAttribute("aria-valuenow", "5");
+    expect(input).toHaveAttribute("aria-valuemin", "1");
+    expect(input).toHaveAttribute("aria-valuemax", "9");
+  });
+});

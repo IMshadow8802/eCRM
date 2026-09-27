@@ -12,6 +12,7 @@ import { tableDefaults } from "./tableDefaults";
  */
 export default function useAppTable(options = {}) {
   const {
+    muiTableProps,
     muiTablePaperProps,
     muiTableContainerProps,
     muiTableHeadCellProps,
@@ -29,6 +30,7 @@ export default function useAppTable(options = {}) {
     ...tableDefaults,
     ...rest,
     initialState: { ...tableDefaults.initialState, ...(initialState || {}) },
+    muiTableProps: mergeSxProps(tableDefaults.muiTableProps, muiTableProps),
     muiTablePaperProps: mergeSxProps(tableDefaults.muiTablePaperProps, muiTablePaperProps),
     muiTableContainerProps: mergeSxProps(tableDefaults.muiTableContainerProps, muiTableContainerProps),
     muiTableHeadCellProps: mergeSxProps(tableDefaults.muiTableHeadCellProps, muiTableHeadCellProps),

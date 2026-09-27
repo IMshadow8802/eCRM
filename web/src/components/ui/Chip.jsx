@@ -104,16 +104,22 @@ export default function Chip({
         cursor: onClick ? "pointer" : "default",
         whiteSpace: "nowrap",
         // Lookup and status labels are company-editable, so there is no length
-        // a designer can rely on. Keep the single line, but stop it growing
-        // past what a phone can show.
+        // a designer can rely on. The cap goes on the root; the truncation
+        // goes on the label below, NOT here — `text-overflow` applies to block
+        // containers, and this is a flex container, so setting it here draws
+        // no ellipsis at all. `overflow: hidden` here would still bite, and it
+        // bites in the worst way: a hard mid-letter clip, plus the trailing
+        // delete button as the first child pushed out of view.
         maxWidth: "100%",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
       }}
       {...rest}
     >
-      {icon && <span style={{ display: "inline-flex" }}>{icon}</span>}
-      {label}
+      {icon && <span style={{ display: "inline-flex", flexShrink: 0 }}>{icon}</span>}
+      {/* The truncation lives on the flex ITEM, where blockification makes it
+          a block container and the ellipsis actually draws — the same shape
+          ui/Menu uses. `minWidth: 0` is what lets it shrink at all, so the
+          delete button beside it keeps its place instead of being cut off. */}
+      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
       {onDelete && (
         <button
           type="button"

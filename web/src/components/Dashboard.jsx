@@ -174,7 +174,9 @@ const Dashboard = () => {
       <Box
         sx={{
           display: "grid",
-          gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)", md: "repeat(4, 1fr)" },
+          // Two-up on a phone: StatCard now clamps its value and breaks a long
+          // money string, which is what made the narrow tile workable.
+          gridTemplateColumns: { xs: "repeat(2, 1fr)", md: "repeat(4, 1fr)" },
           gap: 1.5,
           mb: 1.5,
         }}

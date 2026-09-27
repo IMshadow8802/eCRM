@@ -12,6 +12,7 @@ import {
   TableRow,
   Typography,
 } from "@mui/material";
+import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
 import {
   Bar,
@@ -98,6 +99,10 @@ export function ReportShellPage({
  */
 export function ReportBarChart({ data, xKey, bars, legend = true, height = 260 }) {
   const theme = useTheme();
+  // Only narrow axes need shortening. Applied unconditionally it cut every
+  // category name on a 1920px desktop too, which is a worse outcome than the
+  // overlap it was written for.
+  const narrow = useMediaQuery(theme.breakpoints.down("md"));
   const p = theme.tokens;
   const axis = {
     tick: { fill: p.text.tertiary, fontSize: 11 },
@@ -116,7 +121,7 @@ export function ReportBarChart({ data, xKey, bars, legend = true, height = 260 }
             a phone, and the reader can no longer tell which bar is which.
             Truncating fits more of them; the Tooltip still carries the full
             name, because it reads the raw datum rather than the tick. */}
-        <XAxis dataKey={xKey} {...axis} tickFormatter={truncTick} />
+        <XAxis dataKey={xKey} {...axis} tickFormatter={narrow ? truncTick : undefined} />
         <YAxis {...axis} width={32} allowDecimals={false} />
         <Tooltip
           contentStyle={{

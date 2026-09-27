@@ -1,7 +1,6 @@
 import React from 'react';
 import { useTokenMonitor } from '../hooks/useTokenMonitor.jsx';
 import { useNetworkMonitor } from '../hooks/useNetworkMonitor';
-import NetworkStatusBanner from './NetworkStatusBanner';
 
 /**
  * Session Monitor Component
@@ -54,13 +53,12 @@ const SessionMonitor = ({ children, options = {} }) => {
     });
   }
 
-  // Render network status banner and children
-  return (
-    <>
-      <NetworkStatusBanner />
-      {children || null}
-    </>
-  );
+  // The banner is NOT rendered here any more. In flow at this level it sits
+  // beside the sidebar, which MUI renders `position: fixed` for every Drawer
+  // variant — so on desktop the sidebar painted over the offline message.
+  // RootLayout renders it inside the content column instead, which is the
+  // sidebar-free area. This component keeps the monitoring hooks.
+  return children || null;
 };
 
 export default SessionMonitor;

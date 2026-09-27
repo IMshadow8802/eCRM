@@ -200,8 +200,11 @@ export default function LeadDetail({ leadId: leadIdProp }) {
         subtitle={[lead.Company, lead.MobileNo, lead.Email].filter(Boolean).join(" · ")}
         titleSuffix={<Chip label={lead.StatusName || "—"} tone="primary" size="sm" data-testid="lead-status-chip" />}
         actions={
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <div style={{ width: 180 }}>
+          // flexWrap here, not only in ui/PageHeader: the slot wraps its
+          // children, and this row IS one child — without it the row stays a
+          // single unbroken line and PageHeader's wrap cannot reach inside.
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ minWidth: 150, flex: "1 1 160px", maxWidth: 220 }}>
               {/* blurOnSelect: picking `lost` opens a modal instead of moving
                   the status, and a focused Autocomplete keeps showing what was
                   picked. Blurring resyncs the input to the controlled value, so

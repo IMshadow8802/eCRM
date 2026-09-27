@@ -69,7 +69,8 @@ export default class ErrorBoundary extends Component {
               border: "1px solid currentColor",
               background: "transparent",
               color: "inherit",
-              opacity: 0.85,
+              fontWeight: 500,
+              opacity: 0.7,
               cursor: "pointer",
             }}
           >
@@ -85,7 +86,9 @@ export default class ErrorBoundary extends Component {
               minHeight: 40,
               padding: "8px 16px",
               borderRadius: 12,
-              border: "1px solid currentColor",
+              // Two identical outlines left no primary action on the one screen
+              // where the user most needs to be told what to press.
+              border: "2px solid currentColor",
               background: "transparent",
               color: "inherit",
               cursor: "pointer",

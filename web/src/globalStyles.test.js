@@ -17,14 +17,39 @@ describe("global stylesheet", () => {
   // focused control computes below 16px. The zoom left the layout wider than
   // the screen, so a user had to pinch back out after every field — on every
   // screen in the app that has an input.
-  it("lifts form controls to 16px on small touch screens", () => {
-    const rule = indexCss.match(
-      /@media \(pointer: coarse\) and \(max-width: 767\.98px\) \{[^}]*\}/,
+  it("lifts form controls to 16px on touch screens, in both orientations", () => {
+    // 1024, not the phone breakpoint: every modern phone in LANDSCAPE is
+    // 667-932px wide and still a coarse pointer, so a narrower query let the
+    // zoom back in the moment the user rotated.
+    const block = indexCss.slice(
+      indexCss.indexOf("@media (pointer: coarse) and (max-width: 1024px)"),
     );
-    expect(rule).not.toBeNull();
-    expect(rule[0]).toMatch(/input, select, textarea/);
+    expect(block).toMatch(/^@media \(pointer: coarse\) and \(max-width: 1024px\)/);
     // TextInput sets its size as an inline style, so only !important wins.
-    expect(rule[0]).toMatch(/font-size: 16px !important/);
+    expect(block).toMatch(/input, select, textarea \{ font-size: 16px !important; \}/);
+  });
+
+  // x-date-pickers v9 renders NO <input> — the field is a
+  // MuiPickersInputBase-root wrapping contenteditable <span> sections — so the
+  // input selector cannot reach it, and ui/DateField pins those spans with its
+  // own !important. This was the largest hole in the first version of the fix.
+  it("reaches the date fields and the rich-text surface too", () => {
+    const block = indexCss.slice(
+      indexCss.indexOf("@media (pointer: coarse) and (max-width: 1024px)"),
+    );
+    expect(block).toMatch(/MuiPickersSectionList-section/);
+    expect(block).toMatch(/\.rte-content \.tiptap \{ font-size: 16px; \}/);
+  });
+
+  // Unlayered on purpose: when two declarations are both !important, layer
+  // order is REVERSED, so a rule inside @layer base would lose to the
+  // unlayered !important that emotion injects.
+  it("sits outside @layer base, or it would lose the cascade", () => {
+    const layerBase = indexCss.slice(
+      indexCss.indexOf("@layer base {"),
+      indexCss.indexOf("Scrollbar"),
+    );
+    expect(layerBase).not.toMatch(/pointer: coarse/);
   });
 
   it("leaves desktop density alone", () => {
