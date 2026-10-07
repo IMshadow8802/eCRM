@@ -83,11 +83,15 @@ describe("workspaceController.save", () => {
       }),
     );
     expect(calls[1][0]).toBe("sp_ApplyKanbanTemplate");
+    // UserId/IsAdmin: sp_ApplyKanbanTemplate refuses a caller it can't judge
+    // (audit 2026-10-07 S3). The creator is the workspace's owner member.
     expect(calls[1][1]).toEqual({
       WorkspaceId: 42,
       TemplateKey: "basic",
       CompId: 1,
       BranchId: 2,
+      UserId: 7,
+      IsAdmin: 0,
     });
     expect(logActivity).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -563,6 +567,26 @@ describe("workspaceController.applyTemplate", () => {
     );
     expect(res.status).toHaveBeenCalledWith(201);
     expect(res.json.mock.calls[0][0].data.columnsCreated).toBe(3);
+  });
+
+  // Regression, 2026-10-07 audit S3: the SP had no company or role check and
+  // the controller passed no caller, so any signed-in user could add columns
+  // to any workspace id. The caller now travels with the call.
+  it("passes the caller so the SP can refuse a non-manager", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 403, ResponseMess: "Permission denied" }]),
+    );
+    const res = mockRes();
+    await workspaceController.applyTemplate(
+      baseReq({ body: { WorkspaceId: 3 }, scope: { branchIds: [2], isAdmin: true } }),
+      res,
+    );
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
+      "sp_ApplyKanbanTemplate",
+      expect.objectContaining({ UserId: 7, IsAdmin: 1 }),
+    );
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json.mock.calls[0][0].data).toBeNull();
   });
 
   it("returns 500 when DB throws", async () => {

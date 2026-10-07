@@ -945,10 +945,14 @@ class TaskController {
       if (!positiveInt(Id)) {
         return validationError(res, "Checklist item ID is required");
       }
+      if (!positiveInt(TaskId)) {
+        return validationError(res, "TaskId is required");
+      }
 
       // Removing an item is manage_checklist, same class as adding one — the
-      // person doing the work decides the steps. TaskId comes from the client
-      // because the SP only returns it after the delete has already happened.
+      // person doing the work decides the steps. The SP deletes the item only
+      // if it belongs to this TaskId, so the task the caller is authorised for
+      // is the task that changes (audit 2026-10-07 S1).
       const allowed = await assertRecordAccess(req, res, "task", TaskId, "manage_checklist");
       if (!allowed) return;
 
@@ -956,6 +960,7 @@ class TaskController {
         "sp_DeleteTaskChecklist",
         {
           Id,
+          TaskId,
           CompId: req.user.CompId,
           BranchId: req.user.BranchId,
           ActingUserId: req.user.UserId,
@@ -1053,6 +1058,10 @@ class TaskController {
       if (!positiveInt(CommentId)) {
         return validationError(res, "CommentId is required");
       }
+      // A receipt is only for a comment the caller can see (audit 2026-10-07 S8).
+      const allowed = await assertRecordAccess(req, res, "comment", CommentId, "view");
+      if (!allowed) return;
+
       const result = await database.executeStoredProcedure(
         "sp_MarkCommentRead",
         { CommentId, UserId: req.user.UserId }

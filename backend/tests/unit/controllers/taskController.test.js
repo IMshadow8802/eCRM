@@ -661,6 +661,21 @@ describe("taskController.markCommentRead", () => {
     await taskController.markCommentRead(baseReq({ body: { CommentId: 5 } }), mockRes());
     spy.mockRestore();
   });
+
+  // Regression, 2026-10-07 audit S8: any user could write a read receipt
+  // for any comment id in any company. The comment's task decides.
+  it("asks whether the caller may see the comment's task, and stops when refused", async () => {
+    assertRecordAccess.mockResolvedValue(false);
+    await taskController.markCommentRead(baseReq({ body: { CommentId: 5 } }), mockRes());
+    expect(assertRecordAccess).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      "comment",
+      5,
+      "view",
+    );
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
 });
 
 describe("taskController.addDependency", () => {
@@ -1153,6 +1168,29 @@ describe("taskController time-tracking + checklist + activity", () => {
     expect(database.executeStoredProcedure).not.toHaveBeenCalled();
   });
 
+  // Regression, 2026-10-07 audit S1: the caller was authorised against the
+  // TaskId they sent, then sp_DeleteTaskChecklist deleted the item id alone —
+  // a step of ANY task in ANY company. The SP now refuses an item that is not
+  // on that task, so the TaskId is required and travels with the call.
+  it("deleteChecklist rejects a missing TaskId before touching the DB", async () => {
+    const res = mockRes();
+    await taskController.deleteChecklist(baseReq({ body: { Id: 4 } }), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(assertRecordAccess).not.toHaveBeenCalled();
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  it("deleteChecklist passes the authorised TaskId to the SP", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "ok" }]),
+    );
+    await taskController.deleteChecklist(baseReq({ body: { Id: 4, TaskId: 55 } }), mockRes());
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
+      "sp_DeleteTaskChecklist",
+      expect.objectContaining({ Id: 4, TaskId: 55 }),
+    );
+  });
+
   it("deleteChecklist calls sp + logs + forwards ActingUserId", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce(
       spResult([{ ResponseCode: 200, ResponseMess: "ok" }]),
@@ -1176,7 +1214,7 @@ describe("taskController time-tracking + checklist + activity", () => {
   it("deleteChecklist returns 500 on DB throw", async () => {
     database.executeStoredProcedure.mockRejectedValueOnce(new Error("x"));
     const spy = jest.spyOn(console, "error").mockImplementation(() => {});
-    await taskController.deleteChecklist(baseReq({ body: { Id: 1 } }), mockRes());
+    await taskController.deleteChecklist(baseReq({ body: { Id: 1, TaskId: 2 } }), mockRes());
     spy.mockRestore();
   });
 

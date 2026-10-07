@@ -246,7 +246,9 @@ describe("taskController checklist emits", () => {
       spResult([{ ResponseCode: 200, ResponseMess: "ok", TaskId: 11 }]),
     );
     const res = mockRes();
-    await taskController.deleteChecklist(baseReq({ Id: 4, WorkspaceId: 5 }), res);
+    // TaskId is required since audit 2026-10-07 S1 (the SP refuses an item
+    // that isn't on the authorised task); the emit still uses the SP's echo.
+    await taskController.deleteChecklist(baseReq({ Id: 4, TaskId: 11, WorkspaceId: 5 }), res);
     expect(emitToWorkspace).toHaveBeenCalledWith(5, SCOPES.TASK_DETAIL, {
       workspaceId: 5,
       taskId: 11,

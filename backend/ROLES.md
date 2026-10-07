@@ -158,7 +158,11 @@ Head and HR Manager are all level 2 — deriving the bit from level would hand
 them the `sp_CheckTaskPermission` admin bypass, i.e. read/write on **every task
 in every project workspace**. HR editing the sales team's sprint board.
 
-`tblUser.IsAdmin` is derived from the user's group at login.
+The login token's `IsAdmin` is derived from the user's **active** group at
+login (`sp_ValidateUser`, `093`). The `tblUser.IsAdmin` column is no longer
+read by anything that grants access — until `093` it went into the token
+straight from a Users-form checkbox, and a deactivated group kept granting
+its scope and admin flag through `sp_FetchAccessibleBranchIds`.
 
 ---
 
@@ -166,10 +170,12 @@ in every project workspace**. HR editing the sales team's sprint board.
 
 Tracked, deliberately not built yet:
 
-- **Menu rights are not enforced server-side.** No route checks
-  `tblGroupAccess`; menu rights only drive sidebar visibility. The API serves
-  any authenticated caller. The department axis is therefore advisory until this
-  lands.
+- **Menu rights are enforced server-side only where a route opts in.**
+  `requireMenuRight(route, right)` (`middleware/permission.js`, backed by
+  `sp_CheckMenuRight`, `093`) checks the caller's `tblGroupAccess` grant; the
+  Teams and Projects writes use it (HR Manager is granted those screens but is
+  not `IsAdmin`). Every other route still serves any authenticated caller, so
+  the department axis stays advisory until each one opts in.
 - **Login/logout are not audited.**
 - **The three spec-1 report SPs (`sp_LeadsByStatus`, `sp_CallsPerUser`,
   `sp_ConversionBySource`) scope by branch only.** Their endpoints stay one

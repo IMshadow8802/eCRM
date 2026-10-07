@@ -165,6 +165,41 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
+// Route guard: the caller's groups must grant `right` on the menu at `route`
+// — the same tblGroupAccess grants the sidebar is built from. For screens a
+// non-admin role legitimately manages (HR Manager on Teams/Projects), where
+// requireAdmin would be too narrow and no gate at all was the old behaviour.
+// right: 'view' | 'add' | 'edit' | 'delete' | 'save' (add when body.Id is
+// absent or 0, edit otherwise). Admins pass without a lookup.
+const requireMenuRight = (route, right) => async (req, res, next) => {
+  if (!req.scope) {
+    return responseHelper.error(res, "Permission scope not loaded", "NO_SCOPE", 403);
+  }
+  if (req.scope.isAdmin) return next();
+  let resolved = right;
+  if (right === "save") {
+    const id = req.body?.Id ?? 0;
+    if (!Number.isInteger(Number(id)) || Number(id) < 0 || id === "") {
+      return responseHelper.error(res, "Id must be a whole number", "VALIDATION_ERROR", 400);
+    }
+    resolved = Number(id) > 0 ? "edit" : "add";
+  }
+  try {
+    const result = await database.executeStoredProcedure("sp_CheckMenuRight", {
+      UserId: req.user.UserId,
+      CompId: req.user.CompId,
+      Route: route,
+      Right: resolved,
+    });
+    const allowed = result.recordsets?.[0]?.[0]?.Allowed;
+    if (allowed === true || allowed === 1) return next();
+    return responseHelper.error(res, "You do not have permission for this action", "INSUFFICIENT_ROLE", 403);
+  } catch (err) {
+    console.error("requireMenuRight failed:", route, err.message);
+    return responseHelper.error(res, "Failed to verify permission");
+  }
+};
+
 // Maps req.scope onto the scope params every scoped fetch SP takes.
 //
 // Controllers must use this instead of passing req.user.BranchId as a
@@ -255,11 +290,13 @@ async function assertRecordAccess(req, res, entity, entityId, level = "view") {
     // only ever test truthiness.
     let granted = false;
 
-    if (entity === "task") {
+    if (entity === "task" || entity === "comment") {
+      // A comment is judged by its task's workspace; the SP resolves the task
+      // from CommentId.
       const result = await database.executeStoredProcedure(
         "sp_CheckTaskPermission",
         {
-          TaskId: Number(entityId) || 0,
+          [entity === "task" ? "TaskId" : "CommentId"]: Number(entityId) || 0,
           UserId: req.user.UserId,
           Action: TASK_ACTION[level] ?? level,
           IsAdmin: req.scope?.isAdmin ? 1 : 0,
@@ -367,6 +404,7 @@ module.exports = {
   loadScope,
   requireMinLevel,
   requireAdmin,
+  requireMenuRight,
   scopeParams,
   // Exported for the SPs that declare AccessibleBranchIdsJson but not UserId or
   // OwnerIdsJson — spreading the whole of scopeParams into those makes node-mssql

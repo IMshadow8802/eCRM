@@ -2,14 +2,16 @@
 const express = require("express");
 const projectController = require("../controllers/projectController");
 const { verifyToken } = require("../middleware/auth");
-const { loadScope } = require("../middleware/permission");
+const { loadScope, requireMenuRight } = require("../middleware/permission");
 const { requirePayload, allowEmptyPayload } = require("../middleware/payloadValidation");
 
 const router = express.Router();
 
 router.use(verifyToken, loadScope);
 
-router.post("/saveProject", requirePayload, projectController.save);
+// Writes need the /projects menu grant (Owner, Admin, HR Manager); reads stay
+// open because task forms list projects for everyone. Audit 2026-10-07 S2.
+router.post("/saveProject", requirePayload, requireMenuRight("/projects", "save"), projectController.save);
 router.post("/fetchProjects", allowEmptyPayload, projectController.fetch);
 /**
  * deleteProject was never registered, though the controller method and
@@ -21,6 +23,6 @@ router.post("/fetchProjects", allowEmptyPayload, projectController.fetch);
  * actually mounts — no test could have caught it, since both halves were
  * individually fine.
  */
-router.post("/deleteProject", requirePayload, projectController.delete);
+router.post("/deleteProject", requirePayload, requireMenuRight("/projects", "delete"), projectController.delete);
 
 module.exports = router;

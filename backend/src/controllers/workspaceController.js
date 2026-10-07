@@ -83,6 +83,9 @@ class WorkspaceController {
               TemplateKey,
               CompId: req.user.CompId,
               BranchId: req.user.BranchId,
+              // The SP judges the caller; the creator is the owner member.
+              UserId: req.user.UserId,
+              IsAdmin: req.scope?.isAdmin ? 1 : 0,
             },
           );
           columnsSeeded = firstRow(tplResult)?.ColumnsCreated ?? 0;
@@ -405,6 +408,9 @@ class WorkspaceController {
           TemplateKey,
           CompId: req.user.CompId,
           BranchId: req.user.BranchId,
+          // Company + owner/manager check lives in the SP (audit 2026-10-07 S3).
+          UserId: req.user.UserId,
+          IsAdmin: req.scope?.isAdmin ? 1 : 0,
         },
       );
       const spResponse = firstRow(result);

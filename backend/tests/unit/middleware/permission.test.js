@@ -8,6 +8,7 @@ const {
   loadScope,
   requireMinLevel,
   requireAdmin,
+  requireMenuRight,
   scopeParams,
   canSeeRecord,
   canWriteBranch,
@@ -151,6 +152,90 @@ describe("permission middleware", () => {
       requireAdmin({ scope: { isAdmin: true } }, res, next);
       expect(next).toHaveBeenCalledTimes(1);
       expect(res.status).not.toHaveBeenCalled();
+    });
+  });
+
+  // Regression, 2026-10-07 audit S2: the Teams and Projects write endpoints
+  // had no gate at all, and sp_SaveTeam pushes its roster into every linked
+  // project workspace — any employee could add themselves to any project.
+  // The screens are granted to Owner, Admin AND HR Manager (not IsAdmin), so
+  // requireAdmin would lock HR out; the gate is the same menu grant the
+  // sidebar reads.
+  describe("requireMenuRight", () => {
+    beforeEach(() => database.executeStoredProcedure.mockReset());
+
+    const req = (body = {}, isAdmin = false) => ({
+      user: { UserId: 7, CompId: 5 },
+      scope: { isAdmin },
+      body,
+    });
+    const allowed = (v) =>
+      database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ Allowed: v }]] });
+
+    it("asks sp_CheckMenuRight for the route and right, and proceeds when granted", async () => {
+      allowed(true);
+      const res = mockRes();
+      const next = jest.fn();
+      await requireMenuRight("/teams", "delete")(req(), res, next);
+      expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_CheckMenuRight", {
+        UserId: 7,
+        CompId: 5,
+        Route: "/teams",
+        Right: "delete",
+      });
+      expect(next).toHaveBeenCalledTimes(1);
+    });
+
+    it("403s when the caller's groups do not grant it", async () => {
+      allowed(0);
+      const res = mockRes();
+      const next = jest.fn();
+      await requireMenuRight("/teams", "delete")(req(), res, next);
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: "INSUFFICIENT_ROLE" }));
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it("'save' resolves to add for a new record and edit for an existing one", async () => {
+      allowed(1);
+      await requireMenuRight("/projects", "save")(req({ Id: 0 }), mockRes(), jest.fn());
+      allowed(1);
+      await requireMenuRight("/projects", "save")(req({ Id: 12 }), mockRes(), jest.fn());
+      const rights = database.executeStoredProcedure.mock.calls.map((c) => c[1].Right);
+      expect(rights).toEqual(["add", "edit"]);
+    });
+
+    it("400s a 'save' whose Id is not a whole number, without a lookup", async () => {
+      const res = mockRes();
+      const next = jest.fn();
+      await requireMenuRight("/teams", "save")(req({ Id: "4abc" }), res, next);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it("lets an admin through without a lookup", async () => {
+      const next = jest.fn();
+      await requireMenuRight("/teams", "delete")(req({}, true), mockRes(), next);
+      expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledTimes(1);
+    });
+
+    it("fails closed when the lookup throws", async () => {
+      database.executeStoredProcedure.mockRejectedValueOnce(new Error("db down"));
+      const res = mockRes();
+      const next = jest.fn();
+      await requireMenuRight("/teams", "edit")(req({ Id: 3 }), res, next);
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it("403s when scope is absent", async () => {
+      const res = mockRes();
+      const next = jest.fn();
+      await requireMenuRight("/teams", "edit")({ user: { UserId: 7, CompId: 5 } }, res, next);
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(next).not.toHaveBeenCalled();
     });
   });
 
@@ -428,6 +513,25 @@ describe("permission middleware", () => {
         recordsets: [[{ Allowed: true, Reason: "role=owner" }]],
       });
       await expect(assertRecordAccess(selfReq, mockRes(), "task", 12)).resolves.toBe(true);
+    });
+
+    // Regression, 2026-10-07 audit S8: markTaskCommentRead wrote a read receipt
+    // for any comment id in any company. A comment is judged by its task's
+    // workspace — sp_CheckTaskPermission resolves the task from CommentId.
+    it("routes comments through sp_CheckTaskPermission by CommentId", async () => {
+      database.executeStoredProcedure.mockResolvedValueOnce({
+        recordsets: [[{ Allowed: false, Reason: "not a workspace member" }]],
+      });
+      const res = mockRes();
+      await expect(assertRecordAccess(selfReq, res, "comment", 33)).resolves.toBe(false);
+      expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_CheckTaskPermission", {
+        CommentId: 33,
+        UserId: 7,
+        Action: "view_task",
+        IsAdmin: 0,
+        CompId: 5,
+      });
+      expect(res.status).toHaveBeenCalledWith(403);
     });
 
     it("routes tasks through sp_CheckTaskPermission and honours a denial even for admins", async () => {
