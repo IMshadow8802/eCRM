@@ -15,6 +15,7 @@ import ComplaintDetailScreen from "../features/support/ComplaintDetailScreen";
 import ComplaintFormScreen from "../features/support/ComplaintFormScreen";
 import WorkHubScreen from "../features/hub/WorkHubScreen";
 import ComingSoonScreen from "../features/hub/ComingSoonScreen";
+import NotificationsScreen from "../features/notifications/NotificationsScreen";
 import MeScreen from "../features/profile/MeScreen";
 import TaskDetailScreen from "../features/tasks/TaskDetailScreen";
 import useAuthStore from "../stores/useAuthStore";
@@ -47,6 +48,7 @@ export type RootStackParamList = {
 
 export type TabParamList = {
   MyWork: undefined;
+  Inbox: undefined;
   Work: undefined;
   Me: undefined;
 };
@@ -71,6 +73,11 @@ function Tabs() {
         name="MyWork"
         component={MyWorkScreen}
         options={{ title: "My Work" }}
+      />
+      <Tab.Screen
+        name="Inbox"
+        component={NotificationsScreen}
+        options={{ title: "Inbox" }}
       />
       <Tab.Screen
         name="Work"

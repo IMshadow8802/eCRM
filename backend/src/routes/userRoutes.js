@@ -12,6 +12,7 @@ router.use(verifyToken, loadScope);
 // guard any authenticated employee could POST { Id: 0, IsAdmin: true } and mint
 // themselves an owner-level account.
 router.post("/saveUser", requireAdmin, requirePayload, userController.save);
+router.post("/fetchUserHandover", requireAdmin, requirePayload, userController.handover);
 router.post("/fetchUsers", allowEmptyPayload, userController.fetch);
 router.post("/deleteUser", requireAdmin, requirePayload, userController.delete);
 

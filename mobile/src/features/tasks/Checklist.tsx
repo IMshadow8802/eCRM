@@ -122,7 +122,8 @@ export function Checklist({
                   {item.ItemText}
                 </Text>
               </Pressable>
-              {canManage ? (
+              {/* The last step stays — a task with no steps can never complete (094). */}
+              {canManage && total > 1 ? (
                 <Pressable
                   hitSlop={spacing[2]}
                   accessibilityRole="button"

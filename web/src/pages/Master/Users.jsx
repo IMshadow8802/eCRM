@@ -44,10 +44,24 @@ const Users = () => {
       { accessorKey: "JobTitle", header: "Job Title", size: 150 },
       { accessorKey: "GroupName", header: "User Group", size: 120 },
       {
+        accessorKey: "BranchName",
+        header: "Branch",
+        size: 110,
+        Cell: ({ cell }) => cell.getValue() || "—",
+      },
+      {
         accessorKey: "ReportsToName",
         header: "Reports To",
         size: 140,
-        Cell: ({ cell }) => cell.getValue() || "—",
+        Cell: ({ cell, row }) =>
+          cell.getValue() ||
+          (row.original.NoManager ? (
+            <Tooltip title="Alerts about this person go to the company admins">
+              <Chip label="No manager" color="warning" size="small" variant="outlined" />
+            </Tooltip>
+          ) : (
+            "—"
+          )),
       },
       {
         accessorKey: "HourlyRate",
@@ -69,19 +83,6 @@ const Users = () => {
         ),
       },
       {
-        accessorKey: "IsAdmin",
-        header: "Admin",
-        size: 80,
-        Cell: ({ cell }) => (
-          <Chip
-            label={cell.getValue() ? "Yes" : "No"}
-            color={cell.getValue() ? "primary" : "default"}
-            size="small"
-            variant="outlined"
-          />
-        ),
-      },
-      {
         accessorKey: "CreatedDate",
         header: "Created Date",
         size: 120,
@@ -97,7 +98,7 @@ const Users = () => {
     (row) => {
       confirmation.confirmDelete({
         title: "Delete User",
-        message: `Are you sure you want to delete "${row.original.FullName || row.original.Username}"? This action cannot be undone.`,
+        message: `Are you sure you want to delete "${row.original.FullName || row.original.Username}"? This action cannot be undone. Users with any history can't be deleted; deactivate them instead.`,
         confirmText: "Delete User",
         onConfirm: () => removeRow(row.original.Id),
       });
@@ -116,10 +117,10 @@ const Users = () => {
       // every edit sent it back as null and silently wiped the user's number.
       Mobile: row.original.Mobile ?? "",
       HourlyRate: row.original.HourlyRate,
-      GroupId: row.original.GroupId || 0,
+      GroupId: row.original.GroupId ?? null,
+      BranchId: row.original.BranchId ?? null,
       ReportsTo: row.original.ReportsTo ?? null,
       UserActive: row.original.IsActive,
-      IsAdmin: row.original.IsAdmin,
       AllowDay: row.original.AllowDay || 0,
       UserIp: row.original.UserIp || "",
     };

@@ -6,7 +6,13 @@ jest.mock("../../../src/utils/activityLogger", () => ({
   ACTIONS: { CREATED: "Created", UPDATED: "Updated", DELETED: "Deleted" },
 }));
 
+jest.mock("../../../src/realtime/events", () => ({
+  emitToWorkspace: jest.fn(),
+  emitToUser: jest.fn(),
+}));
+
 const database = require("../../../src/config/database");
+const { emitToWorkspace } = require("../../../src/realtime/events");
 const { logActivity } = require("../../../src/utils/activityLogger");
 const teamController = require("../../../src/controllers/teamController");
 const { mockRes } = require("../../helpers/mockRes");
@@ -29,6 +35,36 @@ function baseReq(overrides = {}) {
 
 beforeEach(() => {
   database.executeStoredProcedure.mockReset();
+  emitToWorkspace.mockReset();
+});
+
+// REGRESSION: a roster save can unassign people on linked project boards, but
+// those boards were never told to refetch — their cards kept the old avatars.
+describe("teamController.save refreshes linked boards", () => {
+  it("emits TASK_LIST to every workspace in the SP's 2nd result set", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [
+        [{ ResponseCode: 200, ResponseMess: "ok", TeamId: 3, MemberCount: 1 }],
+        [{ WorkspaceId: 41 }, { WorkspaceId: 42 }],
+      ],
+    });
+    await teamController.save(baseReq({ body: { Id: 3, Name: "T", Members: [1] } }), mockRes());
+    expect(emitToWorkspace).toHaveBeenCalledTimes(2);
+    expect(emitToWorkspace).toHaveBeenCalledWith(41, "task-list", { workspaceId: 41 });
+    expect(emitToWorkspace).toHaveBeenCalledWith(42, "task-list", { workspaceId: 42 });
+  });
+
+  it("emits nothing when the SP returns no 2nd result set or refuses the save", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[{ ResponseCode: 200, ResponseMess: "ok", TeamId: 3, MemberCount: 0 }]],
+    });
+    await teamController.save(baseReq({ body: { Id: 3, Name: "T" } }), mockRes());
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[{ ResponseCode: 404, ResponseMess: "Team not found" }], [{ WorkspaceId: 41 }]],
+    });
+    await teamController.save(baseReq({ body: { Id: 3, Name: "T", Members: [] } }), mockRes());
+    expect(emitToWorkspace).not.toHaveBeenCalled();
+  });
 });
 
 // ---------------------------------------------------------------------------

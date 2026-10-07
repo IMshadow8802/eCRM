@@ -5,7 +5,11 @@ import {
   Save as SaveIcon,
   Clock,
   CheckCircle2,
+  Trash2,
+  UserCheck,
 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { enqueueSnackbar } from "notistack";
 
 import {
   Modal,
@@ -23,10 +27,13 @@ import Attachments from "../../../components/Attachments";
 import { TASK_ENDPOINTS } from "../../../api/taskQueries";
 import { PLATFORM_ENDPOINTS } from "../../../api/platformQueries";
 import { useApiQuery } from "../../../hooks/useApiQuery";
+import { useApiMutation } from "../../../hooks/useApiMutation";
+import { useConfirmation } from "../../../hooks/useConfirmation";
+import ConfirmationDialog from "../../../components/ConfirmationDialog";
 import useAuthStore from "../../../stores/useAuthStore";
 import useWorkspaceStore from "../../../stores/useWorkspaceStore";
 import useWorkspaceMemberOptions from "../../../hooks/useWorkspaceMemberOptions";
-import { isAssignee } from "../../../utils/taskAssignees";
+import { taskAbilities } from "../../../utils/taskAbilities";
 
 import { PRIORITY_TONE, PRIORITY_OPTIONS } from "./TaskDetail/helpers";
 import useTaskDraft from "./TaskDetail/useTaskDraft";
@@ -44,10 +51,8 @@ import LogTimeModal from "./TaskDetail/LogTimeModal";
 export default function TaskDetailModal({ taskId, open, onClose }) {
   const [tab, setTab] = useState("details");
   const currentUserId = useAuthStore((s) => s.user?.UserId ?? s.UserId);
-  const canEditOthers = useWorkspaceStore((s) => s.canEditOthersTasks)();
-  const canCreateTasks = useWorkspaceStore((s) => s.canCreateTasks)();
+  const isAdmin = useAuthStore((s) => Boolean(s.user?.IsAdmin));
   const workspaceRole = useWorkspaceStore((s) => s.activeWorkspaceRole);
-  const isViewer = workspaceRole === "viewer";
   const workspaceType = useWorkspaceStore((s) => s.activeWorkspaceType);
   const isPersonal = workspaceType === "personal";
 
@@ -108,30 +113,77 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
   });
   const activities = activityPayload?.activities ?? [];
 
-  const canEditThisTask =
-    task && (canEditOthers || task.CreatedByUserId === currentUserId);
+  // One rule set with the server (utils/taskAbilities).
+  const can = taskAbilities({
+    wsType: workspaceType,
+    role: workspaceRole,
+    isAdmin,
+    userId: currentUserId,
+    task,
+  });
+  const canEditThisTask = Boolean(task) && can.editFields;
+  const canProgressThisTask = can.changeStatus;
+  const canManageArtifacts = can.manageArtifacts;
+  const canLogTime = can.logTime;
+  // claim_task: open task nobody has (viewers can't hold tasks - 094).
+  const canClaim = Boolean(task) && !isPersonal && !task.IsCompleted && can.claim;
 
-  // A task holds a SET of assignees now; read it through assigneesOf() rather
-  // than the legacy scalar, which is only a mirror of the first one.
-  const amAssignee = isAssignee(task, currentUserId);
+  const queryClient = useQueryClient();
+  const confirmation = useConfirmation();
+  const deleteMutation = useApiMutation({
+    endpoint: TASK_ENDPOINTS.tasks.deleteTask,
+    showSuccessMessage: false,
+  });
+  // delete_task: owner/manager, or the creator while nobody else is on it -
+  // the server decides the second half and says why when it refuses.
+  const requestDelete = () =>
+    confirmation.confirmDelete({
+      title: "Delete task",
+      message: `Delete "${task.Title}"? It disappears from every board and list.`,
+      confirmText: "Delete",
+      onConfirm: async () => {
+        await deleteMutation.mutateAsync({ Id: task.Id, WorkspaceId: task.WorkspaceId });
+        enqueueSnackbar("Task deleted", { variant: "success" });
+        queryClient.invalidateQueries({ queryKey: ["tasks"], refetchType: "all" });
+        queryClient.removeQueries({ queryKey: ["task", task.Id] });
+        onClose?.();
+      },
+    });
 
-  // Progress — doing the work you were handed (tick, move column, log time).
-  // Any assignee, including a viewer: if you were given the work you can do it.
-  const canProgressThisTask = canEditThisTask || amAssignee;
+  // Column = progress (change_status), same endpoint and gate as dragging the
+  // card - so an assignee can use it, not only someone who may edit fields.
+  const moveMutation = useApiMutation({
+    endpoint: TASK_ENDPOINTS.tasks.moveTaskColumn,
+    showSuccessMessage: false,
+  });
+  const moveToColumn = async (columnId) => {
+    if (!task || !columnId || columnId === task.ColumnId) return;
+    try {
+      await moveMutation.mutateAsync({
+        TaskId: task.Id,
+        ColumnId: columnId,
+        WorkspaceId: task.WorkspaceId,
+      });
+      queryClient.invalidateQueries({ queryKey: ["tasks"], refetchType: "all" });
+      refetchTask();
+    } catch {
+      /* useApiMutation already showed why */
+    }
+  };
 
-  // Work artifacts — the checklist steps and the files that evidence them. A
-  // step routinely needs a document against it, so assignees hold both. An
-  // assigned VIEWER is deliberately excluded: viewer stays genuinely limited,
-  // since that is the role an external client gets. Mirrors the server's
-  // manage_checklist / manage_attachments actions.
-  const canManageArtifacts = canEditThisTask || (amAssignee && !isViewer);
-
-  // sp_CheckTaskPermission grants log_time to owner/manager/member — the same
-  // set as canCreateTasks — and grants the owner everything on a personal
-  // workspace, which has no member rows at all (so the role is null there).
-  // This used to be gated on canEditThisTask, which is stricter, so an assigned
-  // member saw the button disabled on the very work they were tracking.
-  const canLogTime = isPersonal || canCreateTasks || canProgressThisTask;
+  const claimMutation = useApiMutation({
+    endpoint: TASK_ENDPOINTS.tasks.claimTask,
+    successMessage: "You've taken this task",
+  });
+  const claim = async () => {
+    try {
+      await claimMutation.mutateAsync({ TaskId: task.Id, WorkspaceId: task.WorkspaceId });
+      queryClient.invalidateQueries({ queryKey: ["tasks"], refetchType: "all" });
+      refetchTask();
+    } catch {
+      /* message already shown */
+    }
+  };
 
   if (!open) return null;
 
@@ -267,14 +319,9 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
                       <Combobox
                         label="Column"
                         options={columnOptions}
-                        value={
-                          columnOptions.find((o) => o.value === draft.ColumnId) ??
-                          null
-                        }
-                        onChange={(v) =>
-                          setDraft((d) => ({ ...d, ColumnId: v?.value ?? null }))
-                        }
-                        disabled={!canEditThisTask}
+                        value={columnOptions.find((o) => o.value === task.ColumnId) ?? null}
+                        onChange={(v) => moveToColumn(v?.value)}
+                        disabled={!canProgressThisTask || moveMutation.isPending}
                         data-testid="task-column-select"
                       />
                     </div>
@@ -318,6 +365,19 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
                           placeholder="Unassigned"
                           data-testid="task-assignee-select"
                         />
+                        {canClaim && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            leftIcon={<UserCheck size={14} />}
+                            onClick={claim}
+                            loading={claimMutation.isPending}
+                            data-testid="task-claim-btn"
+                            sx={{ mt: 0.75 }}
+                          >
+                            Take this task
+                          </Button>
+                        )}
                       </div>
                     )}
                     <div style={{ flex: 1 }}>
@@ -478,6 +538,18 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
       </Modal.Body>
       {task && tab === "details" && canEditThisTask && (
         <Modal.Footer>
+          {can.deleteTask && (
+            <Button
+              variant="destructive"
+              leftIcon={<Trash2 size={14} />}
+              onClick={requestDelete}
+              disabled={details.isSaving}
+              data-testid="task-delete-btn"
+              sx={{ mr: "auto" }}
+            >
+              Delete
+            </Button>
+          )}
           <Button variant="ghost" onClick={onClose} disabled={details.isSaving}>
             Close
           </Button>
@@ -495,6 +567,17 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
       )}
     </Modal>
 
+    <ConfirmationDialog
+      open={confirmation.confirmationState.open}
+      onClose={confirmation.hideConfirmation}
+      onConfirm={confirmation.handleConfirm}
+      title={confirmation.confirmationState.title}
+      message={confirmation.confirmationState.message}
+      confirmText={confirmation.confirmationState.confirmText}
+      cancelText={confirmation.confirmationState.cancelText}
+      type={confirmation.confirmationState.type}
+      isLoading={confirmation.confirmationState.isLoading}
+    />
     <LogTimeModal time={time} task={task} />
     </>
   );

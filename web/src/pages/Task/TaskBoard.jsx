@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import {
   DndContext,
   DragOverlay,
@@ -34,6 +35,7 @@ import { KanbanCardView } from "../../components/Kanban/KanbanCard";
 import { dragGuard } from "../../realtime/dragGuard";
 import ColumnAddInline from "../../components/Kanban/ColumnAddInline";
 import TaskCreateModal from "./Components/TaskCreateModal";
+import useFocusTaskWorkspace from "./useFocusTaskWorkspace";
 import TaskDetailModal from "./Components/TaskDetailModal";
 import {
   Button,
@@ -46,7 +48,7 @@ import {
 } from "../../components/ui";
 import { bucketTasksByColumn, ORPHAN_BUCKET_KEY } from "./taskBucket";
 import useAuthStore from "../../stores/useAuthStore";
-import { isAssignee } from "../../utils/taskAssignees";
+import { workspaceAbilities, taskAbilities } from "../../utils/taskAbilities";
 import HelpGuide from "../../components/HelpGuide";
 import { HELP_GUIDES } from "../../data/helpGuides";
 
@@ -71,24 +73,30 @@ export default function TaskBoard() {
   const activeName = useWorkspaceStore((s) => s.activeWorkspaceName);
   const activeColor = useWorkspaceStore((s) => s.activeWorkspaceColor);
   const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace);
-  const canCreate = useWorkspaceStore((s) => s.canCreateTasks)();
-  const isAdmin = useAuthStore((s) => s.user?.IsAdmin) || false;
+  const isAdmin = useAuthStore((s) => Boolean(s.user?.IsAdmin));
   const currentUserId = useAuthStore((s) => s.user?.UserId ?? s.UserId);
 
-  // Mirrors sp_CheckTaskPermission's change_status rule. Every card used to be
-  // draggable by every role: the board optimistically moved it, the server
-  // 403'd, and it snapped back with a raw error. Now a card you cannot move
-  // does not offer to move.
+  // One rule set with the server (utils/taskAbilities) - a card you cannot
+  // move does not offer to move.
+  const ws = workspaceAbilities({ wsType: activeType, role: activeRole, isAdmin });
+  const canCreate = ws.createTask;
+  const canManageColumns = ws.manageColumns;
   const canDragCard = (task) =>
-    isAdmin ||
-    activeType === "personal" ||
-    activeRole === "owner" ||
-    activeRole === "manager" ||
-    task?.CreatedByUserId === currentUserId ||
-    isAssignee(task, currentUserId);
-  const canManageColumns = activeRole === "owner" || activeRole === "manager" || isAdmin;
+    taskAbilities({ wsType: activeType, role: activeRole, isAdmin, userId: currentUserId, task })
+      .changeStatus;
   const [search, setSearch] = useState("");
   const [openTaskId, setOpenTaskId] = useState(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const linkedTaskId = Number(searchParams.get("taskId")) || null;
+  useEffect(() => {
+    if (!linkedTaskId) return;
+    setOpenTaskId(linkedTaskId);
+    // Consume the param so closing the modal doesn't reopen it; a second click
+    // on the same notification re-adds it and fires again.
+    setSearchParams((p) => { p.delete("taskId"); return p; }, { replace: true });
+  }, [linkedTaskId, setSearchParams]);
+  // Switch to the task's board before the modal's abilities are computed.
+  const { ready: modalReady } = useFocusTaskWorkspace(openTaskId, () => setOpenTaskId(null));
   const [addingInColumn, setAddingInColumn] = useState(null); // { Id, Title } or null
   const [selectedIds, setSelectedIds] = useState([]);
   const [templateOpen, setTemplateOpen] = useState(false);
@@ -254,7 +262,16 @@ export default function TaskBoard() {
     }
   };
 
-  const handleRequestAddTask = (column) => setAddingInColumn(column);
+  // Board = completion (R7): a new task is open, so "Add task" in the last
+  // column creates it in the first. sp_SaveTask re-places it the same way;
+  // doing it here keeps the modal's "Lands in" line true.
+  const handleRequestAddTask = (column) => {
+    const ordered = columns
+      .slice()
+      .sort((a, b) => (a.SortOrder ?? 0) - (b.SortOrder ?? 0) || a.Id - b.Id);
+    const isLast = ordered.length > 1 && column?.Id === ordered.at(-1).Id;
+    setAddingInColumn(isLast ? ordered[0] : column);
+  };
 
   const toggleSelect = (id) =>
     setSelectedIds((prev) =>
@@ -490,7 +507,7 @@ export default function TaskBoard() {
 
       <TaskDetailModal
         taskId={openTaskId}
-        open={Boolean(openTaskId)}
+        open={Boolean(openTaskId) && modalReady}
         onClose={() => setOpenTaskId(null)}
       />
 

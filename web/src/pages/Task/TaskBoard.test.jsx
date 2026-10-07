@@ -6,10 +6,10 @@ import userEvent from "@testing-library/user-event";
 import TaskBoard from "./TaskBoard";
 import useWorkspaceStore from "../../stores/useWorkspaceStore";
 import useAuthStore from "../../stores/useAuthStore";
-import { taskFixture } from "../../test/mocks/handlers";
+import { taskFixture, workspaceFixture } from "../../test/mocks/handlers";
 import renderWithProviders from "../../test/renderWithProviders";
 
-const renderBoard = () => renderWithProviders(<TaskBoard />);
+const renderBoard = (route) => renderWithProviders(<TaskBoard />, route ? { route } : {});
 
 describe("TaskBoard", () => {
   beforeEach(() => {
@@ -133,6 +133,26 @@ describe("TaskBoard", () => {
     });
   });
 
+  it("Add task in the last (done) column creates the task in the first column", async () => {
+    useWorkspaceStore.getState().setActiveWorkspace({
+      Id: 100,
+      Type: "personal",
+      MyRole: "owner",
+    });
+    renderBoard();
+    const user = userEvent.setup();
+    const btns = await screen.findAllByText(/Add task/i);
+    await user.click(btns[btns.length - 1]); // "Done"
+    expect(await screen.findByText(/Lands in “To Do” column/i)).toBeInTheDocument();
+    await user.type(screen.getByLabelText(/title/i), "Not done yet");
+    const stepInput = await screen.findByTestId("create-task-step-0");
+    await user.type(stepInput.querySelector("input") || stepInput, "Step");
+    await user.click(screen.getByTestId("create-task-submit"));
+    await waitFor(() => {
+      expect(taskFixture.list.find((t) => t.Title === "Not done yet")?.ColumnId).toBe(1);
+    });
+  });
+
   it("bulk delete removes tasks from fixture", async () => {
     useWorkspaceStore.getState().setActiveWorkspace({
       Id: 100,
@@ -160,7 +180,7 @@ describe("TaskBoard", () => {
     });
   });
 
-  it("bulk delete surfaces 409 toast when checklist items block deletion", async () => {
+  it("bulk delete removes a task that still has steps (soft delete, no 409)", async () => {
     useWorkspaceStore.getState().setActiveWorkspace({
       Id: 100,
       Type: "personal",
@@ -182,9 +202,9 @@ describe("TaskBoard", () => {
     checkbox.click();
     const deleteBtn = await screen.findByTestId("bulk-delete");
     await user.click(deleteBtn);
-    // Task survives because MSW returns 409.
+    // CHANGED (094): delete is soft now, so steps no longer block it.
     await waitFor(() => {
-      expect(taskFixture.list.find((t) => t.Id === 888)).toBeDefined();
+      expect(taskFixture.list.find((t) => t.Id === 888)).toBeUndefined();
     });
   });
 
@@ -506,5 +526,104 @@ describe("TaskBoard", () => {
       .map((el) => el.textContent)
       .filter((t) => t === "Later" || t === "Unsorted");
     expect(titles[0]).toBe("Unsorted");
+  });
+
+  // REGRESSION (B13): the old gate was role-only, so an admin who is not a
+  // member of a shared board (MyRole null) got no add-task and no column menu.
+  it("gives a non-member admin add-task and column management on a shared board", async () => {
+    useAuthStore.setState({ user: { UserId: 1, IsAdmin: true }, UserId: 1 });
+    useWorkspaceStore.getState().setActiveWorkspace({ Id: 100, Type: "shared", MyRole: null });
+    renderBoard();
+    expect(await screen.findByTestId("quick-add-btn-1")).toBeInTheDocument();
+    expect(screen.getByTestId("column-menu-1")).toBeInTheDocument();
+  });
+
+  it("gives an admin nothing on someone else's personal board", async () => {
+    useAuthStore.setState({ user: { UserId: 1, IsAdmin: true }, UserId: 1 });
+    useWorkspaceStore.getState().setActiveWorkspace({ Id: 100, Type: "personal", MyRole: null });
+    renderBoard();
+    await screen.findByTestId("kanban-column-1");
+    expect(screen.queryByTestId("quick-add-btn-1")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("column-menu-1")).not.toBeInTheDocument();
+  });
+
+  it("offers a viewer neither add-task nor drag", async () => {
+    useWorkspaceStore.getState().setActiveWorkspace({ Id: 100, Type: "shared", MyRole: "viewer" });
+    taskFixture.seed({ Id: 831, Title: "Not mine", ColumnId: 1, Priority: "low", WorkspaceId: 100, CreatedByUserId: 7 });
+    renderBoard();
+    expect((await screen.findByTestId("kanban-card-831")).style.cursor).toBe("default");
+    expect(screen.queryByTestId("quick-add-btn-1")).not.toBeInTheDocument();
+  });
+
+  describe("deep link ?taskId=", () => {
+    const seedLinked = () => {
+      useWorkspaceStore.getState().setActiveWorkspace({ Id: 1, Type: "personal", MyRole: "owner" });
+      taskFixture.seed({
+        Id: 101, Title: "Linked task", WorkspaceId: 2, ColumnId: 1, ColumnTitle: "To Do",
+        Priority: "medium", CreatedByUserId: 9,
+      });
+    };
+
+    it("REGRESSION: opens the task and switches to its workspace", async () => {
+      seedLinked();
+      workspaceFixture.reset();
+      workspaceFixture.seed({ Id: 2, Name: "Ops", Type: "shared", MyRole: "member" });
+      renderBoard("/tasks?taskId=101");
+      expect(await screen.findByRole("dialog")).toBeInTheDocument();
+      expect(await screen.findAllByText("Linked task")).not.toHaveLength(0);
+      await waitFor(() => expect(useWorkspaceStore.getState().activeWorkspaceId).toBe(2));
+    });
+
+    it("keeps the active workspace when the task's board is not in my list, modal still opens", async () => {
+      seedLinked();
+      workspaceFixture.reset();
+      renderBoard("/tasks?taskId=101");
+      expect(await screen.findByRole("dialog")).toBeInTheDocument();
+      await screen.findAllByText("Linked task");
+      expect(useWorkspaceStore.getState().activeWorkspaceId).toBe(1);
+    });
+
+    it("a task that no longer exists shows a clear message and closes the modal", async () => {
+      useWorkspaceStore.getState().setActiveWorkspace({ Id: 1, Type: "personal", MyRole: "owner" });
+      renderBoard("/tasks?taskId=999");
+      expect(await screen.findByText("This task no longer exists")).toBeInTheDocument();
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    });
+    it("a failing task fetch also shows the message and closes the modal", async () => {
+      const { server } = await import("../../test/mocks/server");
+      const { http, HttpResponse } = await import("msw");
+      server.use(
+        http.post("*/api/tasks/fetchTasks", async ({ request }) => {
+          const b = await request.clone().json();
+          if (b?.Id) return HttpResponse.json({ success: false, message: "gone", responseCode: 404 }, { status: 404 });
+          return HttpResponse.json({ success: true, message: "ok", responseCode: 200, data: { tasks: [] } });
+        }),
+      );
+      useWorkspaceStore.getState().setActiveWorkspace({ Id: 1, Type: "personal", MyRole: "owner" });
+      renderBoard("/tasks?taskId=555");
+      expect(await screen.findByText("This task no longer exists")).toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("does not render the modal until the workspace switch has landed", async () => {
+      const { server } = await import("../../test/mocks/server");
+      const { http, HttpResponse } = await import("msw");
+      seedLinked();
+      let release;
+      const gate = new Promise((r) => { release = r; });
+      server.use(
+        http.post("*/api/workspaces/fetchWorkspaces", async () => {
+          await gate;
+          return HttpResponse.json({ success: true, message: "ok", responseCode: 200, data: { workspaces: [{ Id: 2, Name: "Ops", Type: "shared", MyRole: "member" }] } });
+        }),
+      );
+      renderBoard("/tasks?taskId=101");
+      await new Promise((r) => setTimeout(r, 300)); // task fetched, workspaces still pending
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(useWorkspaceStore.getState().activeWorkspaceId).toBe(1);
+      release();
+      expect(await screen.findByRole("dialog")).toBeInTheDocument();
+      expect(useWorkspaceStore.getState().activeWorkspaceId).toBe(2);
+    });
   });
 });

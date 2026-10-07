@@ -399,6 +399,21 @@ const canReopen = (req, record) => {
   return Array.isArray(ownerIds) && ownerIds.includes(assignee);
 };
 
+// One sp_CheckTaskPermission answer as a boolean, without answering the
+// request — for a controller that needs to know a SECOND right after the gate
+// already passed (a tick-only caller vs one who may also rename the step).
+async function taskAllowed(req, taskId, action) {
+  const result = await database.executeStoredProcedure("sp_CheckTaskPermission", {
+    TaskId: Number(taskId) || 0,
+    UserId: req.user.UserId,
+    Action: action,
+    IsAdmin: req.scope?.isAdmin ? 1 : 0,
+    CompId: req.user.CompId,
+  });
+  const row = result.recordsets?.[0]?.[0] ?? result.recordset?.[0];
+  return row?.Allowed === true || row?.Allowed === 1;
+}
+
 module.exports = {
   HIERARCHY,
   loadScope,
@@ -414,6 +429,7 @@ module.exports = {
   canWriteBranch,
   canReadBranch,
   assertRecordAccess,
+  taskAllowed,
   assertCanAssign,
   canReopen,
 };

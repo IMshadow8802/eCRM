@@ -26,7 +26,6 @@ export default function useTaskDraft({
     setDraft({
       Title: task.Title ?? "",
       Description: task.Description ?? "",
-      ColumnId: task.ColumnId ?? null,
       Priority: PRIORITY_OPTIONS.some((o) => o.value === normPriority)
         ? normPriority
         : "medium",
@@ -41,7 +40,6 @@ export default function useTaskDraft({
   const isDirty = draft && task && (
     draft.Title !== (task.Title ?? "") ||
     draft.Description !== (task.Description ?? "") ||
-    draft.ColumnId !== (task.ColumnId ?? null) ||
     draft.Priority !== (task.Priority ?? "medium") ||
     !sameAssignees(draft.AssigneeIds, assigneeIdsOf(task)) ||
     draft.DueDate !== (task.DueDate ? String(task.DueDate).slice(0, 10) : "") ||
@@ -63,7 +61,6 @@ export default function useTaskDraft({
         Title: draft.Title.trim() || task.Title,
         Description: draft.Description,
         WorkspaceId: task.WorkspaceId,
-        ColumnId: draft.ColumnId,
         ProjectId: task.ProjectId,
         ParentTaskId: task.ParentTaskId,
         AssigneeIds: isPersonal ? [currentUserId] : draft.AssigneeIds,

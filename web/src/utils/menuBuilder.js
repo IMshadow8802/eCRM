@@ -1,6 +1,7 @@
 import {
   DashboardOutlined,
   TaskAltOutlined,
+  AssignmentIndOutlined,
   FolderOpenOutlined,
   GroupsOutlined,
   PersonOutlineOutlined,
@@ -46,6 +47,7 @@ import {
 export function getMenuIcon(menuTitle) {
   const title = String(menuTitle || "").toLowerCase();
   if (title.includes("dashboard")) return DashboardOutlined;
+  if (title.includes("my work")) return AssignmentIndOutlined;
   if (title.includes("task")) return TaskAltOutlined;
   if (title.includes("project")) return FolderOpenOutlined;
   if (title.includes("team")) return GroupsOutlined;

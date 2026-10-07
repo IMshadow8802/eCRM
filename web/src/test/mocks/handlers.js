@@ -379,6 +379,17 @@ export const handlers = [
 
   http.post(`*/api/kanban/deleteKanbanColumn`, async ({ request }) => {
     const body = await request.json();
+    // Faithful to sp_DeleteKanbanColumn: the last column of a board cannot go.
+    const target = taskFixture.columns.find((c) => c.Id === body?.Id);
+    const siblings = taskFixture.columns.filter(
+      (c) => c.Id !== body?.Id && (!target || c.WorkspaceId === target.WorkspaceId),
+    );
+    if (target && siblings.length === 0) {
+      return HttpResponse.json(
+        { success: false, message: "A board needs at least one column", responseCode: 409 },
+        { status: 409 },
+      );
+    }
     taskFixture.columns = taskFixture.columns.filter((c) => c.Id !== body?.Id);
     return HttpResponse.json({
       success: true,
@@ -390,10 +401,18 @@ export const handlers = [
 
   http.post(`*/api/tasks/fetchTasks`, async ({ request }) => {
     const body = await request.json();
-    const filtered =
+    let filtered =
       body?.Id > 0
         ? taskFixture.list.filter((t) => t.Id === body.Id)
         : taskFixture.list;
+    // Contract of sp_FetchTask's AssigneeUserId / OnlyOpen (My Work).
+    if (body?.AssigneeUserId) {
+      filtered = filtered.filter((t) => {
+        const a = typeof t.AssigneesJson === "string" ? JSON.parse(t.AssigneesJson || "[]") : t.AssigneesJson ?? [];
+        return a.some((x) => x.UserId === body.AssigneeUserId);
+      });
+    }
+    if (body?.OnlyOpen) filtered = filtered.filter((t) => !t.IsCompleted);
     return HttpResponse.json({
       success: true,
       message: "ok",
@@ -489,16 +508,6 @@ export const handlers = [
     const ids = Array.isArray(body?.TaskIds)
       ? body.TaskIds
       : String(body?.TaskIds ?? "").split(",").map(Number).filter(Boolean);
-    const blocked = taskFixture.list.find(
-      (t) => ids.includes(t.Id) && (t.ChecklistItems?.length ?? 0) > 0,
-    );
-    if (blocked) {
-      return HttpResponse.json({
-        success: false,
-        message: "Clear checklist items before deleting this task",
-        responseCode: 409,
-      });
-    }
     const before = taskFixture.list.length;
     taskFixture.list = taskFixture.list.filter((t) => !ids.includes(t.Id));
     return HttpResponse.json({
@@ -509,17 +518,16 @@ export const handlers = [
     });
   }),
 
+  http.post(`*/api/tasks/claimTask`, async ({ request }) => {
+    const body = await request.json();
+    const task = taskFixture.list.find((t) => t.Id === body?.TaskId);
+    if (task) task.AssigneesJson = JSON.stringify([{ UserId: 1, FullName: "Me" }]);
+    return HttpResponse.json({ success: true, message: "Task taken", responseCode: 200 });
+  }),
+
   http.post(`*/api/tasks/deleteTask`, async ({ request }) => {
     const body = await request.json();
     const id = body?.Id;
-    const target = taskFixture.list.find((t) => t.Id === id);
-    if (target && (target.ChecklistItems?.length ?? 0) > 0) {
-      return HttpResponse.json({
-        success: false,
-        message: "Clear checklist items before deleting this task",
-        responseCode: 409,
-      });
-    }
     const before = taskFixture.list.length;
     taskFixture.list = taskFixture.list.filter((t) => t.Id !== id);
     return HttpResponse.json({
@@ -650,6 +658,15 @@ export const handlers = [
         ],
         pagination: { currentPage: 1, pageSize: 200, totalRecords: 2, totalPages: 1 },
       },
+    }),
+  ),
+
+  http.post(`*/api/users/fetchUserHandover`, async () =>
+    HttpResponse.json({
+      success: true,
+      message: "ok",
+      responseCode: 200,
+      data: { handover: { OpenTasks: 0, OpenLeads: 0, OpenTickets: 0, OwnedWorkspaces: 0, DirectReports: 0, workspaces: [], reports: [] } },
     }),
   ),
 

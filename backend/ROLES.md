@@ -78,7 +78,7 @@ A user in several groups gets their **strongest**: lowest `HierarchyLevel` wins.
 | All / Company | every branch | *none* (no ownership filter) |
 | MultiBranch | own + `tblUserBranchAccess` grants | *none* |
 | Branch | own branch | *none* |
-| Team | own branch | members of teams they lead, + self |
+| Team | own branch | `ReportsTo` subtree, + self |
 | Self | own branch | `[self]` |
 
 ---
@@ -158,11 +158,13 @@ Head and HR Manager are all level 2 — deriving the bit from level would hand
 them the `sp_CheckTaskPermission` admin bypass, i.e. read/write on **every task
 in every project workspace**. HR editing the sales team's sprint board.
 
-The login token's `IsAdmin` is derived from the user's **active** group at
-login (`sp_ValidateUser`, `093`). The `tblUser.IsAdmin` column is no longer
-read by anything that grants access — until `093` it went into the token
-straight from a Users-form checkbox, and a deactivated group kept granting
+The token **and** `req.scope` take `IsAdmin` from any active group;
+`tblUser.IsAdmin` is a mirror written by `sp_SaveUser` from the group and read by
+nothing (`094`). Until `093` it went into the token straight from a Users-form
+checkbox, and a deactivated group kept granting
 its scope and admin flag through `sp_FetchAccessibleBranchIds`.
+
+Manager resolution (who is told about a person's work) is `sp_FetchPersonManagers`.
 
 ---
 

@@ -3,6 +3,7 @@ import type {
   TaskAssignee,
   TaskPriority,
   WorkspaceRole,
+  WorkspaceType,
 } from "../../types/api";
 
 /**
@@ -180,53 +181,82 @@ export function groupByDue(
 // ------------------------------------------------------------- permissions
 
 /**
- * What the current user may do to a task, mirroring sp_CheckTaskPermission.
- * This is a UI convenience ONLY — the server re-checks every mutation, so a
- * wrong answer here hides a button, it never grants access.
+ * What the current user may do on a board / to a task, mirroring
+ * sp_CheckTaskPermission. UI convenience ONLY — the server re-checks every
+ * mutation, so a wrong answer hides a button, it never grants access.
+ * Matches web/src/utils/taskAbilities.js — change both together.
  *
- * The split is deliberate and matches the web:
- *   change_status      progress   — ticking checklist, moving column
- *   manage_checklist   artifacts  — adding/removing checklist items
- *   manage_attachments artifacts  — adding/removing files
- *   edit_fields        definition — title, description, due date, assignees
- *
- * Assignment is an act of delegation: being assigned grants progress and
- * artifact rights even to someone who is only a `member` of the workspace,
- * because they cannot do the work otherwise. A `viewer` who is assigned may
- * still record progress but may not reshape the work.
+ * Order is the SP's: personal -> owner only (admins are out too); admin ->
+ * everything on shared/project; else the ACTIVE member role decides.
  */
-export interface TaskAbilities {
+export interface WorkspaceAbilities {
+  full: boolean;
+  member: boolean;
+  viewer: boolean;
+  view: boolean;
+  createTask: boolean;
+  manageColumns: boolean;
+  pinComment: boolean;
+}
+
+export function workspaceAbilities(
+  role: WorkspaceRole | null,
+  isAdmin: boolean,
+  wsType: WorkspaceType | null,
+): WorkspaceAbilities {
+  const personal = wsType === "personal";
+  const full = personal
+    ? role === "owner"
+    : Boolean(isAdmin && wsType) || role === "owner" || role === "manager";
+  const member = !personal && !full && role === "member";
+  const viewer = !personal && !full && role === "viewer";
+  return {
+    full,
+    member,
+    viewer,
+    view: full || member || viewer,
+    createTask: full || member,
+    manageColumns: full,
+    pinComment: full,
+  };
+}
+
+export interface TaskAbilities extends WorkspaceAbilities {
+  comment: boolean;
   changeStatus: boolean;
+  logTime: boolean;
   manageArtifacts: boolean;
   editFields: boolean;
-  comment: boolean;
+  claim: boolean;
+  deleteTask: boolean;
 }
 
 export function abilitiesFor(
   task: Task | null | undefined,
   userId: number | null,
   role: WorkspaceRole | null,
-  isAdmin = false,
+  isAdmin: boolean,
+  wsType: WorkspaceType | null,
 ): TaskAbilities {
-  if (!task || userId == null) {
-    return { changeStatus: false, manageArtifacts: false, editFields: false, comment: false };
-  }
-
-  const owner = role === "owner" || role === "manager";
-  const creator = task.CreatedByUserId === userId;
-  const assigned = isAssignee(task, userId);
-  const viewer = role === "viewer";
-
-  // IsAdmin bypasses on shared/project boards only — a personal workspace stays
-  // private even from an administrator.
-  const adminBypass = isAdmin && task.WorkspaceId != null && role !== null;
-
-  const authority = owner || creator || adminBypass;
-
+  const ws = workspaceAbilities(role, isAdmin, wsType);
+  const creator = task != null && userId != null && Number(task.CreatedByUserId) === Number(userId);
+  const assigned = task != null && isAssignee(task, userId);
+  const others = task
+    ? assigneesOf(task).some((a) => Number(a.UserId) !== Number(userId))
+    : false;
+  const progress = ws.full || (ws.member && (assigned || creator)) || (ws.viewer && assigned);
   return {
-    changeStatus: authority || assigned,
-    manageArtifacts: authority || (assigned && !viewer),
-    editFields: authority,
-    comment: role !== null || creator || assigned,
+    ...ws,
+    comment: ws.view,
+    changeStatus: progress,
+    logTime: progress,
+    manageArtifacts: ws.full || (ws.member && (assigned || creator)),
+    editFields: ws.full || (ws.member && creator),
+    // An actual membership role, never the admin bypass: sp_ClaimTask 400s a
+    // non-member ("Only a member of this board can take its tasks").
+    claim: (role === "owner" || role === "manager" || role === "member") && (ws.full || ws.member)
+      && task != null && assigneesOf(task).length === 0,
+    // the server also refuses when someone else has commented - it has the last word
+    deleteTask: task != null && (ws.full || (ws.member && creator && !others)),
   };
 }

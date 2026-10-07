@@ -143,12 +143,11 @@ const TopNav = ({ onOpenMobileSidebar }) => {
         <NotificationBell
           onOpenEntity={(n) => {
             // The notification SPs emit EntityType 'Workspace' capitalised but
-            // 'task'/'comment' lowercase, so compare case-insensitively.
+            // 'task' lowercase (comments arrive as task too), so compare
+            // case-insensitively.
             const entity = String(n?.EntityType ?? "").toLowerCase();
             if (entity === "task" && n?.EntityId) {
               navigate(`/tasks?taskId=${n.EntityId}`);
-            } else if (entity === "comment" && n?.EntityId) {
-              navigate(`/tasks?commentId=${n.EntityId}`);
             } else if (entity === "ticket" && n?.EntityId) {
               // ticket_assigned / ticket_escalated (spec 2) — open the complaint.
               navigate(`/support/tickets/${n.EntityId}`);

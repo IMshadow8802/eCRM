@@ -16,6 +16,7 @@ import {
   Plus,
   Timer,
   Trash2,
+  UserCheck,
   UserX,
   type LucideIcon,
 } from "lucide-react-native";
@@ -34,6 +35,7 @@ import {
   logTaskTime,
   moveTaskColumn,
   saveTaskChecklist,
+  claimTask,
 } from "../../api/taskQueries";
 import { apiErrorMessage } from "../../api/errors";
 import { fetchAttachments } from "../../api/attachmentQueries";
@@ -166,11 +168,9 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
     enabled: boardId != null,
   });
 
-  const role = useMemo(
-    () => workspaces?.find((w) => w.Id === boardId)?.MyRole ?? null,
-    [workspaces, boardId],
-  );
-  const can = abilitiesFor(task, userId, role, isAdmin);
+  const ws = useMemo(() => workspaces?.find((w) => w.Id === boardId), [workspaces, boardId]);
+  const role = ws?.MyRole ?? null;
+  const can = abilitiesFor(task, userId, role, isAdmin, ws?.Type ?? null);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["task", taskId] });
@@ -221,6 +221,11 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   const move = useMutation({
     mutationFn: moveTaskColumn,
     onError: (err) => toast.error(apiErrorMessage(err, "Could not move this task.")),
+    onSuccess: invalidate,
+  });
+  const claim = useMutation({
+    mutationFn: claimTask,
+    onError: (err) => toast.error(apiErrorMessage(err, "Could not take this task.")),
     onSuccess: invalidate,
   });
   const addBlocker = useMutation({
@@ -288,6 +293,9 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   const estimated = task.EstimatedHours ?? 0;
   const blockers = task.BlockerCount ?? 0;
   const columns = columnsQuery.data ?? [];
+  // claim_task: an open task nobody is on, for someone who may hold one. A
+  // viewer can't hold a task (094), so can.claim is false for them.
+  const canClaim = can.claim && !task.IsCompleted;
 
   // Files brings its own FAB (it needs the camera/library/file picker sheet).
   const showFab =
@@ -337,7 +345,17 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   // conditional spreads rather than pushed into: showing a viewer a menu that
   // is mostly greyed out is worse than showing them a short one.
   const menuActions: SheetAction[] = [
-    ...(can.changeStatus
+    ...(canClaim
+      ? [
+          {
+            key: "claim",
+            label: "Take this task",
+            icon: UserCheck,
+            onPress: () => claim.mutate({ TaskId: taskId, WorkspaceId: task.WorkspaceId }),
+          } satisfies SheetAction,
+        ]
+      : []),
+    ...(can.logTime
       ? [
           {
             key: "log-time",
@@ -377,6 +395,10 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
             icon: Link2,
             onPress: () => blockerRef.current?.present(),
           } satisfies SheetAction,
+        ]
+      : []),
+    ...(can.deleteTask
+      ? [
           {
             key: "delete",
             label: "Delete task",
@@ -426,7 +448,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
           // Derived from the abilities, not from menuActions.length: reading
           // that array during render counts as reading the refs its handlers
           // close over.
-          can.changeStatus || can.editFields
+          can.changeStatus || can.editFields || can.deleteTask || canClaim
             ? [
                 {
                   icon: MoreVertical,
@@ -630,7 +652,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
       <Dialog
         visible={confirmingDelete}
         title="Delete this task?"
-        message="Its checklist, comments and attachments go with it. This cannot be undone."
+        message="It disappears from every board and list. Its history is kept."
         confirmLabel="Delete"
         destructive
         loading={removeTask.isPending}

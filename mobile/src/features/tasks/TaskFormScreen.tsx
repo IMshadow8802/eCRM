@@ -9,8 +9,7 @@ import type {
 
 import { fetchTaskById, saveTask } from "../../api/taskQueries";
 import { apiErrorMessage } from "../../api/errors";
-import { fetchKanbanColumns } from "../../api/kanbanQueries";
-import { fetchWorkspaceMembers } from "../../api/workspaceQueries";
+import { fetchWorkspaceMembers, fetchWorkspaces } from "../../api/workspaceQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import type { Task, TaskPriority } from "../../types/api";
 import { colors, spacing, SCREEN_PADDING } from "../../theme";
@@ -24,6 +23,7 @@ import {
   Select,
   Text,
 } from "../../ui";
+import useAuthStore from "../../stores/useAuthStore";
 import { assigneesOf } from "./taskHelpers";
 
 type Props = StackScreenProps<RootStackParamList, "TaskForm">;
@@ -115,7 +115,6 @@ function TaskForm({ navigation, workspaceId, columnId, task }: TaskFormProps) {
   const [dueDate, setDueDate] = useState<string | null>(
     task?.DueDate ? task.DueDate.slice(0, 10) : null,
   );
-  const [column, setColumn] = useState<number | null>(task?.ColumnId ?? columnId);
   const [assignees, setAssignees] = useState<number[]>(() =>
     task ? assigneesOf(task).map((a) => a.UserId) : [],
   );
@@ -137,10 +136,14 @@ function TaskForm({ navigation, workspaceId, columnId, task }: TaskFormProps) {
   const removeStep = (idx: number) =>
     setSteps((prev) => (prev.length === 1 ? [""] : prev.filter((_, i) => i !== idx)));
 
-  const { data: columns } = useQuery({
-    queryKey: ["columns", workspaceId],
-    queryFn: () => fetchKanbanColumns({ WorkspaceId: workspaceId }),
+  // Same key as Boards, so already cached. A personal board has one possible
+  // assignee — its owner — so the picker is hidden and the owner is sent.
+  const { data: workspaces } = useQuery({
+    queryKey: ["workspaces", false],
+    queryFn: () => fetchWorkspaces({ PageSize: 100 }),
   });
+  const isPersonal = workspaces?.find((w) => w.Id === workspaceId)?.Type === "personal";
+  const userId = useAuthStore((s) => s.UserId);
 
   const { data: members } = useQuery({
     queryKey: ["workspace", workspaceId, "members"],
@@ -148,22 +151,18 @@ function TaskForm({ navigation, workspaceId, columnId, task }: TaskFormProps) {
   });
 
   // A pending invite is not a member — offering them as an assignee creates a
-  // task nobody can act on.
+  // task nobody can act on. A viewer can't complete a task, so the server
+  // refuses them too.
   const assigneeOptions = useMemo(
     () =>
       (members ?? [])
-        .filter((m) => m.InviteStatus === "active" && m.IsActive)
+        .filter((m) => m.InviteStatus === "active" && m.IsActive && m.Role !== "viewer")
         .map((m) => ({
           value: m.UserId,
           label: m.FullName ?? m.Username ?? `User ${m.UserId}`,
           sublabel: m.Role,
         })),
     [members],
-  );
-
-  const columnOptions = useMemo(
-    () => (columns ?? []).map((c) => ({ value: c.Id, label: c.Title })),
-    [columns],
   );
 
   const save = useMutation({
@@ -200,14 +199,18 @@ function TaskForm({ navigation, workspaceId, columnId, task }: TaskFormProps) {
       Title: trimmed,
       Description: description.trim(),
       WorkspaceId: workspaceId,
-      ColumnId: column,
-      AssigneeIds: assignees,
+      // Board = completion (R7): the form never picks a column. A create lands
+      // in the column the user tapped "add" in (the server moves a last-column
+      // create to the first); an edit sends none — moving is the detail
+      // screen's Move action (moveTaskColumn).
+      ColumnId: editing ? null : columnId,
+      AssigneeIds: isPersonal && userId != null ? [userId] : assignees,
       Priority: priority,
       Type: type,
       DueDate: dueDate,
       EstimatedHours: Number.isFinite(hours) && hours > 0 ? hours : 0,
       // sp_SaveTask's UPDATE branch assigns every one of these columns
-      // unconditionally — only ColumnId is COALESCEd. Omitting them here does
+      // unconditionally (ColumnId it ignores). Omitting them here does
       // not mean "leave them alone": saveTask's own defaults would fill in
       // 0/null and the save would wipe logged time, progress, the parent link
       // and the project. So this form re-sends what it does not edit.
@@ -255,23 +258,17 @@ function TaskForm({ navigation, workspaceId, columnId, task }: TaskFormProps) {
           numberOfLines={4}
         />
 
-        <Select
-          label="Column"
-          value={column}
-          options={columnOptions}
-          onChange={(v) => setColumn(v as number)}
-          placeholder="Board default"
-        />
-
-        <Select
-          label="Assignees"
-          value={assignees}
-          options={assigneeOptions}
-          onChange={(v) => setAssignees(v as number[])}
-          multiple
-          placeholder="Nobody yet"
-          sheetTitle="Who is on this?"
-        />
+        {isPersonal ? null : (
+          <Select
+            label="Assignees"
+            value={assignees}
+            options={assigneeOptions}
+            onChange={(v) => setAssignees(v as number[])}
+            multiple
+            placeholder="Nobody yet"
+            sheetTitle="Who is on this?"
+          />
+        )}
 
         <Select
           label="Priority"
@@ -343,6 +340,8 @@ function TaskForm({ navigation, workspaceId, columnId, task }: TaskFormProps) {
             title={editing ? "Save changes" : "Create task"}
             onPress={submit}
             loading={save.isPending}
+            // Until the board type is known a personal board would be saved unassigned.
+            disabled={!workspaces}
             fullWidth
           />
         </View>

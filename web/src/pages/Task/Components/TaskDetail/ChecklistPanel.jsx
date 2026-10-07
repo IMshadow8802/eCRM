@@ -34,7 +34,8 @@ export default function ChecklistPanel({
             key={it.Id}
             item={it}
             canToggle={canProgressThisTask}
-            canDelete={canManageArtifacts}
+            // The last step stays: a task with no steps can never complete (094).
+            canDelete={canManageArtifacts && checklistItems.length > 1}
             pending={pendingChecklist.has(it.Id)}
             onToggle={() => toggleChecklistItem(it)}
             onDelete={() => removeChecklistItem(it)}

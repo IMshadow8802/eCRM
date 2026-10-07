@@ -27,6 +27,7 @@ jest.mock("../../../src/controllers/attachmentController", () => ({
 // middleware/permission.test.js and controllers/taskController.test.js.
 jest.mock("../../../src/middleware/permission", () => ({
   assertRecordAccess: jest.fn().mockResolvedValue(true),
+  taskAllowed: jest.fn().mockResolvedValue(true),
 }));
 
 const database = require("../../../src/config/database");
@@ -157,6 +158,28 @@ describe("taskController.save emits", () => {
 });
 
 describe("taskController.delete emits", () => {
+  // REGRESSION (094 soft delete): a deleted task keeps its files, and the board
+  // refreshes even when the client sent no WorkspaceId hint (mobile never does).
+  it("task delete keeps attachments and emits TASK_LIST to the SP's WorkspaceId", async () => {
+    const attachmentController = require("../../../src/controllers/attachmentController");
+    attachmentController.cascadeDelete.mockClear();
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "Task deleted", TaskId: 11, WorkspaceId: 5 }]),
+    );
+    await taskController.delete(baseReq({ Id: 11 }), mockRes());
+    expect(attachmentController.cascadeDelete).not.toHaveBeenCalled();
+    expect(emitToWorkspace).toHaveBeenCalledWith(5, SCOPES.TASK_LIST, { workspaceId: 5 });
+  });
+
+  it("claim emits TASK_LIST + TASK_DETAIL to the task's board", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "ok", TaskId: 11, WorkspaceId: 5 }]),
+    );
+    await taskController.claim(baseReq({ TaskId: 11 }), mockRes());
+    expect(emitToWorkspace).toHaveBeenCalledWith(5, SCOPES.TASK_LIST, { workspaceId: 5 });
+    expect(emitToWorkspace).toHaveBeenCalledWith(5, SCOPES.TASK_DETAIL, { workspaceId: 5, taskId: 11 });
+  });
+
   it("emits TASK_LIST when the client supplies the WorkspaceId hint", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce(
       spResult([{ ResponseCode: 200, ResponseMess: "Task deleted" }]),
@@ -463,6 +486,8 @@ describe("workspaceController.removeMember / respondInvite emits", () => {
       workspaceId: 5,
     });
     expect(emitToWorkspace).toHaveBeenCalledWith(5, SCOPES.NOTIFICATIONS);
+    // 094: leaving a board takes the person off its open tasks — cards change.
+    expect(emitToWorkspace).toHaveBeenCalledWith(5, SCOPES.TASK_LIST, { workspaceId: 5 });
     expect(emitToUser).toHaveBeenCalledWith(9, SCOPES.WORKSPACES);
     expect(emitToUser).toHaveBeenCalledWith(9, SCOPES.NOTIFICATIONS);
   });
@@ -585,6 +610,8 @@ describe("workspaceController lifecycle emits", () => {
       workspaceId: 5,
     });
     expect(emitToWorkspace).toHaveBeenCalledWith(5, SCOPES.WORKSPACES);
+    expect(emitToWorkspace).toHaveBeenCalledWith(5, SCOPES.TASK_LIST, { workspaceId: 5 });
+    expect(emitToWorkspace).toHaveBeenCalledWith(5, SCOPES.NOTIFICATIONS);
   });
 
   it("convertToShared emits WORKSPACES + WORKSPACE_MEMBERS", async () => {
@@ -616,6 +643,9 @@ describe("workspaceController.setMemberRole emits", () => {
       workspaceId: 5,
     });
     expect(emitToUser).toHaveBeenCalledWith(9, SCOPES.WORKSPACES);
+    // 094: demoting to viewer unassigns them — cards change, owners get a bell.
+    expect(emitToWorkspace).toHaveBeenCalledWith(5, SCOPES.TASK_LIST, { workspaceId: 5 });
+    expect(emitToWorkspace).toHaveBeenCalledWith(5, SCOPES.NOTIFICATIONS);
   });
 
   it("emits nothing when the SP refuses the change", async () => {

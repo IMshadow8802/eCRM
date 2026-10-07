@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from "vitest";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DndContext } from "@dnd-kit/core";
+import { http, HttpResponse } from "msw";
+import { server } from "../../test/mocks/server";
 import KanbanColumn from "./KanbanColumn";
 import renderWithProviders from "../../test/renderWithProviders";
 
@@ -127,8 +129,14 @@ describe("KanbanColumn", () => {
   });
 
   it("menu shows Rename and Delete only (IsDone toggle retired)", async () => {
+    // Delete needs a sibling column since the last-column rule (B16), so give it one.
     wrap(
-      <KanbanColumn column={baseColumn} tasks={[]} canManage />,
+      <KanbanColumn
+        column={baseColumn}
+        tasks={[]}
+        canManage
+        siblingColumns={[{ Id: 11, Title: "Done" }]}
+      />,
     );
     const user = userEvent.setup();
     await user.click(screen.getByTestId("column-menu-10"));
@@ -162,5 +170,69 @@ describe("KanbanColumn", () => {
     expect(
       await screen.findByTestId("column-delete-modal-10"),
     ).toBeInTheDocument();
+  });
+
+  // REGRESSION (B16): the last column cannot be deleted - the menu must not offer it.
+  it("does not offer Delete when this is the only column", async () => {
+    wrap(
+      <KanbanColumn column={baseColumn} tasks={[]} canManage siblingColumns={[baseColumn]} />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("column-menu-10"));
+    expect(await screen.findByText(/Rename column/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Delete column/i)).not.toBeInTheDocument();
+  });
+
+  it("keeps the delete dialog open when the server refuses with 409", async () => {
+    server.use(
+      http.post("*/api/kanban/deleteKanbanColumn", () =>
+        HttpResponse.json(
+          { success: false, message: "A board needs at least one column", responseCode: 409 },
+          { status: 409 },
+        ),
+      ),
+    );
+    wrap(
+      <KanbanColumn
+        column={baseColumn}
+        tasks={[]}
+        canManage
+        siblingColumns={[{ Id: 11, Title: "Done" }]}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("column-menu-10"));
+    await user.click(await screen.findByText(/Delete column/i));
+    await user.click(await screen.findByTestId("column-delete-confirm-10"));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(screen.getByTestId("column-delete-modal-10")).toBeInTheDocument();
+  });
+
+  it("highlights the add-task button on hover and resets on leave", async () => {
+    wrap(<KanbanColumn column={baseColumn} tasks={[]} onRequestAddTask={() => {}} canCreate />);
+    const user = userEvent.setup();
+    const btn = screen.getByTestId("quick-add-btn-10");
+    await user.hover(btn);
+    const hovered = btn.style.color;
+    await user.unhover(btn);
+    expect(btn.style.color).not.toBe(hovered);
+  });
+
+  it("deletes the column and closes the dialog on confirm", async () => {
+    const onUpdated = vi.fn();
+    wrap(
+      <KanbanColumn
+        column={baseColumn}
+        tasks={[]}
+        canManage
+        siblingColumns={[{ Id: 11, Title: "Done" }]}
+        onColumnUpdated={onUpdated}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("column-menu-10"));
+    await user.click(await screen.findByText(/Delete column/i));
+    await user.click(await screen.findByTestId("column-delete-confirm-10"));
+    await vi.waitFor(() => expect(onUpdated).toHaveBeenCalled());
   });
 });

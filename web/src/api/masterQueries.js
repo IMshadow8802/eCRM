@@ -10,6 +10,7 @@ export const MASTER_ENDPOINTS = {
     saveUser: "/api/users/saveUser",
     deleteUser: "/api/users/deleteUser",
     directory: "/api/users/directory",
+    fetchUserHandover: "/api/users/fetchUserHandover",
     updateProfile: "/api/users/me/updateProfile",
     changePassword: "/api/users/me/changePassword",
   },
@@ -42,6 +43,7 @@ const post = (endpoint) => (params = {}) => apiClient.post(endpoint, params);
 export const fetchUsers = post(MASTER_ENDPOINTS.users.fetchUsers);
 export const saveUser = post(MASTER_ENDPOINTS.users.saveUser);
 export const deleteUser = post(MASTER_ENDPOINTS.users.deleteUser);
+export const fetchUserHandover = post(MASTER_ENDPOINTS.users.fetchUserHandover);
 export const directory = post(MASTER_ENDPOINTS.users.directory);
 export const updateProfile = post(MASTER_ENDPOINTS.users.updateProfile);
 export const changePassword = post(MASTER_ENDPOINTS.users.changePassword);

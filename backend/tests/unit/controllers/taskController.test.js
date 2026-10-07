@@ -13,6 +13,11 @@ jest.mock("../../../src/utils/activityLogger", () => ({
   },
 }));
 
+jest.mock("../../../src/realtime/events", () => ({
+  emitToUser: jest.fn(),
+  emitToWorkspace: jest.fn(),
+}));
+
 // The record guard is exercised for real in middleware/permission.test.js;
 // here it is stubbed so the checklist tests keep asserting controller wiring
 // on their own SP mocks (allow by default, flipped per-test to check the gate).
@@ -22,11 +27,14 @@ jest.mock("../../../src/utils/activityLogger", () => ({
 jest.mock("../../../src/middleware/permission", () => ({
   ...jest.requireActual("../../../src/middleware/permission"),
   assertRecordAccess: jest.fn().mockResolvedValue(true),
+  taskAllowed: jest.fn().mockResolvedValue(true),
 }));
 
 const database = require("../../../src/config/database");
+const { emitToUser } = require("../../../src/realtime/events");
+const { SCOPES } = require("../../../src/realtime/contract");
 const { logActivity } = require("../../../src/utils/activityLogger");
-const { assertRecordAccess } = require("../../../src/middleware/permission");
+const { assertRecordAccess, taskAllowed } = require("../../../src/middleware/permission");
 const taskController = require("../../../src/controllers/taskController");
 const { mockRes } = require("../../helpers/mockRes");
 
@@ -44,18 +52,22 @@ const spResult = (rows) => ({ recordsets: [rows] });
 beforeEach(() => {
   database.executeStoredProcedure.mockReset();
   logActivity.mockClear();
+  emitToUser.mockClear();
   assertRecordAccess.mockClear();
   assertRecordAccess.mockResolvedValue(true);
+  taskAllowed.mockClear();
+  taskAllowed.mockResolvedValue(true);
 });
 
 // Helper: sequence SP mocks for primary call + any fire-and-forget notify.
 // newAssignees mirrors sp_SaveTask's 2nd result set — the assignees that save
 // actually ADDED, which is what drives the notify/emit fan-out (063).
-function mockSequence(rowsForSave, followupOk = true, newAssignees = []) {
+function mockSequence(rowsForSave, followupOk = true, newAssignees = [], changes) {
   database.executeStoredProcedure.mockResolvedValueOnce({
     recordsets: [
       rowsForSave,
       newAssignees.map((UserId) => ({ NewAssigneeUserId: UserId })),
+      ...(changes ? [changes] : []),
     ],
   });
   if (followupOk) {
@@ -823,6 +835,76 @@ describe("taskController.fetchDependencies", () => {
 });
 
 describe("taskController time-tracking + checklist + activity", () => {
+  // REGRESSION (spec P1 item 3): ticking needs only change_status, and the same
+  // call used to write ItemText/SortOrder — an assigned viewer could rename a step.
+  it("saveChecklist tells the SP a tick-only caller may not rename (CanEdit=0)", async () => {
+    taskAllowed.mockResolvedValueOnce(false);
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "ok", ChecklistId: 7 }]),
+    );
+    await taskController.saveChecklist(
+      baseReq({ body: { Id: 7, TaskId: 1, ItemText: "renamed", IsCompleted: true, SortOrder: 9 } }),
+      mockRes(),
+    );
+    expect(taskAllowed).toHaveBeenCalledWith(expect.anything(), 1, "manage_checklist");
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
+      "sp_SaveTaskChecklist",
+      expect.objectContaining({ Id: 7, CanEdit: 0 }),
+    );
+  });
+
+  it("saveChecklist lets someone with manage_checklist rename (CanEdit=1)", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "ok", ChecklistId: 7 }]),
+    );
+    await taskController.saveChecklist(
+      baseReq({ body: { Id: 7, TaskId: 1, ItemText: "renamed", IsCompleted: false } }),
+      mockRes(),
+    );
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
+      "sp_SaveTaskChecklist",
+      expect.objectContaining({ CanEdit: 1 }),
+    );
+  });
+
+  it("saveChecklist does not ask a second question when adding a step", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 201, ResponseMess: "ok", ChecklistId: 8 }]),
+    );
+    await taskController.saveChecklist(baseReq({ body: { TaskId: 1, ItemText: "new" } }), mockRes());
+    expect(taskAllowed).not.toHaveBeenCalled();
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
+      "sp_SaveTaskChecklist",
+      expect.objectContaining({ Id: 0, CanEdit: 1 }),
+    );
+  });
+
+  // REGRESSION (spec P1 item 15): with no TaskId nothing gated the read, and a
+  // body UserId was passed straight through — anyone's time log, any company.
+  it("getTimeEntries without a TaskId pins a non-admin to their own entries", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(spResult([]));
+    await taskController.getTimeEntries(baseReq({ body: { UserId: 99 } }), mockRes());
+    expect(assertRecordAccess).not.toHaveBeenCalled();
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({
+      TaskId: null, UserId: 7, ViewerUserId: 7,
+    });
+  });
+
+  it("getTimeEntries lets an admin filter by any user without a TaskId", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(spResult([]));
+    await taskController.getTimeEntries(
+      baseReq({ scope: { branchIds: [1], isAdmin: true }, body: { UserId: 99 } }),
+      mockRes(),
+    );
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({ UserId: 99, ViewerUserId: 7 });
+  });
+
+  it("getTimeEntries keeps a UserId filter inside a task the caller may see", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(spResult([]));
+    await taskController.getTimeEntries(baseReq({ body: { TaskId: 1, UserId: 99 } }), mockRes());
+    expect(database.executeStoredProcedure.mock.calls[0][1].UserId).toBe(99);
+  });
+
   it("logTime defaults WorkDate to today and calls sp", async () => {
     mockSequence([{ ResponseCode: 201, ResponseMess: "ok", TimeEntryId: 1 }]);
     await taskController.logTime(
@@ -1400,5 +1482,167 @@ describe("taskController.save multi-assignee", () => {
       .filter(([sp]) => sp === "sp_NotifyTaskAssigned")
       .map(([, args]) => args.AssigneeUserId);
     expect(notified).toEqual([2, 11]);
+  });
+});
+
+describe("taskController.claim", () => {
+  it("rejects a missing TaskId with 400 and runs no query", async () => {
+    const res = mockRes();
+    await taskController.claim(baseReq({ body: {} }), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  it("claims as the caller (never a body UserId) and logs the assignment", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "Task taken", TaskId: 11, WorkspaceId: 5 }]),
+    );
+    const res = mockRes();
+    await taskController.claim(baseReq({ body: { TaskId: 11, UserId: 99 } }), res);
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_ClaimTask", {
+      TaskId: 11, UserId: 7, IsAdmin: 0, CompId: 1,
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(logActivity).toHaveBeenCalledWith(
+      expect.objectContaining({ entityId: 11, action: "Assigned", newValue: "7" }),
+    );
+  });
+
+  it("passes the SP's 409 through and logs nothing", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 409, ResponseMess: "Someone already has this task" }]),
+    );
+    const res = mockRes();
+    await taskController.claim(baseReq({ body: { TaskId: 11 } }), res);
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(logActivity).not.toHaveBeenCalled();
+  });
+
+  it("returns 500 when DB throws", async () => {
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("x"));
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    const res = mockRes();
+    await taskController.claim(baseReq({ body: { TaskId: 11 } }), res);
+    expect(res.status).toHaveBeenCalledWith(500);
+    spy.mockRestore();
+  });
+});
+
+const tick = () => new Promise((r) => setImmediate(r));
+
+describe("checklist completion notify", () => {
+  const notified = { recordsets: [[{ UserId: 3, NotificationId: 1, Type: "task_completed" }, { UserId: 4, NotificationId: 2, Type: "task_completed" }]] };
+  const row = (extra) => spResult([{ ResponseCode: 200, ResponseMess: "ok", ChecklistId: 5, ...extra }]);
+
+  it("tick that completes the task notifies, emits to each recipient, logs, and returns completionChange", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(row({ CompletionChange: "completed" })).mockResolvedValueOnce(notified);
+    const res = mockRes();
+    await taskController.saveChecklist(baseReq({ body: { Id: 5, TaskId: 11, IsCompleted: true } }), res);
+    await tick();
+    expect(database.executeStoredProcedure.mock.calls[1]).toEqual(["sp_NotifyTaskCompletion", { TaskId: 11, ActorUserId: 7, Event: "completed" }]);
+    expect(emitToUser).toHaveBeenCalledWith(3, SCOPES.NOTIFICATIONS);
+    expect(emitToUser).toHaveBeenCalledWith(4, SCOPES.NOTIFICATIONS);
+    expect(logActivity).toHaveBeenCalledWith(expect.objectContaining({ fieldName: "Completion", newValue: "completed", description: "Task completed" }));
+    // regression: response used to carry only checklistId
+    expect(res.json.mock.calls[0][0].data).toEqual({ checklistId: 5, completionChange: "completed" });
+  });
+
+  it("untick that reopens notifies with Event reopened", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(row({ CompletionChange: "reopened" })).mockResolvedValueOnce(notified);
+    await taskController.saveChecklist(baseReq({ body: { Id: 5, TaskId: 11, IsCompleted: false } }), mockRes());
+    await tick();
+    expect(database.executeStoredProcedure.mock.calls[1][1].Event).toBe("reopened");
+    expect(logActivity).toHaveBeenCalledWith(expect.objectContaining({ description: "Task reopened" }));
+  });
+
+  it("deleteChecklist of the last open step notifies and returns completionChange", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(row({ TaskId: 11, CompletionChange: "completed" })).mockResolvedValueOnce(notified);
+    const res = mockRes();
+    await taskController.deleteChecklist(baseReq({ body: { Id: 5, TaskId: 11 } }), res);
+    await tick();
+    expect(database.executeStoredProcedure.mock.calls[1][0]).toBe("sp_NotifyTaskCompletion");
+    expect(res.json.mock.calls[0][0].data).toEqual({ completionChange: "completed" });
+  });
+
+  it("no transition means one SP call and no emit", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(row({ CompletionChange: null }));
+    const res = mockRes();
+    await taskController.saveChecklist(baseReq({ body: { Id: 5, TaskId: 11, IsCompleted: true } }), res);
+    await tick();
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
+    expect(emitToUser).not.toHaveBeenCalled();
+    expect(res.json.mock.calls[0][0].data.completionChange).toBeNull();
+  });
+
+  it("a failing notify SP is logged and the tick still answers 200", async () => {
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    database.executeStoredProcedure.mockResolvedValueOnce(row({ CompletionChange: "completed" })).mockRejectedValueOnce(new Error("boom"));
+    const res = mockRes();
+    await taskController.saveChecklist(baseReq({ body: { Id: 5, TaskId: 11, IsCompleted: true } }), res);
+    await tick();
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("a notify SP with no recordsets emits nothing", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(row({ CompletionChange: "completed" })).mockResolvedValueOnce({});
+    await taskController.saveChecklist(baseReq({ body: { Id: 5, TaskId: 11, IsCompleted: true } }), mockRes());
+    await tick();
+    expect(emitToUser).not.toHaveBeenCalled();
+  });
+});
+
+describe("taskController.fetch narrowing filters", () => {
+  const ok = spResult([{ ResponseCode: 200, ResponseMess: "ok" }]);
+  const call = async (body) => {
+    database.executeStoredProcedure.mockResolvedValueOnce(ok);
+    await taskController.fetch(baseReq({ body }), mockRes());
+    return database.executeStoredProcedure.mock.calls[0][1];
+  };
+  it("forwards AssigneeUserId / OnlyOpen / Overdue", async () => {
+    expect(await call({ AssigneeUserId: 7, OnlyOpen: true })).toMatchObject({ AssigneeUserId: 7, OnlyOpen: 1, Overdue: 0 });
+    database.executeStoredProcedure.mockReset();
+    expect(await call({ Overdue: true })).toMatchObject({ Overdue: 1 });
+  });
+  it("defaults to no narrowing", async () => {
+    expect(await call({})).toMatchObject({ AssigneeUserId: null, OnlyOpen: 0, Overdue: 0 });
+  });
+  it.each(["abc", -1])("drops junk AssigneeUserId %p to null", async (v) => {
+    expect((await call({ AssigneeUserId: v })).AssigneeUserId).toBeNull();
+  });
+});
+
+describe("taskController.save history diffs", () => {
+  const saved = [{ ResponseCode: 200, ResponseMess: "ok", TaskId: 11 }];
+  it("logs one row per changed field instead of the generic row", async () => {
+    mockSequence(saved, true, [], [
+      { Field: "Priority", OldValue: "medium", NewValue: "high" },
+      { Field: "AssigneesAdded", OldValue: null, NewValue: "Ravi" },
+      { Field: "AssigneesRemoved", OldValue: "Neha", NewValue: null },
+      { Field: "DueDate", OldValue: "none", NewValue: "10-10-2026" },
+      { Field: "Description", OldValue: null, NewValue: null },
+      { Field: "Weird", OldValue: "a", NewValue: "b" },
+    ]);
+    await taskController.save(baseReq({ body: { Id: 11, Title: "T" } }), mockRes());
+    const has = (o) => expect(logActivity).toHaveBeenCalledWith(expect.objectContaining(o));
+    has({ action: "Updated", fieldName: "Priority", oldValue: "medium", newValue: "high", description: "Priority changed" });
+    has({ action: "Assigned", fieldName: "Assignees", description: "Assigned Ravi" });
+    has({ action: "Assigned", fieldName: "Assignees", description: "Unassigned Neha" });
+    has({ fieldName: "DueDate", oldValue: "none", newValue: "10-10-2026", description: "Due date changed" });
+    has({ fieldName: "Description", description: "Description edited" });
+    has({ fieldName: "Weird", description: "Weird changed" });
+    expect(logActivity).not.toHaveBeenCalledWith(expect.objectContaining({ description: "Task T updated" }));
+  });
+  it("an edit with no diff rows still writes the generic row", async () => {
+    mockSequence(saved, true, [], []);
+    await taskController.save(baseReq({ body: { Id: 11, Title: "T" } }), mockRes());
+    expect(logActivity).toHaveBeenCalledWith(expect.objectContaining({ description: "Task T updated" }));
+  });
+  it("create writes Created and ignores diff rows", async () => {
+    mockSequence([{ ResponseCode: 201, ResponseMess: "ok", TaskId: 11 }], true, [], [{ Field: "Title", OldValue: "a", NewValue: "b" }]);
+    await taskController.save(baseReq({ body: { Title: "T" } }), mockRes());
+    expect(logActivity).toHaveBeenCalledTimes(1);
+    expect(logActivity).toHaveBeenCalledWith(expect.objectContaining({ action: "Created" }));
   });
 });

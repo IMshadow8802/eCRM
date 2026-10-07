@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, View } from "react-native";
 import {
+  Bell,
   ClipboardCheck,
   Circle,
   LayoutGrid,
@@ -29,6 +30,7 @@ import { Text } from "../ui";
  */
 const TAB_ICONS: Record<string, LucideIcon> = {
   MyWork: ClipboardCheck,
+  Inbox: Bell,
   Work: LayoutGrid,
   Me: UserRound,
 };

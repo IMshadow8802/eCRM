@@ -223,16 +223,21 @@ export default function KanbanColumn({
                     setRenaming(true);
                   },
                 },
-                {
-                  id: "delete",
-                  label: "Delete column",
-                  icon: <Trash2 size={14} />,
-                  onClick: () => {
-                    setMenuAnchor(null);
-                    setReassignTarget(otherColumnOptions[0] ?? null);
-                    setDeleteOpen(true);
-                  },
-                },
+                // The last column cannot go (server 409s) - do not offer it.
+                ...(otherColumnOptions.length
+                  ? [
+                      {
+                        id: "delete",
+                        label: "Delete column",
+                        icon: <Trash2 size={14} />,
+                        onClick: () => {
+                          setMenuAnchor(null);
+                          setReassignTarget(otherColumnOptions[0] ?? null);
+                          setDeleteOpen(true);
+                        },
+                      },
+                    ]
+                  : []),
               ]}
             />
           </>

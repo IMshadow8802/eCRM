@@ -208,10 +208,10 @@ describe("TopNav notification routing", () => {
     expect(mockNavigate).toHaveBeenCalledWith("/tasks?taskId=42");
   });
 
-  it("opens a comment notification on the board", () => {
+  it("a comment notification (EntityType task) opens its task", () => {
     renderTopNav();
-    capturedOnOpenEntity({ EntityType: "comment", EntityId: 9 });
-    expect(mockNavigate).toHaveBeenCalledWith("/tasks?commentId=9");
+    capturedOnOpenEntity({ EntityType: "task", Type: "comment_added", EntityId: 42 });
+    expect(mockNavigate).toHaveBeenCalledWith("/tasks?taskId=42");
   });
 
   // REGRESSION: workspace invites had no branch here at all, so clicking the

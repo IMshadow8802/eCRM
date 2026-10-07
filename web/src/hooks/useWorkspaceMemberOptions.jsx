@@ -26,7 +26,8 @@ export default function useWorkspaceMemberOptions(workspaceId, { enabled = true 
   const options = useMemo(() => {
     const members = data?.members ?? [];
     return members
-      .filter((m) => m.IsActive && m.InviteStatus === "active")
+      // A viewer can't complete a task, so sp_SaveTask refuses them (094).
+      .filter((m) => m.IsActive && m.InviteStatus === "active" && m.Role !== "viewer")
       .map((m) => ({
         value: Number(m.UserId),
         label: m.FullName || m.Username || `User #${m.UserId}`,

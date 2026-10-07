@@ -1,161 +1,172 @@
-# Task TAT + daily presence — design
+# Task TAT, daily presence, and the task/people foundation — design
 
-**Date:** 2026-10-07 · **Branch:** `feat/task-tat` (merged to `main` only after it is tested)
-**Status:** draft for review
+**Date:** 2026-10-07 · **Branch:** `feat/task-tat-presence` (merged to `main` after testing)
+**Status:** v2, for approval — replaces the morning draft
+**Evidence:** `2026-10-07-tat-audit/` (`00-findings.md` + five reports). Security holes S1–S8 are already fixed and live (`093`, commit `c51e87b`).
 
-## 1. Why
+## 1. Goal
 
-A company with staff working from home needs to know, without asking:
+A company with staff working from home must know, without asking:
 
-1. Did the employee sign in and become active by their shift start (e.g. 09:00)?
-2. When work was assigned, how long did they take to pick it up, and to finish it?
-3. Which tasks ran over the time they were given, and why?
+1. Did each person sign in by their shift start, and are they online now?
+2. When work was handed to someone, how long did it take to finish — in working time?
+3. What ran over, and why?
 
-Both sides see it: the employee sees their own clocks counting down; the
-manager sees their team.
+Both sides see it: the employee sees their own clocks; the manager sees their team. **This is a CRM, not an HR system** — the manager marks leave; nobody applies for anything.
 
-## 2. Decisions already made
+## 2. Decisions
 
-| # | Decision | Why |
-|---|---|---|
-| D1 | **TAT clock starts at assignment**, not when the employee presses Start. Two clocks: **response** (assigned → started) and **resolution** (assigned → completed). | The model every service desk uses (Zendesk, Freshdesk, ServiceNow, Jira SM). A clock the employee starts is a clock the employee controls. |
-| D2 | **Clocks count working time only**, from a work calendar with holidays. | 1 h assigned at 17:45 Friday is due 09:45 Monday, not 18:45 Friday. |
-| D3 | **No free Pause.** The clock stops only while the task is **On hold**, which needs a reason and is logged. | Fair to the employee without being self-reported. |
-| D4 | **Breach is permanent.** Completing late does not clear it. | Reports must be able to count it. |
-| D5 | **Each assignee has their own clocks.** | 3 live tasks already have two assignees; one slow person must not mark the other late. |
-| D6 | **Reassignment closes the old assignee's clock and opens a new one.** An old breach stays on record. | |
-| D7 | **Sessions end daily.** Signing in is the check-in. | Today a token silently lives 24 h and logout does nothing server-side, so "first signed in" cannot be known. |
-| D8 | **Presence = app open + real interaction**, via heartbeat. Nothing more. | No screenshots, keystrokes or camera: DPDP Act 2023 risk and a different product. |
-| D9 | Complaints move onto the same calendar, **last phase**. | One meaning of "1 hour" everywhere. Reverses the 2026-07-16 "no business hours" decision on purpose. |
-| D10 | **Working-time maths lives in one JS module** (`backend/src/utils/workCalendar.js`), not in SQL. SQL stores the computed timestamps and only compares them to `GETDATE()`. | It is the most error-prone code in the feature and the only place a mistake silently mis-flags everyone. In JS it gets exhaustive unit tests; in SQL our mocked tests cannot reach it (§0.4). |
-
-## 3. What exists today (measured 2026-10-07)
-
-| Piece | State |
+| # | Decision |
 |---|---|
-| `tblTasks.EstimatedHours`, `tblTimeEntries`, "Log time" panel | Built, **unused** (0 estimates, 0 entries). Manual hours, no flag. Left as is — out of scope. |
-| `tblTasks.CompletedDate` | Set by `sp_RecomputeTaskCompletion` when the checklist completes. Task-level. |
-| `tblTaskAssignee.AssignedAt` | Per assignee. Rows are deleted on unassign. |
-| `tblTaskReads.FirstSeenAt` | When the assignee first opened the task. |
-| `tblActivityLog` | Task events logged; **no login events** (the `LOGIN` constant is never written). |
-| Auth | JWT, 24 h, no session table, logout is client-only, `refreshToken()` unrouted. |
-| Notifications | `tblNotifications` + `sp_CreateNotification`; socket.io `invalidate` events to `user:<id>` (web only; mobile has no socket). |
-| Background jobs | None. One Node process per client container. |
-| Company settings table | None (company lives in Central). |
-| Task priority | String: `low` / `medium` / `high` / `critical`. |
-| Web "My Work" | Does not exist (mobile has `MyWorkScreen`). |
+| D1 | The clock starts at **assignment**, counted in **working time** (shift calendar + holidays + the person's marked days). |
+| D2 | **Only the resolution clock is judged** (assigned → done). "Acknowledged at …" is recorded and shown, never breached, never in a score. |
+| D3 | **No free pause.** A clock stops only while the task is on hold with a reason, blocked by a dependency, or the person is on leave / it's a holiday. |
+| D4 | A breach is **permanent**; finishing late does not clear it. |
+| D5 | **Each assignee has their own clock**, closed by their own "My part is done" or by the task completing. |
+| D6 | **The manager marks the day** — *On leave* (full / first half / second half) or *On duty* (field visit, outage). No requests, no approvals, no balances. |
+| D7 | **Sessions end daily**; the sign-in is the check-in. |
+| D8 | Presence is **Online / Offline** from heartbeats. No "idle" counter, no screenshots, keystrokes, camera or location. |
+| D9 | **"My team" = the `ReportsTo` subtree.** Company-wide only for admins or a new *Attendance* menu grant. |
+| D10 | **No TAT in personal workspaces** — they are private even from admins. |
+| D11 | **Every task has at least one checklist step** (completion = all steps done). |
+| D12 | Working-time arithmetic lives in **one JS module** (`backend/src/utils/workCalendar.js`), fully unit-tested. SQL stores the computed timestamps and only compares them with `GETDATE()`. |
+| D13 | Complaints move onto the same calendar in the last phase (reverses the 2026-07-16 "no business hours" decision on purpose; CLAUDE.md §6 changes with it). |
 
-## 4. Features
+## 3. Phases
 
-### F1 Work calendar
+Each phase ships on its own: one SQL script (user-applied, `SET QUOTED_IDENTIFIER ON` at the top), backend, web, mobile; tests with ≥80% line/branch coverage on touched files; a live API check like `093`'s.
 
-- **Calendars are named shifts** per company: "General 10–19", "Morning 9–18". One is the company default.
-- Per weekday: working or not, start, end, optional break (break minutes are not working time).
-- **Holidays** per company, optionally per branch.
-- **Each user may be assigned a calendar** (`tblUser.WorkCalendarId`); null = company default.
-- **Presence-exempt users** (`tblUser.PresenceExempt`, e.g. Owner): no late/absent marks, but their task clocks still run on their calendar.
-- Company settings: late grace (default **10 min**), session buffer after shift end (default **2 h**), warn threshold (default **80%**), notify manager on not-signed-in (default **on**).
-- Admin screen under Settings → Work calendar.
-- **`workCalendar.js`**: `addWorkingMinutes(calendar, holidays, from, minutes)`, `workingMinutesBetween(calendar, holidays, from, to)`, `shiftFor(calendar, holidays, date)`. Pure functions, IST, no I/O. Every other part calls these.
+| Phase | What | Why first |
+|---|---|---|
+| **P1** | Task & people foundation | Without it, clocks measure our bugs instead of people. |
+| **P2** | Calendar, day marks, sessions, presence | P3 counts working time from it. |
+| **P3** | Task TAT | The feature. |
+| **P4** | Reports, mobile parity, complaints on the calendar | Reads what P2/P3 record. |
 
-### F2 Sessions and daily sign-in
+---
 
-- **`tblUserSession`** — one row per sign-in: `SessionId` (GUID), user, company, branch, device (`web`/`mobile`), IP, user agent, `StartedAt`, `ExpiresAt`, `LastSeenAt`, `LastActiveAt`, `EndedAt`, `EndReason` (`logout` / `expired` / `forced`).
-- **Expiry** = today's shift end + buffer; outside a shift, or on a non-working day, 23:59 IST. Never past 23:59 — every day starts with a sign-in.
-- The JWT carries `sid` and expires with the session.
-- **`verifyToken` checks the session is open**, through a 60-second in-memory cache per container. Force-end therefore lands within 60 s; a socket `session-ended` event makes it immediate on an open web tab.
-- **Logout** ends the session server-side (today it does nothing).
-- Web and mobile may each hold a session at the same time.
-- **Rollout:** tokens without `sid` are rejected, so everyone signs in once after deploy. Intended.
+## 4. P1 — Task & people foundation
 
-### F3 Presence
+### Tasks
+1. **Soft delete.** `tblTasks.IsDeleted/DeletedAt/DeletedBy`; the "clear checklist first" 409 goes (it made delete impossible: 37/39 tasks have steps). Every task fetch filters deleted rows. Web gets a Delete in the task modal (today only a bulk delete that always fails).
+2. **At least one step, always.** The 2 live tasks without steps get one ("Complete this task"). Deleting a task's last step is refused.
+3. **Step rights split.** Ticking = `change_status` (assignees, incl. viewers). Adding, renaming, reordering, deleting = `manage_checklist`. Today a rename rides the tick permission.
+4. **Viewers cannot be assignees** (400). They can't complete a task.
+5. **Leaving a workspace = leaving its tasks.** Member removal, leaving, team/project sync, archive and user deactivation unassign that person from open tasks there and tell the owner which tasks became unassigned. Today they stay assigned to tasks they can no longer open.
+6. **Notifications open the task.** Web: `?taskId=` switches to the task's workspace and opens it; comment notifications resolve to their task. **Mobile:** a notifications screen (refreshed on app focus) that opens the task.
+7. **Told when it's done.** Creator and assigner are notified on complete, reopen, and when a blocking task finishes.
+8. **"Seen" is recorded.** First and last time each assignee opened the task (`tblTaskReads.FirstSeenAt/LastSeenAt` — never written today).
+9. **My Work on web.** `sp_FetchTask` gains `@AssigneeUserId`, `@OnlyOpen`, `@Overdue` and drops archived/deleted. Web gets a My Work page across all boards (mobile has one; web has none). P3 turns it into Today.
+10. **Take this task.** A member can claim an unassigned task (the `claim_task` permission exists; no endpoint uses it).
+11. **Board = completion.** Completing a task moves its card to the board's last column; reopening moves it back to the first. Assignees can use the Column select in the modal (they can already drag).
+12. **History shows what changed** — assignee, priority, due date, title diffs, not just "updated".
+13. **Same rules everywhere.** Web and mobile ability helpers honour `IsAdmin` the way the server does; mobile personal tasks default to the owner; mobile shows the newest 100 comments.
+14. **Columns follow membership, not branch.** Column fetch/manage use workspace membership (a cross-branch member sees an empty board today); a pending invitee can't manage columns; the last column can't be deleted.
+15. **`sp_SaveTask` checks** parent task, team and project belong to the company/workspace. **`getTimeEntries`** with a `UserId` and no `TaskId` is scoped.
 
-- **`tblPresenceDay`** — one row per user per working day, written at first sign-in: shift start/end **frozen at that moment** (a later calendar edit does not rewrite history), `FirstSignInAt`, `LateMinutes`, `LastSeenAt`, `SignedOutAt`.
-- **Heartbeat** `POST /api/presence/heartbeat` every 2 min while the app is in the foreground, with `active` = any pointer/key/touch in the last 2 min. Updates the session's `LastSeenAt` / `LastActiveAt`.
-- **Status shown:** Active (active heartbeat ≤ 5 min) · Idle *n* min (seen but not active) · Offline (no heartbeat ≤ 5 min) · Signed out · **Not signed in** (working day, past shift start + grace, no sign-in) · **Late by *n* min**.
-- At shift start + grace, a not-signed-in user's `ReportsTo` manager gets one notification (company setting).
+### People
+16. **Deactivating a user** unassigns their open tasks (5), and the Users screen shows what they still own — leads, complaints, owned workspaces, direct reports — so it can be handed over.
+17. **`sp_DeleteUser` refuses** when the user has history (tasks, comments, time, leads, complaints, reports). Deactivate instead. A save without a valid group is a 400 (today it maps to a group id that doesn't exist).
+18. **Branch is editable** on the user form (admin), and a new user can be created in any branch.
+19. **The `Is Admin` checkbox goes** from the Users form and list — admin comes from the role since `093`. A user in two groups resolves admin the same way at login and per request.
+20. **Who gets told about a person** = their first *active* manager up the `ReportsTo` chain, else the company admins (`sp_FetchEscalationTargets` already walks past inactive managers). The Users list flags "no manager set" (7 of 20 today).
 
-### F4 Task TAT
+---
 
-- **Targets** in working minutes:
-  - Company defaults per priority (`tblTaskTatDefault`: priority → response, resolution). Seeded: critical 30m/2h · high 1h/4h · medium 2h/1d · low 4h/3d (1d = one shift).
-  - Per-task override (`tblTasks.ResponseTargetMinutes`, `ResolutionTargetMinutes`), settable by the workspace owner/manager or the creator — the people who can assign today.
-  - Null target = no clock.
-- **`tblTaskTat`** — one row per (task, assignee, assignment): `AssignedAt`, targets, `ResponseDueAt`, `ResolutionDueAt`, `StartedAt`, `CompletedAt`, `WarnedAt`, `ResponseBreachedAt`, `ResolutionBreachedAt`, `HeldMinutes`, `ClosedAt` + `CloseReason` (`completed` / `unassigned` / `deleted`).
-  - Opened by the controller after `sp_SaveTask` reports a new assignee; due times come from `workCalendar.js` against **the assignee's** calendar.
-  - Closed with `unassigned` when the assignee is removed; the row survives (`tblTaskAssignee` does not).
-- **Start** — `POST /api/tasks/startTask`: the assignee stamps `StartedAt` on their own clock. Idempotent. Stops the response clock.
-- **Complete** — unchanged (checklist). When `sp_RecomputeTaskCompletion` stamps `CompletedDate`, every open clock on the task gets `CompletedAt` and closes. Reopening the task (checklist un-ticked) reopens clocks that closed as `completed`; breach stamps stay.
-- **On hold** — `tblTaskHold` (task, start, end, reason from lookup `Kind='task_hold_reason'`, remarks, by). While a hold is open the task shows On hold and the sweep skips it. On release, every open clock's due times move forward by the working minutes the hold covered, and `HeldMinutes` accumulates. Who can hold/release: anyone who can edit the task.
-- **The board column is not a status here.** Columns are free text per workspace, so nothing is inferred from them.
+## 5. P2 — Calendar, day marks, sessions, presence
 
-### F5 Breach reasons
+### Calendar
+- **Works with zero setup.** Every company is seeded with one shift, **"Standard": Mon–Sat, 09:00–18:00, lunch 13:00–14:00** (8 working hours a day), as its default. Everyone follows it — existing users and every new one — until an admin changes it. Nothing in user creation becomes required.
+- **Shifts** per company: named, per weekday working or not, start, end, optional break. One is the company default (editable, never deleted). A shift may cross midnight (21:00–06:00): it **belongs to the date it starts**.
+- **A user who works differently** (full week, half Saturday, night) gets one optional dropdown on the user form — *Shift: Company standard ▾*. Exceptions for a single day are day marks, not profile edits.
+- **Holidays** per company, optionally per branch (the user's branch).
+- **`tblUser.WorkCalendarId`** (null = company default) and **`PresenceExempt`** (owner: no presence marks; task clocks still run).
+- **Company settings:** late grace (10 min), session buffer (2 h), warn at (80%), notify manager when not signed in (on), **go-live date** (nothing is recorded before it).
+- The calendar editor **warns, not blocks**, on > 9 h/day, > 48 h/week, no break after 5 h, women's night shift (OSH Code / Shops & Establishments).
 
-- **`tblTaskTatReason`** — per breached clock: kind (`response` / `resolution`), reason (lookup `Kind='tat_reason'`, seeded: Waiting on someone · Scope grew · Technical issue · Unplanned leave · Other), remarks, by, at; manager verdict `excused` / `not_excused` + remarks, by, at.
-- **Completion is not blocked.** Ticking the last checklist item on a breached task opens the reason dialog; skipping it leaves the breach **Reason pending**, which stays on the employee's Today strip until given and counts as unexcused in reports. Blocking the last tick would stop work, not record it.
-- Verdict by the assignee's `ReportsTo` chain or a workspace owner/manager.
+### Day marks (D6)
+- `tblUserDayMark(CompId, UserId, WorkDate, Part [full | first_half | second_half], Kind [leave | on_duty], Remarks, MarkedBy, MarkedAt)`.
+- Marked by the person's `ReportsTo` chain or an admin, past dates included. Visible to the person.
+- *Leave* = non-working time for that person: no Late / Not-signed-in, no manager alert, task clocks don't count it.
+- *On duty* = counts as present (field visit, internet down) — the correction for a wrong mark.
+- A mark or holiday added after the fact **recomputes** that day's presence and excuses breaches that fell inside it (P3).
 
-### F6 Background sweep
+### Sessions (D7)
+- `tblUserSession` — one row per sign-in: GUID, user, company, device (web/mobile), IP, user agent, started, expires, last seen, ended + reason (`logout` / `expired` / `forced`).
+- The JWT carries the session id; **`verifyToken` checks the session is open** (60-second cache per container). Logout ends it server-side (today it does nothing).
+- **Expiry** = the shift's end + buffer, extended while in active use, never into the next shift. Outside any shift: until the next one starts. So everyone signs in once per shift.
+- **Admin can end anyone's session.** Socket gets `session-ended` at once.
+- **No lost work.** A 401 says why (`SESSION_EXPIRED` / `SESSION_FORCED`); web shows a sign-in-again box over the page and retries — no hard redirect while a form has changes. Mobile shows the reason on the sign-in screen.
+- **Rollout:** tokens without a session id are refused, so everyone signs in once after deploy. Deploy before shift start.
 
-- `setInterval` every 60 s in each container, started from `server.js`, calling `sp_TatSweep(@Now, @WarnPct)`:
-  - stamps `WarnedAt` / `ResponseBreachedAt` / `ResolutionBreachedAt` with `UPDATE … WHERE … IS NULL OUTPUT …` — **idempotent**, so an overlap or a restart cannot double-fire;
-  - skips tasks with an open hold;
-  - returns the stamped rows; Node creates notifications (`task_tat_warning`, `task_tat_breached`) for the assignee and, on breach, their `ReportsTo`, and emits `invalidate`.
-- Same tick: not-signed-in check (F3), and expiring sessions past `ExpiresAt` (`EndReason='expired'`).
-- One failure is logged and the next tick carries on; a tick never overlaps the previous one.
+### Presence
+- `tblPresenceDay` — one row per person per shift, written at first sign-in, **shift frozen at that moment**: shift start/end, first sign-in, late minutes, signed out, `ManagerId`/`BranchId` at the time.
+- **Heartbeat** every 2 min while the app is open → updates the session's last-seen. **No row per heartbeat.**
+- **Status:** Online · Offline · Signed out · Not signed in yet · Late by *n* min · On leave · On duty · Holiday.
+- **Not signed in** by shift start + grace → one notification to the person's manager (P1 item 20).
+- **Notice:** first sign-in after go-live shows what is recorded, who sees it, how long it's kept, and what is *not* collected. Sessions kept 13 months (CERT-In needs 180 days of IP logs, in India).
 
-### F7 Where it shows
+### Background job
+- First one in the backend: a 60-second timer per container. P2 uses it for session expiry and not-signed-in; P3 adds the TAT sweep. Every action is guarded (`IS NULL` stamps), so a restart or overlap cannot double-fire.
 
-- **Task card** (board, lists, mobile): chip — green with time left · amber from 80% · red *Breached 25m* · grey *On hold*. Response chip until started, then resolution chip.
-- **Task detail:** new **TAT** tab — per-assignee timeline: Assigned → Seen → Started → On hold … → Completed, working time for each step, breach + reason + verdict. Start / On hold / Release buttons.
-- **Today page** (new, web `/today`):
-  - *Employee view:* my sign-in time (and Late), my open tasks by soonest due with chips, Reason pending list.
-  - *Manager view* (anyone whose `DataScope` covers other users): a row per person — presence status, signed in at, late by, open / at risk / breached counts; expands to their tasks.
-- **Notifications:** bell + toast on web; on mobile, a notifications screen refreshed on app focus (no push — §9.7 of CLAUDE.md).
-- **Session ended** (expired/forced): the existing end-session path, with a message saying why.
+---
 
-### F8 Reports (`ReportShell` frame)
+## 6. P3 — Task TAT
 
-- **TAT compliance** — by employee / team / period: clocks, on-time %, breached, excused, avg response, avg resolution (working minutes). Drill to the clocks.
-- **Breach reasons** — count by reason, excused vs not.
-- **Attendance** — by employee / period: working days, signed in, late (count, avg minutes), not signed in.
-- Scope = `req.scope` over users (`DataScope`), like every other report.
+### Target
+- **Due date set** → the resolution target is the end of the assignee's shift on that date (a due *time* is added to the task form).
+- **No due date** → company default per priority, in working minutes: critical 2 h · high 4 h · medium 8 working hours (one standard day) · low 24 working hours (three standard days). Editable per company.
+- Per-task override; `0` = no clock. Set by the workspace owner/manager or the creator — never by the assignee alone.
+- **No clock** in personal workspaces (D10).
 
-### F9 Mobile parity
+### Clock
+- `tblTaskTat` — one row per (task, assignee, assignment): assigned at, target, due at, acknowledged at, completed at, warned at, breached at, held minutes, closed at + reason (`completed` / `my_part_done` / `unassigned` / `deleted` / `user_left`), task title snapshot, `ManagerId`/`BranchId` at assignment.
+- **Opened and closed inside `sp_SaveTask`'s transaction** (it returns removed assignees as well as added ones). Due time from `workCalendar.js`; the sweep fills any still missing. One open clock per (task, user). Re-adding the same person within 7 days **resumes** their old clock — reassigning cannot reset it.
+- **Acknowledged** = the assignee's first act on the task: Start, tick, move, time log or comment.
+- **My part is done** closes that assignee's clock only (D5).
+- **Changed after assignment** (priority, target, due date): open, unbreached clocks are recomputed from assignment; never breached retroactively (if the new due time has already passed, due = now + 30 working minutes). Logged old → new.
+- **Reopened:** due = reopen time + the time that was left at completion (at least 60 working minutes).
 
-Sign-in as check-in, heartbeat on `AppState` active, session-ended handling, chips on `TaskCard`, TAT tab, Start / On hold / reason dialog, notifications screen. No Today manager view (admin work is web-only).
+### Holds (D3)
+- **Blocked** by an unfinished dependency = automatic hold, released when the blocker completes.
+- **On hold** with a reason (lookup) + remarks: by the creator or a workspace owner/manager, or by the **assignee on their own clock** — which notifies their manager and auto-releases after 3 working days.
+- On release, due times move forward by the working minutes held.
+- Leave, on-duty-away and holidays are already non-working time (P2), so they need no hold.
 
-### F10 Complaints on the calendar (last phase)
+### Breach
+- Warned at 80% (assignee only). Breached at 100% (assignee + manager). Notifications grouped: one per person per minute.
+- **Reason:** finishing a breached task opens the reason box (waiting on someone · scope grew · technical issue · other + remarks). Not blocking: skipped → *Reason pending* on their Today until given; counts as unexcused.
+- **Verdict:** *excused* (needs remarks) or *not excused*, by a `ReportsTo` ancestor or a workspace owner/manager — **never on your own clock**.
+- A breach inside a later-marked leave day or holiday is excused by the system.
 
-`sp_SaveTicket` / `sp_SetTicketStatus` stop computing `DueAt` themselves; the ticket controller computes it with `workCalendar.js` against the assignee's calendar (company default when unassigned) and passes it in. `TatHours` stays the setting, now read as working hours.
+### Where it shows
+- **Card chip:** time left (green) → amber at 80% → red *Over by 25m* → grey *On hold: waiting on client*. Text + icon, never colour alone.
+- **Task TAT tab:** per assignee — Assigned → Seen → Acknowledged → held … → Done, working time for each step, breach, reason, verdict, and every target change.
+- **Today (web):** *mine* — sign-in time, open tasks by soonest due, reason pending; *my team* (if I have reports) — each person's status, open / at risk / over. Employees see exactly what their manager sees about them.
+- Times always in IST with an "IST" suffix.
 
-## 5. Permissions
+### Sweep
+- Each minute: warn, breach, auto-release holds, fill missing due times. Uses SQL `GETDATE()`, stamps `NotifiedAt` before notifying. Skips held, archived, deleted, personal.
 
-- Presence and Today: `req.scope` over **users** — Self sees self, Team sees `ReportsTo` subtree, Branch/Company by branch. Never wider.
-- Task TAT: follows task permissions (`sp_CheckTaskPermission`); starting a clock is the assignee's own act only.
-- Calendar admin and force-end: `IsAdmin` only.
-- Every table carries `CompId`; every SP filters on it.
+---
 
-## 6. Build order
+## 7. P4 — Reports, mobile, complaints
 
-1. **SQL** — one script `backend/sql/093_task_tat_presence.sql`: tables, columns, lookups + seeds, defaults, SPs, menu rows. User applies to eCRM+ and SolarCRM.
-2. **Backend** — `workCalendar.js` first (tests before anything uses it), then sessions/auth, presence, TAT hooks + endpoints, sweep, reports.
-3. **Web** — parallel agents by page: calendar settings · Today · task card + TAT tab · reports · heartbeat + session-ended.
-4. **Mobile** — F9. Gate: `pnpm typecheck` + `pnpm lint`.
-5. **Complaints** — F10.
+- **Reports** (existing report frame, filters in the URL, drill-down): **TAT** — on-time % *with the clock count*, per priority, median and p90 working time, breached vs breached-and-not-excused, excused % by verdict giver; **Attendance** — working days net of leave and holidays, late count and median minutes, not signed in. Scope = D9. Employees see their own rows.
+- **Mobile:** sign-in as check-in, heartbeat on app foreground, session-ended reason, chips, TAT tab, acknowledge / my part done / hold / reason, notifications screen (P1). No manager Today (admin work is web-only).
+- **Complaints:** `DueAt` computed by `workCalendar.js` against the assignee's shift (company default when unassigned); `TatHours` now means working hours. CLAUDE.md §6 updated in the same change.
 
-Each phase verified (tests + coverage ≥80% on touched files) before the next. SP↔controller contracts checked against the live DB after step 1.
+## 8. Out of scope
 
-## 7. Out of scope
+Leave requests/approvals/balances · screenshots, keystrokes, camera, location, geofencing · payroll attendance · push notifications · recurring tasks · changes to the Log-time panel.
 
-Screenshots/keystroke/camera monitoring · geofencing · payroll attendance (a separate Attendance product runs on the server) · push notifications · changes to the existing Log-time panel · a free Pause button.
-
-## 8. Risks
+## 9. Risks
 
 | Risk | Handling |
 |---|---|
-| Calendar maths wrong ⇒ everyone mis-flagged | D10: one pure module, table-driven tests incl. holidays, breaks, overnight, weekend, DST-free IST. |
-| Daily expiry annoys mobile users | It is the requirement; sign-in is one screen with the company code remembered. |
-| Session check on every request | 60 s cache per container. |
-| Sweep runs twice (restart mid-tick) | Stamps are `IS NULL`-guarded; notifications come only from stamped rows. |
-| Calendar edited mid-day | Presence day is frozen at sign-in; open clocks keep their due times; new clocks use the new calendar. |
+| Calendar maths wrong ⇒ everyone mis-flagged | D12: one pure module; table tests for breaks, holidays, half days, night shift, weekend, run under `TZ=UTC` and `TZ=Asia/Dubai`. |
+| Daily sign-in drops someone's unsaved work | Sign-in-again box over the page; expiry extends while in use. |
+| A script applied with sqlcmd defaults breaks procedures | `SET QUOTED_IDENTIFIER ON` in every script; `-I` in every apply command; check `uses_quoted_identifier` after apply. |
+| Sweep fires twice | `IS NULL`-guarded stamps; notifications only from stamped rows. |
+| Alerts reach nobody (no manager set) | Fallback to admins; Users list flags it. |
+| Staff read it as surveillance | Notice at sign-in, neutral words, no idle counter, employees see what managers see. |

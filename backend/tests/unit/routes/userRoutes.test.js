@@ -35,6 +35,7 @@ jest.mock("../../../src/controllers/userController", () => ({
   directory: jest.fn((req, res) => res.status(200).json({ success: true })),
   assignableUsers: jest.fn((req, res) => res.status(200).json({ success: true })),
   branches: jest.fn((req, res) => res.status(200).json({ success: true })),
+  handover: jest.fn((req, res) => res.status(200).json({ success: true, hit: "handover" })),
 }));
 
 const express = require("express");
@@ -66,6 +67,7 @@ describe("userRoutes admin gate", () => {
   it.each([
     ["/api/users/saveUser", { Username: "x", Password: "y", FullName: "X" }],
     ["/api/users/deleteUser", { Id: 3 }],
+    ["/api/users/fetchUserHandover", { Id: 3 }],
   ])("403s a non-admin on %s", async (path, body) => {
     asEmployee();
     const r = await request(app).post(path).send(body);
@@ -73,6 +75,15 @@ describe("userRoutes admin gate", () => {
     expect(r.body.code).toBe("INSUFFICIENT_ROLE");
     expect(userController.save).not.toHaveBeenCalled();
     expect(userController.delete).not.toHaveBeenCalled();
+    expect(userController.handover).not.toHaveBeenCalled();
+  });
+
+  it("403s a department head on fetchUserHandover and lets an admin through", async () => {
+    asDepartmentHead();
+    expect((await request(app).post("/api/users/fetchUserHandover").send({ Id: 3 })).status).toBe(403);
+    asAdmin();
+    expect((await request(app).post("/api/users/fetchUserHandover").send({ Id: 3 })).status).toBe(200);
+    expect(userController.handover).toHaveBeenCalledTimes(1);
   });
 
   it("403s a level-2 department head who is not IsAdmin", async () => {

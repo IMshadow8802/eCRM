@@ -6,7 +6,11 @@ import * as z from "zod";
 import { useSnackbar } from "notistack";
 import { useQueryClient } from "@tanstack/react-query";
 import useAuthStore from "../../../stores/useAuthStore";
-import { saveUser, MASTER_ENDPOINTS } from "../../../api/masterQueries";
+import { Link } from "react-router-dom";
+import { saveUser, fetchUserHandover, MASTER_ENDPOINTS } from "../../../api/masterQueries";
+import { SALES_ENDPOINTS } from "../../../api/salesQueries";
+import { useConfirmation } from "../../../hooks/useConfirmation";
+import ConfirmationDialog from "../../../components/ConfirmationDialog";
 import { useApiQuery } from "../../../hooks/useApiQuery";
 import {
   FormModal,
@@ -43,13 +47,45 @@ const buildUserFormSchema = (isEditing) =>
   JobTitle: z.string().optional().or(z.literal("")),
   Mobile: z.string().optional().or(z.literal("")),
   HourlyRate: z.coerce.number().min(0, "Hourly rate must be positive").optional(),
-  GroupId: z.number().optional(),
+  GroupId: z.number({ error: "Pick a role" }).int().positive("Pick a role"),
+  BranchId: z.number({ error: "Pick a branch" }).int().positive("Pick a branch"),
   UserActive: z.boolean().optional(),
-  IsAdmin: z.boolean().optional(),
   AllowDay: z.coerce.number().optional(),
   UserIp: z.string().optional().or(z.literal("")),
   ReportsTo: z.number().nullable().optional(),
   });
+
+// What the user still holds, shown before an admin confirms deactivation.
+// handover === null means the lookup failed: say so, never block the admin.
+const HandoverSummary = ({ userId, handover }) => {
+  if (!handover) return <p>Couldn't load what this user holds.</p>;
+  const { OpenTasks, OpenLeads, OpenTickets, OwnedWorkspaces, DirectReports, workspaces = [], reports = [] } = handover;
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const lines = [
+    OpenTasks > 0 && (
+      <li key="t">{plural(OpenTasks, "open task", "open tasks")} will be unassigned. Their workspace owners are told.</li>
+    ),
+    OpenLeads > 0 && (
+      <li key="l">{plural(OpenLeads, "open lead", "open leads")} <Link to={`/sales/leads?OwnerId=${userId}`}>Transfer</Link></li>
+    ),
+    OpenTickets > 0 && (
+      <li key="c">{plural(OpenTickets, "open complaint", "open complaints")} <Link to={`/support/tickets?AssignedTo=${userId}`}>Transfer</Link></li>
+    ),
+    OwnedWorkspaces > 0 && (
+      <li key="w">{plural(OwnedWorkspaces, "workspace", "workspaces")} they own: {workspaces.map((w) => w.Name).join(", ")}</li>
+    ),
+    DirectReports > 0 && (
+      <li key="r">{plural(DirectReports, "person reports", "people report")} to them: {reports.map((r) => r.FullName).join(", ")}</li>
+    ),
+  ].filter(Boolean);
+  if (!lines.length) return <p>Nothing assigned.</p>;
+  return (
+    <div>
+      <ul className="list-disc pl-5">{lines}</ul>
+      <p className="mt-2">They keep ownership of leads, complaints and workspaces until you transfer them.</p>
+    </div>
+  );
+};
 
 const UserForm = ({
   open,
@@ -60,7 +96,8 @@ const UserForm = ({
 }) => {
   const { enqueueSnackbar } = useSnackbar();
   const queryClient = useQueryClient();
-  const { CompId, BranchId, UserId } = useAuthStore();
+  const { BranchId } = useAuthStore();
+  const confirmation = useConfirmation();
 
   // The reporting line: one manager per user (Zoho / Salesforce "Reports To").
   // Drives Team-scope visibility and, in spec 2, escalation. A user cannot
@@ -75,6 +112,14 @@ const UserForm = ({
   const reportsToOptions = (directoryData?.users ?? [])
     .filter((u) => u.Id !== editingUser?.Id)
     .map((u) => ({ value: String(u.Id), label: u.FullName }));
+
+  const { data: branchData } = useApiQuery({
+    queryKey: ["branches"],
+    endpoint: SALES_ENDPOINTS.users.fetchBranches,
+    params: {},
+    showErrorMessage: false,
+  });
+  const branchOptions = (branchData?.branches ?? []).map((b) => ({ value: String(b.Id), label: b.BranchName }));
 
   // Initialize default values
   const getDefaultValues = () => {
@@ -96,7 +141,7 @@ const UserForm = ({
       HourlyRate: 0,
       GroupId: Array.isArray(userGroups) && userGroups.length > 0 && userGroups[0]?.Id ? userGroups[0].Id : 0,
       UserActive: true,
-      IsAdmin: false,
+      BranchId: BranchId,
       AllowDay: 0,
       UserIp: "",
       ReportsTo: null,
@@ -128,33 +173,25 @@ const UserForm = ({
     reset(getDefaultValues());
   }, [editingUser, userGroups]);
 
-  // Form submission handler
-  const onSubmit = async (data) => {
+  // Save + toast. Throws on failure when `rethrow` so a confirm dialog stays open.
+  const doSave = async (payload) => {
     try {
-      const payload = {
-        ...data,
-        Id: editingUser ? editingUser.Id : 0,
-        CompId: CompId,
-        BranchId: BranchId,
-        ReportsTo: data.ReportsTo ?? null,
-        // Don't send password if editing and it's empty
-        ...(editingUser && !data.Password && { Password: undefined }),
-      };
-
       const response = await saveUser(payload);
 
       if (response.data.success) {
+        const n = response.data.data?.unassignedTasks;
         enqueueSnackbar(
-          `User ${editingUser ? "updated" : "created"} successfully!`,
+          `User ${editingUser ? "updated" : "created"} successfully!` +
+            (n > 0 ? ` ${n} open task${n === 1 ? " was" : "s were"} unassigned.` : ""),
           { variant: "success" }
         );
-        
+
         // Invalidate related caches
         queryClient.invalidateQueries({ queryKey: ["users"] });
         queryClient.invalidateQueries({ queryKey: ["teams"] });
         queryClient.invalidateQueries({ queryKey: ["tasks"] });
         queryClient.invalidateQueries({ queryKey: ["projects"] });
-        
+
         handleClose();
         if (onUserSaved) onUserSaved();
       } else {
@@ -165,10 +202,8 @@ const UserForm = ({
       }
     } catch (error) {
       console.error("Error saving user:", error);
-      // The SP refuses a reporting-loop with a real 400 + message (e.g.
-      // "Reporting line would loop"). Axios rejects with that body under
-      // error.response.data.message — read it first, same as useApiQuery
-      // does, or the toast just shows the generic HTTP status text.
+      // The SP refuses with a real 4xx + message (loop, last admin, ...).
+      // Axios rejects with it under error.response.data.message.
       const reason =
         error.response?.data?.message || error.message || "Unknown error";
       enqueueSnackbar(
@@ -176,6 +211,32 @@ const UserForm = ({
         { variant: "error" }
       );
     }
+  };
+
+  const onSubmit = async (data) => {
+    // BranchId comes from the form (the user's own on edit), never the auth store.
+    const payload = {
+      ...data,
+      Id: editingUser ? editingUser.Id : 0,
+      ReportsTo: data.ReportsTo ?? null,
+      // Don't send password if editing and it's empty
+      ...(editingUser && !data.Password && { Password: undefined }),
+    };
+    const deactivating = Boolean(editingUser?.UserActive) && data.UserActive === false;
+    if (!deactivating) return doSave(payload);
+
+    let handover = null;
+    try {
+      handover = (await fetchUserHandover({ Id: editingUser.Id })).data?.data?.handover ?? null;
+    } catch {
+      // shown as "couldn't load"; a lookup must not block the admin
+    }
+    confirmation.confirmAction({
+      title: "Deactivate user",
+      message: <HandoverSummary userId={editingUser.Id} handover={handover} />,
+      confirmText: "Deactivate",
+      onConfirm: () => doSave(payload),
+    });
   };
 
   const handleClose = () => {
@@ -332,6 +393,22 @@ const UserForm = ({
           <div className="grid grid-cols-2 gap-4">
             <Controller
               control={control}
+              name="BranchId"
+              render={({ field }) => (
+                <FormSelect
+                  label="Branch"
+                  value={field.value ? String(field.value) : ""}
+                  onChange={(e) => field.onChange(parseInt(e.target.value, 10))}
+                  onBlur={field.onBlur}
+                  options={branchOptions}
+                  placeholder="Select branch"
+                  error={errors.BranchId?.message}
+                  required
+                />
+              )}
+            />
+            <Controller
+              control={control}
               name="ReportsTo"
               render={({ field }) => (
                 <FormSelect
@@ -416,17 +493,6 @@ const UserForm = ({
                 />
               )}
             />
-            <Controller
-              control={control}
-              name="IsAdmin"
-              render={({ field }) => (
-                <FormCheckbox
-                  label="Is Admin"
-                  checked={field.value}
-                  onChange={field.onChange}
-                />
-              )}
-            />
           </div>
         </FormContainer>
       </div>
@@ -437,6 +503,19 @@ const UserForm = ({
         onSubmit={handleSubmit(onSubmit)}
         submitText={editingUser ? "Update User" : "Create User"}
         isLoading={isSubmitting}
+      />
+      <ConfirmationDialog
+        open={confirmation.isOpen}
+        onClose={confirmation.hideConfirmation}
+        onConfirm={confirmation.handleConfirm}
+        title={confirmation.confirmationState.title}
+        message={confirmation.confirmationState.message}
+        confirmText={confirmation.confirmationState.confirmText}
+        cancelText={confirmation.confirmationState.cancelText}
+        type={confirmation.confirmationState.type}
+        icon={confirmation.confirmationState.icon}
+        isLoading={confirmation.isLoading}
+        maxWidth={confirmation.confirmationState.maxWidth}
       />
     </FormModal>
   );

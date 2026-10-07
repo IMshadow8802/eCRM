@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { enqueueSnackbar } from "notistack";
 
 import { TASK_ENDPOINTS } from "../../../../api/taskQueries";
 import { useApiQuery } from "../../../../hooks/useApiQuery";
@@ -9,6 +10,12 @@ import { useApiMutation } from "../../../../hooks/useApiMutation";
 // patching that makes a tick feel instant. Completion is derived from this list
 // (see CLAUDE.md §6) — hence autoProgress lives here too and the details form
 // reads it back.
+const toastIfCompleted = (res) => {
+  if (res?.completionChange === "completed") {
+    enqueueSnackbar("Task completed — the creator has been told", { variant: "success" });
+  }
+};
+
 export default function useTaskChecklist(taskId, task, open) {
   const queryClient = useQueryClient();
 
@@ -88,14 +95,14 @@ export default function useTaskChecklist(taskId, task, open) {
       ),
     );
     try {
-      await saveChecklistMutation.mutateAsync({
+      toastIfCompleted(await saveChecklistMutation.mutateAsync({
         Id: item.Id,
         TaskId: task.Id,
         ItemText: item.ItemText,
         IsCompleted: !item.IsCompleted,
         SortOrder: item.SortOrder ?? 0,
         WorkspaceId: task.WorkspaceId, // realtime emit-routing hint
-      });
+      }));
       refetchChecklist();
     } catch {
       queryClient.setQueryData(checklistKey, prev); // rollback
@@ -110,11 +117,11 @@ export default function useTaskChecklist(taskId, task, open) {
       list.filter((c) => c.Id !== item.Id),
     );
     try {
-      await deleteChecklistMutation.mutateAsync({
+      toastIfCompleted(await deleteChecklistMutation.mutateAsync({
         Id: item.Id,
         TaskId: task.Id, // server needs it to authorize; the SP only returns it after deleting
         WorkspaceId: task.WorkspaceId,
-      });
+      }));
       refetchChecklist();
     } catch {
       queryClient.setQueryData(checklistKey, prev); // rollback

@@ -20,6 +20,7 @@ export const TASK_ENDPOINTS = {
   fetchTasks: "/api/tasks/fetchTasks",
   saveTask: "/api/tasks/saveTask",
   moveTaskColumn: "/api/tasks/moveTaskColumn",
+  claimTask: "/api/tasks/claimTask",
   deleteTask: "/api/tasks/deleteTask",
   bulkDeleteTasks: "/api/tasks/bulkDeleteTasks",
   addTaskComment: "/api/tasks/addTaskComment",
@@ -48,6 +49,10 @@ export interface FetchTasksParams {
   PageNumber?: number;
   PageSize?: number;
   SearchTerm?: string | null;
+  /** Server-side "assigned to this user" filter (My Work). */
+  AssigneeUserId?: number | null;
+  OnlyOpen?: boolean;
+  Overdue?: boolean;
 }
 
 interface TasksPayload {
@@ -56,9 +61,8 @@ interface TasksPayload {
 }
 
 /**
- * sp_FetchTask treats `@WorkspaceId IS NULL` as "no filter", and every row
- * carries AssigneesJson — which is how My Work lists tasks across all
- * workspaces without a backend change. See spec §5.1 for the scale ceiling.
+ * sp_FetchTask treats `@WorkspaceId IS NULL` as "no filter" (archived boards
+ * excluded). My Work filters on the server with AssigneeUserId + OnlyOpen.
  */
 export const fetchTasks = ({
   Id = 0,
@@ -68,6 +72,9 @@ export const fetchTasks = ({
   PageNumber = 1,
   PageSize = 100,
   SearchTerm = null,
+  AssigneeUserId = null,
+  OnlyOpen = false,
+  Overdue = false,
 }: FetchTasksParams = {}): Promise<ApiEnvelope<TasksPayload>> =>
   post<TasksPayload>(TASK_ENDPOINTS.fetchTasks, {
     Id,
@@ -77,6 +84,9 @@ export const fetchTasks = ({
     PageNumber,
     PageSize,
     SearchTerm,
+    AssigneeUserId,
+    OnlyOpen,
+    Overdue,
   });
 
 export const fetchTaskById = (Id: number): Promise<Task | null> =>
@@ -173,6 +183,17 @@ export const moveTaskColumn = (params: {
     ...params,
   });
 
+/**
+ * "Take this task" — puts the CALLER on an unassigned task (claim_task). The
+ * server ignores who you say you are; a task that already has someone is a
+ * reassignment and goes through saveTask.
+ */
+export const claimTask = (params: {
+  TaskId: number;
+  WorkspaceId?: number | null;
+}): Promise<ApiEnvelope<unknown>> =>
+  post(TASK_ENDPOINTS.claimTask, { WorkspaceId: null, ...params });
+
 export const deleteTask = (params: {
   Id: number;
   WorkspaceId?: number | null;
@@ -212,7 +233,7 @@ export const getTaskComments = (params: {
 }): Promise<TaskComment[]> =>
   postData<TaskComment>(
     TASK_ENDPOINTS.getTaskComments,
-    { PageNumber: 1, PageSize: 25, ...params },
+    { PageNumber: 1, PageSize: 100, ...params },
     "comments",
   );
 
@@ -252,9 +273,9 @@ export const markTaskCommentRead = (params: {
  * task, and one must never be reintroduced. Ticking an item here is what marks
  * a task complete.
  *
- * Permission differs by operation: ticking (`Id > 0`) is `change_status`, so
- * any assignee may do it; adding or renaming (`Id === 0`) is
- * `manage_checklist`, which an assigned viewer does not have.
+ * Permission differs by operation: ticking is `change_status`, so any
+ * assignee may do it; adding, renaming and reordering are `manage_checklist`
+ * — the server keeps text and order as they are for a tick-only caller.
  */
 export const saveTaskChecklist = (params: {
   Id?: number;

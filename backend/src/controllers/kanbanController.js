@@ -1,5 +1,4 @@
 const database = require("../config/database");
-const { scopeJson } = require("../middleware/permission");
 const { cleanSpRows } = require("../utils/spHelpers");
 const { logActivity, ACTIONS } = require("../utils/activityLogger");
 const { emitToWorkspace } = require("../realtime/events");
@@ -16,19 +15,13 @@ class KanbanController {
         SearchTerm = null,
       } = req.body || {};
 
-      // scopeJson, not `?.length ? stringify : null`. That form collapses an
-      // empty scope to NULL, which every one of these SPs reads as "apply no
-      // branch filter at all" — the widest possible answer for the narrowest
-      // possible scope. '[]' is an empty allow-list and matches nothing.
-      const accessibleBranchIdsJson = scopeJson(req.scope?.branchIds);
-
       const result = await database.executeStoredProcedure("sp_FetchKanbanColumn", {
         Id,
         WorkspaceId,
         CompId: req.user.CompId,
         BranchId: req.user.BranchId,
-        IsAdmin: req.user.IsAdmin,
-        AccessibleBranchIdsJson: accessibleBranchIdsJson,
+        IsAdmin: req.scope?.isAdmin ? 1 : 0,
+        UserId: req.user.UserId,
         PageNumber,
         PageSize,
         SearchTerm,
@@ -87,6 +80,17 @@ class KanbanController {
         });
       }
 
+      // Deactivating a column orphaned its tasks; removal goes through delete.
+      if (IsActive === false || IsActive === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Use delete to remove a column",
+          code: "VALIDATION_ERROR",
+          responseCode: 400,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
       const result = await database.executeStoredProcedure(
         "sp_SaveKanbanColumn",
         {
@@ -96,9 +100,9 @@ class KanbanController {
           Color,
           SortOrder,
           MaxTasks,
-          IsActive,
+          IsActive: true,
           UserId: req.user.UserId,
-          IsAdmin: req.user.IsAdmin,
+          IsAdmin: req.scope?.isAdmin ? 1 : 0,
           CompId: req.user.CompId,
           BranchId: req.user.BranchId,
         },
@@ -164,7 +168,7 @@ class KanbanController {
           Id,
           ReassignToColumnId,
           UserId: req.user.UserId,
-          IsAdmin: req.user.IsAdmin,
+          IsAdmin: req.scope?.isAdmin ? 1 : 0,
           CompId: req.user.CompId,
           BranchId: req.user.BranchId,
         },

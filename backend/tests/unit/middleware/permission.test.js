@@ -14,6 +14,7 @@ const {
   canWriteBranch,
   canReadBranch,
   assertRecordAccess,
+  taskAllowed,
   assertCanAssign,
   canReopen,
 } = require("../../../src/middleware/permission");
@@ -445,6 +446,32 @@ describe("permission middleware", () => {
       await loadScope(req, res, next);
       expect(req.scope).toBeUndefined();
       expect(next).toHaveBeenCalled();
+    });
+  });
+
+  describe("taskAllowed", () => {
+    const req = { user: { UserId: 7, CompId: 1 }, scope: { isAdmin: true } };
+    beforeEach(() => database.executeStoredProcedure.mockReset());
+
+    it("asks sp_CheckTaskPermission for the exact action and answers true", async () => {
+      database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ Allowed: 1 }]] });
+      await expect(taskAllowed(req, "12", "manage_checklist")).resolves.toBe(true);
+      expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_CheckTaskPermission", {
+        TaskId: 12, UserId: 7, Action: "manage_checklist", IsAdmin: 1, CompId: 1,
+      });
+    });
+
+    it("answers false on a refusal or an empty answer", async () => {
+      database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ Allowed: 0 }]] });
+      await expect(taskAllowed(req, 12, "manage_checklist")).resolves.toBe(false);
+      database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[]] });
+      await expect(taskAllowed(req, 12, "manage_checklist")).resolves.toBe(false);
+    });
+
+    it("reads a plain recordset and a non-admin scope", async () => {
+      database.executeStoredProcedure.mockResolvedValueOnce({ recordset: [{ Allowed: true }] });
+      await expect(taskAllowed({ user: req.user }, 12, "x")).resolves.toBe(true);
+      expect(database.executeStoredProcedure.mock.calls[0][1].IsAdmin).toBe(0);
     });
   });
 

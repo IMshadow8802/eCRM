@@ -266,6 +266,9 @@ class WorkspaceController {
         emitToWorkspace(WorkspaceId, SCOPES.WORKSPACE_MEMBERS, {
           workspaceId: WorkspaceId,
         });
+        // 094: a demoted/removed assignee comes off open tasks — cards change.
+        emitToWorkspace(WorkspaceId, SCOPES.TASK_LIST, { workspaceId: WorkspaceId });
+        emitToWorkspace(WorkspaceId, SCOPES.NOTIFICATIONS);
         // Their own sidebar/permissions change, and they may not be in the
         // workspace room right now — ping their user room too.
         emitToUser(UserId, SCOPES.WORKSPACES);
@@ -377,6 +380,8 @@ class WorkspaceController {
         emitToWorkspace(WorkspaceId, SCOPES.WORKSPACE_MEMBERS, {
           workspaceId: WorkspaceId,
         });
+        // 094: leaving a board takes the person off its open tasks.
+        emitToWorkspace(WorkspaceId, SCOPES.TASK_LIST, { workspaceId: WorkspaceId });
         // Leave/removal creates notifications for members.
         emitToWorkspace(WorkspaceId, SCOPES.NOTIFICATIONS);
         // The removed user loses the workspace — hit their user room.
@@ -741,6 +746,8 @@ class WorkspaceController {
           workspaceId: WorkspaceId,
         });
         emitToWorkspace(WorkspaceId, SCOPES.WORKSPACES);
+        emitToWorkspace(WorkspaceId, SCOPES.TASK_LIST, { workspaceId: WorkspaceId });
+        emitToWorkspace(WorkspaceId, SCOPES.NOTIFICATIONS);
       }
 
       return res.status(status).json({

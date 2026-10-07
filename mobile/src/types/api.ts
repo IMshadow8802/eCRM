@@ -568,15 +568,20 @@ export interface Attachment {
   CreatedDate: string;
 }
 
-export interface Notification {
+/** A row of sp_FetchNotifications. EntityType casing is per-SP ('task','ticket','Workspace'). */
+export interface AppNotification {
   Id: number;
   UserId: number;
+  /** task_assigned · task_completed · task_reopened · task_unblocked · comment_added · reply · ticket_assigned · ticket_escalated · workspace_* */
+  Type: string;
+  EntityType: string;
+  EntityId: number;
+  ActorUserId: number | null;
+  ActorName: string | null;
   Title: string;
-  Message: string | null;
-  Type: string | null;
+  Body: string | null;
   IsRead: boolean;
-  EntityType: string | null;
-  EntityId: number | null;
+  ReadAt: string | null;
   CreatedDate: string;
 }
 

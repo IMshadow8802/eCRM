@@ -40,6 +40,7 @@ const MIDDLEWARE = path.join(__dirname, "../../../src/middleware");
  *   sp_MarkCommentRead           @CommentId, @UserId       — own receipt
  *   sp_NotifyCommentAdded        @CommentId, @ActorUserId  — fan-out, post-write
  *   sp_NotifyTaskAssigned        @TaskId, @ActorUserId, @AssigneeUserId
+ *   sp_NotifyTaskCompletion      @TaskId, @ActorUserId, @Event — fan-out, post-write (094)
  *   sp_UpdateOwnProfile          @UserId, ...              — own row by definition
  *   sp_FetchBranches             (none)                    — tblBranch has no CompId column; SP declares no params (backend/sql/072_menu_pipeline_row.sql)
  *
@@ -57,6 +58,7 @@ const EXEMPT = new Set([
   "sp_MarkCommentRead",
   "sp_NotifyCommentAdded",
   "sp_NotifyTaskAssigned",
+  "sp_NotifyTaskCompletion",
   "sp_UpdateOwnProfile",
   "sp_FetchBranches",
 ]);

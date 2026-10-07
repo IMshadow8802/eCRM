@@ -11,6 +11,8 @@ export const TASK_ENDPOINTS = {
     fetchTasks: "/api/tasks/fetchTasks",
     moveTaskColumn: "/api/tasks/moveTaskColumn",
     bulkDeleteTasks: "/api/tasks/bulkDeleteTasks",
+    deleteTask: "/api/tasks/deleteTask",
+    claimTask: "/api/tasks/claimTask",
   },
   comments: {
     getTaskComments: "/api/tasks/getTaskComments",

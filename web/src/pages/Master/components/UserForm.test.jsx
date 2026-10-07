@@ -39,8 +39,8 @@ const EXISTING_USER = {
   JobTitle: "Engineer",
   HourlyRate: 12.5,
   GroupId: 8,
+  BranchId: 3,
   UserActive: true,
-  IsAdmin: false,
   AllowDay: 0,
   UserIp: "",
 };
@@ -64,9 +64,11 @@ beforeEach(() => {
   post.mockResolvedValue({ data: { success: true } });
   enqueueSnackbar.mockReset();
   useApiQuery.mockReset();
-  useApiQuery.mockReturnValue({
-    data: { users: [{ Id: 4, FullName: "Meera Manager" }, { Id: 9, FullName: "Self" }] },
-  });
+  useApiQuery.mockImplementation(({ endpoint }) =>
+    endpoint === "/api/users/fetchBranches"
+      ? { data: { branches: [{ Id: 2, BranchName: "Mumbai" }, { Id: 3, BranchName: "Delhi" }] } }
+      : { data: { users: [{ Id: 4, FullName: "Meera Manager" }, { Id: 9, FullName: "Self" }] } }
+  );
 });
 
 describe("UserForm password rules", () => {
@@ -292,7 +294,7 @@ describe("UserForm Reports To", () => {
   });
 
   it("falls back to an empty Reports To list before the directory has loaded", async () => {
-    useApiQuery.mockReturnValue({ data: undefined });
+    useApiQuery.mockImplementation(() => ({ data: undefined }));
     renderForm({});
     const user = userEvent.setup();
     await user.click(screen.getByLabelText(/Reports To/));
@@ -310,5 +312,167 @@ describe("UserForm Reports To", () => {
     await waitFor(() =>
       expect(enqueueSnackbar).toHaveBeenCalledWith("Username taken", { variant: "error" })
     );
+  });
+});
+
+const fillCreate = async (user, name) => {
+  await user.type(screen.getByLabelText(/Username/), name);
+  await user.type(screen.getByLabelText(/^Password/), "secret1");
+  await user.type(screen.getByLabelText(/Full Name/), name);
+};
+
+describe("UserForm role, branch and admin flag", () => {
+  // REGRESSION: the form had an Is Admin checkbox that the server now ignores.
+  it("renders no Is Admin checkbox and sends no IsAdmin or CompId", async () => {
+    renderForm({ editingUser: EXISTING_USER });
+    expect(screen.queryByLabelText(/is admin/i)).toBeNull();
+    await submit(/update user/i);
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    expect(post.mock.calls[0][1]).not.toHaveProperty("IsAdmin");
+    expect(post.mock.calls[0][1]).not.toHaveProperty("CompId");
+  });
+
+  // REGRESSION (audit B4): a null GroupId used to post as 0 and hit the FK.
+  it("refuses an edit with no role instead of posting GroupId 0", async () => {
+    renderForm({ editingUser: { ...EXISTING_USER, GroupId: null } });
+    await submit(/update user/i);
+    expect(await screen.findByText("Pick a role")).toBeInTheDocument();
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("defaults the Branch to the admin's and sends a picked one", async () => {
+    renderForm({});
+    const user = userEvent.setup();
+    expect(screen.getByLabelText(/^Branch/)).toHaveValue("Mumbai");
+    await fillCreate(user, "bran");
+    await user.click(screen.getByLabelText(/^Branch/));
+    await user.click(await screen.findByRole("option", { name: "Delhi" }));
+    await submit(/create user/i);
+    await waitFor(() => expect(post.mock.calls[0][1]).toMatchObject({ BranchId: 3 }));
+  });
+
+  it("create sends the admin's branch when untouched", async () => {
+    renderForm({});
+    const user = userEvent.setup();
+    await fillCreate(user, "bran2");
+    await submit(/create user/i);
+    await waitFor(() => expect(post.mock.calls[0][1]).toMatchObject({ BranchId: 2 }));
+  });
+
+  // REGRESSION: onSubmit used to overwrite BranchId with the admin's.
+  it("edit prefills the user's branch and sends it, not the admin's", async () => {
+    renderForm({ editingUser: EXISTING_USER });
+    expect(screen.getByLabelText(/^Branch/)).toHaveValue("Delhi");
+    await submit(/update user/i);
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    expect(post.mock.calls[0][1].BranchId).toBe(3);
+  });
+
+  it("falls back to an empty branch list before branches load", async () => {
+    useApiQuery.mockImplementation(() => ({ data: undefined }));
+    renderForm({});
+    await userEvent.click(screen.getByLabelText(/^Branch/));
+    expect(await screen.findByText(/Nothing found/i)).toBeInTheDocument();
+  });
+});
+
+describe("UserForm deactivation", () => {
+  const HANDOVER = {
+    OpenTasks: 3, OpenLeads: 5, OpenTickets: 2, OwnedWorkspaces: 1, DirectReports: 1,
+    workspaces: [{ Id: 1, Name: "Ops", Type: "shared" }],
+    reports: [{ Id: 5, FullName: "Asha" }],
+  };
+  const route = (handover) => (url) =>
+    url === "/api/users/fetchUserHandover"
+      ? handover instanceof Error
+        ? Promise.reject(handover)
+        : Promise.resolve({ data: { success: true, data: { handover } } })
+      : Promise.resolve({ data: { success: true, data: { unassignedTasks: 3 } } });
+
+  const deactivate = async () => {
+    const user = userEvent.setup();
+    await user.click(screen.getByText("User Active"));
+    await submit(/update user/i);
+  };
+  const saves = () => post.mock.calls.filter(([u]) => u === "/api/users/saveUser");
+
+  it("fetches the handover first, shows it, and saves only on confirm", async () => {
+    post.mockImplementation(route(HANDOVER));
+    const onClose = vi.fn();
+    renderForm({ editingUser: EXISTING_USER, onClose });
+    await deactivate();
+
+    expect(await screen.findByText(/3 open tasks will be unassigned/i)).toBeInTheDocument();
+    expect(post.mock.calls[0]).toEqual(["/api/users/fetchUserHandover", { Id: 11 }]);
+    expect(saves()).toHaveLength(0);
+    expect(screen.getByText(/5 open leads/i)).toBeInTheDocument();
+    expect(screen.getByText(/2 open complaints/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 workspace they own: Ops/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 person reports to them: Asha/i)).toBeInTheDocument();
+    const links = screen.getAllByRole("link", { name: "Transfer" });
+    expect(links[0].getAttribute("href")).toMatch(/\/sales\/leads\?OwnerId=11$/);
+    expect(links[1].getAttribute("href")).toMatch(/\/support\/tickets\?AssignedTo=11$/);
+
+    await userEvent.click(screen.getByRole("button", { name: "Deactivate" }));
+    await waitFor(() => expect(saves()).toHaveLength(1));
+    expect(saves()[0][1].UserActive).toBe(false);
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(enqueueSnackbar.mock.calls.at(-1)[0]).toBe(
+      "User updated successfully! 3 open tasks were unassigned."
+    );
+  });
+
+  it("cancel saves nothing", async () => {
+    post.mockImplementation(route(HANDOVER));
+    renderForm({ editingUser: EXISTING_USER });
+    await deactivate();
+    await screen.findByText(/3 open tasks/i);
+    const cancels = screen.getAllByRole("button", { name: /^cancel$/i });
+    await userEvent.click(cancels[cancels.length - 1]); // the confirm dialog portals last
+    expect(saves()).toHaveLength(0);
+    await waitFor(() => expect(screen.queryByText(/3 open tasks/i)).toBeNull());
+  });
+
+  it("says nothing is assigned when every count is zero", async () => {
+    post.mockImplementation(route({ OpenTasks: 0, OpenLeads: 0, OpenTickets: 0, OwnedWorkspaces: 0, DirectReports: 0, workspaces: [], reports: [] }));
+    renderForm({ editingUser: EXISTING_USER });
+    await deactivate();
+    expect(await screen.findByText(/nothing assigned/i)).toBeInTheDocument();
+  });
+
+  it("still opens, and still saves, when the handover lookup fails", async () => {
+    post.mockImplementation(route(new Error("down")));
+    renderForm({ editingUser: EXISTING_USER });
+    await deactivate();
+    expect(await screen.findByText(/Couldn't load what this user holds/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Deactivate" }));
+    await waitFor(() => expect(saves()).toHaveLength(1));
+  });
+
+  it("keeps the dialog's failure visible when the confirmed save is refused", async () => {
+    post.mockImplementation((url) =>
+      url === "/api/users/fetchUserHandover"
+        ? Promise.resolve({ data: { data: { handover: HANDOVER } } })
+        : Promise.reject({ response: { data: { message: "last active admin" } }, message: "409" })
+    );
+    renderForm({ editingUser: EXISTING_USER });
+    await deactivate();
+    await userEvent.click(await screen.findByRole("button", { name: "Deactivate" }));
+    await waitFor(() => expect(enqueueSnackbar.mock.calls.at(-1)[0]).toMatch(/last active admin/));
+  });
+
+  it("saves directly, with no handover call, when Active is unchanged", async () => {
+    renderForm({ editingUser: EXISTING_USER });
+    await submit(/update user/i);
+    await waitFor(() => expect(saves()).toHaveLength(1));
+    expect(post.mock.calls.some(([u]) => u === "/api/users/fetchUserHandover")).toBe(false);
+  });
+
+  it("saves directly when re-activating an inactive user", async () => {
+    renderForm({ editingUser: { ...EXISTING_USER, UserActive: false } });
+    await userEvent.click(screen.getByText("User Active"));
+    await submit(/update user/i);
+    await waitFor(() => expect(saves()).toHaveLength(1));
+    expect(post.mock.calls.some(([u]) => u === "/api/users/fetchUserHandover")).toBe(false);
   });
 });

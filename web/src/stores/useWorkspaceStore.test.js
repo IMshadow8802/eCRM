@@ -31,27 +31,20 @@ describe("useWorkspaceStore", () => {
     expect(useWorkspaceStore.getState().activeWorkspaceId).toBeNull();
   });
 
+  // Task/column gates moved to utils/taskAbilities (own table test); only the member gate stays here.
   it("role gates match the permission matrix", () => {
     const s = useWorkspaceStore.getState();
     s.setActiveWorkspace({ Id: 1, Type: "shared", MyRole: "owner" });
     expect(s.canManageMembers()).toBe(true);
-    expect(s.canCreateTasks()).toBe(true);
-    expect(s.canEditOthersTasks()).toBe(true);
 
     s.setActiveWorkspace({ Id: 1, Type: "shared", MyRole: "manager" });
     expect(s.canManageMembers()).toBe(false);
-    expect(s.canCreateTasks()).toBe(true);
-    expect(s.canEditOthersTasks()).toBe(true);
 
     s.setActiveWorkspace({ Id: 1, Type: "shared", MyRole: "member" });
     expect(s.canManageMembers()).toBe(false);
-    expect(s.canCreateTasks()).toBe(true);
-    expect(s.canEditOthersTasks()).toBe(false);
 
     s.setActiveWorkspace({ Id: 1, Type: "shared", MyRole: "viewer" });
     expect(s.canManageMembers()).toBe(false);
-    expect(s.canCreateTasks()).toBe(false);
-    expect(s.canEditOthersTasks()).toBe(false);
   });
 
   it("setActiveWorkspace handles missing optional fields", () => {

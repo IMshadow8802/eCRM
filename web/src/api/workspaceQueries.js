@@ -47,3 +47,7 @@ export const removeWorkspaceMember = post(WORKSPACE_ENDPOINTS.members.removeWork
 export const setWorkspaceMemberRole = post(WORKSPACE_ENDPOINTS.members.setWorkspaceMemberRole);
 export const syncProjectWorkspaceMembers = post(WORKSPACE_ENDPOINTS.members.syncProjectWorkspaceMembers);
 export const respondInvite = post(WORKSPACE_ENDPOINTS.members.respondInvite);
+
+// Shared by WorkspaceSwitcher and useFocusTaskWorkspace: identical params keep
+// one ["workspaces","list"] cache entry instead of splitting it.
+export const WORKSPACE_LIST_PARAMS = { PageNumber: 1, PageSize: 100, IncludeArchived: true };

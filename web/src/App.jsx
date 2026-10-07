@@ -22,6 +22,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 const Login = lazy(() => import("./pages/auth/Login"));
 const Dashboard = lazy(() => import("./components/Dashboard"));
 const Task = lazy(() => import("./pages/Task/TaskBoard"));
+const MyWork = lazy(() => import("./pages/Task/MyWork"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 // Admin — people/access provisioning that the task workspaces depend on
@@ -75,6 +76,7 @@ export const routesConfig = [
   { path: "/reports", element: <SectionRedirect prefix="/reports" fallback="/reports/funnel" /> },
   { path: "/admin", element: <SectionRedirect prefix="/admin" fallback="/users" /> },
   { path: "/dashboard/*", element: <ProtectedRoute element={<Dashboard />} /> },
+  { path: "/my-work", element: <ProtectedRoute element={<MyWork />} /> },
   { path: "/tasks/*", element: <ProtectedRoute element={<Task />} /> },
   // Admin — user/team/project provisioning (backend was always live).
   { path: "/users/*", element: <ProtectedRoute element={<Users />} /> },

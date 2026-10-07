@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -6,7 +6,8 @@ import { http, HttpResponse } from "msw";
 
 import TaskDetailModal from "./TaskDetailModal";
 import useAuthStore from "../../../stores/useAuthStore";
-import { taskFixture } from "../../../test/mocks/handlers";
+import useWorkspaceStore from "../../../stores/useWorkspaceStore";
+import { taskFixture, workspaceFixture } from "../../../test/mocks/handlers";
 import { server } from "../../../test/mocks/server";
 import renderWithProviders from "../../../test/renderWithProviders";
 
@@ -19,6 +20,9 @@ const renderModal = (taskId, props = {}) =>
 describe("TaskDetailModal", () => {
   beforeEach(() => {
     taskFixture.reset();
+    // Permissions mirror sp_CheckTaskPermission (utils/taskAbilities): the modal
+    // needs a workspace + role to know what the caller may do. Default: a member.
+    useWorkspaceStore.getState().setActiveWorkspace({ Id: 100, Type: "shared", MyRole: "member" });
     useAuthStore.setState({
       isAuthenticated: true,
       token: null,
@@ -104,19 +108,50 @@ describe("TaskDetailModal", () => {
     expect(await screen.findByText(/No comments yet/i)).toBeInTheDocument();
   });
 
-  it("column change + Save dispatches save mutation with new ColumnId", async () => {
+  // CHANGED (094): the column is progress, not a field - it moves the card at
+  // once through moveTaskColumn instead of waiting for Save.
+  it("changing the column moves the card at once through moveTaskColumn", async () => {
+    let moveBody;
+    server.use(
+      http.post(`*/api/tasks/moveTaskColumn`, async ({ request }) => {
+        moveBody = await request.json();
+        return HttpResponse.json({ success: true, message: "Task moved", responseCode: 200 });
+      }),
+    );
     renderModal(501);
     await screen.findByText("Task 501");
     const user = userEvent.setup();
     const select = await screen.findByTestId("task-column-select");
-    const combo = select.querySelector("[role='combobox']") ?? select;
-    await user.click(combo);
-    const doneOption = await screen.findByRole("option", { name: /Done/i });
-    await user.click(doneOption);
-    await user.click(await screen.findByTestId("task-save-btn"));
-    await waitFor(() => {
-      expect(taskFixture.list[0].ColumnId).toBe(3);
-    });
+    await user.click(select.querySelector("[role='combobox']") ?? select);
+    await user.click(await screen.findByRole("option", { name: /Done/i }));
+    await waitFor(() =>
+      expect(moveBody).toEqual({ TaskId: 501, ColumnId: 3, WorkspaceId: 100 }),
+    );
+  });
+
+  // REGRESSION (R7, board = completion): the server refuses an open task into
+  // the last column; the modal shows why and the column stays where it was.
+  it("a refused column move shows the server's reason and keeps the old column", async () => {
+    server.use(
+      http.post(`*/api/tasks/moveTaskColumn`, () =>
+        HttpResponse.json(
+          { success: false, message: "Tick the remaining steps to finish this task", responseCode: 409 },
+          { status: 409 },
+        ),
+      ),
+    );
+    renderModal(501);
+    await screen.findByText("Task 501");
+    const user = userEvent.setup();
+    const select = await screen.findByTestId("task-column-select");
+    await user.click(select.querySelector("[role='combobox']") ?? select);
+    await user.click(await screen.findByRole("option", { name: /Done/i }));
+    expect(
+      await screen.findByText("Tick the remaining steps to finish this task"),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(select.querySelector("input")?.value ?? select.textContent).toMatch(/To Do/),
+    );
   });
 
   it("shows Done chip when task IsCompleted", async () => {
@@ -316,6 +351,22 @@ describe("TaskDetailModal", () => {
     });
   });
 
+  it("ticking the last step toasts that the creator has been told", async () => {
+    taskFixture.list[0].ChecklistTotal = 1;
+    server.use(
+      http.post(`*/api/tasks/getTaskChecklist`, async () =>
+        HttpResponse.json({ success: true, message: "ok", responseCode: 200, data: { checklist: [{ Id: 81, TaskId: 501, ItemText: "only step", IsCompleted: false, SortOrder: 0 }] } })),
+      http.post(`*/api/tasks/saveTaskChecklist`, async () =>
+        HttpResponse.json({ success: true, message: "ok", responseCode: 200, data: { completionChange: "completed" } })),
+    );
+    renderModal(501);
+    await screen.findByText("Task 501");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: /Checklist/i }));
+    await user.click(await screen.findByTestId("checklist-toggle-81"));
+    expect(await screen.findByText(/Task completed — the creator has been told/)).toBeInTheDocument();
+  });
+
   // Regression: the gate used to be creator-only, so a member assigned a task
   // by their manager saw a dead checklist on work they were told to do — the
   // server allows it (change_status grants creator OR assignee).
@@ -344,6 +395,136 @@ describe("TaskDetailModal", () => {
     return user;
   };
 
+  it("never offers to remove a task's last step", async () => {
+    server.use(
+      http.post(`*/api/tasks/getTaskChecklist`, async () =>
+        HttpResponse.json({
+          success: true, message: "ok", responseCode: 200,
+          data: { checklist: [{ Id: 900, ItemText: "only step", IsCompleted: false }] },
+        }),
+      ),
+    );
+    await openChecklistTab();
+    await screen.findByTestId("checklist-toggle-900");
+    expect(screen.queryByRole("button", { name: /Remove item/i })).not.toBeInTheDocument();
+  });
+
+  // REGRESSION (spec P1 item 11): an assignee could drag the card but the
+  // Column select was locked behind edit_fields.
+  it("lets an assignee who can't edit the task change its column", async () => {
+    seedAssignedToMe();
+    renderModal(501);
+    await screen.findByText("Task 501");
+    const select = await screen.findByTestId("task-column-select");
+    const combo = select.querySelector("[role='combobox']") ?? select;
+    expect(combo).not.toBeDisabled();
+    expect(screen.getByTestId("task-title-input")).toBeDisabled();
+  });
+
+  it("deletes the task after confirming, then closes", async () => {
+    const onClose = vi.fn();
+    let body;
+    server.use(
+      http.post(`*/api/tasks/deleteTask`, async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ success: true, message: "Task deleted", responseCode: 200 });
+      }),
+    );
+    renderModal(501, { onClose });
+    await screen.findByText("Task 501");
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("task-delete-btn"));
+    const dialog = await screen.findByTestId("confirmation-dialog");
+    await user.click(within(dialog).getByRole("button", { name: /^Delete$/ }));
+    await waitFor(() => expect(body).toEqual({ Id: 501, WorkspaceId: 100 }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it("stays open when the server refuses the delete", async () => {
+    const onClose = vi.fn();
+    server.use(
+      http.post(`*/api/tasks/deleteTask`, async () =>
+        HttpResponse.json({
+          success: false,
+          message: "Permission denied: others have contributed to this task",
+          responseCode: 403,
+        }),
+      ),
+    );
+    renderModal(501, { onClose });
+    await screen.findByText("Task 501");
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("task-delete-btn"));
+    const dialog = await screen.findByTestId("confirmation-dialog");
+    await user.click(within(dialog).getByRole("button", { name: /^Delete$/ }));
+    expect(await screen.findByText(/others have contributed/i)).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("shows no Delete to someone who neither created nor manages the task", async () => {
+    taskFixture.list[0].CreatedByUserId = 99;
+    renderModal(501);
+    await screen.findByText("Task 501");
+    expect(screen.queryByTestId("task-delete-btn")).not.toBeInTheDocument();
+  });
+
+  it("falls back for a sparse task and stays open when Save fails", async () => {
+    taskFixture.reset();
+    taskFixture.seed({ Id: 501, Title: "Bare", WorkspaceId: 100, CreatedByUserId: 1 });
+    const onClose = vi.fn();
+    server.use(
+      http.post(`*/api/tasks/saveTask`, async () =>
+        HttpResponse.json({ success: false, message: "nope", responseCode: 500 }),
+      ),
+    );
+    renderModal(501, { onClose });
+    await screen.findByText("Bare");
+    const user = userEvent.setup();
+    const title = screen.getByTestId("task-title-input");
+    const input = title.querySelector("input") || title;
+    await user.clear(input);
+    await user.type(input, "Bare 2");
+    await user.click(await screen.findByTestId("task-save-btn"));
+    await waitFor(() => expect(screen.getByTestId("task-save-btn")).not.toBeDisabled());
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("labels members by username, then id, when they have no full name", async () => {
+    workspaceFixture.members = [
+      { UserId: 4, Username: "uname", Role: "member", IsActive: true, InviteStatus: "active" },
+      { UserId: 5, Role: "member", IsActive: true, InviteStatus: "active" },
+    ];
+    try {
+      renderModal(501);
+      await screen.findByText("Task 501");
+      const select = screen.getByTestId("task-assignee-select");
+      await userEvent.setup().click(select.querySelector("[role='combobox']") ?? select);
+      expect(await screen.findByRole("option", { name: "uname" })).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "User #5" })).toBeInTheDocument();
+    } finally {
+      workspaceFixture.members = null;
+    }
+  });
+
+  it("never offers a viewer as an assignee", async () => {
+    workspaceFixture.members = [
+      { UserId: 1, FullName: "Me", Role: "owner", IsActive: true, InviteStatus: "active" },
+      { UserId: 2, FullName: "Vera Viewer", Role: "viewer", IsActive: true, InviteStatus: "active" },
+      { UserId: 3, FullName: "Mo Member", Role: "member", IsActive: true, InviteStatus: "active" },
+    ];
+    try {
+      renderModal(501);
+      await screen.findByText("Task 501");
+      const user = userEvent.setup();
+      const select = screen.getByTestId("task-assignee-select");
+      await user.click(select.querySelector("[role='combobox']") ?? select);
+      expect(await screen.findByRole("option", { name: /Mo Member/ })).toBeInTheDocument();
+      expect(screen.queryByRole("option", { name: /Vera Viewer/ })).not.toBeInTheDocument();
+    } finally {
+      workspaceFixture.members = null;
+    }
+  });
+
   it("lets the assignee tick a checklist item on a task someone else created", async () => {
     seedAssignedToMe();
     server.use(
@@ -371,13 +552,13 @@ describe("TaskDetailModal", () => {
           success: true,
           message: "ok",
           responseCode: 200,
-          data: { checklist: [{ Id: 900, ItemText: "step one", IsCompleted: false }] },
+          data: { checklist: [{ Id: 900, ItemText: "step one", IsCompleted: false }, { Id: 901, ItemText: "step two", IsCompleted: false }] },
         }),
       ),
     );
     await openChecklistTab();
     await screen.findByTestId("checklist-toggle-900");
-    expect(screen.getByRole("button", { name: /Remove item/i })).toBeInTheDocument();
+    expect((await screen.findAllByRole("button", { name: /Remove item/i })).length).toBeGreaterThan(0);
   });
 
   it("leaves the checklist read-only for a member who is neither creator nor assignee", async () => {
@@ -416,7 +597,7 @@ describe("TaskDetailModal", () => {
           success: true,
           message: "ok",
           responseCode: 200,
-          data: { checklist: [{ Id: 900, ItemText: "step one", IsCompleted: false }] },
+          data: { checklist: [{ Id: 900, ItemText: "step one", IsCompleted: false }, { Id: 901, ItemText: "step two", IsCompleted: false }] },
         }),
       ),
       http.post(`*/api/tasks/deleteTaskChecklist`, async ({ request }) => {
@@ -425,9 +606,55 @@ describe("TaskDetailModal", () => {
       }),
     );
     const user = await openChecklistTab();
-    await user.click(await screen.findByRole("button", { name: /Remove item/i }));
+    await user.click((await screen.findAllByRole("button", { name: /Remove item/i }))[0]);
     await waitFor(() => {
       expect(deleteBody).toMatchObject({ Id: 900, TaskId: 501, WorkspaceId: 100 });
+    });
+  });
+
+  it("removing the last open step of several toasts completion", async () => {
+    server.use(
+      http.post(`*/api/tasks/getTaskChecklist`, async () =>
+        HttpResponse.json({ success: true, message: "ok", responseCode: 200, data: { checklist: [{ Id: 900, ItemText: "step one", IsCompleted: false }, { Id: 901, ItemText: "step two", IsCompleted: true }] } })),
+      http.post(`*/api/tasks/deleteTaskChecklist`, async () =>
+        HttpResponse.json({ success: true, message: "ok", responseCode: 200, data: { completionChange: "completed" } })),
+    );
+    const user = await openChecklistTab();
+    await user.click((await screen.findAllByRole("button", { name: /Remove item/i }))[0]);
+    expect(await screen.findByText(/Task completed — the creator has been told/)).toBeInTheDocument();
+  });
+
+  describe("checklist failure paths", () => {
+    const fail = (path) =>
+      http.post(`*/api/tasks/${path}`, async () =>
+        HttpResponse.json({ success: false, message: "nope", responseCode: 500 }, { status: 500 }));
+    const twoSteps = http.post(`*/api/tasks/getTaskChecklist`, async () =>
+      HttpResponse.json({ success: true, message: "ok", responseCode: 200, data: { items: [{ Id: 900, ItemText: "step one", IsCompleted: false }, { Id: 901, ItemText: "step two", IsCompleted: false }] } }));
+
+    it("a failed tick rolls back; no toast", async () => {
+      server.use(twoSteps, fail("saveTaskChecklist"));
+      const user = await openChecklistTab();
+      const box = await screen.findByTestId("checklist-toggle-900");
+      await user.click(box);
+      await waitFor(() => expect(box).not.toBeDisabled());
+      expect(screen.queryByText(/creator has been told/)).not.toBeInTheDocument();
+      expect(screen.getAllByRole("button", { name: /Remove item/i })).toHaveLength(2);
+    });
+
+    it("a failed remove restores the row", async () => {
+      server.use(twoSteps, fail("deleteTaskChecklist"));
+      const user = await openChecklistTab();
+      await user.click((await screen.findAllByRole("button", { name: /Remove item/i }))[0]);
+      await waitFor(() => expect(screen.getAllByRole("button", { name: /Remove item/i })).toHaveLength(2));
+      expect(screen.getByText("step one")).toBeInTheDocument();
+    });
+
+    it("a failed add keeps the typed text", async () => {
+      server.use(twoSteps, fail("saveTaskChecklist"));
+      const user = await openChecklistTab();
+      const input = await screen.findByPlaceholderText(/Add a step/i);
+      await user.type(input, "keep me{Enter}");
+      await waitFor(() => expect(input).toHaveValue("keep me"));
     });
   });
 
@@ -1010,5 +1237,87 @@ describe("TaskDetailModal", () => {
         WorkspaceId: 100,
       });
     });
+  });
+
+  describe("permissions mirror sp_CheckTaskPermission", () => {
+    const setup = ({ type = "shared", role, isAdmin = false, task = {} }) => {
+      useWorkspaceStore.getState().setActiveWorkspace({ Id: 100, Type: type, MyRole: role });
+      useAuthStore.setState({ user: { UserId: 1, IsAdmin: isAdmin }, UserId: 1 });
+      Object.assign(taskFixture.list[0], { CreatedByUserId: 9, AssigneesJson: [], AssignedToUserId: null, ...task });
+    };
+
+    // REGRESSION (B13): the old gate was role-only; an admin outside the roster got a read-only task.
+    it("lets a non-member admin edit on a shared board", async () => {
+      setup({ role: null, isAdmin: true });
+      renderModal(501);
+      await screen.findByText("Task 501");
+      expect(await screen.findByTestId("task-title-input")).toBeEnabled();
+    });
+
+    it("keeps an admin out of someone else's personal task", async () => {
+      setup({ type: "personal", role: null, isAdmin: true });
+      renderModal(501);
+      await screen.findByText("Task 501");
+      expect(await screen.findByTestId("task-title-input")).toBeDisabled();
+    });
+
+    // REGRESSION: web granted log_time to every member; the server 403s unless assignee/creator.
+    it("disables Log time for a member who is neither assignee nor creator", async () => {
+      setup({ role: "member" });
+      renderModal(501);
+      await screen.findByText("Task 501");
+      expect(await screen.findByTestId("log-time-btn")).toBeDisabled();
+    });
+
+    it("does not let a viewer who created the task edit it", async () => {
+      setup({ role: "viewer", task: { CreatedByUserId: 1 } });
+      renderModal(501);
+      await screen.findByText("Task 501");
+      expect(await screen.findByTestId("task-title-input")).toBeDisabled();
+    });
+  });
+});
+
+describe("TaskDetailModal — take this task", () => {
+  beforeEach(() => {
+    taskFixture.reset();
+    useAuthStore.setState({ isAuthenticated: true, token: null, user: { UserId: 1 }, UserId: 1 });
+    taskFixture.seed({
+      Id: 501, Title: "Task 501", WorkspaceId: 100, ColumnId: 1, ColumnTitle: "To Do",
+      IsCompleted: 0, Priority: "high", CreatedByUserId: 99, AssigneesJson: null,
+    });
+  });
+  afterEach(() =>
+    useWorkspaceStore.setState({ activeWorkspaceRole: null, activeWorkspaceType: null }),
+  );
+
+  it("lets a member take an unassigned task", async () => {
+    useWorkspaceStore.setState({ activeWorkspaceRole: "member", activeWorkspaceType: "shared" });
+    let body;
+    server.use(
+      http.post(`*/api/tasks/claimTask`, async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ success: true, message: "Task taken", responseCode: 200 });
+      }),
+    );
+    renderModal(501);
+    await screen.findByText("Task 501");
+    await userEvent.setup().click(screen.getByTestId("task-claim-btn"));
+    await waitFor(() => expect(body).toEqual({ TaskId: 501, WorkspaceId: 100 }));
+  });
+
+  it("is not offered once someone has the task", async () => {
+    useWorkspaceStore.setState({ activeWorkspaceRole: "member", activeWorkspaceType: "shared" });
+    taskFixture.list[0].AssigneesJson = JSON.stringify([{ UserId: 2, FullName: "Bo" }]);
+    renderModal(501);
+    await screen.findByText("Task 501");
+    expect(screen.queryByTestId("task-claim-btn")).not.toBeInTheDocument();
+  });
+
+  it("is not offered to a viewer", async () => {
+    useWorkspaceStore.setState({ activeWorkspaceRole: "viewer", activeWorkspaceType: "shared" });
+    renderModal(501);
+    await screen.findByText("Task 501");
+    expect(screen.queryByTestId("task-claim-btn")).not.toBeInTheDocument();
   });
 });

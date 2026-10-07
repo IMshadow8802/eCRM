@@ -115,10 +115,10 @@ describe("Users page", () => {
       "Email",
       "JobTitle",
       "GroupName",
+      "BranchName",
       "ReportsToName",
       "HourlyRate",
       "IsActive",
-      "IsAdmin",
       "CreatedDate",
     ]);
   });
@@ -128,11 +128,33 @@ describe("Users page", () => {
   it("renders the Reports To cell, falling back when the user has no manager", () => {
     renderPage();
     const cols = useServerTable.mock.calls.at(-1)[0].columns;
-    const cell = (value) => ({ cell: { getValue: () => value } });
+    const cell = (value, original = {}) => ({ cell: { getValue: () => value }, row: { original } });
     const reportsToCell = cols.find((c) => c.accessorKey === "ReportsToName").Cell;
 
     expect(reportsToCell(cell("Meera Manager"))).toBe("Meera Manager");
-    expect(reportsToCell(cell(null))).toBe("—");
+    expect(reportsToCell(cell(null, { NoManager: false }))).toBe("—");
+    render(<>{reportsToCell(cell(null, { NoManager: true }))}</>);
+    expect(screen.getByText("No manager")).toBeInTheDocument();
+    const branchCell = cols.find((c) => c.accessorKey === "BranchName").Cell;
+    expect(branchCell(cell("Mumbai"))).toBe("Mumbai");
+    expect(branchCell(cell(null))).toBe("—");
+  });
+
+  // REGRESSION (audit B4): GroupId fell back to 0, a silent invalid role.
+  it("carries BranchId, no IsAdmin, and a null GroupId into the edit form", async () => {
+    renderPage();
+    const cfg = useServerTable.mock.calls.at(-1)[0];
+    const row = { original: { Id: 13, Username: "u", FullName: "U", GroupId: null, BranchId: 3, IsActive: true, IsAdmin: true } };
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>{cfg.renderRowActions({ row })}</MemoryRouter>
+      </QueryClientProvider>
+    );
+    await userEvent.click(screen.getByRole("button", { name: /edit/i }));
+    const ed = UserForm.mock.calls.at(-1)[0].editingUser;
+    expect(ed.BranchId).toBe(3);
+    expect(ed.GroupId).toBeNull();
+    expect(ed).not.toHaveProperty("IsAdmin");
   });
 
   it("passes a bulk PageSize when populating the user-groups dropdown", () => {
@@ -246,7 +268,7 @@ describe("Users page", () => {
     expect(UserForm.mock.calls.at(-1)[0].editingUser).toMatchObject({ ReportsTo: null });
   });
 
-  it("renders the derived cells (rate, status, admin, date)", () => {
+  it("renders the derived cells (rate, status, date)", () => {
     renderPage();
     const cols = useServerTable.mock.calls.at(-1)[0].columns;
     const cellOf = (key) => cols.find((c) => c.accessorKey === key).Cell;
@@ -261,10 +283,6 @@ describe("Users page", () => {
     expect(screen.getByText("Active")).toBeInTheDocument();
     render(<>{cellOf("IsActive")(cell(false))}</>);
     expect(screen.getByText("Inactive")).toBeInTheDocument();
-    render(<>{cellOf("IsAdmin")(cell(true))}</>);
-    expect(screen.getByText("Yes")).toBeInTheDocument();
-    render(<>{cellOf("IsAdmin")(cell(false))}</>);
-    expect(screen.getByText("No")).toBeInTheDocument();
   });
 });
 
@@ -287,6 +305,7 @@ describe("Users delete flow", () => {
     const opts = await clickDelete();
     expect(opts.title).toBe("Delete User");
     expect(opts.message).toContain("Vikas Jaiswal");
+    expect(opts.message).toMatch(/deactivate them instead/i);
     expect(post).not.toHaveBeenCalled(); // nothing until confirmed
   });
 

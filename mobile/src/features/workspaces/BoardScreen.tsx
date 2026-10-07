@@ -31,7 +31,7 @@ import {
   useToast,
 } from "../../ui";
 import { TaskCard } from "../tasks/TaskCard";
-import { abilitiesFor } from "../tasks/taskHelpers";
+import { abilitiesFor, workspaceAbilities } from "../tasks/taskHelpers";
 
 type Props = StackScreenProps<RootStackParamList, "Board">;
 
@@ -74,7 +74,8 @@ export default function BoardScreen({ route, navigation }: Props) {
 
   const workspace = workspaces?.find((w) => w.Id === workspaceId);
   const role = workspace?.MyRole ?? null;
-  const manages = role === "owner" || role === "manager";
+  const wsAbilities = workspaceAbilities(role, isAdmin, workspace?.Type ?? null);
+  const manages = wsAbilities.manageColumns;
 
   const move = useMutation({
     mutationFn: moveTaskColumn,
@@ -140,7 +141,7 @@ export default function BoardScreen({ route, navigation }: Props) {
   // Permission is per-task: an assignee may move their own card even though
   // they may not move anyone else's. The server re-checks either way.
   const canMove = moving
-    ? abilitiesFor(moving, userId, role, isAdmin).changeStatus
+    ? abilitiesFor(moving, userId, role, isAdmin, workspace?.Type ?? null).changeStatus
     : false;
 
   const moveActions: SheetAction[] = canMove
@@ -265,7 +266,7 @@ export default function BoardScreen({ route, navigation }: Props) {
         />
       )}
 
-      {columns.length ? (
+      {columns.length && wsAbilities.createTask ? (
         <Fab
           icon={Plus}
           accessibilityLabel="Add a task to this column"

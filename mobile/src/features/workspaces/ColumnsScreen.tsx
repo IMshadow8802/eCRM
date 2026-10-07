@@ -112,7 +112,8 @@ export default function ColumnsScreen({ route, navigation }: Props) {
       Color: editing?.Color ?? null,
       SortOrder: editing?.SortOrder ?? columns.length,
       MaxTasks: editing?.MaxTasks ?? null,
-      IsActive: editing?.IsActive ?? true,
+      // The server 400s IsActive: false — a column is deleted, never parked.
+      IsActive: true,
     });
   };
 
@@ -193,14 +194,17 @@ export default function ColumnsScreen({ route, navigation }: Props) {
               <Pencil size={19} color={colors.textSecondary} />
             </Pressable>
 
-            <Pressable
-              hitSlop={spacing[2]}
-              onPress={() => startDelete(item)}
-              accessibilityLabel={`Delete ${item.Title}`}
-              accessibilityRole="button"
-            >
-              <Trash2 size={19} color={colors.danger} />
-            </Pressable>
+            {/* The last column stays — a board with none cannot hold a task. */}
+            {columns.length > 1 ? (
+              <Pressable
+                hitSlop={spacing[2]}
+                onPress={() => startDelete(item)}
+                accessibilityLabel={`Delete ${item.Title}`}
+                accessibilityRole="button"
+              >
+                <Trash2 size={19} color={colors.danger} />
+              </Pressable>
+            ) : null}
           </Card>
         )}
       />

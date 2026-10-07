@@ -3,6 +3,8 @@ const { scopeJson } = require("../middleware/permission");
 const { logActivity, ACTIONS } = require("../utils/activityLogger");
 const { cleanSpRows } = require("../utils/spHelpers");
 const { validationError } = require("../utils/responseHelper");
+const { emitToWorkspace } = require("../realtime/events");
+const { SCOPES } = require("../realtime/contract");
 const {
   asyncRoute,
   firstRow,
@@ -71,6 +73,12 @@ class TeamController {
           description: `Team ${Name || ""} ${Id === 0 ? "created" : "updated"} (${spResponse.MemberCount || 0} members)`,
           req,
         });
+      }
+
+      // The roster cascade can unassign people on linked project boards
+      // (sp_UnassignInvalidAssignees); RS2 names those boards (094).
+      for (const r of ok ? (result.recordsets?.[1] ?? []) : []) {
+        emitToWorkspace(r.WorkspaceId, SCOPES.TASK_LIST, { workspaceId: r.WorkspaceId });
       }
 
       return res.status(spStatus(spResponse)).json({

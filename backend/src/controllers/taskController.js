@@ -1,10 +1,9 @@
 const database = require("../config/database");
 const { logActivity, ACTIONS } = require("../utils/activityLogger");
 const { cleanSpRows } = require("../utils/spHelpers");
-const attachmentController = require("./attachmentController");
 const { emitToWorkspace, emitToUser } = require("../realtime/events");
 const { SCOPES } = require("../realtime/contract");
-const { assertRecordAccess, scopeJson } = require("../middleware/permission");
+const { assertRecordAccess, scopeJson, taskAllowed } = require("../middleware/permission");
 const { validationError } = require("../utils/responseHelper");
 const {
   asyncRoute,
@@ -15,6 +14,25 @@ const {
   pageParams,
   positiveInt,
 } = require("../utils/controllerKit");
+
+const FIELD_LABEL = { Title: "Title", Priority: "Priority", DueDate: "Due date" };
+
+// Fire-and-forget like sp_NotifyTaskAssigned: a failed ping never fails the tick.
+function notifyCompletion(req, taskId, change) {
+  if (change !== "completed" && change !== "reopened") return;
+  database
+    .executeStoredProcedure("sp_NotifyTaskCompletion", {
+      TaskId: taskId,
+      ActorUserId: req.user.UserId,
+      Event: change,
+    })
+    .then((r) => {
+      for (const id of new Set((r?.recordsets?.[0] ?? []).map((x) => x.UserId))) {
+        emitToUser(id, SCOPES.NOTIFICATIONS);
+      }
+    })
+    .catch((e) => console.error("sp_NotifyTaskCompletion failed:", e.message));
+}
 
 class TaskController {
   // ================================
@@ -100,13 +118,46 @@ class TaskController {
       const status = spStatus(spResponse);
 
       if (ok && spResponse.TaskId) {
-        await logActivity({
-          entityType: "Task",
-          entityId: spResponse.TaskId,
-          action: Id === 0 ? ACTIONS.CREATED : ACTIONS.UPDATED,
-          description: `Task ${Title || ""} ${Id === 0 ? "created" : "updated"}`,
-          req,
-        });
+        // sp_SaveTask's 3rd result set is what an edit actually changed. Log
+        // those; only when it is empty (e.g. hours-only edit) or on create is
+        // the generic row written.
+        const changes = Id > 0 ? (result.recordsets[2] ?? []) : [];
+        if (changes.length === 0) {
+          await logActivity({
+            entityType: "Task",
+            entityId: spResponse.TaskId,
+            action: Id === 0 ? ACTIONS.CREATED : ACTIONS.UPDATED,
+            description: `Task ${Title || ""} ${Id === 0 ? "created" : "updated"}`,
+            req,
+          });
+        }
+        for (const c of changes) {
+          if (c.Field === "AssigneesAdded" || c.Field === "AssigneesRemoved") {
+            const added = c.Field === "AssigneesAdded";
+            await logActivity({
+              entityType: "Task",
+              entityId: spResponse.TaskId,
+              action: ACTIONS.ASSIGNED,
+              fieldName: "Assignees",
+              description: `${added ? "Assigned" : "Unassigned"} ${added ? c.NewValue : c.OldValue}`.slice(0, 480),
+              req,
+            });
+          } else {
+            await logActivity({
+              entityType: "Task",
+              entityId: spResponse.TaskId,
+              action: ACTIONS.UPDATED,
+              fieldName: c.Field,
+              oldValue: c.OldValue,
+              newValue: c.NewValue,
+              description:
+                c.Field === "Description"
+                  ? "Description edited"
+                  : `${FIELD_LABEL[c.Field] ?? c.Field} changed`,
+              req,
+            });
+          }
+        }
 
         // sp_SaveTask returns the assignees this save actually ADDED as a
         // second result set, so only new people get pinged. The old code
@@ -209,6 +260,55 @@ class TaskController {
     "TASK_MOVE_ERROR",
   );
 
+  // "Take this task" — a member puts themselves on an UNASSIGNED task
+  // (claim_task). A task that already has someone stays a reassignment, which
+  // is owner/manager/creator work through saveTask.
+  claim = asyncRoute(
+    async (req, res) => {
+      const { TaskId } = req.body;
+      if (!positiveInt(TaskId)) {
+        return validationError(res, "TaskId is required");
+      }
+
+      const result = await database.executeStoredProcedure("sp_ClaimTask", {
+        TaskId,
+        UserId: req.user.UserId,
+        IsAdmin: req.scope?.isAdmin ? 1 : 0,
+        CompId: req.user.CompId,
+      });
+
+      const spResponse = firstRow(result);
+      const ok = spOk(spResponse);
+      const status = spStatus(spResponse);
+
+      if (ok) {
+        await logActivity({
+          entityType: "Task",
+          entityId: TaskId,
+          action: ACTIONS.ASSIGNED,
+          fieldName: "Assignee",
+          newValue: String(req.user.UserId),
+          description: "Took this task",
+          req,
+        });
+        const roomId = spResponse.WorkspaceId;
+        if (roomId) {
+          emitToWorkspace(roomId, SCOPES.TASK_LIST, { workspaceId: roomId });
+          emitToWorkspace(roomId, SCOPES.TASK_DETAIL, { workspaceId: roomId, taskId: TaskId });
+        }
+      }
+
+      return res.status(status).json({
+        success: ok,
+        message: spMessage(spResponse),
+        responseCode: status,
+        timestamp: new Date().toISOString(),
+      });
+    },
+    "Failed to take task",
+    "TASK_CLAIM_ERROR",
+  );
+
   fetch = asyncRoute(
     async (req, res) => {
       const {
@@ -222,6 +322,11 @@ class TaskController {
         // workspace saw zero tasks).
         BranchId = null,
         SearchTerm = null,
+        // Narrowing filters (094). They only ever shrink the membership-gated
+        // set, so no scope check: "tasks assigned to X" returns what you can see.
+        AssigneeUserId = null,
+        OnlyOpen = false,
+        Overdue = false,
       } = req.body;
       const { PageNumber, PageSize } = pageParams(req.body, 25);
 
@@ -243,6 +348,9 @@ class TaskController {
         PageNumber,
         PageSize,
         SearchTerm,
+        AssigneeUserId: positiveInt(AssigneeUserId),
+        OnlyOpen: OnlyOpen ? 1 : 0,
+        Overdue: Overdue ? 1 : 0,
       });
 
       // No status row at all (an SP that RETURNed before its SELECT) is a
@@ -294,7 +402,6 @@ class TaskController {
       const status = spStatus(spResponse);
 
       if (ok) {
-        await attachmentController.cascadeDelete(req.user.CompId, "task", Id);
         await logActivity({
           entityType: "Task",
           entityId: Id,
@@ -303,13 +410,10 @@ class TaskController {
           req,
         });
 
-        // WorkspaceId is an optional client hint — sp_DeleteTask doesn't
-        // return it and we won't add a DB round-trip for an emit; skip if
-        // unknown.
-        if (WorkspaceId) {
-          emitToWorkspace(WorkspaceId, SCOPES.TASK_LIST, {
-            workspaceId: WorkspaceId,
-          });
+        // sp_DeleteTask returns the task's WorkspaceId since 094.
+        const roomId = WorkspaceId ?? spResponse.WorkspaceId;
+        if (roomId) {
+          emitToWorkspace(roomId, SCOPES.TASK_LIST, { workspaceId: roomId });
         }
       }
 
@@ -685,7 +789,15 @@ class TaskController {
         {
           Id: 0,
           TaskId,
-          UserId: UserId || (req.scope?.isAdmin ? null : req.user.UserId),
+          // Without a TaskId nothing above gated the read, so a non-admin sees
+          // only their own entries whatever UserId they send. With a TaskId the
+          // task gate passed and the old rule stands.
+          UserId:
+            !TaskId && !req.scope?.isAdmin
+              ? req.user.UserId
+              : UserId || (req.scope?.isAdmin ? null : req.user.UserId),
+          // The SP hides other companies and other people's personal boards (094).
+          ViewerUserId: req.user.UserId,
           CompId: req.user.CompId,
           BranchId: req.user.BranchId,
           PageNumber,
@@ -819,6 +931,12 @@ class TaskController {
       );
       if (!allowed) return;
 
+      // Passing change_status lets the caller TICK. Renaming or reordering a
+      // step is manage_checklist — an assigned viewer has the first and not
+      // the second, and used to be able to rename through this same call.
+      // The SP keeps text and order as they are when CanEdit is 0.
+      const canEdit = Id > 0 ? await taskAllowed(req, TaskId, "manage_checklist") : true;
+
       const result = await database.executeStoredProcedure(
         "sp_SaveTaskChecklist",
         {
@@ -827,6 +945,7 @@ class TaskController {
           ItemText,
           IsCompleted,
           SortOrder,
+          CanEdit: canEdit ? 1 : 0,
           CompId: req.user.CompId,
           BranchId: req.user.BranchId,
           ActingUserId: req.user.UserId,
@@ -856,6 +975,20 @@ class TaskController {
           req,
         });
 
+        const change = spResponse.CompletionChange ?? null;
+        if (change) {
+          await logActivity({
+            entityType: "Task",
+            entityId: TaskId,
+            action: ACTIONS.STATUS_CHANGED,
+            fieldName: "Completion",
+            newValue: change,
+            description: change === "completed" ? "Task completed" : "Task reopened",
+            req,
+          });
+          notifyCompletion(req, TaskId, change);
+        }
+
         // Checklist drives completion — board cards change too, so both
         // detail and list invalidate. Needs the client WorkspaceId hint
         // (the SP doesn't return it); skip when unknown.
@@ -874,7 +1007,12 @@ class TaskController {
         success: ok,
         message: spMessage(spResponse),
         responseCode: status,
-        data: ok ? { checklistId: spResponse.ChecklistId } : null,
+        data: ok
+          ? {
+              checklistId: spResponse.ChecklistId,
+              completionChange: spResponse.CompletionChange ?? null,
+            }
+          : null,
         timestamp: new Date().toISOString(),
       });
     },
@@ -982,6 +1120,20 @@ class TaskController {
           req,
         });
 
+        const change = spResponse.CompletionChange ?? null;
+        if (change) {
+          await logActivity({
+            entityType: "Task",
+            entityId: TaskId,
+            action: ACTIONS.STATUS_CHANGED,
+            fieldName: "Completion",
+            newValue: change,
+            description: change === "completed" ? "Task completed" : "Task reopened",
+            req,
+          });
+          notifyCompletion(req, TaskId, change);
+        }
+
         // sp_DeleteTaskChecklist returns TaskId; WorkspaceId is a client
         // hint (not returned by the SP) — skip the emit when unknown.
         if (WorkspaceId) {
@@ -999,6 +1151,7 @@ class TaskController {
         success: ok,
         message: spMessage(spResponse),
         responseCode: status,
+        data: ok ? { completionChange: spResponse.CompletionChange ?? null } : null,
         timestamp: new Date().toISOString(),
       });
     },

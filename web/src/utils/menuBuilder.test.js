@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   DashboardOutlined,
   TaskAltOutlined,
+  AssignmentIndOutlined,
   FolderOpenOutlined,
   GroupsOutlined,
   PersonOutlineOutlined,
@@ -42,6 +43,7 @@ describe("getMenuIcon", () => {
   it.each([
     ["Dashboard", DashboardOutlined],
     ["Tasks", TaskAltOutlined],
+    ["My Work", AssignmentIndOutlined],
     ["Projects", FolderOpenOutlined],
     ["Teams", GroupsOutlined],
     ["User Groups", AdminPanelSettingsOutlined],

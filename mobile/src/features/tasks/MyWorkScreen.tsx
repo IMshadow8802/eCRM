@@ -21,7 +21,7 @@ import { ChipGroup, Dialog, EmptyState, Refresher, Screen, Text } from "../../ui
 import { useSignOut } from "../auth/useSignOut";
 import { TaskCard } from "./TaskCard";
 import { greetingFor, longDate } from "./greeting";
-import { dueBucket, groupByDue, isAssignee, isUnassigned } from "./taskHelpers";
+import { dueBucket, groupByDue, isUnassigned } from "./taskHelpers";
 
 type Filter = "mine" | "unassigned" | "all";
 
@@ -40,22 +40,31 @@ export default function MyWorkScreen() {
   const [filter, setFilter] = useState<Filter>("mine");
   const signOut = useSignOut();
 
-  // WorkspaceId: null = every workspace the caller can see. sp_FetchTask has no
-  // assignee parameter, so "assigned to me" is resolved on the client from each
-  // row's AssigneesJson. Fine at this scale; see spec §5.1 for the ceiling and
-  // the upgrade path.
-  const { data, isLoading, isRefetching, refetch, isError } = useQuery({
+  // WorkspaceId: null = every workspace the caller can see. "Mine" is filtered
+  // on the server (AssigneeUserId + OnlyOpen); All/Unassigned need the whole
+  // window, so that query only runs when one of them is up.
+  const mine = useQuery({
+    queryKey: ["tasks", "mine", userId],
+    queryFn: () =>
+      fetchTasks({ WorkspaceId: null, AssigneeUserId: userId, OnlyOpen: true, PageSize: 200 }),
+    enabled: userId != null,
+  });
+  const everyone = useQuery({
     queryKey: ["tasks", "all-workspaces"],
     queryFn: () => fetchTasks({ WorkspaceId: null, PageSize: 200 }),
+    enabled: filter !== "mine",
   });
+  const active = filter === "mine" ? mine : everyone;
+  const { isLoading, isRefetching, refetch, isError } = active;
 
-  const tasks = useMemo(() => data?.data?.tasks ?? [], [data]);
+  const mineTasks = useMemo(() => mine.data?.data?.tasks ?? [], [mine.data]);
+  const allTasks = useMemo(() => everyone.data?.data?.tasks ?? [], [everyone.data]);
 
   const visible = useMemo(() => {
-    if (filter === "mine") return tasks.filter((t) => isAssignee(t, userId));
-    if (filter === "unassigned") return tasks.filter(isUnassigned);
-    return tasks;
-  }, [tasks, filter, userId]);
+    if (filter === "mine") return mineTasks;
+    if (filter === "unassigned") return allTasks.filter(isUnassigned);
+    return allTasks;
+  }, [mineTasks, allTasks, filter]);
 
   /**
    * Still grouped, but the group labels are gone — the buckets survive only to
@@ -73,10 +82,7 @@ export default function MyWorkScreen() {
     [visible],
   );
 
-  const mineCount = useMemo(
-    () => tasks.filter((t) => isAssignee(t, userId)).length,
-    [tasks, userId],
-  );
+  const mineCount = mineTasks.length;
 
   // Counted off what is ON SCREEN, not off `tasks` — with the Unassigned or All
   // filter up, a figure from a set the user cannot see is worse than none.

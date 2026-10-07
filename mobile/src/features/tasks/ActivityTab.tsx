@@ -39,6 +39,7 @@ const ACTION_NODE: { match: string; Icon: LucideIcon; tone: keyof typeof colors 
   { match: "time", Icon: Timer, tone: "warning" },
   { match: "delete", Icon: Trash2, tone: "danger" },
   { match: "remove", Icon: Trash2, tone: "danger" },
+  { match: "statuschang", Icon: CircleCheck, tone: "success" },
   { match: "updat", Icon: Pencil, tone: "textSecondary" },
 ];
 
@@ -66,9 +67,13 @@ export default function ActivityTab({ taskId }: ActivityTabProps) {
     () =>
       (data ?? []).map((item) => {
         const node = nodeFor(item.Action);
+        const change =
+          item.OldValue && item.NewValue && item.OldValue !== item.NewValue
+            ? ` · ${item.OldValue} → ${item.NewValue}`
+            : "";
         return {
           key: String(item.Id),
-          title: item.Description ?? item.Action,
+          title: (item.Description ?? item.Action) + change,
           meta: `${item.UserName ?? "System"} · ${relativeTime(item.CreatedDate)}`,
           icon: node.Icon,
           tone: node.tone,

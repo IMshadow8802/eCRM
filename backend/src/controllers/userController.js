@@ -1,6 +1,8 @@
 const database = require("../config/database");
 const { scopeJson } = require("../middleware/permission");
 const { logActivity, ACTIONS } = require("../utils/activityLogger");
+const { emitToWorkspace, emitToUser } = require("../realtime/events");
+const { SCOPES } = require("../realtime/contract");
 const { cleanSpRows } = require("../utils/spHelpers");
 const { hashPassword, comparePassword } = require("../utils/encryption");
 const { success, error, validationError } = require("../utils/responseHelper");
@@ -23,7 +25,6 @@ class UserController {
         Username,
         Password,
         UserActive = true,
-        IsAdmin = false,
         UserIp,
         User_IP,
         AllowDay = 0,
@@ -31,10 +32,16 @@ class UserController {
         Email,
         JobTitle,
         HourlyRate = 0,
-        GroupId = 8, // Default to General Users
+        GroupId,
+        BranchId,
         Mobile = null,
         ReportsTo = null,
       } = req.body;
+
+      // No default role: the old `GroupId = 8` pointed at a group that does not exist.
+      const groupId = positiveInt(GroupId);
+      if (!groupId) return validationError(res, "Pick a role for this user");
+      const isEdit = positiveInt(Id) !== null;
 
       // Hash before it ever reaches the DB. Login bcrypt-compares against this
       // column, so a plaintext write here means the account can never log in.
@@ -47,30 +54,40 @@ class UserController {
         Username,
         Password: PasswordHash,
         UserActive,
-        IsAdmin,
         UserIp: UserIp ?? User_IP ?? "",
         AllowDay,
         FullName,
         Email,
         JobTitle,
         HourlyRate,
-        GroupId,
+        GroupId: groupId,
         CompId: req.user.CompId,
-        BranchId: req.user.BranchId,
+        // Admin-only route, so a body branch is allowed. Absent on edit = null =
+        // the SP keeps the current branch.
+        BranchId: positiveInt(BranchId) ?? (isEdit ? null : req.user.BranchId),
         Mobile,
         ReportsTo: positiveInt(ReportsTo),
+        ActorUserId: req.user.UserId,
       });
 
       const spResponse = firstRow(result);
       const ok = spOk(spResponse);
 
+      // Deactivation unassigns open tasks inside the SP and returns one row per
+      // affected board (WorkspaceId, OwnerUserId, TaskCount) as a second result set.
+      const unassigned = ok ? (result.recordsets?.[1] ?? []) : [];
+      for (const r of unassigned) {
+        emitToWorkspace(r.WorkspaceId, SCOPES.TASK_LIST, { workspaceId: r.WorkspaceId });
+        emitToUser(r.OwnerUserId, SCOPES.NOTIFICATIONS, {});
+      }
+
       if (ok && spResponse.UserId) {
         await logActivity({
           entityType: "User",
           entityId: spResponse.UserId,
-          action: Id === 0 ? ACTIONS.CREATED : ACTIONS.UPDATED,
+          action: !isEdit ? ACTIONS.CREATED : ACTIONS.UPDATED,
           description:
-            Id === 0
+            !isEdit
               ? `User ${Username} created`
               : `User ${Username} updated`,
           req,
@@ -84,7 +101,8 @@ class UserController {
         data: ok
           ? {
               userId: spResponse.UserId,
-              assignedGroupId: spResponse.AssignedGroupId
+              assignedGroupId: spResponse.AssignedGroupId,
+              unassignedTasks: unassigned.reduce((n, r) => n + (r.TaskCount || 0), 0),
             }
           : null,
         timestamp: new Date().toISOString(),
@@ -109,7 +127,7 @@ class UserController {
         Id,
         CompId: req.user.CompId,
         BranchId: req.user.BranchId,
-        IsAdmin: req.user.IsAdmin,
+        IsAdmin: req.scope?.isAdmin ? 1 : 0,
         AccessibleBranchIdsJson: accessibleBranchIdsJson,
         PageNumber,
         PageSize,
@@ -152,7 +170,7 @@ class UserController {
         Id,
         CompId: req.user.CompId,
         BranchId: req.user.BranchId,
-        IsAdmin: req.user.IsAdmin,
+        IsAdmin: req.scope?.isAdmin ? 1 : 0,
         RequestingUserId: req.user.UserId,
       });
 
@@ -177,6 +195,38 @@ class UserController {
     },
     "Failed to delete user",
     "USER_DELETE_ERROR",
+  );
+
+  // What a user still holds (open tasks, leads, complaints, owned workspaces,
+  // direct reports) so an admin can hand it over around deactivation.
+  handover = asyncRoute(
+    async (req, res) => {
+      const Id = positiveInt(req.body.Id);
+      if (!Id) return validationError(res, "User ID is required");
+      const result = await database.executeStoredProcedure("sp_FetchUserHandover", {
+        UserId: Id,
+        CompId: req.user.CompId,
+      });
+      const head = firstRow(result);
+      if (!spOk(head)) {
+        return res.status(spStatus(head)).json({
+          success: false,
+          message: spMessage(head),
+          responseCode: spStatus(head),
+          timestamp: new Date().toISOString(),
+        });
+      }
+      const { OpenTasks = 0, OpenLeads = 0, OpenTickets = 0, OwnedWorkspaces = 0, DirectReports = 0 } = head;
+      return success(res, "Handover retrieved", {
+        handover: {
+          OpenTasks, OpenLeads, OpenTickets, OwnedWorkspaces, DirectReports,
+          workspaces: cleanSpRows(result.recordsets?.[1] ?? []),
+          reports: cleanSpRows(result.recordsets?.[2] ?? []),
+        },
+      });
+    },
+    "Failed to fetch handover",
+    "USER_HANDOVER_ERROR",
   );
 
   // --------------------------------------------------------------------------

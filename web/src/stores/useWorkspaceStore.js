@@ -48,18 +48,10 @@ const useWorkspaceStore = create(
         }),
 
       // Caller-facing gates so UI can hide buttons without bespoke logic
-      // per component. Match the sp_CheckTaskPermission matrix from 013.
+      // per component. Task/column gates live in utils/taskAbilities.
       canManageMembers: () => {
         const role = useWorkspaceStore.getState().activeWorkspaceRole;
         return role === "owner";
-      },
-      canCreateTasks: () => {
-        const role = useWorkspaceStore.getState().activeWorkspaceRole;
-        return role === "owner" || role === "manager" || role === "member";
-      },
-      canEditOthersTasks: () => {
-        const role = useWorkspaceStore.getState().activeWorkspaceRole;
-        return role === "owner" || role === "manager";
       },
     }),
     {
