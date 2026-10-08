@@ -49,6 +49,8 @@ const FollowUpComplianceReport = lazy(() => import("./pages/Reports/FollowUpComp
 const ActivityReport = lazy(() => import("./pages/Reports/Activity"));
 const LostReport = lazy(() => import("./pages/Reports/Lost"));
 const AgingReport = lazy(() => import("./pages/Reports/Aging"));
+const TatReport = lazy(() => import("./pages/Reports/TatReport"));
+const AttendanceReport = lazy(() => import("./pages/Reports/AttendanceReport"));
 const TransfersReport = lazy(() => import("./pages/Reports/Transfers"));
 const PipelineValueReport = lazy(() => import("./pages/Reports/PipelineValue"));
 const LeaderboardReport = lazy(() => import("./pages/Reports/Leaderboard"));
@@ -116,6 +118,8 @@ export const routesConfig = [
   { path: "/reports/activity", element: <ProtectedRoute element={<ActivityReport />} /> },
   { path: "/reports/lost", element: <ProtectedRoute element={<LostReport />} /> },
   { path: "/reports/aging", element: <ProtectedRoute element={<AgingReport />} /> },
+  { path: "/reports/tat", element: <ProtectedRoute element={<TatReport />} /> },
+  { path: "/reports/attendance", element: <ProtectedRoute element={<AttendanceReport />} /> },
   { path: "/reports/transfers", element: <ProtectedRoute element={<TransfersReport />} /> },
   { path: "/reports/pipeline-value", element: <ProtectedRoute element={<PipelineValueReport />} /> },
   { path: "/reports/leaderboard", element: <ProtectedRoute element={<LeaderboardReport />} /> },

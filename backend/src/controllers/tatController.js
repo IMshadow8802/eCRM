@@ -10,10 +10,10 @@ const calendarContext = require("../services/calendarContext");
 const tatService = require("../services/tatService");
 const { taskAllowed } = require("../middleware/permission");
 const { visibleUserIds } = require("./workSettingsController");
-const { presenceStatus } = require("./presenceController");
+const { withStatus } = require("./presenceController");
 const { emitToUser } = require("../realtime/events");
 const { SCOPES } = require("../realtime/contract");
-const { DEFAULT_DAYS, addWorkingMinutes, dateKey, addDays, at, effectiveStart } = require("../utils/workCalendar");
+const { DEFAULT_DAYS, addWorkingMinutes, dateKey, addDays, at } = require("../utils/workCalendar");
 const { success, error, validationError } = require("../utils/responseHelper");
 const { asyncRoute, firstRow, spStatus, spOk, spMessage, positiveInt } = require("../utils/controllerKit");
 
@@ -53,13 +53,7 @@ async function presenceFor(CompId, ids, key, now) {
     calendarContext.load(CompId, ids, key, key),
     calendarContext.settings(CompId),
   ]);
-  const isToday = key === dateKey(now);
-  return rows(pres).map((r) => {
-    const u = info.get(Number(r.UserId));
-    const shiftStart = r.ShiftStart ?? (u ? effectiveStart(key, u.ctx) : null);
-    const asOf = { ...r, ShiftStart: shiftStart, HasOpenSession: isToday && r.HasOpenSession };
-    return { ...r, status: presenceStatus(asOf, now, settings, !!u?.ctx.holidays.has(key)) };
-  });
+  return rows(pres).map((r) => withStatus(r, info.get(Number(r.UserId)), key, now, settings));
 }
 
 class TatController {

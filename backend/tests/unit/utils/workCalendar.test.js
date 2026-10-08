@@ -146,3 +146,22 @@ describe("warnAt", () => {
     expect(wc.warnAt(ist("2026-10-05 09:00"), ist("2026-10-05 11:00"), 80, ctx()).getTime()).toBe(ist("2026-10-05 10:36").getTime());
   });
 });
+
+describe("fix wave 2", () => {
+  const night = [0, 1, 2, 3, 4, 5, 6].map((d) => (d >= 1 && d <= 5 ? { d, on: true, start: "21:00", end: "06:00" } : { d, on: false }));
+  test("N4: a sign-in well before tonight's shift expires at that shift's start (regression: was 06:00+buffer)", () => {
+    expect(wc.sessionExpiry(ist("2026-10-06 10:00"), night, 120).getTime()).toBe(ist("2026-10-06 21:00").getTime());
+  });
+  test("N4: a sign-in within the buffer before the shift runs to its end + buffer", () => {
+    expect(wc.sessionExpiry(ist("2026-10-06 19:30"), night, 120).getTime()).toBe(ist("2026-10-07 08:00").getTime());
+  });
+  test("lateMinutes: from the effective start under the current marks; 0 when early or no work that day", () => {
+    const signIn = ist("2026-10-05 12:14");
+    expect(wc.lateMinutes(signIn, "2026-10-05", ctx())).toBe(194);
+    const half = ctx({ marks: new Map([["2026-10-05", { kind: "leave", part: "first_half" }]]) });
+    expect(wc.lateMinutes(signIn, "2026-10-05", half)).toBe(0);
+    const full = ctx({ marks: new Map([["2026-10-05", { kind: "leave", part: "full" }]]) });
+    expect(wc.lateMinutes(signIn, "2026-10-05", full)).toBe(0);
+    expect(wc.lateMinutes(ist("2026-10-05 14:30"), "2026-10-05", half)).toBe(30);
+  });
+});

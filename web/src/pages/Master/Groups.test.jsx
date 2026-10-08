@@ -8,6 +8,8 @@ import { buildTheme } from "../../theme";
 const postMock = vi.fn();
 
 let groupsData;
+let groupsError = false;
+const refetchGroups = vi.fn();
 let modulesByGroup;
 let modulesCache;
 const refetchModules = vi.fn();
@@ -21,6 +23,7 @@ vi.mock("../../utils/axiosConfig", () => ({
 vi.mock("../../hooks/useApiQuery", () => ({
   useApiQuery: ({ endpoint, params = {}, enabled = true }) => {
     if (endpoint.endsWith("fetchUserGroups")) {
+      if (groupsError) return { data: undefined, isLoading: false, isError: true, refetch: refetchGroups };
       return { data: { userGroups: groupsData }, isLoading: false, refetch: vi.fn() };
     }
     if (endpoint.endsWith("fetchGroupModules")) {
@@ -76,6 +79,8 @@ describe("Roles & Permissions (Groups) page", () => {
     postMock.mockReset();
     postMock.mockResolvedValue({ data: { success: true, data: { groupId: 5 } } });
     modulesCache = {};
+    groupsError = false;
+    refetchGroups.mockReset();
     refetchModules.mockReset();
     enqueueSnackbar.mockReset();
     groupsData = [
@@ -103,6 +108,21 @@ describe("Roles & Permissions (Groups) page", () => {
     renderPage();
     expect(screen.getByText("Salesperson")).toBeInTheDocument();
     expect(screen.getByText("Complaints Team")).toBeInTheDocument();
+  });
+
+  it("a failed roles fetch shows an error with Retry, not 'No roles yet'", async () => {
+    groupsError = true;
+    renderPage();
+    expect(screen.getByText("Couldn't load roles")).toBeInTheDocument();
+    expect(screen.queryByText("No roles yet.")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(refetchGroups).toHaveBeenCalled();
+  });
+
+  it("an empty roles list still says 'No roles yet'", () => {
+    groupsData = [];
+    renderPage();
+    expect(screen.getByText("No roles yet.")).toBeInTheDocument();
   });
 
   it("shows a prompt (no matrix) when no group is selected", () => {
@@ -156,6 +176,17 @@ describe("Roles & Permissions (Groups) page", () => {
     expect(screen.queryByTestId("reach-attendance-input")).toBeNull();
     fireEvent.click(screen.getByTestId("perm-attendance-CanView"));
     expect(screen.getByTestId("reach-attendance-input")).toHaveValue("Own records");
+  });
+
+  it("saving the attendance row with Office reach sends Reach Office", async () => {
+    const user = await openRole(1);
+    await screen.findByText(/Salesperson — Permissions/);
+    fireEvent.click(screen.getByTestId("perm-attendance-CanView"));
+    await user.click(screen.getByLabelText("Attendance (team presence)"));
+    await user.click(await screen.findByRole("option", { name: "Their office" }));
+    await user.click(screen.getByTestId("save-permissions-btn"));
+    await waitFor(() => expect(savedBody()).toBeDefined());
+    expect(savedBody().Modules).toContainEqual(expect.objectContaining({ Module: "attendance", CanView: true, Reach: "Office" }));
   });
 
   it("ticking Add ticks View; unticking View clears the row", async () => {

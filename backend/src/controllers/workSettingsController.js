@@ -28,6 +28,7 @@ const excuse = async (CompId, UserId, FromAt, ToAt, Why, BranchId = null) => {
 };
 
 // null = every user; else the user ids the caller may see (callers intersect with their candidates).
+// Office reach is judged on the candidates only: a caller that wants the office passes the company's ids.
 async function visibleUserIds(req, candidateIds = []) {
   const s = scopeFor(req, "attendance");
   if (s.isAdmin || (s.can.view && s.reach === "Company")) return null;

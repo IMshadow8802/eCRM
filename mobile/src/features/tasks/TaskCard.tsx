@@ -24,9 +24,11 @@ import { colors, radius, spacing } from "../../theme";
 import {
   Avatar,
   Card,
+  Chip,
   Glyph,
   Text,
 } from "../../ui";
+import { tatChip } from "./tatChip";
 import {
   assigneesOf,
   checklistProgress,
@@ -118,6 +120,7 @@ function TaskCardBase({
 
   const priority = task.Priority ?? null;
   const complete = Boolean(task.IsCompleted);
+  const tat = complete ? null : tatChip(task);
 
   const ink = complete
     ? colors.success
@@ -232,6 +235,8 @@ function TaskCardBase({
         {blockers > 0 ? (
           <Stat Icon={Ban} value={String(blockers)} tone="danger" />
         ) : null}
+
+        {tat ? <Chip label={tat.text} tone={tat.tone} icon={tat.icon} /> : null}
 
         <View style={styles.spacer} />
 

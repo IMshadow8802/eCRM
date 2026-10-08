@@ -225,3 +225,51 @@ describe("acknowledge / reasonNeeded", () => {
     expect(await tat.reasonNeeded(req, 5)).toBeNull();
   });
 });
+
+describe("processWork", () => {
+  it("nothing pending: no contexts, no apply", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[]] });
+    expect(await tat.processWork(1)).toEqual({ updated: 0 });
+    expect(calls("sp_TatPendingWork")).toEqual([{ CompId: 1 }]);
+    expect(cc.load).not.toHaveBeenCalled();
+    expect(calls("sp_TatApplyWork")).toHaveLength(0);
+  });
+
+  it("working minutes from AnchorAt (else AssignedAt) to ClosedAt, less held, never negative", async () => {
+    database.executeStoredProcedure
+      .mockResolvedValueOnce({ recordsets: [[
+        // anchor preferred over AssignedAt: Wed 10:00 → Thu 10:00 = 420 + 60 working, less 60 held
+        { Id: 1, UserId: 7, AssignedAt: WED("09:00"), AnchorAt: WED("10:00"), ClosedAt: THU("10:00"), HeldMinutes: 60 },
+        // no anchor: AssignedAt 17:00 → 17:30 = 30, held 100 → 0, not -70; user 8 has no context → default week
+        { Id: 2, UserId: 8, AssignedAt: WED("17:00"), AnchorAt: null, ClosedAt: WED("17:30"), HeldMinutes: 100 },
+        // held minutes absent → 0; lunch break excluded: 12:00 → 15:00 = 120
+        { Id: 3, UserId: 7, AssignedAt: WED("12:00"), AnchorAt: null, ClosedAt: WED("15:00"), HeldMinutes: null },
+        // 480 working, less 30 applied, less unapplied holds 10:00–11:00 (60) and 12:30–14:30 (60, lunch excluded) → 330
+        { Id: 4, UserId: 7, AssignedAt: WED("09:00"), AnchorAt: null, ClosedAt: THU("09:00"), HeldMinutes: 30 },
+      ], [
+        { TatId: 4, StartedAt: WED("10:00"), EndedAt: WED("11:00") },
+        { TatId: 4, StartedAt: WED("12:30"), EndedAt: WED("14:30") },
+        { TatId: 2, StartedAt: WED("17:00"), EndedAt: WED("17:20") }, // already floored at 0
+      ]] })
+      .mockResolvedValueOnce({ recordsets: [[{ ResponseCode: 200, Updated: 3 }]] });
+    expect(await tat.processWork(1)).toEqual({ updated: 3 });
+    expect(cc.load).toHaveBeenCalledWith(1, [7, 8], "2026-10-06", "2026-10-08");
+    const apply = calls("sp_TatApplyWork")[0];
+    expect(apply.CompId).toBe(1);
+    expect(JSON.parse(apply.ItemsJson)).toEqual([
+      { Id: 1, WorkMinutes: 420 }, { Id: 2, WorkMinutes: 0 }, { Id: 3, WorkMinutes: 120 }, { Id: 4, WorkMinutes: 330 },
+    ]);
+  });
+
+  it("logs a refused apply and swallows a failure", async () => {
+    database.executeStoredProcedure
+      .mockResolvedValueOnce({ recordsets: [[{ Id: 1, UserId: 7, AssignedAt: WED("10:00"), ClosedAt: WED("11:00"), HeldMinutes: 0 }]] })
+      .mockResolvedValueOnce({ recordsets: [[{ ResponseCode: 400, ResponseMess: "bad" }]] });
+    expect(await tat.processWork(1)).toEqual({ updated: 0 });
+    expect(console.error).toHaveBeenCalledWith("TAT_WORK_APPLY failed:", "bad");
+
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("no proc"));
+    expect(await tat.processWork(1)).toEqual({ updated: 0 });
+    expect(console.error).toHaveBeenCalledWith("TAT_WORK skipped:", "no proc");
+  });
+});

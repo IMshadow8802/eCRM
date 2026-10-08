@@ -41,6 +41,46 @@ const spNames = () => database.executeStoredProcedure.mock.calls.map(([name]) =>
 beforeEach(() => database.executeStoredProcedure.mockReset());
 
 describe("schedule", () => {
+  // REGRESSION (B3, fix wave 2): DueAt went to the SP unvalidated — "+05:30" was a 500 and a "Z"
+  // instant was stored 5h30m early as IST wall clock.
+  it.each([
+    ["date", "2026-10-12", "2026-10-12"],
+    ["IST wall clock", "2026-10-12T12:00", "2026-10-12T12:00"],
+    ["IST wall clock with seconds", "2026-10-12T12:00:30", "2026-10-12T12:00:30"],
+    ["Z instant → IST wall clock", "2026-10-12T06:30:00.000Z", "2026-10-12 12:00:00"],
+    ["offset instant → IST wall clock", "2026-10-12T12:00:00+05:30", "2026-10-12 12:00:00"],
+    ["other offset", "2026-10-11T23:00:00-02:00", "2026-10-12 06:30:00"],
+  ])("normalises DueAt: %s", async (_l, DueAt, want) => {
+    leadLookup(visibleLead);
+    status({ Id: 21, ResponseCode: 201, ResponseMess: "ok" });
+    const res = mockRes();
+    await followupController.schedule(baseReq({ body: { LeadId: 9, DueAt } }), res);
+    expect(res.status).toHaveBeenCalledWith(201);
+    expect(database.executeStoredProcedure.mock.calls.at(-1)[1].DueAt).toBe(want);
+  });
+
+  it.each(["12/10/2026", "2026-02-30", "2026-13-01", "2026-10-12T25:00", "tomorrow", 20261012, "2026-10-12T12:00+5"])(
+    "400s an invalid DueAt %p before any DB call", async (DueAt) => {
+      const res = mockRes();
+      await followupController.schedule(baseReq({ body: { LeadId: 9, DueAt } }), res);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json.mock.calls[0][0].message).toBe("Follow-up date is not valid");
+      expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+    },
+  );
+
+  it("complete: NextDueAt is normalised the same way; an invalid one is a 400, null passes", async () => {
+    let res = mockRes();
+    await followupController.complete(baseReq({ body: { Id: 21, Remarks: "x", NextType: "call", NextDueAt: "2026-10-12T12:00:00+05:30x" } }), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+    fuLookup({ Id: 21, LeadId: 9, BranchId: 2, OwnerId: 7, CreatedBy: 7, AssignedTo: 7 });
+    status({ Id: 21, ResponseCode: 200, ResponseMess: "ok" });
+    res = mockRes();
+    await followupController.complete(baseReq({ body: { Id: 21, Remarks: "x", NextType: "call", NextDueAt: "2026-10-12T06:30:00Z" } }), res);
+    expect(database.executeStoredProcedure.mock.calls.at(-1)[1].NextDueAt).toBe("2026-10-12 12:00:00");
+  });
+
   it("gates on the lead and forwards the row", async () => {
     leadLookup(visibleLead);
     status({ Id: 21, ResponseCode: 201, ResponseMess: "Follow-up scheduled" });

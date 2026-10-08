@@ -1393,6 +1393,18 @@ describe("TaskDetailModal — TAT", () => {
     expect(saved).not.toHaveProperty("TatMinutes");
   });
 
+  it("a stored 2-minute target shows as 0.03 hours, never a long float, and is not re-sent", async () => {
+    taskFixture.list[0].TatMinutes = 2;
+    renderModal(501);
+    await screen.findByText("Task 501");
+    expect(screen.getByTestId("task-tat-hours-input")).toHaveValue(0.03);
+    const user = userEvent.setup();
+    await user.type(screen.getByTestId("task-title-input"), "!");
+    await user.click(screen.getByTestId("task-save-btn"));
+    await waitFor(() => expect(saved).toBeDefined());
+    expect(saved).not.toHaveProperty("TatMinutes");
+  });
+
   it("changed time and target are sent; an emptied target means the company default", async () => {
     renderModal(501);
     await screen.findByText("Task 501");

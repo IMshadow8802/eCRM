@@ -65,6 +65,7 @@ import AttachmentList from "../attachments/AttachmentList";
 import ActivityTab from "./ActivityTab";
 import { Checklist } from "./Checklist";
 import { DependencySheet } from "./DependencySheet";
+import { TatTab } from "./TatTab";
 import { TimeSheet } from "./TimeSheet";
 import {
   abilitiesFor,
@@ -76,7 +77,7 @@ import {
 } from "./taskHelpers";
 
 type Props = StackScreenProps<RootStackParamList, "TaskDetail">;
-type Tab = "checklist" | "files" | "chat" | "activity";
+type Tab = "checklist" | "files" | "chat" | "tat" | "activity";
 /** Which form the one compose sheet is currently showing. */
 type Compose = "checklist" | "comment" | "time";
 
@@ -529,6 +530,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
               count: attachmentsQuery.data?.length ?? 0,
             },
             { value: "chat", label: "Comments", count: comments.length },
+            { value: "tat", label: "TAT" },
             { value: "activity", label: "History" },
           ]}
         />
@@ -591,6 +593,8 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
           )}
         </ScrollView>
       ) : null}
+
+      {tab === "tat" ? <TatTab taskId={taskId} userId={userId} /> : null}
 
       {tab === "activity" ? <ActivityTab taskId={taskId} /> : null}
 

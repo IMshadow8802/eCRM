@@ -65,8 +65,15 @@ export default function NotificationsScreen() {
   const open = (n: AppNotification) => {
     // Fire-and-forget: opening the thing must not wait on the read receipt.
     markNotificationRead(n.Id).then(refresh, () => {});
-    switch (n.EntityType.toLowerCase()) {
+    // TAT warnings, breaches and holds are about a task whatever EntityType says.
+    const entity = n.Type?.startsWith("tat_") ? "task" : n.EntityType.toLowerCase();
+    switch (entity) {
       case "task":
+        // A sweep notification covers several tasks: EntityId 0, so show the list.
+        if (!(n.EntityId > 0)) {
+          navigation.navigate("Tabs", { screen: "MyWork" });
+          break;
+        }
         navigation.navigate("TaskDetail", { taskId: n.EntityId, workspaceId: null });
         break;
       case "ticket":

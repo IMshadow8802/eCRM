@@ -193,3 +193,5 @@ Controllers read `req.scope.isAdmin`, not the JWT claim.
 - **Day marks** (leave, on duty): saved or deleted by someone above the person on the `ReportsTo` chain, or an admin; anyone else gets 403. Never your own.
 - **TAT verdict** on a breached task clock: a `ReportsTo` ancestor of the assignee, or the task's workspace owner/manager (`tblWorkspaceMembers`), or an admin; **never the assignee on their own clock**. Personal workspaces have no TAT. Hold-everyone needs workspace owner/manager or the task's creator; an assignee may hold or release only their own.
 - **Sessions:** an admin may end any user's sessions (`/api/presence/endSession`); nobody ends their own that way (they sign out).
+
+Team reports (`/api/reports/tat`, `/api/reports/attendance`) have no module: any signed-in user may call them, and the controller scopes the rows to the user's attendance reach plus their `ReportsTo` subtree. An employee sees only their own rows; an `OwnerId` outside that scope returns no rows.

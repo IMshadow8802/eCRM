@@ -1,7 +1,8 @@
 const express = require("express");
 const reportController = require("../controllers/reportController");
+const attendanceReport = require("../controllers/attendanceReport");
 const { verifyToken } = require("../middleware/auth");
-const { loadScope, requireModule } = require("../middleware/permission");
+const { loadScope, requireModule, open } = require("../middleware/permission");
 const { allowEmptyPayload, requirePayload } = require("../middleware/payloadValidation");
 
 const router = express.Router();
@@ -32,5 +33,10 @@ router.post("/aging", allowEmptyPayload, requireModule("sales_reports", "view"),
 router.post("/transfers", allowEmptyPayload, requireModule("sales_reports", "view"), reportController.transfers);
 router.post("/pipelineValue", allowEmptyPayload, requireModule("sales_reports", "view"), reportController.pipelineValue);
 router.post("/leaderboard", allowEmptyPayload, requireModule("sales_reports", "view"), reportController.leaderboard);
+
+// P4 Team Reports — open to every signed-in user; the data is scoped per caller
+// (self + ReportsTo subtree + attendance reach), out-of-reach rows are dropped.
+router.post("/tat", allowEmptyPayload, open(), reportController.tat);
+router.post("/attendance", allowEmptyPayload, open(), attendanceReport.attendance);
 
 module.exports = router;

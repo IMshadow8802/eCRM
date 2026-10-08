@@ -132,6 +132,12 @@ function endOfShift(key, ctx) {
 
 const effectiveStart = (key, ctx) => workIntervals(key, ctx)[0]?.[0] || null;
 
+// Minutes after the day's effective start (current marks), never negative; 0 with no work that day.
+function lateMinutes(signInAt, key, ctx) {
+  const begins = effectiveStart(key, ctx);
+  return begins ? Math.max(0, Math.floor((new Date(signInAt).getTime() - begins.getTime()) / 60000)) : 0;
+}
+
 // The shift `now` is in, or today's not yet started; yesterday's night shift wins while it runs.
 function currentShift(now, days) {
   const today = dateKey(now);
@@ -156,6 +162,8 @@ const minDate = (a, b) => (b && b.getTime() < a.getTime() ? b : a);
 
 function sessionExpiry(now, days, bufferMin) {
   const cur = currentShift(now, days);
+  // Signed in more than the buffer before a shift that has not started: sign in again at its start.
+  if (cur && now.getTime() < cur.start.getTime() - bufferMin * 60000) return cur.start;
   if (cur) return minDate(new Date(cur.end.getTime() + bufferMin * 60000), nextShiftStart(cur.end, days));
   return nextShiftStart(now, days) || new Date(now.getTime() + DAY_MS);
 }
@@ -175,5 +183,5 @@ const warnAt = (anchor, due, pct, ctx) =>
 
 module.exports = {
   DEFAULT_DAYS, parseDays, dateKey, dayKey, addDays, at, toSqlIst, workIntervals, workingMinutesBetween,
-  addWorkingMinutes, endOfShift, effectiveStart, currentShift, sessionExpiry, extendExpiry, warnAt,
+  addWorkingMinutes, endOfShift, effectiveStart, lateMinutes, currentShift, sessionExpiry, extendExpiry, warnAt,
 };

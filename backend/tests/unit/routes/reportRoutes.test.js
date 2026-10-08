@@ -33,6 +33,10 @@ jest.mock("../../../src/controllers/reportController", () => ({
   transfers: hit("transfers"),
   pipelineValue: hit("pipelineValue"),
   leaderboard: hit("leaderboard"),
+  tat: hit("tat"),
+}));
+jest.mock("../../../src/controllers/attendanceReport", () => ({
+  attendance: jest.fn((req, res) => res.status(200).json({ success: true, hit: "attendance" })),
 }));
 
 const { mockAccess } = require("../../helpers/mockAccess");
@@ -62,6 +66,19 @@ describe("reportRoutes", () => {
     ["/api/reports/leaderboard", "leaderboard"],
   ])("routes %s to the %s handler", async (path, handler) => {
     const r = await request(app).post(path).send({});
+    expect(r.status).toBe(200);
+    expect(r.body.hit).toBe(handler);
+  });
+
+  // P4 Team Reports are open(): the data is scoped, so a role with no report grant still reaches them.
+  it.each([
+    ["/api/reports/tat", "tat"],
+    ["/api/reports/attendance", "attendance"],
+  ])("routes %s to %s for a role with no report modules", async (path, handler) => {
+    const saved = mockAcc;
+    mockAcc = mockAccess({ modules: [["tasks", "v"]] });
+    const r = await request(app).post(path).send({});
+    mockAcc = saved;
     expect(r.status).toBe(200);
     expect(r.body.hit).toBe(handler);
   });

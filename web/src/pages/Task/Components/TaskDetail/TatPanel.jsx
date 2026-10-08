@@ -13,11 +13,11 @@ import BreachReasonDialog from "./BreachReasonDialog";
 
 const CLOSE_LABEL = {
   completed: "Done",
-  my_part_done: "Their part done",
+  my_part_done: "My part done",
   unassigned: "Unassigned",
-  deleted: "Task deleted",
+  deleted: "Deleted",
   user_left: "Left the company",
-  no_clock: "Clock switched off",
+  no_clock: "No clock",
 };
 function Step({ label, at, children }) {
   return (
@@ -124,7 +124,8 @@ export default function TatPanel({ task, canReassign, currentUserId }) {
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                 <strong>{c.FullName}</strong>
                 {open ? (
-                  <Chip size="sm" label={hold ? "On hold" : "Running"} tone={hold ? "default" : "info"} />
+                  c.BreachedAt ? <Chip size="sm" label="Ran over" tone="error" />
+                    : <Chip size="sm" label={hold ? "On hold" : "Running"} tone={hold ? "default" : "info"} />
                 ) : (
                   <Chip size="sm" label={CLOSE_LABEL[c.CloseReason] ?? "Closed"} />
                 )}

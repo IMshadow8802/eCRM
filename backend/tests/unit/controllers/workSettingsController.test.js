@@ -276,8 +276,14 @@ describe("visibleUserIds", () => {
     const ids = await visibleUserIds(nonAdmin([["attendance", "v", "Office"]]), [20, 21, 22]);
     expect([...ids].sort((a, b) => a - b)).toEqual([7, 8, 20]);
   });
-  it("Office reach with no candidates, no grant, and Team reach fall back to the team", async () => {
+  // REGRESSION (final review Important 1): with no candidates (presence / day-marks default path,
+  // whose result is thrown away) it loaded the whole company — two wasted queries per fetch.
+  it("Office reach with no candidates makes no query and returns the team", async () => {
     expect(await visibleUserIds(nonAdmin([["attendance", "v", "Office"]]), [])).toEqual([7, 8]);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+    expect(cc.load).not.toHaveBeenCalled();
+  });
+  it("no grant and Team reach fall back to the team", async () => {
     expect(await visibleUserIds(nonAdmin([]), [20])).toEqual([7, 8]);
     expect(await visibleUserIds(nonAdmin([["attendance", "v", "Team"]]), [20])).toEqual([7, 8]);
     expect(cc.load).not.toHaveBeenCalled();

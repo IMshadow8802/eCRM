@@ -4,8 +4,23 @@ const {
   asyncRoute, firstRow, spStatus, spOk, spMessage, pageParams, positiveInt,
 } = require("../utils/controllerKit");
 const { assertRecordAccess, assertCanAssign, canSeeRecord, scopeParams } = require("../middleware/permission");
+const { toSqlIst } = require("../utils/workCalendar");
 
 const blank = (s) => !s || !String(s).trim();
+
+// A follow-up due date for the SP, or null when invalid. 'YYYY-MM-DD' and 'YYYY-MM-DDTHH:mm[:ss]'
+// are IST wall clock and pass as sent; an instant with Z / ±HH:mm becomes its IST wall clock.
+const DUE = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})?)?$/;
+function followUpDue(v) {
+  const s = typeof v === "string" ? v.trim() : "";
+  const m = DUE.exec(s);
+  if (!m) return null;
+  const [, y, mo, d, h = "0", mi = "0", sec = "0", zone] = m;
+  const t = new Date(Date.UTC(+y, +mo - 1, +d));
+  if (t.getUTCMonth() !== +mo - 1 || t.getUTCDate() !== +d || +h > 23 || +mi > 59 || +sec > 59) return null;
+  return zone ? toSqlIst(new Date(s)) : s;
+}
+const BAD_DUE = "Follow-up date is not valid";
 
 // A follow-up is governed by its lead's visibility, plus one extra: the person
 // it is ASSIGNED to may act on it even when the lead sits outside their owner
@@ -45,13 +60,15 @@ class FollowupController {
       const { LeadId, Type: rawType, DueAt, AssignedTo = null } = req.body;
       const Type = rawType ?? "call";
       if (!DueAt) return validationError(res, "Due date is required");
+      const due = followUpDue(DueAt);
+      if (!due) return validationError(res, BAD_DUE);
       if (!(await assertRecordAccess(req, res, "lead", LeadId))) return;
       // Scheduling onto someone else is an assignment: same roster gate as a
       // lead transfer. Branch stays null — a follow-up never moves a lead.
       if (AssignedTo && !(await assertCanAssign(req, res, { toUserId: AssignedTo, toBranchId: null }))) return;
       const result = await database.executeStoredProcedure("sp_ScheduleFollowUp", {
         CompId: req.user.CompId, LeadId: positiveInt(LeadId), UserId: req.user.UserId,
-        Type, DueAt, AssignedTo: positiveInt(AssignedTo),
+        Type, DueAt: due, AssignedTo: positiveInt(AssignedTo),
       });
       return reply(res, firstRow(result), "Follow-up scheduled", (r) => ({ Id: r.Id }));
     },
@@ -63,11 +80,13 @@ class FollowupController {
     async (req, res) => {
       const { Id, OutcomeId = null, Remarks, Direction = null, Duration = null, NextType = null, NextDueAt = null } = req.body;
       if (blank(Remarks)) return validationError(res, "Remarks are required");
+      const nextDue = NextDueAt == null || NextDueAt === "" ? null : followUpDue(NextDueAt);
+      if (NextDueAt != null && NextDueAt !== "" && !nextDue) return validationError(res, BAD_DUE);
       if (!(await loadVisibleFollowUp(req, res, Id))) return;
       const result = await database.executeStoredProcedure("sp_CompleteFollowUp", {
         CompId: req.user.CompId, Id: positiveInt(Id), UserId: req.user.UserId,
         OutcomeId: positiveInt(OutcomeId), Remarks: String(Remarks).trim(),
-        Direction, Duration: positiveInt(Duration), NextType, NextDueAt,
+        Direction, Duration: positiveInt(Duration), NextType, NextDueAt: nextDue,
       });
       return reply(res, firstRow(result), "Follow-up logged", (r) => ({ Id: r.Id, NextId: r.NextId ?? null }));
     },

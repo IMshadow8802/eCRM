@@ -32,6 +32,8 @@ export const LOOKUP_KIND = {
   transferReason: "transfer_reason",
   leadSource: "lead_source",
   lostReason: "lost_reason",
+  taskHoldReason: "task_hold_reason",
+  taskBreachReason: "task_breach_reason",
 } as const;
 
 export type LookupKind = (typeof LOOKUP_KIND)[keyof typeof LOOKUP_KIND];

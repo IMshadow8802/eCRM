@@ -1,7 +1,10 @@
 const database = require("../config/database");
 const { scopeParams, scopeFor, scopeJson } = require("../middleware/permission");
 const { asyncRoute, positiveInt } = require("../utils/controllerKit");
-const { runReport, REPORTS } = require("../utils/reportKit");
+const { runReport, REPORTS, parseReportArgs } = require("../utils/reportKit");
+const { success, error } = require("../utils/responseHelper");
+const { dayKey } = require("../utils/workCalendar");
+const { visibleUserIds } = require("./workSettingsController");
 
 class ReportController {
   async getDashboard(req, res) {
@@ -119,5 +122,41 @@ for (const [key, { sp }] of Object.entries(REPORTS)) {
     "REPORT_ERROR",
   );
 }
+
+// Task TAT report (P4). Scope is the attendance scope (self + ReportsTo subtree +
+// attendance reach), sent as a user allow-list: NULL = everyone, [] = nobody.
+// An OwnerId outside it yields no rows, never that person's clocks.
+// With no OwnerId the company's users are the candidates, or Office reach would drop the office.
+const MAX_COMPANY_USERS = 1000; // ponytail: one page of sp_FetchUser, same ceiling as tatController.fetchTeamToday
+async function companyUserIds(req) {
+  const result = await database.executeStoredProcedure("sp_FetchUser", {
+    Id: 0, CompId: req.user.CompId, BranchId: req.user.BranchId ?? null, IsAdmin: 1, AccessibleBranchIdsJson: null,
+    PageNumber: 1, PageSize: MAX_COMPANY_USERS, SearchTerm: null,
+  });
+  return (result?.recordsets?.[0] ?? []).map((u) => Number(u.Id)).filter(Boolean);
+}
+
+controller.tat = asyncRoute(
+  async (req, res) => {
+    const parsed = parseReportArgs(req.body, "tat");
+    if (parsed.error) return error(res, parsed.error, "VALIDATION_ERROR", 400);
+    const { FromDate, ToDate, DateBasis, GroupBy, BranchId, OwnerId } = parsed.args;
+    const allowed = await visibleUserIds(req, OwnerId ? [OwnerId] : await companyUserIds(req));
+    const ids = allowed && OwnerId && !allowed.includes(OwnerId) ? [] : allowed;
+    const result = await database.executeStoredProcedure("sp_RptTat", {
+      CompId: req.user.CompId, FromDate, ToDate, GroupBy, BranchId, OwnerId,
+      UserIdsJson: ids === null ? null : JSON.stringify(ids),
+    });
+    const rs = result?.recordsets ?? [];
+    return success(res, "Report fetched successfully", {
+      kpis: rs[0]?.[0] ?? {},
+      rows: rs[1] ?? [],
+      trend: (rs[2] ?? []).map((r) => ({ ...r, Bucket: dayKey(r.Bucket) })),
+      range: { from: FromDate, to: ToDate, basis: DateBasis, groupBy: GroupBy },
+    });
+  },
+  "Failed to fetch report",
+  "REPORT_ERROR",
+);
 
 module.exports = controller;

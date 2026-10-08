@@ -36,6 +36,8 @@ async function notSignedIn(compId, now) {
     if (info.ctx.marks.get(today)?.kind === "on_duty") continue;
     const start = effectiveStart(today, info.ctx); // null on holiday / full leave
     if (!start || now.getTime() < start.getTime() + lateGraceMin * 60000) continue;
+    // Created after the shift began (a mid-day hire): nothing to sign in for yet today.
+    if (c.CreatedDate && new Date(c.CreatedDate).getTime() >= start.getTime()) continue;
     // One person's failure (a deadlock, a bad row) must not skip everyone after them.
     try {
       const res = await database.executeStoredProcedure("sp_MarkNotSignedIn", {
@@ -51,9 +53,10 @@ async function notSignedIn(compId, now) {
   return marked;
 }
 
-// Fill missing/stale due times (whole company), then warn, breach and auto-release.
+// Fill missing/stale due times (whole company), worked minutes of closed clocks, then warn, breach and auto-release.
 async function tatStep(compId, now) {
   await tatService.processPending(compId, null, now);
+  await tatService.processWork(compId); // never throws
   const notified = rows(await database.executeStoredProcedure("sp_TatSweep", { CompId: compId }));
   for (const id of new Set(notified.map((r) => Number(r.UserId)))) emitToUser(id, SCOPES.NOTIFICATIONS);
 }

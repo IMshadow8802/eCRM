@@ -214,6 +214,63 @@ export interface Task {
   /** JSON array of TaskAssignee. Null when the task has no assignees. */
   AssigneesJson: string | null;
   AssigneeCount: number | null;
+  /** 'HH:mm' text (IST wall clock). */
+  DueTime?: string | null;
+  TatMinutes?: number | null;
+  TatDueAt?: string | null;
+  TatWarnAt?: string | null;
+  TatBreachedAt?: string | null;
+  TatHeldSince?: string | null;
+  TatHoldReason?: string | null;
+  TatOpenClocks?: number | null;
+}
+
+/** One assignee's clock, from sp_FetchTaskTat (+ CanJudge, unused on mobile). */
+export interface TaskTatClock {
+  Id: number;
+  UserId: number;
+  FullName: string | null;
+  AssignedAt: string | null;
+  FirstSeenAt: string | null;
+  AcknowledgedAt: string | null;
+  DueAt: string | null;
+  ClosedAt: string | null;
+  CloseReason: string | null;
+  BreachedAt: string | null;
+  BreachReasonId: number | null;
+  BreachReason: string | null;
+  BreachRemarks: string | null;
+  ReasonAt: string | null;
+  Verdict: string | null;
+  VerdictByName: string | null;
+  VerdictRemarks: string | null;
+}
+
+export interface TaskTatHold {
+  HoldId: number;
+  TatId: number;
+  UserId: number;
+  StartedBy: number | null;
+  Kind: "manual" | "blocked";
+  Reason: string | null;
+  Remarks: string | null;
+  StartedAt: string;
+  EndedAt: string | null;
+}
+
+export interface TaskTatEvent {
+  Id: number;
+  Kind: string;
+  OldValue: string | null;
+  NewValue: string | null;
+  At: string;
+  ActorName: string | null;
+}
+
+export interface TaskTat {
+  clocks: TaskTatClock[];
+  holds: TaskTatHold[];
+  events: TaskTatEvent[];
 }
 
 export interface TaskChecklistItem {

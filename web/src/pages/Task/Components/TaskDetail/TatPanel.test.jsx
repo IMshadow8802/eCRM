@@ -48,6 +48,30 @@ describe("TatPanel", () => {
     expect(screen.queryByTestId("tat-hold-all")).toBeNull(); // no reassign
   });
 
+  it.each([
+    [{}, "Running"],
+    [{ BreachedAt: "2026-10-08T12:00:00Z" }, "Ran over"],
+    [{ ClosedAt: "2026-10-08T13:00:00Z", CloseReason: "completed" }, "Done"],
+    [{ ClosedAt: "2026-10-08T13:00:00Z", CloseReason: "my_part_done" }, "My part done"],
+    [{ ClosedAt: "2026-10-08T13:00:00Z", CloseReason: "unassigned" }, "Unassigned"],
+    [{ ClosedAt: "2026-10-08T13:00:00Z", CloseReason: "deleted" }, "Deleted"],
+    [{ ClosedAt: "2026-10-08T13:00:00Z", CloseReason: "user_left" }, "Left the company"],
+    [{ ClosedAt: "2026-10-08T13:00:00Z", CloseReason: "no_clock" }, "No clock"],
+  ])("status pill for %j is %s", async (over, pill) => {
+    setup({ clocks: [clock(over)] });
+    const card = await screen.findByTestId("tat-clock-1");
+    expect(within(card).getAllByText(pill).length).toBeGreaterThan(0);
+  });
+
+  it("an open clock on hold reads On hold; an over-run clock on hold still reads Ran over", async () => {
+    setup({
+      clocks: [clock(), clock({ Id: 2, UserId: 9, FullName: "Bob", BreachedAt: "2026-10-08T12:00:00Z" })],
+      holds: [{ HoldId: 1, TatId: 1, StartedAt: "2026-10-08T05:00:00Z", EndedAt: null, Kind: "manual", Reason: "Waiting" }],
+    });
+    expect(within(await screen.findByTestId("tat-clock-1")).getAllByText("On hold").length).toBeGreaterThan(0);
+    expect(within(screen.getByTestId("tat-clock-2")).getAllByText("Ran over").length).toBeGreaterThan(0);
+  });
+
   it("acknowledged clock offers no Acknowledge", async () => {
     setup({ clocks: [clock({ AcknowledgedAt: "2026-10-08T05:00:00Z" })] });
     await screen.findByTestId("tat-clock-1");
@@ -152,7 +176,7 @@ describe("TatPanel", () => {
     setup({ clocks: [clock({ UserId: 9, BreachedAt: "2026-10-08T12:00:00Z", Verdict: "excused", VerdictAt: "2026-10-08T14:00:00Z", VerdictRemarks: "Leave", CanJudge: true, ClosedAt: "2026-10-08T13:00:00Z", CloseReason: "my_part_done" })] });
     expect(await screen.findByText(/Excused by the system \(Leave\)/)).toBeInTheDocument();
     expect(screen.queryByTestId("tat-excused")).toBeNull();
-    expect(screen.getAllByText("Their part done").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("My part done").length).toBeGreaterThan(0);
   });
 
   it("lists events with old -> new targets in IST and who did it", async () => {

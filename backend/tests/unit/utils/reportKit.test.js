@@ -25,9 +25,9 @@ afterAll(() => {
 beforeEach(() => database.executeStoredProcedure.mockReset());
 
 describe("REPORTS", () => {
-  it("lists the eight reports with their SP and a non-empty GroupBy whitelist", () => {
+  it("lists the nine reports with their SP and a non-empty GroupBy whitelist", () => {
     expect(Object.keys(REPORTS)).toEqual([
-      "funnel", "followUpCompliance", "activity", "lost", "aging", "transfers", "pipelineValue", "leaderboard",
+      "funnel", "followUpCompliance", "activity", "lost", "aging", "transfers", "pipelineValue", "leaderboard", "tat",
     ]);
     for (const r of Object.values(REPORTS)) {
       expect(r.sp).toMatch(/^sp_Rpt/);
@@ -87,6 +87,18 @@ describe("parseReportArgs", () => {
     const { error, args } = parseReportArgs(body, "funnel", TODAY);
     expect(args).toBeUndefined();
     expect(error).toMatch(message);
+  });
+
+  it("validates DateBasis against the report's own bases (tat: assigned only)", () => {
+    const { args } = parseReportArgs({}, "tat", TODAY);
+    expect(args).toMatchObject({ DateBasis: "assigned", GroupBy: "person" });
+    expect(parseReportArgs({ DateBasis: "assigned", GroupBy: "verdict_by" }, "tat", TODAY).args.GroupBy).toBe("verdict_by");
+    expect(parseReportArgs({ DateBasis: "created" }, "tat", TODAY).error).toMatch(/DateBasis must be one of assigned/);
+    expect(parseReportArgs({ DateBasis: "assigned" }, "funnel", TODAY).error).toMatch(/DateBasis must be one of created/);
+  });
+
+  it("rejects a range over two years", () => {
+    expect(parseReportArgs({ FromDate: "2024-01-01", ToDate: "2026-09-10" }, "tat", TODAY).error).toMatch(/731 days/);
   });
 
   it("rejects an unknown report key", () => {

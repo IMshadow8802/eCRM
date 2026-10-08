@@ -200,3 +200,85 @@ describe.each(REPORT_METHODS)("reportController.%s", (method, sp, defaultGroupBy
     expect(res.json.mock.calls[0][0]).toMatchObject({ success: false, code: "REPORT_ERROR" });
   });
 });
+
+// --- P4: the TAT report — scoped by the attendance scope as a user allow-list ---
+
+describe("reportController.tat", () => {
+  const tatReq = (body = {}, { admin = false, modules = [["tasks", "v"]], team = [] } = {}) => {
+    const req = baseReq({ body });
+    req.access = mockAccess({ admin, modules }, 7);
+    req.access.teamOwners = team;
+    return req;
+  };
+  const sp = (rs = [[{ Clocks: 2 }], [{ GroupKey: "7", GroupLabel: "Asha" }], [{ Bucket: new Date(2026, 7, 3), Closed: 1 }]]) => {
+    database.executeStoredProcedure.mockImplementation(async (name) => (name === "sp_FetchCalendarContext"
+      ? { recordsets: [[{ UserId: 20, BranchId: 2, CalendarId: null }], [], [], []] }
+      : { recordsets: rs }));
+  };
+  const tatCall = () => database.executeStoredProcedure.mock.calls.find((c) => c[0] === "sp_RptTat")[1];
+
+  it("an employee gets their own id only; no DateBasis/Source/Product params", async () => {
+    sp();
+    const res = mockRes();
+    await reportController.tat(tatReq({ FromDate: "2026-08-01", ToDate: "2026-08-31" }), res);
+    expect(tatCall()).toEqual({
+      CompId: 5, FromDate: "2026-08-01", ToDate: "2026-08-31", GroupBy: "person",
+      BranchId: null, OwnerId: null, UserIdsJson: "[7]",
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json.mock.calls[0][0].data).toEqual({
+      kpis: { Clocks: 2 }, rows: [{ GroupKey: "7", GroupLabel: "Asha" }], // NVARCHAR key passes through as a string
+      trend: [{ Bucket: "2026-08-03", Closed: 1 }],
+      range: { from: "2026-08-01", to: "2026-08-31", basis: "assigned", groupBy: "person" },
+    });
+  });
+
+  it("an OwnerId outside scope sends [] (no rows), never that person's clocks", async () => {
+    sp();
+    await reportController.tat(tatReq({ OwnerId: 99 }), mockRes());
+    expect(tatCall()).toMatchObject({ OwnerId: 99, UserIdsJson: "[]" });
+  });
+
+  it("a manager's OwnerId inside the subtree keeps the allow-list", async () => {
+    sp();
+    await reportController.tat(tatReq({ OwnerId: 8, GroupBy: "priority" }, { team: [7, 8] }), mockRes());
+    expect(tatCall()).toMatchObject({ OwnerId: 8, GroupBy: "priority", UserIdsJson: "[7,8]" });
+  });
+
+  it("Office attendance reach admits an OwnerId in the caller's office", async () => {
+    sp();
+    await reportController.tat(tatReq({ OwnerId: 20 }, { modules: [["attendance", "v", "Office"]] }), mockRes());
+    expect(tatCall()).toMatchObject({ OwnerId: 20, UserIdsJson: "[7,20]" });
+  });
+
+  it("Office reach with no OwnerId includes the office members (the report loads the company as candidates)", async () => {
+    database.executeStoredProcedure.mockImplementation(async (name) => {
+      if (name === "sp_FetchUser") return { recordsets: [[{ Id: 20 }, { Id: 21 }]] };
+      if (name === "sp_FetchCalendarContext") {
+        return { recordsets: [[{ UserId: 20, BranchId: 2, CalendarId: null }, { UserId: 21, BranchId: 9, CalendarId: null }], [], [], []] };
+      }
+      return { recordsets: [] };
+    });
+    await reportController.tat(tatReq({}, { modules: [["attendance", "v", "Office"]] }), mockRes());
+    expect(tatCall()).toMatchObject({ OwnerId: null, UserIdsJson: "[7,20]" });
+    expect(database.executeStoredProcedure.mock.calls.find((c) => c[0] === "sp_FetchUser")[1])
+      .toMatchObject({ Id: 0, CompId: 5, IsAdmin: 1, PageSize: 1000 });
+  });
+
+  it("an admin sends NULL (everyone)", async () => {
+    sp([]);
+    const res = mockRes();
+    await reportController.tat(tatReq({ OwnerId: 99 }, { admin: true }), res);
+    expect(tatCall()).toMatchObject({ UserIdsJson: null });
+    expect(res.json.mock.calls[0][0].data).toMatchObject({ kpis: {}, rows: [], trend: [] });
+  });
+
+  it("400s a DateBasis other than assigned, and an unknown GroupBy, without the DB", async () => {
+    for (const body of [{ DateBasis: "created" }, { GroupBy: "owner" }]) {
+      const res = mockRes();
+      await reportController.tat(tatReq(body), res);
+      expect(res.status).toHaveBeenCalledWith(400);
+    }
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+});

@@ -24,6 +24,8 @@ const REPORTS = {
   transfers:          { sp: "sp_RptTransfers",          groupBys: ["reason", "pair", "branch"] },
   pipelineValue:      { sp: "sp_RptPipelineValue",      groupBys: ["status", "owner", "product", "branch"] },
   leaderboard:        { sp: "sp_RptLeaderboard",        groupBys: ["owner"] },
+  // Task TAT (P4): one basis, the clock's AssignedAt; its own handler in reportController.
+  tat:                { sp: "sp_RptTat",                groupBys: ["person", "priority", "workspace", "verdict_by"], bases: ["assigned"] },
 };
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -54,15 +56,8 @@ const daysBefore = (date, n) => {
   return back;
 };
 
-/**
- * Body -> SP params, or a message for a 400.
- * Defaults: last 30 days (today inclusive), basis 'created', the report's
- * first GroupBy. Id filters narrow only when they are positive integers.
- */
-function parseReportArgs(body = {}, key, today = new Date()) {
-  const report = REPORTS[key];
-  if (!report) return { error: `Unknown report: ${key}` };
-
+/** Body -> { from, to } (default last 30 days, at most MAX_RANGE_DAYS), or { error }. */
+function parseRange(body = {}, today = new Date()) {
   const to = body.ToDate ?? isoDay(today);
   const toDate = parseDay(to);
   if (!toDate) return { error: "FromDate and ToDate must be YYYY-MM-DD" };
@@ -75,9 +70,24 @@ function parseReportArgs(body = {}, key, today = new Date()) {
   if ((parseDay(to) - parseDay(from)) / 86400000 > MAX_RANGE_DAYS) {
     return { error: `The date range must be ${MAX_RANGE_DAYS} days or less` };
   }
+  return { from, to };
+}
 
-  const basis = body.DateBasis ?? "created";
-  if (!DATE_BASES.includes(basis)) return { error: `DateBasis must be one of ${DATE_BASES.join(", ")}` };
+/**
+ * Body -> SP params, or a message for a 400.
+ * Defaults: last 30 days (today inclusive), the report's first basis ('created' by default), the report's
+ * first GroupBy. Id filters narrow only when they are positive integers.
+ */
+function parseReportArgs(body = {}, key, today = new Date()) {
+  const report = REPORTS[key];
+  if (!report) return { error: `Unknown report: ${key}` };
+  const range = parseRange(body, today);
+  if (range.error) return range;
+  const { from, to } = range;
+
+  const bases = report.bases ?? DATE_BASES;
+  const basis = body.DateBasis ?? bases[0];
+  if (!bases.includes(basis)) return { error: `DateBasis must be one of ${bases.join(", ")}` };
 
   const groupBy = body.GroupBy ?? report.groupBys[0];
   if (!report.groupBys.includes(groupBy)) return { error: `GroupBy must be one of ${report.groupBys.join(", ")}` };
@@ -119,4 +129,4 @@ async function runReport(spName, req, res, key) {
   });
 }
 
-module.exports = { REPORTS, DATE_BASES, MAX_RANGE_DAYS, parseDay, parseReportArgs, runReport };
+module.exports = { REPORTS, DATE_BASES, MAX_RANGE_DAYS, parseDay, parseRange, parseReportArgs, runReport };

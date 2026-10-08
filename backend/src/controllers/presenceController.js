@@ -12,7 +12,7 @@ const { visibleUserIds } = require("./workSettingsController");
 const { emitToUser } = require("../realtime/events");
 const { getIo } = require("../realtime/socket");
 const { SCOPES, rooms } = require("../realtime/contract");
-const { dateKey, at, effectiveStart } = require("../utils/workCalendar");
+const { dateKey, at, effectiveStart, lateMinutes } = require("../utils/workCalendar");
 const { success, validationError } = require("../utils/responseHelper");
 const { asyncRoute, firstRow, spStatus, spOk, spMessage, positiveInt } = require("../utils/controllerKit");
 
@@ -32,18 +32,33 @@ function presenceStatus(row, now, settings, holidayToday) {
   const half = row.MarkKind === "leave" ? { half: row.MarkPart } : {};
   const grace = Number(settings?.lateGraceMin) || 0;
 
+  // Lateness stays with the day once signed in, whatever the session does after.
+  const late = row.FirstSignInAt && Number(row.LateMinutes) > grace ? { late: `Late by ${Number(row.LateMinutes)} min` } : {};
   if (truthy(row.HasOpenSession) && row.LastSeenAt && now.getTime() - new Date(row.LastSeenAt).getTime() <= ONLINE_MS) {
-    const late = Number(row.LateMinutes) > grace ? { late: `Late by ${Number(row.LateMinutes)} min` } : {};
     return { code: "online", label: "Online", ...late, ...half };
   }
-  if (row.SignedOutAt) return { code: "signed_out", label: "Signed out", ...half };
-  if (row.FirstSignInAt) return { code: "offline", label: "Offline", ...half };
+  // an open session outranks an earlier sign-out (signed out, then signed in again)
+  if (row.SignedOutAt && !truthy(row.HasOpenSession)) return { code: "signed_out", label: "Signed out", ...late, ...half };
+  if (row.FirstSignInAt) return { code: "offline", label: "Offline", ...late, ...half };
   // ponytail: no shift that day (day off, exempt) has no "not signed in" — Offline is the neutral word
   if (!row.ShiftStart) return { code: "offline", label: "Offline", ...half };
   if (now.getTime() < new Date(row.ShiftStart).getTime() + grace * 60000) {
     return { code: "not_signed_in_yet", label: "Not signed in yet", ...half };
   }
   return { code: "not_signed_in", label: "Not signed in", ...half };
+}
+
+/**
+ * An sp_FetchPresence row for `key` with its status. `u` = the person's calendarContext entry (may be missing).
+ * Shift start comes from the calendar when no row exists yet; LateMinutes is re-derived from the CURRENT
+ * marks (a half-day leave saved after sign-in clears the morning), the stored value only without a calendar;
+ * only today can be Online (an open session is about now).
+ */
+function withStatus(r, u, key, now, settings) {
+  const ShiftStart = r.ShiftStart ?? (u ? effectiveStart(key, u.ctx) : null);
+  const LateMinutes = u && r.FirstSignInAt ? lateMinutes(r.FirstSignInAt, key, u.ctx) : r.LateMinutes;
+  const asOf = { ...r, ShiftStart, LateMinutes, HasOpenSession: key === dateKey(now) && r.HasOpenSession };
+  return { ...r, LateMinutes, status: presenceStatus(asOf, now, settings, !!u?.ctx.holidays.has(key)) };
 }
 
 const reply = (res, row, data = null) => {
@@ -94,15 +109,7 @@ class PresenceController {
       const rows = result?.recordsets?.[0] ?? [];
       if (!rows.length) return success(res, "Presence fetched", { presence: [] });
       const [info, settings] = await Promise.all([calendarContext.load(CompId, ids, key, key), calendarContext.settings(CompId)]);
-      // The open session is NOW; it says nothing about another day, so only today can be Online.
-      const isToday = key === dateKey(now);
-      const presence = rows.map((r) => {
-        const u = info.get(Number(r.UserId));
-        // No presence row yet: the shift start comes from the person's calendar.
-        const shiftStart = r.ShiftStart ?? (u ? effectiveStart(key, u.ctx) : null);
-        const asOf = { ...r, ShiftStart: shiftStart, HasOpenSession: isToday && r.HasOpenSession };
-        return { ...r, status: presenceStatus(asOf, now, settings, !!u?.ctx.holidays.has(key)) };
-      });
+      const presence = rows.map((r) => withStatus(r, info.get(Number(r.UserId)), key, now, settings));
       return success(res, "Presence fetched", { presence });
     },
     "Failed to fetch presence",
@@ -139,3 +146,4 @@ class PresenceController {
 const controller = new PresenceController();
 module.exports = controller;
 module.exports.presenceStatus = presenceStatus;
+module.exports.withStatus = withStatus;

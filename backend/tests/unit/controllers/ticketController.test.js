@@ -2,6 +2,12 @@ jest.mock("../../../src/config/database", () => ({
   executeStoredProcedure: jest.fn(),
 }));
 
+jest.mock("../../../src/services/ticketDue", () => ({
+  compute: jest.fn().mockResolvedValue(null),
+  priorityTatHours: jest.fn().mockResolvedValue(null),
+  forReopen: jest.fn().mockResolvedValue(null),
+}));
+
 const database = require("../../../src/config/database");
 const ticketController = require("../../../src/controllers/ticketController");
 const { mockRes } = require("../../helpers/mockRes");
@@ -83,6 +89,7 @@ describe("ticketController.save — create", () => {
       CustomerId: 31, Subject: "Inverter trips at noon", ContactPerson: "Rakesh", Contact: "9876543210",
       ChannelId: 51, CategoryId: 7, Priority: 3, ProductId: 2, AssignedTo: 18, LinkedLeadId: 9,
       Description: "Trips daily around 12:30", CustomJSON: '[{"fieldId":1,"type":"text","value":"x"}]',
+      DueAtOverride: null,
     });
     const json = res.json.mock.calls[0][0];
     expect(json.success).toBe(true);
@@ -183,10 +190,11 @@ describe("ticketController.save — update", () => {
   it("gates on the ticket, then saves with AssignedTo dropped and no status key", async () => {
     mockTicketLookup(visibleTicket);
     mockCustomer();
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordset: [{ Priority: 3, AssignedTo: 18 }] }); // sp_FetchTicketDue: unchanged priority
     database.executeStoredProcedure.mockResolvedValueOnce(okRow());
     await ticketController.save(baseReq({ body: { Id: "1", ...CREATE_BODY, AssignedTo: 18, StatusId: 99 } }), mockRes());
-    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(3); // ticket + customer lookups + save; no roster
-    const [sp, params] = database.executeStoredProcedure.mock.calls[2];
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(4); // ticket + customer + due lookups + save; no roster
+    const [sp, params] = database.executeStoredProcedure.mock.calls[3];
     expect(sp).toBe("sp_SaveTicket");
     expect(params).toMatchObject({ Id: 1, CompId: 5, AssignedTo: null, CustomerId: 31, Subject: "Inverter trips at noon" });
     expect(params).not.toHaveProperty("StatusId");
@@ -241,8 +249,22 @@ describe("ticketController.fetch", () => {
       CompId: 5, BranchId: null, PageNumber: 1, PageSize: 25, SearchTerm: null,
       StatusId: null, StatusCode: null, Priority: null, CategoryId: null, ChannelId: null, ProductId: null,
       CustomerId: null, AssignedTo: null, Overdue: 0, Escalated: 0, Unassigned: 0, FromDate: null, ToDate: null,
-      UserId: 7, AccessibleBranchIdsJson: "[1,2,3,4,5]", OwnerIdsJson: null,
+      UserId: 7, AccessibleBranchIdsJson: "[1,2,3,4,5]", OwnerIdsJson: null, EscalatedSubtreeJson: null,
     });
+  });
+
+  // REGRESSION (S1, fix wave 2): the Escalated queue's overdue half was every overdue ticket in reach;
+  // it is "overdue in my ReportsTo subtree", so the subtree (incl. self) travels with Escalated only.
+  it("Escalated sends the caller's ReportsTo subtree (incl. self) as EscalatedSubtreeJson", async () => {
+    database.executeStoredProcedure.mockResolvedValue({ recordsets: [[], []] });
+    const req = baseReq({ body: { Escalated: true } });
+    req.access.teamOwners = [8, 9];
+    await ticketController.fetch(req, mockRes());
+    expect(JSON.parse(database.executeStoredProcedure.mock.calls[0][1].EscalatedSubtreeJson).sort()).toEqual([7, 8, 9]);
+    const solo = baseReq({ body: { Escalated: 1 } });
+    solo.access = undefined;
+    await ticketController.fetch(solo, mockRes());
+    expect(database.executeStoredProcedure.mock.calls[1][1].EscalatedSubtreeJson).toBe("[7]");
   });
 
   it("sends an ownership filter for a Self-scoped agent", async () => {
@@ -443,7 +465,7 @@ describe("ticketController.setStatus", () => {
       res,
     );
     expect(database.executeStoredProcedure).toHaveBeenLastCalledWith("sp_SetTicketStatus", {
-      CompId: 5, TicketId: 1, StatusId: 64, UserId: 7, ResolutionId: 8, Remarks: "Replaced the fuse", AllowReopen: 1,
+      CompId: 5, TicketId: 1, StatusId: 64, UserId: 7, ResolutionId: 8, Remarks: "Replaced the fuse", AllowReopen: 1, DueAtOverride: null,
     });
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(2); // lookup + status
     expect(res.status).toHaveBeenCalledWith(200);
@@ -669,7 +691,7 @@ describe("ticketController.reopen", () => {
     const res = mockRes();
     await ticketController.reopen(baseReq({ body: { TicketId: 1, Remarks: "Customer called back" } }), res);
     expect(database.executeStoredProcedure).toHaveBeenLastCalledWith("sp_ReopenTicket", {
-      CompId: 5, TicketId: 1, Remarks: "Customer called back", UserId: 7, AllowReopen: 1,
+      CompId: 5, TicketId: 1, Remarks: "Customer called back", UserId: 7, AllowReopen: 1, DueAtOverride: null,
     });
     expect(res.status).toHaveBeenCalledWith(200);
   });
@@ -1110,5 +1132,105 @@ describe("ticketController writes need the complaints edit right", () => {
     await ticketController[method](viewOnly(body), res);
     expect(res.status).toHaveBeenCalledWith(403);
     expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+});
+
+
+// ---- P4: DueAt on the working calendar (R-P4-3: only create, priority change, reopen stamp it)
+describe("ticketController — DueAtOverride", () => {
+  const ticketDue = require("../../../src/services/ticketDue");
+  const DUE = new Date("2026-10-12T06:30:00Z");
+  const saveParams = () => database.executeStoredProcedure.mock.calls.find((c) => c[0] === "sp_SaveTicket")[1];
+
+  it("create: TatHours of the chosen priority, assignee from the body, anchored now", async () => {
+    mockRoster(18);
+    mockCustomer();
+    database.executeStoredProcedure.mockResolvedValueOnce(okRow({ Id: 12 }));
+    ticketDue.priorityTatHours.mockResolvedValueOnce(4);
+    ticketDue.compute.mockResolvedValueOnce(DUE);
+    await ticketController.save(baseReq({ body: CREATE_BODY }), mockRes());
+    expect(ticketDue.priorityTatHours).toHaveBeenLastCalledWith(5, 3);
+    expect(ticketDue.compute).toHaveBeenLastCalledWith(5, { assigneeId: 18, tatHours: 4, anchorAt: expect.any(Date) });
+    expect(saveParams().DueAtOverride).toBe(DUE);
+  });
+
+  it("update with a changed priority re-stamps from TatAnchorAt, falling back to CreatedAt", async () => {
+    for (const row of [
+      { Priority: 2, AssignedTo: 18, TatAnchorAt: "2026-10-10T04:00:00Z", CreatedAt: "2026-10-01T04:00:00Z" },
+      { Priority: 2, AssignedTo: 18, TatAnchorAt: null, CreatedAt: "2026-10-01T04:00:00Z" },
+    ]) {
+      database.executeStoredProcedure.mockReset();
+      ticketDue.compute.mockClear();
+      mockTicketLookup(visibleTicket);
+      mockCustomer();
+      database.executeStoredProcedure.mockResolvedValueOnce({ recordset: [row] });
+      database.executeStoredProcedure.mockResolvedValueOnce(okRow());
+      ticketDue.priorityTatHours.mockResolvedValueOnce(4);
+      ticketDue.compute.mockResolvedValueOnce(DUE);
+      await ticketController.save(baseReq({ body: { Id: 1, ...CREATE_BODY } }), mockRes());
+      const anchor = ticketDue.compute.mock.calls[0][1].anchorAt;
+      expect(anchor.toISOString()).toBe(new Date(row.TatAnchorAt ?? row.CreatedAt).toISOString());
+      expect(ticketDue.compute.mock.calls[0][1].assigneeId).toBe(18);
+      expect(saveParams().DueAtOverride).toBe(DUE);
+    }
+  });
+
+  it("update with an unchanged or absent priority passes nothing", async () => {
+    mockTicketLookup(visibleTicket);
+    mockCustomer();
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordset: [{ Priority: 3, AssignedTo: 18 }] });
+    database.executeStoredProcedure.mockResolvedValueOnce(okRow());
+    ticketDue.compute.mockClear();
+    await ticketController.save(baseReq({ body: { Id: 1, ...CREATE_BODY } }), mockRes());
+    expect(ticketDue.compute).not.toHaveBeenCalled();
+    expect(saveParams().DueAtOverride).toBeNull();
+  });
+
+  it("a failing due lookup never fails the save: NULL is passed", async () => {
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    mockTicketLookup(visibleTicket);
+    mockCustomer();
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("sp missing"));
+    database.executeStoredProcedure.mockResolvedValueOnce(okRow());
+    const res = mockRes();
+    await ticketController.save(baseReq({ body: { Id: 1, ...CREATE_BODY } }), res);
+    expect(saveParams().DueAtOverride).toBeNull();
+    expect(res.status).toHaveBeenCalledWith(200);
+    spy.mockRestore();
+  });
+
+  it("setStatus passes NULL when the reopen stamp cannot be computed", async () => {
+    mockTicketLookup(visibleTicket);
+    database.executeStoredProcedure.mockResolvedValueOnce(okRow());
+    ticketDue.forReopen.mockResolvedValueOnce(null);
+    await ticketController.setStatus(baseReq({ body: { TicketId: 1, StatusId: 61, Remarks: "again" } }), mockRes());
+    expect(database.executeStoredProcedure.mock.calls.at(-1)[1].DueAtOverride).toBeNull();
+  });
+
+  it("setStatus passes the reopen stamp", async () => {
+    mockTicketLookup(visibleTicket);
+    database.executeStoredProcedure.mockResolvedValueOnce(okRow());
+    ticketDue.forReopen.mockResolvedValueOnce(DUE);
+    await ticketController.setStatus(baseReq({ body: { TicketId: 1, StatusId: 61, Remarks: "again" } }), mockRes());
+    expect(database.executeStoredProcedure).toHaveBeenLastCalledWith("sp_SetTicketStatus", expect.objectContaining({ DueAtOverride: DUE }));
+    expect(ticketDue.forReopen).toHaveBeenLastCalledWith(5, 1);
+  });
+
+  it("the reopen shortcut computes and passes the stamp", async () => {
+    mockTicketLookup(visibleTicket);
+    database.executeStoredProcedure.mockResolvedValueOnce(okRow());
+    ticketDue.forReopen.mockResolvedValueOnce(DUE);
+    await ticketController.reopen(baseReq({ body: { TicketId: 1, Remarks: "back" } }), mockRes());
+    expect(database.executeStoredProcedure).toHaveBeenLastCalledWith("sp_ReopenTicket", expect.objectContaining({ DueAtOverride: DUE }));
+  });
+
+  it("transfer passes no DueAtOverride (the clock belongs to the ticket)", async () => {
+    mockTicketLookup(visibleTicket);
+    mockRoster(18);
+    database.executeStoredProcedure.mockResolvedValueOnce(okRow());
+    await ticketController.transfer(baseReq({ body: { TicketId: 1, ToUserId: 18, ReasonId: 4, Remarks: "shift" } }), mockRes());
+    const last = database.executeStoredProcedure.mock.calls.at(-1);
+    expect(last[0]).toBe("sp_TransferTicket");
+    expect(last[1]).not.toHaveProperty("DueAtOverride");
   });
 });

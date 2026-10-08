@@ -2,7 +2,7 @@ jest.mock("../../../src/config/database", () => ({ executeStoredProcedure: jest.
 jest.mock("../../../src/services/calendarContext", () => ({ load: jest.fn(), settings: jest.fn() }));
 jest.mock("../../../src/services/sessionService", () => ({ forget: jest.fn() }));
 jest.mock("../../../src/realtime/events", () => ({ emitToUser: jest.fn() }));
-jest.mock("../../../src/services/tatService", () => ({ processPending: jest.fn() }));
+jest.mock("../../../src/services/tatService", () => ({ processPending: jest.fn(), processWork: jest.fn() }));
 
 const database = require("../../../src/config/database");
 const cc = require("../../../src/services/calendarContext");
@@ -66,6 +66,15 @@ describe("runOnce", () => {
     cc.load.mockResolvedValue(ctx);
     await sweep.runOnce(ist("10:00"));
     expect(calls("sp_MarkNotSignedIn")).toHaveLength(0);
+  });
+
+  it("N3: skips a person created on/after the day's effective start (regression), marks one created before", async () => {
+    stub({ cands: [{ UserId: 7, BranchId: 2, CreatedDate: ist("12:10") }] });
+    await sweep.runOnce(ist("12:30"));
+    expect(calls("sp_MarkNotSignedIn")).toHaveLength(0);
+    stub({ cands: [{ UserId: 7, BranchId: 2, CreatedDate: ist("08:59") }] });
+    await sweep.runOnce(ist("12:30"));
+    expect(calls("sp_MarkNotSignedIn")).toHaveLength(1);
   });
 
   it("ignores a shift that started yesterday", async () => {
@@ -197,6 +206,8 @@ describe("tatStep", () => {
     const now = ist("10:00");
     await sweep.tatStep(1, now);
     expect(tatService.processPending).toHaveBeenCalledWith(1, null, now);
+    expect(tatService.processWork).toHaveBeenCalledWith(1);
+    expect(tatService.processPending.mock.invocationCallOrder[0]).toBeLessThan(tatService.processWork.mock.invocationCallOrder[0]);
     expect(calls("sp_TatSweep")).toEqual([{ CompId: 1 }]);
     const { SCOPES } = require("../../../src/realtime/contract");
     expect(emitToUser.mock.calls).toEqual([[3, SCOPES.NOTIFICATIONS], [4, SCOPES.NOTIFICATIONS]]);

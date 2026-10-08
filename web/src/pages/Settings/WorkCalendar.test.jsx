@@ -46,6 +46,46 @@ const CALS = [
 describe("WorkCalendar", () => {
   beforeEach(() => { seed(CALS); asEditor(true); });
 
+  it("lists shifts as a table with hours summary, Default chip and people counts", async () => {
+    seed([
+      { Id: 1, Name: "General", IsDefault: 1, UserCount: 1, DaysJson: [1, 2, 3, 4, 5, 6].map((d) => ({ d, on: true, start: "09:00", end: "18:00", breakStart: "13:00", breakEnd: "14:00" })) },
+      { Id: 2, Name: "Night", IsDefault: 0, UserCount: 2, DaysJson: [1, 2, 3, 4, 5].map((d) => ({ d, on: true, start: "21:00", end: "06:00" })) },
+      { Id: 3, Name: "Mixed", IsDefault: 0, UserCount: 0, DaysJson: [{ d: 1, on: true, start: "09:00", end: "17:00" }, { d: 2, on: true, start: "10:00", end: "17:00" }, { d: 3, on: false, start: "10:00", end: "17:00" }] },
+      { Id: 4, Name: "Off", IsDefault: 0, UserCount: 0, DaysJson: null },
+    ]);
+    renderWithProviders(<WorkCalendar />);
+    const table = await screen.findByTestId("shifts-table");
+    expect(within(table).getByRole("columnheader", { name: "Hours" })).toBeInTheDocument();
+    expect(within(table).getByText("Mon–Sat 09:00–18:00 · break 13:00–14:00")).toBeInTheDocument();
+    expect(within(table).getByText("Mon–Fri 21:00–06:00")).toBeInTheDocument();
+    expect(within(table).getByText("Mon 09:00–17:00; Tue 10:00–17:00")).toBeInTheDocument();
+    expect(within(table).getByText("No working days")).toBeInTheDocument();
+    expect(within(table).getByText("Default")).toBeInTheDocument();
+    expect(within(table).getByText("1 person")).toBeInTheDocument();
+    expect(within(table).getByText("2 people")).toBeInTheDocument();
+    expect(within(table).getAllByText("Edit")).toHaveLength(4);
+  });
+
+  it("read-only users see the shifts table without actions", async () => {
+    asEditor(false);
+    renderWithProviders(<WorkCalendar />);
+    const table = await screen.findByTestId("shifts-table");
+    expect(within(table).queryByRole("columnheader", { name: "Actions" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit General" })).toBeNull();
+  });
+
+  it("the shift editor has column headers and groups the same warning across days", async () => {
+    const user = userEvent.setup();
+    seed([{ Id: 2, Name: "Night", IsDefault: 0, UserCount: 0, DaysJson: [1, 2, 3, 4, 5].map((d) => ({ d, on: true, start: "21:00", end: "06:00", breakStart: "01:00", breakEnd: "02:00" })) }]);
+    renderWithProviders(<WorkCalendar />);
+    await user.click(await screen.findByRole("button", { name: "Edit Night" }));
+    const heads = within(screen.getByTestId("shift-day-headers"));
+    for (const h of ["Day", "Working", "Start", "End", "Break start", "Break end"]) expect(heads.getByText(h)).toBeInTheDocument();
+    const w = screen.getByTestId("shift-warnings");
+    expect(w).toHaveTextContent("Night hours (21:00–06:00) on Mon–Fri — check the rules for women staff");
+    expect(w.children).toHaveLength(1);
+  });
+
   it("saves a shift with a break edit and sends the 7 days", async () => {
     const user = userEvent.setup();
     renderWithProviders(<WorkCalendar />);
@@ -70,7 +110,7 @@ describe("WorkCalendar", () => {
     const end = screen.getByLabelText("Monday End");
     await user.clear(end);
     await user.type(end, "21:30");
-    expect(await screen.findByTestId("shift-warnings")).toHaveTextContent("> 9 hours on Monday");
+    expect(await screen.findByTestId("shift-warnings")).toHaveTextContent("> 9 hours on Mon");
     await user.click(screen.getByRole("button", { name: "Save shift" }));
     await waitFor(() => expect(bodies["work/saveWorkCalendar"]).toMatchObject({ Id: 0, Name: "Late", IsDefault: false }));
   });
@@ -89,7 +129,10 @@ describe("WorkCalendar", () => {
     const user = userEvent.setup();
     renderWithProviders(<WorkCalendar />);
     await user.click(await screen.findByTestId("work-calendar-tabs-holidays"));
-    expect(await screen.findByText("Diwali")).toBeInTheDocument();
+    const table = await screen.findByTestId("holidays-table");
+    expect(within(table).getByText("Diwali")).toBeInTheDocument();
+    expect(within(table).getByText("09 Nov 2026")).toBeInTheDocument();
+    expect(within(table).getByText("All offices")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Edit Diwali" }));
     const name = screen.getByLabelText("Holiday name");
     await user.clear(name);

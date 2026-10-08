@@ -5,6 +5,7 @@
 import { useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { Box } from "@mui/material";
+import { Pencil, Trash2 } from "lucide-react";
 import { useSnackbar } from "notistack";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -32,10 +33,13 @@ import {
   deleteHoliday,
   saveTatPolicy,
 } from "../../api/workQueries";
-import shiftWarnings from "./shiftWarnings";
+import { ReportTable } from "../Reports/ReportShell";
+import Chip from "../../components/ui/Chip";
+import shiftWarnings, { dayRange } from "./shiftWarnings";
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0]; // shown Monday first
+const DAY_GRID = "100px 70px repeat(4, minmax(90px, 1fr))";
 const PRIORITIES = ["critical", "high", "medium", "low"];
 const TABS = [
   { value: "shifts", label: "Shifts" },
@@ -108,12 +112,15 @@ function ShiftEditor({ calendar, onClose }) {
         <Box sx={{ display: "grid", gap: 1.5 }}>
           <TextInput label="Shift name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. General" />
           <Checkbox label="Company default shift" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} />
+          <Box sx={{ display: "grid", gridTemplateColumns: DAY_GRID, gap: 1, fontSize: 12, fontWeight: 600 }} data-testid="shift-day-headers">
+            {["Day", "Working", "Start", "End", "Break start", "Break end"].map((h) => <span key={h}>{h}</span>)}
+          </Box>
           {WEEK_ORDER.map((d) => {
             const x = days.find((r) => r.d === d);
             return (
-              <Box key={d} sx={{ display: "grid", gridTemplateColumns: "110px 110px repeat(4, minmax(90px, 1fr))", gap: 1, alignItems: "end" }}>
-                <Switch label={DAY_NAMES[d]} checked={x.on} onChange={(e) => patch(d, { on: e.target.checked })} />
-                <span />
+              <Box key={d} sx={{ display: "grid", gridTemplateColumns: DAY_GRID, gap: 1, alignItems: "center" }}>
+                <span>{DAY_NAMES[d]}</span>
+                <Switch aria-label={`${DAY_NAMES[d]} working`} checked={x.on} onChange={(e) => patch(d, { on: e.target.checked })} />
                 {[["start", "Start"], ["end", "End"], ["breakStart", "Break start"], ["breakEnd", "Break end"]].map(([k, l]) => (
                   <TextInput
                     key={k} type="time" size="sm" disabled={!x.on}
@@ -139,39 +146,63 @@ function ShiftEditor({ calendar, onClose }) {
   );
 }
 
+// "Mon–Sat 09:00–18:00 · break 13:00–14:00"; days with different hours become separate parts.
+function hoursSummary(days) {
+  const groups = new Map();
+  for (const x of Array.isArray(days) ? days : []) {
+    if (!x?.on) continue;
+    const hasBreak = x.breakStart && x.breakEnd;
+    const key = `${x.start}–${x.end}${hasBreak ? ` · break ${x.breakStart}–${x.breakEnd}` : ""}`;
+    groups.set(key, [...(groups.get(key) ?? []), x.d]);
+  }
+  if (groups.size === 0) return "No working days";
+  return [...groups].map(([hours, ds]) => `${dayRange(ds)} ${hours}`).join("; ");
+}
+
+function RowActions({ name, canEdit, onEdit, onDelete, deleteBlocked }) {
+  if (!canEdit) return null;
+  return (
+    <span style={{ display: "inline-flex", gap: 6 }}>
+      <Button variant="outlined" size="sm" leftIcon={<Pencil size={14} />} aria-label={`Edit ${name}`} onClick={onEdit}>Edit</Button>
+      <Tooltip title={deleteBlocked}>
+        <span>
+          <Button
+            variant="outlined" size="sm" leftIcon={<Trash2 size={14} />} aria-label={`Delete ${name}`}
+            disabled={Boolean(deleteBlocked)} onClick={onDelete}
+          >
+            Delete
+          </Button>
+        </span>
+      </Tooltip>
+    </span>
+  );
+}
+
 function ShiftsTab({ calendars, canEdit, confirmation, run }) {
   const [editing, setEditing] = useState(undefined); // undefined closed, null new, row edit
+  const blockedOf = (c) => (c.IsDefault ? "The default shift cannot be deleted" : c.UserCount > 0 ? `${c.UserCount} people use this shift` : "");
+  const people = (c) => `${c.UserCount ?? 0} ${Number(c.UserCount) === 1 ? "person" : "people"}`;
+  const columns = [
+    { header: "Name", cell: (c) => <><strong>{c.Name}</strong>{c.IsDefault ? <> <Chip size="sm" tone="primary" label="Default" /></> : null}</> },
+    { header: "Hours", cell: (c) => hoursSummary(c.DaysJson) },
+    { header: "People", cell: people },
+    ...(canEdit ? [{
+      header: "Actions", key: "actions", align: "right",
+      cell: (c) => (
+        <RowActions
+          name={c.Name} canEdit onEdit={() => setEditing(c)} deleteBlocked={blockedOf(c)}
+          onDelete={() => confirmation.confirmDelete({
+            title: "Delete shift", message: `Delete "${c.Name}"?`, confirmText: "Delete shift",
+            onConfirm: () => run(() => deleteWorkCalendar({ Id: c.Id }), "Shift deleted"),
+          })}
+        />
+      ),
+    }] : []),
+  ];
   return (
-    <Box sx={{ display: "grid", gap: 1 }}>
+    <Box sx={{ display: "grid", gap: 1.5 }}>
       {canEdit && <div><Button onClick={() => setEditing(null)}>New shift</Button></div>}
-      {calendars.map((c) => {
-        const blocked = c.IsDefault ? "The default shift cannot be deleted" : c.UserCount > 0 ? `${c.UserCount} people use this shift` : "";
-        return (
-          <Box key={c.Id} sx={{ display: "flex", gap: 1.5, alignItems: "center" }}>
-            <strong>{c.Name}</strong>
-            {c.IsDefault ? <span>Default</span> : null}
-            <span>{c.UserCount ?? 0} people</span>
-            {canEdit && (
-              <>
-                <Button variant="ghost" size="sm" onClick={() => setEditing(c)}>Edit {c.Name}</Button>
-                <Tooltip title={blocked}>
-                  <span>
-                    <Button
-                      variant="ghost" size="sm" disabled={Boolean(blocked)}
-                      onClick={() => confirmation.confirmDelete({
-                        title: "Delete shift", message: `Delete "${c.Name}"?`, confirmText: "Delete shift",
-                        onConfirm: () => run(() => deleteWorkCalendar({ Id: c.Id }), "Shift deleted"),
-                      })}
-                    >
-                      Delete {c.Name}
-                    </Button>
-                  </span>
-                </Tooltip>
-              </>
-            )}
-          </Box>
-        );
-      })}
+      <ReportTable testId="shifts-table" rows={calendars} columns={columns} rowKey={(c) => c.Id} />
       {editing !== undefined && <ShiftEditor calendar={editing} onClose={() => setEditing(undefined)} />}
     </Box>
   );
@@ -208,33 +239,37 @@ function HolidayEditor({ holiday, offices, onClose }) {
   );
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const holidayDate = (v) => {
+  const [y, m, d] = dateOnly(v).split("-");
+  return y && MONTHS[Number(m) - 1] ? `${d} ${MONTHS[Number(m) - 1]} ${y}` : "";
+};
+
 function HolidaysTab({ holidays, offices, canEdit, confirmation, run }) {
   const [editing, setEditing] = useState(undefined);
+  const columns = [
+    { header: "Date", cell: (h) => holidayDate(h.HolidayDate) },
+    { header: "Name", cell: (h) => <strong>{h.Name}</strong> },
+    { header: "Office", cell: (h) => h.BranchName || "All offices" },
+    ...(canEdit ? [{
+      header: "Actions", key: "actions", align: "right",
+      cell: (h) => (
+        <RowActions
+          name={h.Name} canEdit onEdit={() => setEditing(h)}
+          onDelete={() => confirmation.confirmDelete({
+            title: "Delete holiday", message: `Delete "${h.Name}"?`, confirmText: "Delete holiday",
+            onConfirm: () => run(() => deleteHoliday({ Id: h.Id }), "Holiday deleted"),
+          })}
+        />
+      ),
+    }] : []),
+  ];
   return (
-    <Box sx={{ display: "grid", gap: 1 }}>
+    <Box sx={{ display: "grid", gap: 1.5 }}>
       {canEdit && <div><Button onClick={() => setEditing(null)}>New holiday</Button></div>}
-      {holidays.length === 0 && <p>No holidays yet.</p>}
-      {holidays.map((h) => (
-        <Box key={h.Id} sx={{ display: "flex", gap: 1.5, alignItems: "center" }}>
-          <span>{dateOnly(h.HolidayDate)}</span>
-          <strong>{h.Name}</strong>
-          <span>{h.BranchName || "All offices"}</span>
-          {canEdit && (
-            <>
-              <Button variant="ghost" size="sm" onClick={() => setEditing(h)}>Edit {h.Name}</Button>
-              <Button
-                variant="ghost" size="sm"
-                onClick={() => confirmation.confirmDelete({
-                  title: "Delete holiday", message: `Delete "${h.Name}"?`, confirmText: "Delete holiday",
-                  onConfirm: () => run(() => deleteHoliday({ Id: h.Id }), "Holiday deleted"),
-                })}
-              >
-                Delete {h.Name}
-              </Button>
-            </>
-          )}
-        </Box>
-      ))}
+      {holidays.length === 0 ? <p>No holidays yet.</p> : (
+        <ReportTable testId="holidays-table" rows={holidays} columns={columns} rowKey={(h) => h.Id} />
+      )}
       {editing !== undefined && <HolidayEditor holiday={editing} offices={offices} onClose={() => setEditing(undefined)} />}
     </Box>
   );

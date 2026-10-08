@@ -11,7 +11,7 @@ import { PRIORITY_OPTIONS } from "./helpers";
 // an empty target (company default) stays distinct from 0 (no clock).
 // DueTime arrives as "HH:mm" (or "HH:mm:ss"); anything else reads as no time.
 const dueTimeOf = (task) => /^\d{2}:\d{2}/.test(task.DueTime ?? "") ? task.DueTime.slice(0, 5) : "";
-const tatHoursOf = (task) => (task.TatMinutes == null ? "" : String(Number(task.TatMinutes) / 60));
+const tatHoursOf = (task) => (task.TatMinutes == null ? "" : String(Math.round((Number(task.TatMinutes) / 60) * 100) / 100));
 
 // Details/edit concern: the editable mirror of the task, whether it diverged
 // from the server copy, and the save that pushes it back.

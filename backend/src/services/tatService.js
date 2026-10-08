@@ -118,6 +118,37 @@ async function processPending(compId, taskId = null, now = new Date()) {
   return { updated: Number(status?.Updated) || 0 };
 }
 
+/**
+ * Worked minutes for closed clocks (P4): working time from AnchorAt (or AssignedAt)
+ * to ClosedAt less HeldMinutes and any ended holds not yet applied (RS2), never negative. sp_TatReconcile clears WorkMinutes
+ * when a clock reopens, so it is recomputed here on its next close. Never throws.
+ */
+async function processWork(compId) {
+  try {
+    const pending = await database.executeStoredProcedure("sp_TatPendingWork", { CompId: compId });
+    const clocks = rows(pending);
+    if (!clocks.length) return { updated: 0 };
+    const holds = rows(pending, 1); // ended holds not yet folded into HeldMinutes
+    const startOf = (c) => new Date(c.AnchorAt ?? c.AssignedAt);
+    const fromKey = addDays(dateKey(new Date(Math.min(...clocks.map((c) => startOf(c).getTime())))), -1);
+    const toKey = dateKey(new Date(Math.max(...clocks.map((c) => t(c.ClosedAt)))));
+    const info = await calendarContext.load(compId, [...new Set(clocks.map((c) => Number(c.UserId)))], fromKey, toKey);
+    const items = clocks.map((c) => {
+      const ctx = info.get(Number(c.UserId))?.ctx ?? DEFAULT_CTX;
+      const unapplied = holds.filter((h) => Number(h.TatId) === Number(c.Id))
+        .reduce((n, h) => n + workingMinutesBetween(new Date(h.StartedAt), new Date(h.EndedAt), ctx), 0);
+      const worked = workingMinutesBetween(startOf(c), new Date(c.ClosedAt), ctx) - (Number(c.HeldMinutes) || 0) - unapplied;
+      return { Id: Number(c.Id), WorkMinutes: Math.max(0, worked) };
+    });
+    const status = rows(await database.executeStoredProcedure("sp_TatApplyWork", { CompId: compId, ItemsJson: JSON.stringify(items) }))[0];
+    if (Number(status?.ResponseCode) !== 200) console.error("TAT_WORK_APPLY failed:", status?.ResponseMess);
+    return { updated: Number(status?.Updated) || 0 };
+  } catch (err) {
+    console.error("TAT_WORK skipped:", err.message);
+    return { updated: 0 };
+  }
+}
+
 /** After a task write: mark the task's clocks stale when a target moved, then reconcile it. Never throws. */
 async function afterTaskWrite(req, taskId, { changed } = {}) {
   try {
@@ -153,4 +184,4 @@ async function reasonNeeded(req, taskId) {
   }
 }
 
-module.exports = { computeDue, processPending, afterTaskWrite, acknowledge, reasonNeeded };
+module.exports = { computeDue, processPending, processWork, afterTaskWrite, acknowledge, reasonNeeded };

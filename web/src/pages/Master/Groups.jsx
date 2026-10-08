@@ -279,7 +279,16 @@ const Groups = () => {
               New Group
             </Button>
           </Box>
-          {groups.length === 0 ? (
+          {groupsQuery.isError ? (
+            <EmptyState
+              title="Couldn't load roles"
+              action={
+                <Button size="sm" variant="ghost" onClick={() => groupsQuery.refetch()} data-testid="roles-retry">
+                  Retry
+                </Button>
+              }
+            />
+          ) : groups.length === 0 ? (
             <Box sx={{ p: 2, fontSize: 13, color: p.text.tertiary }}>No roles yet.</Box>
           ) : (
             groups.map((g) => {

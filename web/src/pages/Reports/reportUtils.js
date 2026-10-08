@@ -120,6 +120,10 @@ export function formatValue(format, v) {
       return formatCurrency(v, { empty: "—" });
     case "days":
       return `${Number(v).toFixed(1)} d`;
+    case "minutes": {
+      const m = Math.round(Number(v));
+      return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`;
+    }
     case "hours":
       return `${Number(v).toFixed(1)} h`;
     case "date":

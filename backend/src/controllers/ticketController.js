@@ -12,6 +12,7 @@ const {
 const { assertCustomerVisible } = require("./customerController");
 const { positiveInt, pageParams } = require("../utils/controllerKit");
 const { parseDay } = require("../utils/reportKit");
+const ticketDue = require("../services/ticketDue");
 
 // Mutating SPs log their own activity server-side and return exactly one
 // status row: Id + ResponseCode + ResponseMess (+ TicketNo from sp_SaveTicket).
@@ -105,7 +106,31 @@ const ticketController = {
     // A ticket may only hang off a customer the caller can see (customers scope).
     if (fields.CustomerId
         && !(await assertCustomerVisible(req, res, fields.CustomerId, scopeFor(req, "customers")))) return;
-    return runSp(res, "sp_SaveTicket", { Id, CompId, BranchId, UserId, ...fields }, "Failed to save ticket");
+    // P4: DueAt on the assignee's working calendar. Create always stamps; an
+    // update re-stamps only when the priority changed (from the original anchor).
+    // A transfer never does (R-P4-3). Any failure sends null = the SP's old clock.
+    let DueAtOverride = null;
+    try {
+      if (Id === 0) {
+        DueAtOverride = await ticketDue.compute(CompId, {
+          assigneeId: fields.AssignedTo,
+          tatHours: await ticketDue.priorityTatHours(CompId, fields.Priority),
+          anchorAt: new Date(),
+        });
+      } else if (fields.Priority) {
+        const rs = (await database.executeStoredProcedure("sp_FetchTicketDue", { CompId, TicketId: Id }))?.recordset?.[0];
+        if (rs && Number(rs.Priority) !== fields.Priority) {
+          DueAtOverride = await ticketDue.compute(CompId, {
+            assigneeId: rs.AssignedTo,
+            tatHours: await ticketDue.priorityTatHours(CompId, fields.Priority),
+            anchorAt: new Date(rs.TatAnchorAt ?? rs.CreatedAt),
+          });
+        }
+      }
+    } catch (err) {
+      console.error("TICKET_DUE_FAILED:", err.message);
+    }
+    return runSp(res, "sp_SaveTicket", { Id, CompId, BranchId, UserId, ...fields, DueAtOverride }, "Failed to save ticket");
   },
 
   async fetch(req, res) {
@@ -141,6 +166,10 @@ const ticketController = {
         FromDate: isoDay(b.FromDate),
         ToDate: isoDay(b.ToDate),
         ...scopeParams(req),
+        // Escalated = escalated to me OR overdue in my ReportsTo subtree (incl. self), not overdue anywhere in reach.
+        EscalatedSubtreeJson: bit(b.Escalated)
+          ? JSON.stringify([...new Set([...(req.access?.teamOwners ?? []), Number(req.user.UserId)])])
+          : null,
       });
 
       const tickets = result.recordsets?.[0] ?? [];
@@ -214,6 +243,9 @@ const ticketController = {
         ResolutionId: positiveInt(req.body.ResolutionId),
         Remarks: trimmed(req.body.Remarks),
         AllowReopen: canReopen(req, ticket) ? 1 : 0,
+        // The SP uses it only on a reopen; computed for every move since Node
+        // does not know which moves are reopens.
+        DueAtOverride: await ticketDue.forReopen(CompId, TicketId),
       },
       "Failed to update ticket status",
     );
@@ -267,7 +299,10 @@ const ticketController = {
     return runSp(
       res,
       "sp_ReopenTicket",
-      { CompId, TicketId, Remarks: trimmed(req.body.Remarks), UserId, AllowReopen: canReopen(req, ticket) ? 1 : 0 },
+      {
+        CompId, TicketId, Remarks: trimmed(req.body.Remarks), UserId, AllowReopen: canReopen(req, ticket) ? 1 : 0,
+        DueAtOverride: await ticketDue.forReopen(CompId, TicketId),
+      },
       "Failed to reopen ticket",
     );
   },

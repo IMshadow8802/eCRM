@@ -32,10 +32,10 @@ import {
 const defaultDrill = (row, filters) => leadsUrl(drillParams(filters, row));
 
 const PICKERS = [
-  ["BranchId", "All branches"],
-  ["OwnerId", "All owners"],
-  ["SourceId", "All sources"],
-  ["ProductId", "All products"],
+  ["branch", "BranchId", "All branches"],
+  ["owner", "OwnerId", "All owners"],
+  ["source", "SourceId", "All sources"],
+  ["product", "ProductId", "All products"],
 ];
 
 /**
@@ -60,6 +60,9 @@ export default function ReportPage({
   // A page's own default date basis. Falls back to the first offered basis, so
   // a single-basis page posts the basis it advertises instead of "created".
   defaultBasis = dateBases[0]?.value ?? "created",
+  // Which filter pickers to show, and what the owner one is called.
+  pickers = ["branch", "owner", "source", "product"],
+  ownerPlaceholder = "All owners",
 }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -75,17 +78,21 @@ export default function ReportPage({
 
   // Pick-lists. The owner roster is the caller's assignable set, so the filter
   // can never name someone the report would not show anyway.
+  // A picker that is hidden fetches nothing.
+  const has = (name) => pickers.includes(name);
   const { data: branchData } = useApiQuery({
     queryKey: ["branches"],
     endpoint: SALES_ENDPOINTS.users.fetchBranches,
+    enabled: has("branch"),
     showErrorMessage: false,
   });
-  const { users } = useAssignableUsers();
-  const { lookups: sources } = useLookups("lead_source", { showErrorMessage: false });
+  const { users } = useAssignableUsers({ enabled: has("owner") });
+  const { lookups: sources } = useLookups("lead_source", { enabled: has("source"), showErrorMessage: false });
   const { data: productData } = useApiQuery({
     queryKey: ["products", "active"],
     endpoint: SALES_ENDPOINTS.products.fetchProducts,
     params: { PageSize: 200, IsActive: true },
+    enabled: has("product"),
     showErrorMessage: false,
   });
   const opts = {
@@ -209,11 +216,11 @@ export default function ReportPage({
             />
           </Box>
         )}
-        {PICKERS.map(([key, placeholder]) => (
+        {PICKERS.filter(([name]) => pickers.includes(name)).map(([name, key, placeholder]) => (
           <Box key={key} sx={{ width: 170 }}>
             <Combobox
               size="sm"
-              placeholder={placeholder}
+              placeholder={name === "owner" ? ownerPlaceholder : placeholder}
               options={opts[key]}
               value={optById(opts[key], filters[key])}
               onChange={(o) => update({ [key]: o?.value ?? null })}

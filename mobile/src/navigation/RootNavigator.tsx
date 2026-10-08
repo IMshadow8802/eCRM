@@ -1,4 +1,4 @@
-import { NavigationContainer } from "@react-navigation/native";
+import { NavigationContainer, type NavigatorScreenParams } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createStackNavigator } from "@react-navigation/stack";
 
@@ -23,7 +23,7 @@ import FloatingTabBar from "./FloatingTabBar";
 
 export type RootStackParamList = {
   Login: undefined;
-  Tabs: undefined;
+  Tabs: NavigatorScreenParams<TabParamList> | undefined;
   /** Pushed from any tab. Only the id travels — the screen fetches the task. */
   TaskDetail: { taskId: number; workspaceId: number | null };
   /** Boards moved off the tab bar and is now reached through the Work hub. */

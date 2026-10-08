@@ -291,6 +291,16 @@ describe("Today", () => {
     expect(calls("sp_FetchPresence")[0]).toEqual({ CompId: 1, WorkDate: at(TODAY, 0), UserIdsJson: "[7]" });
   });
 
+  it("N2: Today re-derives late from the current marks (a half-day leave after sign-in clears it)", async () => {
+    const signIn = at(TODAY, 12 * 60 + 14);
+    stubToday([{ UserId: 7, FirstSignInAt: signIn, SignedOutAt: signIn, LateMinutes: 194, MarkKind: "leave", MarkPart: "first_half" }]);
+    cc.load.mockResolvedValue(new Map([[7, { ctx: { ...ctx, marks: new Map([[TODAY, { kind: "leave", part: "first_half" }]]) } }]]));
+    cc.settings.mockResolvedValue({ lateGraceMin: 10 });
+    const p = data(await run("fetchToday")).presence;
+    expect(p.LateMinutes).toBe(0);
+    expect(p.status.late).toBeUndefined();
+  });
+
   it("fetchToday with no presence row still has a status (holiday / leave)", async () => {
     stubToday([{ UserId: 7 }]);
     cc.load.mockResolvedValue(new Map([[7, { ctx: { ...ctx, holidays: new Set([TODAY]) } }]]));

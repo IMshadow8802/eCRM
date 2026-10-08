@@ -54,6 +54,13 @@ function variantStyles(variant, tokens) {
         color: p.primary.main,
         hover: { background: p.primary.border, color: p.primary.hover },
       };
+    case "outlined":
+      return {
+        background: "transparent",
+        color: p.text.primary,
+        boxShadow: `inset 0 0 0 1px ${p.border.default}`,
+        hover: { background: p.surface.subtle },
+      };
     case "ghost":
       return {
         background: "transparent",

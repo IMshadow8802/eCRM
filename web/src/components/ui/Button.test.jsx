@@ -84,6 +84,7 @@ describe("Button", () => {
       "hero",
       "secondary",
       "tonal",
+      "outlined",
       "ghost",
       "destructive",
       "text",

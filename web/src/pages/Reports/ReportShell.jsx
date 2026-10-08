@@ -164,7 +164,7 @@ export function ReportBarChart({ data, xKey, bars, legend = true, height = 260 }
  * keyboard-activatable. Without it the table renders exactly as before — no
  * handler, no cursor, no tab stop — so the ticket reports are untouched.
  */
-export function ReportTable({ rows, columns, rowKey, testId, onRowClick }) {
+export function ReportTable({ rows, columns, rowKey, testId, onRowClick, rowTestId }) {
   const clickProps = onRowClick
     ? (row) => ({
         hover: true,
@@ -200,7 +200,7 @@ export function ReportTable({ rows, columns, rowKey, testId, onRowClick }) {
         </TableHead>
         <TableBody>
           {rows.map((row) => (
-            <TableRow key={rowKey(row)} {...clickProps(row)}>
+            <TableRow key={rowKey(row)} data-testid={rowTestId?.(row)} {...clickProps(row)}>
               {columns.map((c) => (
                 <TableCell key={c.key ?? c.header} align={c.align}>
                   {c.cell(row)}

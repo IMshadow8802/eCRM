@@ -61,6 +61,30 @@ describe("Today", () => {
     expect(rows.map((r) => r.getAttribute("data-testid"))).toEqual(["clock-1", "clock-2", "clock-3"]);
   });
 
+  it("shows the day mark as a badge: half leave, full leave, on duty", async () => {
+    const row = (UserId, FullName, status) => ({ UserId, FullName, status, FirstSignInAt: null, Open: 0, AtRisk: 0, Over: 0, ReasonPending: 0 });
+    setup({ teamRows: [
+      row(5, "Asha", { code: "online", label: "Online", half: "first_half" }),
+      row(6, "Ravi", { code: "offline", label: "Offline", half: "second_half" }),
+      row(7, "Meena", { code: "on_duty", label: "On duty" }),
+      row(8, "Kiran", { code: "leave", label: "On leave" }),
+      row(9, "Plain", { code: "offline", label: "Offline" }),
+    ] });
+    view("/today?tab=team");
+    await screen.findByTestId("team-table");
+    expect(within(screen.getByTestId("team-row-5")).getByText("On leave · first half")).toBeInTheDocument();
+    expect(within(screen.getByTestId("team-row-6")).getByText("On leave · second half")).toBeInTheDocument();
+    expect(within(screen.getByTestId("team-row-7")).getByText("On duty")).toBeInTheDocument();
+    expect(within(screen.getByTestId("team-row-8")).getByText("On leave")).toBeInTheDocument();
+    expect(within(screen.getByTestId("team-row-9")).queryByText(/On leave|On duty/)).toBeNull();
+  });
+
+  it("Mine shows the day mark badge", async () => {
+    setup({ today: { presence: { FirstSignInAt: null, status: { code: "online", label: "Online", half: "second_half" } } } });
+    view();
+    expect(await screen.findByText("On leave · second half")).toBeInTheDocument();
+  });
+
   it("team Day filter sends WorkDate", async () => {
     let body;
     server.use(http.post("*/api/tat/fetchTeamToday", async ({ request }) => { body = await request.json(); return ok({ team }); }));

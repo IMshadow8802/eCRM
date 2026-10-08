@@ -52,6 +52,8 @@ describe("presenceStatus", () => {
       { code: "online", label: "Online", late: "Late by 30 min" }],
     ["open session but quiet for > 5 min", { ...base, FirstSignInAt: seen(60), HasOpenSession: true, LastSeenAt: seen(6) }, false, { code: "offline", label: "Offline" }],
     ["signed out", { ...base, FirstSignInAt: seen(60), SignedOutAt: seen(5) }, false, { code: "signed_out", label: "Signed out" }],
+    ["re-signed in after a sign-out, heartbeat fresh (regression)", { ...base, FirstSignInAt: seen(120), SignedOutAt: seen(22), HasOpenSession: true, LastSeenAt: seen(1) }, false, { code: "online", label: "Online" }],
+    ["re-signed in after a sign-out, heartbeat stale (regression)", { ...base, FirstSignInAt: seen(120), SignedOutAt: seen(22), HasOpenSession: true, LastSeenAt: seen(11) }, false, { code: "offline", label: "Offline" }],
     ["signed in earlier, no session now", { ...base, FirstSignInAt: seen(60) }, false, { code: "offline", label: "Offline" }],
     ["inside grace", { ...base, ShiftStart: ist(DAY, "09:55") }, false, { code: "not_signed_in_yet", label: "Not signed in yet" }],
     ["past grace", base, false, { code: "not_signed_in", label: "Not signed in" }],
@@ -62,6 +64,13 @@ describe("presenceStatus", () => {
       { code: "not_signed_in", label: "Not signed in", half: "second_half" }],
   ])("%s", (_l, row, holiday, want) => {
     expect(presenceStatus(row, NOW, S, holiday)).toEqual(want);
+  });
+
+  it("N9: lateness shows on Signed out and Offline too, not only Online (regression)", () => {
+    const late = { ...base, FirstSignInAt: seen(60), LateMinutes: 194 };
+    expect(presenceStatus({ ...late, SignedOutAt: seen(5) }, NOW, S, false)).toEqual({ code: "signed_out", label: "Signed out", late: "Late by 194 min" });
+    expect(presenceStatus(late, NOW, S, false)).toEqual({ code: "offline", label: "Offline", late: "Late by 194 min" });
+    expect(presenceStatus({ ...late, MarkKind: "on_duty", MarkPart: "full" }, NOW, S, false)).toEqual({ code: "on_duty", label: "On duty" });
   });
 
   it("grace defaults to 0 when settings are missing", () => {
@@ -151,6 +160,28 @@ describe("fetchPresence", () => {
     const res = mockRes();
     await c.fetchPresence(req({ WorkDate: DAY, UserIds: [8] }), res);
     expect(out(res).data.presence[0].status.code).toBe("online");
+  });
+
+  it("N2/N9: late is re-derived from the current marks — a first-half leave clears a 12:14 sign-in (regression)", async () => {
+    visibleUserIds.mockResolvedValue(null);
+    jest.setSystemTime(ist(DAY, "15:00"));
+    const signedOut = { FirstSignInAt: ist(DAY, "12:14"), SignedOutAt: ist(DAY, "14:30"), LateMinutes: 194, MarkKind: "leave", MarkPart: "first_half" };
+    database.executeStoredProcedure.mockResolvedValue({ recordsets: [[
+      row(8, signedOut),
+      row(9, { ...signedOut, FirstSignInAt: ist(DAY, "14:05"), LateMinutes: 305 }), // inside the 10 min grace after the 14:00 break end
+      row(10, { FirstSignInAt: ist(DAY, "12:14"), SignedOutAt: ist(DAY, "14:30"), LateMinutes: 0 }), // stored 0, really 194 late
+      row(11, { FirstSignInAt: ist(DAY, "12:14"), SignedOutAt: ist(DAY, "14:30"), LateMinutes: 50 }), // no ctx: stored value is used
+    ]] });
+    const half = ctxInfo({ ctx: { days: DEFAULT_DAYS, holidays: new Set(), marks: new Map([[DAY, { kind: "leave", part: "first_half" }]]) } });
+    cc.load.mockResolvedValue(new Map([[8, half], [9, half], [10, ctxInfo()]]));
+    const res = mockRes();
+    await c.fetchPresence(req({ WorkDate: DAY, UserIds: [8, 9, 10, 11] }), res);
+    const rows = out(res).data.presence;
+    expect(rows[0]).toMatchObject({ LateMinutes: 0, status: { code: "signed_out", half: "first_half" } });
+    expect(rows[0].status.late).toBeUndefined();
+    expect(rows[1].status.late).toBeUndefined();
+    expect(rows[2]).toMatchObject({ LateMinutes: 194, status: { late: "Late by 194 min" } });
+    expect(rows[3].status.late).toBe("Late by 50 min");
   });
 
   it("admin (null) keeps every asked id; no WorkDate means today", async () => {
