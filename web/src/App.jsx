@@ -23,6 +23,7 @@ const Login = lazy(() => import("./pages/auth/Login"));
 const Dashboard = lazy(() => import("./components/Dashboard"));
 const Task = lazy(() => import("./pages/Task/TaskBoard"));
 const MyWork = lazy(() => import("./pages/Task/MyWork"));
+const Today = lazy(() => import("./pages/Today/Today"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 // Admin — people/access provisioning that the task workspaces depend on
@@ -58,6 +59,7 @@ const Customers = lazy(() => import("./pages/Support/Customers"));
 const TicketDetail = lazy(() => import("./pages/Support/TicketDetail"));
 const TicketCategories = lazy(() => import("./pages/Settings/TicketCategories"));
 const Priorities = lazy(() => import("./pages/Settings/Priorities"));
+const WorkCalendar = lazy(() => import("./pages/Settings/WorkCalendar"));
 const TicketsByCategory = lazy(() => import("./pages/Reports/TicketsByCategory"));
 const ResolutionSummary = lazy(() => import("./pages/Reports/ResolutionSummary"));
 
@@ -78,6 +80,7 @@ export const routesConfig = [
   { path: "/admin", element: <SectionRedirect prefix="/admin" fallback="/users" /> },
   { path: "/dashboard/*", element: <ProtectedRoute element={<Dashboard />} /> },
   { path: "/my-work", element: <ProtectedRoute element={<MyWork />} /> },
+  { path: "/today", element: <ProtectedRoute element={<Today />} /> },
   { path: "/tasks/*", element: <ProtectedRoute element={<Task />} /> },
   // Admin — user/team/project provisioning (backend was always live).
   { path: "/users/*", element: <ProtectedRoute element={<Users />} /> },
@@ -124,6 +127,7 @@ export const routesConfig = [
   { path: "/support/customers", element: <ProtectedRoute element={<Customers />} /> },
   { path: "/settings/ticket-categories", element: <ProtectedRoute element={<TicketCategories />} /> },
   { path: "/settings/priorities", element: <ProtectedRoute element={<Priorities />} /> },
+  { path: "/settings/work-calendar", element: <ProtectedRoute element={<WorkCalendar />} /> },
   { path: "/reports/tickets-by-category", element: <ProtectedRoute element={<TicketsByCategory />} /> },
   { path: "/reports/resolution-summary", element: <ProtectedRoute element={<ResolutionSummary />} /> },
 ];

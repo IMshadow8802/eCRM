@@ -35,6 +35,11 @@ interface AuthState {
   CompId: number | null;
   BranchId: number | null;
   loginTimestamp: number | null;
+  /** Why the last session ended server-side (a 401 `code`); shown on the login screen. */
+  sessionEndedReason: string | null;
+  /** Login said the one-time presence notice has not been acknowledged. */
+  presenceNotice: boolean;
+  ackPresenceNotice: () => void;
   login: (data: LoginData) => void;
   logout: () => void;
   updateUser: (patch: Partial<AuthUser>) => void;
@@ -60,6 +65,7 @@ const EMPTY = {
   CompId: null,
   BranchId: null,
   loginTimestamp: null,
+  presenceNotice: false,
 } as const;
 
 const useAuthStore = create<AuthState>()(
@@ -67,6 +73,7 @@ const useAuthStore = create<AuthState>()(
     (set, get) => ({
       ...CLIENT_EMPTY,
       ...EMPTY,
+      sessionEndedReason: null,
 
       setClientConfig: (cfg) => {
         setApiBaseUrl(cfg.baseURL);
@@ -85,7 +92,7 @@ const useAuthStore = create<AuthState>()(
         set({ ...EMPTY, ...CLIENT_EMPTY });
       },
 
-      login: ({ token, user, company, permissions }) => {
+      login: ({ token, user, company, permissions, presenceNotice }) => {
         setAuthToken(token);
         set({
           isAuthenticated: true,
@@ -97,8 +104,12 @@ const useAuthStore = create<AuthState>()(
           CompId: user?.CompId ?? null,
           BranchId: user?.BranchId ?? null,
           loginTimestamp: Date.now(),
+          sessionEndedReason: null,
+          presenceNotice: Boolean(presenceNotice),
         });
       },
+
+      ackPresenceNotice: () => set({ presenceNotice: false }),
 
       logout: () => {
         setAuthToken(null);
@@ -140,8 +151,14 @@ const useAuthStore = create<AuthState>()(
 
 // A 401 on any non-auth endpoint means the token is dead — drop the session so
 // the navigator falls back to login. Registered once at module load.
-setUnauthorizedHandler(() => {
-  useAuthStore.getState().logout();
+setUnauthorizedHandler((code) => {
+  const { isAuthenticated, logout } = useAuthStore.getState();
+  // Only a live session has a reason to report; a stale 401 after logout must
+  // not paint one on the login screen.
+  if (isAuthenticated && code?.startsWith("SESSION_")) {
+    useAuthStore.setState({ sessionEndedReason: code });
+  }
+  logout();
 });
 
 export default useAuthStore;

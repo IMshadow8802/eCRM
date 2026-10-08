@@ -160,6 +160,7 @@ describe("Login", () => {
       expect(post).toHaveBeenCalledWith("/api/auth/loginUser", {
         identifier: "alice@example.com",
         password: "secret",
+        Device: "web",
       });
     });
   });

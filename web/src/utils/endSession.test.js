@@ -25,6 +25,14 @@ beforeEach(() => {
 });
 
 describe("endSession", () => {
+  it("shows the expiry message by default and a caller's message when given", () => {
+    endSession("test");
+    expect(enqueueSnackbar.mock.calls[0][0]).toBe("Session expired. Please login again.");
+    resetEndSessionForTests();
+    endSession("chose to", "Signed out. Sign in to continue.");
+    expect(enqueueSnackbar.mock.calls[1][0]).toBe("Signed out. Sign in to continue.");
+  });
+
   it("clears the store, warns the user, and redirects", () => {
     expect(endSession("test")).toBe(true);
 

@@ -58,6 +58,7 @@ const MODULE_ROWS = [
   { key: "tasks", label: "Tasks & My Work" },
   { key: "teams", label: "Teams" },
   { key: "projects", label: "Projects" },
+  { key: "attendance", label: "Attendance (team presence)", reach: true },
   { key: "settings", label: "Settings & products" },
   { key: "dashboard", label: "Dashboard" },
 ];

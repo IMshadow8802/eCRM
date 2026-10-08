@@ -6,6 +6,9 @@ import TopNav from "./TopNav";
 import Sidebar from "./Sidebar";
 import useAuthStore from "../stores/useAuthStore";
 import SocketProvider from "../realtime/SocketProvider";
+import ReauthDialog from "./ReauthDialog";
+import PresenceNoticeDialog from "./PresenceNoticeDialog";
+import useHeartbeat from "../hooks/useHeartbeat";
 
 const COLLAPSED_KEY = "sidebarCollapsed";
 
@@ -16,6 +19,7 @@ function RootLayout({ children }) {
     "(min-width:768px) and (max-width:1279.98px)",
   );
   const { pathname } = useLocation();
+  useHeartbeat();
 
   // Login (and future auth) screens render full-bleed — no sidebar, no topnav,
   // no padding shell.
@@ -64,6 +68,9 @@ function RootLayout({ children }) {
     >
       {/* Realtime invalidations — authed tree only; renders nothing. */}
       {isAuthenticated && <SocketProvider />}
+      {/* Session dialogs sit over the page; the page itself stays mounted. */}
+      {isAuthenticated && <ReauthDialog />}
+      {isAuthenticated && <PresenceNoticeDialog />}
       {isAuthenticated && (
         <Sidebar
           collapsed={collapsed}

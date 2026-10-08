@@ -73,7 +73,7 @@ const open = () => renderWithProviders(
   { route: "/sales/quotations/4" },
 );
 
-beforeEach(() => { preview.drawn = true; useAuthStore.setState({ isAuthenticated: true, token: null, user: { UserId: 1, IsAdmin: false }, UserId: 1, companyName: "Solar Care", API_BASE_URL: "https://shadowcodes.in/CRM" }); });
+beforeEach(() => { preview.drawn = true; useAuthStore.setState({ isAuthenticated: true, token: null, user: { UserId: 1 }, access: { isAdmin: false }, UserId: 1, companyName: "Solar Care", API_BASE_URL: "https://shadowcodes.in/CRM" }); });
 
 describe("QuotationBuilder — a draft", () => {
   it("loads into the form and previews the live numbers", async () => {
@@ -119,7 +119,7 @@ describe("QuotationBuilder — a draft", () => {
   });
 
   it("lets an admin overwrite the saved letterhead, explicitly", async () => {
-    useAuthStore.setState({ user: { UserId: 1, IsAdmin: true } });
+    useAuthStore.setState({ access: { isAdmin: true } });
     const cap = mocks();
     open();
     fireEvent.click(await screen.findByRole("button", { name: /save as our default/i }));

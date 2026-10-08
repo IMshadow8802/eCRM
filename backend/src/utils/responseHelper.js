@@ -52,6 +52,13 @@ const dbErrors = {
     }),
 };
 
+const SESSION_MESSAGES = {
+  SESSION_REQUIRED: "Please sign in again",
+  SESSION_EXPIRED: "Your session ended at the end of your shift. Sign in again to continue.",
+  SESSION_FORCED: "An admin ended your session. Sign in again to continue.",
+  SESSION_ENDED: "You signed out. Sign in again to continue.",
+};
+
 // Token-specific errors
 const tokenErrors = {
   noToken: (res) =>
@@ -89,6 +96,19 @@ const tokenErrors = {
       responseCode: 401,
       timestamp: new Date().toISOString(),
     }),
+
+  // Server-side session refused (spec D7). The code tells the client why, so
+  // it can show the reason instead of a bare "logged out".
+  session: (res, code) => {
+    const known = SESSION_MESSAGES[code] ? code : "SESSION_REQUIRED";
+    return res.status(401).json({
+      success: false,
+      message: SESSION_MESSAGES[known],
+      code: known,
+      responseCode: 401,
+      timestamp: new Date().toISOString(),
+    });
+  },
 };
 
 // Server-specific errors

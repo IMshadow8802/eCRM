@@ -21,6 +21,11 @@ import { colors, gradients, radius, spacing } from "../../theme";
 import { Button, Input, Text } from "../../ui";
 import FloatingShapes from "./FloatingShapes";
 
+const REASONS: Record<string, string> = {
+  SESSION_EXPIRED: "Your session ended at the end of your shift. Sign in again.",
+  SESSION_FORCED: "An admin ended your session.",
+};
+
 /** Anything the API didn't explain — network down, DNS, timeout. */
 const FALLBACK_ERROR =
   "Could not reach the server. Check your connection and try again.";
@@ -33,6 +38,7 @@ export default function LoginScreen() {
   const logoURL = useAuthStore((s) => s.logoURL);
   const setClientConfig = useAuthStore((s) => s.setClientConfig);
   const clearClientConfig = useAuthStore((s) => s.clearClientConfig);
+  const sessionEndedReason = useAuthStore((s) => s.sessionEndedReason);
   const insets = useSafeAreaInsets();
 
   // Step 1 — which backend. Typed once per install; the store persists it.
@@ -210,6 +216,12 @@ export default function LoginScreen() {
             entering={FadeInDown.delay(120).duration(500)}
             style={styles.form}
           >
+            {sessionEndedReason ? (
+              <Text variant="caption" color="textOnBrandMuted">
+                {REASONS[sessionEndedReason] ?? "Please sign in again."}
+              </Text>
+            ) : null}
+
             <Input
               tone="onBrand"
               label="Username, email or mobile"

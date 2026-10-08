@@ -8,6 +8,7 @@
 const { Server } = require("socket.io");
 const jwt = require("jsonwebtoken");
 const database = require("../config/database");
+const sessionService = require("../services/sessionService");
 const { CORS_ORIGINS } = require("../config/middleware");
 const {
   EVENT_WORKSPACE_JOIN,
@@ -21,24 +22,36 @@ let io = null;
 const JOIN_LIMIT = 30; // attempts…
 const JOIN_WINDOW_MS = 60 * 1000; // …per minute
 
-// Handshake auth — same secret and claims as the REST middleware
-// (src/middleware/auth.js). The client sends the JWT in socket.io's
-// `auth.token`; invalid/missing tokens refuse the connection.
-function authMiddleware(socket, next) {
+// Handshake auth — same secret, claims and session check as the REST
+// middleware (src/middleware/auth.js). The client sends the JWT in socket.io's
+// `auth.token`; invalid/missing tokens refuse the connection. A closed session
+// refuses with its code (SESSION_EXPIRED / SESSION_FORCED / SESSION_ENDED) so
+// the client can say why.
+async function authMiddleware(socket, next) {
+  let decoded;
   try {
     const token = socket.handshake?.auth?.token;
     if (!token) return next(new Error("unauthorized"));
-
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    socket.data.user = {
-      UserId: decoded.UserId,
-      CompId: decoded.CompId,
-      IsAdmin: decoded.IsAdmin,
-    };
-    return next();
+    decoded = jwt.verify(token, process.env.JWT_SECRET);
   } catch (err) {
     return next(new Error("unauthorized"));
   }
+  if (typeof decoded?.Sid !== "string" || !decoded.Sid) return next(new Error("SESSION_REQUIRED"));
+  let verdict;
+  try {
+    verdict = await sessionService.check(decoded.Sid);
+  } catch (err) {
+    console.error("socket session check failed:", err.message);
+    return next(new Error("unauthorized"));
+  }
+  if (!verdict.ok) return next(new Error(verdict.code));
+  if (Number(verdict.userId) !== Number(decoded.UserId)) return next(new Error("SESSION_ENDED"));
+  socket.data.user = {
+    UserId: decoded.UserId,
+    CompId: decoded.CompId,
+    IsAdmin: decoded.IsAdmin,
+  };
+  return next();
 }
 
 // May this user join the workspace room? sp_FetchWorkspaceMembers is exactly

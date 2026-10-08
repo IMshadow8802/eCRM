@@ -118,7 +118,7 @@ export default function Login() {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await loginUser({ identifier, password });
+      const response = await loginUser({ identifier, password, Device: "web" });
       const responseData = response.data;
       if (responseData.success && responseData.responseCode === 200) {
         login(responseData.data);

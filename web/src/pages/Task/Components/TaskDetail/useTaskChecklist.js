@@ -18,6 +18,13 @@ const toastIfCompleted = (res) => {
 
 export default function useTaskChecklist(taskId, task, open) {
   const queryClient = useQueryClient();
+  // Finishing a breached task asks why (BreachReasonDialog) - the server names
+  // the caller's own breached clock in tatReasonNeeded.
+  const [reasonTatId, setReasonTatId] = useState(null);
+  const afterWrite = (res) => {
+    toastIfCompleted(res);
+    if (res?.tatReasonNeeded) setReasonTatId(res.tatReasonNeeded);
+  };
 
   const { data: checklistPayload, refetch: refetchChecklist } = useApiQuery({
     queryKey: ["task", taskId, "checklist"],
@@ -95,7 +102,7 @@ export default function useTaskChecklist(taskId, task, open) {
       ),
     );
     try {
-      toastIfCompleted(await saveChecklistMutation.mutateAsync({
+      afterWrite(await saveChecklistMutation.mutateAsync({
         Id: item.Id,
         TaskId: task.Id,
         ItemText: item.ItemText,
@@ -117,7 +124,7 @@ export default function useTaskChecklist(taskId, task, open) {
       list.filter((c) => c.Id !== item.Id),
     );
     try {
-      toastIfCompleted(await deleteChecklistMutation.mutateAsync({
+      afterWrite(await deleteChecklistMutation.mutateAsync({
         Id: item.Id,
         TaskId: task.Id, // server needs it to authorize; the SP only returns it after deleting
         WorkspaceId: task.WorkspaceId,
@@ -140,5 +147,7 @@ export default function useTaskChecklist(taskId, task, open) {
     toggleChecklistItem,
     removeChecklistItem,
     isSaving: saveChecklistMutation.isPending,
+    reasonTatId,
+    setReasonTatId,
   };
 }

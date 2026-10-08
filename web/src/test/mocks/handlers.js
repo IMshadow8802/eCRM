@@ -729,4 +729,12 @@ export const handlers = [
       { status: 401 }
     );
   }),
+  // Presence (task 9): heartbeat + notice ack. Wildcard host — the app's base
+  // URL is whatever Central returned (or relative in a bare test).
+  http.post(`*/api/presence/heartbeat`, () =>
+    HttpResponse.json({ success: true, message: "Session refreshed", responseCode: 200, data: { expiresAt: null } }),
+  ),
+  http.post(`*/api/presence/ackNotice`, () =>
+    HttpResponse.json({ success: true, message: "ok", responseCode: 200, data: null }),
+  ),
 ];

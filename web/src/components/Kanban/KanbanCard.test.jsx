@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
-import { screen, fireEvent } from "@testing-library/react";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { screen, fireEvent, act } from "@testing-library/react";
 import { DndContext } from "@dnd-kit/core";
 import KanbanCard, { KanbanCardView } from "./KanbanCard";
 import renderWithProviders from "../../test/renderWithProviders";
@@ -302,5 +302,45 @@ describe("touch dragging", () => {
     // assertion that could not fail.
     expect(screen.getByTestId("kanban-card-77").getAttribute("style"))
       .not.toMatch(/touch-action/);
+  });
+
+  describe("TAT chip", () => {
+    afterEach(() => vi.useRealTimers());
+
+    it("shows the clock as text + icon, aria-labelled", () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-08T06:00:00Z"));
+      wrap(<KanbanCardView task={{ Id: 41, Title: "T", Priority: "high", TatDueAt: "2026-10-08T05:35:00Z" }} />);
+      const chip = screen.getByTestId("card-tat-41");
+      expect(chip).toHaveTextContent("Over by 25m");
+      expect(chip).toHaveAttribute("aria-label", "Over by 25m");
+      expect(chip).toHaveAttribute("data-tone", "over");
+      expect(chip.querySelector("svg")).not.toBeNull();
+    });
+
+    it("held clock shows the hold reason", () => {
+      wrap(<KanbanCardView task={{ Id: 42, Title: "T", TatHeldSince: "2026-10-08T05:00:00Z", TatHoldReason: "Waiting on client" }} />);
+      expect(screen.getByTestId("card-tat-42")).toHaveTextContent("On hold: Waiting on client");
+    });
+
+    it("no clock, or a completed task, shows no chip", () => {
+      wrap(
+        <>
+          <KanbanCardView task={{ Id: 43, Title: "A" }} />
+          <KanbanCardView task={{ Id: 44, Title: "B", IsCompleted: 1, TatDueAt: "2026-10-08T05:00:00Z" }} />
+        </>,
+      );
+      expect(screen.queryByTestId("card-tat-43")).toBeNull();
+      expect(screen.queryByTestId("card-tat-44")).toBeNull();
+    });
+
+    it("re-reads the clock every minute", () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-10-08T06:00:00Z"));
+      wrap(<KanbanCardView task={{ Id: 45, Title: "T", TatDueAt: "2026-10-08T06:00:30Z", TatWarnAt: "2026-10-08T07:00:00Z" }} />);
+      expect(screen.getByTestId("card-tat-45")).toHaveAttribute("data-tone", "ok");
+      act(() => vi.advanceTimersByTime(60000));
+      expect(screen.getByTestId("card-tat-45")).toHaveAttribute("data-tone", "over");
+    });
   });
 });

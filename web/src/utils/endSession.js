@@ -30,6 +30,7 @@ import { redirectToLogin } from "./redirectToLogin";
  * throwing the document away is the only way to be sure.
  *
  * @param {string} reason - for the console; not shown to the user.
+ * @param {string} [message] - the snackbar; a deliberate sign-out is not an expiry.
  * @returns {boolean} true if this call started the teardown, false if one was
  *   already under way. Callers use it to avoid piling on log noise.
  */
@@ -37,13 +38,16 @@ let ending = false;
 
 export const isEndingSession = () => ending;
 
-export const endSession = (reason = "Session expired") => {
+export const endSession = (
+  reason = "Session expired",
+  message = "Session expired. Please login again.",
+) => {
   if (ending) return false;
   ending = true;
 
   console.warn(`Ending session: ${reason}`);
   useAuthStore.getState().logout();
-  enqueueSnackbar("Session expired. Please login again.", {
+  enqueueSnackbar(message, {
     variant: "error",
     autoHideDuration: 3000,
   });

@@ -13,6 +13,7 @@ import dayjs from "dayjs";
 
 import { Chip, Checkbox } from "../ui";
 import UserAvatar from "../ui/UserAvatar";
+import TatChip from "./TatChip";
 import { assigneesOf } from "../../utils/taskAssignees";
 
 // Beyond three faces the stack is unreadable at card width — the rest collapse
@@ -153,6 +154,7 @@ export const KanbanCardView = memo(function KanbanCardView({
               size="sm"
               variant="tonal"
             />
+            {!isCompleted && <TatChip task={task} />}
             {showStepsChip && (
               <Chip
                 label={`${checklistDone}/${checklistTotal}`}

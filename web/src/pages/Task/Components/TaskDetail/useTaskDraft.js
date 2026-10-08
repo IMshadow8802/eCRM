@@ -7,6 +7,12 @@ import { useApiMutation } from "../../../../hooks/useApiMutation";
 import { assigneeIdsOf, sameAssignees } from "../../../../utils/taskAssignees";
 import { PRIORITY_OPTIONS } from "./helpers";
 
+// The stored values the TAT fields start from: "HH:mm" and hours as text, so
+// an empty target (company default) stays distinct from 0 (no clock).
+// DueTime arrives as "HH:mm" (or "HH:mm:ss"); anything else reads as no time.
+const dueTimeOf = (task) => /^\d{2}:\d{2}/.test(task.DueTime ?? "") ? task.DueTime.slice(0, 5) : "";
+const tatHoursOf = (task) => (task.TatMinutes == null ? "" : String(Number(task.TatMinutes) / 60));
+
 // Details/edit concern: the editable mirror of the task, whether it diverged
 // from the server copy, and the save that pushes it back.
 export default function useTaskDraft({
@@ -34,6 +40,8 @@ export default function useTaskDraft({
       EstimatedHours: Number(task.EstimatedHours ?? 0),
       LoggedHours: Number(task.LoggedHours ?? 0),
       Progress: Number(task.Progress ?? 0),
+      DueTime: dueTimeOf(task),
+      TatHours: tatHoursOf(task),
     });
   }, [task?.Id, task?.UpdatedDate, task?.Priority]);
 
@@ -45,7 +53,9 @@ export default function useTaskDraft({
     draft.DueDate !== (task.DueDate ? String(task.DueDate).slice(0, 10) : "") ||
     Number(draft.EstimatedHours) !== Number(task.EstimatedHours ?? 0) ||
     Number(draft.LoggedHours) !== Number(task.LoggedHours ?? 0) ||
-    Number(draft.Progress) !== Number(task.Progress ?? 0)
+    Number(draft.Progress) !== Number(task.Progress ?? 0) ||
+    draft.DueTime !== dueTimeOf(task) ||
+    draft.TatHours !== tatHoursOf(task)
   );
 
   const saveMutation = useApiMutation({
@@ -74,6 +84,12 @@ export default function useTaskDraft({
         IsBlocked: task.IsBlocked,
         Labels: task.Labels,
         Watchers: task.Watchers,
+        // Sent only when changed: the server keeps a stored time/target that
+        // is absent from the body (contract amendment, HasDueTime/CanSetTarget).
+        ...(draft.DueTime !== dueTimeOf(task) && { DueTime: draft.DueTime || null }),
+        ...(draft.TatHours !== tatHoursOf(task) && {
+          TatMinutes: draft.TatHours === "" ? null : Math.round(Number(draft.TatHours) * 60),
+        }),
       });
       enqueueSnackbar("Task saved", { variant: "success" });
       queryClient.invalidateQueries({ queryKey: ["tasks"], refetchType: "all" });

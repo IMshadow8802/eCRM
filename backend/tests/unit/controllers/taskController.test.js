@@ -30,7 +30,15 @@ jest.mock("../../../src/middleware/permission", () => ({
   taskAllowed: jest.fn().mockResolvedValue(true),
 }));
 
+// TAT hooks are tested in services/tatService.test.js; here only their wiring.
+jest.mock("../../../src/services/tatService", () => ({
+  afterTaskWrite: jest.fn().mockResolvedValue(undefined),
+  acknowledge: jest.fn().mockResolvedValue(undefined),
+  reasonNeeded: jest.fn().mockResolvedValue(null),
+}));
+
 const database = require("../../../src/config/database");
+const tatService = require("../../../src/services/tatService");
 const { emitToUser } = require("../../../src/realtime/events");
 const { SCOPES } = require("../../../src/realtime/contract");
 const { logActivity } = require("../../../src/utils/activityLogger");
@@ -1544,7 +1552,7 @@ describe("checklist completion notify", () => {
     expect(emitToUser).toHaveBeenCalledWith(4, SCOPES.NOTIFICATIONS);
     expect(logActivity).toHaveBeenCalledWith(expect.objectContaining({ fieldName: "Completion", newValue: "completed", description: "Task completed" }));
     // regression: response used to carry only checklistId
-    expect(res.json.mock.calls[0][0].data).toEqual({ checklistId: 5, completionChange: "completed" });
+    expect(res.json.mock.calls[0][0].data).toEqual({ checklistId: 5, completionChange: "completed", tatReasonNeeded: null });
   });
 
   it("untick that reopens notifies with Event reopened", async () => {
@@ -1644,5 +1652,134 @@ describe("taskController.save history diffs", () => {
     await taskController.save(baseReq({ body: { Title: "T" } }), mockRes());
     expect(logActivity).toHaveBeenCalledTimes(1);
     expect(logActivity).toHaveBeenCalledWith(expect.objectContaining({ action: "Created" }));
+  });
+});
+
+describe("TAT hooks", () => {
+  const saved = [{ ResponseCode: 200, ResponseMess: "ok", TaskId: 11 }];
+  const ok = (extra = {}) => spResult([{ ResponseCode: 200, ResponseMess: "ok", ...extra }]);
+  const saveArgs = () => database.executeStoredProcedure.mock.calls.find((c) => c[0] === "sp_SaveTask")[1];
+  beforeEach(() => {
+    tatService.afterTaskWrite.mockClear();
+    tatService.acknowledge.mockClear();
+    tatService.reasonNeeded.mockClear();
+  });
+
+  it("save passes the RS3 changes to afterTaskWrite and omits TAT params the body lacks", async () => {
+    const changes = [{ Field: "Priority", OldValue: "medium", NewValue: "high" }];
+    mockSequence(saved, true, [], changes);
+    await taskController.save(baseReq({ body: { Id: 11, Title: "T" } }), mockRes());
+    expect(tatService.afterTaskWrite).toHaveBeenCalledWith(expect.anything(), 11, { changed: changes });
+    expect(saveArgs()).not.toHaveProperty("HasDueTime");
+    expect(saveArgs()).not.toHaveProperty("CanSetTarget");
+  });
+
+  it("a reconcile failure does not fail the save (real afterTaskWrite)", async () => {
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    tatService.afterTaskWrite.mockImplementationOnce(jest.requireActual("../../../src/services/tatService").afterTaskWrite);
+    database.executeStoredProcedure.mockImplementation(async (name) => {
+      if (name === "sp_SaveTask") return { recordsets: [saved, [], [{ Field: "Priority" }]] };
+      if (name === "sp_TatReconcile") throw new Error("Could not find stored procedure");
+      return spResult([{}]);
+    });
+    const res = mockRes();
+    await taskController.save(baseReq({ body: { Id: 11, Title: "T" } }), res);
+    expect(database.executeStoredProcedure.mock.calls.map((c) => c[0])).toEqual(expect.arrayContaining(["sp_TatMarkStale", "sp_TatReconcile"]));
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it("save sends DueTime/HasDueTime and, for someone who may set targets, TatMinutes/CanSetTarget", async () => {
+    mockSequence(saved);
+    await taskController.save(baseReq({ body: { Id: 11, Title: "T", DueTime: "15:30", TatMinutes: 90 } }), mockRes());
+    expect(taskAllowed).toHaveBeenCalledWith(expect.anything(), 11, "reassign");
+    expect(saveArgs()).toMatchObject({ DueTime: "15:30", HasDueTime: 1, TatMinutes: 90, CanSetTarget: 1 });
+  });
+
+  it("clears with empty values; the creator on create may set a target without a check", async () => {
+    mockSequence([{ ResponseCode: 201, ResponseMess: "ok", TaskId: 12 }]);
+    await taskController.save(baseReq({ body: { Title: "T", DueTime: "", TatMinutes: "" } }), mockRes());
+    expect(taskAllowed).not.toHaveBeenCalled();
+    expect(saveArgs()).toMatchObject({ DueTime: null, HasDueTime: 1, TatMinutes: null, CanSetTarget: 1 });
+  });
+
+  it("an assignee without reassign cannot set the target (field dropped)", async () => {
+    taskAllowed.mockResolvedValue(false);
+    mockSequence(saved);
+    await taskController.save(baseReq({ body: { Id: 11, Title: "T", TatMinutes: 0 } }), mockRes());
+    expect(saveArgs()).not.toHaveProperty("TatMinutes");
+    expect(saveArgs()).not.toHaveProperty("CanSetTarget");
+  });
+
+  it.each([
+    [{ DueTime: "25:00" }, "Due time must be HH:mm"],
+    [{ DueTime: "9:30" }, "Due time must be HH:mm"],
+    [{ TatMinutes: -1 }, "Target must be 0 to 100000 working minutes"],
+    [{ TatMinutes: 100001 }, "Target must be 0 to 100000 working minutes"],
+    [{ TatMinutes: 1.5 }, "Target must be 0 to 100000 working minutes"],
+  ])("save 400s on %o", async (extra, msg) => {
+    const res = mockRes();
+    await taskController.save(baseReq({ body: { Id: 11, Title: "T", ...extra } }), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json.mock.calls[0][0].message).toBe(msg);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  it("a failed save runs no hook", async () => {
+    mockSequence([{ ResponseCode: 403, ResponseMess: "no" }]);
+    await taskController.save(baseReq({ body: { Id: 11, Title: "T" } }), mockRes());
+    expect(tatService.afterTaskWrite).not.toHaveBeenCalled();
+  });
+
+  it("moveColumn acknowledges and reconciles", async () => {
+    database.executeStoredProcedure.mockResolvedValue(ok({ WorkspaceId: 4 }));
+    await taskController.moveColumn(baseReq({ body: { TaskId: 11, ColumnId: 2 } }), mockRes());
+    expect(tatService.acknowledge).toHaveBeenCalledWith(expect.anything(), 11);
+    expect(tatService.afterTaskWrite).toHaveBeenCalledWith(expect.anything(), 11);
+  });
+
+  it.each([
+    ["claim", { TaskId: 11 }, 11],
+    ["delete", { Id: 11 }, 11],
+    ["bulkDelete", { TaskIds: [11, 12] }, null],
+    ["addDependency", { TaskId: 11, DependsOnTaskId: 3 }, 11],
+    ["removeDependency", { TaskId: 11, DependsOnTaskId: 3 }, 11],
+    ["deleteChecklist", { Id: 5, TaskId: 11 }, 11],
+  ])("%s reconciles after success", async (fn, body, taskId) => {
+    database.executeStoredProcedure.mockResolvedValue(ok({ CompletionChange: "reopened", TaskId: 11 }));
+    await taskController[fn](baseReq({ body }), mockRes());
+    expect(tatService.afterTaskWrite).toHaveBeenCalledWith(expect.anything(), taskId);
+  });
+
+  it("removeDependency that fails does not reconcile", async () => {
+    database.executeStoredProcedure.mockResolvedValue(spResult([{ ResponseCode: 403, ResponseMess: "no" }]));
+    await taskController.removeDependency(baseReq({ body: { TaskId: 11, DependsOnTaskId: 3 } }), mockRes());
+    expect(tatService.afterTaskWrite).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["addComment", { TaskId: 11, Comment: "hi" }, { CommentId: 9 }],
+    ["logTime", { TaskId: 11, Hours: 1 }, {}],
+  ])("%s acknowledges the caller's clock", async (fn, body, extra) => {
+    database.executeStoredProcedure.mockResolvedValue(ok(extra));
+    await taskController[fn](baseReq({ body }), mockRes());
+    expect(tatService.acknowledge).toHaveBeenCalledWith(expect.anything(), 11);
+  });
+
+  it("a completing tick acknowledges, reconciles and returns tatReasonNeeded", async () => {
+    tatService.reasonNeeded.mockResolvedValueOnce(77);
+    database.executeStoredProcedure.mockResolvedValue(ok({ ChecklistId: 5, CompletionChange: "completed" }));
+    const res = mockRes();
+    await taskController.saveChecklist(baseReq({ body: { Id: 5, TaskId: 11, IsCompleted: true } }), res);
+    expect(tatService.acknowledge).toHaveBeenCalledWith(expect.anything(), 11);
+    expect(tatService.afterTaskWrite).toHaveBeenCalledWith(expect.anything(), 11);
+    expect(tatService.reasonNeeded).toHaveBeenCalledWith(expect.anything(), 11);
+    expect(res.json.mock.calls[0][0].data.tatReasonNeeded).toBe(77);
+  });
+
+  it("adding an item neither acknowledges nor reconciles", async () => {
+    database.executeStoredProcedure.mockResolvedValue(ok({ ChecklistId: 5 }));
+    await taskController.saveChecklist(baseReq({ body: { TaskId: 11, ItemText: "x" } }), mockRes());
+    expect(tatService.acknowledge).not.toHaveBeenCalled();
+    expect(tatService.afterTaskWrite).not.toHaveBeenCalled();
   });
 });

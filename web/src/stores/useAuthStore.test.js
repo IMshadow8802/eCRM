@@ -268,3 +268,28 @@ describe("useAuthStore session helpers", () => {
     expect(s.getTokenValidation()).toBeNull();
   });
 });
+
+describe("useAuthStore sessions (spec D7 / P2)", () => {
+  const data = (extra = {}) => ({
+    token: "t", user: { Id: 1, Username: "a", CompId: 1, BranchId: 1 }, company: {}, permissions: {}, ...extra,
+  });
+
+  it("login carries the first-sign-in notice flag; setPresenceNotice clears it", () => {
+    useAuthStore.getState().login(data({ presenceNotice: true }));
+    expect(useAuthStore.getState().presenceNotice).toBe(true);
+    useAuthStore.getState().setPresenceNotice(false);
+    expect(useAuthStore.getState().presenceNotice).toBe(false);
+    useAuthStore.getState().login(data());
+    expect(useAuthStore.getState().presenceNotice).toBe(false);
+  });
+
+  it("setReauth opens and closes the dialog state; logout clears it", () => {
+    useAuthStore.getState().setReauth({ code: "SESSION_EXPIRED", username: "a" });
+    expect(useAuthStore.getState().reauth).toEqual({ code: "SESSION_EXPIRED", username: "a" });
+    useAuthStore.getState().setReauth(undefined);
+    expect(useAuthStore.getState().reauth).toBeNull();
+    useAuthStore.getState().setReauth({ code: "SESSION_FORCED", username: "a" });
+    useAuthStore.getState().logout();
+    expect(useAuthStore.getState().reauth).toBeNull();
+  });
+});

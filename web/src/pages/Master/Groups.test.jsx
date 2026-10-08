@@ -126,10 +126,10 @@ describe("Roles & Permissions (Groups) page", () => {
     const labels = [
       "Leads, follow-ups, quotations", "Sales reports", "Complaints", "Support reports",
       "Customers", "People", "Tasks & My Work", "Teams", "Projects",
-      "Settings & products", "Dashboard",
+      "Attendance (team presence)", "Settings & products", "Dashboard",
     ];
     for (const l of labels) expect(screen.getByText(l)).toBeInTheDocument();
-    expect(screen.getAllByTestId(/^module-row-/)).toHaveLength(11);
+    expect(screen.getAllByTestId(/^module-row-/)).toHaveLength(12);
     expect(screen.queryByTestId("module-row-roles")).toBeNull();
     expect(screen.queryByTestId("module-row-offices")).toBeNull();
 
@@ -139,7 +139,7 @@ describe("Roles & Permissions (Groups) page", () => {
       expect(screen.queryByTestId(`reach-${k}-input`)).toBeNull();
       expect(screen.getByTestId(`reach-${k}-none`)).toHaveTextContent("—");
     }
-    for (const k of ["sales_reports", "support_reports", "tasks", "teams", "projects", "settings", "dashboard"]) {
+    for (const k of ["sales_reports", "support_reports", "tasks", "teams", "projects", "attendance", "settings", "dashboard"]) {
       expect(screen.queryByTestId(`reach-${k}-input`)).toBeNull();
     }
     expect(screen.getByTestId("reach-leads-input")).toHaveValue("Their office");
@@ -148,6 +148,14 @@ describe("Roles & Permissions (Groups) page", () => {
     // A: access is re-read on every request; nobody has to log in again.
     expect(screen.getByText("Changes apply on the user's next action.")).toBeInTheDocument();
     expect(screen.queryByText(/re-login/i)).toBeNull();
+  });
+
+  it("has an attendance row whose reach select appears once View is ticked", async () => {
+    await openRole(1);
+    await screen.findByText(/Salesperson — Permissions/);
+    expect(screen.queryByTestId("reach-attendance-input")).toBeNull();
+    fireEvent.click(screen.getByTestId("perm-attendance-CanView"));
+    expect(screen.getByTestId("reach-attendance-input")).toHaveValue("Own records");
   });
 
   it("ticking Add ticks View; unticking View clears the row", async () => {

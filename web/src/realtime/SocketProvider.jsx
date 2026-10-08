@@ -22,6 +22,7 @@ import {
   SCOPES,
 } from "./contract";
 import { dragGuard } from "./dragGuard";
+import { isSessionCode, requestReauth } from "../utils/reauth";
 
 // Connection status for the header pill.
 // "idle"    = never connected yet (show nothing — never alarm on first load)
@@ -62,6 +63,8 @@ export const SCOPE_INVALIDATIONS = {
   [SCOPES.WORKSPACE_MEMBERS]: () => [["workspace-members"]],
   [SCOPES.WORKSPACES]: () => [["workspaces"]],
   [SCOPES.NOTIFICATIONS]: () => [["notifications"]],
+  // Nothing to refetch: the provider opens the re-sign-in dialog instead.
+  [SCOPES.SESSION]: () => [],
 };
 
 function joinWorkspace(socket, workspaceId) {
@@ -118,7 +121,20 @@ export default function SocketProvider() {
       if (connectedOnce) useSocketStatus.setState({ status: "offline" });
     });
 
+    // A closed session refuses the handshake with its code. Ask for a fresh
+    // sign-in and stay down: the new token re-runs this effect and reconnects.
+    socket.on("connect_error", (err) => {
+      if (!isSessionCode(err?.message)) return;
+      socket.disconnect();
+      requestReauth(err.message);
+    });
+
     socket.on(EVENT_INVALIDATE, (payload) => {
+      // An admin ended this user's sessions: sign in again over the page.
+      if (payload?.scope === SCOPES.SESSION) {
+        requestReauth(payload.reason);
+        return;
+      }
       const toKeys = SCOPE_INVALIDATIONS[payload?.scope];
       if (!toKeys) return;
       const run = () => {

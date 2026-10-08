@@ -31,6 +31,7 @@ import { useApiMutation } from "../../../hooks/useApiMutation";
 import { useConfirmation } from "../../../hooks/useConfirmation";
 import ConfirmationDialog from "../../../components/ConfirmationDialog";
 import useAuthStore from "../../../stores/useAuthStore";
+import { useIsAdmin } from "../../../hooks/useAccess";
 import useWorkspaceStore from "../../../stores/useWorkspaceStore";
 import useWorkspaceMemberOptions from "../../../hooks/useWorkspaceMemberOptions";
 import { taskAbilities } from "../../../utils/taskAbilities";
@@ -47,11 +48,13 @@ import DependenciesPanel from "./TaskDetail/DependenciesPanel";
 import HistoryPanel from "./TaskDetail/HistoryPanel";
 import TimePanel from "./TaskDetail/TimePanel";
 import LogTimeModal from "./TaskDetail/LogTimeModal";
+import TatPanel from "./TaskDetail/TatPanel";
+import BreachReasonDialog from "./TaskDetail/BreachReasonDialog";
 
 export default function TaskDetailModal({ taskId, open, onClose }) {
   const [tab, setTab] = useState("details");
   const currentUserId = useAuthStore((s) => s.user?.UserId ?? s.UserId);
-  const isAdmin = useAuthStore((s) => Boolean(s.user?.IsAdmin));
+  const isAdmin = useIsAdmin();
   const workspaceRole = useWorkspaceStore((s) => s.activeWorkspaceRole);
   const workspaceType = useWorkspaceStore((s) => s.activeWorkspaceType);
   const isPersonal = workspaceType === "personal";
@@ -277,6 +280,8 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
                 badge: time.timeEntries.length,
               },
               { value: "history", label: "History" },
+              // No TAT in personal workspaces (D10).
+              ...(isPersonal ? [] : [{ value: "tat", label: "TAT" }]),
             ]}
             data-testid="task-tabs"
           />
@@ -392,6 +397,38 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
                       />
                     </div>
                   </div>
+                  {(draft.DueDate || (!isPersonal && canEditThisTask)) && (
+                    <div style={{ display: "flex", gap: 12 }}>
+                      {draft.DueDate && (
+                        <div style={{ flex: 1 }}>
+                          <TextInput
+                            type="time"
+                            label="Due time"
+                            hint="Empty = end of the shift"
+                            value={draft.DueTime}
+                            onChange={(e) => setDraft((d) => ({ ...d, DueTime: e.target.value }))}
+                            disabled={!canEditThisTask}
+                            data-testid="task-due-time-input"
+                          />
+                        </div>
+                      )}
+                      {/* reassign in sp_CheckTaskPermission = editFields here */}
+                      {!isPersonal && canEditThisTask && (
+                        <div style={{ flex: 1 }}>
+                          <TextInput
+                            type="number"
+                            label="Time target (hours)"
+                            hint="Empty = company default · 0 = no clock"
+                            value={draft.TatHours}
+                            onChange={(e) => setDraft((d) => ({ ...d, TatHours: e.target.value }))}
+                            min={0}
+                            step={0.5}
+                            data-testid="task-tat-hours-input"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div style={{ display: "flex", gap: 12 }}>
                     <div style={{ flex: 1 }}>
                       <NumberInput
@@ -533,6 +570,10 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
               )}
 
               {tab === "history" && <HistoryPanel activities={activities} />}
+
+              {tab === "tat" && (
+                <TatPanel task={task} canReassign={can.editFields} currentUserId={currentUserId} />
+              )}
             </div>
         )}
       </Modal.Body>
@@ -579,6 +620,12 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
       isLoading={confirmation.confirmationState.isLoading}
     />
     <LogTimeModal time={time} task={task} />
+    <BreachReasonDialog
+      open={Boolean(checklist.reasonTatId)}
+      tatId={checklist.reasonTatId}
+      taskId={taskId}
+      onClose={() => checklist.setReasonTatId(null)}
+    />
     </>
   );
 }

@@ -231,6 +231,12 @@ describe("TopNav notification routing", () => {
     expect(mockNavigate).toHaveBeenCalledWith("/support/tickets/7");
   });
 
+  it("a not-signed-in alert opens the team tab of Today", () => {
+    renderTopNav();
+    capturedOnOpenEntity({ EntityType: "user", Type: "presence_not_signed_in", EntityId: 5 });
+    expect(mockNavigate).toHaveBeenCalledWith("/today?tab=team");
+  });
+
   it("ignores a notification with no usable entity", () => {
     renderTopNav();
     capturedOnOpenEntity({ EntityType: "task" }); // no EntityId

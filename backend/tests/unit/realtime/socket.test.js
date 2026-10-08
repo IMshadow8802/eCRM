@@ -9,7 +9,10 @@ jest.mock("socket.io", () => ({
   })),
 }));
 
+jest.mock("../../../src/services/sessionService", () => ({ check: jest.fn() }));
+
 const jwt = require("jsonwebtoken");
+const sessionService = require("../../../src/services/sessionService");
 const { Server } = require("socket.io");
 const database = require("../../../src/config/database");
 const {
@@ -39,7 +42,7 @@ function makeSocket(token) {
 
 function sign(claims, opts = {}) {
   return jwt.sign(
-    { UserId: 7, CompId: 1, BranchId: 2, IsAdmin: false, ...claims },
+    { UserId: 7, CompId: 1, BranchId: 2, IsAdmin: false, Sid: "sid-7", ...claims },
     SECRET,
     opts,
   );
@@ -58,44 +61,82 @@ const memberRow = (code) => ({ recordsets: [[{ ResponseCode: code }]] });
 
 beforeEach(() => {
   database.executeStoredProcedure.mockReset();
+  sessionService.check.mockReset().mockResolvedValue({ ok: true, userId: 7 });
 });
 
 describe("realtime auth middleware", () => {
-  it("valid token attaches { UserId, CompId, IsAdmin } to socket.data.user", () => {
+  it("valid token attaches { UserId, CompId, IsAdmin } to socket.data.user", async () => {
     const socket = makeSocket(sign({ IsAdmin: true }));
     const next = jest.fn();
-    authMiddleware(socket, next);
+    await authMiddleware(socket, next);
     expect(next).toHaveBeenCalledWith(); // no error
     expect(socket.data.user).toEqual({ UserId: 7, CompId: 1, IsAdmin: true });
   });
 
-  it("refuses a missing token", () => {
+  it("refuses a missing token", async () => {
     const socket = makeSocket(undefined);
     const next = jest.fn();
-    authMiddleware(socket, next);
+    await authMiddleware(socket, next);
     expect(next.mock.calls[0][0]).toBeInstanceOf(Error);
     expect(next.mock.calls[0][0].message).toBe("unauthorized");
   });
 
-  it("refuses an expired token", () => {
+  it("refuses an expired token", async () => {
     const socket = makeSocket(sign({}, { expiresIn: -10 }));
     const next = jest.fn();
-    authMiddleware(socket, next);
+    await authMiddleware(socket, next);
     expect(next.mock.calls[0][0].message).toBe("unauthorized");
   });
 
-  it("refuses a garbage token", () => {
+  it("refuses a garbage token", async () => {
     const socket = makeSocket("not.a.jwt");
     const next = jest.fn();
-    authMiddleware(socket, next);
+    await authMiddleware(socket, next);
     expect(next.mock.calls[0][0].message).toBe("unauthorized");
   });
 
-  it("refuses a token signed with a different secret", () => {
+  it("refuses a token signed with a different secret", async () => {
     const bad = jwt.sign({ UserId: 7, CompId: 1 }, "some-other-secret");
     const socket = makeSocket(bad);
     const next = jest.fn();
-    authMiddleware(socket, next);
+    await authMiddleware(socket, next);
+    expect(next.mock.calls[0][0].message).toBe("unauthorized");
+  });
+
+  it("checks the token's session", async () => {
+    const next = jest.fn();
+    await authMiddleware(makeSocket(sign()), next);
+    expect(sessionService.check).toHaveBeenCalledWith("sid-7");
+    expect(next).toHaveBeenCalledWith();
+  });
+
+  it("refuses a forced session with its code", async () => {
+    sessionService.check.mockResolvedValue({ ok: false, code: "SESSION_FORCED" });
+    const socket = makeSocket(sign());
+    const next = jest.fn();
+    await authMiddleware(socket, next);
+    expect(next.mock.calls[0][0].message).toBe("SESSION_FORCED");
+    expect(socket.data.user).toBeUndefined();
+  });
+
+  it("refuses a token without a session", async () => {
+    const next = jest.fn();
+    await authMiddleware(makeSocket(sign({ Sid: undefined })), next);
+    expect(next.mock.calls[0][0].message).toBe("SESSION_REQUIRED");
+    expect(sessionService.check).not.toHaveBeenCalled();
+  });
+
+  it("refuses a session that belongs to another user", async () => {
+    sessionService.check.mockResolvedValue({ ok: true, userId: 99 });
+    const next = jest.fn();
+    await authMiddleware(makeSocket(sign()), next);
+    expect(next.mock.calls[0][0].message).toBe("SESSION_ENDED");
+  });
+
+  it("refuses (unauthorized) when the session store cannot be read", async () => {
+    sessionService.check.mockRejectedValue(new Error("db"));
+    const next = jest.fn();
+    await authMiddleware(makeSocket(sign()), next);
     expect(next.mock.calls[0][0].message).toBe("unauthorized");
   });
 });

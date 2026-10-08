@@ -6,7 +6,7 @@ export default function DateFieldStub({ value = "", onChange, label, required, e
   return (
     <label style={{ display: "flex", flexDirection: "column" }}>
       {label}{required ? " *" : ""}
-      <input type="date" value={value} disabled={disabled} data-testid={testId} onChange={(e) => onChange?.(e.target.value)} />
+      <input type="date" value={value ?? ""} disabled={disabled} data-testid={testId} onChange={(e) => onChange?.(e.target.value)} />
       {(error || hint) && <span>{error || hint}</span>}
     </label>
   );

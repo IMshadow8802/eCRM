@@ -2,6 +2,7 @@ import axios from 'axios';
 import { isTokenExpired, isTokenExpiringSoon } from './tokenUtils';
 import { shouldSkipAuthRedirect } from './authRedirectGuard';
 import { endSession, isEndingSession } from './endSession';
+import { isReauthOpen, isSessionCode, requestReauth } from './reauth';
 import useAuthStore from '../stores/useAuthStore';
 import { enqueueSnackbar } from 'notistack';
 
@@ -18,7 +19,14 @@ const createAxiosInstance = () => {
 
   // Request interceptor - Add token and validate expiry
   instance.interceptors.request.use(
-    (config) => {
+    async (config) => {
+      // A re-sign-in is open: hold the request until it lands (or is
+      // cancelled — then it rejects) instead of sending it with the dead
+      // token and earning another 401. The login itself must go through.
+      if (isReauthOpen() && !shouldSkipAuthRedirect(config.url)) {
+        await requestReauth();
+      }
+
       const { token, API_BASE_URL } = useAuthStore.getState();
 
       // Dev and prod alike talk to the backend Central resolved for the typed
@@ -69,11 +77,27 @@ const createAxiosInstance = () => {
     (response) => {
       return response;
     },
-    (error) => {
+    async (error) => {
       // Handle 401 Unauthorized responses (skip for auth endpoints — bad-creds
       // 401 must surface to the caller, not trigger logout/redirect loop).
       // endSession is idempotent, so a burst of 401s tears down exactly once.
       if (error.response?.status === 401 && !shouldSkipAuthRedirect(error.config?.url)) {
+        // A closed server session (spec D7): sign in again over the page and
+        // retry once. Every 401 in a burst shares one dialog. A retried
+        // request that 401s again is not a session we can save.
+        const code = error.response.data?.code;
+        if (isSessionCode(code) && !error.config._retried && !isEndingSession()) {
+          // Sent with an older token than the store now holds (a slow request
+          // from before a re-sign-in)? Retry with the current one — asking
+          // for the password again would be a second dialog for nothing.
+          const current = useAuthStore.getState().token;
+          const sent = error.config.headers?.Authorization;
+          const stale = Boolean(current && sent && sent !== `Bearer ${current}`);
+          const token = stale ? current : await requestReauth(code);
+          error.config._retried = true;
+          error.config.headers.Authorization = `Bearer ${token}`;
+          return instance(error.config);
+        }
         endSession('401 from the API');
         return Promise.reject(new Error('Authentication failed'));
       }

@@ -12,7 +12,7 @@ import RichTextEditor from "../../../components/ui/RichTextEditor";
 import RemarksModal from "../../Support/RemarksModal";
 import { useApiQuery } from "../../../hooks/useApiQuery";
 import { useApiMutation } from "../../../hooks/useApiMutation";
-import useAuthStore from "../../../stores/useAuthStore";
+import { useIsAdmin } from "../../../hooks/useAccess";
 import { QUOTATION_ENDPOINTS } from "../../../api/quotationQueries";
 import { SALES_ENDPOINTS } from "../../../api/salesQueries";
 import sampleLogo from "../../../assets/quote/sample-logo.png";
@@ -71,7 +71,7 @@ export default function QuotationBuilder() {
   const navigate = useNavigate();
   const theme = useTheme();
   const queryClient = useQueryClient();
-  const isAdmin = useAuthStore((s) => s.user?.IsAdmin) || false;
+  const isAdmin = useIsAdmin();
 
   const [form, setForm] = useState(null);
   const [dirty, setDirty] = useState(false);

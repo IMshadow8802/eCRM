@@ -4,10 +4,13 @@ jest.mock("../../../src/config/database", () => ({
 jest.mock("../../../src/utils/encryption", () => ({
   comparePassword: jest.fn(),
 }));
+jest.mock("../../../src/services/sessionService", () => ({ start: jest.fn(), end: jest.fn() }));
 jest.mock("jsonwebtoken", () => ({
   sign: jest.fn(() => "fake.jwt.token"),
 }));
 
+const jwt = require("jsonwebtoken");
+const sessionService = require("../../../src/services/sessionService");
 const database = require("../../../src/config/database");
 const { comparePassword } = require("../../../src/utils/encryption");
 const { buildAccess, publicAccess } = require("../../../src/middleware/access");
@@ -28,6 +31,9 @@ beforeEach(() => {
   database.executeStoredProcedure.mockReset();
   comparePassword.mockReset();
   process.env.JWT_SECRET = "test-secret";
+  sessionService.start.mockReset().mockResolvedValue({ sessionId: "sid-1", expiresAt: new Date("2026-10-07T14:30:00Z"), showNotice: false });
+  sessionService.end.mockReset().mockResolvedValue({ Ended: 1 });
+  jwt.sign.mockClear();
 });
 
 describe("authController.login response shape", () => {
@@ -459,11 +465,59 @@ describe("authController.fetchMyAccess", () => {
   });
 });
 
-describe("authController.logout", () => {
-  it("returns 200 with a client-side invalidation message", async () => {
+describe("authController.login session (spec D7)", () => {
+  const validUser = () => database.executeStoredProcedure
+    .mockResolvedValueOnce({ recordsets: [[{ ResponseCode: 200, ResponseMess: "ok", UserId: 5, UserName: "a", Password: "h", CompId: 1, BranchId: 2 }], []] })
+    .mockResolvedValueOnce(ACCESS_RS);
+
+  it("starts a session, puts its id in the token and returns its expiry + notice flag", async () => {
+    validUser();
+    comparePassword.mockResolvedValueOnce(true);
+    sessionService.start.mockResolvedValue({ sessionId: "sid-9", expiresAt: new Date("2026-10-07T14:30:00Z"), showNotice: true });
+    const req = { body: { username: "a", password: "pw", Device: "mobile" } };
     const res = mockRes();
-    await authController.logout({}, res);
+    await authController.login(req, res);
+    expect(sessionService.start).toHaveBeenCalledWith({ req, user: expect.objectContaining({ UserId: 5, CompId: 1, BranchId: 2 }) });
+    expect(jwt.sign.mock.calls[0][0]).toMatchObject({ UserId: 5, CompId: 1, Sid: "sid-9" });
+    const { data } = res.json.mock.calls[0][0];
+    expect(data.sessionExpiresAt).toBe("2026-10-07T14:30:00.000Z");
+    expect(data.presenceNotice).toBe(true);
+  });
+
+  it("fails the login with 500 LOGIN_ERROR when the session cannot start, and mints no token", async () => {
+    validUser();
+    comparePassword.mockResolvedValueOnce(true);
+    sessionService.start.mockRejectedValue(new Error("no session"));
+    const res = mockRes();
+    await authController.login({ body: { username: "a", password: "pw" } }, res);
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json.mock.calls[0][0].code).toBe("LOGIN_ERROR");
+    expect(jwt.sign).not.toHaveBeenCalled();
+  });
+
+  it("starts no session for a wrong password", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ ResponseCode: 200, UserId: 5, Password: "h" }], []] });
+    comparePassword.mockResolvedValueOnce(false);
+    await authController.login({ body: { username: "a", password: "pw" } }, mockRes());
+    expect(sessionService.start).not.toHaveBeenCalled();
+  });
+});
+
+describe("authController.logout", () => {
+  it("ends the caller's session server-side", async () => {
+    const res = mockRes();
+    await authController.logout({ user: { UserId: 5, CompId: 1, Sid: "sid-1" } }, res);
+    expect(sessionService.end).toHaveBeenCalledWith("sid-1", "logout", 1);
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json.mock.calls[0][0].success).toBe(true);
+  });
+
+  it("500s LOGOUT_ERROR when the session cannot be ended", async () => {
+    sessionService.end.mockRejectedValue(new Error("db"));
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    const res = mockRes();
+    await authController.logout({ user: { UserId: 5, CompId: 1, Sid: "sid-1" } }, res);
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json.mock.calls[0][0].code).toBe("LOGOUT_ERROR");
   });
 });

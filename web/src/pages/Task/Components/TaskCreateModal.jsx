@@ -41,6 +41,8 @@ export default function TaskCreateModal({
   const [priority, setPriority] = useState("medium");
   const [assignees, setAssignees] = useState([]);
   const [dueDate, setDueDate] = useState("");
+  const [dueTime, setDueTime] = useState("");
+  const [tatHours, setTatHours] = useState(""); // "" = company default, 0 = no clock
   const [steps, setSteps] = useState([""]);
   const [submitting, setSubmitting] = useState(false);
   const attachmentsRef = useRef(null);
@@ -62,6 +64,8 @@ export default function TaskCreateModal({
     setPriority("medium");
     setAssignees([]);
     setDueDate("");
+    setDueTime("");
+    setTatHours("");
     setSteps([""]);
     setSubmitting(false);
   };
@@ -100,6 +104,9 @@ export default function TaskCreateModal({
           ? [currentUserId].filter(Boolean)
           : assignees.map((a) => a.value),
         DueDate: dueDate || null,
+        // Only when filled: absent = no time / the company default.
+        ...(dueDate && dueTime && { DueTime: dueTime }),
+        ...(!isPersonal && tatHours !== "" && { TatMinutes: Math.round(Number(tatHours) * 60) }),
         ChecklistItems: trimmedSteps,
       });
       const newId = res?.taskId;
@@ -249,6 +256,37 @@ export default function TaskCreateModal({
               />
             </div>
           </div>
+          {(dueDate || !isPersonal) && (
+            <div style={{ display: "flex", gap: 12 }}>
+              {dueDate && (
+                <div style={{ flex: 1 }}>
+                  <TextInput
+                    type="time"
+                    label="Due time"
+                    hint="Empty = end of the shift"
+                    value={dueTime}
+                    onChange={(e) => setDueTime(e.target.value)}
+                    data-testid="create-task-due-time"
+                  />
+                </div>
+              )}
+              {/* The creator may always set the target (no TAT on personal boards). */}
+              {!isPersonal && (
+                <div style={{ flex: 1 }}>
+                  <TextInput
+                    type="number"
+                    label="Time target (hours)"
+                    hint="Empty = company default · 0 = no clock"
+                    value={tatHours}
+                    onChange={(e) => setTatHours(e.target.value)}
+                    min={0}
+                    step={0.5}
+                    data-testid="create-task-tat-hours"
+                  />
+                </div>
+              )}
+            </div>
+          )}
           <div>
             <div
               style={{

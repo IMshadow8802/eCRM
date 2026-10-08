@@ -30,6 +30,11 @@ const roleRs = (rows = [["people", "v", "Own"]], head = {}) => ({ recordsets: [
   rows.map(([Module, r = "v", Reach = null]) => ({ Module, Reach, CanView: r.includes("v") ? 1 : 0,
     CanAdd: r.includes("a") ? 1 : 0, CanEdit: r.includes("e") ? 1 : 0, CanDelete: r.includes("d") ? 1 : 0 })),
 ] });
+// sp_FetchUserAccess for a target: RS1 header (real IsAdmin), RS2 the union of their active groups' grants.
+const accessRs = (rows = [["people", "v", "Own"]], head = {}) => {
+  const rs = roleRs(rows).recordsets[1];
+  return { recordsets: [[{ IsAdmin: false, CanSeeSensitive: false, ...head }], rs] };
+};
 const spCall = (name) => database.executeStoredProcedure.mock.calls.find((c) => c[0] === name)?.[1];
 const baseReq = (over = {}) => ({
   user: { UserId: 7, UserName: "alice", CompId: 1, BranchId: 2, IsAdmin: false },
@@ -208,6 +213,47 @@ describe("userController.fetch", () => {
     );
     expect(res.json.mock.calls[0][0].data.users[0]).toMatchObject({ HourlyRate: 50, Mobile: "9999999999" });
     expect(database.executeStoredProcedure.mock.calls[0][1].SearchSensitive).toBe(1);
+  });
+
+  describe("CanEdit per row (L2, same predicate as save)", () => {
+    const rows = [
+      { Id: 11, BranchId: 2, IsAdmin: false },
+      { Id: 12, BranchId: 2, IsAdmin: true },
+      { Id: 13, BranchId: 4, IsAdmin: false },
+    ].map((r) => ({ ResponseCode: 200, ResponseMess: "ok", ...r }));
+    const canEdit = async (access) => {
+      database.executeStoredProcedure.mockResolvedValueOnce(spResult(rows));
+      const res = mockRes();
+      await userController.fetch(baseReq({ access, scope: { canWriteBranchIds: [2], branchIds: [2] } }), res);
+      return res.json.mock.calls[0][0].data.users.map((u) => u.CanEdit);
+    };
+    const hr = () => mockAccess({ sensitive: true, modules: [["people", "vae", "Office"]] }, 7);
+
+    it("HR: true in its write office, false on an admin row and outside its offices", async () => {
+      expect(await canEdit(hr())).toEqual([true, false, false]);
+    });
+    it("RoleIsAdmin beats a lagging IsAdmin mirror; without it the mirror still decides", async () => {
+      rows.splice(0, rows.length,
+        { ResponseCode: 200, ResponseMess: "ok", Id: 21, BranchId: 2, IsAdmin: false, RoleIsAdmin: true },
+        { ResponseCode: 200, ResponseMess: "ok", Id: 22, BranchId: 2, IsAdmin: true },
+        { ResponseCode: 200, ResponseMess: "ok", Id: 23, BranchId: 2, IsAdmin: false });
+      expect(await canEdit(hr())).toEqual([false, false, true]);
+    });
+    it("an admin may edit every row", async () => {
+      expect(await canEdit(mockAccess({ admin: true }, 7))).toEqual([true, true, true]);
+    });
+    it("false for all without the sensitive permission or without people edit", async () => {
+      expect(await canEdit(mockAccess({ modules: [["people", "vae", "Office"]] }, 7))).toEqual([false, false, false]);
+      expect(await canEdit(mockAccess({ sensitive: true, modules: [["people", "v", "Office"]] }, 7))).toEqual([false, false, false]);
+    });
+  });
+
+  // L1: the SQL (099) drops Username from search when SearchSensitive is 0; the controller's part is the flag.
+  it("sends SearchSensitive 1 for a sensitive caller and 0 otherwise", async () => {
+    database.executeStoredProcedure.mockResolvedValue(spResult([{ ResponseCode: 200, ResponseMess: "ok" }]));
+    await userController.fetch(baseReq({ access: mockAccess({ sensitive: true }, 7) }), mockRes());
+    await userController.fetch(baseReq({ access: mockAccess({}, 7) }), mockRes());
+    expect(database.executeStoredProcedure.mock.calls.map((c) => c[1].SearchSensitive)).toEqual([1, 0]);
   });
 
   it("500s when the SP throws", async () => {
@@ -755,10 +801,10 @@ describe("userController.save (094: role, branch, actor, unassign fan-out)", () 
     });
 
     it("lets an in-reach target move to an in-reach office", async () => {
-      database.executeStoredProcedure.mockResolvedValueOnce(target(2)).mockResolvedValueOnce(roleRs()).mockResolvedValueOnce(okSave);
+      database.executeStoredProcedure.mockResolvedValueOnce(target(2)).mockResolvedValueOnce(accessRs()).mockResolvedValueOnce(okSave);
       const res = await edit({ BranchId: 2 });
       expect(res.status).toHaveBeenCalledWith(200);
-      expect(spNames()).toEqual(["sp_FetchUser", "sp_FetchGroupModules", "sp_SaveUser"]);
+      expect(spNames()).toEqual(["sp_FetchUser", "sp_FetchUserAccess", "sp_SaveUser"]);
     });
 
     it("403s an out-of-reach target even when the new BranchId is in reach", async () => {
@@ -1008,51 +1054,86 @@ describe("userController.save: a non-admin hands out only roles within their own
   });
 
   it("HR editing its own profile with the same role: one role fetch, then saves", async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce(target(7, 18)).mockResolvedValueOnce(roleRs(COLLAB)).mockResolvedValueOnce(okSave);
+    database.executeStoredProcedure.mockResolvedValueOnce(target(7, 18)).mockResolvedValueOnce(accessRs(COLLAB)).mockResolvedValueOnce(okSave);
     const res = await save({ Id: 7, GroupId: 18 });
     expect(res.status).toHaveBeenCalledWith(200);
-    expect(spNames()).toEqual(["sp_FetchUser", "sp_FetchGroupModules", "sp_SaveUser"]);
+    expect(spNames()).toEqual(["sp_FetchUser", "sp_FetchUserAccess", "sp_SaveUser"]);
   });
 
   it("HR changing someone else's role to one outside its access is refused (current, then requested role)", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce(target(5, 18))
-      .mockResolvedValueOnce(roleRs(COLLAB)).mockResolvedValueOnce(roleRs(SALES_EXEC));
+      .mockResolvedValueOnce(accessRs(COLLAB)).mockResolvedValueOnce(roleRs(SALES_EXEC));
     const res = await save({ Id: 5, GroupId: 20 });
     expect(res.status).toHaveBeenCalledWith(403);
     expect(res.json.mock.calls[0][0].message).toBe("You can only give roles within your own access");
-    expect(spNames()).toEqual(["sp_FetchUser", "sp_FetchGroupModules", "sp_FetchGroupModules"]);
-    expect(database.executeStoredProcedure.mock.calls.slice(1).map((c) => c[1].GroupId)).toEqual([18, 20]);
+    expect(spNames()).toEqual(["sp_FetchUser", "sp_FetchUserAccess", "sp_FetchGroupModules"]);
+    expect(spCall("sp_FetchUserAccess")).toEqual({ UserId: 5, CompId: 1 });
+    expect(spCall("sp_FetchGroupModules").GroupId).toBe(20);
   });
 
   // Round 2 (takeover): an edit, password reset included, needs the target's CURRENT role inside the editor's access.
   it("HR editing a Sales Executive with no role change is refused; no save", async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce(target(5, 16)).mockResolvedValueOnce(roleRs(SALES_EXEC));
+    database.executeStoredProcedure.mockResolvedValueOnce(target(5, 16)).mockResolvedValueOnce(accessRs(SALES_EXEC));
     const res = await save({ Id: 5, GroupId: 16, Password: "newpass" });
     expect(res.status).toHaveBeenCalledWith(403);
     expect(res.json.mock.calls[0][0].message).toBe("You can only edit people whose role is within your own access");
-    expect(spCall("sp_FetchGroupModules")).toEqual({ GroupId: 16, CompId: 1 });
-    expect(spNames()).toEqual(["sp_FetchUser", "sp_FetchGroupModules"]);
+    expect(spNames()).toEqual(["sp_FetchUser", "sp_FetchUserAccess"]);
     expect(hashPassword).not.toHaveBeenCalled();
   });
 
   it("HR editing someone whose current role is sensitive is refused when HR lacks sensitive", async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce(target(5, 18)).mockResolvedValueOnce(roleRs(COLLAB, { CanSeeSensitive: 1 }));
+    database.executeStoredProcedure.mockResolvedValueOnce(target(5, 18)).mockResolvedValueOnce(accessRs(COLLAB, { CanSeeSensitive: 1 }));
     const access = hr();
     access.canSeeSensitive = false;
     expect((await save({ Id: 5, GroupId: 18 }, access)).status).toHaveBeenCalledWith(403);
   });
 
   it("HR editing a Task Collaborator (same role) passes with one role fetch", async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce(target(5, 27)).mockResolvedValueOnce(roleRs(COLLAB)).mockResolvedValueOnce(okSave);
+    database.executeStoredProcedure.mockResolvedValueOnce(target(5, 27)).mockResolvedValueOnce(accessRs(COLLAB)).mockResolvedValueOnce(okSave);
     const res = await save({ Id: 5, GroupId: 27 });
     expect(res.status).toHaveBeenCalledWith(200);
-    expect(spNames()).toEqual(["sp_FetchUser", "sp_FetchGroupModules", "sp_SaveUser"]);
+    expect(spNames()).toEqual(["sp_FetchUser", "sp_FetchUserAccess", "sp_SaveUser"]);
   });
 
-  it("a target whose current role is gone is refused", async () => {
+  it("a target with no access header (no row) is refused, fail closed", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(target(5, 27)).mockResolvedValueOnce({ recordsets: [[], []] });
+    expect((await save({ Id: 5, GroupId: 27 })).status).toHaveBeenCalledWith(403);
+    expect(spNames()).not.toContain("sp_SaveUser");
+  });
+
+  // L4 regression: only the FIRST group was checked, so a second, wider group slipped through.
+  it("refuses when the target's SECOND group exceeds the actor (union of every active group)", async () => {
+    // sp_FetchUser shows group 27 (Collaborator); the access union also carries leads from a hidden second group.
     database.executeStoredProcedure.mockResolvedValueOnce(target(5, 27))
-      .mockResolvedValueOnce({ recordsets: [[{ ResponseCode: 404, ResponseMess: "Role not found" }]] });
-    expect((await save({ Id: 5, GroupId: 27 })).status).toHaveBeenCalledWith(404);
+      .mockResolvedValueOnce(accessRs([...COLLAB, ["leads", "vae", "Own"]]));
+    const res = await save({ Id: 5, GroupId: 27, Password: "x" });
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json.mock.calls[0][0].message).toBe("You can only edit people whose role is within your own access");
+    expect(spNames()).toEqual(["sp_FetchUser", "sp_FetchUserAccess"]);
+  });
+
+  it("refuses a target who is really an admin even when the tblUser mirror says 0", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(target(5, 27)).mockResolvedValueOnce(accessRs(COLLAB, { IsAdmin: 1 }));
+    expect((await save({ Id: 5, GroupId: 27 })).status).toHaveBeenCalledWith(403);
+  });
+
+  it("roleRefusal fails closed when the role's grant result set (RS2) is missing", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ ResponseCode: 200, ResponseMess: "ok" }]] });
+    const res = await save({});
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(spNames()).toEqual(["sp_FetchGroupModules"]);
+  });
+
+  it("an access result with no grants result set is refused too", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(target(5, 27))
+      .mockResolvedValueOnce({ recordsets: [[{ IsAdmin: false }]] });
+    expect((await save({ Id: 5, GroupId: 27 })).status).toHaveBeenCalledWith(403);
+  });
+
+  it("a non-admin row (IsAdmin on the row) is refused before any role lookup", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ ResponseCode: 200, ResponseMess: "ok", Id: 5, BranchId: 2, GroupId: 27, IsAdmin: true }]] });
+    expect((await save({ Id: 5, GroupId: 27 })).status).toHaveBeenCalledWith(403);
+    expect(spNames()).toEqual(["sp_FetchUser"]);
   });
 
   it("an admin is unaffected: no role lookup, any role, may change their own", async () => {
@@ -1075,5 +1156,85 @@ describe("userController.save: a non-admin hands out only roles within their own
     database.executeStoredProcedure.mockResolvedValue(okSave);
     await save({ ReportsTo: 0 }, mockAccess({ admin: true }, 7));
     expect(spCall("sp_SaveUser").ReportsTo).toBe(0);
+  });
+});
+
+describe("userController.save sets the work profile (099)", () => {
+  const body = { GroupId: 16, Username: "bob", FullName: "Bob", WorkCalendarId: 3, PresenceExempt: true };
+  const saved = spResult([{ ResponseCode: 201, ResponseMess: "ok", UserId: 9 }]);
+
+  it("calls sp_SetUserWorkProfile after the save; admin may exempt", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(saved).mockResolvedValueOnce(spResult([{ ResponseCode: 200, ResponseMess: "ok" }]));
+    const res = mockRes();
+    await userController.save(baseReq({ body }), res);
+    expect(spCall("sp_SetUserWorkProfile")).toEqual({ UserId: 9, CompId: 1, WorkCalendarId: 3, PresenceExempt: 1 });
+    expect(res.status).toHaveBeenCalledWith(201);
+  });
+
+  it("ignores PresenceExempt from a non-admin (sends NULL = keep)", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(roleRs()).mockResolvedValue(saved);
+    const access = mockAccess({ sensitive: true, modules: [["people", "vaed", "Company"]] }, 7);
+    await userController.save(baseReq({ body: { ...body, PresenceExempt: true }, access }), mockRes());
+    expect(spCall("sp_SetUserWorkProfile")).toBeDefined();
+    expect(spCall("sp_SetUserWorkProfile").PresenceExempt).toBeNull();
+  });
+
+  it("PresenceExempt alone from a non-admin still passes NULL; null calendar = keep, 0 = default", async () => {
+    database.executeStoredProcedure.mockResolvedValue(saved);
+    await userController.save(baseReq({ body: { GroupId: 16, Username: "b", WorkCalendarId: null, PresenceExempt: false } }), mockRes());
+    expect(spCall("sp_SetUserWorkProfile")).toMatchObject({ WorkCalendarId: null, PresenceExempt: 0 });
+    database.executeStoredProcedure.mockClear();
+    await userController.save(baseReq({ body: { GroupId: 16, Username: "b", WorkCalendarId: 0 } }), mockRes());
+    expect(spCall("sp_SetUserWorkProfile")).toMatchObject({ WorkCalendarId: 0, PresenceExempt: null });
+  });
+
+  it.each([["abc"], [-2], [""], [NaN], [1.5]])("400s a garbage WorkCalendarId %p before saving", async (bad) => {
+    const res = mockRes();
+    await userController.save(baseReq({ body: { GroupId: 16, Username: "b", WorkCalendarId: bad } }), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json.mock.calls[0][0].message).toBe("Choose a valid shift");
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  it("does not call it when neither field is sent, or when the user save failed", async () => {
+    database.executeStoredProcedure.mockResolvedValue(saved);
+    await userController.save(baseReq({ body: { GroupId: 16, Username: "b" } }), mockRes());
+    expect(spCall("sp_SetUserWorkProfile")).toBeUndefined();
+    database.executeStoredProcedure.mockReset().mockResolvedValue(spResult([{ ResponseCode: 409, ResponseMess: "dup" }]));
+    await userController.save(baseReq({ body }), mockRes());
+    expect(spCall("sp_SetUserWorkProfile")).toBeUndefined();
+  });
+
+  // Regression (final review I3): a new shift left the person's open clocks on the old hours.
+  it("a set profile marks that user's open clocks stale; a mark-stale failure is swallowed", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(saved).mockResolvedValueOnce(spResult([{ ResponseCode: 200, ResponseMess: "ok" }]));
+    const res = mockRes();
+    await userController.save(baseReq({ body }), res);
+    expect(spCall("sp_TatMarkStale")).toEqual({ CompId: 1, TaskId: null, UserId: 9, Kind: "change" });
+    expect(res.status).toHaveBeenCalledWith(201);
+    database.executeStoredProcedure.mockReset().mockImplementation(async (n) => {
+      if (n === "sp_TatMarkStale") throw new Error("no 100");
+      return n === "sp_SaveUser" ? saved : spResult([{ ResponseCode: 200, ResponseMess: "ok" }]);
+    });
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    const res2 = mockRes();
+    await userController.save(baseReq({ body }), res2);
+    expect(res2.status).toHaveBeenCalledWith(201);
+    expect(spy).toHaveBeenCalledWith("sp_TatMarkStale skipped:", "no 100");
+    spy.mockRestore();
+  });
+
+  it("a failed profile change marks nothing stale", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(saved).mockResolvedValueOnce(spResult([{ ResponseCode: 404, ResponseMess: "Calendar not found" }]));
+    await userController.save(baseReq({ body }), mockRes());
+    expect(spCall("sp_TatMarkStale")).toBeUndefined();
+  });
+
+  it("reports a profile failure as 'Saved, but the shift could not be set'", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(saved).mockResolvedValueOnce(spResult([{ ResponseCode: 404, ResponseMess: "Calendar not found" }]));
+    const res = mockRes();
+    await userController.save(baseReq({ body }), res);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json.mock.calls[0][0]).toMatchObject({ success: false, message: "Saved, but the shift could not be set: Calendar not found" });
   });
 });

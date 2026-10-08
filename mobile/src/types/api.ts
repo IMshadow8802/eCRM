@@ -130,7 +130,7 @@ export interface ClientConfig {
 export type ModuleKey =
   | "leads" | "sales_reports" | "complaints" | "support_reports" | "customers"
   | "people" | "tasks" | "teams" | "projects" | "roles" | "offices"
-  | "settings" | "dashboard";
+  | "settings" | "dashboard" | "attendance";
 export type Reach = "Own" | "Team" | "Office" | "OfficeTree" | "Company";
 
 /** Role module grants (backend publicAccess). Hiding a control is a courtesy; the server decides. */
@@ -152,6 +152,8 @@ export interface LoginData {
   company: Company;
   permissions: Permissions;
   access?: Access;
+  sessionExpiresAt?: string;
+  presenceNotice?: boolean;
 }
 
 // ------------------------------------------------------------------- task

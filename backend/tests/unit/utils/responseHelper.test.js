@@ -71,6 +71,24 @@ describe("responseHelper", () => {
         expect.objectContaining({ code, responseCode: 401 })
       );
     });
+
+    it.each(["SESSION_REQUIRED", "SESSION_EXPIRED", "SESSION_FORCED", "SESSION_ENDED"])(
+      "session(%s) returns 401 with that code",
+      (code) => {
+        const res = mockRes();
+        tokenErrors.session(res, code);
+        expect(res.status).toHaveBeenCalledWith(401);
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code, responseCode: 401 }));
+      },
+    );
+
+    it("session() with an unknown code falls back to SESSION_REQUIRED", () => {
+      const res = mockRes();
+      tokenErrors.session(res, "WHAT");
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ code: "SESSION_REQUIRED", message: "Please sign in again" }),
+      );
+    });
   });
 
   describe("dbErrors", () => {
@@ -118,5 +136,35 @@ describe("responseHelper", () => {
       serverErrors.serviceUnavailable(res);
       expect(res.status).toHaveBeenCalledWith(503);
     });
+  });
+
+  describe("development details", () => {
+    const env = process.env.NODE_ENV;
+    beforeEach(() => { process.env.NODE_ENV = "development"; });
+    afterEach(() => { process.env.NODE_ENV = env; });
+    it.each([
+      ["queryFailed", (res) => dbErrors.queryFailed(res, "d")],
+      ["procedureFailed", (res) => dbErrors.procedureFailed(res, "sp_X", "d")],
+      ["internalError", (res) => serverErrors.internalError(res, "d")],
+    ])("%s carries details in development", (_l, call) => {
+      const res = mockRes();
+      call(res);
+      expect(res.json.mock.calls[0][0].details).toBe("d");
+    });
+    it.each([
+      ["queryFailed", (res) => dbErrors.queryFailed(res)],
+      ["procedureFailed", (res) => dbErrors.procedureFailed(res, "sp_X")],
+      ["internalError", (res) => serverErrors.internalError(res)],
+    ])("%s defaults details to null", (_l, call) => {
+      const res = mockRes();
+      call(res);
+      expect(res.json.mock.calls[0][0].details).toBeNull();
+    });
+  });
+
+  it("validationError has a default message", () => {
+    const res = mockRes();
+    validationError(res);
+    expect(res.json.mock.calls[0][0].message).toBe("Validation failed");
   });
 });

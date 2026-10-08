@@ -152,7 +152,7 @@ describe("Users page", () => {
     useAuthStore.setState({ access: { isAdmin: true, canSeeSensitive: true, modules: {} } });
     renderPage();
     const cfg = useServerTable.mock.calls.at(-1)[0];
-    const row = { original: { Id: 13, Username: "u", FullName: "U", GroupId: null, BranchId: 3, IsActive: true, IsAdmin: true } };
+    const row = { original: { Id: 13, Username: "u", FullName: "U", GroupId: null, BranchId: 3, IsActive: true, IsAdmin: true, CanEdit: true } };
     render(
       <QueryClientProvider client={new QueryClient()}>
         <MemoryRouter>{cfg.renderRowActions({ row })}</MemoryRouter>
@@ -194,6 +194,7 @@ describe("Users page", () => {
         GroupId: 8,
         IsActive: true,
         IsAdmin: false,
+        CanEdit: true,
         AllowDay: 0,
         UserIp: "",
       },
@@ -234,6 +235,7 @@ describe("Users page", () => {
         ReportsTo: 4,
         IsActive: true,
         IsAdmin: false,
+        CanEdit: true,
         AllowDay: 0,
         UserIp: "",
       },
@@ -263,6 +265,7 @@ describe("Users page", () => {
         ReportsTo: null,
         IsActive: true,
         IsAdmin: false,
+        CanEdit: true,
       },
     };
 
@@ -392,7 +395,7 @@ describe("Users create flow", () => {
 });
 
 describe("Users actions by permission", () => {
-  const rowActions = (original = { Id: 1 }) => {
+  const rowActions = (original = { Id: 1, CanEdit: true }) => {
     const cfg = useServerTable.mock.calls.at(-1)[0];
     renderWithProviders(cfg.renderRowActions({ row: { original } }));
     renderWithProviders(cfg.renderTopToolbarCustomActions());
@@ -427,22 +430,24 @@ describe("Users actions by permission", () => {
     expect(screen.getByLabelText("Delete")).toBeInTheDocument();
   });
 
-  // C: sp_SaveUser refuses a non-admin editing an admin. The row's IsAdmin is the
-  // tblUser mirror and can lag the role, so the Owner/Admin group names count too.
-  it.each([
-    ["the IsAdmin flag", { Id: 4, IsAdmin: true, GroupName: "Whatever" }],
-    ["the Owner role", { Id: 4, IsAdmin: false, GroupName: "Owner" }],
-    ["the Admin role", { Id: 4, IsAdmin: false, GroupName: "Admin" }],
-  ])("hides Edit from a non-admin on an admin row (%s)", (_l, original) => {
+  // L2: the server decides per row (CanEdit, the same predicate saveUser enforces).
+  it("hides Edit on a row the server marks CanEdit false, even for an admin", () => {
+    useAuthStore.setState({ access: { isAdmin: true, canSeeSensitive: true, modules: {} } });
     renderPage();
-    rowActions(original);
+    rowActions({ Id: 4, IsAdmin: true, CanEdit: false });
+    expect(screen.queryByLabelText("Edit")).toBeNull();
+  });
+
+  it("hides Edit when the row carries no CanEdit flag (fail closed)", () => {
+    renderPage();
+    rowActions({ Id: 4 });
     expect(screen.queryByLabelText("Edit")).toBeNull();
   });
 
   it("an admin can still edit an admin row", () => {
     useAuthStore.setState({ access: { isAdmin: true, canSeeSensitive: true, modules: {} } });
     renderPage();
-    rowActions({ Id: 4, IsAdmin: true, GroupName: "Owner" });
+    rowActions({ Id: 4, IsAdmin: true, GroupName: "Owner", CanEdit: true });
     expect(screen.getByLabelText("Edit")).toBeInTheDocument();
   });
 });

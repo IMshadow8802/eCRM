@@ -19,7 +19,8 @@ const router = express.Router();
 
 // Public routes
 router.post("/loginUser", open(), authController.login);
-router.post("/logoutUser", open(), authController.logout);
+// Logout ends the server-side session, so it needs to know which one.
+router.post("/logoutUser", verifyToken, loadScope, open(), authController.logout);
 // Signed-in caller's modules, reach and flags (controller: Task 6).
 router.post("/fetchMyAccess", verifyToken, loadScope, open(), authController.fetchMyAccess);
 

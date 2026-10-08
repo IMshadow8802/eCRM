@@ -11,6 +11,8 @@ export interface DialogProps {
   confirmLabel?: string;
   cancelLabel?: string;
   destructive?: boolean;
+  /** Notice-style dialog: a single confirm button. */
+  hideCancel?: boolean;
   loading?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
@@ -27,6 +29,7 @@ export function Dialog({
   confirmLabel = "Confirm",
   cancelLabel = "Cancel",
   destructive = false,
+  hideCancel = false,
   loading = false,
   onConfirm,
   onCancel,
@@ -44,13 +47,15 @@ export function Dialog({
           <Text variant="h2">{title}</Text>
           {message ? <Text variant="secondary">{message}</Text> : null}
           <View style={styles.actions}>
-            <Button
-              title={cancelLabel}
-              variant="secondary"
-              onPress={onCancel}
-              disabled={loading}
-              style={styles.action}
-            />
+            {hideCancel ? null : (
+              <Button
+                title={cancelLabel}
+                variant="secondary"
+                onPress={onCancel}
+                disabled={loading}
+                style={styles.action}
+              />
+            )}
             <Button
               title={confirmLabel}
               variant={destructive ? "danger" : "primary"}

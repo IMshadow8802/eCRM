@@ -9,6 +9,7 @@ const { setupRoutes } = require("./config/routes");
 const { setupErrorHandlers } = require("./config/errorHandlers");
 const database = require("./config/database");
 const { init: initRealtime } = require("./realtime/socket");
+const sweep = require("./jobs/sweep");
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -66,9 +67,16 @@ async function startServer() {
     // Realtime (socket.io) rides the same http.Server/port.
     initRealtime(server);
 
+    // DB datetimes are naive IST; node must run in IST to read them right.
+    if (new Date().getTimezoneOffset() !== -330) {
+      console.warn("[sweep] process TZ is not Asia/Kolkata — DB datetimes will be misread");
+    }
+    const stopSweep = sweep.start();
+
     // Graceful shutdown
     const gracefulShutdown = () => {
       console.log("\n🛑 Shutting down gracefully...");
+      stopSweep();
       server.close(() => {
         console.log("✅ Server closed");
         process.exit(0);

@@ -5,6 +5,7 @@ const { emitToWorkspace, emitToUser } = require("../realtime/events");
 const { SCOPES } = require("../realtime/contract");
 const { assertRecordAccess, scopeJson, taskAllowed } = require("../middleware/permission");
 const { validationError } = require("../utils/responseHelper");
+const tatService = require("../services/tatService");
 const {
   asyncRoute,
   firstRow,
@@ -15,7 +16,9 @@ const {
   positiveInt,
 } = require("../utils/controllerKit");
 
-const FIELD_LABEL = { Title: "Title", Priority: "Priority", DueDate: "Due date" };
+const FIELD_LABEL = { Title: "Title", Priority: "Priority", DueDate: "Due date", DueTime: "Due time", TatMinutes: "Target" };
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+const has = (body, key) => Object.prototype.hasOwnProperty.call(body, key);
 
 // Fire-and-forget like sp_NotifyTaskAssigned: a failed ping never fails the tick.
 function notifyCompletion(req, taskId, change) {
@@ -67,6 +70,25 @@ class TaskController {
         ChecklistItems,
       } = req.body;
 
+      // TAT inputs (100). Sent to the SP only when the body carries them, so an
+      // older client (or a drag re-save) keeps the stored time and target.
+      const tat = {};
+      if (has(req.body, "DueTime")) {
+        const v = req.body.DueTime;
+        if (v != null && v !== "" && !HHMM.test(String(v))) return validationError(res, "Due time must be HH:mm");
+        Object.assign(tat, { DueTime: v || null, HasDueTime: 1 });
+      }
+      if (has(req.body, "TatMinutes")) {
+        const v = req.body.TatMinutes;
+        const n = Number(v);
+        if (v != null && v !== "" && !(Number.isInteger(n) && n >= 0 && n <= 100000)) {
+          return validationError(res, "Target must be 0 to 100000 working minutes");
+        }
+        // Owner/manager or the creator sets a target, never the assignee alone; on create the caller is the creator.
+        const canSet = !Id || (await taskAllowed(req, Id, "reassign"));
+        if (canSet) Object.assign(tat, { TatMinutes: v == null || v === "" ? null : n, CanSetTarget: 1 });
+      }
+
       let checklistItemsJson = null;
       if (Id === 0 || !Id) {
         const items = Array.isArray(ChecklistItems)
@@ -111,6 +133,7 @@ class TaskController {
         IsAdmin: req.scope?.isAdmin ? 1 : 0,
         CompId: req.user.CompId,
         BranchId: req.user.BranchId,
+        ...tat,
       });
 
       const spResponse = firstRow(result);
@@ -122,6 +145,7 @@ class TaskController {
         // those; only when it is empty (e.g. hours-only edit) or on create is
         // the generic row written.
         const changes = Id > 0 ? (result.recordsets[2] ?? []) : [];
+        await tatService.afterTaskWrite(req, spResponse.TaskId, { changed: changes });
         if (changes.length === 0) {
           await logActivity({
             entityType: "Task",
@@ -242,6 +266,8 @@ class TaskController {
           description: "Task moved to another column",
           req,
         });
+        await tatService.acknowledge(req, TaskId);
+        await tatService.afterTaskWrite(req, TaskId);
 
         const roomId = WorkspaceId ?? spResponse.WorkspaceId;
         if (roomId) {
@@ -291,6 +317,7 @@ class TaskController {
           description: "Took this task",
           req,
         });
+        await tatService.afterTaskWrite(req, TaskId);
         const roomId = spResponse.WorkspaceId;
         if (roomId) {
           emitToWorkspace(roomId, SCOPES.TASK_LIST, { workspaceId: roomId });
@@ -409,6 +436,7 @@ class TaskController {
           description: "Task deleted",
           req,
         });
+        await tatService.afterTaskWrite(req, Id);
 
         // sp_DeleteTask returns the task's WorkspaceId since 094.
         const roomId = WorkspaceId ?? spResponse.WorkspaceId;
@@ -471,6 +499,7 @@ class TaskController {
             })
           )
         );
+        await tatService.afterTaskWrite(req, null);
 
         if (WorkspaceId) {
           emitToWorkspace(WorkspaceId, SCOPES.TASK_LIST, {
@@ -540,6 +569,7 @@ class TaskController {
           description: Id === 0 ? "Comment added" : "Comment edited",
           req,
         });
+        await tatService.acknowledge(req, TaskId);
 
         if (Id === 0) {
           database
@@ -749,6 +779,7 @@ class TaskController {
           description: `Logged ${Hours} hours`,
           req,
         });
+        await tatService.acknowledge(req, TaskId);
 
         // sp_SaveTimeEntry doesn't return WorkspaceId — client hint or skip.
         if (WorkspaceId) {
@@ -937,6 +968,7 @@ class TaskController {
       // The SP keeps text and order as they are when CanEdit is 0.
       const canEdit = Id > 0 ? await taskAllowed(req, TaskId, "manage_checklist") : true;
 
+      let tatReasonNeeded = null;
       const result = await database.executeStoredProcedure(
         "sp_SaveTaskChecklist",
         {
@@ -989,6 +1021,12 @@ class TaskController {
           notifyCompletion(req, TaskId, change);
         }
 
+        // A tick is the caller's own act on the task; completion/reopen closes or reopens clocks.
+        if (Id > 0) await tatService.acknowledge(req, TaskId);
+        if (change) await tatService.afterTaskWrite(req, TaskId);
+        // Finishing a task you ran over on opens the reason box (not blocking).
+        if (change === "completed") tatReasonNeeded = await tatService.reasonNeeded(req, TaskId);
+
         // Checklist drives completion — board cards change too, so both
         // detail and list invalidate. Needs the client WorkspaceId hint
         // (the SP doesn't return it); skip when unknown.
@@ -1011,6 +1049,7 @@ class TaskController {
           ? {
               checklistId: spResponse.ChecklistId,
               completionChange: spResponse.CompletionChange ?? null,
+              tatReasonNeeded,
             }
           : null,
         timestamp: new Date().toISOString(),
@@ -1132,6 +1171,7 @@ class TaskController {
             req,
           });
           notifyCompletion(req, TaskId, change);
+          await tatService.afterTaskWrite(req, TaskId);
         }
 
         // sp_DeleteTaskChecklist returns TaskId; WorkspaceId is a client
@@ -1276,6 +1316,7 @@ class TaskController {
           description: `Dependency added`,
           req,
         });
+        await tatService.afterTaskWrite(req, TaskId); // opens the blocked hold
 
         // sp_AddTaskDependency doesn't return WorkspaceId — client hint or
         // skip.
@@ -1318,6 +1359,8 @@ class TaskController {
       const spResponse = firstRow(result);
       const ok = spOk(spResponse);
       const status = spStatus(spResponse);
+
+      if (ok) await tatService.afterTaskWrite(req, TaskId); // ends the blocked hold
 
       // sp_RemoveTaskDependency doesn't return WorkspaceId — client hint or
       // skip.

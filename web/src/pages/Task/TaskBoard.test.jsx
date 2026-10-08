@@ -19,6 +19,7 @@ describe("TaskBoard", () => {
       isAuthenticated: true,
       token: null,
       user: { UserId: 1 },
+      access: { isAdmin: false },
       UserId: 1,
       API_BASE_URL: "https://prdinfotech.in/CRM",
     });
@@ -412,7 +413,7 @@ describe("TaskBoard", () => {
   });
 
   it("lets an admin drag a card they neither created nor own", async () => {
-    useAuthStore.setState({ user: { UserId: 1, IsAdmin: true }, UserId: 1 });
+    useAuthStore.setState({ user: { UserId: 1 }, UserId: 1, access: { isAdmin: true } });
     useWorkspaceStore.getState().setActiveWorkspace({
       Id: 100,
       Type: "shared",
@@ -531,7 +532,7 @@ describe("TaskBoard", () => {
   // REGRESSION (B13): the old gate was role-only, so an admin who is not a
   // member of a shared board (MyRole null) got no add-task and no column menu.
   it("gives a non-member admin add-task and column management on a shared board", async () => {
-    useAuthStore.setState({ user: { UserId: 1, IsAdmin: true }, UserId: 1 });
+    useAuthStore.setState({ user: { UserId: 1 }, UserId: 1, access: { isAdmin: true } });
     useWorkspaceStore.getState().setActiveWorkspace({ Id: 100, Type: "shared", MyRole: null });
     renderBoard();
     expect(await screen.findByTestId("quick-add-btn-1")).toBeInTheDocument();
@@ -539,7 +540,7 @@ describe("TaskBoard", () => {
   });
 
   it("gives an admin nothing on someone else's personal board", async () => {
-    useAuthStore.setState({ user: { UserId: 1, IsAdmin: true }, UserId: 1 });
+    useAuthStore.setState({ user: { UserId: 1 }, UserId: 1, access: { isAdmin: true } });
     useWorkspaceStore.getState().setActiveWorkspace({ Id: 100, Type: "personal", MyRole: null });
     renderBoard();
     await screen.findByTestId("kanban-column-1");

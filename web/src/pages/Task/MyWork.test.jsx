@@ -55,6 +55,12 @@ describe("MyWork", () => {
     expect(screen.getByText("2 open · 1 overdue")).toBeInTheDocument();
   });
 
+  it("each row carries its TAT chip", async () => {
+    seed({ Id: 21, Title: "Held one", TatHeldSince: "2026-10-08T05:00:00Z", TatHoldReason: "Waiting on client" });
+    renderWithProviders(<MyWork />);
+    expect(await screen.findByTestId("card-tat-21")).toHaveTextContent("On hold: Waiting on client");
+  });
+
   it("opening a card shows the detail and switches to the task's workspace", async () => {
     seed({ Id: 11, Title: "Open me", DueDate: iso(1) });
     renderWithProviders(<MyWork />);

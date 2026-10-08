@@ -21,6 +21,7 @@ const SCOPES = {
   WORKSPACE_MEMBERS: "workspace-members", // { workspaceId }        roster
   WORKSPACES: "workspaces",           // { }                        switcher list (lifecycle/membership)
   NOTIFICATIONS: "notifications",     // { }                        bell unread count + list
+  SESSION: "session",                 // { reason }                 this user's sessions were ended (SESSION_FORCED)
 };
 
 // Room name builders — the only two room shapes that exist.

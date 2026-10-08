@@ -48,6 +48,7 @@ import {
 } from "../../components/ui";
 import { bucketTasksByColumn, ORPHAN_BUCKET_KEY } from "./taskBucket";
 import useAuthStore from "../../stores/useAuthStore";
+import { useIsAdmin } from "../../hooks/useAccess";
 import { workspaceAbilities, taskAbilities } from "../../utils/taskAbilities";
 import HelpGuide from "../../components/HelpGuide";
 import { HELP_GUIDES } from "../../data/helpGuides";
@@ -73,7 +74,7 @@ export default function TaskBoard() {
   const activeName = useWorkspaceStore((s) => s.activeWorkspaceName);
   const activeColor = useWorkspaceStore((s) => s.activeWorkspaceColor);
   const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace);
-  const isAdmin = useAuthStore((s) => Boolean(s.user?.IsAdmin));
+  const isAdmin = useIsAdmin();
   const currentUserId = useAuthStore((s) => s.user?.UserId ?? s.UserId);
 
   // One rule set with the server (utils/taskAbilities) - a card you cannot

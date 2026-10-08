@@ -151,6 +151,8 @@ const TopNav = ({ onOpenMobileSidebar }) => {
             } else if (entity === "ticket" && n?.EntityId) {
               // ticket_assigned / ticket_escalated (spec 2) — open the complaint.
               navigate(`/support/tickets/${n.EntityId}`);
+            } else if (entity === "user" && n?.Type === "presence_not_signed_in") {
+              navigate("/today?tab=team");
             } else if (entity === "workspace") {
               // Workspace invites had no handler at all — clicking the bell
               // item did nothing. WorkspaceSwitcher auto-prompts any pending

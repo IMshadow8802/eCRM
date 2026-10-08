@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import TaskCreateModal from "./TaskCreateModal";
@@ -7,6 +7,11 @@ import useAuthStore from "../../../stores/useAuthStore";
 import useWorkspaceStore from "../../../stores/useWorkspaceStore";
 import { taskFixture, workspaceFixture } from "../../../test/mocks/handlers";
 import renderWithProviders from "../../../test/renderWithProviders";
+import { server } from "../../../test/mocks/server";
+import { http, HttpResponse } from "msw";
+
+// Native date input so a due date can be typed (MUI X fields are not jsdom-typable).
+vi.mock("../../../components/ui/DateField", () => import("../../../test/DateFieldStub"));
 
 const member = (UserId, FullName) => ({
   UserId,
@@ -167,5 +172,62 @@ describe("TaskCreateModal", () => {
       expect(taskFixture.list).toHaveLength(1);
     });
     expect(taskFixture.list[0].AssigneeIds).toEqual([1]);
+  });
+
+  describe("TAT fields", () => {
+    let body;
+    beforeEach(() => {
+      body = undefined;
+      server.use(http.post("*/api/tasks/saveTask", async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ success: true, message: "ok", responseCode: 200, data: { taskId: 900 } });
+      }));
+    });
+    const fillBasics = async (user) => {
+      await user.type(screen.getByLabelText(/title/i), "Timed");
+      await fillFirstStep(user, "Go");
+    };
+    const dueInput = () => screen.getByLabelText(/due date/i);
+
+    it("due time appears only once a due date is set, and is sent when filled", async () => {
+      renderModal();
+      const user = userEvent.setup();
+      expect(screen.queryByTestId("create-task-due-time")).toBeNull();
+      await fillBasics(user);
+      fireEvent.change(dueInput(), { target: { value: "2026-10-10" } });
+      fireEvent.change(await screen.findByTestId("create-task-due-time"), { target: { value: "17:30" } });
+      await user.type(screen.getByTestId("create-task-tat-hours"), "2");
+      await user.click(screen.getByTestId("create-task-submit"));
+      await waitFor(() => expect(body).toBeDefined());
+      expect(body).toMatchObject({ DueDate: "2026-10-10", DueTime: "17:30", TatMinutes: 120 });
+    });
+
+    it("left empty, neither time nor target is sent", async () => {
+      renderModal();
+      const user = userEvent.setup();
+      await fillBasics(user);
+      await user.click(screen.getByTestId("create-task-submit"));
+      await waitFor(() => expect(body).toBeDefined());
+      expect(body).not.toHaveProperty("DueTime");
+      expect(body).not.toHaveProperty("TatMinutes");
+    });
+
+    it("0 = no clock is sent as 0", async () => {
+      renderModal();
+      const user = userEvent.setup();
+      await fillBasics(user);
+      await user.type(screen.getByTestId("create-task-tat-hours"), "0");
+      await user.click(screen.getByTestId("create-task-submit"));
+      await waitFor(() => expect(body).toBeDefined());
+      expect(body.TatMinutes).toBe(0);
+    });
+
+    it("personal boards get no target field", async () => {
+      useWorkspaceStore.setState({ activeWorkspaceType: "personal" });
+      renderModal();
+      expect(screen.queryByTestId("create-task-tat-hours")).toBeNull();
+      fireEvent.change(dueInput(), { target: { value: "2026-10-10" } });
+      expect(await screen.findByTestId("create-task-due-time")).toBeInTheDocument();
+    });
   });
 });

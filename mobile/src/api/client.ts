@@ -14,7 +14,7 @@ import type { ApiEnvelope } from "../types/api";
 // imported here: src/api must stay free of store imports, or the cycle
 // (store -> client -> store) breaks Metro's module graph.
 let authToken: string | null = null;
-let onUnauthorized: (() => void) | null = null;
+let onUnauthorized: ((code?: string) => void) | null = null;
 
 // Which backend this install talks to. Pushed down by the auth store after the
 // company-code step (and on rehydrate), same pattern as the token. The dev
@@ -34,7 +34,7 @@ export const setAuthToken = (token: string | null): void => {
 export const getAuthToken = (): string | null => authToken;
 
 /** Registered once by the auth store; invoked when the API rejects our token. */
-export const setUnauthorizedHandler = (handler: (() => void) | null): void => {
+export const setUnauthorizedHandler = (handler: ((code?: string) => void) | null): void => {
   onUnauthorized = handler;
 };
 
@@ -68,7 +68,7 @@ apiClient.interceptors.response.use(
   (error) => {
     const status = error?.response?.status;
     if (status === 401 && !shouldSkipAuthRedirect(error?.config?.url)) {
-      onUnauthorized?.();
+      onUnauthorized?.(error?.response?.data?.code);
     }
     return Promise.reject(error);
   },

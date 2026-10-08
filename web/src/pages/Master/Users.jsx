@@ -20,8 +20,6 @@ import { formatDate } from "../../utils/format";
 import { useMasterDelete } from "../../hooks/useMasterDelete";
 import { useIsAdmin, useCanSeeSensitive } from "../../hooks/useAccess";
 
-const ADMIN_ROLES = new Set(["Owner", "Admin"]);
-
 const Users = () => {
   const { enqueueSnackbar } = useSnackbar();
   const queryClient = useQueryClient();
@@ -31,10 +29,8 @@ const Users = () => {
   const isAdmin = useIsAdmin();
   const canSeeSensitive = useCanSeeSensitive();
   const canSaveUsers = isAdmin || canSeeSensitive;
-  // sp_SaveUser refuses a non-admin editing an admin. Row IsAdmin is the tblUser
-  // mirror, which can lag the role (live 2026-10-07: an Admin-role user had 0),
-  // so the stock admin role names count too. ponytail: names, until fetchUsers returns the role's IsAdmin.
-  const canEditRow = (u) => canSaveUsers && (isAdmin || !(u.IsAdmin || ADMIN_ROLES.has(u.GroupName)));
+  // The server decides per row (CanEdit, the same check saveUser applies).
+  const canEditRow = (u) => canSaveUsers && !!u.CanEdit;
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);

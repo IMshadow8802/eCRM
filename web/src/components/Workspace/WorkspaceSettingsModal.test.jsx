@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import WorkspaceSettingsModal from "./WorkspaceSettingsModal";
@@ -29,9 +29,21 @@ describe("WorkspaceSettingsModal", () => {
     useAuthStore.setState({
       isAuthenticated: true,
       token: null,
-      user: { Id: 1, IsAdmin: false },
+      user: { Id: 1 },
+      access: { isAdmin: false },
       API_BASE_URL: "https://prdinfotech.in/CRM",
     });
+  });
+
+  // L3: admin-ness is read from access, so a refresh of access alone re-renders.
+  it("shows Archive & delete to a non-owner when access.isAdmin flips, user unchanged", async () => {
+    const ws = personalOwned({ OwnerUserId: 2, MyRole: "member", Type: "shared" });
+    workspaceFixture.seed(ws);
+    renderModal(ws);
+    await screen.findByRole("dialog");
+    expect(screen.queryByText("Archive & delete")).toBeNull();
+    act(() => useAuthStore.setState({ access: { isAdmin: true } }));
+    expect(await screen.findByText("Archive & delete")).toBeInTheDocument();
   });
 
   describe("archive confirm", () => {

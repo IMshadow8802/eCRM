@@ -33,6 +33,8 @@ const SESSION_EMPTY = {
   menuRights: [],
   activeMenuRights: null,
   access: null,
+  presenceNotice: false,
+  reauth: null,
 };
 
 const getUserDataFromLocalStorage = () => {
@@ -82,7 +84,13 @@ const useAuthStore = create(
         menuRights: initialState.permissions?.rawPermissions || [],
         activeMenuRights: null,
         access: null,
+        // First sign-in after go-live: show what is recorded (spec P2 notice).
+        presenceNotice: false,
+        // Open re-sign-in dialog: { code, username } — see utils/reauth.js.
+        reauth: null,
 
+        setPresenceNotice: (v) => set({ presenceNotice: Boolean(v) }),
+        setReauth: (reauth) => set({ reauth: reauth ?? null }),
         setAccess: (access) => set({ access: access ?? null }),
         setMenuRights: (rights) => set({ menuRights: rights }),
         setActiveMenuRights: (rights) => set({ activeMenuRights: rights }),
@@ -127,6 +135,7 @@ const useAuthStore = create(
             loginTimestamp: userData.loginTimestamp,
             menuRights: permissions?.rawPermissions || [],
             access: responseData.access ?? null,
+            presenceNotice: Boolean(responseData.presenceNotice),
           });
         },
 
@@ -260,6 +269,7 @@ const useAuthStore = create(
         menuRights: s.menuRights,
         activeMenuRights: s.activeMenuRights,
         access: s.access,
+        presenceNotice: s.presenceNotice,
         API_BASE_URL: s.API_BASE_URL,
         compCode: s.compCode,
         companyName: s.companyName,

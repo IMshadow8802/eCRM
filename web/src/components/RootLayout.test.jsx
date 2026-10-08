@@ -33,6 +33,11 @@ vi.mock("../realtime/SocketProvider", () => ({
   default: () => <div data-testid="socket-provider" />,
 }));
 
+vi.mock("./ReauthDialog", () => ({ __esModule: true, default: () => <div data-testid="reauth" /> }));
+vi.mock("./PresenceNoticeDialog", () => ({ __esModule: true, default: () => <div data-testid="notice" /> }));
+const heartbeat = vi.fn();
+vi.mock("../hooks/useHeartbeat", () => ({ __esModule: true, default: () => heartbeat() }));
+
 import RootLayout from "./RootLayout";
 
 const renderLayout = (path = "/dashboard") =>
@@ -70,6 +75,18 @@ describe("RootLayout", () => {
     expect(screen.getByTestId("socket-provider")).toBeInTheDocument();
     expect(screen.getByTestId("sidebar")).toBeInTheDocument();
     expect(screen.getByTestId("topnav")).toBeInTheDocument();
+  });
+
+  it("mounts the session dialogs over the page when authenticated, and runs the heartbeat", () => {
+    renderLayout();
+    expect(screen.queryByTestId("reauth")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("notice")).not.toBeInTheDocument();
+    expect(heartbeat).toHaveBeenCalled();
+
+    mockIsAuthenticated = true;
+    renderLayout();
+    expect(screen.getByTestId("reauth")).toBeInTheDocument();
+    expect(screen.getByTestId("notice")).toBeInTheDocument();
   });
 
   it("toggles sidebar collapse and persists the choice", () => {

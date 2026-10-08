@@ -3,6 +3,7 @@ const database = require("../config/database");
 const jwt = require("jsonwebtoken");
 const { comparePassword } = require("../utils/encryption");
 const { buildAccess, publicAccess } = require("../middleware/access");
+const sessionService = require("../services/sessionService");
 
 // SP returns menu rows in PascalCase (MenuId, ParentId, CanAdd, ...).
 // We re-map to the camelCase shape the frontend already expects.
@@ -95,6 +96,16 @@ class AuthController {
           });
         }
 
+        const accessResult = await database.executeStoredProcedure("sp_FetchUserAccess", {
+          UserId: spResponse.UserId,
+          CompId: spResponse.CompId,
+        });
+        const access = publicAccess(buildAccess(accessResult.recordsets, spResponse.UserId));
+
+        // No session = no access: a failure here throws into the LOGIN_ERROR
+        // 500 below, and no token is minted. The sign-in is also the check-in.
+        const session = await sessionService.start({ req, user: spResponse });
+
         const tokenPayload = {
           UserId: spResponse.UserId,
           UserName: spResponse.UserName,
@@ -104,17 +115,12 @@ class AuthController {
           FullName: spResponse.FullName,
           Email: spResponse.Email,
           JobTitle: spResponse.JobTitle,
+          Sid: session.sessionId,
         };
 
         const token = jwt.sign(tokenPayload, process.env.JWT_SECRET, {
           expiresIn: process.env.JWT_EXPIRE || "24h",
         });
-
-        const accessResult = await database.executeStoredProcedure("sp_FetchUserAccess", {
-          UserId: spResponse.UserId,
-          CompId: spResponse.CompId,
-        });
-        const access = publicAccess(buildAccess(accessResult.recordsets, spResponse.UserId));
 
         return res.status(200).json({
           success: true,
@@ -151,6 +157,8 @@ class AuthController {
               CompGSTIN: spResponse.CompGSTIN,
             },
             access,
+            sessionExpiresAt: session.expiresAt.toISOString(),
+            presenceNotice: session.showNotice,
             permissions: {
               ...menuPayload(userPermissions),
               hasAdminAccess:
@@ -279,19 +287,23 @@ class AuthController {
     }
   }
 
+  // Ends the caller's session server-side (and stamps SignedOutAt). The route
+  // runs verifyToken, so req.user.Sid is the session this token belongs to.
   async logout(req, res) {
     try {
+      await sessionService.end(req.user.Sid, "logout", req.user.CompId);
       return res.status(200).json({
         success: true,
         message: "Logout successful",
         responseCode: 200,
         data: {
-          message: "Token invalidated on client side",
+          message: "Session ended",
           logoutTime: new Date().toISOString(),
         },
         timestamp: new Date().toISOString(),
       });
     } catch (err) {
+      console.error("Logout error:", err);
       return res.status(500).json({
         success: false,
         message: "Logout failed",
@@ -315,6 +327,7 @@ class AuthController {
         FullName: tokenUser.FullName,
         Email: tokenUser.Email,
         JobTitle: tokenUser.JobTitle,
+        Sid: tokenUser.Sid, // same session; a token without one is refused
       };
 
       const newToken = jwt.sign(newTokenPayload, process.env.JWT_SECRET, {

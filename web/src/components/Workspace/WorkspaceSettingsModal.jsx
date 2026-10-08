@@ -26,6 +26,7 @@ import {
 import { MASTER_ENDPOINTS } from "../../api/masterQueries";
 import { toUserOptions } from "../../utils/userShape";
 import useAuthStore from "../../stores/useAuthStore";
+import { useIsAdmin } from "../../hooks/useAccess";
 
 const COLOR_OPTIONS = [
   { value: "#6366F1", label: "Indigo" },
@@ -136,7 +137,7 @@ export default function WorkspaceSettingsModal({
   const p = theme.tokens;
   const queryClient = useQueryClient();
   const currentUserId = useAuthStore((s) => s.user?.Id ?? s.user?.UserId);
-  const isAdmin = useAuthStore((s) => Boolean(s.user?.IsAdmin));
+  const isAdmin = useIsAdmin();
 
   const [name, setName] = useState(workspace?.Name ?? "");
   const [color, setColor] = useState(

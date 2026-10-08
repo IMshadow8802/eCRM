@@ -23,8 +23,8 @@ No row or `CanView = 0` = no module: 403 and no data, reports and dashboard figu
 
 Modules: `leads` (leads, follow-ups, calls, quotations) · `sales_reports` (uses `leads` reach) ·
 `complaints` (tickets, escalations) · `support_reports` (uses `complaints` reach) · `customers` ·
-`people` · `tasks` · `teams` · `projects` · `roles` (admin) · `offices` (admin) · `settings` · `dashboard`.
-Only `leads`, `complaints`, `customers`, `people` take a reach.
+`people` · `attendance` · `tasks` · `teams` · `projects` · `roles` (admin) · `offices` (admin) · `settings` · `dashboard`.
+Only `leads`, `complaints`, `customers`, `people`, `attendance` take a reach.
 
 | Reach | Offices | Owner filter |
 |---|---|---|
@@ -186,3 +186,10 @@ Controllers read `req.scope.isAdmin`, not the JWT claim.
 | Task permissions | `sp_CheckTaskPermission` |
 | Transfer targets | `assertCanAssign` (roster via `sp_FetchAssignableUsers`) |
 | Reporting line | `tblUser.ReportsTo` |
+
+## Attendance, day marks and TAT verdicts
+
+- **`attendance` module reach** decides whose presence, day marks and Today row a caller sees (`workSettingsController.visibleUserIds`): everyone sees self + their `ReportsTo` subtree; `Office`/`OfficeTree` add people whose home office is in reach; `Company` (or admin) sees all. Rows outside reach are dropped, not 403.
+- **Day marks** (leave, on duty): saved or deleted by someone above the person on the `ReportsTo` chain, or an admin; anyone else gets 403. Never your own.
+- **TAT verdict** on a breached task clock: a `ReportsTo` ancestor of the assignee, or the task's workspace owner/manager (`tblWorkspaceMembers`), or an admin; **never the assignee on their own clock**. Personal workspaces have no TAT. Hold-everyone needs workspace owner/manager or the task's creator; an assignee may hold or release only their own.
+- **Sessions:** an admin may end any user's sessions (`/api/presence/endSession`); nobody ends their own that way (they sign out).

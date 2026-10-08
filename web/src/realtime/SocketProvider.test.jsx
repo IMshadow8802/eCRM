@@ -37,6 +37,7 @@ const ioMock = vi.fn((url, opts) => {
 vi.mock("socket.io-client", () => ({ io: (...args) => ioMock(...args) }));
 
 import useAuthStore from "../stores/useAuthStore";
+import { resetReauthForTests } from "../utils/reauth";
 import useWorkspaceStore from "../stores/useWorkspaceStore";
 import SocketProvider, {
   ConnectionStatus,
@@ -102,8 +103,9 @@ describe("SocketProvider", () => {
   beforeEach(() => {
     sockets.length = 0;
     ioMock.mockClear();
+    resetReauthForTests();
     act(() => {
-      useAuthStore.setState({ token: null, isAuthenticated: false });
+      useAuthStore.setState({ token: null, isAuthenticated: false, reauth: null, user: { Id: 1, Username: "alice" } });
       useWorkspaceStore.getState().clearActiveWorkspace();
       useSocketStatus.setState({ status: "idle" });
     });
@@ -216,6 +218,39 @@ describe("SocketProvider", () => {
         expected.map((queryKey) => ({ queryKey })),
       );
     }
+  });
+
+  it("a session event opens the re-sign-in dialog instead of refetching", () => {
+    loginWith();
+    renderProvider();
+    const socket = lastSocket();
+    queryClient.invalidateQueries.mockClear();
+    act(() => socket.handlers[EVENT_INVALIDATE]({ scope: SCOPES.SESSION, reason: "SESSION_FORCED" }));
+    expect(useAuthStore.getState().reauth).toEqual({ code: "SESSION_FORCED", username: "alice" });
+    expect(queryClient.invalidateQueries).not.toHaveBeenCalled();
+  });
+
+  it("a handshake refused for a closed session asks to sign in and stays down", () => {
+    loginWith();
+    renderProvider();
+    const socket = lastSocket();
+    act(() => socket.handlers.connect_error(new Error("SESSION_EXPIRED")));
+    expect(socket.disconnect).toHaveBeenCalled();
+    expect(useAuthStore.getState().reauth?.code).toBe("SESSION_EXPIRED");
+
+    // A fresh token (the re-sign-in) brings a fresh socket.
+    loginWith("jwt-fresh");
+    expect(lastSocket()).not.toBe(socket);
+    expect(lastSocket().opts.auth).toEqual({ token: "jwt-fresh" });
+  });
+
+  it("other connect errors are left to socket.io's own retry", () => {
+    loginWith();
+    renderProvider();
+    const socket = lastSocket();
+    act(() => socket.handlers.connect_error(new Error("xhr poll error")));
+    expect(socket.disconnect).not.toHaveBeenCalled();
+    expect(useAuthStore.getState().reauth).toBeNull();
   });
 
   it("shipped map targets the keys this codebase actually uses", () => {

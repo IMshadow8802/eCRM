@@ -9,6 +9,17 @@ jest.mock("../../../src/controllers/authController", () => ({
   fetchMyAccess: jest.fn((req, res) => res.status(200).json({ success: true })),
 }));
 
+// logout now needs a session (verifyToken) — a request without the header is refused.
+jest.mock("../../../src/middleware/auth", () => ({
+  verifyToken: jest.fn((req, res, next) => (req.headers.authorization
+    ? (req.user = { UserId: 7, CompId: 1, Sid: "s" }, next())
+    : res.status(401).json({ success: false, code: "NO_TOKEN" }))),
+}));
+jest.mock("../../../src/middleware/permission", () => ({
+  loadScope: (req, res, next) => next(),
+  open: () => (req, res, next) => next(),
+}));
+
 const express = require("express");
 const request = require("supertest");
 const authRoutes = require("../../../src/routes/authRoutes");
@@ -36,9 +47,14 @@ describe("authRoutes", () => {
 
   it("does not rate-limit logout", async () => {
     for (let i = 0; i < 12; i++) {
-      const r = await request(app).post("/api/auth/logoutUser").send({});
+      const r = await request(app).post("/api/auth/logoutUser").set("Authorization", "Bearer t").send({});
       expect(r.status).toBe(200);
     }
+  });
+
+  it("logout sits behind verifyToken, so it knows which session to end", async () => {
+    const r = await request(app).post("/api/auth/logoutUser").send({});
+    expect(r.status).toBe(401);
   });
 
   // REGRESSION: this endpoint was public and returned the plaintext password

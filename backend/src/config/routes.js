@@ -20,6 +20,9 @@ const userBranchAccessRoutes = require("../routes/userBranchAccessRoutes");
 const configRoutes = require("../routes/configRoutes");
 const productRoutes = require("../routes/productRoutes");
 const attachmentRoutes = require("../routes/attachmentRoutes");
+const workSettingsRoutes = require("../routes/workSettingsRoutes");
+const presenceRoutes = require("../routes/presenceRoutes");
+const tatRoutes = require("../routes/tatRoutes");
 const { success, dbErrors } = require("../utils/responseHelper");
 const database = require("./database");
 
@@ -51,6 +54,9 @@ function setupRoutes(app) {
   app.use("/api/config", configRoutes);
   app.use("/api/products", productRoutes);
   app.use("/api/attachments", attachmentRoutes);
+  app.use("/api/work", workSettingsRoutes);
+  app.use("/api/presence", presenceRoutes);
+  app.use("/api/tat", tatRoutes);
 
   app.get("/health", (req, res) => {
     return success(res, "CRM API is running", {

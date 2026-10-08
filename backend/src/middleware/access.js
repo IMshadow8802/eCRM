@@ -5,8 +5,8 @@
 // one scope per module. No DB, no Express — permission.js wires it in.
 
 const MODULES = ["leads", "sales_reports", "complaints", "support_reports", "customers", "people",
-  "tasks", "teams", "projects", "roles", "offices", "settings", "dashboard"];
-const REACH_MODULES = new Set(["leads", "complaints", "customers", "people"]);
+  "tasks", "teams", "projects", "roles", "offices", "settings", "dashboard", "attendance"];
+const REACH_MODULES = new Set(["leads", "complaints", "customers", "people", "attendance"]);
 // Report modules have their own on/off but read with the source module's reach;
 // everything else that has no reach of its own reads with people's.
 const REACH_SOURCE = { sales_reports: "leads", support_reports: "complaints", dashboard: "leads" };

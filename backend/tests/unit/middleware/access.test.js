@@ -21,8 +21,8 @@ const LISTS = [
 describe("module list", () => {
   it("holds the spec keys and the four reach modules", () => {
     expect(MODULES).toEqual(["leads", "sales_reports", "complaints", "support_reports", "customers", "people",
-      "tasks", "teams", "projects", "roles", "offices", "settings", "dashboard"]);
-    expect([...REACH_MODULES]).toEqual(["leads", "complaints", "customers", "people"]);
+      "tasks", "teams", "projects", "roles", "offices", "settings", "dashboard", "attendance"]);
+    expect([...REACH_MODULES]).toEqual(["leads", "complaints", "customers", "people", "attendance"]);
   });
 });
 
@@ -46,6 +46,11 @@ describe("scopeFor", () => {
   });
   it("OfficeTree includes offices below", () => {
     expect(scopeFor(access, "complaints", 7).branchIds).toEqual([2, 4, 5]);
+  });
+  it("attendance is a reach module: Team reach gives the team owners; no grant gives nothing", () => {
+    const a = buildAccess(rs({ modules: [mod("attendance", "Team"), mod("people", "Own")], lists: LISTS, owners: [7, 8] }), 7);
+    expect(scopeFor(a, "attendance", 7)).toMatchObject({ reach: "Team", ownerIds: [7, 8], branchIds: [2, 3] });
+    expect(scopeFor(access, "attendance", 7)).toMatchObject({ reach: null, branchIds: [], ownerIds: [] });
   });
   it("report modules borrow the source module's reach but keep their own rights", () => {
     const s = scopeFor(access, "sales_reports", 7);

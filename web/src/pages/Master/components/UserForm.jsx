@@ -17,6 +17,7 @@ import {
 import { useIsAdmin, useCanSeeSensitive } from "../../../hooks/useAccess";
 import { toTree } from "../../../utils/officeTree";
 import { SALES_ENDPOINTS } from "../../../api/salesQueries";
+import { WORK_ENDPOINTS } from "../../../api/workQueries";
 import { useConfirmation } from "../../../hooks/useConfirmation";
 import ConfirmationDialog from "../../../components/ConfirmationDialog";
 import { useApiQuery } from "../../../hooks/useApiQuery";
@@ -62,6 +63,8 @@ const buildUserFormSchema = (isEditing) =>
   AllowDay: z.coerce.number().optional(),
   UserIp: z.string().optional().or(z.literal("")),
   ReportsTo: z.number().nullable().optional(),
+  WorkCalendarId: z.number().nullable().optional(),
+  PresenceExempt: z.boolean().nullable().optional(),
   });
 
 // What the user still holds, shown before an admin confirms deactivation.
@@ -124,6 +127,18 @@ const UserForm = ({
     .filter((u) => u.Id !== editingUser?.Id)
     .map((u) => ({ value: String(u.Id), label: u.FullName }));
 
+  // Shifts for the Shift picker (0 = company standard).
+  const { data: workData } = useApiQuery({
+    queryKey: ["workSettings"],
+    endpoint: WORK_ENDPOINTS.fetchWorkSettings,
+    params: {},
+    showErrorMessage: false,
+  });
+  const shiftOptions = [
+    { value: "0", label: "Company standard" },
+    ...(workData?.calendars ?? []).map((c) => ({ value: String(c.Id), label: c.Name })),
+  ];
+
   const { data: branchData } = useApiQuery({
     queryKey: ["branches"],
     endpoint: SALES_ENDPOINTS.users.fetchBranches,
@@ -165,6 +180,8 @@ const UserForm = ({
     if (editingUser) {
       return {
         ...editingUser,
+        WorkCalendarId: editingUser.WorkCalendarId ?? 0,
+        PresenceExempt: Boolean(editingUser.PresenceExempt),
         Password: "", // Don't populate password for editing
       };
     }
@@ -184,6 +201,8 @@ const UserForm = ({
       AllowDay: 0,
       UserIp: "",
       ReportsTo: null,
+      WorkCalendarId: 0,
+      PresenceExempt: false,
     };
   };
 
@@ -292,6 +311,7 @@ const UserForm = ({
     };
     // Salary and contact fields are not shown without the permission, so they
     // are not sent either (the server refuses such a save for a non-admin).
+    if (!isAdmin) delete payload.PresenceExempt;
     if (!canSeeSensitive) {
       delete payload.Email;
       delete payload.Mobile;
@@ -502,6 +522,36 @@ const UserForm = ({
                 />
               )}
             />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Controller
+              control={control}
+              name="WorkCalendarId"
+              render={({ field }) => (
+                <FormSelect
+                  label="Shift"
+                  value={String(field.value ?? 0)}
+                  onChange={(e) => field.onChange(e.target.value === "" ? 0 : parseInt(e.target.value, 10))}
+                  onBlur={field.onBlur}
+                  options={shiftOptions}
+                  placeholder="Company standard"
+                />
+              )}
+            />
+            {isAdmin && (
+              <Controller
+                control={control}
+                name="PresenceExempt"
+                render={({ field }) => (
+                  <FormCheckbox
+                    label="No attendance tracking"
+                    checked={Boolean(field.value)}
+                    onChange={(e) => field.onChange(e.target.checked)}
+                  />
+                )}
+              />
+            )}
           </div>
 
           {/* Extra offices: admin only, widens what an Office-reach role sees */}

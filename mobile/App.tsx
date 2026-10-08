@@ -9,6 +9,9 @@ import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { LucideProvider } from "lucide-react-native";
 
 import { queryClient } from "./src/api/queryClient";
+import { heartbeat } from "./src/api/presenceQueries";
+import PresenceNoticeDialog from "./src/features/auth/PresenceNoticeDialog";
+import useAuthStore from "./src/stores/useAuthStore";
 import RootNavigator from "./src/navigation/RootNavigator";
 import { useAppFonts } from "./src/theme";
 import { ToastProvider } from "./src/ui";
@@ -28,6 +31,29 @@ export default function App() {
     const sub = AppState.addEventListener("change", onChange);
     return () => sub.remove();
   }, []);
+
+  // Presence heartbeat: on foreground and every 2 minutes while active. Errors
+  // are ignored; a dead session surfaces as a 401 on the next real request.
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const beat = () => void heartbeat().catch(() => {});
+    const start = () => {
+      beat();
+      timer ??= setInterval(beat, 120_000);
+    };
+    const stop = () => {
+      if (timer) clearInterval(timer);
+      timer = null;
+    };
+    if (AppState.currentState === "active") start();
+    const sub = AppState.addEventListener("change", (s) => (s === "active" ? start() : stop()));
+    return () => {
+      sub.remove();
+      stop();
+    };
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (fontsLoaded) SplashScreen.hideAsync();
@@ -57,6 +83,7 @@ export default function App() {
                   raised it — a refused delete often closes its own sheet. */}
               <ToastProvider>
                 <RootNavigator />
+                <PresenceNoticeDialog />
                 <StatusBar style="dark" />
               </ToastProvider>
             </BottomSheetModalProvider>

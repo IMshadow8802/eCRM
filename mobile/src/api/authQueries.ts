@@ -18,7 +18,7 @@ export const AUTH_ENDPOINTS = {
 export const login = (params: {
   identifier: string;
   password: string;
-}): Promise<ApiEnvelope<LoginData>> => post<LoginData>(AUTH_ENDPOINTS.login, params);
+}): Promise<ApiEnvelope<LoginData>> => post<LoginData>(AUTH_ENDPOINTS.login, { ...params, Device: "mobile" });
 
 export const logout = (): Promise<ApiEnvelope<unknown>> =>
   post(AUTH_ENDPOINTS.logout, {});

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { http, HttpResponse } from "msw";
@@ -10,6 +10,7 @@ import useWorkspaceStore from "../../../stores/useWorkspaceStore";
 import { taskFixture, workspaceFixture } from "../../../test/mocks/handlers";
 import { server } from "../../../test/mocks/server";
 import renderWithProviders from "../../../test/renderWithProviders";
+import { tatHandlers } from "../../../test/tatMocks";
 
 const renderModal = (taskId, props = {}) =>
   renderWithProviders(
@@ -1242,7 +1243,7 @@ describe("TaskDetailModal", () => {
   describe("permissions mirror sp_CheckTaskPermission", () => {
     const setup = ({ type = "shared", role, isAdmin = false, task = {} }) => {
       useWorkspaceStore.getState().setActiveWorkspace({ Id: 100, Type: type, MyRole: role });
-      useAuthStore.setState({ user: { UserId: 1, IsAdmin: isAdmin }, UserId: 1 });
+      useAuthStore.setState({ user: { UserId: 1 }, UserId: 1, access: { isAdmin } });
       Object.assign(taskFixture.list[0], { CreatedByUserId: 9, AssigneesJson: [], AssignedToUserId: null, ...task });
     };
 
@@ -1319,5 +1320,133 @@ describe("TaskDetailModal — take this task", () => {
     renderModal(501);
     await screen.findByText("Task 501");
     expect(screen.queryByTestId("task-claim-btn")).not.toBeInTheDocument();
+  });
+});
+
+describe("TaskDetailModal — TAT", () => {
+  let saved;
+  beforeEach(() => {
+    saved = undefined;
+    taskFixture.reset();
+    useWorkspaceStore.getState().setActiveWorkspace({ Id: 100, Type: "shared", MyRole: "member" });
+    useAuthStore.setState({ isAuthenticated: true, token: null, user: { UserId: 1 }, UserId: 1, API_BASE_URL: "https://prdinfotech.in/CRM" });
+    taskFixture.seed({
+      Id: 501, Title: "Task 501", WorkspaceId: 100, ColumnId: 1, Priority: "high", CreatedByUserId: 1,
+      DueDate: "2026-10-10", DueTime: "10:00", TatMinutes: 120, // the wire shape: "HH:mm"
+    });
+    server.use(
+      ...tatHandlers(),
+      http.post(`*/api/tasks/saveTask`, async ({ request }) => {
+        saved = await request.json();
+        return HttpResponse.json({ success: true, message: "ok", responseCode: 200, data: {} });
+      }),
+    );
+  });
+
+  it.each([
+    ["HH:mm", "09:45"],
+    ["HH:mm:ss", "09:45:00"],
+  ])("a stored %s due time shows in the form and is not re-sent", async (_shape, stored) => {
+    taskFixture.list[0].DueTime = stored;
+    renderModal(501);
+    await screen.findByText("Task 501");
+    expect(screen.getByTestId("task-due-time-input")).toHaveValue("09:45");
+    const user = userEvent.setup();
+    await user.type(screen.getByTestId("task-title-input"), "!");
+    await user.click(screen.getByTestId("task-save-btn"));
+    await waitFor(() => expect(saved).toBeDefined());
+    expect(saved).not.toHaveProperty("DueTime");
+  });
+
+  it("a value that is not a time shows an empty field instead of junk", async () => {
+    taskFixture.list[0].DueTime = "1970-01-01T04:30:00.000Z";
+    renderModal(501);
+    await screen.findByText("Task 501");
+    expect(screen.getByTestId("task-due-time-input")).toHaveValue("");
+  });
+
+  it("due time shows only with a due date", async () => {
+    taskFixture.list[0].DueDate = null;
+    renderModal(501);
+    await screen.findByText("Task 501");
+    expect(screen.queryByTestId("task-due-time-input")).toBeNull();
+  });
+
+  it("target is hidden from a member who did not create the task (no reassign)", async () => {
+    taskFixture.list[0].CreatedByUserId = 2;
+    renderModal(501);
+    await screen.findByText("Task 501");
+    expect(screen.getByTestId("task-due-time-input")).toBeDisabled();
+    expect(screen.queryByTestId("task-tat-hours-input")).toBeNull();
+  });
+
+  it("an unrelated edit sends neither DueTime nor TatMinutes", async () => {
+    renderModal(501);
+    await screen.findByText("Task 501");
+    expect(screen.getByTestId("task-due-time-input")).toHaveValue("10:00");
+    expect(screen.getByTestId("task-tat-hours-input")).toHaveValue(2);
+    const user = userEvent.setup();
+    await user.type(screen.getByTestId("task-title-input"), "!");
+    await user.click(screen.getByTestId("task-save-btn"));
+    await waitFor(() => expect(saved).toBeDefined());
+    expect(saved).not.toHaveProperty("DueTime");
+    expect(saved).not.toHaveProperty("TatMinutes");
+  });
+
+  it("changed time and target are sent; an emptied target means the company default", async () => {
+    renderModal(501);
+    await screen.findByText("Task 501");
+    const user = userEvent.setup();
+    fireEvent.change(screen.getByTestId("task-due-time-input"), { target: { value: "11:30" } });
+    await user.clear(screen.getByTestId("task-tat-hours-input"));
+    await user.click(screen.getByTestId("task-save-btn"));
+    await waitFor(() => expect(saved).toBeDefined());
+    expect(saved).toMatchObject({ DueTime: "11:30", TatMinutes: null });
+  });
+
+  it("hours become minutes; a cleared time is sent as null", async () => {
+    renderModal(501);
+    await screen.findByText("Task 501");
+    const user = userEvent.setup();
+    fireEvent.change(screen.getByTestId("task-due-time-input"), { target: { value: "" } });
+    await user.clear(screen.getByTestId("task-tat-hours-input"));
+    await user.type(screen.getByTestId("task-tat-hours-input"), "1.5");
+    await user.click(screen.getByTestId("task-save-btn"));
+    await waitFor(() => expect(saved).toBeDefined());
+    expect(saved).toMatchObject({ DueTime: null, TatMinutes: 90 });
+  });
+
+  it("a TAT tab after History opens the clock panel", async () => {
+    renderModal(501);
+    await screen.findByText("Task 501");
+    const tabs = screen.getAllByRole("tab").map((t) => t.textContent);
+    expect(tabs.indexOf("TAT")).toBe(tabs.findIndex((t) => t.startsWith("History")) + 1);
+    await userEvent.setup().click(screen.getByRole("tab", { name: "TAT" }));
+    expect(await screen.findByText("No time target running")).toBeInTheDocument();
+  });
+
+  it("personal boards have no TAT tab and no target", async () => {
+    useWorkspaceStore.getState().setActiveWorkspace({ Id: 100, Type: "personal", MyRole: "owner" });
+    renderModal(501);
+    await screen.findByText("Task 501");
+    expect(screen.queryByRole("tab", { name: "TAT" })).toBeNull();
+    expect(screen.queryByTestId("task-tat-hours-input")).toBeNull();
+  });
+
+  it("finishing a breached task opens the reason dialog (tatReasonNeeded)", async () => {
+    server.use(
+      http.post(`*/api/tasks/getTaskChecklist`, async () =>
+        HttpResponse.json({ success: true, message: "ok", responseCode: 200, data: { checklist: [{ Id: 81, TaskId: 501, ItemText: "only", IsCompleted: false, SortOrder: 0 }] } })),
+      http.post(`*/api/tasks/saveTaskChecklist`, async () =>
+        HttpResponse.json({ success: true, message: "ok", responseCode: 200, data: { completionChange: "completed", tatReasonNeeded: 88 } })),
+    );
+    renderModal(501);
+    await screen.findByText("Task 501");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: /Checklist/i }));
+    await user.click(await screen.findByTestId("checklist-toggle-81"));
+    expect(await screen.findByTestId("breach-reason-dialog")).toBeInTheDocument();
+    await user.click(screen.getByTestId("breach-reason-later"));
+    await waitFor(() => expect(screen.queryByTestId("breach-reason-dialog")).toBeNull());
   });
 });

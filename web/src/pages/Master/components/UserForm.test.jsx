@@ -682,3 +682,35 @@ describe("UserForm org hierarchy", () => {
     });
   });
 });
+
+describe("UserForm shift and attendance", () => {
+  beforeEach(() => {
+    useApiQuery.mockImplementation(({ endpoint }) => {
+      if (endpoint === "/api/work/fetchWorkSettings") return { data: { calendars: [{ Id: 5, Name: "Night" }] } };
+      if (endpoint === "/api/users/fetchBranches") return { data: { branches: [{ Id: 3, BranchName: "Delhi" }] } };
+      return { data: { users: [] } };
+    });
+  });
+
+  it("sends WorkCalendarId 0 for the company standard and omits PresenceExempt for non-admins", async () => {
+    renderForm({ editingUser: { ...EXISTING_USER, WorkCalendarId: null, PresenceExempt: 0 } });
+    expect(screen.queryByLabelText("No attendance tracking")).not.toBeInTheDocument();
+    await submit(/update user/i);
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    const payload = post.mock.calls[0][1];
+    expect(payload.WorkCalendarId).toBe(0);
+    expect(payload).not.toHaveProperty("PresenceExempt");
+  });
+
+  it("loads the user's shift and lets an admin tick No attendance tracking", async () => {
+    editorAccess = { isAdmin: true, canSeeSensitive: true, modules: {} };
+    renderForm({ editingUser: { ...EXISTING_USER, WorkCalendarId: 5, PresenceExempt: 0 } });
+    expect(await screen.findByDisplayValue("Night")).toBeInTheDocument();
+    await userEvent.click(screen.getByText("No attendance tracking"));
+    await submit(/update user/i);
+    await waitFor(() => expect(post.mock.calls.some(([u]) => u === "/api/users/saveUser")).toBe(true));
+    const payload = post.mock.calls.find(([u]) => u === "/api/users/saveUser")[1];
+    expect(payload.WorkCalendarId).toBe(5);
+    expect(payload.PresenceExempt).toBe(true);
+  });
+});
