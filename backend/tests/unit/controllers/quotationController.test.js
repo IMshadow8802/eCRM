@@ -5,18 +5,28 @@ jest.mock("../../../src/config/database", () => ({
 const database = require("../../../src/config/database");
 const quotationController = require("../../../src/controllers/quotationController");
 const { mockRes } = require("../../helpers/mockRes");
+const { accessForScope } = require("../../helpers/mockAccess");
 
-function baseReq(overrides = {}) {
+function rawReq(overrides = {}) {
   return {
     user: { UserId: 7, CompId: 5, BranchId: 2, IsAdmin: false },
     scope: {
-      hierarchyLevel: 3, dataScope: "Branch", primaryBranchId: 2,
+      reach: "Office", primaryBranchId: 2,
       branchIds: [2], ownerIds: null, canWriteBranchIds: [2], isAdmin: false,
     },
     body: {},
     ...overrides,
   };
 }
+
+// Routes run loadScope, which sets req.access too; assertRecordAccess judges a
+// record against the module scope it derives from req.access, so the access
+// mirrors whatever scope shape a test describes.
+const baseReq = (overrides = {}) => {
+  const req = rawReq(overrides);
+  if (!req.access) req.access = accessForScope(req.scope, req.user.UserId);
+  return req;
+};
 
 beforeEach(() => database.executeStoredProcedure.mockReset());
 

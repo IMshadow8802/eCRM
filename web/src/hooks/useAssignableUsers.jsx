@@ -7,13 +7,15 @@ import { SALES_ENDPOINTS } from "../api/salesQueries";
  * (subtree + manager for Team/Self; readable branches for wide scopes) and
  * re-checks membership on every transfer — this is the pick-list, not the gate.
  *
+ * `module` ("leads" | "complaints") picks which module's access the roster is
+ * checked against; the caller needs that module or the server answers 403.
  * `branchId` switches to a destination branch's roster for cross-branch moves.
  */
-export function useAssignableUsers({ branchId = null, enabled = true } = {}) {
+export function useAssignableUsers({ branchId = null, enabled = true, module = "leads" } = {}) {
   const query = useApiQuery({
-    queryKey: ["assignable-users", branchId],
+    queryKey: ["assignable-users", branchId, module],
     endpoint: SALES_ENDPOINTS.users.fetchAssignableUsers,
-    params: branchId ? { BranchId: branchId } : {},
+    params: branchId ? { BranchId: branchId, Module: module } : { Module: module },
     enabled,
     showErrorMessage: false,
   });

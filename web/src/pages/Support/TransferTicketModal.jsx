@@ -29,7 +29,7 @@ export default function TransferTicketModal({ open, onClose, ticketIds = [], onD
 
   const bulk = ticketIds.length > 1;
 
-  const { users } = useAssignableUsers({ branchId: branch?.value ?? null, enabled: open });
+  const { users } = useAssignableUsers({ branchId: branch?.value ?? null, enabled: open, module: "complaints" });
   const { lookups: reasons } = useLookups("transfer_reason", { enabled: open, showErrorMessage: false });
   const { data: branchData } = useApiQuery({
     queryKey: ["branches"],

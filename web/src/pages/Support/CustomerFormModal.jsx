@@ -11,6 +11,11 @@ import { isValidGstin } from "../Sales/Quotations/gst";
 import { useApiMutation } from "../../hooks/useApiMutation";
 import { SUPPORT_ENDPOINTS } from "../../api/supportQueries";
 import { mobileSchema } from "../../utils/mobile";
+import { useApiQuery } from "../../hooks/useApiQuery";
+import { useAccess } from "../../hooks/useAccess";
+import { SALES_ENDPOINTS } from "../../api/salesQueries";
+import { FormSelect } from "../../components/Design/FormComponents";
+import useAuthStore from "../../stores/useAuthStore";
 
 // Only the columns sp_SaveCustomer takes (spec 2 §1). CompId/BranchId/UserId
 // are injected server-side — never sent from here.
@@ -35,6 +40,7 @@ const schema = z
       .refine((v) => v === "" || isValidGstin(v), "GSTIN must be 15 characters, e.g. 24ABCDE1234F1Z5")
       .optional(),
     Remarks: z.string().optional(),
+    BranchId: z.union([z.number(), z.literal("")]).optional(),
   })
   .refine((v) => Boolean(v.Mobile?.trim() || v.Email?.trim()), {
     message: "A mobile number or an email is required",
@@ -43,10 +49,11 @@ const schema = z
 
 const EMPTY = {
   Name: "", ContactPerson: "", Mobile: "", AltMobile: "", Email: "",
-  Address: "", City: "", State: "", Pincode: "", GSTIN: "", Remarks: "",
+  Address: "", City: "", State: "", Pincode: "", GSTIN: "", Remarks: "", BranchId: "",
 };
 
 const toForm = (c) => Object.fromEntries(Object.keys(EMPTY).map((k) => [k, c[k] ?? ""]));
+const homeOffice = () => useAuthStore.getState().user?.BranchId ?? "";
 const clean = (s) => (s?.trim() ? s.trim() : null);
 
 // One Controller-wrapped input; defined at module level so the component type
@@ -82,6 +89,13 @@ function Field({ control, errors, name, label, required = false, multiline = fal
  */
 export default function CustomerFormModal({ open, onClose, customer = null, onSaved }) {
   const isEdit = Boolean(customer?.Id);
+  const { wide } = useAccess("customers");
+  const { data: branchData } = useApiQuery({
+    queryKey: ["branches"], endpoint: SALES_ENDPOINTS.users.fetchBranches, enabled: open && wide, showErrorMessage: false,
+  });
+  // Active offices only; an edit keeps the customer's current one even if it has closed.
+  const branches = (branchData?.branches ?? []).filter((b) => b.IsActive !== false || b.Id === customer?.BranchId);
+  const showOffice = wide && branches.length > 1;
   const { control, handleSubmit, reset, formState: { errors } } = useForm({
     resolver: zodResolver(schema),
     defaultValues: EMPTY,
@@ -89,7 +103,7 @@ export default function CustomerFormModal({ open, onClose, customer = null, onSa
 
   useEffect(() => {
     if (!open) return;
-    reset(isEdit ? toForm(customer) : EMPTY);
+    reset(isEdit ? toForm(customer) : { ...EMPTY, BranchId: homeOffice() });
   }, [open, isEdit, customer, reset]);
 
   const saveMutation = useApiMutation({
@@ -119,6 +133,9 @@ export default function CustomerFormModal({ open, onClose, customer = null, onSa
       GSTIN: clean(v.GSTIN),
       Remarks: clean(v.Remarks),
     };
+    // Create: the office rides along. Edit: only a changed office, because the
+    // server treats BranchId on an edit as a move.
+    if (showOffice && v.BranchId !== "" && (!isEdit || v.BranchId !== customer.BranchId)) body.BranchId = v.BranchId;
     try {
       const saved = await saveMutation.mutateAsync(body);
       reset(EMPTY);
@@ -151,6 +168,21 @@ export default function CustomerFormModal({ open, onClose, customer = null, onSa
           <Field {...f} name="State" label="State" />
           <Field {...f} name="Pincode" label="Pincode" inputMode="numeric" />
           <Field {...f} name="GSTIN" label="GSTIN" placeholder="15 characters, if registered" />
+          {showOffice && (
+            <Controller
+              control={control}
+              name="BranchId"
+              render={({ field }) => (
+                <FormSelect
+                  label="Office"
+                  value={field.value}
+                  onChange={(e) => field.onChange(e.target.value)}
+                  options={branches.map((b) => ({ value: b.Id, label: b.BranchName }))}
+                  data-testid="customer-BranchId"
+                />
+              )}
+            />
+          )}
           <div style={{ gridColumn: "1 / -1" }}>
             <Field {...f} name="Remarks" label="Remarks" multiline rows={3} placeholder="Anything the next agent should know" />
           </div>

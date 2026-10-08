@@ -4,11 +4,11 @@ jest.mock("../../../src/config/database", () => ({
 
 const database = require("../../../src/config/database");
 const {
-  HIERARCHY,
   loadScope,
-  requireMinLevel,
   requireAdmin,
-  requireMenuRight,
+  requireModule,
+  open,
+  saveAction,
   scopeParams,
   canSeeRecord,
   canWriteBranch,
@@ -19,16 +19,9 @@ const {
   canReopen,
 } = require("../../../src/middleware/permission");
 const { mockRes } = require("../../helpers/mockRes");
+const { mockAccess } = require("../../helpers/mockAccess");
 
 describe("permission middleware", () => {
-  describe("HIERARCHY constants", () => {
-    it("orders Super < Admin < Manager < Employee", () => {
-      expect(HIERARCHY.SUPER).toBeLessThan(HIERARCHY.ADMIN);
-      expect(HIERARCHY.ADMIN).toBeLessThan(HIERARCHY.MANAGER);
-      expect(HIERARCHY.MANAGER).toBeLessThan(HIERARCHY.EMPLOYEE);
-    });
-  });
-
   describe("canReadBranch / canWriteBranch", () => {
     const req = {
       scope: { branchIds: [1, 2, 3], canWriteBranchIds: [1] },
@@ -55,46 +48,8 @@ describe("permission middleware", () => {
     });
   });
 
-  describe("requireMinLevel", () => {
-    it("403s when scope is absent", () => {
-      const res = mockRes();
-      const next = jest.fn();
-      requireMinLevel(HIERARCHY.ADMIN)({ user: {} }, res, next);
-      expect(res.status).toHaveBeenCalledWith(403);
-      expect(next).not.toHaveBeenCalled();
-    });
-
-    it("403s when caller's level is too high a number (lower rank)", () => {
-      const res = mockRes();
-      const next = jest.fn();
-      const req = { scope: { hierarchyLevel: HIERARCHY.EMPLOYEE } };
-      requireMinLevel(HIERARCHY.MANAGER)(req, res, next);
-      expect(res.status).toHaveBeenCalledWith(403);
-      expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({ code: "INSUFFICIENT_ROLE" })
-      );
-      expect(next).not.toHaveBeenCalled();
-    });
-
-    it("calls next when caller meets the minimum level", () => {
-      const res = mockRes();
-      const next = jest.fn();
-      const req = { scope: { hierarchyLevel: HIERARCHY.ADMIN } };
-      requireMinLevel(HIERARCHY.MANAGER)(req, res, next);
-      expect(next).toHaveBeenCalledTimes(1);
-    });
-
-    it("calls next at exact match", () => {
-      const res = mockRes();
-      const next = jest.fn();
-      const req = { scope: { hierarchyLevel: HIERARCHY.MANAGER } };
-      requireMinLevel(HIERARCHY.MANAGER)(req, res, next);
-      expect(next).toHaveBeenCalledTimes(1);
-    });
-  });
-
   describe("requireAdmin", () => {
-    it("403s when scope is absent", () => {
+    it("403s when access is absent", () => {
       const res = mockRes();
       const next = jest.fn();
       requireAdmin({ user: {} }, res, next);
@@ -108,7 +63,7 @@ describe("permission middleware", () => {
     it("403s a non-admin caller", () => {
       const res = mockRes();
       const next = jest.fn();
-      requireAdmin({ scope: { isAdmin: false } }, res, next);
+      requireAdmin({ access: { isAdmin: false } }, res, next);
       expect(res.status).toHaveBeenCalledWith(403);
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({ code: "INSUFFICIENT_ROLE" })
@@ -125,118 +80,78 @@ describe("permission middleware", () => {
     // which means saying nothing about which one it was.
     it("refuses without naming user management — it guards six route groups", () => {
       const res = mockRes();
-      requireAdmin({ scope: { isAdmin: false } }, res, jest.fn());
+      requireAdmin({ access: { isAdmin: false } }, res, jest.fn());
       const { message } = res.json.mock.calls[0][0];
       expect(message).not.toMatch(/user/i);
       expect(message).toMatch(/administrator/i);
     });
 
-    // The distinction that matters: IsAdmin is a role property on
-    // tblUserGroups, not a rank. The level-2 department heads (Sales/Support/HR)
-    // must NOT pass — requireMinLevel(HIERARCHY.ADMIN) would let them through,
-    // handing them the ability to mint IsAdmin accounts.
-    it("403s a level-2 department head who is not IsAdmin", () => {
+    // IsAdmin is a role property on tblUserGroups, not a set of grants. A
+    // department head holding every module right must still not pass — user
+    // management can mint IsAdmin accounts.
+    it("403s a head with every module grant who is not IsAdmin", () => {
       const res = mockRes();
       const next = jest.fn();
-      requireAdmin(
-        { scope: { hierarchyLevel: HIERARCHY.ADMIN, isAdmin: false } },
-        res,
-        next
-      );
+      const access = mockAccess({ modules: [["people", "vaed", "Company"], ["settings", "vaed"], ["roles", "vaed"]] });
+      requireAdmin({ user: { UserId: 7 }, access }, res, next);
       expect(res.status).toHaveBeenCalledWith(403);
       expect(next).not.toHaveBeenCalled();
+    });
+
+    // The guard reads req.access, not req.scope: a scope object is rebound per
+    // module and must not be the thing that grants admin.
+    it("ignores an isAdmin on req.scope when req.access says no", () => {
+      const res = mockRes();
+      requireAdmin({ access: { isAdmin: false }, scope: { isAdmin: true } }, res, jest.fn());
+      expect(res.status).toHaveBeenCalledWith(403);
     });
 
     it("calls next for a real admin", () => {
       const res = mockRes();
       const next = jest.fn();
-      requireAdmin({ scope: { isAdmin: true } }, res, next);
+      requireAdmin({ access: { isAdmin: true } }, res, next);
       expect(next).toHaveBeenCalledTimes(1);
       expect(res.status).not.toHaveBeenCalled();
     });
   });
 
-  // Regression, 2026-10-07 audit S2: the Teams and Projects write endpoints
-  // had no gate at all, and sp_SaveTeam pushes its roster into every linked
-  // project workspace — any employee could add themselves to any project.
-  // The screens are granted to Owner, Admin AND HR Manager (not IsAdmin), so
-  // requireAdmin would lock HR out; the gate is the same menu grant the
-  // sidebar reads.
-  describe("requireMenuRight", () => {
-    beforeEach(() => database.executeStoredProcedure.mockReset());
+  describe("requireModule / open / saveAction", () => {
+    const access = { isAdmin: false, isActive: true, primaryBranchId: 2, teamOwners: [],
+      modules: { leads: { view: true, add: true, edit: false, delete: false, reach: "Own" } },
+      lists: { Own: [{ BranchId: 2, CanWrite: true }], Team: [], Office: [], OfficeTree: [], Company: [] } };
+    const mk = (body = {}) => ({ user: { UserId: 7 }, access, scope: { module: "people" }, body });
 
-    const req = (body = {}, isAdmin = false) => ({
-      user: { UserId: 7, CompId: 5 },
-      scope: { isAdmin },
-      body,
+    it("passes with the right and re-binds req.scope to the module", () => {
+      const req = mk(); const next = jest.fn();
+      requireModule("leads", "view")(req, mockRes(), next);
+      expect(next).toHaveBeenCalled();
+      expect(req.scope).toMatchObject({ module: "leads", ownerIds: [7] });
     });
-    const allowed = (v) =>
-      database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ Allowed: v }]] });
-
-    it("asks sp_CheckMenuRight for the route and right, and proceeds when granted", async () => {
-      allowed(true);
-      const res = mockRes();
-      const next = jest.fn();
-      await requireMenuRight("/teams", "delete")(req(), res, next);
-      expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_CheckMenuRight", {
-        UserId: 7,
-        CompId: 5,
-        Route: "/teams",
-        Right: "delete",
-      });
-      expect(next).toHaveBeenCalledTimes(1);
-    });
-
-    it("403s when the caller's groups do not grant it", async () => {
-      allowed(0);
-      const res = mockRes();
-      const next = jest.fn();
-      await requireMenuRight("/teams", "delete")(req(), res, next);
-      expect(res.status).toHaveBeenCalledWith(403);
-      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: "INSUFFICIENT_ROLE" }));
-      expect(next).not.toHaveBeenCalled();
-    });
-
-    it("'save' resolves to add for a new record and edit for an existing one", async () => {
-      allowed(1);
-      await requireMenuRight("/projects", "save")(req({ Id: 0 }), mockRes(), jest.fn());
-      allowed(1);
-      await requireMenuRight("/projects", "save")(req({ Id: 12 }), mockRes(), jest.fn());
-      const rights = database.executeStoredProcedure.mock.calls.map((c) => c[1].Right);
-      expect(rights).toEqual(["add", "edit"]);
-    });
-
-    it("400s a 'save' whose Id is not a whole number, without a lookup", async () => {
-      const res = mockRes();
-      const next = jest.fn();
-      await requireMenuRight("/teams", "save")(req({ Id: "4abc" }), res, next);
-      expect(res.status).toHaveBeenCalledWith(400);
-      expect(database.executeStoredProcedure).not.toHaveBeenCalled();
-      expect(next).not.toHaveBeenCalled();
-    });
-
-    it("lets an admin through without a lookup", async () => {
-      const next = jest.fn();
-      await requireMenuRight("/teams", "delete")(req({}, true), mockRes(), next);
-      expect(database.executeStoredProcedure).not.toHaveBeenCalled();
-      expect(next).toHaveBeenCalledTimes(1);
-    });
-
-    it("fails closed when the lookup throws", async () => {
-      database.executeStoredProcedure.mockRejectedValueOnce(new Error("db down"));
-      const res = mockRes();
-      const next = jest.fn();
-      await requireMenuRight("/teams", "edit")(req({ Id: 3 }), res, next);
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(next).not.toHaveBeenCalled();
-    });
-
-    it("403s when scope is absent", async () => {
-      const res = mockRes();
-      const next = jest.fn();
-      await requireMenuRight("/teams", "edit")({ user: { UserId: 7, CompId: 5 } }, res, next);
+    it("403s without the right", () => {
+      const res = mockRes(); const next = jest.fn();
+      requireModule("leads", "edit")(mk(), res, next);
       expect(res.status).toHaveBeenCalledWith(403);
       expect(next).not.toHaveBeenCalled();
+    });
+    it("403s a module the role lacks entirely (HR on leads)", () => {
+      const res = mockRes();
+      requireModule("complaints", "view")(mk(), res, jest.fn());
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+    it("saveAction: Id > 0 is edit, else add", () => {
+      expect(saveAction({ body: { Id: 5 } })).toBe("edit");
+      expect(saveAction({ body: { Id: 0 } })).toBe("add");
+      expect(saveAction({ body: {} })).toBe("add");
+    });
+    it("module may be a function of the request", () => {
+      const next = jest.fn();
+      requireModule((req) => (req.body.TicketId ? "complaints" : "leads"), "view")(mk({ LeadId: 1 }), mockRes(), next);
+      expect(next).toHaveBeenCalled();
+    });
+    it("guards carry an access marker for the route walk", () => {
+      expect(requireModule("leads", "view").access).toEqual({ module: "leads", action: "view" });
+      expect(open().access).toBe("open");
+      expect(requireAdmin.access).toBe("admin");
     });
   });
 
@@ -305,6 +220,17 @@ describe("permission middleware", () => {
       expect(canSeeRecord(branchScoped, { BranchId: 2, OwnerId: 3, CreatedBy: 3 }, "OwnerId")).toBe(true);
     });
 
+    // Fix round 1: no scope = fail closed, but the always-visible rule
+    // (owner / creator) is checked first and still wins.
+    it("denies a colleague's record when req.scope is missing", () => {
+      expect(canSeeRecord({ user: { UserId: 7 } }, { BranchId: 2, OwnerId: 3, CreatedBy: 3 }, "OwnerId")).toBe(false);
+    });
+
+    it("still allows the caller's own or created record when req.scope is missing", () => {
+      expect(canSeeRecord({ user: { UserId: 7 } }, { BranchId: 2, OwnerId: 7, CreatedBy: 3 }, "OwnerId")).toBe(true);
+      expect(canSeeRecord({ user: { UserId: 7 } }, { BranchId: 2, OwnerId: 3, CreatedBy: 7 }, "OwnerId")).toBe(true);
+    });
+
     it("denies a null record", () => {
       expect(canSeeRecord(branchScoped, null, "OwnerId")).toBe(false);
     });
@@ -315,137 +241,34 @@ describe("permission middleware", () => {
     });
   });
 
-  describe("loadScope", () => {
-    beforeEach(() => {
-      database.executeStoredProcedure.mockReset();
-    });
-
-    it("populates req.scope from SP result", async () => {
-      database.executeStoredProcedure.mockResolvedValue({
-        recordsets: [
-          [{ HierarchyLevel: 2, DataScope: "Company", PrimaryBranchId: 1 }],
-          [
-            { BranchId: 1, CanWrite: true },
-            { BranchId: 2, CanWrite: true },
-            { BranchId: 3, CanWrite: false },
-          ],
-        ],
-      });
-
-      const req = { user: { UserId: 5, CompId: 1 } };
-      const res = mockRes();
-      const next = jest.fn();
-      await loadScope(req, res, next);
-
-      expect(req.scope).toEqual({
-        hierarchyLevel: 2,
-        dataScope: "Company",
-        primaryBranchId: 1,
-        branchIds: [1, 2, 3],
-        canWriteBranchIds: [1, 2],
-        ownerIds: null, // wide scope -> no ownership filter
-        isAdmin: false,
-        // Header has no IsActive column until 052 is applied — treated active.
-        isActive: true,
-      });
-      expect(next).toHaveBeenCalled();
-    });
-
-    // Deactivation must take effect immediately, not when the JWT expires.
-    it("403s USER_INACTIVE when the header row reports IsActive=0", async () => {
-      database.executeStoredProcedure.mockResolvedValue({
-        recordsets: [
-          [{ HierarchyLevel: 4, DataScope: "Self", PrimaryBranchId: 2, IsAdmin: false, IsActive: false }],
-          [{ BranchId: 2, CanWrite: true }],
-          [{ OwnerId: 5 }],
-        ],
-      });
-      const req = { user: { UserId: 5, CompId: 1 } };
-      const res = mockRes();
-      const next = jest.fn();
-      await loadScope(req, res, next);
-
-      expect(res.status).toHaveBeenCalledWith(403);
-      expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({ code: "USER_INACTIVE", success: false }),
-      );
-      expect(next).not.toHaveBeenCalled();
-    });
-
-    it("passes through an active user when IsActive=1", async () => {
-      database.executeStoredProcedure.mockResolvedValue({
-        recordsets: [
-          [{ HierarchyLevel: 4, DataScope: "Self", PrimaryBranchId: 2, IsAdmin: false, IsActive: true }],
-          [{ BranchId: 2, CanWrite: true }],
-          [{ OwnerId: 5 }],
-        ],
-      });
-      const req = { user: { UserId: 5, CompId: 1 } };
+  describe("loadScope (access)", () => {
+    beforeEach(() => database.executeStoredProcedure.mockReset());
+    const sets = (header, modules = [], lists = [], owners = []) => ({ recordsets: [[header], modules, lists, owners] });
+    it("builds req.access and binds req.scope to people", async () => {
+      database.executeStoredProcedure.mockResolvedValueOnce(sets(
+        { PrimaryBranchId: 2, IsActive: 1, IsAdmin: 0, CanSeeSensitive: 0 },
+        [{ Module: "people", CanView: 1, Reach: "Own" }],
+        [{ Reach: "Own", BranchId: 2, CanWrite: 1 }]));
+      const req = { user: { UserId: 7, CompId: 1, BranchId: 2 } };
       const next = jest.fn();
       await loadScope(req, mockRes(), next);
-      expect(req.scope.isActive).toBe(true);
+      expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_FetchUserAccess", { UserId: 7, CompId: 1 });
+      expect(req.scope).toMatchObject({ module: "people", reach: "Own", branchIds: [2], ownerIds: [7], isAdmin: false });
       expect(next).toHaveBeenCalled();
     });
-
-    it("reads ownerIds + isAdmin from the SP's third result set", async () => {
-      database.executeStoredProcedure.mockResolvedValue({
-        recordsets: [
-          [{ HierarchyLevel: 4, DataScope: "Self", PrimaryBranchId: 2, IsAdmin: false }],
-          [{ BranchId: 2, CanWrite: true }],
-          [{ OwnerId: 5 }],
-        ],
-      });
-
-      const req = { user: { UserId: 5, CompId: 1 } };
-      await loadScope(req, mockRes(), jest.fn());
-
-      expect(req.scope.dataScope).toBe("Self");
-      expect(req.scope.ownerIds).toEqual([5]);
-      expect(req.scope.isAdmin).toBe(false);
-    });
-
-    it("marks isAdmin from the group, not from the hierarchy level", async () => {
-      // A level-2 head (Sales/Support/HR) must NOT get the admin bypass —
-      // deriving IsAdmin from `level <= 2` would hand them every workspace.
-      database.executeStoredProcedure.mockResolvedValue({
-        recordsets: [
-          [{ HierarchyLevel: 2, DataScope: "Company", PrimaryBranchId: 1, IsAdmin: false }],
-          [{ BranchId: 1, CanWrite: true }],
-          [],
-        ],
-      });
-
-      const req = { user: { UserId: 5, CompId: 1 } };
-      await loadScope(req, mockRes(), jest.fn());
-
-      expect(req.scope.hierarchyLevel).toBe(2);
-      expect(req.scope.isAdmin).toBe(false);
-    });
-
-    it("fails closed when the SP throws", async () => {
-      database.executeStoredProcedure.mockRejectedValue(new Error("boom"));
-      const req = { user: { UserId: 5, CompId: 1, BranchId: 7 } };
+    it("403s an inactive user", async () => {
+      database.executeStoredProcedure.mockResolvedValueOnce(sets({ PrimaryBranchId: 2, IsActive: 0, IsAdmin: 0 }));
       const res = mockRes();
-      const next = jest.fn();
-      await loadScope(req, res, next);
-
-      expect(req.scope.hierarchyLevel).toBe(HIERARCHY.EMPLOYEE);
-      expect(req.scope.dataScope).toBe("Self");
-      expect(req.scope.branchIds).toEqual([7]);
-      // Self scope means an ownership filter too — without it the fallback
-      // would quietly widen to the caller's whole branch.
-      expect(req.scope.ownerIds).toEqual([5]);
-      expect(req.scope.isAdmin).toBe(false);
-      expect(next).toHaveBeenCalled();
+      await loadScope({ user: { UserId: 7, CompId: 1 } }, res, jest.fn());
+      expect(res.status).toHaveBeenCalledWith(403);
     });
-
-    it("no-ops when there is no req.user", async () => {
-      const req = {};
-      const res = mockRes();
-      const next = jest.fn();
-      await loadScope(req, res, next);
-      expect(req.scope).toBeUndefined();
-      expect(next).toHaveBeenCalled();
+    it("fails closed with no modules when the lookup throws", async () => {
+      database.executeStoredProcedure.mockRejectedValueOnce(new Error("db down"));
+      const req = { user: { UserId: 7, CompId: 1, BranchId: 2 } };
+      await loadScope(req, mockRes(), jest.fn());
+      expect(req.access.modules).toEqual({});
+      expect(req.scope.can.view).toBe(false);
+      expect(req.scope.branchIds).toEqual([]);
     });
   });
 
@@ -480,10 +303,49 @@ describe("permission middleware", () => {
       database.executeStoredProcedure.mockReset();
     });
 
+    // Own reach on leads + complaints: home office 2, owner = me.
     const selfReq = {
       user: { UserId: 7, CompId: 5 },
+      access: mockAccess({ modules: [["leads", "v", "Own"], ["complaints", "v", "Own"]] }),
       scope: { branchIds: [2], ownerIds: [7], isAdmin: false },
     };
+
+    // A role without the module (HR on leads) is refused before the record is
+    // even fetched — the module is the outer gate, the record rule the inner.
+    it("403s a module the caller's role lacks, without a DB call", async () => {
+      const hrReq = { ...selfReq, access: mockAccess({ modules: [["people", "vaed", "Company"]] }) };
+      for (const entity of ["lead", "ticket", "quotation"]) {
+        const res = mockRes();
+        await expect(assertRecordAccess(hrReq, res, entity, 9)).resolves.toBe(false);
+        expect(res.status).toHaveBeenCalledWith(403);
+      }
+      expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+    });
+
+    it("403s a write when the module grants view but not edit, without a DB call", async () => {
+      const res = mockRes();
+      await expect(assertRecordAccess(selfReq, res, "lead", 9, "write")).resolves.toBe(false);
+      await expect(assertRecordAccess(selfReq, mockRes(), "ticket", 4, "write")).resolves.toBe(false);
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+    });
+
+    it("allows a write when the module grants edit", async () => {
+      const lead = { Id: 9, BranchId: 2, OwnerId: 7, CreatedBy: 3 };
+      database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[lead]] });
+      const editReq = { ...selfReq, access: mockAccess({ modules: [["leads", "ve", "Own"]] }) };
+      await expect(assertRecordAccess(editReq, mockRes(), "lead", 9, "write")).resolves.toEqual(lead);
+    });
+
+    // The record rule reads the MODULE's lists, not whatever req.scope holds:
+    // an Office reach on complaints sees a colleague's ticket in the office
+    // even when req.scope is still bound to a narrower module.
+    it("judges the record against the entity's module scope, not req.scope", async () => {
+      const ticket = { Id: 4, BranchId: 2, AssignedTo: 3, CreatedBy: 3 };
+      database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[ticket]] });
+      const officeReq = { ...selfReq, access: mockAccess({ modules: [["complaints", "v", "Office"]] }) };
+      await expect(assertRecordAccess(officeReq, mockRes(), "ticket", 4)).resolves.toEqual(ticket);
+    });
 
     // Spec 2 §3: the guard hands back the row it fetched, so a controller
     // that needs the assignee (the reopen gate) has it without a second
@@ -659,15 +521,15 @@ describe("permission middleware", () => {
 
   // Transfer target guard. Three refusal rules in cheapness order, then a
   // DB-backed membership check. No isAdmin shortcut anywhere in here —
-  // dataScope alone decides wide vs narrow.
+  // isWide(req.scope) decides wide vs narrow.
   describe("assertCanAssign", () => {
     beforeEach(() => {
       database.executeStoredProcedure.mockReset();
     });
 
-    const req = (dataScope, UserId = 7, CompId = 5, extra = {}) => ({
+    const req = (reach, UserId = 7, CompId = 5, extra = {}) => ({
       user: { UserId, CompId },
-      scope: { dataScope, ...extra },
+      scope: { reach, branchIds: [2], ownerIds: reach === "Own" ? [UserId] : null, ...extra },
     });
 
     it("refuses to leave a record unassigned under a narrow (Team) scope", async () => {
@@ -682,7 +544,7 @@ describe("permission middleware", () => {
 
     it("refuses to leave a record unassigned under Self scope too", async () => {
       const res = mockRes();
-      await expect(assertCanAssign(req("Self"), res, { toUserId: 0 })).resolves.toBe(false);
+      await expect(assertCanAssign(req("Own"), res, { toUserId: 0 })).resolves.toBe(false);
       expect(res.status).toHaveBeenCalledWith(403);
     });
 
@@ -710,20 +572,55 @@ describe("permission middleware", () => {
     it("lets a wide-scope (Branch) caller move an unassigned record to another branch", async () => {
       const res = mockRes();
       await expect(
-        assertCanAssign(req("Branch"), res, { toBranchId: 9 }),
+        assertCanAssign(req("Office", 7, 5, { canWriteBranchIds: [2, 9] }), res, { toBranchId: 9 }),
       ).resolves.toBe(true);
       expect(database.executeStoredProcedure).not.toHaveBeenCalled();
     });
 
-    // Does NOT check req.scope.isAdmin at all — only dataScope decides wide vs
-    // narrow. An IsAdmin user whose scope is still narrow (e.g. mis-provisioned)
-    // gets no bypass here.
-    it("gives no isAdmin bypass — a narrow-scope caller is refused even if isAdmin is true", async () => {
+    // isWide counts an admin as wide whatever the reach says — an admin's scope
+    // is Company on every module anyway (access.scopeFor), so the two agree.
+    it("treats an admin as wide even if the reach field says Own", async () => {
       const res = mockRes();
       await expect(
-        assertCanAssign(req("Self", 7, 5, { isAdmin: true }), res, {}),
+        assertCanAssign(req("Own", 7, 5, { isAdmin: true }), res, {}),
+      ).resolves.toBe(true);
+      expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+    });
+
+    // Fix round 1: a wide reach used to move a record to ANY office. The
+    // destination must be one the caller may write; admin is exempt.
+    it("lets an Office-reach caller move to an office it may write", async () => {
+      const res = mockRes();
+      await expect(
+        assertCanAssign(req("Office", 7, 5, { canWriteBranchIds: [2, 4] }), res, { toBranchId: 4 }),
+      ).resolves.toBe(true);
+      expect(res.status).not.toHaveBeenCalled();
+    });
+
+    it("403s an Office-reach caller moving to an office outside its writable list, before any DB call", async () => {
+      const res = mockRes();
+      await expect(
+        assertCanAssign(req("Office", 7, 5, { branchIds: [2, 4], canWriteBranchIds: [2] }), res, { toUserId: 3, toBranchId: 4 }),
       ).resolves.toBe(false);
       expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ message: "You cannot move records to that office" }),
+      );
+      expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+    });
+
+    it("lets an admin move to any office", async () => {
+      const res = mockRes();
+      await expect(
+        assertCanAssign(req("Company", 7, 5, { isAdmin: true, canWriteBranchIds: [2] }), res, { toBranchId: 77 }),
+      ).resolves.toBe(true);
+    });
+
+    it("403s NO_SCOPE when req.scope is missing, before any DB call", async () => {
+      const res = mockRes();
+      await expect(assertCanAssign({ user: { UserId: 7, CompId: 5 } }, res, { toUserId: 3 })).resolves.toBe(false);
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: "NO_SCOPE" }));
       expect(database.executeStoredProcedure).not.toHaveBeenCalled();
     });
 
@@ -736,7 +633,7 @@ describe("permission middleware", () => {
         assertCanAssign(req("Team", 7, 5), res, { toUserId: 3 }),
       ).resolves.toBe(true);
       expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_FetchAssignableUsers", {
-        UserId: 7, CompId: 5, BranchId: null,
+        UserId: 7, CompId: 5, BranchId: null, AccessibleBranchIdsJson: "[2]", OwnerIdsJson: null,
       });
       expect(res.status).not.toHaveBeenCalled();
     });
@@ -774,10 +671,10 @@ describe("permission middleware", () => {
       });
       const res = mockRes();
       await expect(
-        assertCanAssign(req("MultiBranch", 7, 5), res, { toUserId: 12, toBranchId: 9 }),
+        assertCanAssign(req("OfficeTree", 7, 5, { canWriteBranchIds: [9] }), res, { toUserId: 12, toBranchId: 9 }),
       ).resolves.toBe(true);
       expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_FetchAssignableUsers", {
-        UserId: 7, CompId: 5, BranchId: 9,
+        UserId: 7, CompId: 5, BranchId: 9, AccessibleBranchIdsJson: "[2]", OwnerIdsJson: null,
       });
     });
 
@@ -817,16 +714,16 @@ describe("permission middleware", () => {
 
   // Spec 2 §3 Rules — Reopen: a manager's act. Wide scopes always; a Team
   // lead only for a ticket assigned to someone in their subtree — never their
-  // own, never an unassigned one. Self agents never. Pure: the controller
+  // own, never an unassigned one. Own-reach agents never. Pure: the controller
   // already fetched the ticket through assertRecordAccess.
   describe("canReopen", () => {
-    const req = (dataScope, ownerIds, UserId = 16) => ({
+    const req = (reach, ownerIds, UserId = 16) => ({
       user: { UserId, CompId: 1 },
-      scope: { dataScope, branchIds: [1], ownerIds },
+      scope: { reach, branchIds: [1], ownerIds },
     });
     const ticket = (AssignedTo) => ({ Id: 1, BranchId: 1, AssignedTo, CreatedBy: 16 });
 
-    it.each(["All", "Company", "MultiBranch", "Branch"])(
+    it.each(["Company", "OfficeTree", "Office"])(
       "%s scope may reopen anything — own, unassigned, a stranger's",
       (scope) => {
         expect(canReopen(req(scope, null), ticket(16))).toBe(true);
@@ -847,8 +744,12 @@ describe("permission middleware", () => {
     });
 
     it("never lets a Self agent reopen — not even a colleague's ticket they created", () => {
-      expect(canReopen(req("Self", [17], 17), ticket(17))).toBe(false);
-      expect(canReopen(req("Self", [17], 17), { ...ticket(18), CreatedBy: 17 })).toBe(false);
+      expect(canReopen(req("Own", [17], 17), ticket(17))).toBe(false);
+      expect(canReopen(req("Own", [17], 17), { ...ticket(18), CreatedBy: 17 })).toBe(false);
+    });
+
+    it("lets an admin reopen whatever the reach field says", () => {
+      expect(canReopen({ user: { UserId: 16 }, scope: { reach: "Own", isAdmin: true } }, ticket(99))).toBe(true);
     });
 
     it("coerces ids (the driver hands BIGINTs back as strings) and fails closed on a missing scope or record", () => {

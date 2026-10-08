@@ -5,14 +5,25 @@ jest.mock("../../../src/config/database", () => ({
 const database = require("../../../src/config/database");
 const customerController = require("../../../src/controllers/customerController");
 const { mockRes } = require("../../helpers/mockRes");
+const { accessForScope, mockAccess } = require("../../helpers/mockAccess");
+const { scopeFor } = require("../../../src/middleware/access");
 
 // Routes always run loadScope, so req.scope is present on every real request.
 function baseReq(overrides = {}) {
+  const req = rawReq(overrides);
+  if (!req.access) req.access = accessForScope(req.scope, req.user.UserId);
+  return req;
+}
+// A request whose req.access is built from modules, req.scope = customers scope.
+function accessReq(modules, body = {}) {
+  const access = mockAccess({ modules }, 7);
+  return { user: { UserId: 7, CompId: 5, BranchId: 2 }, access, scope: scopeFor(access, "customers", 7), body };
+}
+function rawReq(overrides = {}) {
   return {
     user: { UserId: 7, CompId: 5, BranchId: 2, IsAdmin: false },
     scope: {
-      hierarchyLevel: 3,
-      dataScope: "Branch",
+      reach: "Office",
       primaryBranchId: 2,
       branchIds: [2],
       ownerIds: null,
@@ -38,13 +49,18 @@ const FULL = {
   Remarks: "Walk-in regular",
 };
 
+// assertCustomerVisible's lookup (sp_FetchCustomerDetail RS1).
+const mockExisting = (row = {}) => database.executeStoredProcedure.mockResolvedValueOnce({
+  recordsets: [[{ Id: 31, BranchId: 2, CreatedBy: 7, ...row }], []],
+});
+
 describe("customerController.save", () => {
   it("creates: injects Id=0, CompId, the caller's BranchId and UserId, and forwards exactly the SP's columns", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce(okRow());
     const res = mockRes();
     await customerController.save(baseReq({ body: { ...FULL, CompId: 999, IsActive: 0, Junk: "x" } }), res);
     expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_SaveCustomer", {
-      Id: 0, CompId: 5, BranchId: 2, UserId: 7,
+      Id: 0, CompId: 5, BranchId: 2, UserId: 7, MoveToBranchId: null,
       Name: "Sharma Traders", ContactPerson: "Rakesh Sharma", Mobile: "9876543210", AltMobile: null,
       Email: "rakesh@sharma.in", Address: "12 MG Road", City: "Ghaziabad", State: "UP", Pincode: "201010",
       Remarks: "Walk-in regular", GSTIN: null,
@@ -56,11 +72,50 @@ describe("customerController.save", () => {
     expect(res.json.mock.calls[0][0].data.Id).toBe(31);
   });
 
-  it("updates when Id > 0 (no record gate — customers are company-wide, spec §3)", async () => {
+  it("updates when Id > 0 after the visibility check, keeping the current office", async () => {
+    mockExisting();
     database.executeStoredProcedure.mockResolvedValueOnce(okRow({ Id: 31 }));
     await customerController.save(baseReq({ body: { ...FULL, Id: "31" } }), mockRes());
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(2);
+    expect(database.executeStoredProcedure.mock.calls[1][1]).toMatchObject({ Id: 31, CompId: 5, BranchId: 2, MoveToBranchId: null });
+  });
+
+  it("moves a customer: passes MoveToBranchId when both offices are writable", async () => {
+    mockExisting();
+    database.executeStoredProcedure.mockResolvedValueOnce(okRow({ Id: 31 }));
+    const req = baseReq({ body: { ...FULL, Id: 31, BranchId: 4 }, scope: { ...rawReq().scope, branchIds: [2, 4], canWriteBranchIds: [2, 4] } });
+    await customerController.save(req, mockRes());
+    expect(database.executeStoredProcedure.mock.calls[1][1]).toMatchObject({ BranchId: 2, MoveToBranchId: 4 });
+  });
+
+  it("editing a customer into another office needs write over both", async () => {
+    mockExisting({ BranchId: 3 }); // visible, but current office 3 is not writable
+    const res = mockRes();
+    const req = baseReq({ body: { ...FULL, Id: 31, BranchId: 2 }, scope: { ...rawReq().scope, branchIds: [2, 3], canWriteBranchIds: [2] } });
+    await customerController.save(req, res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalledWith("sp_SaveCustomer", expect.anything());
+  });
+
+  it("403s an edit of a customer outside customers reach", async () => {
+    mockExisting({ BranchId: 9, CreatedBy: 3 });
+    const res = mockRes();
+    await customerController.save(baseReq({ body: { ...FULL, Id: 31 } }), res);
+    expect(res.status).toHaveBeenCalledWith(403);
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
-    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({ Id: 31, CompId: 5 });
+  });
+
+  it("refuses an office the caller cannot write", async () => {
+    const res = mockRes();
+    await customerController.save(baseReq({ body: { ...FULL, BranchId: 4 } }), res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  it("defaults the office to the caller's home office", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(okRow());
+    await customerController.save(baseReq({ body: FULL }), mockRes());
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({ BranchId: 2 });
   });
 
   it("400s without a Name before touching the DB", async () => {
@@ -134,6 +189,7 @@ describe("customerController.fetch", () => {
     await customerController.fetch(baseReq({ body: { SearchTerm: "  sharma ", BranchId: "3" } }), res);
     expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_FetchCustomers", {
       CompId: 5, PageNumber: 1, PageSize: 25, SearchTerm: "sharma", BranchId: 3, IsActive: 1,
+      UserId: 7, AccessibleBranchIdsJson: "[2]", OwnerIdsJson: null,
     });
     const { data } = res.json.mock.calls[0][0];
     expect(data.customers).toHaveLength(1);
@@ -155,15 +211,11 @@ describe("customerController.fetch", () => {
     expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({ IsActive: 0, BranchId: null, SearchTerm: null });
   });
 
-  // Customers are company-wide by design (dedupe needs it, spec §3) — the SP
-  // declares no scope params, so none are sent (node-mssql rejects extras).
-  it("does not send scope params — sp_FetchCustomers declares none", async () => {
+  it("passes the customers scope (office + CreatedBy owner)", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[], []] });
-    await customerController.fetch(baseReq({ scope: { branchIds: [2], ownerIds: [7] } }), mockRes());
-    const params = database.executeStoredProcedure.mock.calls[0][1];
-    expect(params).not.toHaveProperty("AccessibleBranchIdsJson");
-    expect(params).not.toHaveProperty("OwnerIdsJson");
-    expect(params).not.toHaveProperty("UserId");
+    await customerController.fetch(accessReq([["customers", "v", "Office"]]), mockRes());
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_FetchCustomers",
+      expect.objectContaining({ UserId: 7, AccessibleBranchIdsJson: "[2]", OwnerIdsJson: null }));
   });
 
   it("handles DB error as 500", async () => {
@@ -175,30 +227,37 @@ describe("customerController.fetch", () => {
 });
 
 describe("customerController.detail", () => {
-  it("passes CompId, CustomerId and the caller's scope; maps customer + tickets", async () => {
+  const COMPLAINTS_OWN = [["customers", "v", "Office"], ["complaints", "v", "Own"]];
+
+  it("gates RS1 by customers and lists complaints under the complaints scope", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [
-        [{ Id: 31, Name: "Sharma Traders", Mobile: "9876543210" }],
+        [{ Id: 31, Name: "Sharma Traders", BranchId: 2, CreatedBy: 3 }],
         [{ Id: 4, TicketNo: "TKT-000004", StatusCode: "open", IsOverdue: true }],
       ],
     });
     const res = mockRes();
-    await customerController.detail(
-      baseReq({ scope: { branchIds: [2], ownerIds: [7] }, body: { CustomerId: "31" } }),
-      res,
-    );
+    const req = accessReq(COMPLAINTS_OWN, { CustomerId: "31" });
+    await customerController.detail(req, res);
     expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_FetchCustomerDetail", {
       CompId: 5, CustomerId: 31, UserId: 7, AccessibleBranchIdsJson: "[2]", OwnerIdsJson: "[7]",
     });
     const { data } = res.json.mock.calls[0][0];
     expect(data.customer.Id).toBe(31);
-    expect(data.tickets).toEqual([{ Id: 4, TicketNo: "TKT-000004", StatusCode: "open", IsOverdue: true }]);
+    expect(data.tickets).toHaveLength(1);
   });
 
-  it("sends null scope json for a wide scope (no owner filter on RS2)", async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ Id: 31 }], []] });
-    await customerController.detail(baseReq({ scope: { branchIds: [1, 2, 3], ownerIds: null }, body: { CustomerId: 31 } }), mockRes());
-    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({ AccessibleBranchIdsJson: "[1,2,3]", OwnerIdsJson: null });
+  it("sends an empty complaints allow-list when the caller has no complaints module", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ Id: 31, BranchId: 2, CreatedBy: 3 }], []] });
+    await customerController.detail(accessReq([["customers", "v", "Office"]], { CustomerId: 31 }), mockRes());
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({ AccessibleBranchIdsJson: "[]", OwnerIdsJson: "[]" });
+  });
+
+  it("403s a customer outside customers reach", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ Id: 31, BranchId: 9, CreatedBy: 3 }], []] });
+    const res = mockRes();
+    await customerController.detail(accessReq(COMPLAINTS_OWN, { CustomerId: 31 }), res);
+    expect(res.status).toHaveBeenCalledWith(403);
   });
 
   it("400s without a CustomerId before touching the DB", async () => {

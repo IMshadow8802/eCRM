@@ -10,9 +10,18 @@ export const APP_TYPE = "ECRM_ADMIN";
 // arbitrary host. Only URLs on these origins survive rehydration.
 export const TRUSTED_API_ORIGINS = ["https://shadowcodes.in"];
 
+// Dev-only: under `pnpm dev`, VITE_API_BASE_URL (e.g. http://localhost:5001)
+// replaces the BaseURL Central returns, so testing against a local backend
+// keeps every sign-in on this machine. A production build has DEV=false and
+// never reads it. Mobile's twin is EXPO_PUBLIC_API_BASE_URL.
+export const devApiOverride = (env = import.meta.env) =>
+  (env.DEV && env.VITE_API_BASE_URL) || null;
+
 export const isTrustedApiUrl = (url) => {
   try {
-    return TRUSTED_API_ORIGINS.includes(new URL(url).origin);
+    const origin = new URL(url).origin;
+    const dev = devApiOverride();
+    return TRUSTED_API_ORIGINS.includes(origin) || (dev !== null && new URL(dev).origin === origin);
   } catch {
     return false;
   }

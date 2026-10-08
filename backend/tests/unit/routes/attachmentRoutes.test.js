@@ -13,7 +13,9 @@ jest.mock("../../../src/middleware/auth", () => ({
   },
 }));
 
+// Real open(); only loadScope is stubbed (the routes are open, so no access needed).
 jest.mock("../../../src/middleware/permission", () => ({
+  ...jest.requireActual("../../../src/middleware/permission"),
   loadScope: (_req, _res, next) => next(),
 }));
 

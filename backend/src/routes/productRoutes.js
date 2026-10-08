@@ -1,16 +1,16 @@
 const express = require("express");
 const productController = require("../controllers/productController");
 const { verifyToken } = require("../middleware/auth");
-const { loadScope, requireMinLevel, HIERARCHY } = require("../middleware/permission");
+const { loadScope, requireModule, open, saveAction } = require("../middleware/permission");
 const { requirePayload, allowEmptyPayload } = require("../middleware/payloadValidation");
 
 const router = express.Router();
 router.use(verifyToken, loadScope);
 
-// The master is company config: Owner, Admin and the department heads
-// (HierarchyLevel <= 2) maintain it; everyone reads it for pick-lists.
-router.post("/saveProduct", requireMinLevel(HIERARCHY.ADMIN), requirePayload, productController.save);
-router.post("/fetchProducts", allowEmptyPayload, productController.fetch);
-router.post("/deleteProduct", requireMinLevel(HIERARCHY.ADMIN), requirePayload, productController.delete);
+// The master is company config: writes need the settings module; everyone reads
+// it for pick-lists.
+router.post("/saveProduct", requirePayload, requireModule("settings", saveAction), productController.save);
+router.post("/fetchProducts", allowEmptyPayload, open(), productController.fetch);
+router.post("/deleteProduct", requirePayload, requireModule("settings", "delete"), productController.delete);
 
 module.exports = router;

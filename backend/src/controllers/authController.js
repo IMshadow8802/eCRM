@@ -2,6 +2,7 @@
 const database = require("../config/database");
 const jwt = require("jsonwebtoken");
 const { comparePassword } = require("../utils/encryption");
+const { buildAccess, publicAccess } = require("../middleware/access");
 
 // SP returns menu rows in PascalCase (MenuId, ParentId, CanAdd, ...).
 // We re-map to the camelCase shape the frontend already expects.
@@ -42,6 +43,16 @@ function organizeMenuHierarchy(menuItems) {
   });
 
   return rootItems;
+}
+
+// Menu rows (sp_ValidateUser RS2 / sp_FetchUserMenus) -> the permissions payload.
+function menuPayload(rows) {
+  const items = rows.filter((item) => item.MenuId !== null).map(mapMenuRow);
+  return {
+    menuItems: organizeMenuHierarchy(items),
+    rawPermissions: items,
+    totalMenuItems: items.length,
+  };
 }
 
 class AuthController {
@@ -99,11 +110,11 @@ class AuthController {
           expiresIn: process.env.JWT_EXPIRE || "24h",
         });
 
-        const menuItems = userPermissions
-          .filter((item) => item.MenuId !== null)
-          .map(mapMenuRow);
-
-        const organizedMenu = organizeMenuHierarchy(menuItems);
+        const accessResult = await database.executeStoredProcedure("sp_FetchUserAccess", {
+          UserId: spResponse.UserId,
+          CompId: spResponse.CompId,
+        });
+        const access = publicAccess(buildAccess(accessResult.recordsets, spResponse.UserId));
 
         return res.status(200).json({
           success: true,
@@ -139,10 +150,9 @@ class AuthController {
               CompWebSite: spResponse.CompWebSite,
               CompGSTIN: spResponse.CompGSTIN,
             },
+            access,
             permissions: {
-              menuItems: organizedMenu,
-              rawPermissions: menuItems,
-              totalMenuItems: menuItems.length,
+              ...menuPayload(userPermissions),
               hasAdminAccess:
                 spResponse.IsAdmin === 1 || spResponse.IsAdmin === true,
             },
@@ -240,6 +250,29 @@ class AuthController {
         success: false,
         message: "Failed to retrieve permissions",
         code: "PERMISSIONS_ERROR",
+        responseCode: 500,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  // Caller's modules + menu rights, same shapes as login. req.access comes from loadScope.
+  async fetchMyAccess(req, res) {
+    try {
+      const result = await database.executeStoredProcedure("sp_FetchUserMenus", { UserId: req.user.UserId });
+      return res.status(200).json({
+        success: true,
+        message: "Access retrieved",
+        responseCode: 200,
+        data: { access: publicAccess(req.access), permissions: menuPayload(result.recordsets[0] || []) },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("Fetch access error:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to retrieve access",
+        code: "ACCESS_ERROR",
         responseCode: 500,
         timestamp: new Date().toISOString(),
       });

@@ -14,6 +14,7 @@ import { SALES_ENDPOINTS } from "../../api/salesQueries";
 import { formatCurrency } from "../../utils/format";
 import { FOLLOWUP_TYPES } from "./leadStatus";
 import Timeline from "./Timeline";
+import { useAccess } from "../../hooks/useAccess";
 import LogFollowUpModal from "./LogFollowUpModal";
 import TransferLeadModal from "./TransferLeadModal";
 import LeadCreateModal from "./LeadCreateModal";
@@ -57,6 +58,7 @@ function InfoItem({ label, value }) {
 const fmt = (d, f = "DD-MM-YYYY") => (d ? dayjs(d).format(f) : null);
 
 export default function LeadDetail({ leadId: leadIdProp }) {
+  const leadsAccess = useAccess("leads");
   const { leadId: leadIdParam } = useParams();
   const leadId = Number(leadIdProp ?? leadIdParam);
 
@@ -388,7 +390,7 @@ export default function LeadDetail({ leadId: leadIdProp }) {
       </Modal>
 
       <LogFollowUpModal open={Boolean(logging)} followUp={logging} onClose={() => setLogging(null)} onLogged={refetch} />
-      <TransferLeadModal open={transferOpen} leadIds={[leadId]} canCrossBranch onClose={() => setTransferOpen(false)} onTransferred={refetch} />
+      <TransferLeadModal open={transferOpen} leadIds={[leadId]} canCrossBranch={leadsAccess.wide} onClose={() => setTransferOpen(false)} onTransferred={refetch} />
       <LeadCreateModal open={editOpen} lead={lead} onClose={() => setEditOpen(false)} onSaved={refetch} />
       <WonDialog open={wonOpen} lead={lead} onClose={() => setWonOpen(false)} onWon={refetch} />
     </div>

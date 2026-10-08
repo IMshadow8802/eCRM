@@ -1,5 +1,5 @@
 //src/pages/Master/components/UserForm.jsx
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -7,7 +7,15 @@ import { useSnackbar } from "notistack";
 import { useQueryClient } from "@tanstack/react-query";
 import useAuthStore from "../../../stores/useAuthStore";
 import { Link } from "react-router-dom";
-import { saveUser, fetchUserHandover, MASTER_ENDPOINTS } from "../../../api/masterQueries";
+import {
+  saveUser,
+  fetchUserHandover,
+  saveUserBranchAccess,
+  deleteUserBranchAccess,
+  MASTER_ENDPOINTS,
+} from "../../../api/masterQueries";
+import { useIsAdmin, useCanSeeSensitive } from "../../../hooks/useAccess";
+import { toTree } from "../../../utils/officeTree";
 import { SALES_ENDPOINTS } from "../../../api/salesQueries";
 import { useConfirmation } from "../../../hooks/useConfirmation";
 import ConfirmationDialog from "../../../components/ConfirmationDialog";
@@ -17,6 +25,7 @@ import {
   FormContainer,
   FormInput,
   FormSelect,
+  FormMultiSelect,
   FormNumberInput,
   FormCheckbox,
   FormButtons,
@@ -48,7 +57,7 @@ const buildUserFormSchema = (isEditing) =>
   Mobile: z.string().optional().or(z.literal("")),
   HourlyRate: z.coerce.number().min(0, "Hourly rate must be positive").optional(),
   GroupId: z.number({ error: "Pick a role" }).int().positive("Pick a role"),
-  BranchId: z.number({ error: "Pick a branch" }).int().positive("Pick a branch"),
+  BranchId: z.number({ error: "Pick an office" }).int().positive("Pick an office"),
   UserActive: z.boolean().optional(),
   AllowDay: z.coerce.number().optional(),
   UserIp: z.string().optional().or(z.literal("")),
@@ -98,6 +107,8 @@ const UserForm = ({
   const queryClient = useQueryClient();
   const { BranchId } = useAuthStore();
   const confirmation = useConfirmation();
+  const isAdmin = useIsAdmin();
+  const canSeeSensitive = useCanSeeSensitive();
 
   // The reporting line: one manager per user (Zoho / Salesforce "Reports To").
   // Drives Team-scope visibility and, in spec 2, escalation. A user cannot
@@ -119,7 +130,35 @@ const UserForm = ({
     params: {},
     showErrorMessage: false,
   });
-  const branchOptions = (branchData?.branches ?? []).map((b) => ({ value: String(b.Id), label: b.BranchName }));
+  // Offices in tree order, indented by depth. Inactive ones are not offered,
+  // except the one the edited user already sits in (else the field blanks).
+  const offices = toTree(branchData?.branches ?? []).filter(
+    (b) => (b.IsActive !== false && b.IsActive !== 0) || b.Id === editingUser?.BranchId
+  );
+  const branchOptions = offices.map((b) => ({
+    value: String(b.Id),
+    label: `${"— ".repeat(b.depth)}${b.BranchName}`,
+  }));
+
+  // Extra offices (admin only): tblUserBranchAccess rows beyond the user's own
+  // office. Loaded for an edit; diffed against on save.
+  const { data: grantData } = useApiQuery({
+    queryKey: ["userBranchAccess", editingUser?.Id],
+    endpoint: MASTER_ENDPOINTS.userBranchAccess.fetchUserBranchAccess,
+    params: { UserId: editingUser?.Id, PageSize: 200 },
+    enabled: isAdmin && Boolean(editingUser?.Id),
+    showErrorMessage: false,
+  });
+  const loadedGrants = editingUser ? grantData?.branchAccess ?? [] : [];
+  // Until the grants arrive the picker is locked, so a late response cannot
+  // overwrite what the admin has already picked.
+  const grantsLoading = isAdmin && Boolean(editingUser?.Id) && !grantData;
+  // Keyed on the ids, not the array: a refetch that returns the same grants
+  // must not wipe what the admin has picked so far.
+  const grantKey = loadedGrants.map((g) => g.BranchId).join(",");
+  const [extraOffices, setExtraOffices] = useState([]);
+  const seedExtraOffices = () => setExtraOffices(grantKey ? grantKey.split(",") : []);
+  useEffect(seedExtraOffices, [grantKey]);
 
   // Initialize default values
   const getDefaultValues = () => {
@@ -155,6 +194,7 @@ const UserForm = ({
     formState: { errors, isSubmitting },
     reset,
     setValue,
+    watch,
   } = useForm({
     resolver: zodResolver(buildUserFormSchema(Boolean(editingUser))),
     defaultValues: getDefaultValues(),
@@ -173,12 +213,39 @@ const UserForm = ({
     reset(getDefaultValues());
   }, [editingUser, userGroups]);
 
+  // Grant the added extra offices and revoke the removed ones. The user's own
+  // (home) office is implied, so it is never granted and never revoked here.
+  const syncExtraOffices = async (userId, ownBranchId) => {
+    const wanted = new Set(extraOffices.map(Number).filter((id) => id !== ownBranchId));
+    const had = new Set(loadedGrants.map((g) => g.BranchId));
+    const calls = [
+      ...[...wanted]
+        .filter((id) => !had.has(id))
+        .map((BranchId) => saveUserBranchAccess({ UserId: userId, BranchId, CanRead: 1, CanWrite: 1 })),
+      ...loadedGrants
+        .filter((g) => !wanted.has(g.BranchId) && g.BranchId !== ownBranchId)
+        .map((g) => deleteUserBranchAccess({ Id: g.Id })),
+    ];
+    try {
+      await Promise.all(calls);
+    } catch (err) {
+      enqueueSnackbar(
+        `User saved, but extra offices were not updated: ${err.response?.data?.message || err.message}`,
+        { variant: "warning" }
+      );
+    }
+    queryClient.invalidateQueries({ queryKey: ["userBranchAccess"] });
+  };
+
   // Save + toast. Throws on failure when `rethrow` so a confirm dialog stays open.
   const doSave = async (payload) => {
     try {
       const response = await saveUser(payload);
 
       if (response.data.success) {
+        if (isAdmin) {
+          await syncExtraOffices(editingUser?.Id ?? response.data.data?.userId, payload.BranchId);
+        }
         const n = response.data.data?.unassignedTasks;
         enqueueSnackbar(
           `User ${editingUser ? "updated" : "created"} successfully!` +
@@ -218,10 +285,18 @@ const UserForm = ({
     const payload = {
       ...data,
       Id: editingUser ? editingUser.Id : 0,
-      ReportsTo: data.ReportsTo ?? null,
+      // On edit, null means "keep the manager", so a cleared field must send 0.
+      ReportsTo: data.ReportsTo ?? (editingUser ? 0 : null),
       // Don't send password if editing and it's empty
       ...(editingUser && !data.Password && { Password: undefined }),
     };
+    // Salary and contact fields are not shown without the permission, so they
+    // are not sent either (the server refuses such a save for a non-admin).
+    if (!canSeeSensitive) {
+      delete payload.Email;
+      delete payload.Mobile;
+      delete payload.HourlyRate;
+    }
     const deactivating = Boolean(editingUser?.UserActive) && data.UserActive === false;
     if (!deactivating) return doSave(payload);
 
@@ -241,6 +316,7 @@ const UserForm = ({
 
   const handleClose = () => {
     reset(getDefaultValues());
+    seedExtraOffices(); // the modal stays mounted; a later open must not inherit picks
     onClose();
   };
 
@@ -320,6 +396,7 @@ const UserForm = ({
                 />
               )}
             />
+            {canSeeSensitive && (
             <Controller
               control={control}
               name="Email"
@@ -335,9 +412,11 @@ const UserForm = ({
                 />
               )}
             />
+            )}
           </div>
 
           {/* Row: Mobile (a login identifier) */}
+          {canSeeSensitive && (
           <div className="grid grid-cols-2 gap-4">
             <Controller
               control={control}
@@ -354,6 +433,7 @@ const UserForm = ({
               )}
             />
           </div>
+          )}
 
           {/* Row 3: Job Title, User Group */}
           <div className="grid grid-cols-2 gap-4">
@@ -396,12 +476,12 @@ const UserForm = ({
               name="BranchId"
               render={({ field }) => (
                 <FormSelect
-                  label="Branch"
+                  label="Office"
                   value={field.value ? String(field.value) : ""}
                   onChange={(e) => field.onChange(parseInt(e.target.value, 10))}
                   onBlur={field.onBlur}
                   options={branchOptions}
-                  placeholder="Select branch"
+                  placeholder="Select office"
                   error={errors.BranchId?.message}
                   required
                 />
@@ -424,8 +504,23 @@ const UserForm = ({
             />
           </div>
 
+          {/* Extra offices: admin only, widens what an Office-reach role sees */}
+          {isAdmin && (
+            <div className="grid grid-cols-1 gap-4">
+              <FormMultiSelect
+                label="Extra offices"
+                value={extraOffices}
+                onChange={setExtraOffices}
+                options={branchOptions.filter((o) => Number(o.value) !== watch("BranchId"))}
+                placeholder="Other offices this person also works in"
+                disabled={grantsLoading}
+              />
+            </div>
+          )}
+
           {/* Row 4: Hourly Rate, Allow Days */}
           <div className="grid grid-cols-2 gap-4">
+            {canSeeSensitive && (
             <Controller
               control={control}
               name="HourlyRate"
@@ -443,6 +538,7 @@ const UserForm = ({
                 />
               )}
             />
+            )}
             <Controller
               control={control}
               name="AllowDay"

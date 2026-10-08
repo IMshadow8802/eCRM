@@ -3,7 +3,7 @@
 // purpose: Central is another host, needs no token, and must never go through
 // the CRM interceptors (which would stamp a stale token and redirect on 401).
 import axios from "axios";
-import { CENTRAL_API_URL, APP_TYPE } from "../config/central";
+import { CENTRAL_API_URL, APP_TYPE, devApiOverride } from "../config/central";
 
 /** kind: "invalid" | "not_found" | "inactive" | "timeout" | "network" */
 export class ClientLookupError extends Error {
@@ -37,7 +37,7 @@ export async function fetchClientConfig(compCode) {
   const row = res?.data?.data;
   if (!res?.data?.success || !row?.BaseURL) throw new ClientLookupError("Invalid company code", "invalid");
   return {
-    baseURL: row.BaseURL,
+    baseURL: devApiOverride() || row.BaseURL,
     compCode: row.CompCode ?? code,
     companyName: row.Company ?? null,
     logoURL: row.LogoURL || null,

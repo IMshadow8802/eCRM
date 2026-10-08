@@ -2,6 +2,7 @@
 const authRoutes = require("../routes/authRoutes");
 const userRoutes = require("../routes/userRoutes");
 const userGroupRoutes = require("../routes/userGroupRoutes");
+const branchRoutes = require("../routes/branchRoutes");
 const teamRoutes = require("../routes/teamRoutes");
 const projectRoutes = require("../routes/projectRoutes");
 const taskRoutes = require("../routes/taskRoutes");
@@ -26,6 +27,7 @@ function setupRoutes(app) {
   app.use("/api/auth", authRoutes);
   app.use("/api/users", userRoutes);
   app.use("/api/user-groups", userGroupRoutes);
+  app.use("/api/branches", branchRoutes);
   app.use("/api/teams", teamRoutes);
   app.use("/api/projects", projectRoutes);
   app.use("/api/tasks", taskRoutes);

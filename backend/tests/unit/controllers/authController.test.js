@@ -10,8 +10,19 @@ jest.mock("jsonwebtoken", () => ({
 
 const database = require("../../../src/config/database");
 const { comparePassword } = require("../../../src/utils/encryption");
+const { buildAccess, publicAccess } = require("../../../src/middleware/access");
 const authController = require("../../../src/controllers/authController");
 const { mockRes } = require("../../helpers/mockRes");
+
+// sp_FetchUserAccess: head, modules, office lists, team owners
+const ACCESS_RS = {
+  recordsets: [
+    [{ PrimaryBranchId: 2, IsActive: 1, IsAdmin: 0, CanSeeSensitive: 1 }],
+    [{ Module: "leads", CanView: 1, CanAdd: 1, CanEdit: 0, CanDelete: 0, Reach: "Office" }],
+    [{ Reach: "Office", BranchId: 2, CanWrite: 1 }],
+    [],
+  ],
+};
 
 beforeEach(() => {
   database.executeStoredProcedure.mockReset();
@@ -52,6 +63,7 @@ describe("authController.login response shape", () => {
       ],
     });
     comparePassword.mockResolvedValueOnce(true);
+    database.executeStoredProcedure.mockResolvedValueOnce(ACCESS_RS);
 
     const res = mockRes();
     await authController.login(
@@ -125,6 +137,7 @@ describe("authController.login response shape", () => {
       ],
     });
     comparePassword.mockResolvedValueOnce(true);
+    database.executeStoredProcedure.mockResolvedValueOnce(ACCESS_RS);
 
     const res = mockRes();
     await authController.login({ body: { username: "alice", password: "pw" } }, res);
@@ -261,6 +274,7 @@ describe("authController.login multi-identifier + profile fields", () => {
       recordsets: [[userRow()], []],
     });
     comparePassword.mockResolvedValueOnce(true);
+    database.executeStoredProcedure.mockResolvedValueOnce(ACCESS_RS);
 
     const res = mockRes();
     await authController.login(
@@ -280,6 +294,7 @@ describe("authController.login multi-identifier + profile fields", () => {
       recordsets: [[userRow()], []],
     });
     comparePassword.mockResolvedValueOnce(true);
+    database.executeStoredProcedure.mockResolvedValueOnce(ACCESS_RS);
 
     const res = mockRes();
     await authController.login({ body: { username: "alice", password: "pw" } }, res);
@@ -298,6 +313,7 @@ describe("authController.login multi-identifier + profile fields", () => {
       ],
     });
     comparePassword.mockResolvedValueOnce(true);
+    database.executeStoredProcedure.mockResolvedValueOnce(ACCESS_RS);
 
     const res = mockRes();
     await authController.login({ body: { identifier: "alice", password: "pw" } }, res);
@@ -371,6 +387,75 @@ describe("authController.getUserPermissions", () => {
     await authController.getUserPermissions(baseReq(), res);
     expect(res.status).toHaveBeenCalledWith(500);
     expect(res.json.mock.calls[0][0].code).toBe("PERMISSIONS_ERROR");
+  });
+});
+
+describe("authController login access block", () => {
+  it("login returns data.access built from sp_FetchUserAccess, without the office lists", async () => {
+    database.executeStoredProcedure
+      .mockResolvedValueOnce({ recordsets: [[{ ResponseCode: 200, ResponseMess: "ok", UserId: 5, UserName: "a", Password: "h", UserActive: true, CompId: 1, BranchId: 2, IsAdmin: 0 }], []] })
+      .mockResolvedValueOnce(ACCESS_RS);
+    comparePassword.mockResolvedValueOnce(true);
+    const res = mockRes();
+    await authController.login({ body: { username: "a", password: "pw" } }, res);
+
+    expect(database.executeStoredProcedure).toHaveBeenNthCalledWith(2, "sp_FetchUserAccess", { UserId: 5, CompId: 1 });
+    const { access, permissions } = res.json.mock.calls[0][0].data;
+    expect(access).toEqual({
+      isAdmin: false, canSeeSensitive: true, primaryBranchId: 2,
+      modules: { leads: { view: true, add: true, edit: false, delete: false, reach: "Office" } },
+    });
+    expect(permissions).toMatchObject({ menuItems: [], rawPermissions: [], totalMenuItems: 0, hasAdminAccess: false });
+  });
+
+  it("does not return 200 when sp_FetchUserAccess throws after a valid password", async () => {
+    database.executeStoredProcedure
+      .mockResolvedValueOnce({ recordsets: [[{ ResponseCode: 200, UserId: 5, CompId: 1, Password: "h" }], []] })
+      .mockRejectedValueOnce(new Error("access down"));
+    comparePassword.mockResolvedValueOnce(true);
+    const res = mockRes();
+    await authController.login({ body: { username: "a", password: "pw" } }, res);
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json.mock.calls[0][0]).toMatchObject({ success: false, code: "LOGIN_ERROR" });
+    expect(res.json.mock.calls[0][0].data).toBeUndefined();
+  });
+
+  it("does not fetch access for a failed password", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ ResponseCode: 200, UserId: 5, Password: "h" }], []] });
+    comparePassword.mockResolvedValueOnce(false);
+    await authController.login({ body: { username: "a", password: "pw" } }, mockRes());
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("authController.fetchMyAccess", () => {
+  it("returns access + menu rights for the token's user", async () => {
+    const access = buildAccess(ACCESS_RS.recordsets, 5);
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[
+        { MenuId: 1, ParentId: 0, Description: "Sales", Route: "/sales", CanView: 1 },
+        { MenuId: 2, ParentId: 1, Description: "Leads", Route: "/sales/leads", CanView: 1 },
+        { MenuId: null },
+      ]],
+    });
+    const res = mockRes();
+    await authController.fetchMyAccess({ user: { UserId: 5 }, access }, res);
+
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_FetchUserMenus", { UserId: 5 });
+    expect(res.status).toHaveBeenCalledWith(200);
+    const data = res.json.mock.calls[0][0].data;
+    expect(data.access).toEqual(publicAccess(access));
+    expect(data.access).not.toHaveProperty("lists");
+    expect(data.permissions.rawPermissions).toHaveLength(2);
+    expect(data.permissions.menuItems[0].children).toHaveLength(1);
+  });
+
+  it("500s when the DB throws", async () => {
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
+    const res = mockRes();
+    await authController.fetchMyAccess({ user: { UserId: 5 }, access: buildAccess([], 5) }, res);
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json.mock.calls[0][0].code).toBe("ACCESS_ERROR");
   });
 });
 

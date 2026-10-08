@@ -1,5 +1,6 @@
 // src/controllers/userBranchAccessController.js
 const database = require("../config/database");
+const { publicAccess } = require("../middleware/access");
 const { cleanSpRows } = require("../utils/spHelpers");
 const { logActivity, ACTIONS } = require("../utils/activityLogger");
 const { success, validationError } = require("../utils/responseHelper");
@@ -143,11 +144,11 @@ class UserBranchAccessController {
     "USER_BRANCH_ACCESS_DELETE_ERROR",
   );
 
-  // Convenience: caller's own scope summary (no admin permission needed).
+  // Convenience: caller's own access summary (no admin permission needed).
   // No asyncRoute — there is nothing here that can throw, it just hands back
-  // what loadScope already put on req.
+  // what loadScope already put on req (office lists stay server-side).
   myScope(req, res) {
-    return success(res, "Scope retrieved", req.scope || null);
+    return success(res, "Scope retrieved", { access: publicAccess(req.access) });
   }
 }
 

@@ -22,6 +22,14 @@ describe("TransferTicketModal", () => {
     useAuthStore.setState({ isAuthenticated: true, token: null, user: { UserId: 17 }, UserId: 17, API_BASE_URL: "https://shadowcodes.in/CRM" });
   });
 
+  it("asks for the complaints roster", async () => {
+    mockSupportRefData();
+    let body;
+    server.use(http.post("*/api/users/fetchAssignableUsers", async ({ request }) => { body = await request.json(); return json({ users: [] }); }));
+    renderWithProviders(<TransferTicketModal open ticketIds={[7]} onClose={vi.fn()} />, { router: false });
+    await waitFor(() => expect(body).toMatchObject({ Module: "complaints" }));
+  });
+
   it("posts transferTicket with the person, the reason and the remarks", async () => {
     mockSupportRefData();
     const cap = mockTicketEndpoints();

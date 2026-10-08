@@ -6,9 +6,9 @@ const database = require("../../../src/config/database");
 const { assertCanAssign } = require("../../../src/middleware/permission");
 const { mockRes } = require("../../helpers/mockRes");
 
-const req = (dataScope, over = {}) => ({
+const req = (reach, over = {}) => ({
   user: { UserId: 7, CompId: 5, BranchId: 2 },
-  scope: { dataScope, branchIds: [2], ownerIds: null, isAdmin: false },
+  scope: { reach, branchIds: [2], ownerIds: reach === "Team" ? [7, 3] : reach === "Own" ? [7] : null, isAdmin: false },
   ...over,
 });
 const roster = (ids) =>
@@ -25,7 +25,7 @@ describe("assertCanAssign", () => {
     expect(await assertCanAssign(req("Team"), res, { toUserId: 9 })).toBe(true);
     expect(database.executeStoredProcedure).toHaveBeenCalledWith(
       "sp_FetchAssignableUsers",
-      { UserId: 7, CompId: 5, BranchId: null },
+      { UserId: 7, CompId: 5, BranchId: null, AccessibleBranchIdsJson: "[2]", OwnerIdsJson: "[7,3]" },
     );
     expect(res.status).not.toHaveBeenCalled();
   });
@@ -44,19 +44,21 @@ describe("assertCanAssign", () => {
     expect(database.executeStoredProcedure).not.toHaveBeenCalled();
   });
 
-  it("lets a Branch manager move to another branch, checking that branch's roster", async () => {
+  it("lets an Office-reach manager move to another branch, checking that branch's roster", async () => {
     roster([9]);
     const res = mockRes();
-    expect(await assertCanAssign(req("Branch"), res, { toUserId: 9, toBranchId: 4 })).toBe(true);
+    const r = req("Office");
+    r.scope.canWriteBranchIds = [2, 4];
+    expect(await assertCanAssign(r, res, { toUserId: 9, toBranchId: 4 })).toBe(true);
     expect(database.executeStoredProcedure).toHaveBeenCalledWith(
       "sp_FetchAssignableUsers",
-      { UserId: 7, CompId: 5, BranchId: 4 },
+      { UserId: 7, CompId: 5, BranchId: 4, AccessibleBranchIdsJson: "[2]", OwnerIdsJson: null },
     );
   });
 
   it("403s unassign from a Self-scoped executive", async () => {
     const res = mockRes();
-    expect(await assertCanAssign(req("Self"), res, { toUserId: null })).toBe(false);
+    expect(await assertCanAssign(req("Own"), res, { toUserId: null })).toBe(false);
     expect(res.status).toHaveBeenCalledWith(403);
   });
 
@@ -69,7 +71,7 @@ describe("assertCanAssign", () => {
   it("500s when the roster lookup throws", async () => {
     database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
     const res = mockRes();
-    expect(await assertCanAssign(req("Branch"), res, { toUserId: 9 })).toBe(false);
+    expect(await assertCanAssign(req("Office"), res, { toUserId: 9 })).toBe(false);
     expect(res.status).toHaveBeenCalledWith(500);
   });
 });
@@ -77,15 +79,15 @@ describe("assertCanAssign", () => {
 // The guard is shared by leads and tickets (spec 2 §3); the copy must not
 // name either. The web shows these strings verbatim in a toast.
 describe("assertCanAssign messages are entity-neutral", () => {
-  it("unassign below Branch scope", async () => {
+  it("unassign below Office reach", async () => {
     const res = mockRes();
-    await assertCanAssign(req("Self"), res, { toUserId: null });
+    await assertCanAssign(req("Own"), res, { toUserId: null });
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({ message: "Only a manager can leave a record unassigned" }),
     );
   });
 
-  it("cross-branch below Branch scope", async () => {
+  it("cross-branch below Office reach", async () => {
     const res = mockRes();
     await assertCanAssign(req("Team"), res, { toUserId: 9, toBranchId: 4 });
     expect(res.json).toHaveBeenCalledWith(

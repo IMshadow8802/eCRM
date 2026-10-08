@@ -1,29 +1,28 @@
 const express = require("express");
 const userController = require("../controllers/userController");
 const { verifyToken } = require("../middleware/auth");
-const { loadScope, requireAdmin } = require("../middleware/permission");
+const { loadScope, requireModule, open, saveAction, requireAdmin } = require("../middleware/permission");
 const { requirePayload, allowEmptyPayload } = require("../middleware/payloadValidation");
 
 const router = express.Router();
 
 router.use(verifyToken, loadScope);
 
-// Creating/editing a user can set IsAdmin, so these are admin-only. Without the
-// guard any authenticated employee could POST { Id: 0, IsAdmin: true } and mint
-// themselves an owner-level account.
-router.post("/saveUser", requireAdmin, requirePayload, userController.save);
-router.post("/fetchUserHandover", requireAdmin, requirePayload, userController.handover);
-router.post("/fetchUsers", allowEmptyPayload, userController.fetch);
-router.post("/deleteUser", requireAdmin, requirePayload, userController.delete);
+// Governed by the people module (saveUser) and IsAdmin (handover/delete).
+// Self-service and pick-list routes are open (they act on the caller / scope themselves).
+router.post("/saveUser", requirePayload, requireModule("people", saveAction), userController.save);
+router.post("/fetchUserHandover", requirePayload, requireAdmin, userController.handover);
+router.post("/fetchUsers", allowEmptyPayload, open(), userController.fetch);
+router.post("/deleteUser", requirePayload, requireAdmin, userController.delete);
 
 // Self-service — operate on the caller only (req.user.UserId).
-router.post("/me/updateProfile", requirePayload, userController.updateMyProfile);
-router.post("/me/changePassword", requirePayload, userController.changeMyPassword);
+router.post("/me/updateProfile", requirePayload, open(), userController.updateMyProfile);
+router.post("/me/changePassword", requirePayload, open(), userController.changeMyPassword);
 // Company roster for client-side avatar lookup in feeds.
-router.post("/directory", allowEmptyPayload, userController.directory);
+router.post("/directory", allowEmptyPayload, open(), userController.directory);
 
 // Transfer pick-lists — any authenticated user; the roster SP scopes itself.
-router.post("/fetchAssignableUsers", allowEmptyPayload, userController.assignableUsers);
-router.post("/fetchBranches", allowEmptyPayload, userController.branches);
+router.post("/fetchAssignableUsers", allowEmptyPayload, open(), userController.assignableUsers);
+router.post("/fetchBranches", allowEmptyPayload, open(), userController.branches);
 
 module.exports = router;

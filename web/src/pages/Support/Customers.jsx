@@ -1,5 +1,5 @@
 // src/pages/Support/Customers.jsx
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { Box } from "@mui/material";
 import { MaterialReactTable } from "material-react-table";
@@ -30,18 +30,22 @@ const Customers = () => {
   const [createOpen, setCreateOpen] = useState(false);
   const [editCustomer, setEditCustomer] = useState(null);
 
+  // Filled from the fetched rows below; the column list is built before them.
+  const [multiOffice, setMultiOffice] = useState(false);
+
   const columns = useMemo(() => [
     { accessorKey: "Name", header: "Name", enableSorting: true },
     { accessorKey: "ContactPerson", header: "Contact", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "—" },
     { accessorKey: "Mobile", header: "Mobile", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "—" },
+    ...(multiOffice ? [{ accessorKey: "BranchName", header: "Office", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "—" }] : []),
     { accessorKey: "City", header: "City", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "—" },
     { accessorKey: "OpenTickets", header: "Open", enableSorting: false, size: 80,
       Cell: ({ cell }) => <Chip label={String(cell.getValue() ?? 0)} size="sm" tone={cell.getValue() > 0 ? "warning" : "default"} data-testid="open-count-chip" /> },
     { accessorKey: "TotalTickets", header: "Total", enableSorting: false, size: 80, Cell: ({ cell }) => cell.getValue() ?? 0 },
     { accessorKey: "LastTicketAt", header: "Last complaint", enableSorting: true, Cell: ({ cell }) => formatDate(cell.getValue(), { empty: "—" }) },
-  ], []);
+  ], [multiOffice]);
 
-  const { table } = useServerTable({
+  const { table, data } = useServerTable({
     columns, queryKey: "customers", endpoint: SUPPORT_ENDPOINTS.customers.fetchCustomers, dataKey: "customers",
     initialPageSize: 25, getRowId: (row) => row.Id,
     enableRowActions: true,
@@ -55,6 +59,9 @@ const Customers = () => {
     ),
     muiTableContainerProps: { sx: { maxHeight: "500px" } },
   });
+
+  const officeCount = new Set((data ?? []).map((r) => r.BranchId)).size;
+  useEffect(() => setMultiOffice(officeCount > 1), [officeCount]);
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", flexGrow: 1 }}>

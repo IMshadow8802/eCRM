@@ -4,7 +4,7 @@ const get = vi.fn();
 vi.mock("axios", () => ({ default: { get: (...a) => get(...a) } }));
 
 import { fetchClientConfig, ClientLookupError } from "./centralQueries";
-import { CENTRAL_API_URL, APP_TYPE, isTrustedApiUrl } from "../config/central";
+import { CENTRAL_API_URL, APP_TYPE, isTrustedApiUrl, devApiOverride } from "../config/central";
 
 const ok = (data) => ({ data: { success: true, data } });
 const httpErr = (status, message) => Object.assign(new Error("http"), { response: { status, data: { message } } });
@@ -54,6 +54,29 @@ describe("fetchClientConfig", () => {
   it("a 200 without a BaseURL is invalid", async () => {
     get.mockResolvedValue(ok({ Company: "X" }));
     await expect(fetchClientConfig("PRD")).rejects.toMatchObject({ kind: "invalid" });
+  });
+});
+
+// Dev-only: `pnpm dev` with VITE_API_BASE_URL set talks to a local backend
+// instead of the host Central returns, so a sign-in never leaves the machine
+// while testing. Production builds have DEV=false and ignore it.
+describe("devApiOverride", () => {
+  it("returns the override only in a dev build with the variable set", () => {
+    expect(devApiOverride({ DEV: true, VITE_API_BASE_URL: "http://localhost:5001" })).toBe("http://localhost:5001");
+    expect(devApiOverride({ DEV: false, VITE_API_BASE_URL: "http://localhost:5001" })).toBeNull();
+    expect(devApiOverride({ DEV: true })).toBeNull();
+  });
+
+  it("replaces Central's BaseURL and is trusted, while the rest of the row still comes from Central", async () => {
+    vi.stubEnv("VITE_API_BASE_URL", "http://localhost:5001");
+    try {
+      get.mockResolvedValue(ok({ Company: "PRD Infotech", CompCode: "PRD", BaseURL: "https://shadowcodes.in/CRM", LogoURL: "" }));
+      const cfg = await fetchClientConfig("PRD");
+      expect(cfg).toEqual({ baseURL: "http://localhost:5001", compCode: "PRD", companyName: "PRD Infotech", logoURL: null });
+      expect(isTrustedApiUrl("http://localhost:5001")).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
 

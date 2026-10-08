@@ -127,11 +127,31 @@ export interface ClientConfig {
   logoURL: string | null;
 }
 
+export type ModuleKey =
+  | "leads" | "sales_reports" | "complaints" | "support_reports" | "customers"
+  | "people" | "tasks" | "teams" | "projects" | "roles" | "offices"
+  | "settings" | "dashboard";
+export type Reach = "Own" | "Team" | "Office" | "OfficeTree" | "Company";
+
+/** Role module grants (backend publicAccess). Hiding a control is a courtesy; the server decides. */
+export interface Access {
+  isAdmin: boolean;
+  canSeeSensitive: boolean;
+  primaryBranchId: number | null;
+  modules: Partial<
+    Record<
+    ModuleKey,
+    { view: boolean; add: boolean; edit: boolean; delete: boolean; reach: Reach | null }
+    >
+  >;
+}
+
 export interface LoginData {
   token: string;
   user: AuthUser;
   company: Company;
   permissions: Permissions;
+  access?: Access;
 }
 
 // ------------------------------------------------------------------- task

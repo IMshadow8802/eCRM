@@ -25,18 +25,17 @@ export const fetchUserDirectory = (
   );
 
 /**
- * Who the caller may hand a record to. sp_FetchAssignableUsers scopes it
- * (own subtree + own manager for Team/Self; readable branches for wide
- * scopes) and `assertCanAssign` re-checks membership on every save and
- * transfer — this is the pick-list, not the gate. `BranchId` lists another
- * branch's roster for a cross-branch move; mobile never passes it.
+ * Who the caller may hand a record to, for the given module (the roster
+ * follows that module's reach). `assertCanAssign` re-checks membership on every
+ * save and transfer — this is the pick-list, not the gate. `BranchId` lists
+ * another office's roster for a cross-office move; mobile never passes it.
  */
 export const fetchAssignableUsers = (
-  params: { BranchId?: number | null } = {},
+  params: { Module?: "leads" | "complaints"; BranchId?: number | null } = {},
 ): Promise<AssignableUser[]> =>
   postData<AssignableUser>(
     USER_ENDPOINTS.fetchAssignableUsers,
-    { BranchId: null, ...params },
+    { BranchId: null, Module: "leads", ...params },
     "users",
   );
 

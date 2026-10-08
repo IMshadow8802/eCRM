@@ -1,10 +1,13 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { act, cleanup, screen } from "@testing-library/react";
 import { Route, Routes } from "react-router-dom";
 
 import renderWithProviders from "../test/renderWithProviders";
-import ProtectedRoute from "./ProtectedRoutes";
+import ProtectedRoute, { resetRefreshThrottle } from "./ProtectedRoutes";
 import useAuthStore from "../stores/useAuthStore";
+
+vi.mock("../api/masterQueries", () => ({ fetchMyAccess: vi.fn() }));
+import { fetchMyAccess } from "../api/masterQueries";
 
 const menu = (menuid, parentid, description, route) => ({
   menuid,
@@ -130,5 +133,73 @@ describe("ProtectedRoute", () => {
     // No home to offer, so no button — just the provisioning message.
     expect(screen.queryByTestId("no-access-home")).not.toBeInTheDocument();
     expect(screen.getByText(/no other pages assigned/i)).toBeInTheDocument();
+  });
+});
+
+describe("ProtectedRoute focus refresh", () => {
+  const mount = () =>
+    renderWithProviders(
+      <Routes><Route path="/tasks" element={<ProtectedRoute element={<Page />} />} /></Routes>,
+      { route: "/tasks" },
+    );
+  const focus = () => act(async () => { window.dispatchEvent(new Event("focus")); });
+
+  beforeEach(() => {
+    fetchMyAccess.mockReset();
+    resetRefreshThrottle();
+    useAuthStore.setState({ access: { isAdmin: false, modules: {} } });
+  });
+
+  it("refreshes once on mount when access is null, with no focus event", async () => {
+    useAuthStore.setState({ access: null });
+    fetchMyAccess.mockResolvedValue({ data: { data: { access: { isAdmin: true, modules: {} } } } });
+    await act(async () => { mount(); });
+    expect(fetchMyAccess).toHaveBeenCalledTimes(1);
+    expect(useAuthStore.getState().access).toEqual({ isAdmin: true, modules: {} });
+  });
+
+  it("does not refresh on mount when access is already held", async () => {
+    await act(async () => { mount(); });
+    expect(fetchMyAccess).not.toHaveBeenCalled();
+  });
+
+  it("the throttle survives a remount (navigation), but null access bypasses it", async () => {
+    fetchMyAccess.mockResolvedValue({ data: { data: {} } });
+    const first = mount();
+    await focus();
+    first.unmount();
+    mount();
+    await focus();
+    expect(fetchMyAccess).toHaveBeenCalledTimes(1);
+    useAuthStore.setState({ access: null });
+    await focus();
+    expect(fetchMyAccess).toHaveBeenCalledTimes(2);
+  });
+
+  it("re-reads access and menu rights on focus, at most once a minute", async () => {
+    const rights = [menu(2, 0, "Tasks", "/tasks"), menu(3, 0, "Leads", "/leads")];
+    fetchMyAccess.mockResolvedValue({ data: { data: { access: { isAdmin: false, modules: {} }, permissions: { rawPermissions: rights } } } });
+    mount();
+    await focus();
+    expect(fetchMyAccess).toHaveBeenCalledTimes(1);
+    expect(useAuthStore.getState().access).toEqual({ isAdmin: false, modules: {} });
+    expect(useAuthStore.getState().menuRights).toEqual(rights);
+    await focus();
+    expect(fetchMyAccess).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores a failed refresh and a payload without access", async () => {
+    fetchMyAccess.mockRejectedValueOnce(new Error("offline"));
+    mount();
+    await focus();
+    expect(screen.getByTestId("the-page")).toBeInTheDocument();
+    expect(fetchMyAccess).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not call when signed out", async () => {
+    setSignedIn(false);
+    mount();
+    await focus();
+    expect(fetchMyAccess).not.toHaveBeenCalled();
   });
 });

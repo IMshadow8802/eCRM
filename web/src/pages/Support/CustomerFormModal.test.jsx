@@ -8,7 +8,7 @@ import CustomerFormModal from "./CustomerFormModal";
 import useAuthStore from "../../stores/useAuthStore";
 import { server } from "../../test/mocks/server";
 import renderWithProviders from "../../test/renderWithProviders";
-import { mockCustomerEndpoints, customerRow, refuse } from "../../test/supportMocks";
+import { mockCustomerEndpoints, customerRow, refuse, json } from "../../test/supportMocks";
 
 const renderModal = (props = {}) =>
   renderWithProviders(<CustomerFormModal open onClose={vi.fn()} onSaved={vi.fn()} {...props} />, { router: false });
@@ -137,5 +137,90 @@ describe("CustomerFormModal", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "Cancel" }));
     expect(onClose).toHaveBeenCalled();
     expect(cap.save).toBeUndefined();
+  });
+
+  describe("office field", () => {
+    const wideAccess = (reach = "Office") => useAuthStore.setState({
+      user: { UserId: 17, BranchId: 1 },
+      access: { isAdmin: false, modules: { customers: { view: true, add: true, edit: true, reach } } },
+    });
+    const branches = (list) => server.use(http.post("*/api/users/fetchBranches", () => json({ branches: list })));
+    const TWO = [{ Id: 1, BranchName: "HEAD OFFICE" }, { Id: 2, BranchName: "SOUTH EXTENSION" }];
+
+    it("shows for a wide reach with two offices, and the create payload carries BranchId", async () => {
+      wideAccess(); branches(TWO);
+      const cap = mockCustomerEndpoints();
+      renderModal();
+      const user = userEvent.setup();
+      expect(await screen.findByTestId("customer-BranchId-input")).toHaveValue("HEAD OFFICE");
+      await user.click(screen.getByTestId("customer-BranchId-input"));
+      await user.click(await screen.findByRole("option", { name: "SOUTH EXTENSION" }));
+      await user.type(screen.getByTestId("customer-Name"), "Gamma");
+      await user.type(screen.getByTestId("customer-Email"), "g@example.com");
+      await user.click(screen.getByTestId("customer-form-submit"));
+      await waitFor(() => expect(cap.save).toBeTruthy());
+      expect(cap.save.BranchId).toBe(2);
+    });
+
+    it("is hidden with one office, and for an Own reach", async () => {
+      wideAccess();
+      let served = 0;
+      server.use(http.post("*/api/users/fetchBranches", () => { served += 1; return json({ branches: [TWO[0]] }); }));
+      const { unmount } = renderModal();
+      await waitFor(() => expect(served).toBe(1));
+      await screen.findByTestId("customer-Name");
+      await waitFor(() => expect(screen.queryByTestId("customer-BranchId-input")).toBeNull());
+      unmount();
+      // Own reach never asks for offices at all.
+      wideAccess("Own");
+      let asked = false;
+      server.use(http.post("*/api/users/fetchBranches", () => { asked = true; return json({ branches: TWO }); }));
+      renderModal();
+      await screen.findByTestId("customer-Name");
+      expect(asked).toBe(false);
+      expect(screen.queryByTestId("customer-BranchId-input")).toBeNull();
+    });
+
+    it("on edit sends BranchId only when the office changed", async () => {
+      wideAccess(); branches(TWO);
+      const cap = mockCustomerEndpoints();
+      renderModal({ customer: customerRow({ BranchId: 1 }) });
+      const user = userEvent.setup();
+      await screen.findByTestId("customer-BranchId-input");
+      await user.click(screen.getByTestId("customer-form-submit"));
+      await waitFor(() => expect(cap.save).toBeTruthy());
+      expect(cap.save).not.toHaveProperty("BranchId");
+    });
+
+    // M2: a closed office is no place to file a new customer, but an edit keeps the current one.
+    const WITH_CLOSED = [{ Id: 1, BranchName: "HEAD OFFICE", IsActive: true },
+      { Id: 2, BranchName: "SOUTH EXTENSION", IsActive: true }, { Id: 3, BranchName: "OLD TOWN", IsActive: false }];
+
+    it("lists only active offices", async () => {
+      wideAccess(); branches(WITH_CLOSED);
+      renderModal();
+      const user = userEvent.setup();
+      await user.click(await screen.findByTestId("customer-BranchId-input"));
+      expect(await screen.findByRole("option", { name: "SOUTH EXTENSION" })).toBeInTheDocument();
+      expect(screen.queryByRole("option", { name: "OLD TOWN" })).toBeNull();
+    });
+
+    it("on edit keeps the customer's current office even when it is closed", async () => {
+      wideAccess(); branches(WITH_CLOSED);
+      renderModal({ customer: customerRow({ BranchId: 3 }) });
+      expect(await screen.findByTestId("customer-BranchId-input")).toHaveValue("OLD TOWN");
+    });
+
+    it("on edit sends the new office when it was moved", async () => {
+      wideAccess(); branches(TWO);
+      const cap = mockCustomerEndpoints();
+      renderModal({ customer: customerRow({ BranchId: 1 }) });
+      const user = userEvent.setup();
+      await user.click(await screen.findByTestId("customer-BranchId-input"));
+      await user.click(await screen.findByRole("option", { name: "SOUTH EXTENSION" }));
+      await user.click(screen.getByTestId("customer-form-submit"));
+      await waitFor(() => expect(cap.save).toBeTruthy());
+      expect(cap.save.BranchId).toBe(2);
+    });
   });
 });

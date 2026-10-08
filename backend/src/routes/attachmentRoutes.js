@@ -1,12 +1,13 @@
 const express = require("express");
 const attachmentController = require("../controllers/attachmentController");
 const { verifyToken } = require("../middleware/auth");
-const { loadScope } = require("../middleware/permission");
+const { loadScope, open } = require("../middleware/permission");
 const { uploadSingle, MAX_SIZE_MB } = require("../middleware/upload");
 const { requirePayload } = require("../middleware/payloadValidation");
 
 const router = express.Router();
 
+// Open: assertRecordAccess checks the parent record's module per Entity.
 router.use(verifyToken, loadScope);
 
 // Run multer, translating its errors (size/type) into clean 400s.
@@ -34,12 +35,12 @@ function handleUpload(req, res, next) {
   });
 }
 
-router.post("/save", handleUpload, attachmentController.save);
-router.post("/fetch", requirePayload, attachmentController.fetch);
-router.post("/download", requirePayload, attachmentController.download);
+router.post("/save", handleUpload, open(), attachmentController.save);
+router.post("/fetch", requirePayload, open(), attachmentController.fetch);
+router.post("/download", requirePayload, open(), attachmentController.download);
 // No requirePayload — a GET has no body by definition. verifyToken + loadScope
 // still apply (router.use above), so the Bearer header is mandatory here too.
-router.get("/download/:id", attachmentController.download);
-router.post("/delete", requirePayload, attachmentController.delete);
+router.get("/download/:id", open(), attachmentController.download);
+router.post("/delete", requirePayload, open(), attachmentController.delete);
 
 module.exports = router;

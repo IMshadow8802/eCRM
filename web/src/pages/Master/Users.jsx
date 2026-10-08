@@ -18,11 +18,23 @@ import { useConfirmation } from "../../hooks";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatDate } from "../../utils/format";
 import { useMasterDelete } from "../../hooks/useMasterDelete";
+import { useIsAdmin, useCanSeeSensitive } from "../../hooks/useAccess";
+
+const ADMIN_ROLES = new Set(["Owner", "Admin"]);
 
 const Users = () => {
   const { enqueueSnackbar } = useSnackbar();
   const queryClient = useQueryClient();
   const confirmation = useConfirmation();
+  // saveUser refuses a non-admin without the sensitive permission (403), so
+  // don't offer a form that can never save.
+  const isAdmin = useIsAdmin();
+  const canSeeSensitive = useCanSeeSensitive();
+  const canSaveUsers = isAdmin || canSeeSensitive;
+  // sp_SaveUser refuses a non-admin editing an admin. Row IsAdmin is the tblUser
+  // mirror, which can lag the role (live 2026-10-07: an Admin-role user had 0),
+  // so the stock admin role names count too. ponytail: names, until fetchUsers returns the role's IsAdmin.
+  const canEditRow = (u) => canSaveUsers && (isAdmin || !(u.IsAdmin || ADMIN_ROLES.has(u.GroupName)));
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
@@ -147,45 +159,52 @@ const Users = () => {
     muiTableBodyRowProps: { sx: { height: "40px" } },
     renderRowActions: ({ row }) => (
       <Box sx={{ display: "flex", gap: "0.5rem" }}>
-        <Tooltip title="Edit">
-          <IconButton
-            onClick={() => handleEdit(row)}
-            size="small"
-            sx={{
-              color: "#059669",
-              "&:hover": { backgroundColor: "#f9fafb" },
-              padding: "4px",
-            }}
-          >
-            <EditRounded fontSize="small" />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Delete">
-          <IconButton
-            onClick={() => handleDeleteRow(row)}
-            size="small"
-            sx={{
-              color: "#dc2626",
-              "&:hover": { backgroundColor: "#f9fafb" },
-              padding: "4px",
-            }}
-          >
-            <DeleteRounded fontSize="small" />
-          </IconButton>
-        </Tooltip>
+        {canEditRow(row.original) && (
+          <Tooltip title="Edit">
+            <IconButton
+              onClick={() => handleEdit(row)}
+              size="small"
+              sx={{
+                color: "#059669",
+                "&:hover": { backgroundColor: "#f9fafb" },
+                padding: "4px",
+              }}
+            >
+              <EditRounded fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
+        {/* deleteUser is requireAdmin on the server. */}
+        {isAdmin && (
+          <Tooltip title="Delete">
+            <IconButton
+              onClick={() => handleDeleteRow(row)}
+              size="small"
+              sx={{
+                color: "#dc2626",
+                "&:hover": { backgroundColor: "#f9fafb" },
+                padding: "4px",
+              }}
+            >
+              <DeleteRounded fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
       </Box>
     ),
     renderTopToolbarCustomActions: () => (
       <Box sx={{ display: "flex", gap: "1rem", p: "0.5rem" }}>
-        <ActionButton
-          actionType="create"
-          onClick={() => {
-            setEditingUser(null);
-            setIsModalOpen(true);
-          }}
-          label="Create User"
-          size="sm"
-        />
+        {canSaveUsers && (
+          <ActionButton
+            actionType="create"
+            onClick={() => {
+              setEditingUser(null);
+              setIsModalOpen(true);
+            }}
+            label="Create User"
+            size="sm"
+          />
+        )}
       </Box>
     ),
   });

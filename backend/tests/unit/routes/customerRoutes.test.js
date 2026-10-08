@@ -3,7 +3,8 @@
 // that they are reachable, that delete is gated, and that requirePayload sits
 // on every route but the list.
 
-let mockScope;
+
+let mockAcc;
 
 jest.mock("../../../src/middleware/auth", () => ({
   verifyToken: (req, res, next) => {
@@ -16,10 +17,7 @@ jest.mock("../../../src/middleware/permission", () => {
   const actual = jest.requireActual("../../../src/middleware/permission");
   return {
     ...actual,
-    loadScope: (req, res, next) => {
-      req.scope = mockScope;
-      next();
-    },
+    loadScope: (req, res, next) => require("../../helpers/mockAccess").loadScopeWith(() => mockAcc)(req, res, next),
   };
 });
 
@@ -31,6 +29,9 @@ jest.mock("../../../src/controllers/customerController", () => ({
   delete: hit("delete"),
 }));
 
+const { mockAccess } = require("../../helpers/mockAccess");
+mockAcc = mockAccess({ modules: [["customers","vaed"]] });
+
 const express = require("express");
 const request = require("supertest");
 const customerRoutes = require("../../../src/routes/customerRoutes");
@@ -40,8 +41,9 @@ const app = express();
 app.use(express.json());
 app.use("/api/customers", customerRoutes);
 
-const asAdmin = () => { mockScope = { isAdmin: true, hierarchyLevel: 1, dataScope: "All", branchIds: [2] }; };
-const asAgent = () => { mockScope = { isAdmin: false, hierarchyLevel: 4, dataScope: "Self", branchIds: [2], ownerIds: [7] }; };
+const asAdmin = () => { mockAcc = mockAccess({ admin: true }); };
+const asAgent = () => { mockAcc = mockAccess({ modules: [["customers", "vaed"]] }); };
+const asNoCustomers = () => { mockAcc = mockAccess({ modules: [["leads", "vaed"]] }); };
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -57,6 +59,15 @@ describe("customerRoutes", () => {
     const r = await request(app).post(path).send(body);
     expect(r.status).toBe(200);
     expect(r.body.hit).toBe(handler);
+  });
+
+  it("403s every customer route without the customers module, before any controller", async () => {
+    asNoCustomers();
+    for (const p of ["saveCustomer", "fetchCustomers", "fetchCustomerDetail"]) {
+      expect((await request(app).post(`/api/customers/${p}`).send({ Name: "x", CustomerId: 1 })).status).toBe(403);
+    }
+    expect(customerController.save).not.toHaveBeenCalled();
+    expect(customerController.fetch).not.toHaveBeenCalled();
   });
 
   it("403s deleteCustomer for a non-admin without reaching the controller", async () => {

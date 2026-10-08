@@ -63,7 +63,7 @@ const leadController = {
     const mobileError = applyMobiles(fields, [["MobileNo", "Mobile number"], ["AltMobile", "Alternate mobile"]]);
     if (mobileError) return responseHelper.validationError(res, mobileError);
     if (Id > 0) {
-      if (!(await assertRecordAccess(req, res, "lead", Id))) return;
+      if (!(await assertRecordAccess(req, res, "lead", Id, "write"))) return;
       // Ownership moves through transfer (history), status through setStatus
       // (guards). The SP ignores these on update; not sending them keeps that
       // fact visible here rather than buried in T-SQL.
@@ -143,7 +143,7 @@ const leadController = {
   async setStatus(req, res) {
     const { CompId, UserId } = req.user;
     const { LeadId, StatusId, LostReasonId = null } = req.body;
-    if (!(await assertRecordAccess(req, res, "lead", LeadId))) return;
+    if (!(await assertRecordAccess(req, res, "lead", LeadId, "write"))) return;
     return runSp(
       res,
       "sp_SetLeadStatus",
@@ -190,7 +190,7 @@ const leadController = {
     if (blank(args.Remarks) || !args.ReasonId) {
       return responseHelper.validationError(res, "A reason and remarks are required for a transfer");
     }
-    if (!(await assertRecordAccess(req, res, "lead", LeadId))) return;
+    if (!(await assertRecordAccess(req, res, "lead", LeadId, "write"))) return;
     if (!(await assertCanAssign(req, res, { toUserId: args.ToUserId, toBranchId: args.ToBranchId }))) return;
     return runSp(res, "sp_TransferLead", { CompId, LeadId, ...args, UserId }, "Failed to transfer lead");
   },
@@ -212,7 +212,7 @@ const leadController = {
     // upgrade path = one sp_FetchLeadsVisibility(@LeadIdsJson) returning
     // Id/BranchId/OwnerId/CreatedBy + canSeeRecord per row.
     for (const id of ids) {
-      if (!(await assertRecordAccess(req, res, "lead", id))) return;
+      if (!(await assertRecordAccess(req, res, "lead", id, "write"))) return;
     }
     if (!(await assertCanAssign(req, res, { toUserId: args.ToUserId, toBranchId: args.ToBranchId }))) return;
     return runSp(
@@ -226,7 +226,7 @@ const leadController = {
   async delete(req, res) {
     const { CompId } = req.user;
     const { Id } = req.body;
-    if (!(await assertRecordAccess(req, res, "lead", Id))) return;
+    if (!(await assertRecordAccess(req, res, "lead", Id, "write"))) return;
     try {
       const result = await database.executeStoredProcedure("sp_DeleteLead", { Id, CompId });
       const spResponse = result.recordset[0];

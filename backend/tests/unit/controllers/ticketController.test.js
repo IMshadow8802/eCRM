@@ -5,16 +5,16 @@ jest.mock("../../../src/config/database", () => ({
 const database = require("../../../src/config/database");
 const ticketController = require("../../../src/controllers/ticketController");
 const { mockRes } = require("../../helpers/mockRes");
+const { accessForScope } = require("../../helpers/mockAccess");
 
 // Routes always run loadScope, so req.scope is present on every real request.
 // Default here mirrors a Branch-scoped user (sees their branch, no ownership
 // filter, and wide enough for assertCanAssign's manager-only checks).
-function baseReq(overrides = {}) {
+function rawReq(overrides = {}) {
   return {
     user: { UserId: 7, CompId: 5, BranchId: 2, IsAdmin: false },
     scope: {
-      hierarchyLevel: 3,
-      dataScope: "Branch",
+      reach: "Office",
       primaryBranchId: 2,
       branchIds: [2],
       ownerIds: null,
@@ -25,6 +25,15 @@ function baseReq(overrides = {}) {
     ...overrides,
   };
 }
+
+// Routes run loadScope, which sets req.access too; assertRecordAccess judges a
+// record against the module scope it derives from req.access, so the access
+// mirrors whatever scope shape a test describes.
+const baseReq = (overrides = {}) => {
+  const req = rawReq(overrides);
+  if (!req.access) req.access = accessForScope(req.scope, req.user.UserId);
+  return req;
+};
 
 beforeEach(() => {
   database.executeStoredProcedure.mockReset();
@@ -47,6 +56,11 @@ function mockRoster(...ids) {
   });
 }
 
+// assertCustomerVisible's lookup (sp_FetchCustomerDetail RS1).
+function mockCustomer(row = { Id: 31, BranchId: 2, CreatedBy: 7 }) {
+  database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [row ? [row] : [], []] });
+}
+
 const okRow = (extra = {}) => ({
   recordset: [{ Id: 1, ResponseCode: 200, ResponseMess: "ok", ...extra }],
 });
@@ -60,6 +74,7 @@ const CREATE_BODY = {
 describe("ticketController.save — create", () => {
   it("injects Id=0/CompId/BranchId/UserId, trims Subject, forwards exactly sp_SaveTicket's columns, echoes TicketNo", async () => {
     mockRoster(18); // AssignedTo 18 is assignable by the caller
+    mockCustomer();
     database.executeStoredProcedure.mockResolvedValueOnce(okRow({ Id: 12, TicketNo: "TKT-000012" }));
     const res = mockRes();
     await ticketController.save(baseReq({ body: CREATE_BODY }), res);
@@ -78,12 +93,13 @@ describe("ticketController.save — create", () => {
   // still sending them must not blow up the call — node-mssql rejects an
   // undeclared parameter outright — and the body never names its own tenant.
   it("drops the retired columns and unknown keys; the body cannot override CompId", async () => {
+    mockCustomer();
     database.executeStoredProcedure.mockResolvedValueOnce(okRow());
     await ticketController.save(
       baseReq({ body: { ...CREATE_BODY, AssignedTo: null, CustomerName: "Acme", Channel: "Phone", PipelineId: 1, StageId: 2, CompId: 999, CreatedBy: 1, Nonsense: "x" } }),
       mockRes(),
     );
-    const params = database.executeStoredProcedure.mock.calls[0][1];
+    const params = database.executeStoredProcedure.mock.calls[1][1];
     expect(params.CompId).toBe(5);
     for (const k of ["CustomerName", "Channel", "PipelineId", "StageId", "CreatedBy", "Nonsense"]) {
       expect(params).not.toHaveProperty(k);
@@ -108,13 +124,14 @@ describe("ticketController.save — create", () => {
   });
 
   it("normalises id fields: a select's empty string and junk become null, numeric strings become ints", async () => {
+    mockCustomer();
     database.executeStoredProcedure.mockResolvedValueOnce(okRow());
     await ticketController.save(
       baseReq({ body: { CustomerId: "31", Subject: "x", CategoryId: "", Priority: "3", ProductId: "abc", ChannelId: 0 } }),
       mockRes(),
     );
-    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1); // no roster call: AssignedTo is null
-    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(2); // customer check + save; no roster call
+    expect(database.executeStoredProcedure.mock.calls[1][1]).toMatchObject({
       CustomerId: 31, CategoryId: null, Priority: 3, ProductId: null, ChannelId: null, AssignedTo: null, LinkedLeadId: null,
     });
   });
@@ -130,16 +147,18 @@ describe("ticketController.save — create", () => {
   });
 
   it("skips the roster check for an unassigned create", async () => {
+    mockCustomer();
     database.executeStoredProcedure.mockResolvedValueOnce(okRow());
     const res = mockRes();
     await ticketController.save(baseReq({ body: { ...CREATE_BODY, AssignedTo: null } }), res);
-    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
-    expect(database.executeStoredProcedure.mock.calls[0][0]).toBe("sp_SaveTicket");
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(2);
+    expect(database.executeStoredProcedure.mock.calls[1][0]).toBe("sp_SaveTicket");
     expect(res.status).toHaveBeenCalledWith(200);
   });
 
   // The SP checks the customer is active and in this company (spec §3: 404).
   it("surfaces the SP's 404 for a customer outside the company", async () => {
+    mockCustomer();
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordset: [{ Id: 0, ResponseCode: 404, ResponseMess: "Customer not found" }],
     });
@@ -150,6 +169,7 @@ describe("ticketController.save — create", () => {
   });
 
   it("handles DB error as 500", async () => {
+    mockCustomer();
     database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
     const res = mockRes();
     await ticketController.save(baseReq({ body: { ...CREATE_BODY, AssignedTo: null } }), res);
@@ -162,10 +182,11 @@ describe("ticketController.save — update", () => {
   // setStatus (guards). An edit must not be a side door for either.
   it("gates on the ticket, then saves with AssignedTo dropped and no status key", async () => {
     mockTicketLookup(visibleTicket);
+    mockCustomer();
     database.executeStoredProcedure.mockResolvedValueOnce(okRow());
     await ticketController.save(baseReq({ body: { Id: "1", ...CREATE_BODY, AssignedTo: 18, StatusId: 99 } }), mockRes());
-    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(2); // lookup + save; no roster
-    const [sp, params] = database.executeStoredProcedure.mock.calls[1];
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(3); // ticket + customer lookups + save; no roster
+    const [sp, params] = database.executeStoredProcedure.mock.calls[2];
     expect(sp).toBe("sp_SaveTicket");
     expect(params).toMatchObject({ Id: 1, CompId: 5, AssignedTo: null, CustomerId: 31, Subject: "Inverter trips at noon" });
     expect(params).not.toHaveProperty("StatusId");
@@ -187,6 +208,25 @@ describe("ticketController.save — update", () => {
     const res = mockRes();
     await ticketController.save(baseReq({ scope: { branchIds: [2], ownerIds: [7] }, body: { Id: 1, Description: "more detail" } }), res);
     expect(res.status).toHaveBeenCalledWith(200);
+  });
+});
+
+describe("ticketController.save — customer visibility", () => {
+  it("refuses a customer the caller cannot see, never calling sp_SaveTicket", async () => {
+    mockCustomer({ Id: 31, BranchId: 9, CreatedBy: 3 });
+    const res = mockRes();
+    await ticketController.save(baseReq({ body: { ...CREATE_BODY, AssignedTo: null } }), res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalledWith("sp_SaveTicket", expect.anything());
+  });
+
+  it("also checks the customer on an edit", async () => {
+    mockTicketLookup(visibleTicket);
+    mockCustomer(null); // not found -> not visible
+    const res = mockRes();
+    await ticketController.save(baseReq({ body: { Id: 1, CustomerId: 31 } }), res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalledWith("sp_SaveTicket", expect.anything());
   });
 });
 
@@ -386,9 +426,9 @@ describe("ticketController.detail", () => {
 
 // A Team lead over users 17 and 18, and a Self agent (user 7 in both cases).
 const teamLeadReq = (body) =>
-  baseReq({ scope: { dataScope: "Team", branchIds: [2], ownerIds: [7, 17, 18] }, body });
+  baseReq({ scope: { reach: "Team", branchIds: [2], ownerIds: [7, 17, 18] }, body });
 const selfReq = (body) =>
-  baseReq({ scope: { dataScope: "Self", branchIds: [2], ownerIds: [7] }, body });
+  baseReq({ scope: { reach: "Own", branchIds: [2], ownerIds: [7] }, body });
 const subordinatesTicket = { Id: 1, BranchId: 2, AssignedTo: 17, CreatedBy: 17 };
 const unassignedOwnTicket = { Id: 1, BranchId: 2, AssignedTo: null, CreatedBy: 7 };
 const strangersTicket = { Id: 1, BranchId: 2, AssignedTo: 3, CreatedBy: 3 };
@@ -704,9 +744,12 @@ describe("ticketController.transfer", () => {
     mockTicketLookup(visibleTicket);
     mockRoster(21);
     database.executeStoredProcedure.mockResolvedValueOnce(okRow());
-    await ticketController.transfer(baseReq({ body: { ...body, ToUserId: "21", ToBranchId: "4" } }), mockRes());
+    // The destination office must be one the caller may write (fix round 1).
+    const req = baseReq({ body: { ...body, ToUserId: "21", ToBranchId: "4" } });
+    req.scope.canWriteBranchIds = [2, 4];
+    await ticketController.transfer(req, mockRes());
     expect(database.executeStoredProcedure).toHaveBeenNthCalledWith(2, "sp_FetchAssignableUsers", {
-      UserId: 7, CompId: 5, BranchId: 4,
+      UserId: 7, CompId: 5, BranchId: 4, AccessibleBranchIdsJson: "[2]", OwnerIdsJson: null,
     });
     expect(database.executeStoredProcedure.mock.calls[2][1]).toMatchObject({ ToUserId: 21, ToBranchId: 4 });
   });
@@ -1043,5 +1086,29 @@ describe("ticketController.delete", () => {
 describe("ticketController pipeline removal", () => {
   it("no longer exposes moveStage", () => {
     expect(ticketController.moveStage).toBeUndefined();
+  });
+});
+
+// Fix round 1: the record gate on a write also checks the complaints EDIT
+// right, so a view-only role is refused at the record, before any lookup.
+describe("ticketController writes need the complaints edit right", () => {
+  const viewOnly = (body) => {
+    const req = baseReq({ body });
+    req.access = accessForScope(req.scope, 7, "v");
+    return req;
+  };
+  it.each([
+    ["save (update)", "save", { Id: 1, Subject: "x" }],
+    ["setStatus", "setStatus", { TicketId: 1, StatusId: 2 }],
+    ["close", "close", { TicketId: 1 }],
+    ["transfer", "transfer", { TicketId: 1, ToUserId: 18, ReasonId: 36, Remarks: "Absent today" }],
+    ["bulkTransfer", "bulkTransfer", { TicketIds: [1], ToUserId: 18, ReasonId: 37, Remarks: "Rebalance" }],
+    ["escalate", "escalate", { TicketId: 1, ToUserId: 16, Remarks: "Urgent" }],
+    ["delete", "delete", { Id: 1 }],
+  ])("403s a view-only role on %s without a DB call", async (_label, method, body) => {
+    const res = mockRes();
+    await ticketController[method](viewOnly(body), res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
   });
 });

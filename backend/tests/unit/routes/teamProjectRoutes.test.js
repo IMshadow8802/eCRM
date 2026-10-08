@@ -1,12 +1,12 @@
 // Regression, 2026-10-07 audit S2: the Teams and Projects write endpoints had
 // no gate. sp_SaveTeam pushes its roster into every linked project workspace,
 // so any employee could POST saveTeam with their own id added and become a
-// member of any project workspace. The screens are granted to Owner, Admin and
-// HR Manager — HR is not IsAdmin — so the gate is the menu grant
-// (sp_CheckMenuRight), not requireAdmin. Reads stay open: task forms list
+// member of any project workspace. HR is not IsAdmin, so the gate is the
+// teams / projects module (requireModule), not requireAdmin. Reads stay open: task forms list
 // teams and projects for everyone.
 
-let mockScope;
+
+let mockAcc;
 
 jest.mock("../../../src/config/database", () => ({ executeStoredProcedure: jest.fn() }));
 
@@ -21,10 +21,7 @@ jest.mock("../../../src/middleware/permission", () => {
   const actual = jest.requireActual("../../../src/middleware/permission");
   return {
     ...actual,
-    loadScope: (req, res, next) => {
-      req.scope = mockScope;
-      next();
-    },
+    loadScope: (req, res, next) => require("../../helpers/mockAccess").loadScopeWith(() => mockAcc)(req, res, next),
   };
 });
 
@@ -40,6 +37,9 @@ jest.mock("../../../src/controllers/projectController", () => ({
   delete: hit("deleteProject"),
 }));
 
+const { mockAccess } = require("../../helpers/mockAccess");
+mockAcc = mockAccess({ modules: [] });
+
 const express = require("express");
 const request = require("supertest");
 const database = require("../../../src/config/database");
@@ -54,33 +54,45 @@ const grant = (allowed) =>
 
 beforeEach(() => {
   database.executeStoredProcedure.mockReset();
-  mockScope = { isAdmin: false, branchIds: [2] };
+  mockAcc = mockAccess({ modules: [["leads", "vaed"]] }); // Sales Executive: no teams/projects
 });
 
 describe("Teams/Projects write gate", () => {
   it.each([
-    ["/api/teams/saveTeam", { Id: 0, Name: "T" }, "/teams", "add"],
-    ["/api/teams/saveTeam", { Id: 4, Name: "T" }, "/teams", "edit"],
-    ["/api/teams/deleteTeam", { Id: 4 }, "/teams", "delete"],
-    ["/api/projects/saveProject", { Id: 0, Name: "P" }, "/projects", "add"],
-    ["/api/projects/saveProject", { Id: 9, Name: "P" }, "/projects", "edit"],
-    ["/api/projects/deleteProject", { Id: 9 }, "/projects", "delete"],
-  ])("%s %j checks %s:%s and 403s without the grant", async (path, body, route, right) => {
-    grant(false);
+    ["/api/teams/saveTeam", { Id: 0, Name: "T" }],
+    ["/api/teams/saveTeam", { Id: 4, Name: "T" }],
+    ["/api/teams/deleteTeam", { Id: 4 }],
+    ["/api/projects/saveProject", { Id: 0, Name: "P" }],
+    ["/api/projects/saveProject", { Id: 9, Name: "P" }],
+    ["/api/projects/deleteProject", { Id: 9 }],
+  ])("%s %j 403s without the module, with no DB call", async (path, body) => {
     const r = await request(app).post(path).send(body);
     expect(r.status).toBe(403);
     expect(r.body.hit).toBeUndefined();
-    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
-      "sp_CheckMenuRight",
-      expect.objectContaining({ Route: route, Right: right, UserId: 7, CompId: 1 }),
-    );
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
   });
 
-  it("lets HR (granted, not admin) save a team", async () => {
-    grant(true);
-    const r = await request(app).post("/api/teams/saveTeam").send({ Id: 4, Name: "T" });
-    expect(r.status).toBe(200);
-    expect(r.body.hit).toBe("saveTeam");
+  it("lets HR (teams module, not admin) save and delete a team, by right", async () => {
+    mockAcc = mockAccess({ modules: [["teams", "vae"]] });
+    expect((await request(app).post("/api/teams/saveTeam").send({ Id: 4, Name: "T" })).body.hit).toBe("saveTeam");
+    expect((await request(app).post("/api/teams/saveTeam").send({ Id: 0, Name: "T" })).status).toBe(200);
+    expect((await request(app).post("/api/teams/deleteTeam").send({ Id: 4 })).status).toBe(403); // no d right
+    mockAcc = mockAccess({ modules: [["teams", "vaed"]] });
+    expect((await request(app).post("/api/teams/deleteTeam").send({ Id: 4 })).status).toBe(200);
+  });
+
+  it("gates projects on the projects module, not teams", async () => {
+    mockAcc = mockAccess({ modules: [["teams", "vaed"]] });
+    expect((await request(app).post("/api/projects/saveProject").send({ Id: 0, Name: "P" })).status).toBe(403);
+    mockAcc = mockAccess({ modules: [["projects", "vaed"]] });
+    expect((await request(app).post("/api/projects/saveProject").send({ Id: 0, Name: "P" })).status).toBe(200);
+    expect((await request(app).post("/api/projects/deleteProject").send({ Id: 9 })).status).toBe(200);
+  });
+
+  it("lets an admin write both", async () => {
+    mockAcc = mockAccess({ admin: true });
+    expect((await request(app).post("/api/teams/saveTeam").send({ Id: 4, Name: "T" })).status).toBe(200);
+    expect((await request(app).post("/api/projects/deleteProject").send({ Id: 9 })).status).toBe(200);
   });
 
   it("keeps the lists readable without a grant", async () => {

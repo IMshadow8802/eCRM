@@ -15,6 +15,7 @@ import useServerTable from "../../hooks/useServerTable";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { useUsers } from "../../hooks";
 import { useLookups } from "../../hooks/useLookups";
+import { useAccess } from "../../hooks/useAccess";
 import useAuthStore from "../../stores/useAuthStore";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
 import { formatCurrency, formatDate } from "../../utils/format";
@@ -29,6 +30,7 @@ const num = (v) => (v === "" ? null : Number(v));
 const Leads = () => {
   const navigate = useNavigate();
   const theme = useTheme();
+  const leadsAccess = useAccess("leads");
   const userId = useAuthStore((s) => s.user?.UserId ?? s.UserId);
 
   // A report drill-down lands here with its filters in the URL (spec 4a).
@@ -150,10 +152,7 @@ const Leads = () => {
       <MaterialReactTable table={table} />
 
       <LeadCreateModal open={createOpen || Boolean(editLead)} lead={editLead} onClose={() => { setCreateOpen(false); setEditLead(null); }} />
-      {/* canCrossBranch is always on here: the server (assertCanAssign) is the
-          gate and answers a Team/Self caller with a clear 403. The prop exists
-          so spec 2 can hide the picker once DataScope reaches the client. */}
-      <TransferLeadModal open={transferIds.length > 0} leadIds={transferIds} canCrossBranch onClose={() => setTransferIds([])} onTransferred={() => table.resetRowSelection?.()} />
+      <TransferLeadModal open={transferIds.length > 0} leadIds={transferIds} canCrossBranch={leadsAccess.wide} onClose={() => setTransferIds([])} onTransferred={() => table.resetRowSelection?.()} />
       <DeleteLeadModal open={Boolean(deleteLead)} leadId={deleteLead?.Id} leadName={deleteLead?.Name} onClose={() => setDeleteLead(null)} />
     </Box>
   );

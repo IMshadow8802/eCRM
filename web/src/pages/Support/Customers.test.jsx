@@ -66,6 +66,21 @@ describe("Customers page", () => {
     expect(screen.getByTestId("customer-row-3")).toHaveTextContent("Acme Corp");
   });
 
+  it("adds an Office column only when the rows span more than one office", () => {
+    renderPage();
+    expect(lastCfg().columns.some((c) => c.accessorKey === "BranchName")).toBe(false);
+    useServerTable.mockImplementation(() => ({
+      table: { __options: { data: FIXTURE_CUSTOMERS } },
+      data: [{ ...FIXTURE_CUSTOMERS[0], BranchId: 1 }, { ...FIXTURE_CUSTOMERS[0], Id: 4, BranchId: 2 }],
+      isLoading: false, isFetching: false, error: null, refetch: vi.fn(), totalRecords: 2,
+    }));
+    renderPage();
+    const office = lastCfg().columns.find((c) => c.accessorKey === "BranchName");
+    expect(office.header).toBe("Office");
+    expect(office.Cell({ cell: { getValue: () => null } })).toBe("—");
+    expect(office.Cell({ cell: { getValue: () => "Pune" } })).toBe("Pune");
+  });
+
   it("renders the cells with readable fallbacks", () => {
     renderPage();
     expect(cellOf("ContactPerson")({ cell: { getValue: () => null } })).toBe("—");

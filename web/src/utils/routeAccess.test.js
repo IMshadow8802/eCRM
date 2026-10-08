@@ -70,6 +70,14 @@ describe("canAccessPath", () => {
     expect(canAccessPath(TASKS_ONLY, "/groups")).toBe(false);
   });
 
+  // /offices arrives as an ordinary menu row under Admin (sp_ValidateUser), so
+  // no client-side change is needed to reach the Offices screen.
+  it("grants /offices from its menu row", () => {
+    const rights = [...ADMIN, menu(90, 35, "Offices", "/offices")];
+    expect(canAccessPath(rights, "/offices")).toBe(true);
+    expect(canAccessPath(ADMIN, "/offices")).toBe(false);
+  });
+
   it("lets detail pages inherit from their list page", () => {
     // /sales/leads/42 has no menu row of its own.
     expect(canAccessPath(SALES, "/sales/leads/42")).toBe(true);

@@ -1,6 +1,8 @@
 // Route wiring for the task API: every path reaches its controller method.
 // Any controller property resolves to a stub that echoes its own name, so the
 // test needs no per-route mock and a renamed/missing handler fails loudly.
+let mockAcc;
+
 jest.mock("../../../src/middleware/auth", () => ({
   verifyToken: (req, res, next) => {
     req.user = { UserId: 7, CompId: 1, BranchId: 2 };
@@ -8,10 +10,9 @@ jest.mock("../../../src/middleware/auth", () => ({
   },
 }));
 jest.mock("../../../src/middleware/permission", () => ({
-  loadScope: (req, res, next) => {
-    req.scope = { isAdmin: false };
-    next();
-  },
+  ...jest.requireActual("../../../src/middleware/permission"),
+  loadScope: (req, res, next) =>
+    require("../../helpers/mockAccess").loadScopeWith(() => mockAcc)(req, res, next),
 }));
 jest.mock("../../../src/controllers/taskController", () => {
   const stubs = {};
@@ -26,6 +27,9 @@ jest.mock("../../../src/controllers/taskController", () => {
     },
   );
 });
+
+const { mockAccess } = require("../../helpers/mockAccess");
+mockAcc = mockAccess({ modules: [["tasks"]] });
 
 const express = require("express");
 const request = require("supertest");
@@ -59,5 +63,15 @@ describe("taskRoutes", () => {
   it("404s an unknown path and GET is not routed", async () => {
     expect((await request(app).post("/api/tasks/nope").send({})).status).toBe(404);
     expect((await request(app).get("/api/tasks/claimTask")).status).toBe(404);
+  });
+});
+
+describe("taskRoutes access", () => {
+  it("403s a role without the tasks module and never reaches the controller", async () => {
+    mockAcc = mockAccess({ modules: [["leads", "vaed"]] });
+    const r = await request(app).post("/api/tasks/saveTask").send({});
+    mockAcc = mockAccess({ modules: [["tasks"]] });
+    expect(r.status).toBe(403);
+    expect(require("../../../src/controllers/taskController").save).not.toHaveBeenCalled();
   });
 });

@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import renderWithProviders from "../../test/renderWithProviders";
@@ -67,6 +67,12 @@ vi.mock("./components/UserForm", () => ({
 }));
 
 import Users from "./Users";
+import useAuthStore from "../../stores/useAuthStore";
+
+// The page shows Create/Edit only to someone the server would let save.
+beforeEach(() => {
+  useAuthStore.setState({ access: { isAdmin: false, canSeeSensitive: true, modules: {} } });
+});
 import useServerTable from "../../hooks/useServerTable";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import UserForm from "./components/UserForm";
@@ -142,6 +148,8 @@ describe("Users page", () => {
 
   // REGRESSION (audit B4): GroupId fell back to 0, a silent invalid role.
   it("carries BranchId, no IsAdmin, and a null GroupId into the edit form", async () => {
+    // An admin row: only an admin is offered Edit on it.
+    useAuthStore.setState({ access: { isAdmin: true, canSeeSensitive: true, modules: {} } });
     renderPage();
     const cfg = useServerTable.mock.calls.at(-1)[0];
     const row = { original: { Id: 13, Username: "u", FullName: "U", GroupId: null, BranchId: 3, IsActive: true, IsAdmin: true } };
@@ -288,6 +296,8 @@ describe("Users page", () => {
 
 describe("Users delete flow", () => {
   const row = { original: { Id: 11, Username: "Vikas", FullName: "Vikas Jaiswal" } };
+  // Delete is admin-only on the server, so only an admin sees it.
+  beforeEach(() => useAuthStore.setState({ access: { isAdmin: true, canSeeSensitive: true, modules: {} } }));
 
   const clickDelete = async () => {
     renderPage();
@@ -378,5 +388,61 @@ describe("Users create flow", () => {
     expect(enqueueSnackbar).toHaveBeenCalledWith("Failed to load users", {
       variant: "error",
     });
+  });
+});
+
+describe("Users actions by permission", () => {
+  const rowActions = (original = { Id: 1 }) => {
+    const cfg = useServerTable.mock.calls.at(-1)[0];
+    renderWithProviders(cfg.renderRowActions({ row: { original } }));
+    renderWithProviders(cfg.renderTopToolbarCustomActions());
+  };
+
+  it("hides Create and Edit from a non-admin without the sensitive permission", () => {
+    useAuthStore.setState({ access: { isAdmin: false, canSeeSensitive: false, modules: {} } });
+    renderPage();
+    rowActions();
+    expect(screen.queryByRole("button", { name: /create user/i })).toBeNull();
+    expect(screen.queryByLabelText("Edit")).toBeNull();
+  });
+
+  it("shows them to an admin", () => {
+    useAuthStore.setState({ access: { isAdmin: true, canSeeSensitive: true, modules: {} } });
+    renderPage();
+    rowActions();
+    expect(screen.getByRole("button", { name: /create user/i })).toBeInTheDocument();
+    expect(screen.getByLabelText("Edit")).toBeInTheDocument();
+  });
+
+  // C: deleteUser is requireAdmin; HR saw a button the server always refused.
+  it("shows Delete to an admin only", () => {
+    renderPage(); // beforeEach: HR (non-admin, sensitive)
+    rowActions();
+    expect(screen.getByLabelText("Edit")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Delete")).toBeNull();
+    cleanup();
+    useAuthStore.setState({ access: { isAdmin: true, canSeeSensitive: true, modules: {} } });
+    renderPage();
+    rowActions();
+    expect(screen.getByLabelText("Delete")).toBeInTheDocument();
+  });
+
+  // C: sp_SaveUser refuses a non-admin editing an admin. The row's IsAdmin is the
+  // tblUser mirror and can lag the role, so the Owner/Admin group names count too.
+  it.each([
+    ["the IsAdmin flag", { Id: 4, IsAdmin: true, GroupName: "Whatever" }],
+    ["the Owner role", { Id: 4, IsAdmin: false, GroupName: "Owner" }],
+    ["the Admin role", { Id: 4, IsAdmin: false, GroupName: "Admin" }],
+  ])("hides Edit from a non-admin on an admin row (%s)", (_l, original) => {
+    renderPage();
+    rowActions(original);
+    expect(screen.queryByLabelText("Edit")).toBeNull();
+  });
+
+  it("an admin can still edit an admin row", () => {
+    useAuthStore.setState({ access: { isAdmin: true, canSeeSensitive: true, modules: {} } });
+    renderPage();
+    rowActions({ Id: 4, IsAdmin: true, GroupName: "Owner" });
+    expect(screen.getByLabelText("Edit")).toBeInTheDocument();
   });
 });

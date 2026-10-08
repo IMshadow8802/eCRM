@@ -1,6 +1,8 @@
 // src/routes/authRoutes.js
 const express = require("express");
 const authController = require("../controllers/authController");
+const { verifyToken } = require("../middleware/auth");
+const { loadScope, open } = require("../middleware/permission");
 
 const router = express.Router();
 
@@ -16,7 +18,9 @@ const router = express.Router();
 // so a legitimate login clears the counter.
 
 // Public routes
-router.post("/loginUser", authController.login);
-router.post("/logoutUser", authController.logout);
+router.post("/loginUser", open(), authController.login);
+router.post("/logoutUser", open(), authController.logout);
+// Signed-in caller's modules, reach and flags (controller: Task 6).
+router.post("/fetchMyAccess", verifyToken, loadScope, open(), authController.fetchMyAccess);
 
 module.exports = router;

@@ -3,13 +3,12 @@ import type { MenuItem, Permissions } from "../types/api";
 /**
  * Menu rights decide what a user is OFFERED, not what they are allowed to do.
  *
- * Per backend/ROLES.md these are enforced on the sidebar only — the server does
- * not check them. The real gate is DataScope, which IS enforced. So this hides
- * navigation a user cannot use; it is not a security boundary and must never be
- * treated as one.
+ * Menu rights come from the role's module grants. The server enforces those
+ * same grants on every route (spec 2026-10-07), so this only hides what the
+ * server would refuse.
  *
- * Rights load at LOGIN and are cached, so a permission change needs a re-login
- * to take effect. Same as the web.
+ * Mobile loads rights at login and does not refresh them, so a role change
+ * needs a re-login here (the web refreshes on focus).
  */
 export function visibleRoutes(permissions: Permissions | null): Set<string> {
   const rows: MenuItem[] = permissions?.rawPermissions ?? [];

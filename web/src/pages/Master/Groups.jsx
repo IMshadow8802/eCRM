@@ -1,11 +1,14 @@
 // src/pages/Master/Groups.jsx
 //
 // Roles & Permissions admin: left panel lists user groups (roles) with
-// create/edit/delete; right panel edits the selected group's menu-access
-// matrix (View / Add / Edit / Delete per menu). Backend contract:
+// create/edit/delete; right panel edits the selected role's module grid
+// (View / Add / Edit / Delete per module, plus a reach on record modules) and
+// its "can see salary & contact details" flag. Backend contract:
 //   fetchUserGroups / saveUserGroup / deleteUserGroup
-//   fetchGroupAccess { GroupId } -> { access: [...] }
-//   saveGroupAccess  { GroupId, Access: [{ MenuId, CanView, CanAdd, CanEdit, CanDelete }] }
+//   fetchGroupModules { GroupId }
+//     -> { modules: [{ Module, CanView, CanAdd, CanEdit, CanDelete, Reach }], canSeeSensitive, isAdmin }
+//   saveGroupModules { GroupId, Modules: [...viewed rows only], CanSeeSensitive }
+// An admin role has every right; the server ignores its grid, so none is shown.
 import React, { useEffect, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { Box } from "@mui/material";
@@ -21,6 +24,7 @@ import {
   Checkbox,
   Modal,
   TextInput,
+  Combobox,
   TextArea,
   EmptyState,
 } from "../../components/ui";
@@ -29,7 +33,7 @@ import {
   MASTER_ENDPOINTS,
   saveUserGroup,
   deleteUserGroup,
-  saveGroupAccess,
+  saveGroupModules,
 } from "../../api/masterQueries";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { useConfirmation } from "../../hooks";
@@ -43,6 +47,54 @@ const PERMS = [
   { field: "CanDelete", label: "Delete" },
 ];
 
+// Roles and Offices are admin-only and never granted, so they have no row.
+const MODULE_ROWS = [
+  { key: "leads", label: "Leads, follow-ups, quotations", reach: true },
+  { key: "sales_reports", label: "Sales reports" },
+  { key: "complaints", label: "Complaints", reach: true },
+  { key: "support_reports", label: "Support reports" },
+  { key: "customers", label: "Customers", reach: true },
+  { key: "people", label: "People", reach: true },
+  { key: "tasks", label: "Tasks & My Work" },
+  { key: "teams", label: "Teams" },
+  { key: "projects", label: "Projects" },
+  { key: "settings", label: "Settings & products" },
+  { key: "dashboard", label: "Dashboard" },
+];
+const REACH_OPTIONS = [
+  { value: "Own", label: "Own records" },
+  { value: "Team", label: "Their team" },
+  { value: "Office", label: "Their office" },
+  { value: "OfficeTree", label: "Their office + offices below" },
+  { value: "Company", label: "Whole company" },
+];
+const REACH_ROW = new Set(MODULE_ROWS.filter((m) => m.reach).map((m) => m.key));
+const EMPTY_ROW = { CanView: false, CanAdd: false, CanEdit: false, CanDelete: false, Reach: null };
+
+// One editable row per grantable module, seeded from what the server holds.
+const seedRows = (modules = []) =>
+  MODULE_ROWS.map(({ key }) => {
+    const m = modules.find((x) => x.Module === key);
+    if (!m) return { Module: key, ...EMPTY_ROW };
+    return {
+      Module: key,
+      CanView: !!m.CanView,
+      CanAdd: !!m.CanAdd,
+      CanEdit: !!m.CanEdit,
+      CanDelete: !!m.CanDelete,
+      Reach: REACH_ROW.has(key) ? m.Reach || "Own" : null,
+    };
+  });
+
+// Add/Edit/Delete imply View; dropping View drops the whole row.
+const toggle = (row, field) => {
+  const on = !row[field];
+  if (field === "CanView" && !on) return { ...row, ...EMPTY_ROW };
+  const next = { ...row, [field]: on, CanView: row.CanView || on };
+  if (next.CanView && REACH_ROW.has(row.Module) && !next.Reach) next.Reach = "Own";
+  return next;
+};
+
 const Groups = () => {
   const theme = useTheme();
   const p = theme.tokens;
@@ -53,7 +105,11 @@ const Groups = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [formError, setFormError] = useState("");
-  const [access, setAccess] = useState([]);
+  const [rows, setRows] = useState(seedRows());
+  const [canSeeSensitive, setCanSeeSensitive] = useState(false);
+  // Which role `rows` belong to. The grid renders only when this matches the
+  // selected role, so another role's rows (or edits) are never shown or saved.
+  const [seededFor, setSeededFor] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
 
   const groupsQuery = useApiQuery({
@@ -63,18 +119,30 @@ const Groups = () => {
   });
   const groups = groupsQuery.data?.userGroups || [];
 
-  const accessQuery = useApiQuery({
-    queryKey: ["groupAccess", selectedGroupId],
-    endpoint: MASTER_ENDPOINTS.userGroups.fetchGroupAccess,
+  const modulesQuery = useApiQuery({
+    queryKey: ["groupModules", selectedGroupId],
+    endpoint: MASTER_ENDPOINTS.userGroups.fetchGroupModules,
     params: { GroupId: selectedGroupId },
     enabled: !!selectedGroupId,
+    refetchOnWindowFocus: false,
   });
+  const modulesData = modulesQuery.isLoading ? undefined : modulesQuery.data;
+  const ready = !!modulesData && seededFor === selectedGroupId;
+  const roleIsAdmin = ready && !!modulesData.isAdmin;
 
-  // Seed local editable matrix whenever a fresh matrix loads.
+  // Seed once per role selection. A background refetch of the same role must
+  // not wipe unsaved edits; choosing a role again re-seeds from the cache.
   useEffect(() => {
-    const rows = accessQuery.data?.access;
-    if (rows) setAccess(rows.map((r) => ({ ...r })));
-  }, [accessQuery.data]);
+    if (!modulesData || seededFor === selectedGroupId) return;
+    setRows(seedRows(modulesData.modules));
+    setCanSeeSensitive(!!modulesData.canSeeSensitive);
+    setSeededFor(selectedGroupId);
+  }, [modulesData, selectedGroupId, seededFor]);
+
+  const selectGroup = (id) => {
+    setSelectedGroupId(id);
+    setSeededFor(null);
+  };
 
   const selectedGroup = groups.find((g) => g.Id === selectedGroupId) || null;
 
@@ -144,35 +212,25 @@ const Groups = () => {
     });
   };
 
-  // Toggle one cell. Toggling a parent's View cascades to its children.
-  const toggleCell = (menuId, field) => {
-    setAccess((prev) => {
-      const target = prev.find((r) => r.MenuId === menuId);
-      if (!target) return prev;
-      const newVal = !target[field];
-      return prev.map((r) => {
-        if (r.MenuId === menuId) return { ...r, [field]: newVal };
-        if (field === "CanView" && r.ParentId === menuId) return { ...r, CanView: newVal };
-        return r;
-      });
-    });
-  };
+  const toggleCell = (module, field) =>
+    setRows((prev) => prev.map((r) => (r.Module === module ? toggle(r, field) : r)));
+  const setReach = (module, opt) =>
+    setRows((prev) =>
+      prev.map((r) => (r.Module === module ? { ...r, Reach: opt.value } : r))
+    );
 
   const savePermissions = async () => {
     setIsSaving(true);
     try {
-      const res = await saveGroupAccess({
+      const res = await saveGroupModules({
         GroupId: selectedGroupId,
-        Access: access.map((r) => ({
-          MenuId: r.MenuId,
-          CanView: !!r.CanView,
-          CanAdd: !!r.CanAdd,
-          CanEdit: !!r.CanEdit,
-          CanDelete: !!r.CanDelete,
-        })),
+        Modules: rows.filter((r) => r.CanView),
+        CanSeeSensitive: canSeeSensitive,
       });
       if (res.data.success) {
         enqueueSnackbar("Permissions saved successfully!", { variant: "success" });
+        // Refresh the cache so coming back to this role shows what was saved.
+        modulesQuery.refetch();
       } else {
         enqueueSnackbar(res.data.message || "Failed to save permissions", { variant: "error" });
       }
@@ -189,7 +247,7 @@ const Groups = () => {
     <Box sx={{ display: "flex", flexDirection: "column", flexGrow: 1 }}>
       <PageHeader
         title="Roles & Permissions"
-        subtitle="Create roles and choose which menus each role can access."
+        subtitle="Create roles and choose what each role can see and do."
       />
       <Helmet>
         <title>PRD Infotech | Roles & Permissions</title>
@@ -229,7 +287,7 @@ const Groups = () => {
                 <Box
                   key={g.Id}
                   data-testid={`group-item-${g.Id}`}
-                  onClick={() => setSelectedGroupId(g.Id)}
+                  onClick={() => selectGroup(g.Id)}
                   sx={{
                     px: 1.5,
                     py: 1.25,
@@ -283,7 +341,7 @@ const Groups = () => {
           {!selectedGroup ? (
             <EmptyState
               title="Select a role"
-              description="Pick a role on the left to manage which menus it can access."
+              description="Pick a role on the left to set what it can see and do."
             />
           ) : (
             <Box>
@@ -302,69 +360,115 @@ const Groups = () => {
                     {selectedGroup.Name} — Permissions
                   </div>
                   <div style={{ fontSize: 12, color: p.text.tertiary }}>
-                    Users re-login to pick up permission changes.
+                    Changes apply on the user's next action.
                   </div>
                 </Box>
-                <Button
-                  size="sm"
-                  onClick={savePermissions}
-                  loading={isSaving}
-                  data-testid="save-permissions-btn"
-                >
-                  Save Permissions
-                </Button>
+                {ready && !roleIsAdmin && (
+                  <Button
+                    size="sm"
+                    onClick={savePermissions}
+                    loading={isSaving}
+                    data-testid="save-permissions-btn"
+                  >
+                    Save Permissions
+                  </Button>
+                )}
               </Box>
 
-              <Box sx={{ overflowX: "auto", border: `1px solid ${p.border.default}`, borderRadius: `${theme.radii.lg}px` }}>
-                {/* A permission matrix cannot usefully shrink: it is a menu name plus four
-                    checkbox columns. Give it a floor so the pane scrolls it deliberately
-                    instead of crushing the name column to nothing first. */}
-                <table style={{ width: "100%", minWidth: 560, borderCollapse: "collapse", fontSize: 14 }}>
-                  <thead>
-                    <tr style={{ backgroundColor: p.surface.subtle }}>
-                      <th style={{ textAlign: "left", padding: "10px 14px", color: p.text.secondary }}>
-                        Menu
-                      </th>
-                      {PERMS.map((perm) => (
-                        <th
-                          key={perm.field}
-                          style={{ padding: "10px 14px", width: 72, color: p.text.secondary }}
-                        >
-                          {perm.label}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {access.map((row) => {
-                      const isParent = row.ParentId === 0;
-                      return (
-                        <tr key={row.MenuId} style={{ borderTop: `1px solid ${p.border.subtle}` }}>
-                          <td
-                            style={{
-                              padding: "8px 14px",
-                              paddingLeft: isParent ? 14 : 34,
-                              fontWeight: isParent ? 600 : 500,
-                              color: p.text.primary,
-                            }}
-                          >
-                            {row.Title}
-                          </td>
+              {modulesQuery.isError ? (
+                <EmptyState
+                  title="Couldn't load this role's permissions"
+                  action={
+                    <Button size="sm" variant="ghost" onClick={() => modulesQuery.refetch()}>
+                      Try again
+                    </Button>
+                  }
+                />
+              ) : !ready ? (
+                <Box sx={{ p: 2, fontSize: 13, color: p.text.tertiary }}>Loading permissions…</Box>
+              ) : roleIsAdmin ? (
+                <EmptyState
+                  title="Administrators can do everything; there is nothing to set."
+                />
+              ) : (
+                <>
+                  <Box sx={{ overflowX: "auto", border: `1px solid ${p.border.default}`, borderRadius: `${theme.radii.lg}px` }}>
+                    {/* A grid of a module name, four checkboxes and a reach select
+                        cannot usefully shrink; give it a floor so the pane scrolls. */}
+                    <table style={{ width: "100%", minWidth: 760, borderCollapse: "collapse", fontSize: 14 }}>
+                      <thead>
+                        <tr style={{ backgroundColor: p.surface.subtle }}>
+                          <th style={{ textAlign: "left", padding: "10px 14px", color: p.text.secondary }}>
+                            Module
+                          </th>
                           {PERMS.map((perm) => (
-                            <td key={perm.field} style={{ textAlign: "center", padding: "8px 14px" }}>
-                              <Checkbox
-                                checked={!!row[perm.field]}
-                                onChange={() => toggleCell(row.MenuId, perm.field)}
-                                data-testid={`perm-${row.MenuId}-${perm.field}`}
-                              />
-                            </td>
+                            <th
+                              key={perm.field}
+                              style={{ padding: "10px 14px", width: 72, color: p.text.secondary }}
+                            >
+                              {perm.label}
+                            </th>
                           ))}
+                          <th style={{ textAlign: "left", padding: "10px 14px", width: 240, color: p.text.secondary }}>
+                            Reach
+                          </th>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </Box>
+                      </thead>
+                      <tbody>
+                        {MODULE_ROWS.map(({ key, label, reach }) => {
+                          const row = rows.find((r) => r.Module === key);
+                          return (
+                            <tr
+                              key={key}
+                              data-testid={`module-row-${key}`}
+                              style={{ borderTop: `1px solid ${p.border.subtle}` }}
+                            >
+                              <td style={{ padding: "8px 14px", fontWeight: 500, color: p.text.primary }}>
+                                {reach && row.CanView ? <label htmlFor={`reach-${key}`}>{label}</label> : label}
+                              </td>
+                              {PERMS.map((perm) => (
+                                <td key={perm.field} style={{ textAlign: "center", padding: "8px 14px" }}>
+                                  <Checkbox
+                                    checked={!!row[perm.field]}
+                                    onChange={() => toggleCell(key, perm.field)}
+                                    data-testid={`perm-${key}-${perm.field}`}
+                                    aria-label={`${label} ${perm.label}`}
+                                  />
+                                </td>
+                              ))}
+                              <td style={{ padding: "6px 14px" }}>
+                                {/* No View, no reach: an empty select read as a broken control. */}
+                                {reach && !row.CanView && (
+                                  <span data-testid={`reach-${key}-none`} style={{ color: p.text.tertiary }}>—</span>
+                                )}
+                                {reach && !!row.CanView && (
+                                  <Combobox
+                                    id={`reach-${key}`}
+                                    size="sm"
+                                    value={REACH_OPTIONS.find((o) => o.value === row.Reach) ?? null}
+                                    onChange={(opt) => setReach(key, opt)}
+                                    options={REACH_OPTIONS}
+                                    disableClearable
+                                    data-testid={`reach-${key}`}
+                                  />
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </Box>
+                  <Box sx={{ mt: 1.5 }}>
+                    <Checkbox
+                      label="Can see salary & contact details"
+                      checked={canSeeSensitive}
+                      onChange={(e) => setCanSeeSensitive(e.target.checked)}
+                      data-testid="can-see-sensitive"
+                    />
+                  </Box>
+                </>
+              )}
             </Box>
           )}
         </Box>

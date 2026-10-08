@@ -6,7 +6,8 @@
 // controller suite tests the handlers; this tests reachability, the gate, the
 // exact list, and that the retired routes answer 404.
 
-let mockScope;
+
+let mockAcc;
 
 jest.mock("../../../src/middleware/auth", () => ({
   verifyToken: (req, res, next) => {
@@ -19,10 +20,7 @@ jest.mock("../../../src/middleware/permission", () => {
   const actual = jest.requireActual("../../../src/middleware/permission");
   return {
     ...actual,
-    loadScope: (req, res, next) => {
-      req.scope = mockScope;
-      next();
-    },
+    loadScope: (req, res, next) => require("../../helpers/mockAccess").loadScopeWith(() => mockAcc)(req, res, next),
   };
 });
 
@@ -38,6 +36,9 @@ jest.mock("../../../src/controllers/configController", () => ({
   },
 }));
 
+const { mockAccess } = require("../../helpers/mockAccess");
+mockAcc = mockAccess({ modules: [] });
+
 const express = require("express");
 const request = require("supertest");
 const configRoutes = require("../../../src/routes/configRoutes");
@@ -47,8 +48,8 @@ const app = express();
 app.use(express.json());
 app.use("/api/config", configRoutes);
 
-const asAdmin = () => { mockScope = { isAdmin: true, hierarchyLevel: 1, dataScope: "All", branchIds: [2] }; };
-const asAgent = () => { mockScope = { isAdmin: false, hierarchyLevel: 4, dataScope: "Self", branchIds: [2], ownerIds: [7] }; };
+const asAdmin = () => { mockAcc = mockAccess({ admin: true }); };
+const asAgent = () => { mockAcc = mockAccess({ modules: [["leads", "vaed"]] }); }; // no settings grant
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -91,6 +92,15 @@ describe("configRoutes", () => {
     const ok = await request(app).post(path).send(body);
     expect(ok.status).toBe(200);
     expect(ok.body.hit).toBe(handler);
+  });
+
+  it("lets a non-admin with the settings module write (add/edit/delete by right), guards make no DB call", async () => {
+    mockAcc = mockAccess({ modules: [["settings", "ae"]] });
+    expect((await request(app).post("/api/config/saveLookup").send({ Kind: "priority", Value: "High" })).status).toBe(200);
+    expect((await request(app).post("/api/config/saveCustomField").send({ Id: 4, Entity: "ticket" })).status).toBe(200);
+    expect((await request(app).post("/api/config/deleteLookup").send({ Id: 11 })).status).toBe(403);
+    mockAcc = mockAccess({ modules: [["settings", "d"]] });
+    expect((await request(app).post("/api/config/deleteLookup").send({ Id: 11 })).status).toBe(200);
   });
 
   // 086 drops the pipeline engine and its five SPs; a stale client gets a 404,

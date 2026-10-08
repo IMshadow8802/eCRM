@@ -2,12 +2,14 @@
 // that every route sits behind verifyToken + loadScope, and that requirePayload
 // guards everything but the list.
 
+let mockAcc;
+
 jest.mock("../../../src/middleware/auth", () => ({
   verifyToken: (req, res, next) => { req.user = { UserId: 7, CompId: 5, BranchId: 2 }; next(); },
 }));
 jest.mock("../../../src/middleware/permission", () => {
   const actual = jest.requireActual("../../../src/middleware/permission");
-  return { ...actual, loadScope: (req, res, next) => { req.scope = { isAdmin: false, branchIds: [2], ownerIds: [7] }; next(); } };
+  return { ...actual, loadScope: (req, res, next) => require("../../helpers/mockAccess").loadScopeWith(() => mockAcc)(req, res, next) };
 });
 
 const hit = (name) => jest.fn((req, res) => res.status(200).json({ success: true, hit: name, scoped: Boolean(req.scope) }));
@@ -16,6 +18,9 @@ jest.mock("../../../src/controllers/quotationController", () => ({
   finalise: hit("finalise"), revise: hit("revise"), reject: hit("reject"), remove: hit("remove"),
   ensureProfile: hit("ensureProfile"), saveProfile: hit("saveProfile"),
 }));
+
+const { mockAccess } = require("../../helpers/mockAccess");
+mockAcc = mockAccess({ modules: [["leads","vaed"]] });
 
 const express = require("express");
 const request = require("supertest");
@@ -53,5 +58,17 @@ describe("quotationRoutes", () => {
 
   it("answers only POST", async () => {
     expect((await request(app).get("/api/quotations/fetchQuotations")).status).toBe(404);
+  });
+});
+
+// L1: a role without the leads module is refused before the controller runs.
+describe("quotationController access", () => {
+  it("403s a role without the leads module and never reaches the controller", async () => {
+    const saved = mockAcc;
+    mockAcc = mockAccess({ modules: [["complaints", "vaed"]] });
+    const r = await request(app).post("/api/quotations/saveQuotation").send({ LeadId: 1 });
+    mockAcc = saved;
+    expect(r.status).toBe(403);
+    expect(require("../../../src/controllers/quotationController")["save"]).not.toHaveBeenCalled();
   });
 });

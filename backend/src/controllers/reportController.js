@@ -1,5 +1,5 @@
 const database = require("../config/database");
-const { scopeParams } = require("../middleware/permission");
+const { scopeParams, scopeFor, scopeJson } = require("../middleware/permission");
 const { asyncRoute, positiveInt } = require("../utils/controllerKit");
 const { runReport, REPORTS } = require("../utils/reportKit");
 
@@ -9,9 +9,14 @@ class ReportController {
       // sp_Dashboard used to get the branch axis only (sql/081 adds @UserId +
       // @OwnerIdsJson), so a Self-scope rep was handed their whole branch:
       // 222 leads where the funnel report showed the correct 133.
+      const t = scopeFor(req, "complaints");
       const result = await database.executeStoredProcedure("sp_Dashboard", {
         CompId: req.user.CompId,
+        // Leads figures: the dashboard (= leads) scope bound by the route.
+        // Ticket figures: the complaints scope, "[]" when the role has none.
         ...scopeParams(req),
+        TicketBranchIdsJson: scopeJson(t.branchIds),
+        TicketOwnerIdsJson: scopeJson(t.ownerIds),
       });
 
       // ponytail: extra recordsets ship in sql/055 — guard so the old SP (KPIs only) doesn't 500

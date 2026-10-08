@@ -56,6 +56,7 @@ describe("section landing redirects", () => {
         "/support/customers",
         "/settings/ticket-categories",
         "/settings/priorities",
+        "/offices/*",
       ]),
     );
   });

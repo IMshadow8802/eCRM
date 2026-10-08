@@ -11,6 +11,7 @@ import { MASTER_ENDPOINTS } from "./masterQueries";
 // Every fetcher is the same `post(endpoint)` factory (see masterQueries.js) —
 // one table-driven test proves the pattern for all of them.
 const FETCHERS = {
+  fetchMyAccess: MASTER_ENDPOINTS.auth.fetchMyAccess,
   fetchUsers: MASTER_ENDPOINTS.users.fetchUsers,
   saveUser: MASTER_ENDPOINTS.users.saveUser,
   deleteUser: MASTER_ENDPOINTS.users.deleteUser,
@@ -20,8 +21,12 @@ const FETCHERS = {
   fetchUserGroups: MASTER_ENDPOINTS.userGroups.fetchUserGroups,
   saveUserGroup: MASTER_ENDPOINTS.userGroups.saveUserGroup,
   deleteUserGroup: MASTER_ENDPOINTS.userGroups.deleteUserGroup,
-  fetchGroupAccess: MASTER_ENDPOINTS.userGroups.fetchGroupAccess,
-  saveGroupAccess: MASTER_ENDPOINTS.userGroups.saveGroupAccess,
+  fetchGroupModules: MASTER_ENDPOINTS.userGroups.fetchGroupModules,
+  saveGroupModules: MASTER_ENDPOINTS.userGroups.saveGroupModules,
+  saveBranch: MASTER_ENDPOINTS.branches.saveBranch,
+  fetchUserBranchAccess: MASTER_ENDPOINTS.userBranchAccess.fetchUserBranchAccess,
+  saveUserBranchAccess: MASTER_ENDPOINTS.userBranchAccess.saveUserBranchAccess,
+  deleteUserBranchAccess: MASTER_ENDPOINTS.userBranchAccess.deleteUserBranchAccess,
   fetchTeams: MASTER_ENDPOINTS.teams.fetchTeams,
   saveTeam: MASTER_ENDPOINTS.teams.saveTeam,
   deleteTeam: MASTER_ENDPOINTS.teams.deleteTeam,
@@ -56,5 +61,11 @@ describe("masterQueries", () => {
     expect(MASTER_ENDPOINTS.projects.deleteProject).toBe("/api/projects/deleteProject");
     expect(MASTER_ENDPOINTS.users.updateProfile).toBe("/api/users/me/updateProfile");
     expect(MASTER_ENDPOINTS.users.changePassword).toBe("/api/users/me/changePassword");
+    expect(MASTER_ENDPOINTS.branches.saveBranch).toBe("/api/branches/saveBranch");
+    expect(MASTER_ENDPOINTS.userBranchAccess.saveUserBranchAccess).toBe(
+      "/api/user-branch-access/saveUserBranchAccess",
+    );
+    expect(masterQueries).not.toHaveProperty("fetchGroupAccess");
+    expect(masterQueries).not.toHaveProperty("saveGroupAccess");
   });
 });

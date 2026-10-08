@@ -39,7 +39,8 @@ vi.mock("../../hooks/useApiQuery", () => ({
     return { data: {} };
   }),
 }));
-vi.mock("../../stores/useAuthStore", () => ({ __esModule: true, default: (sel) => sel({ user: { UserId: 7 }, UserId: 7 }) }));
+let mockAccess = null;
+vi.mock("../../stores/useAuthStore", () => ({ __esModule: true, default: (sel) => sel({ user: { UserId: 7 }, UserId: 7, access: mockAccess }) }));
 vi.mock("material-react-table", () => ({
   MaterialReactTable: ({ table }) => (
     <div data-testid="mrt-root">
@@ -50,6 +51,7 @@ vi.mock("material-react-table", () => ({
 vi.mock("./TransferLeadModal", () => ({ __esModule: true, default: vi.fn(({ open, leadIds }) => (open ? <div data-testid="transfer-modal">{leadIds.join(",")}</div> : null)) }));
 
 import Leads from "./Leads";
+import TransferLeadModal from "./TransferLeadModal";
 import useServerTable from "../../hooks/useServerTable";
 
 const renderPage = (route) => render(
@@ -97,6 +99,16 @@ describe("Leads page (spec 1)", () => {
     // getRowId and MRT keys selection by row index, so this would post [0,1].
     expect(lastCfg().getRowId({ Id: 101 })).toBe(101);
     expect(lastCfg().enableRowSelection).toBe(true);
+  });
+
+  it("canCrossBranch follows the leads reach: Own is false, Office is true", () => {
+    mockAccess = { isAdmin: false, modules: { leads: { view: true, reach: "Own" } } };
+    renderPage();
+    expect(TransferLeadModal.mock.calls.at(-1)[0].canCrossBranch).toBe(false);
+    mockAccess = { isAdmin: false, modules: { leads: { view: true, reach: "Office" } } };
+    renderPage();
+    expect(TransferLeadModal.mock.calls.at(-1)[0].canCrossBranch).toBe(true);
+    mockAccess = null;
   });
 
   it("hides Reassign with nothing selected", () => {

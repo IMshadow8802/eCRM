@@ -4,6 +4,8 @@
 // the handlers, this tests that they are reachable and that the retired route
 // is not.
 
+let mockAcc;
+
 jest.mock("../../../src/middleware/auth", () => ({
   verifyToken: (req, res, next) => {
     req.user = { UserId: 7, CompId: 5, BranchId: 2 };
@@ -15,10 +17,7 @@ jest.mock("../../../src/middleware/permission", () => {
   const actual = jest.requireActual("../../../src/middleware/permission");
   return {
     ...actual,
-    loadScope: (req, res, next) => {
-      req.scope = { isAdmin: false, hierarchyLevel: 3, dataScope: "Branch", branchIds: [2] };
-      next();
-    },
+    loadScope: (req, res, next) => require("../../helpers/mockAccess").loadScopeWith(() => mockAcc)(req, res, next),
   };
 });
 
@@ -33,6 +32,9 @@ jest.mock("../../../src/controllers/leadController", () => ({
   delete: hit("delete"),
   convert: hit("convert"),
 }));
+
+const { mockAccess } = require("../../helpers/mockAccess");
+mockAcc = mockAccess({ modules: [["leads","vaed"]] });
 
 const express = require("express");
 const request = require("supertest");
@@ -67,5 +69,17 @@ describe("leadRoutes", () => {
     expect((await request(app).post("/api/leads/setLeadStatus").send({})).status).toBe(400);
     expect((await request(app).post("/api/leads/bulkTransferLeads").send({})).status).toBe(400);
     expect((await request(app).post("/api/leads/fetchLeads").send({})).status).toBe(200);
+  });
+});
+
+// L1: a role without the leads module is refused before the controller runs.
+describe("leadController access", () => {
+  it("403s a role without the leads module and never reaches the controller", async () => {
+    const saved = mockAcc;
+    mockAcc = mockAccess({ modules: [["complaints", "vaed"]] });
+    const r = await request(app).post("/api/leads/saveLeads").send({ Name: "Acme" });
+    mockAcc = saved;
+    expect(r.status).toBe(403);
+    expect(require("../../../src/controllers/leadController")["save"]).not.toHaveBeenCalled();
   });
 });

@@ -269,109 +269,99 @@ describe("userGroupController.delete", () => {
   });
 });
 
-describe("userGroupController.fetchAccess", () => {
-  it("400s when GroupId is missing", async () => {
+describe("userGroupController.fetchModules", () => {
+  it("400s without a GroupId", async () => {
     const res = mockRes();
-    await userGroupController.fetchAccess(baseReq({ body: {} }), res);
+    await userGroupController.fetchModules(baseReq({ body: {} }), res);
     expect(res.status).toHaveBeenCalledWith(400);
     expect(database.executeStoredProcedure).not.toHaveBeenCalled();
   });
 
-  it("returns the menu matrix for a group, scoped to CompId", async () => {
+  it("maps both result sets", async () => {
+    const mods = [{ Module: "leads", CanView: 1, CanAdd: 0, CanEdit: 0, CanDelete: 0, Reach: "Office" }];
     database.executeStoredProcedure.mockResolvedValueOnce({
-      recordsets: [
-        [
-          { MenuId: 2, ParentId: 0, Title: "Tasks", Route: "/tasks", CanView: true, CanAdd: true, CanEdit: false, CanDelete: false },
-        ],
-      ],
+      recordsets: [[{ ResponseCode: 200, ResponseMess: "ok", CanSeeSensitive: 1, IsAdmin: 0 }], mods],
     });
     const res = mockRes();
-    await userGroupController.fetchAccess(baseReq({ body: { GroupId: 3 } }), res);
+    await userGroupController.fetchModules(baseReq({ body: { GroupId: 3 } }), res);
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_FetchGroupModules", { GroupId: 3, CompId: 5 });
+    expect(res.json.mock.calls[0][0].data).toEqual({ modules: mods, canSeeSensitive: true, isAdmin: false });
+  });
 
-    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
-      "sp_FetchGroupAccess",
-      { GroupId: 3, CompId: 5 },
-    );
-    expect(res.status).toHaveBeenCalledWith(200);
-    const payload = res.json.mock.calls[0][0];
-    expect(payload.data.access).toHaveLength(1);
-    expect(payload.data.access[0].Title).toBe("Tasks");
+  it("tolerates a missing second result set", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[{ ResponseCode: 200, ResponseMess: "ok", CanSeeSensitive: false, IsAdmin: true }]],
+    });
+    const res = mockRes();
+    await userGroupController.fetchModules(baseReq({ body: { GroupId: 3 } }), res);
+    expect(res.json.mock.calls[0][0].data).toEqual({ modules: [], canSeeSensitive: false, isAdmin: true });
+  });
+
+  it("surfaces the SP's 404", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ ResponseCode: 404, ResponseMess: "Role not found" }]] });
+    const res = mockRes();
+    await userGroupController.fetchModules(baseReq({ body: { GroupId: 99 } }), res);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json.mock.calls[0][0]).toMatchObject({ success: false, message: "Role not found" });
   });
 
   it("500s when the SP throws", async () => {
     database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
     const res = mockRes();
-    await userGroupController.fetchAccess(baseReq({ body: { GroupId: 3 } }), res);
+    await userGroupController.fetchModules(baseReq({ body: { GroupId: 3 } }), res);
     expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json.mock.calls[0][0].code).toBe("ROLE_MODULES_ERROR");
   });
 });
 
-describe("userGroupController.saveAccess", () => {
-  it("400s when GroupId is missing", async () => {
+describe("userGroupController.saveModules", () => {
+  const modules = [{ Module: "leads", CanView: 1, CanAdd: 1, CanEdit: 0, CanDelete: 0, Reach: "Team" }];
+
+  it("sends ModulesJson and CanSeeSensitive", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(spResult([{ Id: 3, ResponseCode: 200, ResponseMess: "Saved" }]));
     const res = mockRes();
-    await userGroupController.saveAccess(baseReq({ body: { Access: [] } }), res);
+    await userGroupController.saveModules(baseReq({ body: { GroupId: 3, Modules: modules, CanSeeSensitive: true } }), res);
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_SaveGroupModules", {
+      GroupId: 3, CompId: 5, ModulesJson: JSON.stringify(modules), CanSeeSensitive: 1,
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json.mock.calls[0][0]).toMatchObject({ success: true, data: { groupId: 3 } });
+  });
+
+  it("defaults CanSeeSensitive to 0", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(spResult([{ Id: 3, ResponseCode: 200, ResponseMess: "Saved" }]));
+    await userGroupController.saveModules(baseReq({ body: { GroupId: 3, Modules: [] } }), mockRes());
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({ CanSeeSensitive: 0, ModulesJson: "[]" });
+  });
+
+  it("saveModules 400s when Modules is not an array", async () => {
+    const res = mockRes();
+    await userGroupController.saveModules(baseReq({ body: { GroupId: 3, Modules: "leads" } }), res);
     expect(res.status).toHaveBeenCalledWith(400);
     expect(database.executeStoredProcedure).not.toHaveBeenCalled();
   });
 
-  it("serializes Access to JSON and passes GroupId + CompId", async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce({
-      recordsets: [[{ ResponseCode: 200, ResponseMess: "Permissions saved", GroupId: 3 }]],
-    });
-    const access = [{ MenuId: 2, CanView: 1, CanAdd: 1, CanEdit: 0, CanDelete: 0 }];
+  it("surfaces an SP refusal with data null", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(spResult([{ ResponseCode: 404, ResponseMess: "Role not found" }]));
     const res = mockRes();
-    await userGroupController.saveAccess(baseReq({ body: { GroupId: 3, Access: access } }), res);
-
-    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
-      "sp_SaveGroupAccess",
-      { GroupId: 3, AccessJson: JSON.stringify(access), CompId: 5 },
-    );
-    expect(res.status).toHaveBeenCalledWith(200);
+    await userGroupController.saveModules(baseReq({ body: { GroupId: 9, Modules: [] } }), res);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json.mock.calls[0][0]).toMatchObject({ success: false, data: null });
   });
 
-  it("writes a PermissionChanged audit entry with the granted menu set", async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce({
-      recordsets: [[{ ResponseCode: 200, ResponseMess: "Permissions saved", GroupId: 3 }]],
-    });
-    const access = [
-      { MenuId: 2, CanView: 1, CanAdd: 0, CanEdit: 0, CanDelete: 0 },
-      { MenuId: 5, CanView: 0, CanAdd: 0, CanEdit: 0, CanDelete: 0 }, // no grant → excluded
-    ];
-    const res = mockRes();
-    await userGroupController.saveAccess(baseReq({ body: { GroupId: 3, Access: access } }), res);
-
+  it("writes a PermissionChanged audit row on success", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(spResult([{ Id: 3, ResponseCode: 200, ResponseMess: "Saved" }]));
+    await userGroupController.saveModules(baseReq({ body: { GroupId: 3, Modules: modules } }), mockRes());
     expect(database.executeStoredProcedure).toHaveBeenCalledWith(
       "sp_SaveActivityLog",
-      expect.objectContaining({
-        EntityType: "UserGroup",
-        EntityId: 3,
-        Action: "PermissionChanged",
-        NewValue: JSON.stringify([2]), // only the granted menu id
-        UserId: 7,
-      }),
+      expect.objectContaining({ EntityType: "UserGroup", EntityId: 3, Action: "PermissionChanged" }),
     );
   });
 
-  it("defaults Access to an empty array when omitted", async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce({
-      recordsets: [[{ ResponseCode: 200, ResponseMess: "Permissions saved", GroupId: 3 }]],
-    });
+  it("500s when the SP throws", async () => {
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
     const res = mockRes();
-    await userGroupController.saveAccess(baseReq({ body: { GroupId: 3 } }), res);
-    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
-      "sp_SaveGroupAccess",
-      expect.objectContaining({ AccessJson: "[]" }),
-    );
-  });
-
-  it("propagates a non-2xx SP response (e.g. group not found)", async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce({
-      recordsets: [[{ ResponseCode: 404, ResponseMess: "Group not found" }]],
-    });
-    const res = mockRes();
-    await userGroupController.saveAccess(baseReq({ body: { GroupId: 999, Access: [] } }), res);
-    expect(res.status).toHaveBeenCalledWith(404);
-    const payload = res.json.mock.calls[0][0];
-    expect(payload.success).toBe(false);
+    await userGroupController.saveModules(baseReq({ body: { GroupId: 3, Modules: [] } }), res);
+    expect(res.json.mock.calls[0][0].code).toBe("ROLE_MODULES_SAVE_ERROR");
   });
 });

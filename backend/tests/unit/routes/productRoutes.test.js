@@ -3,7 +3,8 @@
 // below that (Manager/Employee) must not. fetchProducts stays open: every
 // screen with a product picker needs the read.
 
-let mockScope;
+
+let mockAcc;
 
 jest.mock("../../../src/middleware/auth", () => ({
   verifyToken: (req, res, next) => {
@@ -16,10 +17,7 @@ jest.mock("../../../src/middleware/permission", () => {
   const actual = jest.requireActual("../../../src/middleware/permission");
   return {
     ...actual,
-    loadScope: (req, res, next) => {
-      req.scope = mockScope;
-      next();
-    },
+    loadScope: (req, res, next) => require("../../helpers/mockAccess").loadScopeWith(() => mockAcc)(req, res, next),
   };
 });
 
@@ -28,6 +26,9 @@ jest.mock("../../../src/controllers/productController", () => ({
   fetch: jest.fn((req, res) => res.status(200).json({ success: true, hit: "fetch" })),
   delete: jest.fn((req, res) => res.status(200).json({ success: true, hit: "delete" })),
 }));
+
+const { mockAccess } = require("../../helpers/mockAccess");
+mockAcc = mockAccess({ modules: [] });
 
 const express = require("express");
 const request = require("supertest");
@@ -39,10 +40,10 @@ app.use(express.json());
 app.use("/api/products", productRoutes);
 
 const asAdmin = () => {
-  mockScope = { isAdmin: true, hierarchyLevel: 2, branchIds: [2] };
+  mockAcc = mockAccess({ admin: true });
 };
 const asManager = () => {
-  mockScope = { isAdmin: false, hierarchyLevel: 3, branchIds: [2] };
+  mockAcc = mockAccess({ modules: [["leads", "vaed"]] }); // no settings grant
 };
 
 beforeEach(() => {
@@ -61,6 +62,14 @@ describe("productRoutes admin gate", () => {
     expect(r.body.code).toBe("INSUFFICIENT_ROLE");
     expect(productController.save).not.toHaveBeenCalled();
     expect(productController.delete).not.toHaveBeenCalled();
+  });
+
+  it("lets a non-admin with the settings module save and delete, but not delete without the d right", async () => {
+    mockAcc = mockAccess({ modules: [["settings", "ae"]] });
+    expect((await request(app).post("/api/products/saveProduct").send({ Name: "TV" })).status).toBe(201);
+    expect((await request(app).post("/api/products/deleteProduct").send({ Id: 3 })).status).toBe(403);
+    mockAcc = mockAccess({ modules: [["settings", "d"]] });
+    expect((await request(app).post("/api/products/deleteProduct").send({ Id: 3 })).status).toBe(200);
   });
 
   it("lets an admin through to saveProduct", async () => {

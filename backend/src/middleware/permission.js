@@ -1,150 +1,98 @@
 // src/middleware/permission.js
 //
-// Computes the request's data scope (hierarchy level + branches the
-// caller can read/write) once per request and exposes it as `req.scope`:
+// Loads the caller's access once per request (spec 2026-10-07-org-hierarchy):
 //
-//   req.scope = {
-//     hierarchyLevel: 1|2|3|4,
-//     dataScope: 'All' | 'Company' | 'MultiBranch' | 'Branch' | 'Team' | 'Self',
-//     primaryBranchId: BIGINT,
-//     branchIds: BIGINT[],          // every branch the user can READ
-//     canWriteBranchIds: BIGINT[],  // subset they can also WRITE
-//   }
+//   req.access = buildAccess(sp_FetchUserAccess)   // see access.js
+//     { isAdmin, isActive, canSeeSensitive, primaryBranchId,
+//       modules: { leads: { view, add, edit, delete, reach }, ... },
+//       lists: { Own, Team, Office, OfficeTree, Company: [{BranchId, CanWrite}] },
+//       teamOwners }
 //
-// Mount globally after verifyToken. Controllers use req.scope to filter
-// fetches and gate writes (e.g. require record.BranchId in canWriteBranchIds).
+//   req.scope = the scope of ONE module for this caller:
+//     { module, reach, can, branchIds, canWriteBranchIds, ownerIds, isAdmin, ... }
 //
-// Caches the scope for ~60s on the request itself; we don't yet cache
-// across requests because branch-access changes need to take effect
-// immediately. Optimisation later (cache by UserId + invalidate on
-// sp_SaveUserBranchAccess).
+// loadScope binds req.scope to "people" (the scope a route with no module of
+// its own reads with); requireModule re-binds it to the route's module. So
+// scopeParams / canSeeRecord / assertCanAssign downstream read the lists of the
+// module the route is about.
+//
+// No cross-request cache: grant and office changes must take effect at once.
 
 const database = require("../config/database");
 const responseHelper = require("../utils/responseHelper");
+const { buildAccess, scopeFor: scopeOf, isWide } = require("./access");
 
-const HIERARCHY = {
-  SUPER: 1,
-  ADMIN: 2,
-  MANAGER: 3,
-  EMPLOYEE: 4,
-};
+const EMPTY_ACCESS = (req) => buildAccess([[{
+  PrimaryBranchId: req.user?.BranchId ?? null, IsActive: 1, IsAdmin: 0, CanSeeSensitive: 0 }]], req.user?.UserId);
 
-async function computeScope(req) {
-  if (!req.user || !req.user.UserId) {
-    return null;
-  }
-
-  const result = await database.executeStoredProcedure(
-    "sp_FetchAccessibleBranchIds",
-    { UserId: req.user.UserId, CompId: req.user.CompId }
-  );
-
-  // recordset[0] = header row {HierarchyLevel, DataScope, PrimaryBranchId}
-  // recordset[1] = branch rows {BranchId, CanWrite}
-  const header = result.recordsets[0]?.[0] || {};
-  const rows = result.recordsets[1] || [];
-  // recordset[2] = owner rows {OwnerId}; populated only for Self/Team scope.
-  const ownerRows = result.recordsets[2] || [];
-
-  const branchIds = rows.map((r) => Number(r.BranchId));
-  const canWriteBranchIds = rows
-    .filter((r) => r.CanWrite === true || r.CanWrite === 1)
-    .map((r) => Number(r.BranchId));
-
-  // null = "no ownership filter" (the wide scopes). An empty array would mean
-  // "match nobody" and hide everything, so the distinction matters.
-  const ownerIds = ownerRows.length
-    ? ownerRows.map((r) => Number(r.OwnerId))
-    : null;
-
-  return {
-    hierarchyLevel: header.HierarchyLevel ?? HIERARCHY.EMPLOYEE,
-    dataScope: header.DataScope ?? "Self",
-    primaryBranchId: header.PrimaryBranchId
-      ? Number(header.PrimaryBranchId)
-      : null,
-    branchIds,
-    canWriteBranchIds,
-    ownerIds,
-    isAdmin: header.IsAdmin === true || header.IsAdmin === 1,
-    // Only explicitly-inactive blocks: until 052 adds IsActive to the SP's
-    // header row the column is undefined, and that must not lock everyone out.
-    isActive: !(header.IsActive === false || header.IsActive === 0),
-  };
-}
+// req-level wrapper: the scope of one module for this caller.
+const scopeFor = (req, module) => scopeOf(req.access, module, req.user?.UserId);
 
 const loadScope = async (req, res, next) => {
+  if (!req.user) return next();
   try {
-    if (!req.user) return next();
-    req.scope = await computeScope(req);
-    // A deactivated user keeps a valid JWT until it expires; this round-trip
-    // already hits the DB every request, so enforce IsActive here.
-    if (req.scope && req.scope.isActive === false) {
-      return res.status(403).json({
-        success: false,
-        message: "Account is inactive",
-        code: "USER_INACTIVE",
-        responseCode: 403,
-        timestamp: new Date().toISOString(),
-      });
-    }
-    next();
+    const result = await database.executeStoredProcedure("sp_FetchUserAccess", {
+      UserId: req.user.UserId,
+      CompId: req.user.CompId,
+    });
+    req.access = buildAccess(result.recordsets, req.user.UserId);
   } catch (err) {
     console.error("loadScope failed:", err.message);
-    // Fail closed: empty scope means SPs that filter by branchIds will
-    // return no rows. Better than allowing unscoped access.
-    req.scope = {
-      hierarchyLevel: HIERARCHY.EMPLOYEE,
-      dataScope: "Self",
-      primaryBranchId: req.user?.BranchId ? Number(req.user.BranchId) : null,
-      branchIds: req.user?.BranchId ? [Number(req.user.BranchId)] : [],
-      canWriteBranchIds: req.user?.BranchId
-        ? [Number(req.user.BranchId)]
-        : [],
-      // Self scope means an ownership filter, not just a branch one — without
-      // this the fallback would quietly widen to the whole branch.
-      ownerIds: req.user?.UserId ? [Number(req.user.UserId)] : [],
-      isAdmin: false,
-    };
-    next();
+    // Fail closed: no modules, so every requireModule refuses and every scoped
+    // SP gets an empty allow-list.
+    req.access = EMPTY_ACCESS(req);
   }
+  // A deactivated user keeps a valid JWT until it expires; this round-trip
+  // already hits the DB every request, so enforce IsActive here.
+  if (req.access.isActive === false) {
+    return res.status(403).json({
+      success: false, message: "Account is inactive", code: "USER_INACTIVE",
+      responseCode: 403, timestamp: new Date().toISOString(),
+    });
+  }
+  // Routes with no module of their own read with the people scope (isAdmin rides along).
+  req.scope = scopeFor(req, "people");
+  next();
 };
 
-// Route guard: require a minimum hierarchy level (lower number = higher rank).
-const requireMinLevel = (level) => (req, res, next) => {
-  if (!req.scope) {
-    return res.status(403).json({
-      success: false,
-      message: "Permission scope not loaded",
-      code: "NO_SCOPE",
-      responseCode: 403,
-      timestamp: new Date().toISOString(),
-    });
-  }
-  if (req.scope.hierarchyLevel > level) {
-    return res.status(403).json({
-      success: false,
-      message: "Insufficient role to perform this action",
-      code: "INSUFFICIENT_ROLE",
-      responseCode: 403,
-      timestamp: new Date().toISOString(),
-    });
-  }
-  next();
+const saveAction = (req) => (Number(req.body?.Id) > 0 ? "edit" : "add");
+
+// Route guard: the caller's role must grant `action` on `module`. Both may be
+// functions of the request. On success req.scope becomes that module's scope, so
+// scopeParams / canSeeRecord / assertCanAssign downstream read the right lists.
+const requireModule = (module, action) => {
+  const guard = (req, res, next) => {
+    const m = typeof module === "function" ? module(req) : module;
+    const a = typeof action === "function" ? action(req) : action;
+    const s = scopeFor(req, m);
+    if (!s.can[a]) {
+      return responseHelper.error(res, "You do not have permission for this action", "INSUFFICIENT_ROLE", 403);
+    }
+    req.scope = s;
+    next();
+  };
+  guard.access = { module, action };
+  return guard;
+};
+
+// Marks a route that needs no module (auth, own profile, notifications, pick-lists).
+const open = () => {
+  const guard = (req, res, next) => next();
+  guard.access = "open";
+  return guard;
 };
 
 // Route guard: require the IsAdmin role property (Owner + Admin only).
 //
-// Deliberately NOT requireMinLevel(HIERARCHY.ADMIN) — that is HierarchyLevel<=2,
-// which also catches the level-2 department heads (Sales/Support/HR). IsAdmin
-// lives on tblUserGroups and is a role property, not a rank; user management can
-// mint IsAdmin accounts, so it needs the narrow check.
+// IsAdmin lives on tblUserGroups and is a role property, not a set of module
+// grants: a department head holding every right on people/roles/settings still
+// does not pass, because user management can mint IsAdmin accounts. Reads
+// req.access, never req.scope (which requireModule rebinds per module).
 //
-// Six route groups share this guard now (users, user groups, branch access,
-// products, config lookups/custom fields, customer deletion), so the refusal
-// says nothing about which one — it is rendered verbatim by both clients.
+// Several route groups share this guard, so the refusal says nothing about
+// which one — it is rendered verbatim by both clients.
 const requireAdmin = (req, res, next) => {
-  if (!req.scope) {
+  if (!req.access) {
     return res.status(403).json({
       success: false,
       message: "Permission scope not loaded",
@@ -153,7 +101,7 @@ const requireAdmin = (req, res, next) => {
       timestamp: new Date().toISOString(),
     });
   }
-  if (!req.scope.isAdmin) {
+  if (!req.access.isAdmin) {
     return res.status(403).json({
       success: false,
       message: "This action is restricted to administrators",
@@ -164,41 +112,7 @@ const requireAdmin = (req, res, next) => {
   }
   next();
 };
-
-// Route guard: the caller's groups must grant `right` on the menu at `route`
-// — the same tblGroupAccess grants the sidebar is built from. For screens a
-// non-admin role legitimately manages (HR Manager on Teams/Projects), where
-// requireAdmin would be too narrow and no gate at all was the old behaviour.
-// right: 'view' | 'add' | 'edit' | 'delete' | 'save' (add when body.Id is
-// absent or 0, edit otherwise). Admins pass without a lookup.
-const requireMenuRight = (route, right) => async (req, res, next) => {
-  if (!req.scope) {
-    return responseHelper.error(res, "Permission scope not loaded", "NO_SCOPE", 403);
-  }
-  if (req.scope.isAdmin) return next();
-  let resolved = right;
-  if (right === "save") {
-    const id = req.body?.Id ?? 0;
-    if (!Number.isInteger(Number(id)) || Number(id) < 0 || id === "") {
-      return responseHelper.error(res, "Id must be a whole number", "VALIDATION_ERROR", 400);
-    }
-    resolved = Number(id) > 0 ? "edit" : "add";
-  }
-  try {
-    const result = await database.executeStoredProcedure("sp_CheckMenuRight", {
-      UserId: req.user.UserId,
-      CompId: req.user.CompId,
-      Route: route,
-      Right: resolved,
-    });
-    const allowed = result.recordsets?.[0]?.[0]?.Allowed;
-    if (allowed === true || allowed === 1) return next();
-    return responseHelper.error(res, "You do not have permission for this action", "INSUFFICIENT_ROLE", 403);
-  } catch (err) {
-    console.error("requireMenuRight failed:", route, err.message);
-    return responseHelper.error(res, "Failed to verify permission");
-  }
-};
+requireAdmin.access = "admin";
 
 // Maps req.scope onto the scope params every scoped fetch SP takes.
 //
@@ -212,11 +126,16 @@ const requireMenuRight = (route, right) => async (req, res, next) => {
 // Serialising [] to null instead would fail OPEN and show every row.
 const scopeJson = (arr) => (Array.isArray(arr) ? JSON.stringify(arr) : null);
 
-const scopeParams = (req) => ({
-  UserId: req.user?.UserId ?? null,
-  AccessibleBranchIdsJson: scopeJson(req.scope?.branchIds),
-  OwnerIdsJson: scopeJson(req.scope?.ownerIds),
-});
+// `module` (optional) reads that module's scope instead of req.scope — for a
+// controller that touches a second module beyond the one its route is bound to.
+const scopeParams = (req, module) => {
+  const s = module ? scopeFor(req, module) : req.scope;
+  return {
+    UserId: req.user?.UserId ?? null,
+    AccessibleBranchIdsJson: scopeJson(s?.branchIds),
+    OwnerIdsJson: scopeJson(s?.ownerIds),
+  };
+};
 
 // Single-record visibility check, for detail endpoints whose SP takes no scope
 // params. Mirrors the WHERE clause in the scoped fetch SPs — keep the two in
@@ -234,7 +153,9 @@ const canSeeRecord = (req, record, ownerField) => {
   // Always-visible rule: assigned to me, or created by me. Beats scope.
   if (owner === userId || createdBy === userId) return true;
 
-  const { branchIds, ownerIds } = req.scope || {};
+  // No scope loaded = fail closed (the always-visible rule above still won).
+  if (!req.scope) return false;
+  const { branchIds, ownerIds } = req.scope;
   if (Array.isArray(branchIds) && !branchIds.includes(Number(record.BranchId))) {
     return false;
   }
@@ -268,13 +189,13 @@ const canReadBranch = (req, branchId) =>
 const TASK_ACTION = { view: "view_task", write: "edit_fields" };
 
 const ENTITY_LOOKUP = {
-  lead: { sp: "sp_FetchLeadDetail", idParam: "LeadId", ownerField: "OwnerId" },
-  ticket: { sp: "sp_FetchTicketDetail", idParam: "TicketId", ownerField: "AssignedTo" },
+  lead: { sp: "sp_FetchLeadDetail", idParam: "LeadId", ownerField: "OwnerId", module: "leads" },
+  ticket: { sp: "sp_FetchTicketDetail", idParam: "TicketId", ownerField: "AssignedTo", module: "complaints" },
   // A quotation has no permission model of its own. sp_FetchQuotationDetail
   // returns its LEAD's OwnerId / BranchId / CreatedBy under those names, so
   // canSeeRecord answers for the lead: whoever can see the lead can see its
   // quotations, and a transferred lead carries them along.
-  quotation: { sp: "sp_FetchQuotationDetail", idParam: "QuotationId", ownerField: "OwnerId" },
+  quotation: { sp: "sp_FetchQuotationDetail", idParam: "QuotationId", ownerField: "OwnerId", module: "leads" },
   // The branch letterhead (logo + header image). Company-wide on purpose:
   // every agent who may write a quotation must be able to draw it, whatever
   // their data scope. The SP's CompId filter is the whole gate.
@@ -306,7 +227,15 @@ async function assertRecordAccess(req, res, entity, entityId, level = "view") {
       const row = result.recordsets?.[0]?.[0] ?? result.recordset?.[0];
       granted = row?.Allowed === true || row?.Allowed === 1;
     } else if (ENTITY_LOOKUP[entity]) {
-      const { sp, idParam, ownerField, companyWide } = ENTITY_LOOKUP[entity];
+      const { sp, idParam, ownerField, companyWide, module } = ENTITY_LOOKUP[entity];
+      // The module is the outer gate: no right on it = refuse before the fetch.
+      // Its scope (not req.scope, which may be bound to another module) then
+      // judges the record.
+      const s = module ? scopeFor(req, module) : null;
+      if (s && (!s.can.view || (level === "write" && !s.can.edit))) {
+        responseHelper.error(res, `You do not have access to this ${entity}`, "FORBIDDEN", 403);
+        return false;
+      }
       const result = await database.executeStoredProcedure(sp, {
         CompId: req.user.CompId,
         [idParam]: Number(entityId) || 0,
@@ -314,7 +243,7 @@ async function assertRecordAccess(req, res, entity, entityId, level = "view") {
       const record = result.recordsets?.[0]?.[0] || null;
       granted = companyWide
         ? record || false
-        : canSeeRecord(req, record, ownerField) ? record : false;
+        : canSeeRecord({ ...req, scope: s }, record, ownerField) ? record : false;
     }
 
     if (granted) return granted;
@@ -334,21 +263,25 @@ async function assertRecordAccess(req, res, entity, entityId, level = "view") {
 
 // Transfer target guard.
 //
-// Three rules from the spec, in order of cheapness:
+// The rules, in order of cheapness (no scope loaded = 403 NO_SCOPE):
 //   1. Unassigning (no target) and moving to another branch are manager acts:
-//      DataScope Branch / MultiBranch / Company / All. Team and Self cannot.
-//   2. A target must be someone sp_FetchAssignableUsers lists for the caller —
-//      their subtree + their manager for Team/Self, their readable branches for
-//      the wide scopes, or the destination branch's roster when @BranchId is
+//      reach Office / OfficeTree / Company (or admin). Team and Own cannot.
+//   2. A destination office must be one the caller may write (admin exempt).
+//   3. A target must be someone sp_FetchAssignableUsers lists for the caller —
+//      their subtree + their manager for Team/Own, their readable offices for
+//      the wide reaches (the caller's lists are passed in), or the destination branch's roster when @BranchId is
 //      supplied. The dropdown on the client is a convenience; this is the gate.
 //
 // Sends its own 403 (or 500 on lookup failure) and returns false; true = proceed.
-const WIDE_SCOPES = new Set(["All", "Company", "MultiBranch", "Branch"]);
 
 async function assertCanAssign(req, res, { toUserId, toBranchId }) {
+  if (!req.scope) {
+    responseHelper.error(res, "Permission scope not loaded", "NO_SCOPE", 403);
+    return false;
+  }
   const target = Number(toUserId) || null;
   const branch = Number(toBranchId) || null;
-  const wide = WIDE_SCOPES.has(req.scope?.dataScope);
+  const wide = isWide(req.scope);
 
   if (!target && !wide) {
     responseHelper.error(res, "Only a manager can leave a record unassigned", "FORBIDDEN", 403);
@@ -363,6 +296,11 @@ async function assertCanAssign(req, res, { toUserId, toBranchId }) {
     );
     return false;
   }
+  // A wide reach still only moves records into offices it may write.
+  if (branch && !req.scope.isAdmin && !canWriteBranch(req, branch)) {
+    responseHelper.error(res, "You cannot move records to that office", "FORBIDDEN", 403);
+    return false;
+  }
   if (!target) return true;
 
   try {
@@ -370,6 +308,8 @@ async function assertCanAssign(req, res, { toUserId, toBranchId }) {
       UserId: req.user.UserId,
       CompId: req.user.CompId,
       BranchId: branch,
+      AccessibleBranchIdsJson: scopeJson(req.scope?.branchIds),
+      OwnerIdsJson: scopeJson(req.scope?.ownerIds),
     });
     const rows = result.recordsets?.[0] ?? result.recordset ?? [];
     if (rows.some((r) => Number(r.Id) === target)) return true;
@@ -383,16 +323,16 @@ async function assertCanAssign(req, res, { toUserId, toBranchId }) {
 }
 
 // Reopen gate (spec 2 §3 Rules). Reopening a resolved / closed / rejected
-// complaint is a manager's act: the wide scopes always may; a Team lead only
+// complaint is a manager's act: the wide reaches always may; a Team lead only
 // for a ticket assigned to someone in their subtree — never their own, never
-// an unassigned one; a Self agent never. Pure: the controller already fetched
+// an unassigned one; an Own-reach agent never. Pure: the controller already fetched
 // the ticket through assertRecordAccess, so this is a lookup on req.scope.
 //
 // The controller passes the answer as @AllowReopen on EVERY status call and
 // sp_SetTicketStatus alone decides whether the requested move IS a reopen —
 // Node never inspects status codes.
 const canReopen = (req, record) => {
-  if (WIDE_SCOPES.has(req.scope?.dataScope)) return true;
+  if (isWide(req.scope)) return true;
   const assignee = Number(record?.AssignedTo) || null;
   if (!assignee || assignee === Number(req.user?.UserId)) return false;
   const { ownerIds } = req.scope || {};
@@ -415,11 +355,13 @@ async function taskAllowed(req, taskId, action) {
 }
 
 module.exports = {
-  HIERARCHY,
   loadScope,
-  requireMinLevel,
+  requireModule,
+  open,
+  saveAction,
   requireAdmin,
-  requireMenuRight,
+  scopeFor,
+  isWide,
   scopeParams,
   // Exported for the SPs that declare AccessibleBranchIdsJson but not UserId or
   // OwnerIdsJson — spreading the whole of scopeParams into those makes node-mssql

@@ -1,24 +1,22 @@
 const express = require("express");
 const userBranchAccessController = require("../controllers/userBranchAccessController");
 const { verifyToken } = require("../middleware/auth");
-const { loadScope, requireAdmin, requireMinLevel, HIERARCHY } = require("../middleware/permission");
+const { loadScope, requireModule, open, requireAdmin } = require("../middleware/permission");
 const { requirePayload, allowEmptyPayload } = require("../middleware/payloadValidation");
 
 const router = express.Router();
 
 router.use(verifyToken, loadScope);
 
+// Governed by the people module (read) and IsAdmin (writes).
 // Self-service: anyone can read their own scope
-router.post("/myScope", allowEmptyPayload, userBranchAccessController.myScope);
+router.post("/myScope", allowEmptyPayload, open(), userBranchAccessController.myScope);
 
 // Admin-only: assign branches to other users
-// requireAdmin (IsAdmin on the group), not requireMinLevel(ADMIN) — that is
-// HierarchyLevel <= 2, which admits the level-2 department heads. Branch
-// access is what sp_FetchAccessibleBranchIds turns into req.scope.branchIds,
-// so a non-admin head could have widened a user's data scope — or their own.
-// CLAUDE.md §3: IsAdmin is a role property, never derived from a level.
+// requireAdmin (IsAdmin on the group): branch access widens a user's data scope,
+// so a non-admin must not be able to grant it — to anyone, or to themselves.
 router.post("/saveUserBranchAccess", requirePayload, requireAdmin, userBranchAccessController.save);
-router.post("/fetchUserBranchAccess", requirePayload, requireMinLevel(HIERARCHY.MANAGER), userBranchAccessController.fetch);
+router.post("/fetchUserBranchAccess", requirePayload, requireModule("people", "view"), userBranchAccessController.fetch);
 router.post("/deleteUserBranchAccess", requirePayload, requireAdmin, userBranchAccessController.delete);
 
 module.exports = router;

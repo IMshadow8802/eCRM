@@ -32,6 +32,7 @@ const SESSION_EMPTY = {
   loginTimestamp: null,
   menuRights: [],
   activeMenuRights: null,
+  access: null,
 };
 
 const getUserDataFromLocalStorage = () => {
@@ -80,7 +81,9 @@ const useAuthStore = create(
         ...CLIENT_EMPTY,
         menuRights: initialState.permissions?.rawPermissions || [],
         activeMenuRights: null,
+        access: null,
 
+        setAccess: (access) => set({ access: access ?? null }),
         setMenuRights: (rights) => set({ menuRights: rights }),
         setActiveMenuRights: (rights) => set({ activeMenuRights: rights }),
 
@@ -123,6 +126,7 @@ const useAuthStore = create(
             UserId: user.Id,
             loginTimestamp: userData.loginTimestamp,
             menuRights: permissions?.rawPermissions || [],
+            access: responseData.access ?? null,
           });
         },
 
@@ -255,6 +259,7 @@ const useAuthStore = create(
         loginTimestamp: s.loginTimestamp,
         menuRights: s.menuRights,
         activeMenuRights: s.activeMenuRights,
+        access: s.access,
         API_BASE_URL: s.API_BASE_URL,
         compCode: s.compCode,
         companyName: s.companyName,

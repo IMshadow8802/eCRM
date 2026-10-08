@@ -1,5 +1,6 @@
 const database = require("../config/database");
-const { scopeJson } = require("../middleware/permission");
+const { scopeJson, scopeFor, canWriteBranch } = require("../middleware/permission");
+const { stripSensitive, roleWithin } = require("../middleware/access");
 const { logActivity, ACTIONS } = require("../utils/activityLogger");
 const { emitToWorkspace, emitToUser } = require("../realtime/events");
 const { SCOPES } = require("../realtime/contract");
@@ -15,6 +16,19 @@ const {
   pageParams,
   positiveInt,
 } = require("../utils/controllerKit");
+
+// The response when a role (sp_FetchGroupModules) grants more than the caller
+// holds (roleWithin), or is sensitive and they are not; null when it fits.
+async function roleRefusal(req, res, groupId, message) {
+  const role = await database.executeStoredProcedure("sp_FetchGroupModules", { GroupId: groupId, CompId: req.user.CompId });
+  const head = firstRow(role);
+  if (!spOk(head)) return error(res, "Role not found", "NOT_FOUND", 404);
+  const sensitive = head.CanSeeSensitive === true || head.CanSeeSensitive === 1;
+  if ((sensitive && !req.access?.canSeeSensitive) || !roleWithin(req.access, role.recordsets?.[1] ?? [])) {
+    return error(res, message, "FORBIDDEN", 403);
+  }
+  return null;
+}
 
 class UserController {
   save = asyncRoute(
@@ -35,13 +49,65 @@ class UserController {
         GroupId,
         BranchId,
         Mobile = null,
-        ReportsTo = null,
+        ReportsTo,
       } = req.body;
 
       // No default role: the old `GroupId = 8` pointed at a group that does not exist.
       const groupId = positiveInt(GroupId);
       if (!groupId) return validationError(res, "Pick a role for this user");
       const isEdit = positiveInt(Id) !== null;
+
+      const actorIsAdmin = !!req.access?.isAdmin;
+      if (!actorIsAdmin && !req.access?.canSeeSensitive) {
+        return error(res, "Editing people needs the salary & contact permission", "INSUFFICIENT_ROLE", 403);
+      }
+      const branch = positiveInt(BranchId);
+      if (!actorIsAdmin && branch && !canWriteBranch(req, branch)) {
+        return error(res, "You cannot place people in that office", "FORBIDDEN", 403);
+      }
+      // Editing someone also needs write reach over the office they are in NOW,
+      // not just the one they are moving to; else an out-of-reach person could be
+      // edited (or have their password reset) by sending no BranchId.
+      let currentGroupId = null;
+      if (!actorIsAdmin && isEdit) {
+        const found = await database.executeStoredProcedure("sp_FetchUser", {
+          Id: positiveInt(Id),
+          CompId: req.user.CompId,
+          BranchId: req.user.BranchId, // ignored when IsAdmin=1
+          IsAdmin: 1,
+          AccessibleBranchIdsJson: null,
+          PageNumber: 1,
+          PageSize: 1,
+          SearchTerm: null,
+        });
+        const target = cleanSpRows(found.recordsets?.[0] ?? [])[0];
+        if (!target?.Id) return error(res, "User not found", "NOT_FOUND", 404);
+        if (!canWriteBranch(req, target.BranchId)) {
+          return error(res, "You cannot edit people in that office", "FORBIDDEN", 403);
+        }
+        currentGroupId = positiveInt(target.GroupId);
+        if (positiveInt(Id) === Number(req.user.UserId) && currentGroupId !== groupId) {
+          return error(res, "You cannot change your own role", "FORBIDDEN", 403);
+        }
+      }
+      // A non-admin may edit (password reset included) only people whose CURRENT
+      // role is inside their own access, else HR could reset a Sales Head's
+      // password and sign in as them; and may hand out only roles inside it, else
+      // HR could give someone Sales/Support reach they do not hold. Same role = one fetch.
+      if (!actorIsAdmin && isEdit && currentGroupId) {
+        const refused = await roleRefusal(req, res, currentGroupId,
+          "You can only edit people whose role is within your own access");
+        if (refused) return refused;
+      }
+      if (!actorIsAdmin && (!isEdit || currentGroupId !== groupId)) {
+        const refused = await roleRefusal(req, res, groupId, "You can only give roles within your own access");
+        if (refused) return refused;
+      }
+      // ReportsTo: absent/null = keep the current manager, 0 = clear it (spec §6).
+      const reportsTo = ReportsTo === 0 || ReportsTo === "0" ? 0 : positiveInt(ReportsTo);
+      if (reportsTo === 0 && !actorIsAdmin) {
+        return error(res, "Only an administrator can clear a manager", "FORBIDDEN", 403);
+      }
 
       // Hash before it ever reaches the DB. Login bcrypt-compares against this
       // column, so a plaintext write here means the account can never log in.
@@ -62,12 +128,15 @@ class UserController {
         HourlyRate,
         GroupId: groupId,
         CompId: req.user.CompId,
-        // Admin-only route, so a body branch is allowed. Absent on edit = null =
-        // the SP keeps the current branch.
+        // A body branch is allowed: people module; a non-admin is limited to offices they can write.
+        // Absent on edit = null = the SP keeps the current branch.
         BranchId: positiveInt(BranchId) ?? (isEdit ? null : req.user.BranchId),
         Mobile,
-        ReportsTo: positiveInt(ReportsTo),
+        ReportsTo: reportsTo,
         ActorUserId: req.user.UserId,
+        // Always explicit: NULL makes sp_SaveUser treat the caller as a legacy admin
+        // and skip its non-admin guard (assigning an admin role / editing an admin).
+        ActorIsAdmin: actorIsAdmin ? 1 : 0,
       });
 
       const spResponse = firstRow(result);
@@ -90,6 +159,16 @@ class UserController {
             !isEdit
               ? `User ${Username} created`
               : `User ${Username} updated`,
+          req,
+        });
+      }
+
+      if (ok && isEdit && Password) {
+        await logActivity({
+          entityType: "User",
+          entityId: spResponse.UserId ?? positiveInt(Id),
+          action: ACTIONS.PASSWORD_RESET,
+          description: `Password reset for ${Username}`,
           req,
         });
       }
@@ -117,25 +196,24 @@ class UserController {
       const { Id = 0, SearchTerm = null } = req.body;
       const { PageNumber, PageSize } = pageParams(req.body, 10);
 
-      // scopeJson, not `?.length ? stringify : null`. That form collapses an
-      // empty scope to NULL, which every one of these SPs reads as "apply no
-      // branch filter at all" — the widest possible answer for the narrowest
-      // possible scope. '[]' is an empty allow-list and matches nothing.
-      const accessibleBranchIdsJson = scopeJson(req.scope?.branchIds);
-
       const result = await database.executeStoredProcedure("sp_FetchUser", {
         Id,
         CompId: req.user.CompId,
-        BranchId: req.user.BranchId,
-        IsAdmin: req.scope?.isAdmin ? 1 : 0,
-        AccessibleBranchIdsJson: accessibleBranchIdsJson,
+        BranchId: req.user.BranchId, // ignored when IsAdmin=1; the SP has no default for it
+        // The people picker is company-wide (spec §2.6); detail is stripped below.
+        // The SP's own branch filter applies only when UseScope=0 and IsAdmin=0,
+        // so IsAdmin: 1 with a null branch list is what makes it company-wide.
+        IsAdmin: 1,
+        AccessibleBranchIdsJson: null,
         PageNumber,
         PageSize,
         SearchTerm,
+        // Without the sensitive permission, a search must not find people by email/mobile.
+        SearchSensitive: req.access?.canSeeSensitive ? 1 : 0,
       });
 
       const spResponse = firstRow(result);
-      const users = cleanSpRows(result.recordsets[0]);
+      const users = cleanSpRows(result.recordsets[0]).map((u) => stripSensitive(req.access, req.user.UserId, u));
 
       return res.status(spStatus(spResponse)).json({
         success: spOk(spResponse),
@@ -365,10 +443,20 @@ class UserController {
   // in assertCanAssign at transfer time, not here — this only lists.
   assignableUsers = asyncRoute(
     async (req, res) => {
+      // Whose roster: the scope of the module being assigned in. Old clients send
+      // no Module: leads if the caller can see leads, else complaints (support roles).
+      const module = req.body?.Module ?? (scopeFor(req, "leads").can.view ? "leads" : "complaints");
+      if (!["leads", "complaints"].includes(module)) {
+        return validationError(res, "Module must be leads or complaints");
+      }
+      const s = scopeFor(req, module);
+      if (!s.can.view) return error(res, "You do not have permission for this action", "INSUFFICIENT_ROLE", 403);
       const result = await database.executeStoredProcedure("sp_FetchAssignableUsers", {
         UserId: req.user.UserId,
         CompId: req.user.CompId,
         BranchId: positiveInt(req.body?.BranchId),
+        AccessibleBranchIdsJson: scopeJson(s.branchIds),
+        OwnerIdsJson: scopeJson(s.ownerIds),
       });
       const users = cleanSpRows(result.recordsets?.[0] ?? []);
       return success(res, "Assignable users retrieved", { users });

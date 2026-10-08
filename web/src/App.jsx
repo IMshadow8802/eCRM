@@ -31,6 +31,7 @@ const Users = lazy(() => import("./pages/Master/Users"));
 const Teams = lazy(() => import("./pages/Master/Teams"));
 const Projects = lazy(() => import("./pages/Master/Projects"));
 const Groups = lazy(() => import("./pages/Master/Groups"));
+const Offices = lazy(() => import("./pages/Master/Offices"));
 
 // Sales module (leads, calls, follow-ups, products)
 const SalesLeads = lazy(() => import("./pages/Sales/Leads"));
@@ -83,6 +84,7 @@ export const routesConfig = [
   { path: "/teams/*", element: <ProtectedRoute element={<Teams />} /> },
   { path: "/projects/*", element: <ProtectedRoute element={<Projects />} /> },
   { path: "/groups/*", element: <ProtectedRoute element={<Groups />} /> },
+  { path: "/offices/*", element: <ProtectedRoute element={<Offices />} /> },
   // Sales module — leads, calls, follow-ups, products, reports.
   // The pipeline board is gone (spec 1). Bookmarks land on the list.
   { path: "/sales/pipeline", element: <Navigate to="/sales/leads" replace /> },

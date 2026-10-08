@@ -6,6 +6,7 @@ jest.mock("../../../src/controllers/authController", () => ({
     res.status(401).json({ success: false, code: "WRONG_PASSWORD" }),
   ),
   logout: jest.fn((req, res) => res.status(200).json({ success: true })),
+  fetchMyAccess: jest.fn((req, res) => res.status(200).json({ success: true })),
 }));
 
 const express = require("express");

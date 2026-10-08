@@ -5,8 +5,9 @@ jest.mock("../../../src/config/database", () => ({
 const database = require("../../../src/config/database");
 const callController = require("../../../src/controllers/callController");
 const { mockRes } = require("../../helpers/mockRes");
+const { accessForScope } = require("../../helpers/mockAccess");
 
-function baseReq(overrides = {}) {
+function rawReq(overrides = {}) {
   return {
     user: { UserId: 7, CompId: 5, BranchId: 2, IsAdmin: false },
     scope: { branchIds: [2], ownerIds: null, isAdmin: false },
@@ -14,6 +15,15 @@ function baseReq(overrides = {}) {
     ...overrides,
   };
 }
+
+// Routes run loadScope, which sets req.access too; assertRecordAccess judges a
+// record against the module scope it derives from req.access, so the access
+// mirrors whatever scope shape a test describes.
+const baseReq = (overrides = {}) => {
+  const req = rawReq(overrides);
+  if (!req.access) req.access = accessForScope(req.scope, req.user.UserId);
+  return req;
+};
 
 beforeEach(() => {
   database.executeStoredProcedure.mockReset();
@@ -143,6 +153,17 @@ describe("callController.logCall", () => {
     await callController.logCall(req, res);
     expect(res.status).toHaveBeenCalledWith(403);
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1); // lookup only
+  });
+
+  // The calls route is open(), so assertRecordAccess("write") is the only edit gate.
+  it("403s logging a call for a view-only role, even on a lead it can see", async () => {
+    mockLeadLookup({ Id: 9, BranchId: 2, OwnerId: 7, CreatedBy: 7 });
+    const req = baseReq({ body: { LeadId: 9, Direction: "Outbound" } });
+    req.access = accessForScope(req.scope, req.user.UserId, "v");
+    const res = mockRes();
+    await callController.logCall(req, res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalledWith("sp_LogCall", expect.anything());
   });
 
   it("403s logging a call against a ticket outside the caller's scope", async () => {

@@ -97,7 +97,7 @@ export default function TicketCreateModal({ open, onClose, ticket = null, onSave
   const { lookups: categories } = useLookups("ticket_category", whileOpen);
   const { lookups: priorities } = useLookups("priority", whileOpen);
   const { lookups: channels } = useLookups("ticket_channel", whileOpen);
-  const { users } = useAssignableUsers({ enabled: open && !isEdit });
+  const { users } = useAssignableUsers({ enabled: open && !isEdit, module: "complaints" });
 
   const { data: productsData } = useApiQuery({
     queryKey: ["products", "active"], endpoint: SALES_ENDPOINTS.products.fetchProducts,

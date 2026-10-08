@@ -5,6 +5,8 @@ jest.mock("../../../src/config/database", () => ({
 const database = require("../../../src/config/database");
 const reportController = require("../../../src/controllers/reportController");
 const { mockRes } = require("../../helpers/mockRes");
+const { mockAccess } = require("../../helpers/mockAccess");
+const { scopeFor } = require("../../../src/middleware/access");
 
 function baseReq(overrides = {}) {
   return {
@@ -14,84 +16,36 @@ function baseReq(overrides = {}) {
   };
 }
 
+// A dashboard request: the route binds req.scope to "dashboard" (leads reach).
+function dashReq(modules) {
+  const req = baseReq();
+  req.access = mockAccess({ modules }, 7);
+  req.scope = scopeFor(req.access, "dashboard", 7);
+  return req;
+}
+const DASH = ["dashboard", "v"];
+
 beforeEach(() => {
   database.executeStoredProcedure.mockReset();
 });
 
 describe("reportController.getDashboard", () => {
-  // No req.scope at all — loadScope did not run (or a route mounted without
-  // it). Both allow-lists serialise to null, which the SP reads as "no filter
-  // on that dimension". That is unchanged by 081 and deliberate: absent scope
-  // is not an empty allow-list, and collapsing the two would be the opposite
-  // mistake. UserId still goes, because the assigned-or-created escape hatch
-  // is what a scopeless request leans on.
-  it("sends the full scope contract with null allow-lists when the request carries no scope", async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce({
-      recordsets: [[{ TotalLeads: 10 }]],
-    });
-    const req = baseReq();
-    const res = mockRes();
-    await reportController.getDashboard(req, res);
-
-    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_Dashboard", {
-      CompId: 5,
-      UserId: 7,
-      AccessibleBranchIdsJson: null,
-      OwnerIdsJson: null,
-    });
-    expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.json.mock.calls[0][0].data.dashboard).toEqual([{ TotalLeads: 10 }]);
-  });
-
-  // The leak this replaced: sp_Dashboard got branch scope and no owner axis,
-  // so se_se_pooja (Self, branch 2) read 222 leads — her whole branch —
-  // where /api/reports/funnel showed her the correct 133.
-  it("sends both axes of req.scope, so a Self-scope user is not given the whole branch", async () => {
+  it("passes leads scope and complaints scope separately", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[]] });
-    const req = baseReq({ scope: { branchIds: [2], ownerIds: [21] } });
-    const res = mockRes();
-    await reportController.getDashboard(req, res);
-
-    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_Dashboard", {
-      CompId: 5,
-      UserId: 7,
-      AccessibleBranchIdsJson: "[2]",
-      OwnerIdsJson: "[21]",
-    });
-  });
-
-  // A Company-scope user has no ownership filter: ownerIds is null, never [].
-  it("leaves the owner axis null for a wide scope", async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[]] });
-    const res = mockRes();
     await reportController.getDashboard(
-      baseReq({ scope: { branchIds: [1, 2, 3], ownerIds: null } }),
-      res,
-    );
-
-    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
-      "sp_Dashboard",
-      expect.objectContaining({
-        AccessibleBranchIdsJson: JSON.stringify([1, 2, 3]),
-        OwnerIdsJson: null,
-      }),
-    );
+      dashReq([DASH, ["leads", "v", "Own"], ["complaints", "v", "Office"]]), mockRes());
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_Dashboard", {
+      CompId: 5, UserId: 7,
+      AccessibleBranchIdsJson: "[2]", OwnerIdsJson: "[7]",
+      TicketBranchIdsJson: "[2]", TicketOwnerIdsJson: null,
+    });
   });
 
-  // Fail closed: an empty allow-list means "see nothing". Serialising [] to
-  // null would fail OPEN and hand the narrowest user the widest dashboard.
-  it("keeps an empty allow-list as [] rather than collapsing it to null", async () => {
+  it("sends an empty ticket allow-list when the role has no complaints module", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[]] });
-    const res = mockRes();
-    await reportController.getDashboard(
-      baseReq({ scope: { branchIds: [], ownerIds: [] } }),
-      res,
-    );
-
-    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
-      "sp_Dashboard",
-      expect.objectContaining({ AccessibleBranchIdsJson: "[]", OwnerIdsJson: "[]" }),
-    );
+    await reportController.getDashboard(dashReq([DASH, ["leads", "v", "Office"]]), mockRes());
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_Dashboard",
+      expect.objectContaining({ TicketBranchIdsJson: "[]", TicketOwnerIdsJson: "[]", OwnerIdsJson: null }));
   });
 
   it("maps the chart series recordsets into named keys", async () => {
@@ -105,7 +59,7 @@ describe("reportController.getDashboard", () => {
       recordsets: [kpis, trend, source, funnel, teamLoad, quarters],
     });
     const res = mockRes();
-    await reportController.getDashboard(baseReq(), res);
+    await reportController.getDashboard(dashReq([DASH, ["leads", "v", "Office"]]), res);
 
     const data = res.json.mock.calls[0][0].data;
     expect(data.dashboard).toEqual(kpis);
@@ -121,7 +75,7 @@ describe("reportController.getDashboard", () => {
       recordsets: [[{ Type: "TotalLeads", Number: 10 }]],
     });
     const res = mockRes();
-    await reportController.getDashboard(baseReq(), res);
+    await reportController.getDashboard(dashReq([DASH, ["leads", "v", "Office"]]), res);
 
     expect(res.status).toHaveBeenCalledWith(200);
     const data = res.json.mock.calls[0][0].data;
@@ -134,7 +88,7 @@ describe("reportController.getDashboard", () => {
 
   it("handles DB error as 500", async () => {
     database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
-    const req = baseReq();
+    const req = dashReq([DASH, ["leads", "v", "Office"]]);
     const res = mockRes();
     await reportController.getDashboard(req, res);
     expect(res.status).toHaveBeenCalledWith(500);

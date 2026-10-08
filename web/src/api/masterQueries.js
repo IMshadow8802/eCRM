@@ -5,6 +5,9 @@
 import { apiClient } from "../utils/axiosConfig";
 
 export const MASTER_ENDPOINTS = {
+  auth: {
+    fetchMyAccess: "/api/auth/fetchMyAccess",
+  },
   users: {
     fetchUsers: "/api/users/fetchUsers",
     saveUser: "/api/users/saveUser",
@@ -18,8 +21,16 @@ export const MASTER_ENDPOINTS = {
     fetchUserGroups: "/api/user-groups/fetchUserGroups",
     saveUserGroup: "/api/user-groups/saveUserGroup",
     deleteUserGroup: "/api/user-groups/deleteUserGroup",
-    fetchGroupAccess: "/api/user-groups/fetchGroupAccess",
-    saveGroupAccess: "/api/user-groups/saveGroupAccess",
+    fetchGroupModules: "/api/user-groups/fetchGroupModules",
+    saveGroupModules: "/api/user-groups/saveGroupModules",
+  },
+  branches: {
+    saveBranch: "/api/branches/saveBranch",
+  },
+  userBranchAccess: {
+    fetchUserBranchAccess: "/api/user-branch-access/fetchUserBranchAccess",
+    saveUserBranchAccess: "/api/user-branch-access/saveUserBranchAccess",
+    deleteUserBranchAccess: "/api/user-branch-access/deleteUserBranchAccess",
   },
   teams: {
     fetchTeams: "/api/teams/fetchTeams",
@@ -39,6 +50,9 @@ export const MASTER_ENDPOINTS = {
 // beats 17 hand-written near-duplicates.
 const post = (endpoint) => (params = {}) => apiClient.post(endpoint, params);
 
+// Auth: the caller's module access + menu rights, re-read without a login.
+export const fetchMyAccess = post(MASTER_ENDPOINTS.auth.fetchMyAccess);
+
 // Users
 export const fetchUsers = post(MASTER_ENDPOINTS.users.fetchUsers);
 export const saveUser = post(MASTER_ENDPOINTS.users.saveUser);
@@ -48,12 +62,18 @@ export const directory = post(MASTER_ENDPOINTS.users.directory);
 export const updateProfile = post(MASTER_ENDPOINTS.users.updateProfile);
 export const changePassword = post(MASTER_ENDPOINTS.users.changePassword);
 
-// User groups (roles + menu-access matrix)
+// User groups (roles + module grid)
 export const fetchUserGroups = post(MASTER_ENDPOINTS.userGroups.fetchUserGroups);
 export const saveUserGroup = post(MASTER_ENDPOINTS.userGroups.saveUserGroup);
 export const deleteUserGroup = post(MASTER_ENDPOINTS.userGroups.deleteUserGroup);
-export const fetchGroupAccess = post(MASTER_ENDPOINTS.userGroups.fetchGroupAccess);
-export const saveGroupAccess = post(MASTER_ENDPOINTS.userGroups.saveGroupAccess);
+export const fetchGroupModules = post(MASTER_ENDPOINTS.userGroups.fetchGroupModules);
+export const saveGroupModules = post(MASTER_ENDPOINTS.userGroups.saveGroupModules);
+
+// Offices (tblBranch tree) and a user's extra offices
+export const saveBranch = post(MASTER_ENDPOINTS.branches.saveBranch);
+export const fetchUserBranchAccess = post(MASTER_ENDPOINTS.userBranchAccess.fetchUserBranchAccess);
+export const saveUserBranchAccess = post(MASTER_ENDPOINTS.userBranchAccess.saveUserBranchAccess);
+export const deleteUserBranchAccess = post(MASTER_ENDPOINTS.userBranchAccess.deleteUserBranchAccess);
 
 // Teams
 export const fetchTeams = post(MASTER_ENDPOINTS.teams.fetchTeams);

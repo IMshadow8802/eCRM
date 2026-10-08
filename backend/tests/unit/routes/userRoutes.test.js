@@ -1,12 +1,9 @@
-// User management routes are admin-only. Without the guard any authenticated
-// employee could POST /saveUser with { Id: 0, IsAdmin: true } and mint
-// themselves an owner-level account — the endpoint sets IsAdmin from the body.
-//
-// The gate is req.scope.isAdmin, deliberately NOT requireMinLevel(ADMIN):
-// IsAdmin is a role property on tblUserGroups, not a rank, so the level-2
-// department heads (Sales/Support/HR) must not slip through.
+// User routes: saveUser needs the people module (HR holds it, IsAdmin or not);
+// deleteUser / fetchUserHandover stay IsAdmin-only (requireAdmin reads
+// req.access.isAdmin). Without a guard any employee could POST
+// { Id: 0, IsAdmin: true } and mint an owner-level account.
 
-let mockScope;
+let mockAcc;
 
 jest.mock("../../../src/middleware/auth", () => ({
   verifyToken: (req, res, next) => {
@@ -19,10 +16,7 @@ jest.mock("../../../src/middleware/permission", () => {
   const actual = jest.requireActual("../../../src/middleware/permission");
   return {
     ...actual,
-    loadScope: (req, res, next) => {
-      req.scope = mockScope;
-      next();
-    },
+    loadScope: (req, res, next) => require("../../helpers/mockAccess").loadScopeWith(() => mockAcc)(req, res, next),
   };
 });
 
@@ -38,6 +32,9 @@ jest.mock("../../../src/controllers/userController", () => ({
   handover: jest.fn((req, res) => res.status(200).json({ success: true, hit: "handover" })),
 }));
 
+const { mockAccess } = require("../../helpers/mockAccess");
+mockAcc = mockAccess({ modules: [] });
+
 const express = require("express");
 const request = require("supertest");
 const userRoutes = require("../../../src/routes/userRoutes");
@@ -48,14 +45,14 @@ app.use(express.json());
 app.use("/api/users", userRoutes);
 
 const asAdmin = () => {
-  mockScope = { isAdmin: true, branchIds: [2] };
+  mockAcc = mockAccess({ admin: true });
 };
 const asEmployee = () => {
-  mockScope = { isAdmin: false, hierarchyLevel: 4, branchIds: [2] };
+  mockAcc = mockAccess({ modules: [["leads", "vaed"]] });
 };
 const asDepartmentHead = () => {
-  // HierarchyLevel 2, but IsAdmin false — a Sales/Support/HR head.
-  mockScope = { isAdmin: false, hierarchyLevel: 2, branchIds: [2] };
+  // Not IsAdmin, but holds the people module (an HR head): may saveUser, never the admin-only routes.
+  mockAcc = mockAccess({ modules: [["people", "vaed"]] });
 };
 
 beforeEach(() => {
@@ -86,13 +83,20 @@ describe("userRoutes admin gate", () => {
     expect(userController.handover).toHaveBeenCalledTimes(1);
   });
 
-  it("403s a level-2 department head who is not IsAdmin", async () => {
-    asDepartmentHead();
+  it("403s a head without the people module on saveUser", async () => {
+    mockAcc = mockAccess({ modules: [["leads", "vaed"]] });
     const r = await request(app)
       .post("/api/users/saveUser")
       .send({ Username: "x", Password: "y", FullName: "X", IsAdmin: true });
     expect(r.status).toBe(403);
     expect(userController.save).not.toHaveBeenCalled();
+  });
+
+  it("lets a non-admin with the people module through to saveUser, not deleteUser", async () => {
+    asDepartmentHead();
+    const r = await request(app).post("/api/users/saveUser").send({ Username: "x", Password: "y", FullName: "X" });
+    expect(r.status).toBe(201);
+    expect((await request(app).post("/api/users/deleteUser").send({ Id: 3 })).status).toBe(403);
   });
 
   it("lets a real admin through to saveUser", async () => {

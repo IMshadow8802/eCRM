@@ -33,6 +33,7 @@ const ACTIONS = {
   LOGIN: "Login",
   LOGOUT: "Logout",
   PERMISSION_CHANGED: "PermissionChanged",
+  PASSWORD_RESET: "PasswordReset",
 };
 
 async function logActivity({

@@ -5,16 +5,16 @@ jest.mock("../../../src/config/database", () => ({
 const database = require("../../../src/config/database");
 const leadController = require("../../../src/controllers/leadController");
 const { mockRes } = require("../../helpers/mockRes");
+const { accessForScope } = require("../../helpers/mockAccess");
 
 // Routes always run loadScope, so req.scope is present on every real request.
 // Default here mirrors a Branch-scoped user (sees their branch, no ownership
 // filter, and wide enough for assertCanAssign's manager-only checks).
-function baseReq(overrides = {}) {
+function rawReq(overrides = {}) {
   return {
     user: { UserId: 7, CompId: 5, BranchId: 2, IsAdmin: false },
     scope: {
-      hierarchyLevel: 3,
-      dataScope: "Branch",
+      reach: "Office",
       primaryBranchId: 2,
       branchIds: [2],
       ownerIds: null,
@@ -25,6 +25,15 @@ function baseReq(overrides = {}) {
     ...overrides,
   };
 }
+
+// Routes run loadScope, which sets req.access too; assertRecordAccess judges a
+// record against the module scope it derives from req.access, so the access
+// mirrors whatever scope shape a test describes.
+const baseReq = (overrides = {}) => {
+  const req = rawReq(overrides);
+  if (!req.access) req.access = accessForScope(req.scope, req.user.UserId);
+  return req;
+};
 
 beforeEach(() => {
   database.executeStoredProcedure.mockReset();
@@ -661,6 +670,29 @@ describe("leadController.convert", () => {
     const res = mockRes();
     await leadController.convert(baseReq({ body: { LeadId, WonValue: 100 } }), res);
     expect(res.status).toHaveBeenCalledWith(400);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+});
+
+// Fix round 1: the record gate on a write also checks the leads EDIT right, so
+// a view-only role is refused at the record, before any lookup — even if the
+// route layer were to let the request through.
+describe("leadController writes need the leads edit right", () => {
+  const viewOnly = (body) => {
+    const req = baseReq({ body });
+    req.access = accessForScope(req.scope, 7, "v");
+    return req;
+  };
+  it.each([
+    ["save (edit)", "save", { Id: 9, Name: "Acme" }],
+    ["setStatus", "setStatus", { LeadId: 9, StatusId: 6 }],
+    ["transfer", "transfer", { LeadId: 9, ToUserId: 3, ReasonId: 1, Remarks: "Absent" }],
+    ["bulkTransfer", "bulkTransfer", { LeadIds: [9], ToUserId: 3, ReasonId: 1, Remarks: "Absent" }],
+    ["delete", "delete", { Id: 9 }],
+  ])("403s a view-only role on %s without a DB call", async (_label, method, body) => {
+    const res = mockRes();
+    await leadController[method](viewOnly(body), res);
+    expect(res.status).toHaveBeenCalledWith(403);
     expect(database.executeStoredProcedure).not.toHaveBeenCalled();
   });
 });

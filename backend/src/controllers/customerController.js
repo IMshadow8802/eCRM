@@ -1,10 +1,9 @@
-// Spec 2 §1/§3: the light customer record a complaint hangs off. Company-wide
-// on purpose — deduping "three spellings of one mobile" needs every agent to
-// find the same row — so reads and writes carry no record gate; the SP's
-// CompId filter is the tenancy boundary. Delete alone is admin-only (route).
+// Spec 2 §1/§3: the light customer record a complaint hangs off. Scoped by the
+// customers module (spec 2026-10-07 §2.5): an office, owned by its creator.
+// Delete is admin-only (route).
 const database = require("../config/database");
 const responseHelper = require("../utils/responseHelper");
-const { scopeParams } = require("../middleware/permission");
+const { scopeParams, canSeeRecord, canWriteBranch } = require("../middleware/permission");
 const { positiveInt, pageParams } = require("../utils/controllerKit");
 const { applyMobiles } = require("../utils/mobile");
 
@@ -38,9 +37,22 @@ const trimmed = (s) => (blank(s) ? null : String(s).trim());
 // defines no meaning for NULL. Only an explicit false / 0 / "false" / "0" is 0.
 const activeBit = (v) => (v === false || v === 0 || v === "false" || v === "0" ? 0 : 1);
 
+// A customer's owner is whoever created it. Reads the row unscoped, then applies
+// `scope` (default: the route's) — ticketController passes the customers scope.
+async function assertCustomerVisible(req, res, customerId, scope = req.scope) {
+  const r = await database.executeStoredProcedure("sp_FetchCustomerDetail", {
+    CompId: req.user.CompId, CustomerId: Number(customerId) || 0,
+    UserId: null, AccessibleBranchIdsJson: "[]", OwnerIdsJson: "[]",
+  });
+  const row = r.recordsets?.[0]?.[0] || null;
+  if (row && canSeeRecord({ ...req, scope }, row, "CreatedBy")) return row;
+  responseHelper.error(res, "You do not have access to this customer", "FORBIDDEN", 403);
+  return null;
+}
+
 const customerController = {
   async save(req, res) {
-    const { CompId, BranchId, UserId } = req.user;
+    const { CompId, UserId } = req.user;
     const Id = positiveInt(req.body.Id) ?? 0;
     const fields = pick(req.body, CUSTOMER_FIELDS);
     // The SP enforces both rules too (spec §1); refusing here names the field
@@ -53,10 +65,30 @@ const customerController = {
     if (mobileError) return responseHelper.validationError(res, mobileError);
     // Stored the way it is printed on a registration: upper case, no spaces.
     fields.GSTIN = trimmed(fields.GSTIN)?.toUpperCase().replace(/\s+/g, "") ?? null;
+    // Create: the office is the body's, else the caller's home office. Edit: the
+    // SP ignores @BranchId; a move goes through MoveToBranchId (null = stay).
+    const requested = positiveInt(req.body.BranchId);
+    const target = requested ?? (Id ? null : Number(req.scope.primaryBranchId));
+    if (target && !canWriteBranch(req, target)) {
+      return responseHelper.error(res, "You cannot add customers to that office", "FORBIDDEN", 403);
+    }
+    let BranchId = target;
+    let MoveToBranchId = null;
+    if (Id) {
+      const existing = await assertCustomerVisible(req, res, Id);
+      if (!existing) return;
+      BranchId = existing.BranchId; // ignored by the SP on edit; sent as the current office for clarity
+      if (target && Number(existing.BranchId) !== target) {
+        if (!canWriteBranch(req, existing.BranchId)) {
+          return responseHelper.error(res, "You cannot move this customer", "FORBIDDEN", 403);
+        }
+        MoveToBranchId = target;
+      }
+    }
     return runSp(
       res,
       "sp_SaveCustomer",
-      { Id, CompId, BranchId, UserId, ...fields },
+      { Id, CompId, BranchId, UserId, ...fields, MoveToBranchId },
       "Failed to save customer",
     );
   },
@@ -69,8 +101,7 @@ const customerController = {
       // ceiling of its own. Default 25 matches the SP's own default.
       const { PageNumber, PageSize } = pageParams(req.body, 25);
 
-      // No scopeParams: the SP declares none (company-wide by design, spec §3),
-      // and node-mssql rejects a call that passes an undeclared parameter.
+      // Scoped by the customers module (spec 2026-10-07 §2.5).
       const result = await database.executeStoredProcedure("sp_FetchCustomers", {
         CompId,
         PageNumber,
@@ -78,6 +109,7 @@ const customerController = {
         SearchTerm: trimmed(SearchTerm),
         BranchId: positiveInt(BranchId),
         IsActive: activeBit(IsActive),
+        ...scopeParams(req),
       });
 
       const customers = result.recordsets?.[0] ?? [];
@@ -102,17 +134,19 @@ const customerController = {
     const CustomerId = positiveInt(req.body.CustomerId);
     if (!CustomerId) return responseHelper.validationError(res, "CustomerId is required");
     try {
-      // RS1 is the company-wide customer row; RS2 is that customer's complaints
-      // under the CALLER's scope predicate (plan ambiguity 6) — a Self agent
-      // sees the customer but only their own tickets for them.
+      // RS1 is gated by the customers scope (req.scope); RS2 is that customer's
+      // complaints under the COMPLAINTS scope ("[]" when the role has none).
       const result = await database.executeStoredProcedure("sp_FetchCustomerDetail", {
         CompId,
         CustomerId,
-        ...scopeParams(req),
+        ...scopeParams(req, "complaints"),
       });
       const rs = result.recordsets ?? [];
       const customer = rs[0]?.[0] || null;
       if (!customer) return responseHelper.error(res, "Customer not found", "NOT_FOUND", 404);
+      if (!canSeeRecord(req, customer, "CreatedBy")) {
+        return responseHelper.error(res, "You do not have access to this customer", "FORBIDDEN", 403);
+      }
       return responseHelper.success(res, "Customer detail fetched successfully", {
         customer,
         tickets: rs[1] || [],
@@ -134,3 +168,4 @@ const customerController = {
 };
 
 module.exports = customerController;
+module.exports.assertCustomerVisible = assertCustomerVisible;

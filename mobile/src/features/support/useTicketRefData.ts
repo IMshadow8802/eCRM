@@ -55,8 +55,8 @@ export function useTicketRefData(): TicketRefData {
       lookup(LOOKUP_KIND.transferReason),
       lookup(LOOKUP_KIND.callOutcome),
       {
-        queryKey: ["users", "assignable"],
-        queryFn: () => fetchAssignableUsers(),
+        queryKey: ["users", "assignable", "complaints"],
+        queryFn: () => fetchAssignableUsers({ Module: "complaints" }),
       },
     ],
     // Derived here rather than in each screen's own useMemo — useQueries only

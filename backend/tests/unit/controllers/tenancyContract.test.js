@@ -34,6 +34,7 @@ const MIDDLEWARE = path.join(__dirname, "../../../src/middleware");
  *
  *   sp_ValidateUser              @identifier, @UserId      — login; no session yet
  *   sp_FetchMenu                 @Id, @UserId, @ParentId   — menu for one user
+ *   sp_FetchUserMenus            @UserId                   — same menu rows, one user (token's id)
  *   sp_FetchNotifications        @UserId, ...              — one user's inbox
  *   sp_MarkNotificationRead      @Id, @UserId              — own row only
  *   sp_MarkAllNotificationsRead  @UserId                   — own rows only
@@ -52,6 +53,7 @@ const MIDDLEWARE = path.join(__dirname, "../../../src/middleware");
 const EXEMPT = new Set([
   "sp_ValidateUser",
   "sp_FetchMenu",
+  "sp_FetchUserMenus",
   "sp_FetchNotifications",
   "sp_MarkNotificationRead",
   "sp_MarkAllNotificationsRead",
@@ -114,7 +116,7 @@ function callsIn(file) {
  *    (`sp_FetchWorkspaceMembers`) — both hand-verified to carry CompId.
  *    Relatedly: the it.each(FILES) literal-call sweep further down runs over
  *    CONTROLLERS only, so `permission.js`'s three literal-name calls
- *    (`sp_FetchAccessibleBranchIds`, `sp_CheckTaskPermission`,
+ *    (`sp_FetchUserAccess`, `sp_CheckTaskPermission`,
  *    `sp_FetchAssignableUsers`) are unchecked by *that* sweep even though
  *    permission.js is now in this guard's own scan for the variable-name
  *    shape. All three hand-verified to carry CompId.

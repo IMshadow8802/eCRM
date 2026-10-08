@@ -3,11 +3,13 @@ const responseHelper = require("../utils/responseHelper");
 const attachmentController = require("./attachmentController");
 const {
   scopeParams,
+  scopeFor,
   canSeeRecord,
   assertRecordAccess,
   assertCanAssign,
   canReopen,
 } = require("../middleware/permission");
+const { assertCustomerVisible } = require("./customerController");
 const { positiveInt, pageParams } = require("../utils/controllerKit");
 const { parseDay } = require("../utils/reportKit");
 
@@ -63,7 +65,7 @@ async function gateTicket(req, res, TicketId) {
     responseHelper.validationError(res, "TicketId is required");
     return null;
   }
-  return (await assertRecordAccess(req, res, "ticket", TicketId)) || null;
+  return (await assertRecordAccess(req, res, "ticket", TicketId, "write")) || null;
 }
 
 // Shared by transfer and bulkTransfer: the SP requires a reason and remarks,
@@ -94,12 +96,15 @@ const ticketController = {
       if (fields.AssignedTo
           && !(await assertCanAssign(req, res, { toUserId: fields.AssignedTo, toBranchId: null }))) return;
     } else {
-      if (!(await assertRecordAccess(req, res, "ticket", Id))) return;
+      if (!(await assertRecordAccess(req, res, "ticket", Id, "write"))) return;
       // Ownership moves through transfer (history + notification), status
       // through setStatus (the reopen gate). The SP ignores AssignedTo on
       // update; not sending it keeps that fact visible here, not in T-SQL.
       fields.AssignedTo = null;
     }
+    // A ticket may only hang off a customer the caller can see (customers scope).
+    if (fields.CustomerId
+        && !(await assertCustomerVisible(req, res, fields.CustomerId, scopeFor(req, "customers")))) return;
     return runSp(res, "sp_SaveTicket", { Id, CompId, BranchId, UserId, ...fields }, "Failed to save ticket");
   },
 
@@ -300,7 +305,7 @@ const ticketController = {
     // upgrade path = one sp_FetchTicketsVisibility(@TicketIdsJson) returning
     // Id/BranchId/AssignedTo/CreatedBy + canSeeRecord per row.
     for (const id of ids) {
-      if (!(await assertRecordAccess(req, res, "ticket", id))) return;
+      if (!(await assertRecordAccess(req, res, "ticket", id, "write"))) return;
     }
     if (!(await assertCanAssign(req, res, { toUserId: args.ToUserId, toBranchId: args.ToBranchId }))) return;
     return runSp(
@@ -357,7 +362,7 @@ const ticketController = {
     if (!Id) return responseHelper.validationError(res, "Id is required");
     // Spec 2 §2 Delete: the record gate. Without it any authenticated user
     // could delete any ticket in the company by id.
-    if (!(await assertRecordAccess(req, res, "ticket", Id))) return;
+    if (!(await assertRecordAccess(req, res, "ticket", Id, "write"))) return;
     try {
       const result = await database.executeStoredProcedure("sp_DeleteTicket", { Id, CompId });
       const spResponse = result.recordset?.[0] ?? result.recordsets?.[0]?.[0];

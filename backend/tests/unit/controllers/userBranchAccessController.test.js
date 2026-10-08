@@ -13,6 +13,7 @@ jest.mock("../../../src/utils/activityLogger", () => ({
 
 const database = require("../../../src/config/database");
 const { logActivity } = require("../../../src/utils/activityLogger");
+const { mockAccess } = require("../../helpers/mockAccess");
 const controller = require("../../../src/controllers/userBranchAccessController");
 const { mockRes } = require("../../helpers/mockRes");
 
@@ -191,22 +192,16 @@ describe("userBranchAccessController.fetch", () => {
 });
 
 describe("userBranchAccessController.myScope", () => {
-  it("hands back what loadScope put on the request", async () => {
+  it("hands back the caller's public access, not the office lists", async () => {
     const res = mockRes();
-    await controller.myScope(baseReq(), res);
+    await controller.myScope(baseReq({ access: mockAccess({ sensitive: true, modules: [["leads", "v", "Own"]] }, 7) }), res);
 
     expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.json.mock.calls[0][0]).toMatchObject({
-      success: true,
-      message: "Scope retrieved",
-      data: { branchIds: [2], ownerIds: [] },
-    });
-  });
-
-  it("returns null rather than undefined when the request carries no scope", async () => {
-    const res = mockRes();
-    await controller.myScope(baseReq({ scope: undefined }), res);
-    expect(res.json.mock.calls[0][0].data).toBeNull();
+    const body = res.json.mock.calls[0][0];
+    expect(body).toMatchObject({ success: true, message: "Scope retrieved" });
+    expect(body.data.access).toMatchObject({ isAdmin: false, canSeeSensitive: true, primaryBranchId: 2 });
+    expect(body.data.access.modules.leads.reach).toBe("Own");
+    expect(body.data.access).not.toHaveProperty("lists");
   });
 });
 

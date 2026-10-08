@@ -12,9 +12,14 @@ vi.mock("../../../utils/axiosConfig", () => ({
   apiClient: { post: (...args) => post(...args) },
 }));
 
+// The editor's own access; tests flip isAdmin / canSeeSensitive.
+let editorAccess;
 vi.mock("../../../stores/useAuthStore", () => ({
   __esModule: true,
-  default: () => ({ CompId: 1, BranchId: 2, UserId: 7 }),
+  default: (sel) => {
+    const state = { CompId: 1, BranchId: 2, UserId: 7, access: editorAccess };
+    return sel ? sel(state) : state;
+  },
 }));
 
 vi.mock("../../../hooks/useApiQuery", () => ({
@@ -63,6 +68,7 @@ beforeEach(() => {
   post.mockReset();
   post.mockResolvedValue({ data: { success: true } });
   enqueueSnackbar.mockReset();
+  editorAccess = { isAdmin: false, canSeeSensitive: true, modules: {} };
   useApiQuery.mockReset();
   useApiQuery.mockImplementation(({ endpoint }) =>
     endpoint === "/api/users/fetchBranches"
@@ -343,9 +349,9 @@ describe("UserForm role, branch and admin flag", () => {
   it("defaults the Branch to the admin's and sends a picked one", async () => {
     renderForm({});
     const user = userEvent.setup();
-    expect(screen.getByLabelText(/^Branch/)).toHaveValue("Mumbai");
+    expect(screen.getByLabelText(/^Office/)).toHaveValue("Mumbai");
     await fillCreate(user, "bran");
-    await user.click(screen.getByLabelText(/^Branch/));
+    await user.click(screen.getByLabelText(/^Office/));
     await user.click(await screen.findByRole("option", { name: "Delhi" }));
     await submit(/create user/i);
     await waitFor(() => expect(post.mock.calls[0][1]).toMatchObject({ BranchId: 3 }));
@@ -362,7 +368,7 @@ describe("UserForm role, branch and admin flag", () => {
   // REGRESSION: onSubmit used to overwrite BranchId with the admin's.
   it("edit prefills the user's branch and sends it, not the admin's", async () => {
     renderForm({ editingUser: EXISTING_USER });
-    expect(screen.getByLabelText(/^Branch/)).toHaveValue("Delhi");
+    expect(screen.getByLabelText(/^Office/)).toHaveValue("Delhi");
     await submit(/update user/i);
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
     expect(post.mock.calls[0][1].BranchId).toBe(3);
@@ -371,7 +377,7 @@ describe("UserForm role, branch and admin flag", () => {
   it("falls back to an empty branch list before branches load", async () => {
     useApiQuery.mockImplementation(() => ({ data: undefined }));
     renderForm({});
-    await userEvent.click(screen.getByLabelText(/^Branch/));
+    await userEvent.click(screen.getByLabelText(/^Office/));
     expect(await screen.findByText(/Nothing found/i)).toBeInTheDocument();
   });
 });
@@ -474,5 +480,205 @@ describe("UserForm deactivation", () => {
     await submit(/update user/i);
     await waitFor(() => expect(saves()).toHaveLength(1));
     expect(post.mock.calls.some(([u]) => u === "/api/users/fetchUserHandover")).toBe(false);
+  });
+});
+
+describe("UserForm org hierarchy", () => {
+  const saves = () => post.mock.calls.filter(([u]) => u === "/api/users/saveUser");
+  const MANAGED = { ...EXISTING_USER, ReportsTo: 4 };
+
+  it("clearing Reports To on edit sends 0", async () => {
+    renderForm({ editingUser: MANAGED });
+    const user = userEvent.setup();
+    expect(screen.getByLabelText(/Reports To/)).toHaveValue("Meera Manager");
+    await user.click(within(screen.getByText("Reports To").parentElement).getByTitle("Clear"));
+    await submit(/update user/i);
+    await waitFor(() => expect(saves()).toHaveLength(1));
+    expect(saves()[0][1].ReportsTo).toBe(0);
+  });
+
+  it("leaving Reports To untouched on edit sends the current id", async () => {
+    renderForm({ editingUser: MANAGED });
+    await submit(/update user/i);
+    await waitFor(() => expect(saves()).toHaveLength(1));
+    expect(saves()[0][1].ReportsTo).toBe(4);
+  });
+
+  it("hides Hourly rate, Mobile and Email inputs when the editor lacks the sensitive permission", async () => {
+    editorAccess = { isAdmin: false, canSeeSensitive: false, modules: {} };
+    renderForm({ editingUser: EXISTING_USER });
+    expect(screen.queryByLabelText(/^Email/)).toBeNull();
+    expect(screen.queryByLabelText(/^Mobile/)).toBeNull();
+    expect(screen.queryByLabelText(/^Hourly Rate/)).toBeNull();
+    await submit(/update user/i);
+    await waitFor(() => expect(saves()).toHaveLength(1));
+    const body = saves()[0][1];
+    expect(body).not.toHaveProperty("Email");
+    expect(body).not.toHaveProperty("Mobile");
+    expect(body).not.toHaveProperty("HourlyRate");
+  });
+
+  it("shows them to an editor with the sensitive permission", () => {
+    renderForm({ editingUser: EXISTING_USER });
+    expect(screen.getByLabelText(/^Email/)).toHaveValue("vikas@jaiswal.com");
+    expect(screen.getByLabelText(/^Hourly Rate/)).toBeInTheDocument();
+  });
+
+  it("office picker lists offices indented by depth", async () => {
+    useApiQuery.mockImplementation(({ endpoint }) =>
+      endpoint === "/api/users/fetchBranches"
+        ? {
+            data: {
+              branches: [
+                { Id: 3, BranchName: "Delhi", ParentId: 1, IsActive: true },
+                { Id: 1, BranchName: "HO", ParentId: null, IsActive: true },
+                { Id: 5, BranchName: "Saket", ParentId: 3, IsActive: true },
+                { Id: 6, BranchName: "Closed", ParentId: 1, IsActive: false },
+              ],
+            },
+          }
+        : { data: { users: [] } }
+    );
+    renderForm({});
+    const user = userEvent.setup();
+    await user.click(screen.getByLabelText(/^Office/));
+    const names = (await screen.findAllByRole("option")).map((o) => o.textContent);
+    expect(names).toEqual(["HO", "— Delhi", "— — Saket"]);
+  });
+
+  describe("extra offices", () => {
+    const BRANCHES = [
+      { Id: 1, BranchName: "HO", ParentId: null, IsActive: true },
+      { Id: 2, BranchName: "Mumbai", ParentId: 1, IsActive: true },
+      { Id: 3, BranchName: "Delhi", ParentId: 1, IsActive: true },
+      { Id: 4, BranchName: "Pune", ParentId: 1, IsActive: true },
+    ];
+    // Delhi is the user's own office; Mumbai is already an extra grant (row 31).
+    const route = (grants = [{ Id: 31, UserId: 11, BranchId: 2, BranchName: "Mumbai" }]) =>
+      useApiQuery.mockImplementation(({ endpoint, params, enabled }) => {
+        if (endpoint === "/api/users/fetchBranches") return { data: { branches: BRANCHES } };
+        if (endpoint === "/api/user-branch-access/fetchUserBranchAccess") {
+          if (grants === "pending") return { data: undefined, isLoading: true };
+          return enabled && params.UserId === 11 ? { data: { branchAccess: grants } } : { data: undefined };
+        }
+        return { data: { users: [] } };
+      });
+    const access = () => post.mock.calls.filter(([u]) => u.startsWith("/api/user-branch-access/"));
+    const extraField = () => screen.getByText("Extra offices").parentElement;
+
+    it("is hidden from a non-admin editor", () => {
+      route();
+      renderForm({ editingUser: EXISTING_USER });
+      expect(screen.queryByText("Extra offices")).toBeNull();
+    });
+
+    it("extra offices picker shows for a role with Office reach and saves each grant", async () => {
+      editorAccess = { isAdmin: true, canSeeSensitive: true, modules: {} };
+      route();
+      post.mockImplementation((url) =>
+        Promise.resolve({ data: { success: true, data: url === "/api/users/saveUser" ? { userId: 11 } : { id: 40 } } })
+      );
+      const onClose = vi.fn();
+      renderForm({ editingUser: EXISTING_USER, onClose });
+      const user = userEvent.setup();
+
+      // Loaded grant shows as a chip; the user's own office is not offered.
+      expect(within(extraField()).getByText("— Mumbai")).toBeInTheDocument();
+      await user.click(within(extraField()).getByRole("combobox"));
+      const offered = (await screen.findAllByRole("option")).map((o) => o.textContent);
+      expect(offered).not.toContain("— Delhi");
+      await user.click(screen.getByRole("option", { name: "— Pune" }));
+      // Drop Mumbai.
+      await user.click(within(within(extraField()).getByText("— Mumbai").closest(".MuiChip-root")).getByTestId("CancelIcon"));
+
+      await submit(/update user/i);
+      await waitFor(() => expect(onClose).toHaveBeenCalled());
+      expect(access()).toEqual([
+        ["/api/user-branch-access/saveUserBranchAccess", { UserId: 11, BranchId: 4, CanRead: 1, CanWrite: 1 }],
+        ["/api/user-branch-access/deleteUserBranchAccess", { Id: 31 }],
+      ]);
+    });
+
+    it("grants extra offices to a user being created, using the new id", async () => {
+      editorAccess = { isAdmin: true, canSeeSensitive: true, modules: {} };
+      route();
+      post.mockImplementation((url) =>
+        Promise.resolve({ data: { success: true, data: url === "/api/users/saveUser" ? { userId: 77 } : {} } })
+      );
+      renderForm({});
+      const user = userEvent.setup();
+      await fillCreate(user, "newbie");
+      await user.click(within(extraField()).getByRole("combobox"));
+      await user.click(await screen.findByRole("option", { name: "— Pune" }));
+      await submit(/create user/i);
+      await waitFor(() =>
+        expect(access()).toEqual([
+          ["/api/user-branch-access/saveUserBranchAccess", { UserId: 77, BranchId: 4, CanRead: 1, CanWrite: 1 }],
+        ])
+      );
+    });
+
+    it("forgets unsaved picks when the form is cancelled", async () => {
+      editorAccess = { isAdmin: true, canSeeSensitive: true, modules: {} };
+      route();
+      renderForm({}); // onClose is a spy, so the form stays on screen after Cancel
+      const user = userEvent.setup();
+      await user.click(within(extraField()).getByRole("combobox"));
+      await user.click(await screen.findByRole("option", { name: "— Pune" }));
+      expect(within(extraField()).getByText("— Pune")).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: /cancel/i }));
+      expect(within(extraField()).queryByText("— Pune")).toBeNull();
+    });
+
+    it("never revokes a grant on the user's own office (the home office is implied)", async () => {
+      editorAccess = { isAdmin: true, canSeeSensitive: true, modules: {} };
+      route([
+        { Id: 31, UserId: 11, BranchId: 2 },
+        { Id: 32, UserId: 11, BranchId: 3 }, // Delhi, the user's own office
+      ]);
+      const onClose = vi.fn();
+      renderForm({ editingUser: EXISTING_USER, onClose });
+      await submit(/update user/i);
+      await waitFor(() => expect(onClose).toHaveBeenCalled());
+      expect(access()).toEqual([]);
+    });
+
+    it("keeps the picker disabled until the grants have loaded", () => {
+      editorAccess = { isAdmin: true, canSeeSensitive: true, modules: {} };
+      route("pending");
+      renderForm({ editingUser: EXISTING_USER });
+      expect(within(extraField()).getByRole("combobox")).toBeDisabled();
+    });
+
+    it("sends nothing when the extra offices did not change", async () => {
+      editorAccess = { isAdmin: true, canSeeSensitive: true, modules: {} };
+      route();
+      const onClose = vi.fn();
+      renderForm({ editingUser: EXISTING_USER, onClose });
+      await submit(/update user/i);
+      await waitFor(() => expect(onClose).toHaveBeenCalled());
+      expect(access()).toEqual([]);
+    });
+
+    it("says so when a grant fails after the user saved", async () => {
+      editorAccess = { isAdmin: true, canSeeSensitive: true, modules: {} };
+      route([]);
+      post.mockImplementation((url) =>
+        url === "/api/users/saveUser"
+          ? Promise.resolve({ data: { success: true, data: { userId: 11 } } })
+          : Promise.reject({ response: { data: { message: "Admins only" } } })
+      );
+      renderForm({ editingUser: EXISTING_USER });
+      const user = userEvent.setup();
+      await user.click(within(extraField()).getByRole("combobox"));
+      await user.click(await screen.findByRole("option", { name: "— Pune" }));
+      await submit(/update user/i);
+      await waitFor(() =>
+        expect(enqueueSnackbar).toHaveBeenCalledWith(
+          "User saved, but extra offices were not updated: Admins only",
+          { variant: "warning" }
+        )
+      );
+    });
   });
 });

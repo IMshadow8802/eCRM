@@ -83,7 +83,7 @@ describe("TransferLeadModal", () => {
     const user = userEvent.setup();
 
     await pick(user, "transfer-branch", "Nashik");
-    await waitFor(() => expect(cap.roster).toEqual({ BranchId: 4 }));
+    await waitFor(() => expect(cap.roster).toEqual({ BranchId: 4, Module: "leads" }));
     await pick(user, "transfer-owner", "Nashik Nina");
     await pick(user, "transfer-reason", "Wrong branch");
     await user.type(screen.getByTestId("transfer-remarks"), "Address is Nashik");

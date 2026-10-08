@@ -41,7 +41,8 @@ const callController = {
     }
     // The caller must be able to see the record they log a call against.
     const entity = LeadId ? "lead" : "ticket";
-    if (!(await assertRecordAccess(req, res, entity, LeadId ?? TicketId))) return;
+    // Level "write": the route is open(), so this is the only edit gate.
+    if (!(await assertRecordAccess(req, res, entity, LeadId ?? TicketId, "write"))) return;
     return runSp(
       res,
       "sp_LogCall",
