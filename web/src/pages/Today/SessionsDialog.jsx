@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { MonitorSmartphone } from "lucide-react";
 
-import { Modal, Button } from "../../components/ui";
+import { Modal, Button, Tooltip } from "../../components/ui";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { apiClient } from "../../utils/axiosConfig";
 import useAuthStore from "../../stores/useAuthStore";
@@ -31,22 +31,22 @@ export default function SessionsDialog({ open, person, onClose }) {
       refetch();
     } catch (e) {
       setConfirming(false);
-      setError(e?.response?.data?.message || "Could not end the sessions");
+      setError(e?.response?.data?.message || "Could not sign out");
     }
   };
 
   return (
     <>
       <Modal open={open} onClose={onClose} size="lg" data-testid="sessions-dialog">
-        <Modal.Header title="Sessions" subtitle={person?.FullName} icon={<MonitorSmartphone size={18} />} onClose={onClose} />
+        <Modal.Header title="Sign-ins" subtitle={person?.FullName} icon={<MonitorSmartphone size={18} />} onClose={onClose} />
         <Modal.Body>
           {error && <div role="alert">{error}</div>}
           {sessions.length === 0 ? (
-            <p>No sessions yet.</p>
+            <p>No sign-ins yet.</p>
           ) : (
             <table style={{ width: "100%", fontSize: 13 }}>
               <thead>
-                <tr><th align="left">Device</th><th align="left">IP</th><th align="left">Started</th><th align="left">Last seen</th><th align="left">Ended</th></tr>
+                <tr><th align="left">Device</th><th align="left">IP</th><th align="left">Signed in</th><th align="left">Last active</th><th align="left">Signed out</th></tr>
               </thead>
               <tbody>
                 {sessions.map((s) => (
@@ -64,16 +64,20 @@ export default function SessionsDialog({ open, person, onClose }) {
         </Modal.Body>
         <Modal.Footer>
           <Button variant="ghost" onClick={onClose}>Close</Button>
-          <Button variant="primary" disabled={isSelf} onClick={() => setConfirming(true)} data-testid="sessions-end-all">
-            End all sessions
-          </Button>
+          <Tooltip title={isSelf ? "You cannot sign yourself out here." : "Signs this person out of every phone and computer. They must sign in again. Use it if a phone is lost or shared."}>
+            <span>
+              <Button variant="primary" disabled={isSelf} onClick={() => setConfirming(true)} data-testid="sessions-end-all">
+                Sign out everywhere
+              </Button>
+            </span>
+          </Tooltip>
         </Modal.Footer>
       </Modal>
       <Modal open={confirming} onClose={() => setConfirming(false)} size="sm" data-testid="sessions-confirm">
-        <Modal.Header title="End all sessions?" subtitle={`${person?.FullName} will be signed out everywhere.`} onClose={() => setConfirming(false)} />
+        <Modal.Header title="Sign out of all devices?" subtitle={`${person?.FullName} will be signed out everywhere.`} onClose={() => setConfirming(false)} />
         <Modal.Footer>
           <Button variant="ghost" onClick={() => setConfirming(false)}>Cancel</Button>
-          <Button variant="primary" onClick={endAll} data-testid="sessions-confirm-end">End sessions</Button>
+          <Button variant="primary" onClick={endAll} data-testid="sessions-confirm-end">Sign out everywhere</Button>
         </Modal.Footer>
       </Modal>
     </>

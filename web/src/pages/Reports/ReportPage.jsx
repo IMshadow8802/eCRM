@@ -56,6 +56,7 @@ export default function ReportPage({
   kpis = [],
   columns,
   trend = null,
+  guide = HELP_GUIDES.reports,
   drill = defaultDrill,
   // A page's own default date basis. Falls back to the first offered basis, so
   // a single-basis page posts the basis it advertises instead of "created".
@@ -130,6 +131,7 @@ export default function ReportPage({
     key: c.key,
     header: c.header ?? groupLabel,
     align: c.align,
+    hint: c.hint,
     cell: (r) => formatValue(c.format, r[c.key]),
   }));
 
@@ -161,7 +163,7 @@ export default function ReportPage({
             >
               Export CSV
             </Button>
-            <HelpGuide guide={HELP_GUIDES.reports} />
+            <HelpGuide guide={guide} />
           </Box>
         }
       />
@@ -242,13 +244,14 @@ export default function ReportPage({
       {/* KPI strip */}
       {kpis.length > 0 && (
         <Box
-          sx={{ display: "grid", gap: 1.5, gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}
+          sx={{ display: "grid", gap: 1.5, gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))" }}
           data-testid="report-kpis"
         >
           {kpis.map((k) => (
             <StatisticsCard
               key={k.key}
               title={k.label}
+              hint={k.hint}
               color={k.tone ?? "primary"}
               value={isLoading ? <Skeleton width={60} height={28} /> : formatValue(k.format, kpiRow[k.key])}
             />
@@ -257,7 +260,8 @@ export default function ReportPage({
       )}
 
       {/* Trend */}
-      {trend && trendRows.length > 0 && <TrendArea data={trendRows} xKey="Bucket" series={trend.series} />}
+      {/* One point is a dot on an empty grid, not a trend: wait for two. */}
+      {trend && trendRows.length > 1 && <TrendArea data={trendRows} xKey="Bucket" series={trend.series} />}
 
       {/* Breakdown */}
       {isLoading ? (

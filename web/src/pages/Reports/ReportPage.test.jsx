@@ -52,7 +52,7 @@ describe("ReportPage", () => {
     expect(screen.getByTestId("report-kpis")).toHaveTextContent("Created");
     expect(screen.getByTestId("report-kpis")).toHaveTextContent("1,234");
     expect(screen.getByTestId("report-kpis")).toHaveTextContent("12.5%");
-    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Source", "Created"]);
+    expect(within(table).getAllByRole("columnheader").map((h) => h.querySelector(".Mui-TableHeadCell-Content-Wrapper").textContent)).toEqual(["Source", "Created"]);
     expect(within(table).getByText("Website")).toBeInTheDocument();
     expect(screen.getByTestId("trend-area-legend-Created")).toBeInTheDocument();
   });
@@ -154,6 +154,13 @@ describe("ReportPage", () => {
     expect(screen.queryByTestId("report-basis-input")).toBeNull();
     expect(screen.queryByTestId("report-groupby")).toBeNull();
     expect(screen.queryByTestId("report-kpis")).toBeNull();
+    expect(screen.queryByTestId("trend-area")).toBeNull();
+  });
+
+  it("draws no trend from a single point (one week of data is a dot on an empty grid)", async () => {
+    mockReportEndpoints("/api/reports/funnel", { ...DATA, trend: [{ Bucket: "2026-10-05", Created: 3 }] });
+    renderPage();
+    await screen.findByTestId("funnel-table");
     expect(screen.queryByTestId("trend-area")).toBeNull();
   });
 

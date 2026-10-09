@@ -3,6 +3,7 @@ import { useTheme } from "@mui/material/styles";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 
 import { Card } from "./ui";
+import Tooltip from "./ui/Tooltip";
 
 const TONE_MAP = {
   primary: "primary",
@@ -23,6 +24,7 @@ export function StatisticsCard({
   color = "primary",
   icon,
   title,
+  hint,
   value,
   footer = null,
   trend = null,
@@ -78,7 +80,11 @@ export function StatisticsCard({
             overflowWrap: "anywhere",
           }}
         >
-          {title}
+          {hint ? (
+            <Tooltip title={hint}>
+              <span tabIndex={0} style={{ cursor: "help" }}>{title}</span>
+            </Tooltip>
+          ) : title}
         </span>
       </div>
 

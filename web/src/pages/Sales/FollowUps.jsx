@@ -204,7 +204,6 @@ const FollowUps = () => {
         </Box>
       );
     },
-    muiTableContainerProps: { sx: { maxHeight: "500px" } },
   });
 
   return (

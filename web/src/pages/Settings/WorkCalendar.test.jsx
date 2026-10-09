@@ -55,7 +55,7 @@ describe("WorkCalendar", () => {
     ]);
     renderWithProviders(<WorkCalendar />);
     const table = await screen.findByTestId("shifts-table");
-    expect(within(table).getByRole("columnheader", { name: "Hours" })).toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: /Hours/ })).toBeInTheDocument();
     expect(within(table).getByText("Mon–Sat 09:00–18:00 · break 13:00–14:00")).toBeInTheDocument();
     expect(within(table).getByText("Mon–Fri 21:00–06:00")).toBeInTheDocument();
     expect(within(table).getByText("Mon 09:00–17:00; Tue 10:00–17:00")).toBeInTheDocument();
@@ -70,7 +70,7 @@ describe("WorkCalendar", () => {
     asEditor(false);
     renderWithProviders(<WorkCalendar />);
     const table = await screen.findByTestId("shifts-table");
-    expect(within(table).queryByRole("columnheader", { name: "Actions" })).toBeNull();
+    expect(within(table).queryByRole("columnheader", { name: /Actions/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "Edit General" })).toBeNull();
   });
 
@@ -186,7 +186,7 @@ describe("WorkCalendar", () => {
     await user.click(screen.getByTestId("work-calendar-tabs-holidays"));
     expect(screen.queryByRole("button", { name: "New holiday" })).not.toBeInTheDocument();
     await user.click(screen.getByTestId("work-calendar-tabs-rules"));
-    expect(await screen.findByLabelText("Late grace (minutes)")).toBeDisabled();
+    expect(await screen.findByLabelText("Count as late after (minutes)")).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Save rules" })).not.toBeInTheDocument();
   });
 });

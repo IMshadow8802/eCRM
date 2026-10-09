@@ -108,7 +108,6 @@ const Leads = () => {
         <Tooltip title="Delete"><IconButton size="sm" variant="ghost" tone="error" aria-label="Delete lead" data-testid={`delete-lead-${row.original.Id}`} onClick={() => setDeleteLead(row.original)}><Trash2 size={16} /></IconButton></Tooltip>
       </Box>
     ),
-    muiTableContainerProps: { sx: { maxHeight: "500px" } },
   });
 
   const selectedIds = Object.keys(table.getState?.()?.rowSelection ?? {}).map(Number);

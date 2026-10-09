@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
-import { Chip } from "../ui";
-import { tatChip } from "../../utils/tatChip";
+import { Chip, Tooltip } from "../ui";
+import { tatChip, tatSentence } from "../../utils/tatChip";
 
 const TONE = { ok: "success", warn: "warning", over: "error", held: "default" };
 
@@ -19,15 +19,19 @@ export default function TatChip({ task }) {
   if (!chip) return null;
   const Icon = chip.icon;
   return (
-    <Chip
-      label={chip.text}
-      icon={<Icon size={11} />}
-      tone={TONE[chip.tone]}
-      size="sm"
-      variant="tonal"
-      aria-label={chip.text}
-      data-tone={chip.tone}
-      data-testid={`card-tat-${task.Id}`}
-    />
+    <Tooltip title={tatSentence(task, now)}>
+      <span style={{ display: "inline-flex" }}>
+      <Chip
+        label={chip.text}
+        icon={<Icon size={11} />}
+        tone={TONE[chip.tone]}
+        size="sm"
+        variant="tonal"
+        aria-label={tatSentence(task, now)}
+        data-tone={chip.tone}
+        data-testid={`card-tat-${task.Id}`}
+      />
+      </span>
+    </Tooltip>
   );
 }

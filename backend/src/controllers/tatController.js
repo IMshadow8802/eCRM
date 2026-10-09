@@ -60,9 +60,9 @@ class TatController {
   fetchTatPolicy = asyncRoute(
     async (req, res) => {
       const result = await database.executeStoredProcedure("sp_FetchTatPolicy", { CompId: req.user.CompId });
-      return success(res, "TAT policy fetched", { policy: rows(result) });
+      return success(res, "Time allowed per priority fetched", { policy: rows(result) });
     },
-    "Failed to fetch the TAT policy",
+    "Failed to fetch the time allowed per priority",
     "TAT_POLICY_FETCH_ERROR",
   );
 
@@ -82,7 +82,7 @@ class TatController {
       }
       return reply(res, row);
     },
-    "Failed to save the TAT policy",
+    "Failed to save the time allowed per priority",
     "TAT_POLICY_SAVE_ERROR",
   );
 
@@ -103,7 +103,7 @@ class TatController {
           if (chain.some((u) => Number(u.Id) === me)) judged.add(id);
         }
       }
-      return success(res, "Task TAT fetched", {
+      return success(res, "Task deadline fetched", {
         clocks: clocks.map((c) => {
           const uid = Number(c.UserId);
           return { ...c, CanJudge: uid !== me && (wide || judged.has(uid)) };
@@ -126,7 +126,7 @@ class TatController {
       const row = firstRow(result);
       return reply(res, row, { acknowledged: row?.Acknowledged === true || row?.Acknowledged === 1 });
     },
-    "Failed to acknowledge",
+    "Failed to accept the task",
     "TAT_ACK_ERROR",
   );
 
@@ -147,7 +147,7 @@ class TatController {
         const info = (await calendarContext.load(CompId, [me], dateKey(now), addDays(dateKey(now), 30))).get(me);
         autoRelease = addWorkingMinutes(now, SELF_HOLD_MIN, info?.ctx ?? { days: DEFAULT_DAYS, holidays: new Set(), marks: new Map() });
       } else if (!(await taskAllowed(req, taskId, "reassign"))) {
-        return forbidden(res, "Only the creator or a workspace owner/manager can hold everyone's clock");
+        return forbidden(res, "Only the creator or a workspace owner/manager can hold everyone's timer");
       }
       const result = await database.executeStoredProcedure("sp_TatHold", {
         CompId, TaskId: taskId, UserId: Mine ? me : null, ReasonId: reasonId, Remarks,
@@ -227,7 +227,7 @@ class TatController {
       const CompId = req.user.CompId;
       // ActorManagesWorkspace speaks for THIS task, so the clock must be one of its clocks.
       const clocks = rows(await database.executeStoredProcedure("sp_FetchTaskTat", { CompId, TaskId: taskId }));
-      if (!clocks.some((c) => Number(c.Id) === tatId)) return error(res, "Clock not found", "NOT_FOUND", 404);
+      if (!clocks.some((c) => Number(c.Id) === tatId)) return error(res, "Deadline timer not found", "NOT_FOUND", 404);
       const manages = await taskAllowed(req, taskId, JUDGE_ACTION);
       const result = await database.executeStoredProcedure("sp_TatSaveVerdict", {
         CompId, TatId: tatId, ActorUserId: req.user.UserId, Verdict: req.body.Verdict ?? null,
@@ -235,7 +235,7 @@ class TatController {
       });
       return reply(res, firstRow(result));
     },
-    "Failed to save the verdict",
+    "Failed to save the decision",
     "TAT_VERDICT_ERROR",
   );
 

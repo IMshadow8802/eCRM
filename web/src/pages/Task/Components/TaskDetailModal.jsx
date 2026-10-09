@@ -15,6 +15,7 @@ import {
   Modal,
   Button,
   TextInput,
+  Tooltip,
   TextArea,
   NumberInput,
   DateField,
@@ -281,7 +282,7 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
               },
               { value: "history", label: "History" },
               // No TAT in personal workspaces (D10).
-              ...(isPersonal ? [] : [{ value: "tat", label: "TAT" }]),
+              ...(isPersonal ? [] : [{ value: "tat", label: "Deadline" }]),
             ]}
             data-testid="task-tabs"
           />
@@ -401,30 +402,38 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
                     <div style={{ display: "flex", gap: 12 }}>
                       {draft.DueDate && (
                         <div style={{ flex: 1 }}>
+                          <Tooltip title="The time of day the work is due. Leave empty to use the end of the working day on the person's shift.">
+                          <div>
                           <TextInput
                             type="time"
                             label="Due time"
-                            hint="Empty = end of the shift"
+                            hint="Empty = end of the working day on the person's shift"
                             value={draft.DueTime}
                             onChange={(e) => setDraft((d) => ({ ...d, DueTime: e.target.value }))}
                             disabled={!canEditThisTask}
                             data-testid="task-due-time-input"
                           />
+                          </div>
+                          </Tooltip>
                         </div>
                       )}
                       {/* reassign in sp_CheckTaskPermission = editFields here */}
                       {!isPersonal && canEditThisTask && (
                         <div style={{ flex: 1 }}>
+                          <Tooltip title="How long this person has to finish, counted in working hours only. Leave empty to use the company default for the priority. Enter 0 for no deadline. Only the board owner, a manager or the task creator can change it.">
+                          <div>
                           <TextInput
                             type="number"
-                            label="Time target (hours)"
-                            hint="Empty = company default · 0 = no clock"
+                            label="Time allowed (working hours)"
+                            hint="Empty = company default for the priority · 0 = no deadline · only the board owner, a manager or the task creator can change it"
                             value={draft.TatHours}
                             onChange={(e) => setDraft((d) => ({ ...d, TatHours: e.target.value }))}
                             min={0}
                             step={0.5}
                             data-testid="task-tat-hours-input"
                           />
+                          </div>
+                          </Tooltip>
                         </div>
                       )}
                     </div>

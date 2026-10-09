@@ -1428,20 +1428,20 @@ describe("TaskDetailModal — TAT", () => {
     expect(saved).toMatchObject({ DueTime: null, TatMinutes: 90 });
   });
 
-  it("a TAT tab after History opens the clock panel", async () => {
+  it("a Deadline tab after History opens the clock panel", async () => {
     renderModal(501);
     await screen.findByText("Task 501");
     const tabs = screen.getAllByRole("tab").map((t) => t.textContent);
-    expect(tabs.indexOf("TAT")).toBe(tabs.findIndex((t) => t.startsWith("History")) + 1);
-    await userEvent.setup().click(screen.getByRole("tab", { name: "TAT" }));
-    expect(await screen.findByText("No time target running")).toBeInTheDocument();
+    expect(tabs.indexOf("Deadline")).toBe(tabs.findIndex((t) => t.startsWith("History")) + 1);
+    await userEvent.setup().click(screen.getByRole("tab", { name: "Deadline" }));
+    expect(await screen.findByText("No deadline on this task")).toBeInTheDocument();
   });
 
   it("personal boards have no TAT tab and no target", async () => {
     useWorkspaceStore.getState().setActiveWorkspace({ Id: 100, Type: "personal", MyRole: "owner" });
     renderModal(501);
     await screen.findByText("Task 501");
-    expect(screen.queryByRole("tab", { name: "TAT" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Deadline" })).toBeNull();
     expect(screen.queryByTestId("task-tat-hours-input")).toBeNull();
   });
 

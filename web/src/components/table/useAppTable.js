@@ -1,3 +1,4 @@
+import { useLayoutEffect, useState } from "react";
 import { useMaterialReactTable } from "material-react-table";
 import { tableDefaults } from "./tableDefaults";
 
@@ -26,13 +27,22 @@ export default function useAppTable(options = {}) {
     ...rest
   } = options;
 
-  return useMaterialReactTable({
+  // The scrolling body ends at the bottom of the window, wherever the table
+  // starts: under a one-line header or under KPI cards and a chart, on a 720p
+  // laptop or a 4K screen. Measured, not guessed — the old fixed
+  // `100dvh - 220px` assumed one header row and ran reports off the screen.
+  const [fit, setFit] = useState(null);
+
+  const table = useMaterialReactTable({
     ...tableDefaults,
     ...rest,
     initialState: { ...tableDefaults.initialState, ...(initialState || {}) },
     muiTableProps: mergeSxProps(tableDefaults.muiTableProps, muiTableProps),
     muiTablePaperProps: mergeSxProps(tableDefaults.muiTablePaperProps, muiTablePaperProps),
-    muiTableContainerProps: mergeSxProps(tableDefaults.muiTableContainerProps, muiTableContainerProps),
+    muiTableContainerProps: mergeSxProps(
+      fit ? mergeSxProps(tableDefaults.muiTableContainerProps, { sx: { maxHeight: { xs: "none", sm: fit } } }) : tableDefaults.muiTableContainerProps,
+      muiTableContainerProps,
+    ),
     muiTableHeadCellProps: mergeSxProps(tableDefaults.muiTableHeadCellProps, muiTableHeadCellProps),
     muiTableBodyCellProps: mergeSxProps(tableDefaults.muiTableBodyCellProps, muiTableBodyCellProps),
     muiTableBodyRowProps: mergeSxProps(tableDefaults.muiTableBodyRowProps, muiTableBodyRowProps),
@@ -41,6 +51,51 @@ export default function useAppTable(options = {}) {
     muiTopToolbarProps: mergeSxProps(tableDefaults.muiTopToolbarProps, muiTopToolbarProps),
     muiBottomToolbarProps: mergeSxProps(tableDefaults.muiBottomToolbarProps, muiBottomToolbarProps),
   });
+
+  const { tableContainerRef, tablePaperRef } = table.refs;
+  useLayoutEffect(() => {
+    const measure = () => {
+      const box = tableContainerRef.current;
+      const card = tablePaperRef.current;
+      if (!box || !card) return;
+      const boxRect = box.getBoundingClientRect();
+      setFit(
+        fitHeight({
+          viewport: window.innerHeight,
+          top: boxRect.top + window.scrollY,
+          below: card.getBoundingClientRect().bottom - boxRect.bottom,
+        }),
+      );
+    };
+    measure();
+    // Content above the table (a chart, KPI cards, a wrapped filter row)
+    // settles after first paint. Watch everything that sits above it — its
+    // earlier siblings and its ancestors' — not the page: the layout is at
+    // least one window tall, so content above *shrinking* never resizes the
+    // page and the table stayed stuck at its first, too-short height.
+    const ro = new ResizeObserver(measure);
+    for (let el = tablePaperRef.current; el && el !== document.body; el = el.parentElement) {
+      for (let s = el.previousElementSibling; s; s = s.previousElementSibling) ro.observe(s);
+    }
+    window.addEventListener("resize", measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [tableContainerRef, tablePaperRef]);
+
+  return table;
+}
+
+/**
+ * Pixel height for the table's scrolling body so the card ends `gap` above
+ * the window's bottom edge. `top` is the body's offset from the top of the
+ * document, `below` what the card draws under the body (pagination bar,
+ * border). Never under `min`: with a tall chart on a short screen the page
+ * scrolls a little rather than leaving a table of two rows.
+ */
+export function fitHeight({ viewport, top, below, gap = 16, min = 280 }) {
+  return Math.max(min, Math.floor(viewport - top - below - gap));
 }
 
 /**

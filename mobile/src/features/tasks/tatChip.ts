@@ -82,7 +82,7 @@ export function tatChip(task: TatFields | null | undefined, now = new Date()): T
   }
   const due = parseIst(task.TatDueAt);
   if (!due) return null;
-  if (now > due) return { tone: "danger", text: `Over by ${overBy(now.getTime() - due.getTime())}`, icon: OctagonAlert };
+  if (now > due) return { tone: "danger", text: `Late by ${overBy(now.getTime() - due.getTime())}`, icon: OctagonAlert };
   const warn = parseIst(task.TatWarnAt);
   return {
     tone: warn && warn <= now ? "warning" : "info",

@@ -189,6 +189,13 @@ describe("TaskCreateModal", () => {
     };
     const dueInput = () => screen.getByLabelText(/due date/i);
 
+    it("Time allowed explains itself on hover", async () => {
+      renderModal();
+      const user = userEvent.setup();
+      await user.hover(screen.getByTestId("create-task-tat-hours"));
+      expect(await screen.findByRole("tooltip")).toHaveTextContent(/0 for no deadline.*board owner, a manager or the task creator/);
+    });
+
     it("due time appears only once a due date is set, and is sent when filled", async () => {
       renderModal();
       const user = userEvent.setup();

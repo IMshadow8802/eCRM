@@ -34,7 +34,7 @@ const CLOSE_LABEL: Record<string, string> = {
   unassigned: "Unassigned",
   deleted: "Task deleted",
   user_left: "Left the company",
-  no_clock: "Clock switched off",
+  no_clock: "No deadline",
 };
 
 type Form = "hold" | "reason";
@@ -92,8 +92,8 @@ export function TatTab({ taskId, userId }: { taskId: number; userId: number | nu
     return (
       <EmptyState
         icon={Timer}
-        title="No time target on you"
-        message="A clock starts when you are assigned a task on a shared or project board."
+        title="No deadline on you"
+        message="A deadline starts when you are assigned a task on a shared or project board."
       />
     );
   }
@@ -107,7 +107,7 @@ export function TatTab({ taskId, userId }: { taskId: number; userId: number | nu
   const entries: TimelineEntry[] = [
     ...step("assigned", "Assigned", clock.AssignedAt),
     ...step("seen", "Seen", clock.FirstSeenAt),
-    ...step("ack", "Acknowledged", clock.AcknowledgedAt),
+    ...step("ack", "Accepted", clock.AcknowledgedAt),
     ...holds
       .filter((h) => h.TatId === clock.Id)
       .map((h) => ({
@@ -121,11 +121,11 @@ export function TatTab({ taskId, userId }: { taskId: number; userId: number | nu
       ? [
           {
             key: "breach",
-            title: `Ran over${clock.DueAt ? ` by ${overBy((parseIst(clock.ClosedAt) ?? new Date()).getTime() - (parseIst(clock.DueAt)?.getTime() ?? 0))}` : ""}`,
+            title: `Missed deadline${clock.DueAt ? ` by ${overBy((parseIst(clock.ClosedAt) ?? new Date()).getTime() - (parseIst(clock.DueAt)?.getTime() ?? 0))}` : ""}`,
             meta: `${istStamp(clock.BreachedAt)} · ${
               clock.BreachReason
                 ? `${clock.BreachReason}${clock.BreachRemarks ? ` (${clock.BreachRemarks})` : ""}`
-                : "reason pending"
+                : "waiting for reason"
             }`,
             tone: "danger" as const,
           },
@@ -153,14 +153,14 @@ export function TatTab({ taskId, userId }: { taskId: number; userId: number | nu
 
       <View style={styles.actions}>
         {open && !clock.AcknowledgedAt ? (
-          <Button title="Acknowledge" variant="secondary" loading={quick.isPending}
+          <Button title="Accept task" variant="secondary" loading={quick.isPending}
             onPress={() => quick.mutate(() => acknowledgeTat(taskId))} />
         ) : null}
         {open && !hold ? (
           <Button title="Put on hold" variant="secondary" onPress={() => present("hold")} />
         ) : null}
         {open && hold?.Kind === "manual" && Number(hold.StartedBy) === Number(userId) ? (
-          <Button title="Release" variant="secondary" loading={quick.isPending}
+          <Button title="Resume" variant="secondary" loading={quick.isPending}
             onPress={() => quick.mutate(() => releaseMine(taskId))} />
         ) : null}
         {open && openClocks > 1 ? (
@@ -168,7 +168,7 @@ export function TatTab({ taskId, userId }: { taskId: number; userId: number | nu
             onPress={() => quick.mutate(() => myPartDone(taskId))} />
         ) : null}
         {clock.BreachedAt && !clock.BreachReasonId && !clock.Verdict ? (
-          <Button title="Give reason" variant="secondary" onPress={() => present("reason")} />
+          <Button title="Explain delay" variant="secondary" onPress={() => present("reason")} />
         ) : null}
       </View>
 
@@ -176,7 +176,7 @@ export function TatTab({ taskId, userId }: { taskId: number; userId: number | nu
 
       {events.length ? (
         <View style={styles.events}>
-          <Text variant="label">Changes</Text>
+          <Text variant="label">History</Text>
           {events.map((e) => (
             <Text key={e.Id} variant="caption" color="textSecondary">
               {istStamp(e.At)} · {e.Kind}
@@ -188,7 +188,7 @@ export function TatTab({ taskId, userId }: { taskId: number; userId: number | nu
 
       <ComposeSheet
         ref={sheetRef}
-        title={form === "hold" ? "Why is your part on hold?" : "Why did this run over?"}
+        title={form === "hold" ? "Why is your part on hold?" : "Why was the deadline missed?"}
         submitLabel={form === "hold" ? "Put on hold" : "Save reason"}
         fields={[{ key: "remarks", placeholder: "Remarks (optional)", label: "Remarks", multiline: true }]}
         choices={[

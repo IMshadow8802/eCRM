@@ -14,7 +14,7 @@ describe("FollowUpCompliance report", () => {
     const cap = mockReportEndpoints("/api/reports/followUpCompliance", reportData({
       kpis: { Due: 120, DoneOnTime: 80, DoneLate: 20, Skipped: 5, Missed: 15, OnTimePct: 66.7, AvgDelayHours: 30.5 },
       rows: [{ GroupKey: 17, GroupLabel: "Amit Singh", Due: 60, DoneOnTime: 45, DoneLate: 8, Skipped: 2, Missed: 5, OnTimePct: 75, AvgDelayHours: 26 }],
-      trend: [{ Bucket: "2026-09-01", Due: 6, DoneOnTime: 4, DoneLate: 1, Missed: 1 }],
+      trend: [{ Bucket: "2026-09-01", Due: 6, DoneOnTime: 4, DoneLate: 1, Missed: 1 }, { Bucket: "2026-09-08", Due: 6, DoneOnTime: 4, DoneLate: 1, Missed: 1 }],
     }));
     renderWithProviders(<FollowUpCompliance />, { route: "/reports/follow-up-compliance" });
     const table = await screen.findByTestId("followUpCompliance-table");
@@ -26,7 +26,7 @@ describe("FollowUpCompliance report", () => {
     // different unit — the label has to say which.
     expect(kpis).toHaveTextContent("Missed follow-ups");
     expect(screen.getByTestId("trend-area-legend-Missed")).toBeInTheDocument();
-    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(
+    expect(within(table).getAllByRole("columnheader").map((h) => h.querySelector(".Mui-TableHeadCell-Content-Wrapper").textContent)).toEqual(
       ["Owner", "Due", "On time", "Late", "Skipped", "Missed", "On-time %", "Avg delay"],
     );
     const user = userEvent.setup();

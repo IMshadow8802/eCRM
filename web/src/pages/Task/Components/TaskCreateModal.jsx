@@ -6,6 +6,7 @@ import {
   Modal,
   Button,
   TextInput,
+  Tooltip,
   TextArea,
   Combobox,
   DateField,
@@ -42,7 +43,7 @@ export default function TaskCreateModal({
   const [assignees, setAssignees] = useState([]);
   const [dueDate, setDueDate] = useState("");
   const [dueTime, setDueTime] = useState("");
-  const [tatHours, setTatHours] = useState(""); // "" = company default, 0 = no clock
+  const [tatHours, setTatHours] = useState(""); // "" = company default, 0 = no deadline
   const [steps, setSteps] = useState([""]);
   const [submitting, setSubmitting] = useState(false);
   const attachmentsRef = useRef(null);
@@ -260,29 +261,37 @@ export default function TaskCreateModal({
             <div style={{ display: "flex", gap: 12 }}>
               {dueDate && (
                 <div style={{ flex: 1 }}>
+                  <Tooltip title="The time of day the work is due. Leave empty to use the end of the working day on the person's shift.">
+                  <div>
                   <TextInput
                     type="time"
                     label="Due time"
-                    hint="Empty = end of the shift"
+                    hint="Empty = end of the working day on the person's shift"
                     value={dueTime}
                     onChange={(e) => setDueTime(e.target.value)}
                     data-testid="create-task-due-time"
                   />
+                  </div>
+                  </Tooltip>
                 </div>
               )}
               {/* The creator may always set the target (no TAT on personal boards). */}
               {!isPersonal && (
                 <div style={{ flex: 1 }}>
+                  <Tooltip title="How long this person has to finish, counted in working hours only. Leave empty to use the company default for the priority. Enter 0 for no deadline. Only the board owner, a manager or the task creator can change it.">
+                  <div>
                   <TextInput
                     type="number"
-                    label="Time target (hours)"
-                    hint="Empty = company default · 0 = no clock"
+                    label="Time allowed (working hours)"
+                    hint="Empty = company default for the priority · 0 = no deadline · only the board owner, a manager or the task creator can change it"
                     value={tatHours}
                     onChange={(e) => setTatHours(e.target.value)}
                     min={0}
                     step={0.5}
                     data-testid="create-task-tat-hours"
                   />
+                  </div>
+                  </Tooltip>
                 </div>
               )}
             </div>

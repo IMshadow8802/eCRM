@@ -17,6 +17,7 @@ import { useTheme } from "@mui/material/styles";
 import { useSnackbar } from "notistack";
 
 import PageHeader from "../../components/ui/PageHeader";
+import Tooltip from "../../components/ui/Tooltip";
 import ConfirmationDialog from "../../components/ConfirmationDialog";
 import {
   Button,
@@ -62,6 +63,11 @@ const MODULE_ROWS = [
   { key: "settings", label: "Settings & products" },
   { key: "dashboard", label: "Dashboard" },
 ];
+// Plain-words help for modules whose name alone does not say what they grant.
+const ROW_HINT = {
+  attendance: "Attendance: see who is signed in, late or on leave (Today > My team), mark leave or on duty, and open the Attendance report. "
+    + "Reach decides whose attendance this role can see on the Today page and in the Attendance report. Own: only themselves. Their team: people who report to them. Their office: everyone in their office. Their office + offices below: also the offices under it. Whole company: everyone.",
+};
 const REACH_OPTIONS = [
   { value: "Own", label: "Own records" },
   { value: "Team", label: "Their team" },
@@ -434,7 +440,11 @@ const Groups = () => {
                               style={{ borderTop: `1px solid ${p.border.subtle}` }}
                             >
                               <td style={{ padding: "8px 14px", fontWeight: 500, color: p.text.primary }}>
-                                {reach && row.CanView ? <label htmlFor={`reach-${key}`}>{label}</label> : label}
+                                <Tooltip title={ROW_HINT[key]}>
+                                  <span tabIndex={ROW_HINT[key] ? 0 : undefined}>
+                                    {reach && row.CanView ? <label htmlFor={`reach-${key}`}>{label}</label> : label}
+                                  </span>
+                                </Tooltip>
                               </td>
                               {PERMS.map((perm) => (
                                 <td key={perm.field} style={{ textAlign: "center", padding: "8px 14px" }}>
@@ -452,15 +462,19 @@ const Groups = () => {
                                   <span data-testid={`reach-${key}-none`} style={{ color: p.text.tertiary }}>—</span>
                                 )}
                                 {reach && !!row.CanView && (
-                                  <Combobox
-                                    id={`reach-${key}`}
-                                    size="sm"
-                                    value={REACH_OPTIONS.find((o) => o.value === row.Reach) ?? null}
-                                    onChange={(opt) => setReach(key, opt)}
-                                    options={REACH_OPTIONS}
-                                    disableClearable
-                                    data-testid={`reach-${key}`}
-                                  />
+                                  <Tooltip title={key === "attendance" ? "Reach decides whose attendance this role can see on the Today page and in the Attendance report. Own: only themselves. Their team: people who report to them. Their office: everyone in their office. Their office + offices below: also the offices under it. Whole company: everyone." : undefined}>
+                                    <div>
+                                      <Combobox
+                                        id={`reach-${key}`}
+                                        size="sm"
+                                        value={REACH_OPTIONS.find((o) => o.value === row.Reach) ?? null}
+                                        onChange={(opt) => setReach(key, opt)}
+                                        options={REACH_OPTIONS}
+                                        disableClearable
+                                        data-testid={`reach-${key}`}
+                                      />
+                                    </div>
+                                  </Tooltip>
                                 )}
                               </td>
                             </tr>

@@ -1,15 +1,12 @@
+import { useMemo } from "react";
 import { Helmet } from "react-helmet-async";
+import { MaterialReactTable } from "material-react-table";
+import useAppTable from "../../components/table/useAppTable";
 import PageHeader from "../../components/ui/PageHeader";
+import Tooltip from "../../components/ui/Tooltip";
 import {
   Box,
   CircularProgress,
-  Paper,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   Typography,
 } from "@mui/material";
 import useMediaQuery from "@mui/material/useMediaQuery";
@@ -20,7 +17,7 @@ import {
   CartesianGrid,
   Legend,
   ResponsiveContainer,
-  Tooltip,
+  Tooltip as ChartTooltip,
   XAxis,
   YAxis,
 } from "recharts";
@@ -123,7 +120,7 @@ export function ReportBarChart({ data, xKey, bars, legend = true, height = 260 }
             name, because it reads the raw datum rather than the tick. */}
         <XAxis dataKey={xKey} {...axis} tickFormatter={narrow ? truncTick : undefined} />
         <YAxis {...axis} width={32} allowDecimals={false} />
-        <Tooltip
+        <ChartTooltip
           contentStyle={{
             background: p.surface.card,
             border: `1px solid ${p.border.default}`,
@@ -154,62 +151,75 @@ export function ReportBarChart({ data, xKey, bars, legend = true, height = 260 }
 }
 
 /**
- * The summary table under each chart. `columns` is
- * `{ header, align, cell(row) }`; `rowKey(row)` supplies the React key, which
- * every page took from its own id column. Columns may carry a `key` — used for
- * the React key so two columns can share a header (the Lost report heads two
- * columns "Reason"); the existing pages pass none and keep header keys.
+ * The summary table under each chart — a Material React Table on the app's
+ * shared defaults (`useAppTable`), so reports scroll sideways inside the card
+ * like every list page instead of pushing past the screen, with search,
+ * sorting and show/hide columns. The first column is pinned so the row's name
+ * stays visible while scrolling.
+ *
+ * `columns` is `{ key?, header, align?, hint?, cell(row) }`. `key` names the
+ * row field (sorting and search use it) and keeps two columns with one header
+ * apart (the Lost report heads two "Reason"). A column without a usable field
+ * sorts on what `cell` returns, unless that is an element.
  *
  * `onRowClick` (spec 4a drill-down) makes rows hoverable, clickable and
- * keyboard-activatable. Without it the table renders exactly as before — no
- * handler, no cursor, no tab stop — so the ticket reports are untouched.
+ * keyboard-activatable. Without it rows carry no handler, cursor or tab stop.
  */
 export function ReportTable({ rows, columns, rowKey, testId, onRowClick, rowTestId }) {
-  const clickProps = onRowClick
-    ? (row) => ({
-        hover: true,
-        onClick: () => onRowClick(row),
-        // A pointer row that only the mouse can reach is a dead end for
-        // keyboard users, so the row is a real tab stop with Enter/Space on it.
-        // It keeps the implicit role="row": role="button" would drop the row
-        // out of the table for a screen reader and collapse the whole line
-        // into one control named "Website 700", losing the header-to-value
-        // association that is the point of a breakdown table.
+  const mrtColumns = useMemo(
+    () =>
+      columns.map((c, i) => {
+        const id = String(c.key ?? (typeof c.header === "string" ? c.header : `col${i}`));
+        const value = (r) => (c.key != null && c.key in r ? r[c.key] : c.cell(r));
+        const sample = rows.length ? value(rows[0]) : null;
+        const plain = sample == null || typeof sample !== "object";
+        return {
+          id,
+          header: typeof c.header === "string" ? c.header : id,
+          accessorFn: value,
+          enableSorting: plain,
+          enableGlobalFilter: plain,
+          Header: () =>
+            c.hint ? (
+              <Tooltip title={c.hint}>
+                <span tabIndex={0} style={{ cursor: "help", textDecoration: "underline dotted" }}>{c.header}</span>
+              </Tooltip>
+            ) : (c.header ?? ""),
+          Cell: ({ row }) => c.cell(row.original),
+          muiTableHeadCellProps: { align: c.align },
+          muiTableBodyCellProps: { align: c.align },
+        };
+      }),
+    [columns, rows],
+  );
+
+  const table = useAppTable({
+    columns: mrtColumns,
+    data: rows,
+    getRowId: (r) => String(rowKey(r)),
+    enableColumnPinning: true,
+    enablePagination: rows.length > 25,
+    enableBottomToolbar: rows.length > 25,
+    initialState: { columnPinning: { left: mrtColumns[0] ? [mrtColumns[0].id] : [] } },
+    muiTablePaperProps: { "data-testid": testId },
+    muiTableBodyRowProps: ({ row }) => ({
+      "data-testid": rowTestId?.(row.original) ?? (onRowClick && testId ? `${testId}-row` : undefined),
+      ...(onRowClick && {
+        onClick: () => onRowClick(row.original),
+        // A pointer row only the mouse can reach is a dead end for keyboard
+        // users, so the row is a real tab stop with Enter/Space on it. It keeps
+        // the implicit role="row": role="button" would collapse the line into
+        // one control and lose the header-to-value association.
         tabIndex: 0,
         onKeyDown: (e) => {
           if (e.key !== "Enter" && e.key !== " ") return;
           e.preventDefault();
-          onRowClick(row);
+          onRowClick(row.original);
         },
         style: { cursor: "pointer" },
-        "data-testid": testId ? `${testId}-row` : undefined,
-      })
-    : () => ({});
+      }),
+    }),
+  });
 
-  return (
-    <TableContainer component={Paper} variant="outlined" data-testid={testId}>
-      <Table size="small">
-        <TableHead>
-          <TableRow>
-            {columns.map((c) => (
-              <TableCell key={c.key ?? c.header} align={c.align}>
-                {c.header}
-              </TableCell>
-            ))}
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {rows.map((row) => (
-            <TableRow key={rowKey(row)} data-testid={rowTestId?.(row)} {...clickProps(row)}>
-              {columns.map((c) => (
-                <TableCell key={c.key ?? c.header} align={c.align}>
-                  {c.cell(row)}
-                </TableCell>
-              ))}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </TableContainer>
-  );
+  return <MaterialReactTable table={table} />;
 }

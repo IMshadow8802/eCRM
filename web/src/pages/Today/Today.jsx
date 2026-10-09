@@ -2,7 +2,9 @@ import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { CalendarClock } from "lucide-react";
 
-import { Button, PageHeader, Tabs } from "../../components/ui";
+import { Button, PageHeader, Tabs, Tooltip } from "../../components/ui";
+import HelpGuide from "../../components/HelpGuide";
+import { HELP_GUIDES } from "../../data/helpGuides";
 import TatChip from "../../components/Kanban/TatChip";
 import BreachReasonDialog from "../Task/Components/TaskDetail/BreachReasonDialog";
 import { useApiQuery } from "../../hooks/useApiQuery";
@@ -48,11 +50,11 @@ function Mine() {
 
       {pending.length > 0 && (
         <section>
-          <h3>Reason pending</h3>
+          <h3>Missed deadline – say why</h3>
           {pending.map((c) => (
             <div key={c.TatId} data-testid={`pending-${c.TatId}`} style={{ display: "flex", gap: 12, alignItems: "center", paddingBlock: 6 }}>
               <span>{c.TaskTitle}</span>
-              <Button size="sm" variant="secondary" onClick={() => setReason(c)}>Give reason</Button>
+              <Tooltip title="This task missed its deadline. Say why it was late so your manager can decide."><span><Button size="sm" variant="secondary" onClick={() => setReason(c)}>Explain delay</Button></span></Tooltip>
             </div>
           ))}
         </section>
@@ -78,7 +80,7 @@ export default function Today() {
 
   return (
     <div style={{ paddingBlock: 8, display: "flex", flexDirection: "column", gap: 16 }}>
-      <PageHeader title="Today" icon={<CalendarClock size={22} />} />
+      <PageHeader title="Today" icon={<CalendarClock size={22} />} actions={<HelpGuide guide={HELP_GUIDES.today} />} />
       {hasTeam && <Tabs value={tab} onChange={(v) => setParams({ tab: v })} items={items} data-testid="today-tabs" />}
       {tab === "team" ? <TeamToday /> : <Mine />}
     </div>

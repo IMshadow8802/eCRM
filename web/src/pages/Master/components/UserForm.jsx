@@ -20,6 +20,7 @@ import { SALES_ENDPOINTS } from "../../../api/salesQueries";
 import { WORK_ENDPOINTS } from "../../../api/workQueries";
 import { useConfirmation } from "../../../hooks/useConfirmation";
 import ConfirmationDialog from "../../../components/ConfirmationDialog";
+import Tooltip from "../../../components/ui/Tooltip";
 import { useApiQuery } from "../../../hooks/useApiQuery";
 import {
   FormModal,
@@ -536,6 +537,7 @@ const UserForm = ({
                   onBlur={field.onBlur}
                   options={shiftOptions}
                   placeholder="Company standard"
+                  helperText="Working days, hours and break for this person. Late marks and task deadlines follow it. Empty = the company's default shift."
                 />
               )}
             />
@@ -544,11 +546,15 @@ const UserForm = ({
                 control={control}
                 name="PresenceExempt"
                 render={({ field }) => (
-                  <FormCheckbox
-                    label="No attendance tracking"
-                    checked={Boolean(field.value)}
-                    onChange={(e) => field.onChange(e.target.checked)}
-                  />
+                  <Tooltip title="Tick for people who are not expected to sign in (an owner or a field worker, for example). They will not show as late or not signed in, and are left out of the Attendance report.">
+                    <div>
+                      <FormCheckbox
+                        label="No attendance tracking"
+                        checked={Boolean(field.value)}
+                        onChange={(e) => field.onChange(e.target.checked)}
+                      />
+                    </div>
+                  </Tooltip>
                 )}
               />
             )}

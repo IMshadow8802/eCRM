@@ -21,7 +21,7 @@ describe("Lost report", () => {
     // Not "created": a lost-reason report is keyed on when the lead closed.
     expect(cap.body).toMatchObject({ GroupBy: "reason", FromDate: "2026-08-01", DateBasis: "closed" });
     expect(screen.getByTestId("report-kpis")).toHaveTextContent("Price");
-    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Reason", "Reason", "Lost", "Share %"]);
+    expect(within(table).getAllByRole("columnheader").map((h) => h.querySelector(".Mui-TableHeadCell-Content-Wrapper").textContent)).toEqual(["Reason", "Reason", "Lost", "Share %"]);
     expect(within(table).getByText("—")).toBeInTheDocument();
     await userEvent.setup().click(within(table).getByText("35.0%"));
     // No from/to: this page runs on the `closed` basis but sp_FetchLeads

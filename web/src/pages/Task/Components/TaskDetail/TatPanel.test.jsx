@@ -34,11 +34,11 @@ const pick = async (user, testId, name) => {
 describe("TatPanel", () => {
   it("no clocks -> empty state, no actions", async () => {
     setup({});
-    expect(await screen.findByText("No time target running")).toBeInTheDocument();
+    expect(await screen.findByText("No deadline on this task")).toBeInTheDocument();
     expect(screen.queryByTestId("tat-hold-all")).toBeNull();
   });
 
-  it("own open clock: Acknowledge + Put on hold, but not My part is done when alone", async () => {
+  it("own open clock: Accept task + Put on hold, but not My part is done when alone", async () => {
     const { calls, user } = setup({ clocks: [clock()] });
     await user.click(await screen.findByTestId("tat-ack"));
     await waitFor(() => expect(calls).toEqual([["acknowledge", { TaskId: 501 }]]));
@@ -50,29 +50,29 @@ describe("TatPanel", () => {
 
   it.each([
     [{}, "Running"],
-    [{ BreachedAt: "2026-10-08T12:00:00Z" }, "Ran over"],
+    [{ BreachedAt: "2026-10-08T12:00:00Z" }, "Missed deadline"],
     [{ ClosedAt: "2026-10-08T13:00:00Z", CloseReason: "completed" }, "Done"],
     [{ ClosedAt: "2026-10-08T13:00:00Z", CloseReason: "my_part_done" }, "My part done"],
     [{ ClosedAt: "2026-10-08T13:00:00Z", CloseReason: "unassigned" }, "Unassigned"],
     [{ ClosedAt: "2026-10-08T13:00:00Z", CloseReason: "deleted" }, "Deleted"],
     [{ ClosedAt: "2026-10-08T13:00:00Z", CloseReason: "user_left" }, "Left the company"],
-    [{ ClosedAt: "2026-10-08T13:00:00Z", CloseReason: "no_clock" }, "No clock"],
+    [{ ClosedAt: "2026-10-08T13:00:00Z", CloseReason: "no_clock" }, "No deadline"],
   ])("status pill for %j is %s", async (over, pill) => {
     setup({ clocks: [clock(over)] });
     const card = await screen.findByTestId("tat-clock-1");
     expect(within(card).getAllByText(pill).length).toBeGreaterThan(0);
   });
 
-  it("an open clock on hold reads On hold; an over-run clock on hold still reads Ran over", async () => {
+  it("an open clock on hold reads On hold; an over-run clock on hold still reads Missed deadline", async () => {
     setup({
       clocks: [clock(), clock({ Id: 2, UserId: 9, FullName: "Bob", BreachedAt: "2026-10-08T12:00:00Z" })],
       holds: [{ HoldId: 1, TatId: 1, StartedAt: "2026-10-08T05:00:00Z", EndedAt: null, Kind: "manual", Reason: "Waiting" }],
     });
     expect(within(await screen.findByTestId("tat-clock-1")).getAllByText("On hold").length).toBeGreaterThan(0);
-    expect(within(screen.getByTestId("tat-clock-2")).getAllByText("Ran over").length).toBeGreaterThan(0);
+    expect(within(screen.getByTestId("tat-clock-2")).getAllByText("Missed deadline").length).toBeGreaterThan(0);
   });
 
-  it("acknowledged clock offers no Acknowledge", async () => {
+  it("acknowledged clock offers no Accept task", async () => {
     setup({ clocks: [clock({ AcknowledgedAt: "2026-10-08T05:00:00Z" })] });
     await screen.findByTestId("tat-clock-1");
     expect(screen.queryByTestId("tat-ack")).toBeNull();
@@ -174,7 +174,7 @@ describe("TatPanel", () => {
 
   it("a judged breach shows the verdict and offers no more judging", async () => {
     setup({ clocks: [clock({ UserId: 9, BreachedAt: "2026-10-08T12:00:00Z", Verdict: "excused", VerdictAt: "2026-10-08T14:00:00Z", VerdictRemarks: "Leave", CanJudge: true, ClosedAt: "2026-10-08T13:00:00Z", CloseReason: "my_part_done" })] });
-    expect(await screen.findByText(/Excused by the system \(Leave\)/)).toBeInTheDocument();
+    expect(await screen.findByText(/Delay accepted by the system \(Leave\)/)).toBeInTheDocument();
     expect(screen.queryByTestId("tat-excused")).toBeNull();
     expect(screen.getAllByText("My part done").length).toBeGreaterThan(0);
   });
@@ -186,7 +186,7 @@ describe("TatPanel", () => {
         { Id: 1, Kind: "change", OldValue: "2026-10-08 17:00:00", NewValue: "2026-10-08 18:30:00", ActorName: "Boss", At: "2026-10-08T06:00:00Z" },
       ],
     });
-    expect(await screen.findByText(/Target changed 17:00 → 18:30 IST by Boss/)).toBeInTheDocument();
+    expect(await screen.findByText(/Deadline changed 17:00 → 18:30 IST by Boss/)).toBeInTheDocument();
   });
 
   it("a refused action shows the server's message", async () => {
@@ -208,23 +208,23 @@ describe("TatPanel", () => {
 describe("eventText", () => {
   it.each([
     [{ Kind: "assign", NewValue: "2026-10-08 17:00:00" }, "Due set to 17:00 IST"],
-    [{ Kind: "change", OldValue: "2026-10-07 17:00:00", NewValue: "2026-10-08 18:30:00" }, "Target changed Wed 17:00 → 18:30 IST"],
+    [{ Kind: "change", OldValue: "2026-10-07 17:00:00", NewValue: "2026-10-08 18:30:00" }, "Deadline changed Wed 17:00 → 18:30 IST"],
     [{ Kind: "assign" }, "Assigned"],
     [{ Kind: "reopen" }, "Reopened"],
-    [{ Kind: "resume" }, "Clock resumed"],
+    [{ Kind: "resume" }, "Timer restarted"],
     [{ Kind: "hold", NewValue: "blocked" }, "On hold: blocked by a dependency"],
     [{ Kind: "hold", NewValue: "Waiting on client" }, "Put on hold: Waiting on client"],
     [{ Kind: "hold" }, "Put on hold:"],
-    [{ Kind: "release", NewValue: "auto" }, "Hold released automatically"],
-    [{ Kind: "release", NewValue: "blocked" }, "Dependency done, clock running"],
-    [{ Kind: "release" }, "Hold released"],
-    [{ Kind: "acknowledge" }, "Acknowledged"],
+    [{ Kind: "release", NewValue: "auto" }, "Resumed automatically"],
+    [{ Kind: "release", NewValue: "blocked" }, "Dependency done, timer running"],
+    [{ Kind: "release" }, "Resumed"],
+    [{ Kind: "acknowledge" }, "Accepted"],
     [{ Kind: "my_part_done" }, "Marked their part done"],
     [{ Kind: "reason", NewValue: "Scope grew" }, "Reason given: Scope grew"],
     [{ Kind: "reason" }, "Reason given:"],
-    [{ Kind: "verdict", NewValue: "not_excused" }, "Verdict: Not excused"],
-    [{ Kind: "verdict", NewValue: "odd" }, "Verdict: odd"],
-    [{ Kind: "verdict" }, "Verdict:"],
+    [{ Kind: "verdict", NewValue: "not_excused" }, "Decision: Delay rejected"],
+    [{ Kind: "verdict", NewValue: "odd" }, "Decision: odd"],
+    [{ Kind: "verdict" }, "Decision:"],
     [{ Kind: "mystery" }, "mystery"],
   ])("%o", (e, text) => {
     expect(eventText(e)).toBe(text);

@@ -18,6 +18,8 @@ import DateField from "../../components/ui/DateField";
 import Checkbox from "../../components/ui/Checkbox";
 import Switch from "../../components/ui/Switch";
 import Tooltip from "../../components/ui/Tooltip";
+import HelpGuide from "../../components/HelpGuide";
+import { HELP_GUIDES } from "../../data/helpGuides";
 import ConfirmationDialog from "../../components/ConfirmationDialog";
 import { FormSelect } from "../../components/Design/FormComponents";
 import { useApiQuery } from "../../hooks/useApiQuery";
@@ -41,6 +43,14 @@ const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Frid
 const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0]; // shown Monday first
 const DAY_GRID = "100px 70px repeat(4, minmax(90px, 1fr))";
 const PRIORITIES = ["critical", "high", "medium", "low"];
+const COL_HINT = {
+  Day: "The day of the week.",
+  Working: "Switch on if people on this shift work on this day.",
+  Start: "When work starts. People who sign in after this (and the 'count as late after' minutes) are late.",
+  End: "When work ends. Task time stops counting after this.",
+  "Break start": "When the break begins. Break time does not count towards task time. Leave empty for no break.",
+  "Break end": "When the break ends.",
+};
 const TABS = [
   { value: "shifts", label: "Shifts" },
   { value: "holidays", label: "Holidays" },
@@ -113,7 +123,9 @@ function ShiftEditor({ calendar, onClose }) {
           <TextInput label="Shift name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. General" />
           <Checkbox label="Company default shift" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} />
           <Box sx={{ display: "grid", gridTemplateColumns: DAY_GRID, gap: 1, fontSize: 12, fontWeight: 600 }} data-testid="shift-day-headers">
-            {["Day", "Working", "Start", "End", "Break start", "Break end"].map((h) => <span key={h}>{h}</span>)}
+            {["Day", "Working", "Start", "End", "Break start", "Break end"].map((h) => (
+              <Tooltip key={h} title={COL_HINT[h]}><span tabIndex={0} style={{ cursor: "help" }}>{h}</span></Tooltip>
+            ))}
           </Box>
           {WEEK_ORDER.map((d) => {
             const x = days.find((r) => r.d === d);
@@ -304,27 +316,32 @@ function RulesTab({ settings, tatPolicy, canEdit, run }) {
     );
     if (!ok) return;
     const Items = PRIORITIES.filter((p) => tat[p] !== "").map((p) => ({ Priority: p, Minutes: Math.round(Number(tat[p]) * 60) }));
-    await run(() => saveTatPolicy({ Items }), "Task targets saved");
+    await run(() => saveTatPolicy({ Items }), "Time allowed saved");
   };
 
   return (
     <Box sx={{ display: "grid", gap: 1.5, maxWidth: 480 }}>
-      {num("Late grace (minutes)", "LateGraceMin")}
-      {num("Session buffer (minutes)", "SessionBufferMin")}
-      {num("Warning point (% of target)", "WarnPct")}
-      <Switch
-        label="Tell managers when someone has not signed in"
-        checked={form.NotifyNotSignedIn} disabled={!canEdit}
-        onChange={(e) => setForm((f) => ({ ...f, NotifyNotSignedIn: e.target.checked }))}
-      />
+      {num("Count as late after (minutes)", "LateGraceMin", "Minutes after shift start someone can sign in without being marked late.")}
+      {num("Stay signed in after shift ends (minutes)", "SessionBufferMin", "After the shift ends, people stay signed in this many minutes, then must sign in again.")}
+      {num("Warn when this much time is used (%)", "WarnPct", "When this much of a task's allowed time is used up, the card turns amber and a warning is sent. For example 80.")}
+      <Tooltip title="When on, a manager gets a notice if someone on their team has not signed in after the 'count as late after' time.">
+        <div>
+          <Switch
+            label="Tell managers when someone has not signed in"
+            checked={form.NotifyNotSignedIn} disabled={!canEdit}
+            onChange={(e) => setForm((f) => ({ ...f, NotifyNotSignedIn: e.target.checked }))}
+          />
+        </div>
+      </Tooltip>
       <DateField
-        label="Go-live date" hint="Nothing is recorded before this date. Empty = off."
+        label="Start tracking from" hint="Nothing is recorded before this date. Empty = off."
         value={form.GoLiveDate} disabled={!canEdit} onChange={(v) => setForm((f) => ({ ...f, GoLiveDate: v }))}
       />
-      <h3>Task targets (hours)</h3>
+      <h3>Time allowed per task, by priority (working hours)</h3>
       {PRIORITIES.map((p) => (
         <TextInput
           key={p} label={`${p[0].toUpperCase()}${p.slice(1)} priority (hours)`} type="number" step="0.25"
+          hint="Default time allowed for tasks of this priority, in working hours. Empty = no default."
           value={tat[p]} disabled={!canEdit} onChange={(e) => setTat((t) => ({ ...t, [p]: e.target.value }))}
         />
       ))}
@@ -348,7 +365,7 @@ export default function WorkCalendar() {
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", flexGrow: 1 }}>
-      <PageHeader title="Work calendar" subtitle="Shifts, holidays and the rules behind presence and task targets. All times are IST." />
+      <PageHeader title="Work calendar" subtitle="Shifts, holidays and the rules behind presence and task deadlines. All times are IST." actions={<HelpGuide guide={HELP_GUIDES.workCalendar} />} />
       <Helmet><title>PRD Infotech | Work calendar</title></Helmet>
       <Box sx={{ mt: 1.5 }}><Tabs value={tab} onChange={setTab} items={TABS} data-testid="work-calendar-tabs" /></Box>
       <Box sx={{ mt: 2 }}>

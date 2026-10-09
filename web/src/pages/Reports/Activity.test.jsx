@@ -23,7 +23,7 @@ describe("Activity report", () => {
     expect(cap.body).toMatchObject({ GroupBy: "owner" });
     expect(screen.queryByTestId("report-basis-input")).toBeNull();
     expect(screen.getByTestId("report-kpis")).toHaveTextContent("2,450");
-    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(
+    expect(within(table).getAllByRole("columnheader").map((h) => h.querySelector(".Mui-TableHeadCell-Content-Wrapper").textContent)).toEqual(
       ["Owner", "Calls", "Visits", "Meetings", "Other", "Talk min", "Inbound", "Outbound", "Connected"],
     );
     await userEvent.setup().click(within(table).getByText("Amit Singh"));

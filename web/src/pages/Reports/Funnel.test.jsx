@@ -10,7 +10,7 @@ describe("Funnel report", () => {
     const cap = mockReportEndpoints("/api/reports/funnel", reportData({
       kpis: { Created: 42, Contacted: 30, Qualified: 10, Lost: 8, Junk: 2, QualifiedPct: 23.8, LostPct: 19, AvgDaysToContact: 1.2, AvgDaysToQualify: 11.5 },
       rows: [{ GroupKey: 11, GroupLabel: "Website", Created: 42, Contacted: 30, Qualified: 10, Lost: 8, Junk: 2, QualifiedPct: 23.8, LostPct: 19, AvgDaysToQualify: 11.5 }],
-      trend: [{ Bucket: "2026-09-01", Created: 4, Qualified: 1, Lost: 0 }],
+      trend: [{ Bucket: "2026-09-01", Created: 4, Qualified: 1, Lost: 0 }, { Bucket: "2026-09-08", Created: 4, Qualified: 1, Lost: 0 }],
     }));
     renderWithProviders(<Funnel />, { route: "/reports/funnel" });
     const table = await screen.findByTestId("funnel-table");
@@ -18,7 +18,7 @@ describe("Funnel report", () => {
     const kpis = screen.getByTestId("report-kpis");
     for (const label of ["Created", "Contacted", "Qualified", "Lost", "Junk", "Qualified %", "Lost %", "Days to contact", "Days to qualify"]) expect(kpis).toHaveTextContent(label);
     expect(kpis).toHaveTextContent("11.5 d");
-    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(
+    expect(within(table).getAllByRole("columnheader").map((h) => h.querySelector(".Mui-TableHeadCell-Content-Wrapper").textContent)).toEqual(
       ["Source", "Created", "Contacted", "Qualified", "Lost", "Junk", "Qualified %", "Lost %", "Days to qualify"],
     );
     expect(within(table).getByText("23.8%")).toBeInTheDocument();

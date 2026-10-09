@@ -14,7 +14,7 @@ describe("Transfers report", () => {
     const cap = mockReportEndpoints("/api/reports/transfers", reportData({
       kpis: { Transfers: 72, CrossBranch: 18, SendBacks: 9, Unassigns: 4 },
       rows: [{ GroupKey: 36, GroupLabel: "Absent", SubKey: null, SubLabel: null, Transfers: 30, CrossBranch: 0, SendBacks: 0, Unassigns: 0 }],
-      trend: [{ Bucket: "2026-09-01", Transfers: 3 }],
+      trend: [{ Bucket: "2026-09-01", Transfers: 3 }, { Bucket: "2026-09-08", Transfers: 3 }],
     }));
     renderWithProviders(<Transfers />, { route: "/reports/transfers" });
     const table = await screen.findByTestId("transfers-table");
@@ -26,7 +26,7 @@ describe("Transfers report", () => {
     for (const label of ["Transfers", "Cross-branch", "Sent back", "Unassigned"]) expect(kpis).toHaveTextContent(label);
     expect(kpis).toHaveTextContent("72");
     expect(screen.getByTestId("trend-area-legend-Transfers")).toBeInTheDocument();
-    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(
+    expect(within(table).getAllByRole("columnheader").map((h) => h.querySelector(".Mui-TableHeadCell-Content-Wrapper").textContent)).toEqual(
       ["Reason", "Transfers", "Cross-branch", "Send-backs", "Unassigns"],
     );
     await userEvent.setup().click(within(table).getByText("Absent"));

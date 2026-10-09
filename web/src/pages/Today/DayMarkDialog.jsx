@@ -2,14 +2,14 @@ import { useState } from "react";
 import { CalendarCheck } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { Modal, Button, DateField, TextArea } from "../../components/ui";
+import { Modal, Button, DateField, TextArea, Tooltip } from "../../components/ui";
 import { FormSelect } from "../../components/Design/FormComponents";
 import { saveDayMark, deleteDayMark } from "../../api/workQueries";
 
 const PARTS = [
   { value: "full", label: "Full day" },
-  { value: "first_half", label: "First half" },
-  { value: "second_half", label: "Second half" },
+  { value: "first_half", label: "First half (morning)" },
+  { value: "second_half", label: "Second half (afternoon)" },
 ];
 const KINDS = [
   { value: "leave", label: "On leave" },
@@ -35,7 +35,7 @@ export default function DayMarkDialog({ open, person, date, onClose }) {
       queryClient.invalidateQueries({ queryKey: ["today"] });
       onClose?.();
     } catch (e) {
-      setError(e?.response?.data?.message || e?.message || "Could not save the mark");
+      setError(e?.response?.data?.message || e?.message || "Could not save");
     } finally {
       setBusy(false);
     }
@@ -44,12 +44,16 @@ export default function DayMarkDialog({ open, person, date, onClose }) {
 
   return (
     <Modal open={open} onClose={onClose} size="sm" data-testid="day-mark-dialog">
-      <Modal.Header title="Mark day" subtitle={person?.FullName} icon={<CalendarCheck size={18} />} onClose={onClose} />
+      <Modal.Header title="Mark leave or on duty" subtitle={person?.FullName} icon={<CalendarCheck size={18} />} onClose={onClose} />
       <Modal.Body>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <DateField label="Date" value={day} onChange={setDay} required data-testid="day-mark-date" />
-          <FormSelect label="Part of day" options={PARTS} value={part} onChange={(e) => setPart(e.target.value)} data-testid="day-mark-part" />
-          <FormSelect label="Mark as" options={KINDS} value={kind} onChange={(e) => setKind(e.target.value)} data-testid="day-mark-kind" />
+          <Tooltip title="Full day, or only the first or second half. Half-day leave means the person still works the other half.">
+            <div><FormSelect label="For" options={PARTS} value={part} onChange={(e) => setPart(e.target.value)} data-testid="day-mark-part" /></div>
+          </Tooltip>
+          <Tooltip title="On leave: the person is off, so they are not counted late or absent. On duty: working away from the office (a client visit, for example). It counts as present.">
+            <div><FormSelect label="Type" options={KINDS} value={kind} onChange={(e) => setKind(e.target.value)} data-testid="day-mark-kind" /></div>
+          </Tooltip>
           <TextArea label="Remarks" rows={2} value={remarks} onChange={(e) => setRemarks(e.target.value)} />
           {error && <div role="alert" data-testid="day-mark-error">{error}</div>}
         </div>

@@ -11,6 +11,7 @@ export default function Tooltip({
   arrow = true,
   delayEnter = 200,
   delayLeave = 0,
+  describeChild = true, // text is a description; never replaces the control's own accessible name
   ...rest
 }) {
   if (!title) return children;
@@ -19,6 +20,7 @@ export default function Tooltip({
       title={title}
       placement={placement}
       arrow={arrow}
+      describeChild={describeChild}
       enterDelay={delayEnter}
       leaveDelay={delayLeave}
       {...rest}

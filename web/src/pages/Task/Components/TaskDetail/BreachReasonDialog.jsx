@@ -8,7 +8,7 @@ import { useApiMutation } from "../../../../hooks/useApiMutation";
 import { TAT_ENDPOINTS } from "../../../../api/tatQueries";
 
 // Why a breached clock ran over. Never blocking: "Later" just closes, and the
-// clock stays "Reason pending" on Today until a reason is given.
+// clock stays "Missed deadline – say why" on Today until a reason is given.
 export default function BreachReasonDialog({ open, tatId, taskId, onClose }) {
   const queryClient = useQueryClient();
   const { lookups } = useLookups("task_breach_reason", { enabled: open, showErrorMessage: false });
@@ -39,7 +39,7 @@ export default function BreachReasonDialog({ open, tatId, taskId, onClose }) {
   return (
     <Modal open={open} onClose={close} size="sm" data-testid="breach-reason-dialog">
       <Modal.Header
-        title="This task ran over its time"
+        title="This task missed its deadline"
         subtitle="Say why, so your manager sees the reason with the delay."
         icon={<AlertOctagon size={18} />}
         onClose={close}

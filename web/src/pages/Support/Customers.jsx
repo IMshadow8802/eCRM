@@ -57,7 +57,6 @@ const Customers = () => {
         <Tooltip title="Edit details"><IconButton size="sm" variant="ghost" tone="info" aria-label="Edit customer" data-testid={`edit-customer-${row.original.Id}`} onClick={() => setEditCustomer(row.original)}><Pencil size={16} /></IconButton></Tooltip>
       </Box>
     ),
-    muiTableContainerProps: { sx: { maxHeight: "500px" } },
   });
 
   const officeCount = new Set((data ?? []).map((r) => r.BranchId)).size;

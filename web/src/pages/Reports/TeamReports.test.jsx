@@ -14,7 +14,7 @@ describe("Team reports", () => {
     const cap = mockReportEndpoints("/api/reports/tat", reportData({
       kpis: { Clocks: 10, Closed: 8, OnTimePct: 80, RanOver: 2, RanOverNotExcused: 1, MedianWorkMin: 190, P90WorkMin: 45 },
       rows: [{ GroupKey: 5, GroupLabel: "Asha", Clocks: 10, MedianWorkMin: 190, P90WorkMin: null }],
-      trend: [{ Bucket: "2026-09-01", Closed: 3, OnTime: 2, RanOver: 1 }],
+      trend: [{ Bucket: "2026-09-01", Closed: 3, OnTime: 2, RanOver: 1 }, { Bucket: "2026-09-08", Closed: 3, OnTime: 2, RanOver: 1 }],
     }));
     renderWithProviders(<TatReport />, { route: "/reports/tat" });
     const table = await screen.findByTestId("tat-table");
@@ -43,7 +43,7 @@ describe("Team reports", () => {
     const cap = mockReportEndpoints("/api/reports/attendance", reportData({
       kpis: { People: 4, WorkingDays: 80, PresentDays: 70, LateDays: 6, MedianLateMin: 75, NotSignedInDays: 4 },
       rows: [{ GroupKey: 5, GroupLabel: "Asha", WorkingDays: 20, PresentDays: 18, LateDays: 2, MedianLateMin: 12, NotSignedInDays: 2 }],
-      trend: [{ Bucket: "2026-09-01", Present: 4, Late: 1, NotSignedIn: 0 }],
+      trend: [{ Bucket: "2026-09-01", Present: 4, Late: 1, NotSignedIn: 0 }, { Bucket: "2026-09-08", Present: 4, Late: 1, NotSignedIn: 0 }],
     }));
     renderWithProviders(<AttendanceReport />, { route: "/reports/attendance" });
     const table = await screen.findByTestId("attendance-table");

@@ -24,7 +24,7 @@ describe("Leaderboard report", () => {
     expect(screen.queryByTestId("trend-area")).toBeNull();
     expect(screen.queryByTestId("report-groupby")).toBeNull();
     expect(screen.queryByTestId("report-basis-input")).toBeNull();
-    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(
+    expect(within(table).getAllByRole("columnheader").map((h) => h.querySelector(".Mui-TableHeadCell-Content-Wrapper").textContent)).toEqual(
       ["#", "Rep", "Leads", "Qualified", "Activities", "On-time %", "Avg response"],
     );
     expect(within(table).getByText("3.2 h")).toBeInTheDocument();

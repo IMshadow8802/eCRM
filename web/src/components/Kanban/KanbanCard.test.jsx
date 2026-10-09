@@ -312,8 +312,8 @@ describe("touch dragging", () => {
       vi.setSystemTime(new Date("2026-10-08T06:00:00Z"));
       wrap(<KanbanCardView task={{ Id: 41, Title: "T", Priority: "high", TatDueAt: "2026-10-08T05:35:00Z" }} />);
       const chip = screen.getByTestId("card-tat-41");
-      expect(chip).toHaveTextContent("Over by 25m");
-      expect(chip).toHaveAttribute("aria-label", "Over by 25m");
+      expect(chip).toHaveTextContent("Late by 25m");
+      expect(chip).toHaveAttribute("aria-label", "Missed the deadline by 25 minutes. The deadline has passed.");
       expect(chip).toHaveAttribute("data-tone", "over");
       expect(chip.querySelector("svg")).not.toBeNull();
     });

@@ -131,7 +131,7 @@ class PresenceController {
     async (req, res) => {
       const userId = positiveInt(req.body.UserId);
       if (!userId) return validationError(res, "User is required");
-      if (userId === Number(req.user.UserId)) return validationError(res, "Use sign out to end your own session");
+      if (userId === Number(req.user.UserId)) return validationError(res, "Use sign out to end your own sign-in");
       const ended = await sessionService.endUser(userId, req.user.CompId, "forced");
       // Tell the open tabs why, then drop their sockets (a reconnect is refused SESSION_FORCED).
       emitToUser(userId, SCOPES.SESSION, { reason: "SESSION_FORCED" });

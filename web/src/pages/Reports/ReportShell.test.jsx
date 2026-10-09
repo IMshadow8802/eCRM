@@ -21,7 +21,9 @@ describe("ReportTable", () => {
       { router: false },
     );
     const table = screen.getByTestId("t");
-    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual([
+    expect(within(table).getAllByRole("columnheader").map(
+      (h) => h.querySelector(".Mui-TableHeadCell-Content-Wrapper").textContent,
+    )).toEqual([
       "Name",
       "N",
     ]);
@@ -76,6 +78,51 @@ describe("ReportTable", () => {
     onRowClick.mockClear();
     await user.keyboard("{Escape}");
     expect(onRowClick).not.toHaveBeenCalled();
+  });
+});
+
+describe("ReportTable on MRT", () => {
+  const body = (table) => [...table.querySelectorAll("tbody tr")].map((tr) => tr.querySelector("td").textContent);
+
+  it("sorts on the row field when a header is clicked", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <ReportTable
+        rows={[{ Id: 1, Name: "B", N: 1 }, { Id: 2, Name: "A", N: 2 }]}
+        columns={[{ key: "Name", header: "Name", cell: (r) => r.Name }, { key: "N", header: "N", cell: (r) => r.N }]}
+        rowKey={(r) => r.Id}
+        testId="s"
+      />,
+      { router: false },
+    );
+    const table = screen.getByTestId("s");
+    expect(body(table)).toEqual(["B", "A"]);
+    await user.click(within(table).getAllByLabelText(/Sort by Name/)[0]);
+    expect(body(table)).toEqual(["A", "B"]);
+  });
+
+  it("does not offer sorting on a column whose cell is an element", () => {
+    renderWithProviders(
+      <ReportTable
+        rows={[{ Id: 1 }]}
+        columns={[{ header: "Chip", cell: () => <b>x</b> }, { header: "Text", cell: () => "t" }]}
+        rowKey={(r) => r.Id}
+        testId="e"
+      />,
+      { router: false },
+    );
+    const table = screen.getByTestId("e");
+    expect(within(table).queryByLabelText(/Sort by Chip/)).toBeNull();
+    expect(within(table).getAllByLabelText(/Sort by Text/).length).toBeGreaterThan(0);
+  });
+
+  it("pages only past 25 rows", () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({ Id: i, Name: `R${i}` }));
+    const cols = [{ key: "Name", header: "Name", cell: (r) => r.Name }];
+    renderWithProviders(<ReportTable rows={many} columns={cols} rowKey={(r) => r.Id} testId="p" />, { router: false });
+    expect(screen.getByTestId("p").querySelectorAll("tbody tr")).toHaveLength(25);
+    renderWithProviders(<ReportTable rows={many.slice(0, 5)} columns={cols} rowKey={(r) => r.Id} testId="q" />, { router: false });
+    expect(within(screen.getByTestId("q")).queryByRole("navigation")).toBeNull();
   });
 });
 

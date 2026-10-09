@@ -14,13 +14,13 @@ describe("PipelineValue report", () => {
     const cap = mockReportEndpoints("/api/reports/pipelineValue", reportData({
       kpis: { OpenValue: 1250000, QualifiedValue: 480000, LostValue: 300000, OpenCount: 42, AvgValue: 41190.48 },
       rows: [{ GroupKey: 32, GroupLabel: "Qualified", Count: 12, Value: 480000 }],
-      trend: [{ Bucket: "2026-09-01", OpenValue: 200000 }],
+      trend: [{ Bucket: "2026-09-01", OpenValue: 200000 }, { Bucket: "2026-09-08", OpenValue: 200000 }],
     }));
     renderWithProviders(<PipelineValue />, { route: "/reports/pipeline-value?preset=custom&from=2026-08-01&to=2026-08-31" });
     const table = await screen.findByTestId("pipelineValue-table");
     expect(cap.body).toMatchObject({ GroupBy: "status" });
     expect(screen.getByTestId("report-kpis")).toHaveTextContent("₹12,50,000.00");
-    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Status", "Leads", "Value"]);
+    expect(within(table).getAllByRole("columnheader").map((h) => h.querySelector(".Mui-TableHeadCell-Content-Wrapper").textContent)).toEqual(["Status", "Leads", "Value"]);
     expect(within(table).getByText("₹4,80,000.00")).toBeInTheDocument();
     await userEvent.setup().click(within(table).getByText("Qualified"));
     expect(mockNavigate).toHaveBeenCalledWith("/sales/leads?from=2026-08-01&to=2026-08-31&StatusId=32");
@@ -30,7 +30,7 @@ describe("PipelineValue report", () => {
     mockReportEndpoints("/api/reports/pipelineValue", reportData({
       kpis: { OpenValue: 0, QualifiedValue: 0, LostValue: 0, OpenCount: 0, AvgValue: null },
       rows: [{ GroupKey: 1, GroupLabel: "HEAD OFFICE", Count: 3, Value: 0 }],
-      trend: [{ Bucket: "2026-09-01", OpenValue: 200000 }],
+      trend: [{ Bucket: "2026-09-01", OpenValue: 200000 }, { Bucket: "2026-09-08", OpenValue: 200000 }],
     }));
     renderWithProviders(<PipelineValue />, { route: "/reports/pipeline-value?groupBy=branch" });
     const table = await screen.findByTestId("pipelineValue-table");

@@ -530,7 +530,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
               count: attachmentsQuery.data?.length ?? 0,
             },
             { value: "chat", label: "Comments", count: comments.length },
-            { value: "tat", label: "TAT" },
+            { value: "tat", label: "Deadline" },
             { value: "activity", label: "History" },
           ]}
         />

@@ -96,7 +96,7 @@ describe("Today", () => {
   it("Reason pending opens the reason dialog", async () => {
     const user = userEvent.setup();
     view();
-    await user.click(await screen.findByRole("button", { name: "Give reason" }));
+    await user.click(await screen.findByRole("button", { name: "Explain delay" }));
     expect(await screen.findByTestId("breach-reason-dialog")).toBeInTheDocument();
   });
 
@@ -178,7 +178,7 @@ describe("Today", () => {
     const user = userEvent.setup();
     view("/today?tab=team");
     await user.click(await screen.findByTestId("sessions-5"));
-    expect(await screen.findByText("No sessions yet.")).toBeInTheDocument();
+    expect(await screen.findByText("No sign-ins yet.")).toBeInTheDocument();
   });
 
   it("Mark day falls back to a generic error and Cancel closes", async () => {

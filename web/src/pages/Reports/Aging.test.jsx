@@ -14,7 +14,7 @@ describe("Aging report", () => {
     const cap = mockReportEndpoints("/api/reports/aging", reportData({
       kpis: { Open: 210, Age0_7: 60, Age8_30: 90, Age31_90: 45, Age90Plus: 15, NoNextFollowUp: 22, AvgDaysSinceTouch: 6.4 },
       rows: [{ GroupKey: 17, GroupLabel: "Amit Singh", Open: 70, Age0_7: 20, Age8_30: 30, Age31_90: 15, Age90Plus: 5, NoNextFollowUp: 7, AvgDaysSinceTouch: 5.1 }],
-      trend: [{ Bucket: "2026-09-01", Open: 200 }],
+      trend: [{ Bucket: "2026-09-01", Open: 200 }, { Bucket: "2026-09-08", Open: 200 }],
     }));
     renderWithProviders(<Aging />, { route: "/reports/aging?preset=90d" });
     const table = await screen.findByTestId("aging-table");
@@ -25,7 +25,7 @@ describe("Aging report", () => {
     // the subtitle has to say so — a filter that looks live and is not is worse
     // than no filter at all.
     expect(screen.getByText(/date range does not change these tiles or the table/i)).toBeInTheDocument();
-    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(
+    expect(within(table).getAllByRole("columnheader").map((h) => h.querySelector(".Mui-TableHeadCell-Content-Wrapper").textContent)).toEqual(
       ["Owner", "Open", "0–7 d", "8–30 d", "31–90 d", "90+ d", "No next follow-up", "Days since touch"],
     );
     expect(screen.getByTestId("trend-area-legend-Open")).toBeInTheDocument();
