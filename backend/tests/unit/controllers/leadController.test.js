@@ -398,7 +398,7 @@ describe("leadController.setStatus", () => {
     });
     const res = mockRes();
     await leadController.setStatus(baseReq({ body: { LeadId: 9, StatusId: 6, LostReasonId: 2 } }), res);
-    expect(database.executeStoredProcedure).toHaveBeenLastCalledWith("sp_SetLeadStatus", {
+    expect(database.executeStoredProcedure.mock.calls.filter((c) => c[0] === "sp_SetLeadStatus")[0][1]).toEqual({
       CompId: 5, LeadId: 9, StatusId: 6, LostReasonId: 2, UserId: 7,
     });
     expect(res.status).toHaveBeenCalledWith(200);
@@ -694,5 +694,192 @@ describe("leadController writes need the leads edit right", () => {
     await leadController[method](viewOnly(body), res);
     expect(res.status).toHaveBeenCalledWith(403);
     expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+});
+
+describe("leadController partner (spec 2026-10-10, merged procs)", () => {
+  const okRow = (Id = 42) => ({ recordset: [{ Id, ResponseCode: 200, ResponseMess: "ok" }] });
+  const withPartners = (req) => {
+    req.access.modules.partners = { view: true, add: false, edit: false, delete: false, reach: null };
+    return req;
+  };
+  const calls = (name) => database.executeStoredProcedure.mock.calls.filter((c) => c[0] === name);
+  const create = (body, view) => {
+    const req = baseReq({ body: { ...EDIT_BODY, Id: 0, OwnerId: null, ...body } });
+    return view ? withPartners(req) : req;
+  };
+
+  it("save sends partner and terms in the one sp_SaveLead call, for a partners viewer", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(okRow(42));
+    const res = mockRes();
+    await leadController.save(create({ PartnerId: 3, CommType: "pct", CommValue: 10 }, true), res);
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
+    expect(calls("sp_SaveLead")[0][1]).toMatchObject({
+      SetPartner: 1, PartnerId: 3, CommType: "pct", CommValue: 10, SetTerms: 1 });
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it("save by a caller without partners view never sends terms", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(okRow(42));
+    await leadController.save(create({ PartnerId: 3, CommType: "pct", CommValue: 10 }, false), mockRes());
+    expect(calls("sp_SaveLead")[0][1]).toMatchObject({ SetPartner: 1, PartnerId: 3, SetTerms: 0, CommType: null, CommValue: null });
+  });
+
+  it("an explicit null PartnerId clears the partner", async () => {
+    mockLeadLookup(visibleLead);
+    database.executeStoredProcedure.mockResolvedValueOnce(okRow(9));
+    await leadController.save(baseReq({ body: { ...EDIT_BODY, PartnerId: null } }), mockRes());
+    expect(calls("sp_SaveLead")[0][1]).toMatchObject({ Id: 9, SetPartner: 1, PartnerId: null });
+  });
+
+  it.each([null, ""])("save 400s a type with CommValue %p instead of saving 0", async (v) => {
+    const res = mockRes();
+    await leadController.save(create({ PartnerId: 3, CommType: "pct", CommValue: v }, true), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  it("a viewer's save without a CommType key sends SetTerms 0; explicit null sends SetTerms 1", async () => {
+    database.executeStoredProcedure.mockResolvedValue(okRow(42));
+    await leadController.save(create({ PartnerId: 3 }, true), mockRes());
+    expect(calls("sp_SaveLead")[0][1]).toMatchObject({ SetTerms: 0, CommType: null, CommValue: null });
+    await leadController.save(create({ PartnerId: 3, CommType: null }, true), mockRes());
+    expect(calls("sp_SaveLead")[1][1]).toMatchObject({ SetTerms: 1, CommType: null, CommValue: null });
+  });
+
+  describe("changing the partner on a won lead", () => {
+    const won = { ...visibleLead, StatusCode: "converted", PartnerId: 3, CommType: "pct", CommValue: "10.00" };
+    const edit = (req) => { req.access.modules.partners = { view: true, add: true, edit: true, delete: false, reach: null }; return req; };
+    const body = (extra) => ({ ...EDIT_BODY, ...extra });
+
+    it("403s a caller without partners edit changing the partner; no SP write", async () => {
+      mockLeadLookup(won);
+      const res = mockRes();
+      await leadController.save(baseReq({ body: body({ PartnerId: 4 }) }), res);
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json.mock.calls[0][0].message).toBe("Only someone with commission rights can change the partner on a won lead");
+      expect(calls("sp_SaveLead")).toHaveLength(0);
+    });
+    it("403s clearing the partner too", async () => {
+      mockLeadLookup(won);
+      const res = mockRes();
+      await leadController.save(baseReq({ body: body({ PartnerId: null }) }), res);
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+    it("403s a viewer changing the terms", async () => {
+      mockLeadLookup(won);
+      const res = mockRes();
+      await leadController.save(withPartners(baseReq({ body: body({ PartnerId: 3, CommType: "pct", CommValue: 20 }) })), res);
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(calls("sp_SaveLead")).toHaveLength(0);
+    });
+    it("passes the same partner and terms re-sent", async () => {
+      mockLeadLookup(won);
+      database.executeStoredProcedure.mockResolvedValueOnce(okRow(9));
+      await leadController.save(withPartners(baseReq({ body: body({ PartnerId: 3, CommType: "pct", CommValue: 10 }) })), mockRes());
+      expect(calls("sp_SaveLead")).toHaveLength(1);
+    });
+    it("passes a partners-edit caller changing the partner", async () => {
+      mockLeadLookup(won);
+      database.executeStoredProcedure.mockResolvedValueOnce(okRow(9));
+      await leadController.save(edit(baseReq({ body: body({ PartnerId: 4 }) })), mockRes());
+      expect(calls("sp_SaveLead")[0][1]).toMatchObject({ PartnerId: 4 });
+    });
+    it("passes an unconverted lead without partners edit", async () => {
+      mockLeadLookup({ ...won, StatusCode: "open" });
+      database.executeStoredProcedure.mockResolvedValueOnce(okRow(9));
+      await leadController.save(baseReq({ body: body({ PartnerId: 4 }) }), mockRes());
+      expect(calls("sp_SaveLead")).toHaveLength(1);
+    });
+  });
+
+  it("save 400s a whitespace-only CommValue instead of saving 0", async () => {
+    const res = mockRes();
+    await leadController.save(create({ PartnerId: 3, CommType: "pct", CommValue: "   " }, true), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  it("save without a PartnerId key sends SetPartner 0", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(okRow(42));
+    await leadController.save(create({}, true), mockRes());
+    expect(calls("sp_SaveLead")[0][1]).toMatchObject({ SetPartner: 0, PartnerId: null, CommType: null, CommValue: null, SetTerms: 0 });
+  });
+
+  it("save passes the proc's 409 straight through", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordset: [{ ResponseCode: 409, ResponseMess: "Commission already paid" }] });
+    const res = mockRes();
+    await leadController.save(create({ PartnerId: 3 }, false), res);
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json.mock.calls[0][0].message).toBe("Commission already paid");
+  });
+
+  it.each(["x", 0, -1])("save 400s a junk PartnerId (%p) instead of clearing the partner", async (bad) => {
+    const res = mockRes();
+    await leadController.save(create({ PartnerId: bad }, false), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json.mock.calls[0][0].message).toBe("Pick a valid partner");
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  it("save on edit 400s bad terms before any DB call", async () => {
+    const res = mockRes();
+    await leadController.save(withPartners(baseReq({ body: { ...EDIT_BODY, PartnerId: 3, CommType: "pct", CommValue: 150 } })), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  it("save 400s bad terms before any DB call", async () => {
+    const res = mockRes();
+    await leadController.save(create({ PartnerId: 3, CommType: "pct", CommValue: 150 }, true), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  it("convert and setStatus make exactly one proc call (the procs sync inside)", async () => {
+    mockLeadLookup(visibleLead);
+    database.executeStoredProcedure.mockResolvedValueOnce(okRow(9));
+    await leadController.convert(baseReq({ body: { LeadId: 9, WonValue: 100 } }), mockRes());
+    expect(calls("sp_ConvertLead")).toHaveLength(1);
+    mockLeadLookup(visibleLead);
+    database.executeStoredProcedure.mockResolvedValueOnce(okRow(9));
+    await leadController.setStatus(baseReq({ body: { LeadId: 9, StatusId: 6 } }), mockRes());
+    expect(calls("sp_SetLeadStatus")).toHaveLength(1);
+    expect(calls("sp_SyncPartnerCommission")).toHaveLength(0);
+  });
+
+  it("fetch passes a positive-int PartnerId, nulls junk", async () => {
+    database.executeStoredProcedure.mockResolvedValue({ recordsets: [[], []] });
+    await leadController.fetch(baseReq({ body: { PartnerId: "3" } }), mockRes());
+    expect(database.executeStoredProcedure.mock.calls[0][1].PartnerId).toBe(3);
+    await leadController.fetch(baseReq({ body: { PartnerId: "x" } }), mockRes());
+    expect(database.executeStoredProcedure.mock.calls[1][1].PartnerId).toBeNull();
+  });
+
+  describe("detail", () => {
+    const rs = {
+      recordsets: [[{ Id: 9, OwnerId: 7, PartnerId: 3, PartnerName: "Sharma", CommType: "pct", CommValue: 10 }],
+        [], [], [], [], [{ Id: 1, Amount: 5 }]] };
+
+    it("strips terms and returns no commissions without partners view", async () => {
+      database.executeStoredProcedure.mockResolvedValueOnce(rs);
+      const res = mockRes();
+      await leadController.detail(baseReq({ body: { LeadId: 9 } }), res);
+      const d = res.json.mock.calls[0][0].data;
+      expect(d.commissions).toEqual([]);
+      expect(d.lead).toMatchObject({ PartnerId: 3, PartnerName: "Sharma" });
+      expect(d.lead).not.toHaveProperty("CommType");
+      expect(d.lead).not.toHaveProperty("CommValue");
+    });
+
+    it("returns terms and the last result set as commissions with partners view", async () => {
+      database.executeStoredProcedure.mockResolvedValueOnce(rs);
+      const res = mockRes();
+      await leadController.detail(withPartners(baseReq({ body: { LeadId: 9 } })), res);
+      const d = res.json.mock.calls[0][0].data;
+      expect(d.commissions).toEqual([{ Id: 1, Amount: 5 }]);
+      expect(d.lead).toMatchObject({ CommType: "pct", CommValue: 10 });
+    });
   });
 });

@@ -64,6 +64,9 @@ export default function ReportPage({
   // Which filter pickers to show, and what the owner one is called.
   pickers = ["branch", "owner", "source", "product"],
   ownerPlaceholder = "All owners",
+  // Drop a KPI / column whose key the response does not carry (the server omits
+  // fields the caller may not see, e.g. partner money). Off: show everything.
+  hideMissing = false,
 }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -127,7 +130,10 @@ export default function ReportPage({
   const trendRows = data?.trend ?? [];
 
   const groupLabel = groupBys.find((g) => g.value === filters.groupBy)?.label ?? "Group";
-  const tableColumns = columns.map((c) => ({
+  const shown = (list, source) =>
+    hideMissing && source ? list.filter((c) => c.key in source) : list;
+  const shownKpis = shown(kpis, data?.kpis);
+  const tableColumns = shown(columns, rows[0]).map((c) => ({
     key: c.key,
     header: c.header ?? groupLabel,
     align: c.align,
@@ -242,12 +248,12 @@ export default function ReportPage({
       )}
 
       {/* KPI strip */}
-      {kpis.length > 0 && (
+      {shownKpis.length > 0 && (
         <Box
           sx={{ display: "grid", gap: 1.5, gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))" }}
           data-testid="report-kpis"
         >
-          {kpis.map((k) => (
+          {shownKpis.map((k) => (
             <StatisticsCard
               key={k.key}
               title={k.label}

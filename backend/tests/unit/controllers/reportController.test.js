@@ -282,3 +282,45 @@ describe("reportController.tat", () => {
     expect(database.executeStoredProcedure).not.toHaveBeenCalled();
   });
 });
+
+// --- Partner report: money columns only for callers who can view partners ---
+
+describe("reportController.partners", () => {
+  const FULL = { LeadsSent: 4, Converted: 1, ConversionPct: 25, WonValue: 100, Earned: 10, Due: 5, Paid: 5 };
+  const partnersReq = (modules) => {
+    const req = baseReq({ body: { FromDate: "2026-08-01", ToDate: "2026-08-31" } });
+    req.access = mockAccess({ modules }, 7);
+    req.scope = scopeFor(req.access, "sales_reports", 7);
+    return req;
+  };
+  const run = async (modules) => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[FULL], [{ GroupKey: 1, GroupLabel: "P", ...FULL }], [{ Bucket: "2026-08-01", LeadsSent: 4, Converted: 1 }]],
+    });
+    const res = mockRes();
+    await reportController.partners(partnersReq(modules), res);
+    return res.json.mock.calls[0][0].data;
+  };
+
+  it("calls sp_RptPartners and keeps money when the caller can view partners", async () => {
+    const data = await run([["sales_reports", "v"], ["partners", "v"]]);
+    expect(database.executeStoredProcedure.mock.calls[0][0]).toBe("sp_RptPartners");
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({ GroupBy: "partner", CompId: 5 });
+    expect(data.kpis.Earned).toBe(10);
+    expect(data.rows[0].Paid).toBe(5);
+  });
+
+  it("strips WonValue/Earned/Due/Paid from kpis and rows without partners view", async () => {
+    const data = await run([["sales_reports", "v"]]);
+    expect(data.kpis).toEqual({ LeadsSent: 4, Converted: 1, ConversionPct: 25 });
+    expect(data.rows[0]).toEqual({ GroupKey: 1, GroupLabel: "P", LeadsSent: 4, Converted: 1, ConversionPct: 25 });
+    expect(data.trend).toHaveLength(1);
+  });
+
+  it("tolerates empty result sets when stripping", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [] });
+    const res = mockRes();
+    await reportController.partners(partnersReq([["sales_reports", "v"]]), res);
+    expect(res.json.mock.calls[0][0].data).toMatchObject({ kpis: {}, rows: [], trend: [] });
+  });
+});

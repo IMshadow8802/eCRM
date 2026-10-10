@@ -35,6 +35,7 @@ const Groups = lazy(() => import("./pages/Master/Groups"));
 const Offices = lazy(() => import("./pages/Master/Offices"));
 
 // Sales module (leads, calls, follow-ups, products)
+const Partners = lazy(() => import("./pages/Sales/Partners/Partners"));
 const SalesLeads = lazy(() => import("./pages/Sales/Leads"));
 const LeadDetail = lazy(() => import("./pages/Sales/LeadDetail"));
 const SalesFollowUps = lazy(() => import("./pages/Sales/FollowUps"));
@@ -47,6 +48,7 @@ const Products = lazy(() => import("./pages/Settings/Products"));
 const FunnelReport = lazy(() => import("./pages/Reports/Funnel"));
 const FollowUpComplianceReport = lazy(() => import("./pages/Reports/FollowUpCompliance"));
 const ActivityReport = lazy(() => import("./pages/Reports/Activity"));
+const PartnersReport = lazy(() => import("./pages/Reports/Partners"));
 const LostReport = lazy(() => import("./pages/Reports/Lost"));
 const AgingReport = lazy(() => import("./pages/Reports/Aging"));
 const TatReport = lazy(() => import("./pages/Reports/TatReport"));
@@ -94,6 +96,7 @@ export const routesConfig = [
   // The pipeline board is gone (spec 1). Bookmarks land on the list.
   { path: "/sales/pipeline", element: <Navigate to="/sales/leads" replace /> },
   { path: "/sales/leads", element: <ProtectedRoute element={<SalesLeads />} /> },
+  { path: "/sales/partners", element: <ProtectedRoute element={<Partners />} /> },
   { path: "/sales/leads/:leadId", element: <ProtectedRoute element={<LeadDetail />} /> },
   // Task 17. Lazy on purpose: it's a plain filtered list (no PDF chain in its
   // import graph — QUOTE_STATUS comes from quoteStatus.js, not LeadQuotations),
@@ -116,6 +119,7 @@ export const routesConfig = [
   { path: "/reports/funnel", element: <ProtectedRoute element={<FunnelReport />} /> },
   { path: "/reports/follow-up-compliance", element: <ProtectedRoute element={<FollowUpComplianceReport />} /> },
   { path: "/reports/activity", element: <ProtectedRoute element={<ActivityReport />} /> },
+  { path: "/reports/partners", element: <ProtectedRoute element={<PartnersReport />} /> },
   { path: "/reports/lost", element: <ProtectedRoute element={<LostReport />} /> },
   { path: "/reports/aging", element: <ProtectedRoute element={<AgingReport />} /> },
   { path: "/reports/tat", element: <ProtectedRoute element={<TatReport />} /> },

@@ -163,8 +163,23 @@ describe("WorkCalendar", () => {
     await waitFor(() => expect(bodies["tat/saveTatPolicy"]).toBeDefined());
     expect(bodies["work/saveCompanySetting"]).toEqual({
       LateGraceMin: 10, SessionBufferMin: 30, WarnPct: 80, NotifyNotSignedIn: true, GoLiveDate: "2026-11-01",
+      CommissionDueOn: "manual",
     });
     expect(bodies["tat/saveTatPolicy"]).toEqual({ Items: [{ Priority: "high", Minutes: 150 }, { Priority: "low", Minutes: 1440 }] });
+  });
+
+  it("shows the current 'Commission becomes payable' value and sends a changed one", async () => {
+    settings.settings = { ...settings.settings, CommissionDueOn: "convert" };
+    const user = userEvent.setup();
+    renderWithProviders(<WorkCalendar />);
+    await user.click(await screen.findByTestId("work-calendar-tabs-rules"));
+    const field = await screen.findByLabelText("Commission becomes payable");
+    expect(field).toHaveValue("As soon as the lead converts");
+    await user.click(field);
+    await user.click(await screen.findByRole("option", { name: "When we mark it" }));
+    await user.click(screen.getByRole("button", { name: "Save rules" }));
+    await waitFor(() => expect(bodies["work/saveCompanySetting"]).toBeDefined());
+    expect(bodies["work/saveCompanySetting"].CommissionDueOn).toBe("manual");
   });
 
   it("stops after a refused settings save", async () => {

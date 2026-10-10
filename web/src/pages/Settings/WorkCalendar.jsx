@@ -289,6 +289,11 @@ function HolidaysTab({ holidays, offices, canEdit, confirmation, run }) {
 
 const hoursOf = (minutes) => (minutes == null ? "" : String(Math.round((minutes / 60) * 100) / 100));
 
+const COMMISSION_DUE_ON = [
+  { value: "manual", label: "When we mark it" },
+  { value: "convert", label: "As soon as the lead converts" },
+];
+
 function RulesTab({ settings, tatPolicy, canEdit, run }) {
   const s = settings ?? {};
   const [form, setForm] = useState({
@@ -297,6 +302,7 @@ function RulesTab({ settings, tatPolicy, canEdit, run }) {
     WarnPct: String(s.WarnPct ?? 80),
     NotifyNotSignedIn: Boolean(s.NotifyNotSignedIn),
     GoLiveDate: dateOnly(s.GoLiveDate),
+    CommissionDueOn: s.CommissionDueOn || "manual",
   });
   const [tat, setTat] = useState(() =>
     Object.fromEntries(PRIORITIES.map((p) => [p, hoursOf(tatPolicy.find((t) => t.Priority === p)?.Minutes)])),
@@ -311,6 +317,7 @@ function RulesTab({ settings, tatPolicy, canEdit, run }) {
       () => saveCompanySetting({
         LateGraceMin: Number(form.LateGraceMin), SessionBufferMin: Number(form.SessionBufferMin),
         WarnPct: Number(form.WarnPct), NotifyNotSignedIn: form.NotifyNotSignedIn, GoLiveDate: form.GoLiveDate || null,
+        CommissionDueOn: form.CommissionDueOn,
       }),
       "Rules saved",
     );
@@ -336,6 +343,12 @@ function RulesTab({ settings, tatPolicy, canEdit, run }) {
       <DateField
         label="Start tracking from" hint="Nothing is recorded before this date. Empty = off."
         value={form.GoLiveDate} disabled={!canEdit} onChange={(v) => setForm((f) => ({ ...f, GoLiveDate: v }))}
+      />
+      <FormSelect
+        label="Commission becomes payable" value={form.CommissionDueOn} disabled={!canEdit}
+        onChange={(e) => setForm((f) => ({ ...f, CommissionDueOn: e.target.value || f.CommissionDueOn }))}
+        options={COMMISSION_DUE_ON}
+        helperText="When we mark it: commission stays Earned until someone marks it Ready to pay (for example after the customer pays). As soon as the lead converts: it is ready to pay straight away."
       />
       <h3>Time allowed per task, by priority (working hours)</h3>
       {PRIORITIES.map((p) => (

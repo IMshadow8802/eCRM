@@ -55,7 +55,7 @@ export function leadsParamsToState(params) {
     preset,
     filters: {
       StatusId: idParam(get("StatusId")), ProductId: idParam(get("ProductId")), OwnerId: idParam(get("OwnerId")),
-      SourceId: idParam(get("SourceId")), BranchId: idParam(get("BranchId")),
+      SourceId: idParam(get("SourceId")), BranchId: idParam(get("BranchId")), PartnerId: idParam(get("PartnerId")),
     },
     range: { from: ISO_DAY.test(get("from")) ? get("from") : "", to: ISO_DAY.test(get("to")) ? get("to") : "" },
   };

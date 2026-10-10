@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import dayjs from "dayjs";
@@ -26,6 +26,10 @@ const STATUSES = [
   { Id: 11, Value: "New", Code: "open", SortOrder: 1 },
   { Id: 13, Value: "Junk", Code: "junk", SortOrder: 3 },
 ];
+const PARTNERS = [
+  { Id: 3, Name: "Sharma Traders", City: "Surat", CommType: "pct", CommValue: 10 },
+  { Id: 4, Name: "Verma Agency", City: null, CommType: null, CommValue: null },
+];
 const PRODUCTS = [{ Id: 2, Name: "TV 43in" }];
 
 const json = (data) =>
@@ -50,6 +54,7 @@ const mockReads = (customFields = []) =>
     http.post("*/api/config/fetchCustomFields", async () =>
       json({ customFields }),
     ),
+    http.post("*/api/partners/fetchPartners", async () => json({ partners: PARTNERS })),
   );
 
 const mockSave = (capture) =>
@@ -266,4 +271,176 @@ describe("LeadCreateModal", () => {
     expect(await screen.findByText("Mobile number must be 10 digits")).toBeInTheDocument();
     expect(saveSpy).not.toHaveBeenCalled();
   }, 20000);
+
+  describe("partner", () => {
+    const asViewer = () =>
+      useAuthStore.setState({ access: { isAdmin: false, modules: { partners: { view: true } } } });
+    const fillRequired = async (user) => {
+      await user.type(screen.getByTestId("lead-name"), "Acme");
+      await user.type(screen.getByTestId("lead-mobile"), "9990001111");
+    };
+    const submit = async (user) => {
+      let body;
+      mockSave((b) => { body = b; });
+      await user.click(screen.getByTestId("lead-create-submit"));
+      await waitFor(() => expect(body).toBeTruthy());
+      return body;
+    };
+
+    beforeEach(() => useAuthStore.setState({ access: null }));
+
+    it("sends the chosen PartnerId and shows no commission fields without partners view", async () => {
+      renderWithProviders(<LeadCreateModal open onClose={vi.fn()} />, { router: false });
+      const user = userEvent.setup();
+      await fillRequired(user);
+      await pick(user, "lead-partner", "Sharma Traders · Surat");
+      expect(screen.queryByTestId("lead-comm-type-input")).toBeNull();
+      const body = await submit(user);
+      expect(body.PartnerId).toBe(3);
+      expect(body).not.toHaveProperty("CommType");
+      expect(body).not.toHaveProperty("CommValue");
+    });
+
+    it("with partners view fills the usual rule, and sends edited terms", async () => {
+      asViewer();
+      renderWithProviders(<LeadCreateModal open onClose={vi.fn()} />, { router: false });
+      const user = userEvent.setup();
+      await fillRequired(user);
+      await pick(user, "lead-partner", "Sharma Traders · Surat");
+      expect(screen.getByTestId("lead-comm-type-input")).toHaveValue("Percent of deal value");
+      expect(screen.getByTestId("lead-comm-value")).toHaveValue("10");
+      await pick(user, "lead-comm-type", "Fixed amount");
+      await user.clear(screen.getByTestId("lead-comm-value"));
+      await user.type(screen.getByTestId("lead-comm-value"), "5000");
+      const body = await submit(user);
+      expect(body).toMatchObject({ PartnerId: 3, CommType: "fixed", CommValue: 5000 });
+    });
+
+    it("a partner with no usual rule starts at No commission and sends nulls", async () => {
+      asViewer();
+      renderWithProviders(<LeadCreateModal open onClose={vi.fn()} />, { router: false });
+      const user = userEvent.setup();
+      await fillRequired(user);
+      await pick(user, "lead-partner", "Verma Agency");
+      expect(screen.queryByTestId("lead-comm-value")).toBeNull();
+      const body = await submit(user);
+      expect(body).toMatchObject({ PartnerId: 4, CommType: null, CommValue: null });
+    });
+
+    it("refuses a percentage over 100 and posts nothing", async () => {
+      asViewer();
+      let called = false;
+      server.use(http.post("*/api/leads/saveLeads", async () => { called = true; return json({ Id: 1 }); }));
+      renderWithProviders(<LeadCreateModal open onClose={vi.fn()} />, { router: false });
+      const user = userEvent.setup();
+      await fillRequired(user);
+      await pick(user, "lead-partner", "Sharma Traders · Surat");
+      await user.clear(screen.getByTestId("lead-comm-value"));
+      await user.type(screen.getByTestId("lead-comm-value"), "150");
+      await user.click(screen.getByTestId("lead-create-submit"));
+      expect(await screen.findByText("A percentage cannot be over 100")).toBeInTheDocument();
+      expect(called).toBe(false);
+    });
+
+    it("clearing the partner sends PartnerId null and hides the commission fields", async () => {
+      asViewer();
+      renderWithProviders(
+        <LeadCreateModal open lead={{ Id: 8, Name: "Acme", MobileNo: "9990001111", PartnerId: 3, CommType: "pct", CommValue: 10 }} onClose={vi.fn()} />,
+        { router: false },
+      );
+      const user = userEvent.setup();
+      expect(screen.getByTestId("lead-comm-value")).toHaveValue("10");
+      await waitFor(() => expect(screen.getByTestId("lead-partner-input")).toHaveValue("Sharma Traders · Surat"));
+      fireEvent.click(screen.getByTestId("lead-partner-input").closest(".MuiAutocomplete-root").querySelector('[aria-label="Clear"]'));
+      expect(screen.queryByTestId("lead-comm-type-input")).toBeNull();
+      const body = await submit(user);
+      expect(body).toMatchObject({ PartnerId: null, CommType: null, CommValue: null });
+    });
+
+    it("picking another partner then going back to the lead's own restores its agreed terms", async () => {
+      asViewer();
+      renderWithProviders(
+        <LeadCreateModal open lead={{ Id: 8, Name: "Acme", MobileNo: "9990001111", PartnerId: 3, CommType: "fixed", CommValue: 2500 }} onClose={vi.fn()} />,
+        { router: false },
+      );
+      const user = userEvent.setup();
+      await waitFor(() => expect(screen.getByTestId("lead-partner-input")).toHaveValue("Sharma Traders · Surat"));
+      await pick(user, "lead-partner", "Verma Agency");
+      expect(screen.queryByTestId("lead-comm-value")).toBeNull();
+      await pick(user, "lead-partner", "Sharma Traders · Surat");
+      expect(screen.getByTestId("lead-comm-value")).toHaveValue("2500");
+      const body = await submit(user);
+      expect(body).toMatchObject({ PartnerId: 3, CommType: "fixed", CommValue: 2500 });
+    });
+
+    it("list row (no terms): pick another partner then back sends no terms", async () => {
+      asViewer();
+      renderWithProviders(
+        <LeadCreateModal open lead={{ Id: 8, Name: "Acme", MobileNo: "9990001111", PartnerId: 3, PartnerName: "Sharma Traders" }} onClose={vi.fn()} />,
+        { router: false },
+      );
+      const user = userEvent.setup();
+      await waitFor(() => expect(screen.getByTestId("lead-partner-input")).toHaveValue("Sharma Traders · Surat"));
+      await pick(user, "lead-partner", "Verma Agency");
+      await pick(user, "lead-partner", "Sharma Traders · Surat");
+      const body = await submit(user);
+      expect(body.PartnerId).toBe(3);
+      expect(body).not.toHaveProperty("CommType");
+      expect(body).not.toHaveProperty("CommValue");
+    });
+
+    it("edit from the lead page prefills partner and terms", async () => {
+      asViewer();
+      renderWithProviders(
+        <LeadCreateModal open lead={{ Id: 8, Name: "Acme", MobileNo: "9990001111", PartnerId: 3, CommType: "fixed", CommValue: 2500 }} onClose={vi.fn()} />,
+        { router: false },
+      );
+      const user = userEvent.setup();
+      await waitFor(() => expect(screen.getByTestId("lead-partner-input")).toHaveValue("Sharma Traders · Surat"));
+      expect(screen.getByTestId("lead-comm-type-input")).toHaveValue("Fixed amount");
+      expect(screen.getByTestId("lead-comm-value")).toHaveValue("2500");
+      const body = await submit(user);
+      expect(body).toMatchObject({ PartnerId: 3, CommType: "fixed", CommValue: 2500 });
+    });
+
+    it("edit from the list (row has no terms) prefills partner only and never sends terms", async () => {
+      asViewer();
+      renderWithProviders(
+        <LeadCreateModal open lead={{ Id: 8, Name: "Acme", MobileNo: "9990001111", PartnerId: 3, PartnerName: "Sharma Traders" }} onClose={vi.fn()} />,
+        { router: false },
+      );
+      const user = userEvent.setup();
+      await waitFor(() => expect(screen.getByTestId("lead-partner-input")).toHaveValue("Sharma Traders · Surat"));
+      expect(screen.queryByTestId("lead-comm-type-input")).toBeNull();
+      const body = await submit(user);
+      expect(body.PartnerId).toBe(3);
+      expect(body).not.toHaveProperty("CommType");
+    });
+
+    it("a deactivated partner still shows on edit and re-saves unchanged", async () => {
+      renderWithProviders(
+        <LeadCreateModal open lead={{ Id: 8, Name: "Acme", MobileNo: "9990001111", PartnerId: 99, PartnerName: "Old Agency" }} onClose={vi.fn()} />,
+        { router: false },
+      );
+      const user = userEvent.setup();
+      await waitFor(() => expect(screen.getByTestId("lead-partner-input")).toHaveValue("Old Agency (inactive)"));
+      const body = await submit(user);
+      expect(body.PartnerId).toBe(99);
+    });
+
+    it("a whitespace-only commission is refused, not sent as 0%", async () => {
+      asViewer();
+      let called = false;
+      server.use(http.post("*/api/leads/saveLeads", async () => { called = true; return json({ Id: 1 }); }));
+      renderWithProviders(<LeadCreateModal open onClose={vi.fn()} />, { router: false });
+      const user = userEvent.setup();
+      await fillRequired(user);
+      await pick(user, "lead-partner", "Sharma Traders · Surat");
+      await user.clear(screen.getByTestId("lead-comm-value"));
+      await user.type(screen.getByTestId("lead-comm-value"), "  ");
+      await user.click(screen.getByTestId("lead-create-submit"));
+      expect(await screen.findByText("Enter the commission")).toBeInTheDocument();
+      expect(called).toBe(false);
+    });
+  });
 });

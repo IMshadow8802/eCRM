@@ -177,6 +177,7 @@ export const GROUP_PARAM = {
   product: "ProductId",
   branch: "BranchId",
   status: "StatusId",
+  partner: "PartnerId",
 };
 
 /**

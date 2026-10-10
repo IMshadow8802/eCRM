@@ -6,10 +6,12 @@ const {
   canSeeRecord,
   assertRecordAccess,
   assertCanAssign,
+  scopeFor,
 } = require("../middleware/permission");
 const { positiveInt, pageParams } = require("../utils/controllerKit");
 const { applyMobiles } = require("../utils/mobile");
 const { parseDay } = require("../utils/reportKit");
+const { termsError } = require("../utils/commission");
 
 // Mutating SPs log their own activity server-side and return exactly one
 // status row: Id + ResponseCode + ResponseMess.
@@ -18,7 +20,9 @@ async function runSp(res, spName, params, failMessage) {
     const result = await database.executeStoredProcedure(spName, params);
     const spResponse = result.recordset?.[0] ?? result.recordsets?.[0]?.[0];
     const message = spResponse.ResponseMess || spResponse.ResponseMessage;
-    if (spResponse.ResponseCode === 200) return responseHelper.success(res, message, spResponse);
+    if (spResponse.ResponseCode === 200) {
+      return responseHelper.success(res, message, spResponse);
+    }
     return responseHelper.error(res, message, "SP_ERROR", spResponse.ResponseCode);
   } catch (err) {
     console.error(`${spName} error:`, err);
@@ -62,8 +66,33 @@ const leadController = {
     // column, so it has to mean one thing: ten digits (utils/mobile.js).
     const mobileError = applyMobiles(fields, [["MobileNo", "Mobile number"], ["AltMobile", "Alternate mobile"]]);
     if (mobileError) return responseHelper.validationError(res, mobileError);
+    // Partner rides in the same sp_SaveLead call (one transaction). Terms are
+    // only honoured from a caller who can view partners.
+    const partnerSent = Object.prototype.hasOwnProperty.call(req.body, "PartnerId");
+    const canTerms = scopeFor(req, "partners").can.view;
+    const PartnerId = positiveInt(req.body.PartnerId);
+    if (partnerSent && req.body.PartnerId != null && !PartnerId) {
+      return responseHelper.validationError(res, "Pick a valid partner");
+    }
+    const CommType = canTerms && PartnerId ? (req.body.CommType ?? null) : null;
+    const rawValue = req.body.CommValue;
+    const CommValue = CommType == null || rawValue == null || String(rawValue).trim() === "" ? null : Number(String(rawValue).trim());
+    if (partnerSent && canTerms) {
+      const bad = termsError(CommType, CommValue);
+      if (bad) return responseHelper.validationError(res, bad);
+    }
     if (Id > 0) {
-      if (!(await assertRecordAccess(req, res, "lead", Id, "write"))) return;
+      const record = await assertRecordAccess(req, res, "lead", Id, "write");
+      if (!record) return;
+      // A won lead's commission is money: re-pointing the partner (or, for a
+      // viewer, the agreed terms) needs partners edit. Re-sending the same values is no change.
+      if (partnerSent && record.StatusCode === "converted" && !scopeFor(req, "partners").can.edit) {
+        const termsChange = canTerms && Object.prototype.hasOwnProperty.call(req.body, "CommType")
+          && (CommType !== (record.CommType ?? null) || CommValue !== (record.CommValue == null ? null : Number(record.CommValue)));
+        if ((PartnerId ?? null) !== (record.PartnerId ?? null) || termsChange) {
+          return responseHelper.error(res, "Only someone with commission rights can change the partner on a won lead", "FORBIDDEN", 403);
+        }
+      }
       // Ownership moves through transfer (history), status through setStatus
       // (guards). The SP ignores these on update; not sending them keeps that
       // fact visible here rather than buried in T-SQL.
@@ -76,7 +105,13 @@ const leadController = {
     // while assertCanAssign 403s a null target below Branch scope.
     if (Id === 0 && fields.OwnerId
         && !(await assertCanAssign(req, res, { toUserId: fields.OwnerId, toBranchId: null }))) return;
-    return runSp(res, "sp_SaveLead", { Id, CompId, BranchId, UserId, ...fields }, "Failed to save lead");
+    const partner = {
+      SetPartner: partnerSent ? 1 : 0, PartnerId: partnerSent ? PartnerId : null,
+      CommType: partnerSent ? CommType : null, CommValue: partnerSent ? CommValue : null,
+      // A missing CommType key keeps the terms (the proc's usual rule); an explicit null means "no commission".
+      SetTerms: partnerSent && canTerms && Object.prototype.hasOwnProperty.call(req.body, "CommType") ? 1 : 0,
+    };
+    return runSp(res, "sp_SaveLead", { Id, CompId, BranchId, UserId, ...fields, ...partner }, "Failed to save lead");
   },
 
   async fetch(req, res) {
@@ -85,7 +120,7 @@ const leadController = {
       const {
         BranchId = null, SearchTerm = null,
         StatusId = null, StatusCode = null, ProductId = null, OwnerId = null, SourceId = null,
-        Overdue = false, Unassigned = false, FromDate = null, ToDate = null,
+        Overdue = false, Unassigned = false, FromDate = null, ToDate = null, PartnerId = null,
       } = req.body;
       // Clamped, not taken raw: PageSize went straight to the SP, and
       // sp_FetchLeads has no ceiling of its own.
@@ -93,7 +128,7 @@ const leadController = {
 
       const result = await database.executeStoredProcedure("sp_FetchLeads", {
         CompId, BranchId, PageNumber, PageSize, SearchTerm,
-        StatusId, StatusCode, ProductId, OwnerId, SourceId,
+        StatusId, StatusCode, ProductId, OwnerId, SourceId, PartnerId: positiveInt(PartnerId),
         Overdue: bit(Overdue), Unassigned: bit(Unassigned),
         FromDate: isoDay(FromDate), ToDate: isoDay(ToDate),
         ...scopeParams(req),
@@ -122,17 +157,21 @@ const leadController = {
       const { LeadId } = req.body;
       const result = await database.executeStoredProcedure("sp_FetchLeadDetail", { CompId, LeadId });
       const rs = result.recordsets ?? [];
-      const lead = rs[0]?.[0] || null;
+      let lead = rs[0]?.[0] || null;
       // 404 rather than 403: a user who cannot see a lead should not learn it exists.
       if (!canSeeRecord(req, lead, "OwnerId")) {
         return responseHelper.error(res, "Lead not found", "NOT_FOUND", 404);
       }
+      // Agreed terms and commission rows (the last result set) need `partners` view.
+      const canTerms = scopeFor(req, "partners").can.view;
+      if (!canTerms) { const { CommType, CommValue, ...rest } = lead; lead = rest; }
       return responseHelper.success(res, "Lead detail fetched successfully", {
         lead,
         fields: rs[1] || [],
         activity: rs[2] || [],
         followups: rs[3] || [],
         assignments: rs[4] || [],
+        commissions: canTerms ? rs[5] || [] : [],
       });
     } catch (err) {
       console.error("sp_FetchLeadDetail error:", err);

@@ -123,6 +123,18 @@ for (const [key, { sp }] of Object.entries(REPORTS)) {
   );
 }
 
+// Partner report: the money columns need `partners` view, not just report access.
+const MONEY = ["WonValue", "Earned", "Due", "Paid"];
+const omitMoney = (row) => Object.fromEntries(Object.entries(row).filter(([k]) => !MONEY.includes(k)));
+controller.partners = asyncRoute(
+  (req, res) => runReport("sp_RptPartners", req, res, "partners",
+    scopeFor(req, "partners").can.view
+      ? undefined
+      : (d) => ({ ...d, kpis: omitMoney(d.kpis), rows: d.rows.map(omitMoney) })),
+  "Failed to fetch report",
+  "REPORT_ERROR",
+);
+
 // Task TAT report (P4). Scope is the attendance scope (self + ReportsTo subtree +
 // attendance reach), sent as a user allow-list: NULL = everyone, [] = nobody.
 // An OwnerId outside it yields no rows, never that person's clocks.

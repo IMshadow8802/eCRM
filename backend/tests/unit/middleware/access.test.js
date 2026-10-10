@@ -21,7 +21,7 @@ const LISTS = [
 describe("module list", () => {
   it("holds the spec keys and the four reach modules", () => {
     expect(MODULES).toEqual(["leads", "sales_reports", "complaints", "support_reports", "customers", "people",
-      "tasks", "teams", "projects", "roles", "offices", "settings", "dashboard", "attendance"]);
+      "tasks", "teams", "projects", "roles", "offices", "settings", "dashboard", "attendance", "partners"]);
     expect([...REACH_MODULES]).toEqual(["leads", "complaints", "customers", "people", "attendance"]);
   });
 });

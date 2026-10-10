@@ -18,6 +18,7 @@ import { useLookups } from "../../hooks/useLookups";
 import { useAccess } from "../../hooks/useAccess";
 import useAuthStore from "../../stores/useAuthStore";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
+import { PARTNER_ENDPOINTS } from "../../api/partnerQueries";
 import { formatCurrency, formatDate } from "../../utils/format";
 import { getUserName } from "../../utils/userShape";
 import { LEAD_PRESETS, presetParams, isActiveCode, leadsParamsToState } from "./leadStatus";
@@ -57,14 +58,20 @@ const Leads = () => {
   const { data: productsData } = useApiQuery({ queryKey: ["products", "active"], endpoint: SALES_ENDPOINTS.products.fetchProducts, params: { PageSize: 200, IsActive: true } });
   const { data: branchData } = useApiQuery({ queryKey: ["branches"], endpoint: SALES_ENDPOINTS.users.fetchBranches, showErrorMessage: false });
 
+  const { data: partnerData } = useApiQuery({ queryKey: ["partners", "picker"], endpoint: PARTNER_ENDPOINTS.fetchPartners, params: { Stats: false }, showErrorMessage: false });
+
   const opts = {
     status: useMemo(() => statuses.map((s) => ({ value: s.Id, label: s.Value })), [statuses]),
     product: useMemo(() => (productsData?.products ?? []).map((p) => ({ value: p.Id, label: p.Name })), [productsData]),
     owner: useMemo(() => (usersData?.users ?? []).map((u) => ({ value: u.Id, label: getUserName(u) || u.Username })), [usersData]),
     source: useMemo(() => sources.map((s) => ({ value: s.Id, label: s.Value })), [sources]),
+    partner: useMemo(() => (partnerData?.partners ?? []).map((p) => ({ value: p.Id, label: p.Name })), [partnerData]),
     branch: useMemo(() => (branchData?.branches ?? []).map((b) => ({ value: b.Id, label: b.BranchName })), [branchData]),
   };
   const optById = (list, v) => list.find((o) => o.value === v) ?? null;
+  // An inactive partner is not in the picker; show its id, not a blank filter.
+  const partnerOpt = optById(opts.partner, filters.PartnerId)
+    ?? (filters.PartnerId !== "" && opts.partner.length ? { value: filters.PartnerId, label: `Unknown (#${filters.PartnerId})` } : null);
 
   // Every label comes from the SP now; no client-side id → name resolution.
   const overdueSx = { color: theme.tokens.error.main, fontWeight: 600 };
@@ -77,6 +84,7 @@ const Leads = () => {
       Cell: ({ row }) => <Chip label={row.original.StatusName || "—"} size="sm" tone={isActiveCode(row.original.StatusCode) ? "primary" : "default"} /> },
     { accessorKey: "ProductName", header: "Product", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "—" },
     { accessorKey: "OwnerName", header: "Owner", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "Unassigned" },
+    { accessorKey: "PartnerName", header: "Partner", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "—" },
     { accessorKey: "EstValue", header: "Value", enableSorting: true,
       Cell: ({ row }) => (row.original.StatusCode === "converted"
         ? <strong>{formatCurrency(row.original.WonValue, { empty: "—" })}</strong>
@@ -87,7 +95,7 @@ const Leads = () => {
 
   const extraParams = useMemo(() => ({
     StatusId: num(filters.StatusId), ProductId: num(filters.ProductId), OwnerId: num(filters.OwnerId),
-    SourceId: num(filters.SourceId), BranchId: num(filters.BranchId),
+    SourceId: num(filters.SourceId), BranchId: num(filters.BranchId), PartnerId: num(filters.PartnerId),
     ...(range.from ? { FromDate: range.from } : {}),
     ...(range.to ? { ToDate: range.to } : {}),
     ...presetParams(preset, userId),
@@ -138,6 +146,7 @@ const Leads = () => {
         <Box sx={{ flex: "1 1 150px", maxWidth: 220 }}><Combobox size="sm" placeholder="All products" options={opts.product} value={optById(opts.product, filters.ProductId)} onChange={setFilterValue("ProductId")} data-testid="filter-product" /></Box>
         <Box sx={{ flex: "1 1 150px", maxWidth: 220 }}><Combobox size="sm" placeholder="All owners" options={opts.owner} value={optById(opts.owner, filters.OwnerId)} onChange={setFilterValue("OwnerId")} data-testid="filter-owner" /></Box>
         <Box sx={{ flex: "1 1 150px", maxWidth: 220 }}><Combobox size="sm" placeholder="All sources" options={opts.source} value={optById(opts.source, filters.SourceId)} onChange={setFilterValue("SourceId")} data-testid="filter-source" /></Box>
+        <Box sx={{ flex: "1 1 150px", maxWidth: 220 }}><Combobox size="sm" placeholder="All partners" options={opts.partner} value={partnerOpt} onChange={setFilterValue("PartnerId")} data-testid="filter-partner" /></Box>
         <Box sx={{ flex: "1 1 150px", maxWidth: 220 }}><Combobox size="sm" placeholder="All branches" options={opts.branch} value={optById(opts.branch, filters.BranchId)} onChange={setFilterValue("BranchId")} data-testid="filter-branch" /></Box>
       </Box>
 

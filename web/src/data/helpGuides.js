@@ -111,6 +111,24 @@ export const HELP_GUIDES = {
       },
     ],
   },
+  partners: {
+    titleHi: "पार्टनर और कमीशन कैसे मैनेज करें",
+    titleEn: "How to manage Partners and commission",
+    steps: [
+      {
+        hi: "Add partner से उन लोगों/फर्मों को जोड़ें जो आपको लीड भेजते हैं; चाहें तो उनका सामान्य कमीशन (% या तय रकम) भी भरें।",
+        en: "Use Add partner for people or firms who send you leads. You can set their usual commission (a percent or a fixed amount).",
+      },
+      {
+        hi: "लीड बनाते समय पार्टनर चुनें। लीड convert होने पर कमीशन Commissions टैब में 'Earned' दिखता है।",
+        en: "Pick the partner on a lead. When the lead converts, the commission shows as 'Earned' in the Commissions tab.",
+      },
+      {
+        hi: "Earned पंक्तियाँ चुनकर 'Ready to pay' करें, फिर भुगतान के बाद 'Mark paid' से तारीख और रेफरेंस (UTR / चेक नंबर) लिखें।",
+        en: "Select Earned rows and press 'Ready to pay'. After you pay, press 'Mark paid' and enter the date and reference (UTR / cheque no.).",
+      },
+    ],
+  },
   followups: {
     titleHi: "फॉलो-अप कैसे इस्तेमाल करें",
     titleEn: "How to use Follow-ups",

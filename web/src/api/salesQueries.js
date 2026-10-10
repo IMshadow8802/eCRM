@@ -54,6 +54,7 @@ export const SALES_ENDPOINTS = {
     transfers: "/api/reports/transfers",
     pipelineValue: "/api/reports/pipelineValue",
     leaderboard: "/api/reports/leaderboard",
+    partners: "/api/reports/partners",
   },
 };
 
@@ -107,3 +108,4 @@ export const aging = post(SALES_ENDPOINTS.reports.aging);
 export const transfers = post(SALES_ENDPOINTS.reports.transfers);
 export const pipelineValue = post(SALES_ENDPOINTS.reports.pipelineValue);
 export const leaderboard = post(SALES_ENDPOINTS.reports.leaderboard);
+export const partners = post(SALES_ENDPOINTS.reports.partners);

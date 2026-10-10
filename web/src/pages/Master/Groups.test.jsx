@@ -144,12 +144,12 @@ describe("Roles & Permissions (Groups) page", () => {
     await openRole(1);
     expect(await screen.findByText(/Salesperson — Permissions/)).toBeInTheDocument();
     const labels = [
-      "Leads, follow-ups, quotations", "Sales reports", "Complaints", "Support reports",
+      "Leads, follow-ups, quotations", "Sales reports", "Partners & commission", "Complaints", "Support reports",
       "Customers", "People", "Tasks & My Work", "Teams", "Projects",
       "Attendance (team presence)", "Settings & products", "Dashboard",
     ];
     for (const l of labels) expect(screen.getByText(l)).toBeInTheDocument();
-    expect(screen.getAllByTestId(/^module-row-/)).toHaveLength(12);
+    expect(screen.getAllByTestId(/^module-row-/)).toHaveLength(13);
     expect(screen.queryByTestId("module-row-roles")).toBeNull();
     expect(screen.queryByTestId("module-row-offices")).toBeNull();
 
@@ -159,7 +159,7 @@ describe("Roles & Permissions (Groups) page", () => {
       expect(screen.queryByTestId(`reach-${k}-input`)).toBeNull();
       expect(screen.getByTestId(`reach-${k}-none`)).toHaveTextContent("—");
     }
-    for (const k of ["sales_reports", "support_reports", "tasks", "teams", "projects", "attendance", "settings", "dashboard"]) {
+    for (const k of ["sales_reports", "partners", "support_reports", "tasks", "teams", "projects", "attendance", "settings", "dashboard"]) {
       expect(screen.queryByTestId(`reach-${k}-input`)).toBeNull();
     }
     expect(screen.getByTestId("reach-leads-input")).toHaveValue("Their office");

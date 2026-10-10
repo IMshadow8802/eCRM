@@ -74,12 +74,15 @@ class WorkSettingsController {
 
   saveCompanySetting = asyncRoute(
     async (req, res) => {
-      const { LateGraceMin, SessionBufferMin, WarnPct, NotifyNotSignedIn, GoLiveDate } = req.body;
+      const { LateGraceMin, SessionBufferMin, WarnPct, NotifyNotSignedIn, GoLiveDate, CommissionDueOn } = req.body;
       if (!inRange(LateGraceMin, 0, 120)) return validationError(res, "Count-as-late-after must be 0 to 120 minutes");
       if (!inRange(SessionBufferMin, 0, 480)) return validationError(res, "Stay-signed-in-after-shift must be 0 to 480 minutes");
       if (!inRange(WarnPct, 50, 95)) return validationError(res, "Warning percentage must be 50 to 95 percent");
       const live = GoLiveDate ? keyOf(GoLiveDate) : null;
       if (GoLiveDate && !KEY.test(live)) return validationError(res, "Start tracking date must be YYYY-MM-DD");
+      if (CommissionDueOn != null && CommissionDueOn !== "" && !["manual", "convert"].includes(CommissionDueOn)) {
+        return validationError(res, "Choose when commission becomes payable");
+      }
       const result = await database.executeStoredProcedure("sp_SaveCompanySetting", {
         CompId: req.user.CompId,
         LateGraceMin: Number(LateGraceMin),
@@ -87,6 +90,7 @@ class WorkSettingsController {
         WarnPct: Number(WarnPct),
         NotifyNotSignedIn: NotifyNotSignedIn ? 1 : 0,
         GoLiveDate: live ? at(live, 0) : null,
+        CommissionDueOn: CommissionDueOn || null,
       });
       calendarContext.clearSettingsCache();
       return reply(res, firstRow(result));

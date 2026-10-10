@@ -39,6 +39,8 @@ import {
 // the current password" — the label has always promised that, but the rule was
 // unconditional, so editing anything about a user was impossible without also
 // retyping their password.
+const numId = (v) => (v == null || v === "" ? null : Number(v));
+
 const buildUserFormSchema = (isEditing) =>
   z.object({
   Username: z.string().min(1, "Username is required"),
@@ -181,7 +183,11 @@ const UserForm = ({
     if (editingUser) {
       return {
         ...editingUser,
-        WorkCalendarId: editingUser.WorkCalendarId ?? 0,
+        // SQL bigint ids arrive as strings ("3"); the schema wants numbers.
+        GroupId: numId(editingUser.GroupId),
+        BranchId: numId(editingUser.BranchId),
+        ReportsTo: numId(editingUser.ReportsTo),
+        WorkCalendarId: numId(editingUser.WorkCalendarId) ?? 0,
         PresenceExempt: Boolean(editingUser.PresenceExempt),
         Password: "", // Don't populate password for editing
       };

@@ -27,7 +27,7 @@ beforeEach(() => database.executeStoredProcedure.mockReset());
 describe("REPORTS", () => {
   it("lists the nine reports with their SP and a non-empty GroupBy whitelist", () => {
     expect(Object.keys(REPORTS)).toEqual([
-      "funnel", "followUpCompliance", "activity", "lost", "aging", "transfers", "pipelineValue", "leaderboard", "tat",
+      "funnel", "followUpCompliance", "activity", "lost", "aging", "transfers", "pipelineValue", "leaderboard", "tat", "partners",
     ]);
     for (const r of Object.values(REPORTS)) {
       expect(r.sp).toMatch(/^sp_Rpt/);
@@ -106,7 +106,21 @@ describe("parseReportArgs", () => {
   });
 });
 
+describe("partners report", () => {
+  it("defaults GroupBy to partner and rejects any other", () => {
+    expect(parseReportArgs({}, "partners", TODAY).args.GroupBy).toBe("partner");
+    expect(parseReportArgs({ GroupBy: "owner" }, "partners", TODAY).error).toMatch(/GroupBy must be one of partner/);
+  });
+});
+
 describe("runReport", () => {
+  it("applies the shape hook to the data right before answering", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ A: 1 }], [], []] });
+    const res = mockRes();
+    await runReport("sp_RptFunnel", req({ FromDate: "2026-08-01", ToDate: "2026-08-31" }), res, "funnel", (d) => ({ ...d, kpis: { shaped: true } }));
+    expect(res.json.mock.calls[0][0].data.kpis).toEqual({ shaped: true });
+  });
+
   it("400s on a validation error without touching the database", async () => {
     const res = mockRes();
     await runReport("sp_RptFunnel", req({ GroupBy: "nope" }), res, "funnel");

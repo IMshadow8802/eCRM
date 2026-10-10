@@ -34,6 +34,7 @@ jest.mock("../../../src/controllers/reportController", () => ({
   pipelineValue: hit("pipelineValue"),
   leaderboard: hit("leaderboard"),
   tat: hit("tat"),
+  partners: hit("partners"),
 }));
 jest.mock("../../../src/controllers/attendanceReport", () => ({
   attendance: jest.fn((req, res) => res.status(200).json({ success: true, hit: "attendance" })),
@@ -57,6 +58,7 @@ describe("reportRoutes", () => {
     ["/api/reports/resolutionSummary", "resolutionSummary"],
     // Spec 4a
     ["/api/reports/funnel", "funnel"],
+    ["/api/reports/partners", "partners"],
     ["/api/reports/followUpCompliance", "followUpCompliance"],
     ["/api/reports/activity", "activity"],
     ["/api/reports/lost", "lost"],

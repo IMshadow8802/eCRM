@@ -185,6 +185,32 @@ describe("permission middleware", () => {
     });
   });
 
+  describe("canSeeRecord — a moved lead leaves its creator", () => {
+    const ownOnly = (userId) => ({ user: { UserId: userId }, scope: { branchIds: [1], ownerIds: [userId] } });
+
+    it("hides a lead from its creator once someone else owns it", () => {
+      expect(canSeeRecord(ownOnly(7), { OwnerId: 9, CreatedBy: 7, BranchId: 1 }, "OwnerId")).toBe(false);
+    });
+    it("still shows the lead to its current owner", () => {
+      expect(canSeeRecord(ownOnly(9), { OwnerId: 9, CreatedBy: 7, BranchId: 1 }, "OwnerId")).toBe(true);
+    });
+    it("still shows it to a manager whose team reach covers the new owner", () => {
+      const manager = { user: { UserId: 3 }, scope: { branchIds: [1], ownerIds: [3, 9] } };
+      expect(canSeeRecord(manager, { OwnerId: 9, CreatedBy: 7, BranchId: 1 }, "OwnerId")).toBe(true);
+    });
+    it("keeps the creator rule for complaints", () => {
+      expect(canSeeRecord(ownOnly(7), { AssignedTo: 9, CreatedBy: 7, BranchId: 1 }, "AssignedTo")).toBe(true);
+    });
+    // Regression: an "assign later" lead (OwnerId NULL) vanished from its creator's list and detail.
+    it("keeps an unassigned lead visible to its creator, even outside their reach", () => {
+      expect(canSeeRecord(ownOnly(7), { OwnerId: null, CreatedBy: 7, BranchId: 5 }, "OwnerId")).toBe(true);
+      expect(canSeeRecord({ user: { UserId: 7 } }, { OwnerId: null, CreatedBy: 7, BranchId: 5 }, "OwnerId")).toBe(true);
+    });
+    it("does not show an unassigned lead to someone who did not create it", () => {
+      expect(canSeeRecord(ownOnly(7), { OwnerId: null, CreatedBy: 8, BranchId: 1 }, "OwnerId")).toBe(false);
+    });
+  });
+
   describe("canSeeRecord", () => {
     const selfScoped = {
       user: { UserId: 7 },
@@ -199,8 +225,8 @@ describe("permission middleware", () => {
       expect(canSeeRecord(selfScoped, { BranchId: 2, OwnerId: 7, CreatedBy: 3 }, "OwnerId")).toBe(true);
     });
 
-    it("allows a record the caller created but does not own", () => {
-      expect(canSeeRecord(selfScoped, { BranchId: 2, OwnerId: 3, CreatedBy: 7 }, "OwnerId")).toBe(true);
+    it("allows a complaint the caller created but is not assigned", () => {
+      expect(canSeeRecord(selfScoped, { BranchId: 2, AssignedTo: 3, CreatedBy: 7 }, "AssignedTo")).toBe(true);
     });
 
     // Assignment is an explicit act of sharing — it beats branch scope.
@@ -228,7 +254,7 @@ describe("permission middleware", () => {
 
     it("still allows the caller's own or created record when req.scope is missing", () => {
       expect(canSeeRecord({ user: { UserId: 7 } }, { BranchId: 2, OwnerId: 7, CreatedBy: 3 }, "OwnerId")).toBe(true);
-      expect(canSeeRecord({ user: { UserId: 7 } }, { BranchId: 2, OwnerId: 3, CreatedBy: 7 }, "OwnerId")).toBe(true);
+      expect(canSeeRecord({ user: { UserId: 7 } }, { BranchId: 2, AssignedTo: 3, CreatedBy: 7 }, "AssignedTo")).toBe(true);
     });
 
     it("denies a null record", () => {
@@ -491,6 +517,21 @@ describe("permission middleware", () => {
       expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_FetchQuotationDetail", {
         CompId: selfReq.user.CompId, QuotationId: 4,
       });
+    });
+
+    it("lets the creator of an unassigned lead open its quotation", async () => {
+      const quote = { Id: 4, LeadId: 9, Status: "draft", OwnerId: null, BranchId: 77, CreatedBy: selfReq.user.UserId };
+      database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[quote], [], []] });
+      await expect(assertRecordAccess(selfReq, mockRes(), "quotation", 4)).resolves.toEqual(quote);
+    });
+
+    it("403s a quotation whose lead its creator has handed to someone else", async () => {
+      database.executeStoredProcedure.mockResolvedValueOnce({
+        recordsets: [[{ Id: 4, Status: "draft", OwnerId: 999, BranchId: 77, CreatedBy: selfReq.user.UserId }], [], []],
+      });
+      const res = mockRes();
+      await expect(assertRecordAccess(selfReq, res, "quotation", 4)).resolves.toBe(false);
+      expect(res.status).toHaveBeenCalledWith(403);
     });
 
     it("403s a quotation whose lead the caller cannot see", async () => {

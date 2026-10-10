@@ -44,6 +44,7 @@ describe("SALES_ENDPOINTS", () => {
       transfers: "/api/reports/transfers",
       pipelineValue: "/api/reports/pipelineValue",
       leaderboard: "/api/reports/leaderboard",
+      partners: "/api/reports/partners",
     });
     expect(SALES_ENDPOINTS.reports).not.toHaveProperty("pipelineFunnel");
   });

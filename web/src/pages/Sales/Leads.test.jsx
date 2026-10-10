@@ -35,6 +35,7 @@ vi.mock("../../hooks/useLookups", () => ({
 vi.mock("../../hooks/useApiQuery", () => ({
   useApiQuery: vi.fn((cfg) => {
     if (cfg?.endpoint === "/api/products/fetchProducts") return { data: { products: [{ Id: 2, Name: "TV 43in" }] } };
+    if (cfg?.endpoint === "/api/partners/fetchPartners") return { data: { partners: [{ Id: 3, Name: "Sharma Traders" }] } };
     if (cfg?.endpoint === "/api/users/fetchBranches") return { data: { branches: [{ Id: 2, BranchName: "Pune" }] } };
     return { data: {} };
   }),
@@ -67,8 +68,8 @@ describe("Leads page (spec 1)", () => {
   it("renders presets and the five filters", () => {
     renderPage();
     for (const p of ["All", "My leads", "Overdue", "Unassigned", "Lost"]) expect(screen.getByRole("tab", { name: p })).toBeInTheDocument();
-    for (const id of ["filter-status", "filter-product", "filter-owner", "filter-source", "filter-branch"]) expect(screen.getByTestId(`${id}-input`)).toBeInTheDocument();
-    expect(lastExtraParams()).toEqual({ StatusId: null, ProductId: null, OwnerId: null, SourceId: null, BranchId: null });
+    for (const id of ["filter-status", "filter-product", "filter-owner", "filter-source", "filter-partner", "filter-branch"]) expect(screen.getByTestId(`${id}-input`)).toBeInTheDocument();
+    expect(lastExtraParams()).toEqual({ StatusId: null, ProductId: null, OwnerId: null, SourceId: null, BranchId: null, PartnerId: null });
   });
 
   it("Overdue preset sends Overdue:true; My leads sends the caller's OwnerId", async () => {
@@ -123,7 +124,29 @@ describe("Leads page (spec 1)", () => {
     const user = userEvent.setup();
     await user.click(screen.getByTestId("filter-product-input"));
     await user.click(await screen.findByRole("option", { name: "TV 43in" }));
-    expect(lastExtraParams()).toEqual({ StatusId: null, ProductId: 2, OwnerId: null, SourceId: null, BranchId: null });
+    expect(lastExtraParams()).toEqual({ StatusId: null, ProductId: 2, OwnerId: null, SourceId: null, BranchId: null, PartnerId: null });
+  });
+
+  it("Partner filter posts PartnerId; the URL pre-selects it", async () => {
+    renderPage();
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("filter-partner-input"));
+    await user.click(await screen.findByRole("option", { name: "Sharma Traders" }));
+    expect(lastExtraParams()).toMatchObject({ PartnerId: 3 });
+    renderPage("/sales/leads?PartnerId=3");
+    expect(lastExtraParams()).toMatchObject({ PartnerId: 3 });
+  });
+
+  it("an inactive partner id in the URL shows a fallback label, not a blank filter", () => {
+    renderPage("/sales/leads?PartnerId=77");
+    expect(screen.getByTestId("filter-partner-input")).toHaveValue("Unknown (#77)");
+    expect(lastExtraParams()).toMatchObject({ PartnerId: 77 });
+  });
+
+  it("Partner column shows PartnerName or a dash", () => {
+    renderPage();
+    expect(cellOf("PartnerName")({ cell: { getValue: () => "Sharma Traders" } })).toBe("Sharma Traders");
+    expect(cellOf("PartnerName")({ cell: { getValue: () => null } })).toBe("—");
   });
 
   it("renders the server labels and their empty fallbacks", () => {
@@ -217,7 +240,7 @@ describe("Leads page (spec 1)", () => {
   it("seeds filters and the date range from the URL, and the range chip clears it", async () => {
     renderPage("/sales/leads?StatusId=15&OwnerId=2&from=2026-08-01&to=2026-08-31");
     expect(lastExtraParams()).toEqual({
-      StatusId: 15, ProductId: null, OwnerId: 2, SourceId: null, BranchId: null,
+      StatusId: 15, ProductId: null, OwnerId: 2, SourceId: null, BranchId: null, PartnerId: null,
       FromDate: "2026-08-01", ToDate: "2026-08-31",
     });
     // Numeric ids, not strings: optById compares with ===, so a string would

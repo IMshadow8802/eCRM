@@ -26,6 +26,7 @@ const REPORTS = {
   leaderboard:        { sp: "sp_RptLeaderboard",        groupBys: ["owner"] },
   // Task TAT (P4): one basis, the clock's AssignedAt; its own handler in reportController.
   tat:                { sp: "sp_RptTat",                groupBys: ["person", "priority", "workspace", "verdict_by"], bases: ["assigned"] },
+  partners:           { sp: "sp_RptPartners",           groupBys: ["partner"] },
 };
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -106,11 +107,13 @@ function parseReportArgs(body = {}, key, today = new Date()) {
   };
 }
 
+const identity = (data) => data;
+
 /**
  * Runs one report SP and answers in the shared shape. Throws on a DB error so
  * the controller's asyncRoute owns the 500 — one place, one message.
  */
-async function runReport(spName, req, res, key) {
+async function runReport(spName, req, res, key, shape = identity) {
   const parsed = parseReportArgs(req.body, key);
   if (parsed.error) return error(res, parsed.error, "VALIDATION_ERROR", 400);
 
@@ -121,12 +124,12 @@ async function runReport(spName, req, res, key) {
   });
   const rs = result?.recordsets ?? [];
   const { FromDate, ToDate, DateBasis, GroupBy } = parsed.args;
-  return success(res, "Report fetched successfully", {
+  return success(res, "Report fetched successfully", shape({
     kpis: rs[0]?.[0] ?? {},
     rows: rs[1] ?? [],
     trend: rs[2] ?? [],
     range: { from: FromDate, to: ToDate, basis: DateBasis, groupBy: GroupBy },
-  });
+  }));
 }
 
 module.exports = { REPORTS, DATE_BASES, MAX_RANGE_DAYS, parseDay, parseRange, parseReportArgs, runReport };

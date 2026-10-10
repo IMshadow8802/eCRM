@@ -25,9 +25,9 @@ describe("leadsParamsToState", () => {
   const p = (s) => new URLSearchParams(s);
 
   it("seeds ids and the date range from a report drill-down URL", () => {
-    expect(leadsParamsToState(p("StatusId=32&OwnerId=17&SourceId=11&ProductId=2&BranchId=1&from=2026-08-01&to=2026-08-31"))).toEqual({
+    expect(leadsParamsToState(p("StatusId=32&OwnerId=17&SourceId=11&ProductId=2&BranchId=1&PartnerId=3&from=2026-08-01&to=2026-08-31"))).toEqual({
       preset: "all",
-      filters: { StatusId: 32, ProductId: 2, OwnerId: 17, SourceId: 11, BranchId: 1 },
+      filters: { StatusId: 32, ProductId: 2, OwnerId: 17, SourceId: 11, BranchId: 1, PartnerId: 3 },
       range: { from: "2026-08-01", to: "2026-08-31" },
     });
   });
@@ -43,7 +43,7 @@ describe("leadsParamsToState", () => {
   it("drops anything that is not a positive integer or an ISO day", () => {
     expect(leadsParamsToState(p("StatusId=abc&OwnerId=-3&from=01/08/2026&to=2026-08-31"))).toEqual({
       preset: "all",
-      filters: { StatusId: "", ProductId: "", OwnerId: "", SourceId: "", BranchId: "" },
+      filters: { StatusId: "", ProductId: "", OwnerId: "", SourceId: "", BranchId: "", PartnerId: "" },
       range: { from: "", to: "2026-08-31" },
     });
   });

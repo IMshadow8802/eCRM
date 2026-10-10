@@ -24,6 +24,8 @@ import { useApiMutation } from "../../hooks/useApiMutation";
 import { useLookups } from "../../hooks/useLookups";
 import { useAssignableUsers } from "../../hooks/useAssignableUsers";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
+import { PARTNER_ENDPOINTS } from "../../api/partnerQueries";
+import { useAccess } from "../../hooks/useAccess";
 import { mobileSchema } from "../../utils/mobile";
 
 // Only the columns sp_SaveLead accepts. CompId/BranchId/UserId are injected
@@ -45,7 +47,25 @@ const schema = z.object({
   EstValue: z.string().optional(),
   Remarks: z.string().optional(),
   FirstFollowupAt: z.string().optional(),
+  PartnerId: z.number().nullable().optional(),
+  // "none" = no commission; sent as null. Terms are a partners-view field.
+  CommType: z.enum(["pct", "fixed", "none"]).optional(),
+  CommValue: z.string().optional(),
+}).superRefine((v, ctx) => {
+  if (!v.PartnerId || !v.CommType || v.CommType === "none") return;
+  const raw = (v.CommValue ?? "").trim();
+  const n = Number(raw);
+  if (raw === "" || Number.isNaN(n) || n < 0)
+    ctx.addIssue({ code: "custom", path: ["CommValue"], message: "Enter the commission" });
+  else if (v.CommType === "pct" && n > 100)
+    ctx.addIssue({ code: "custom", path: ["CommValue"], message: "A percentage cannot be over 100" });
 });
+
+const COMM_TYPES = [
+  { value: "pct", label: "Percent of deal value" },
+  { value: "fixed", label: "Fixed amount" },
+  { value: "none", label: "No commission" },
+];
 
 const today = () => dayjs().format("YYYY-MM-DD");
 
@@ -66,6 +86,9 @@ const EMPTY = {
   EstValue: "",
   Remarks: "",
   FirstFollowupAt: today(),
+  PartnerId: null,
+  CommType: "none",
+  CommValue: "",
 };
 
 // Map a fetched lead row (sp_FetchLeads / sp_FetchLeadDetail shape) onto the
@@ -88,6 +111,9 @@ const leadToForm = (lead) => ({
   EstValue: lead.EstValue == null ? "" : String(lead.EstValue),
   Remarks: lead.Remarks ?? "",
   FirstFollowupAt: "",
+  PartnerId: lead.PartnerId ?? null,
+  CommType: lead.CommType ?? "none",
+  CommValue: lead.CommValue == null ? "" : String(lead.CommValue),
 });
 
 /**
@@ -104,11 +130,20 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
     handleSubmit,
     setValue,
     reset,
+    watch,
     formState: { errors },
   } = useForm({ resolver: zodResolver(schema), defaultValues: EMPTY });
 
+  const partnerId = watch("PartnerId");
+  const commType = watch("CommType");
+
   // Custom-field values keyed by FieldId — mirrors LeadDetail's local draft.
   const [custom, setCustom] = useState({});
+  const canTerms = useAccess("partners").view;
+  // The list row carries the partner but not its terms; the lead page carries
+  // both. Terms we never saw are neither shown nor sent, so saving from the
+  // list cannot wipe them. Picking another partner makes them known again.
+  const [termsKnown, setTermsKnown] = useState(true);
   const attachmentsRef = useRef(null);
 
   // Only owners the server will accept: sp_FetchAssignableUsers is the same
@@ -124,6 +159,15 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
     enabled: Boolean(open) && !isEdit,
     showErrorMessage: false,
   });
+
+  const { data: partnersData } = useApiQuery({
+    queryKey: ["partners", "picker"],
+    endpoint: PARTNER_ENDPOINTS.fetchPartners,
+    params: { Stats: false },
+    enabled: Boolean(open),
+    showErrorMessage: false,
+  });
+  const partners = partnersData?.partners ?? [];
 
   const { data: productsData } = useApiQuery({
     queryKey: ["products", "active"],
@@ -151,6 +195,13 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
     () => statuses.map((s) => ({ value: s.Id, label: s.Value })),
     [statuses]
   );
+  const partnerOpts = useMemo(() => {
+    const opts = partners.map((p) => ({ value: p.Id, label: p.City ? `${p.Name} · ${p.City}` : p.Name }));
+    // The picker lists active partners only; keep a deactivated one visible so it re-saves unchanged.
+    if (lead?.PartnerId && partnersData && !opts.some((o) => o.value === lead.PartnerId))
+      opts.push({ value: lead.PartnerId, label: `${lead.PartnerName ?? `Partner #${lead.PartnerId}`} (inactive)` });
+    return opts;
+  }, [partners, partnersData, lead?.PartnerId, lead?.PartnerName]);
   const productOpts = useMemo(
     () => products.map((p) => ({ value: p.Id, label: p.Name })),
     [products]
@@ -164,6 +215,7 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
   useEffect(() => {
     if (!open) return;
     reset(lead?.Id ? leadToForm(lead) : EMPTY);
+    setTermsKnown(!lead?.Id || lead.CommType !== undefined);
   }, [open, lead?.Id, reset]);
 
   // New leads start in the first 'open' status unless the user picks another.
@@ -196,6 +248,26 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
     successMessage: isEdit ? "Lead updated" : "Lead created",
     invalidateQueries: [["leads"], ["sales-leads"], ["lead-detail"]],
   });
+
+  // Choosing a partner offers their usual rule as the starting terms.
+  const onPartnerPick = (opt, field) => {
+    // Picking the partner the lead already has must not replace its agreed terms
+    // with the partner's usual rule: put the lead's own terms back (when we know them).
+    if (opt?.value && opt.value === lead?.PartnerId) {
+      field.onChange(opt.value);
+      if (lead.CommType !== undefined) {
+        setValue("CommType", lead.CommType ?? "none");
+        setValue("CommValue", lead.CommValue == null ? "" : String(lead.CommValue));
+        setTermsKnown(true);
+      } else setTermsKnown(false);   // list row: terms unknown, send none, server keeps them
+      return;
+    }
+    field.onChange(opt?.value ?? null);
+    setTermsKnown(true);
+    const p = partners.find((x) => x.Id === opt?.value);
+    setValue("CommType", p?.CommType ?? "none");
+    setValue("CommValue", p?.CommValue == null ? "" : String(p.CommValue));
+  };
 
   const handleClose = () => {
     reset(EMPTY);
@@ -234,6 +306,15 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
               OwnerId: values.OwnerId ?? null,
               FirstFollowupAt: values.FirstFollowupAt || null,
             }),
+        // Always say who sent it (null clears). Terms only from a partners-view
+        // user who can see them — the server ignores them from anyone else.
+        PartnerId: values.PartnerId ?? null,
+        ...(canTerms && termsKnown
+          ? {
+              CommType: values.PartnerId && values.CommType !== "none" ? values.CommType : null,
+              CommValue: values.PartnerId && values.CommType !== "none" ? Number(values.CommValue) : null,
+            }
+          : {}),
         // Edit touches base fields only — null CustomJSON makes sp_SaveLead
         // skip the custom-value merge, so stored custom fields survive.
         CustomJSON: isEdit ? null : JSON.stringify(customJson),
@@ -406,6 +487,53 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
                 />
               )}
             />
+            <Controller
+              control={control}
+              name="PartnerId"
+              render={({ field }) => (
+                <Combobox
+                  label="Partner"
+                  options={partnerOpts}
+                  value={partnerOpts.find((o) => o.value === field.value) ?? null}
+                  onChange={(opt) => onPartnerPick(opt, field)}
+                  placeholder="Sent by a partner?"
+                  data-testid="lead-partner"
+                />
+              )}
+            />
+            {canTerms && partnerId && termsKnown && (
+              <>
+                <Controller
+                  control={control}
+                  name="CommType"
+                  render={({ field }) => (
+                    <Combobox
+                      label="Commission"
+                      options={COMM_TYPES}
+                      value={COMM_TYPES.find((o) => o.value === field.value) ?? null}
+                      onChange={(opt) => field.onChange(opt?.value ?? "none")}
+                      data-testid="lead-comm-type"
+                    />
+                  )}
+                />
+                {commType !== "none" && (
+                  <Controller
+                    control={control}
+                    name="CommValue"
+                    render={({ field }) => (
+                      <NumberInput
+                        label={commType === "pct" ? "Commission %" : "Commission amount"}
+                        value={field.value}
+                        onChange={field.onChange}
+                        error={errors.CommValue?.message}
+                        min={0}
+                        data-testid="lead-comm-value"
+                      />
+                    )}
+                  />
+                )}
+              </>
+            )}
             <Controller
               control={control}
               name="ProductId"

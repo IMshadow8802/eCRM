@@ -33,6 +33,7 @@ router.post("/aging", allowEmptyPayload, requireModule("sales_reports", "view"),
 router.post("/transfers", allowEmptyPayload, requireModule("sales_reports", "view"), reportController.transfers);
 router.post("/pipelineValue", allowEmptyPayload, requireModule("sales_reports", "view"), reportController.pipelineValue);
 router.post("/leaderboard", allowEmptyPayload, requireModule("sales_reports", "view"), reportController.leaderboard);
+router.post("/partners", allowEmptyPayload, requireModule("sales_reports", "view"), reportController.partners);
 
 // P4 Team Reports — open to every signed-in user; the data is scoped per caller
 // (self + ReportsTo subtree + attendance reach), out-of-reach rows are dropped.

@@ -320,4 +320,12 @@ describe("LeadDetail (spec 1)", () => {
     fireEvent.click(screen.getByRole("tab", { name: /quotations/i }));
     expect(await screen.findByTestId("lead-quotations")).toBeVisible();
   });
+
+  it("shows who sent the lead from the detail response, with no extra request", async () => {
+    mocks();
+    server.use(http.post("*/api/leads/fetchLeadDetail", async () =>
+      json({ ...DETAIL, lead: { ...LEAD, PartnerId: 3, PartnerName: "Sharma Traders" }, commissions: [] })));
+    renderDetail();
+    expect(await screen.findByText("Sent by Sharma Traders")).toBeInTheDocument();
+  });
 });

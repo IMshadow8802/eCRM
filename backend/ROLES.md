@@ -45,11 +45,11 @@ Every list, detail, report and dashboard figure of a reach module:
 ```sql
 WHERE (
      ( BranchId IN @branchIds AND (@ownerIds IS NULL OR OwnerId IN @ownerIds) )
-  OR AssignedTo = @UserId OR OwnerId = @UserId OR CreatedBy = @UserId   -- mine -> always visible
+  OR AssignedTo = @UserId OR OwnerId = @UserId   -- mine -> always visible (complaints: also CreatedBy)
 )
 ```
 
-**`OR`, not `AND`**: assignment is an explicit act of sharing. `@ownerIds` NULL means no owner filter;
+A lead's creator keeps it only while it has no owner (107): `OwnerId = @UserId OR (OwnerId IS NULL AND CreatedBy = @UserId)`. **`OR`, not `AND`**: assignment is an explicit act of sharing. `@ownerIds` NULL means no owner filter;
 an empty list `[]` means nobody (fail closed). Optional filters (`@BranchId`, `@OwnerId`, `@AssignedTo`)
 only narrow within reach.
 
@@ -119,7 +119,7 @@ Tasks: V/A/E/D. Report and dashboard modules: V only. Leads, complaints and cust
 
 | Action | Who |
 |---|---|
-| `leads/save` (edit) · `leads/setStatus` · `leads/convertLead` · `leads/transfer` · `leads/bulkTransfer` · `leads/delete` | visible (reach), **or** assignee, **or** creator (`assertRecordAccess`) |
+| `leads/save` (edit) · `leads/setStatus` · `leads/convertLead` · `leads/transfer` · `leads/bulkTransfer` · `leads/delete` | visible (reach), **or** owner, **or** creator while the lead has no owner (`assertRecordAccess`) |
 | `quotations/save` (edit) · `finaliseQuotation` · `reviseQuotation` · `rejectQuotation` · `deleteQuotation` | `assertRecordAccess("quotation", …)`, which gates on the **parent lead** — a quotation carries no `BranchId`/`OwnerId` of its own, so its visibility is always its lead's |
 | `saveQuoteProfile` | open (any authenticated user) while the branch's profile is unset (`IsSet = 0`); **admin-only** once set — `sp_SaveQuoteProfile` checks `@IsAdmin`, which the controller passes as `req.scope.isAdmin` |
 

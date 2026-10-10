@@ -60,6 +60,24 @@ describe("saveCompanySetting", () => {
     expect(res.status).toHaveBeenCalledWith(400);
     expect(database.executeStoredProcedure).not.toHaveBeenCalled();
   });
+  it("passes CommissionDueOn through; omitted is null (keep)", async () => {
+    database.executeStoredProcedure.mockResolvedValue(ok());
+    await c.saveCompanySetting(req({ ...good, CommissionDueOn: "convert" }), mockRes());
+    expect(calls("sp_SaveCompanySetting")[0]).toMatchObject({ CommissionDueOn: "convert" });
+    await c.saveCompanySetting(req(good), mockRes());
+    expect(calls("sp_SaveCompanySetting")[1]).toMatchObject({ CommissionDueOn: null });
+  });
+  it("treats an empty CommissionDueOn as omitted", async () => {
+    database.executeStoredProcedure.mockResolvedValue(ok());
+    await c.saveCompanySetting(req({ ...good, CommissionDueOn: "" }), mockRes());
+    expect(calls("sp_SaveCompanySetting")[0]).toMatchObject({ CommissionDueOn: null });
+  });
+  it("400s an unknown CommissionDueOn before the DB", async () => {
+    const res = mockRes();
+    await c.saveCompanySetting(req({ ...good, CommissionDueOn: "later" }), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
   it("passes an SP refusal through", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce(fail(400, "nope"));
     const res = mockRes();

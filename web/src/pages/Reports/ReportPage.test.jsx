@@ -204,4 +204,22 @@ describe("ReportPage", () => {
     renderPage();
     expect(await screen.findByTestId("funnel-error")).toBeInTheDocument();
   });
+
+  it("hideMissing drops a KPI and a column the response does not carry; off by default", async () => {
+    mockReportEndpoints("/api/reports/funnel", reportData({
+      kpis: { Created: 5 },
+      rows: [{ GroupKey: 11, GroupLabel: "Website", Created: 5 }],
+    }));
+    const over = { kpis: [...KPIS], columns: [...COLUMNS, { key: "Money", header: "Money", format: "money" }] };
+    const { unmount } = renderPage("/reports/funnel", { ...over, hideMissing: true });
+    const table = await screen.findByTestId("funnel-table");
+    expect(screen.getByTestId("report-kpis")).toHaveTextContent("Created");
+    expect(screen.getByTestId("report-kpis")).not.toHaveTextContent("Qualified %");
+    expect(within(table).getAllByRole("columnheader")).toHaveLength(2);
+    unmount();
+    renderPage("/reports/funnel", over);
+    const t2 = await screen.findByTestId("funnel-table");
+    expect(screen.getByTestId("report-kpis")).toHaveTextContent("Qualified %");
+    expect(within(t2).getAllByRole("columnheader")).toHaveLength(3);
+  });
 });

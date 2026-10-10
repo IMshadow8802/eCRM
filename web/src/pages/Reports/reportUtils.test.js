@@ -208,6 +208,8 @@ describe("leadsUrl / drillParams", () => {
     expect(drillParams({ ...f, groupBy: "source", SourceId: 4 }, { GroupKey: null })).toMatchObject({ SourceId: 4 });
     expect(drillParams({ ...f, groupBy: "source" }, { GroupKey: null })).toEqual(drillParams(f, { GroupKey: null }));
     expect(GROUP_PARAM.status).toBe("StatusId");
+    expect(GROUP_PARAM.partner).toBe("PartnerId");
+    expect(leadsUrl({ PartnerId: 3 })).toBe("/sales/leads?PartnerId=3");
   });
 });
 

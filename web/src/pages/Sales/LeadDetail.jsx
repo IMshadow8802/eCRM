@@ -18,6 +18,7 @@ import { useAccess } from "../../hooks/useAccess";
 import LogFollowUpModal from "./LogFollowUpModal";
 import TransferLeadModal from "./TransferLeadModal";
 import LeadCreateModal from "./LeadCreateModal";
+import LeadPartnerCard from "./LeadPartnerCard";
 import WonDialog from "./Quotations/WonDialog";
 import LeadQuotations from "./Quotations/LeadQuotations";
 
@@ -246,6 +247,7 @@ export default function LeadDetail({ leadId: leadIdProp }) {
                 </div>
               </Card>
             )}
+            <LeadPartnerCard lead={lead} commissions={data?.commissions} />
             <Card data-testid="lead-core-info">
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 16 }}>
                 <InfoItem label="Mobile" value={lead.MobileNo} />

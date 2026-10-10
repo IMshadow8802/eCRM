@@ -374,6 +374,18 @@ describe("UserForm role, branch and admin flag", () => {
     expect(post.mock.calls[0][1].BranchId).toBe(3);
   });
 
+  // REGRESSION (2026-10-10): SQL bigint ids arrive as strings ("3"); the schema wants numbers,
+  // so every edit failed with "Pick an office".
+  it("edit accepts string ids from the API and sends them as numbers", async () => {
+    renderForm({
+      editingUser: { ...EXISTING_USER, BranchId: "3", GroupId: "8", ReportsTo: "4", WorkCalendarId: "5" },
+    });
+    await submit(/update user/i);
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText(/Pick an office/i)).not.toBeInTheDocument();
+    expect(post.mock.calls[0][1]).toMatchObject({ BranchId: 3, GroupId: 8, ReportsTo: 4, WorkCalendarId: 5 });
+  });
+
   it("falls back to an empty branch list before branches load", async () => {
     useApiQuery.mockImplementation(() => ({ data: undefined }));
     renderForm({});
