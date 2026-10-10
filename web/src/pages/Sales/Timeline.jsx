@@ -129,9 +129,9 @@ export default function Timeline({ activity = [], calls = [], outcomes = [] }) {
             style={{
               position: "relative",
               display: "flex",
-              gap: 12,
-              padding: "10px 4px 10px 20px",
-              marginLeft: 10,
+              gap: "calc(12rem / 15)",
+              padding: "calc(10rem / 15) calc(4rem / 15) calc(10rem / 15) calc(20rem / 15)",
+              marginLeft: "calc(10rem / 15)",
               borderLeft: `2px solid ${p.border.default}`,
             }}
           >
@@ -139,10 +139,10 @@ export default function Timeline({ activity = [], calls = [], outcomes = [] }) {
               aria-hidden="true"
               style={{
                 position: "absolute",
-                left: -11,
-                top: 10,
-                width: 20,
-                height: 20,
+                left: "calc(-11rem / 15)",
+                top: "calc(10rem / 15)",
+                width: "calc(20rem / 15)",
+                height: "calc(20rem / 15)",
                 borderRadius: theme.radii.full,
                 display: "inline-flex",
                 alignItems: "center",
@@ -154,15 +154,15 @@ export default function Timeline({ activity = [], calls = [], outcomes = [] }) {
               <item.Icon size={11} />
             </span>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: p.text.primary }}>
+              <div style={{ fontSize: "calc(13rem / 15)", fontWeight: 600, color: p.text.primary }}>
                 {item.title}
               </div>
               {item.detail && (
-                <div style={{ fontSize: 13, color: p.text.secondary, marginTop: 2 }}>
+                <div style={{ fontSize: "calc(13rem / 15)", color: p.text.secondary, marginTop: 2 }}>
                   {item.detail}
                 </div>
               )}
-              <div style={{ fontSize: 11, color: p.text.tertiary, marginTop: 4 }}>
+              <div style={{ fontSize: "calc(11rem / 15)", color: p.text.tertiary, marginTop: "calc(4rem / 15)" }}>
                 {item.at ? dayjs(item.at).format("DD-MM-YYYY HH:mm") : ""}
               </div>
             </div>

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { rem } from "../../utils/rem";
 import { render, screen } from "@testing-library/react";
 import { ThemeProvider } from "@mui/material/styles";
 import { buildTheme } from "../../theme";
@@ -107,9 +108,9 @@ describe("DateField", () => {
   });
 
   it.each([
-    ["sm", "32px"],
-    ["md", "40px"],
-    ["lg", "48px"],
+    ["sm", rem(32)],
+    ["md", rem(40)],
+    ["lg", rem(48)],
   ])("honours the shared control height at size=%s", (size, expected) => {
     const { container } = wrap(<DateField size={size} label="Due" onChange={() => {}} />);
     expect(getComputedStyle(root(container)).height).toBe(expected);

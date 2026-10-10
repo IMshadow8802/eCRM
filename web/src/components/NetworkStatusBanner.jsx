@@ -157,29 +157,29 @@ const NetworkStatusBanner = () => {
       style={{
         backgroundColor: theme.palette.error.main,
         color: theme.palette.error.contrastText,
-        padding: '10px 16px',
+        padding: 'calc(10rem / 15) calc(16rem / 15)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: '8px',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-        fontSize: '14px',
+        gap: 'calc(8rem / 15)',
+        boxShadow: '0 2px calc(4rem / 15) rgba(0,0,0,0.2)',
+        fontSize: 'calc(14rem / 15)',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'calc(8rem / 15)' }}>
         <WifiOff size={16} strokeWidth={2.25} />
         <span>
           <strong>No Internet Connection</strong>
           {offlineDuration && (
-            <span style={{ marginLeft: '8px', opacity: 0.9 }}>
+            <span style={{ marginLeft: 'calc(8rem / 15)', opacity: 0.9 }}>
               (offline for {offlineDuration})
             </span>
           )}
         </span>
       </div>
       
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'calc(12rem / 15)' }}>
         <button
           onClick={handleRetry}
           disabled={isTestingConnection}
@@ -187,10 +187,10 @@ const NetworkStatusBanner = () => {
             backgroundColor: alpha(theme.palette.common.white, 0.2),
             color: 'inherit',
             border: 'none',
-            borderRadius: '4px',
-            padding: '6px 12px',
+            borderRadius: 'calc(4rem / 15)',
+            padding: 'calc(6rem / 15) calc(12rem / 15)',
             cursor: isTestingConnection ? 'not-allowed' : 'pointer',
-            fontSize: '12px',
+            fontSize: 'calc(12rem / 15)',
             fontWeight: '500',
             opacity: isTestingConnection ? 0.7 : 1,
             transition: 'all 0.2s ease'

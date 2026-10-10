@@ -4,6 +4,7 @@ import { useTheme } from "@mui/material/styles";
 import Tooltip from "@mui/material/Tooltip";
 
 import { motion as motionTokens } from "../../styles/tokens";
+import { rem } from "../../utils/rem";
 
 const SIZE = {
   sm: { btn: 32, icon: 14 },
@@ -92,8 +93,8 @@ const IconButton = forwardRef(function IconButton(
         display: "inline-flex",
         alignItems: "center",
         justifyContent: "center",
-        width: s.btn,
-        height: s.btn,
+        width: rem(s.btn),
+        height: rem(s.btn),
         borderRadius: theme.radii.md,
         background: v.background,
         color: v.color,
@@ -105,7 +106,7 @@ const IconButton = forwardRef(function IconButton(
       }}
       {...rest}
     >
-      <span style={{ display: "inline-flex", width: s.icon, height: s.icon }}>
+      <span style={{ display: "inline-flex", width: rem(s.icon), height: rem(s.icon) }}>
         {children}
       </span>
     </motion.button>

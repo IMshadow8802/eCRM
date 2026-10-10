@@ -19,7 +19,7 @@ export default function DependenciesPanel({ deps, taskId, canEdit }) {
   } = deps;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "calc(20rem / 15)" }}>
       <DepSection
         title={`Blocked by (${blockers.length})`}
         items={blockers}
@@ -32,7 +32,7 @@ export default function DependenciesPanel({ deps, taskId, canEdit }) {
         <div
           style={{
             display: "flex",
-            gap: 8,
+            gap: "calc(8rem / 15)",
             alignItems: "center",
           }}
         >
@@ -74,7 +74,7 @@ export default function DependenciesPanel({ deps, taskId, canEdit }) {
         <div
           style={{
             display: "flex",
-            gap: 8,
+            gap: "calc(8rem / 15)",
             alignItems: "center",
           }}
         >

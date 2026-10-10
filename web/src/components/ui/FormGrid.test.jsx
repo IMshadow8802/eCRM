@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
+import { rem } from "../../utils/rem";
 import { cleanup, render, screen } from "@testing-library/react";
 import FormGrid, { FormGridSpan } from "./FormGrid";
 
@@ -9,7 +10,7 @@ const gridOf = (c) => getComputedStyle(c.firstElementChild).gridTemplateColumns;
 describe("FormGrid", () => {
   it("lays fields out on an auto-filling grid", () => {
     const { container } = render(<FormGrid><span>a</span></FormGrid>);
-    expect(gridOf(container)).toBe("repeat(auto-fill, minmax(220px, 1fr))");
+    expect(gridOf(container)).toBe(`repeat(auto-fill, minmax(${rem(220)}, 1fr))`);
     expect(screen.getByText("a")).toBeInTheDocument();
   });
 
@@ -22,7 +23,7 @@ describe("FormGrid", () => {
    */
   it("takes a column floor, so a dense form can run narrower columns", () => {
     const { container } = render(<FormGrid min={160}><span>a</span></FormGrid>);
-    expect(gridOf(container)).toBe("repeat(auto-fill, minmax(160px, 1fr))");
+    expect(gridOf(container)).toBe(`repeat(auto-fill, minmax(${rem(160)}, 1fr))`);
   });
 
   it("passes through sx without losing the grid", () => {

@@ -99,8 +99,8 @@ export default function NotificationBell({ onOpenEntity }) {
             that is what keeps the panel on screen. */}
         <div
           style={{
-            width: "min(360px, 100%)",
-            maxHeight: 480,
+            width: "min(24rem, 100%)",
+            maxHeight: "calc(480rem / 15)",
             display: "flex",
             flexDirection: "column",
           }}
@@ -109,12 +109,12 @@ export default function NotificationBell({ onOpenEntity }) {
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 8,
-              padding: "12px 16px",
+              gap: "calc(8rem / 15)",
+              padding: "calc(12rem / 15) calc(16rem / 15)",
               borderBottom: `1px solid ${p.border.default}`,
             }}
           >
-            <div style={{ flex: 1, fontSize: 14, fontWeight: 700, color: p.text.primary }}>
+            <div style={{ flex: 1, fontSize: "calc(14rem / 15)", fontWeight: 700, color: p.text.primary }}>
               Notifications
             </div>
             {unreadCount > 0 && (
@@ -147,8 +147,8 @@ export default function NotificationBell({ onOpenEntity }) {
                     width: "100%",
                     display: "flex",
                     alignItems: "flex-start",
-                    gap: 10,
-                    padding: "12px 16px",
+                    gap: "calc(10rem / 15)",
+                    padding: "calc(12rem / 15) calc(16rem / 15)",
                     border: "none",
                     background: n.IsRead ? "transparent" : p.primary.subtle,
                     borderBottom: `1px solid ${p.border.subtle}`,
@@ -170,7 +170,7 @@ export default function NotificationBell({ onOpenEntity }) {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div
                       style={{
-                        fontSize: 13,
+                        fontSize: "calc(13rem / 15)",
                         fontWeight: n.IsRead ? 500 : 700,
                         color: p.text.primary,
                         lineHeight: 1.3,
@@ -181,7 +181,7 @@ export default function NotificationBell({ onOpenEntity }) {
                     {n.Body && (
                       <div
                         style={{
-                          fontSize: 12,
+                          fontSize: "calc(12rem / 15)",
                           fontWeight: 500,
                           color: p.text.secondary,
                           marginTop: 2,
@@ -193,9 +193,9 @@ export default function NotificationBell({ onOpenEntity }) {
                     )}
                     <div
                       style={{
-                        fontSize: 11,
+                        fontSize: "calc(11rem / 15)",
                         color: p.text.tertiary,
-                        marginTop: 4,
+                        marginTop: "calc(4rem / 15)",
                       }}
                     >
                       {new Date(n.CreatedDate).toLocaleString()}
@@ -204,11 +204,11 @@ export default function NotificationBell({ onOpenEntity }) {
                   {!n.IsRead && (
                     <div
                       style={{
-                        width: 8,
-                        height: 8,
+                        width: "calc(8rem / 15)",
+                        height: "calc(8rem / 15)",
                         borderRadius: 9999,
                         backgroundColor: p.primary.main,
-                        marginTop: 6,
+                        marginTop: "calc(6rem / 15)",
                         flexShrink: 0,
                       }}
                     />

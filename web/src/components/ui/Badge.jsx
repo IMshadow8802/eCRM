@@ -68,7 +68,7 @@ export default function Badge({
               borderRadius: theme.radii.full,
               backgroundColor: color.main,
               color: color.contrastText,
-              fontSize: 10,
+              fontSize: "calc(10rem / 15)",
               fontWeight: 700,
               lineHeight: 1,
               border: `2px solid ${p.surface.card}`,

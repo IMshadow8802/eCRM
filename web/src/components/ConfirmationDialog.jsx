@@ -57,28 +57,28 @@ const ConfirmationDialog = ({
       {/* Every other Modal consumer wraps its content in Modal.Body, which
           is the element that scrolls. This one hand-rolled a div, so a long
           confirmation message had nowhere to go. */}
-      <div style={{ padding: "28px 24px 8px", textAlign: "center", overflowY: "auto", flex: 1 }}>
+      <div style={{ padding: "calc(28rem / 15) calc(24rem / 15) calc(8rem / 15)", textAlign: "center", overflowY: "auto", flex: 1 }}>
         <div
           style={{
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
-            width: 56,
-            height: 56,
+            width: "calc(56rem / 15)",
+            height: "calc(56rem / 15)",
             borderRadius: r.full,
             backgroundColor: tone.subtle,
             color: tone.main,
-            marginBottom: 16,
+            marginBottom: "calc(16rem / 15)",
           }}
         >
           {icon ?? config.iconEl}
         </div>
         <div
           style={{
-            fontSize: 18,
+            fontSize: "calc(18rem / 15)",
             fontWeight: 700,
             color: p.text.primary,
-            marginBottom: 8,
+            marginBottom: "calc(8rem / 15)",
             letterSpacing: "-0.01em",
           }}
         >
@@ -86,11 +86,11 @@ const ConfirmationDialog = ({
         </div>
         <div
           style={{
-            fontSize: 14,
+            fontSize: "calc(14rem / 15)",
             fontWeight: 500,
             color: p.text.secondary,
             lineHeight: 1.5,
-            maxWidth: 420,
+            maxWidth: "calc(420rem / 15)",
             margin: "0 auto",
           }}
         >

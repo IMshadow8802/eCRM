@@ -75,18 +75,18 @@ const DynamicField = ({ field, value, onChange }) => {
       // Switch has no built-in required marker (unlike the text-style
       // inputs), so render one alongside its label here.
       return (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "calc(6rem / 15)" }}>
           {Label && (
             <span
               style={{
-                fontSize: 13,
+                fontSize: "calc(13rem / 15)",
                 fontWeight: 500,
                 color: theme.tokens.text.secondary,
               }}
             >
               {Label}
               {IsRequired && (
-                <span style={{ color: theme.tokens.error.main, marginLeft: 4 }}>
+                <span style={{ color: theme.tokens.error.main, marginLeft: "calc(4rem / 15)" }}>
                   *
                 </span>
               )}

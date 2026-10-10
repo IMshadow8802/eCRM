@@ -195,7 +195,7 @@ export default function ReportPage({
         ))}
         {filters.preset === "custom" && (
           <>
-            <Box sx={{ width: 160 }}>
+            <Box sx={{ width: "calc(160rem / 15)" }}>
               <DateField
                 size="sm"
                 value={filters.from}
@@ -203,7 +203,7 @@ export default function ReportPage({
                 data-testid="report-from"
               />
             </Box>
-            <Box sx={{ width: 160 }}>
+            <Box sx={{ width: "calc(160rem / 15)" }}>
               <DateField
                 size="sm"
                 value={filters.to}
@@ -214,7 +214,7 @@ export default function ReportPage({
           </>
         )}
         {dateBases.length > 1 && (
-          <Box sx={{ width: 150 }}>
+          <Box sx={{ width: "calc(150rem / 15)" }}>
             <Combobox
               size="sm"
               options={dateBases}
@@ -225,7 +225,7 @@ export default function ReportPage({
           </Box>
         )}
         {PICKERS.filter(([name]) => pickers.includes(name)).map(([name, key, placeholder]) => (
-          <Box key={key} sx={{ width: 170 }}>
+          <Box key={key} sx={{ width: "calc(170rem / 15)" }}>
             <Combobox
               size="sm"
               placeholder={name === "owner" ? ownerPlaceholder : placeholder}
@@ -250,7 +250,7 @@ export default function ReportPage({
       {/* KPI strip */}
       {shownKpis.length > 0 && (
         <Box
-          sx={{ display: "grid", gap: 1.5, gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))" }}
+          sx={{ display: "grid", gap: 1.5, gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, calc(150rem / 15)), 1fr))" }}
           data-testid="report-kpis"
         >
           {shownKpis.map((k) => (

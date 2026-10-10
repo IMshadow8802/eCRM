@@ -1,4 +1,5 @@
 import { useTheme } from "@mui/material/styles";
+import useUiScale from "../../hooks/useUiScale";
 import { Box, Typography } from "@mui/material";
 import { ArrowUpRight, ArrowDownRight, Target } from "lucide-react";
 import {
@@ -25,6 +26,7 @@ export default function RadialGoal({
   height = 220,
 }) {
   const theme = useTheme();
+  const k = useUiScale();
   const p = theme.tokens;
   const pct = Math.max(0, Math.min(goal, value));
   const delta = value - previousValue;
@@ -59,8 +61,8 @@ export default function RadialGoal({
         </Box>
       </Box>
 
-      <Box sx={{ position: "relative", height }}>
-        <ResponsiveContainer width="100%" height={height}>
+      <Box sx={{ position: "relative", height: height * k }}>
+        <ResponsiveContainer width="100%" height={height * k}>
           <RadialBarChart
             innerRadius="72%"
             outerRadius="96%"

@@ -47,9 +47,9 @@ const STEP_HINT = {
 };
 function Step({ label, at, children }) {
   return (
-    <div style={{ display: "flex", gap: 8, fontSize: 13, lineHeight: 1.6 }}>
+    <div style={{ display: "flex", gap: "calc(8rem / 15)", fontSize: "calc(13rem / 15)", lineHeight: 1.6 }}>
       <Tooltip title={STEP_HINT[label]}>
-        <span tabIndex={STEP_HINT[label] ? 0 : undefined} style={{ minWidth: 110, color: "var(--color-surface-600)" }}>{label}</span>
+        <span tabIndex={STEP_HINT[label] ? 0 : undefined} style={{ minWidth: "calc(110rem / 15)", color: "var(--color-surface-600)" }}>{label}</span>
       </Tooltip>
       <span>{at ? istStamp(at) : "—"}{children}</span>
     </div>
@@ -118,8 +118,8 @@ export default function TatPanel({ task, canReassign, currentUserId }) {
     : form?.verdict !== "excused" || remarks.trim().length > 0;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }} data-testid="task-tat">
-      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "calc(12rem / 15)" }} data-testid="task-tat">
+      <div style={{ display: "flex", gap: "calc(8rem / 15)", alignItems: "center" }}>
         {canReassign && openClocks.length > 0 && (<>
           {anyUnheld && (
             <Tip k="holdAll"><Button variant="tonal" size="sm" onClick={() => setForm({ kind: "hold", mine: false })} data-testid="tat-hold-all">
@@ -150,7 +150,7 @@ export default function TatPanel({ task, canReassign, currentUserId }) {
           const clockHolds = holds.filter((h) => h.TatId === c.Id);
           return (
             <Card key={c.Id} data-testid={`tat-clock-${c.Id}`}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "calc(8rem / 15)", marginBottom: "calc(8rem / 15)" }}>
                 <strong>{c.FullName}</strong>
                 {open ? (
                   c.BreachedAt ? <Tip k="Missed deadline" tab><Chip size="sm" label="Missed deadline" tone="error" /></Tip>
@@ -186,7 +186,7 @@ export default function TatPanel({ task, canReassign, currentUserId }) {
                 </>
               )}
 
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+              <div style={{ display: "flex", gap: "calc(8rem / 15)", flexWrap: "wrap", marginTop: "calc(8rem / 15)" }}>
                 {own && open && !c.AcknowledgedAt && (
                   <Tip k="ack"><Button size="sm" variant="tonal" onClick={() => run(TAT_ENDPOINTS.acknowledge)} data-testid="tat-ack">
                     Accept task
@@ -230,7 +230,7 @@ export default function TatPanel({ task, canReassign, currentUserId }) {
 
       {form && (
         <Card data-testid="tat-form">
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "calc(10rem / 15)" }}>
             {form.kind === "hold" ? (
               <Combobox
                 label={form.mine ? "Why is your part on hold?" : "Why is this task on hold?"}
@@ -251,7 +251,7 @@ export default function TatPanel({ task, canReassign, currentUserId }) {
               required={form.verdict === "excused"}
               data-testid="tat-remarks"
             />
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <div style={{ display: "flex", gap: "calc(8rem / 15)", justifyContent: "flex-end" }}>
               <Button variant="ghost" size="sm" onClick={() => { setForm(null); setRemarks(""); setReasonId(null); }}>
                 Cancel
               </Button>
@@ -265,9 +265,9 @@ export default function TatPanel({ task, canReassign, currentUserId }) {
 
       {events.length > 0 && (
         <div data-testid="tat-events">
-          <div style={{ fontSize: 13, fontWeight: 600, margin: "8px 0 4px" }}>History</div>
+          <div style={{ fontSize: "calc(13rem / 15)", fontWeight: 600, margin: "calc(8rem / 15) 0 calc(4rem / 15)" }}>History</div>
           {events.map((e) => (
-            <div key={e.Id} style={{ fontSize: 12, lineHeight: 1.7, color: "var(--color-surface-600)" }}>
+            <div key={e.Id} style={{ fontSize: "calc(12rem / 15)", lineHeight: 1.7, color: "var(--color-surface-600)" }}>
               {istStamp(e.At)} · {eventText(e)}{e.ActorName ? ` by ${e.ActorName}` : ""}
             </div>
           ))}

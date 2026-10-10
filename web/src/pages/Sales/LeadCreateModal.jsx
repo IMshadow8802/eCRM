@@ -347,7 +347,7 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
         <form
           id="lead-create-form"
           onSubmit={handleSubmit(onSubmit)}
-          style={{ display: "flex", flexDirection: "column", gap: 16 }}
+          style={{ display: "flex", flexDirection: "column", gap: "calc(16rem / 15)" }}
         >
           <FormGrid>
             <Controller
@@ -621,8 +621,8 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
           />
 
           {!isEdit && fieldDefs.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Custom fields</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: "calc(12rem / 15)" }}>
+              <h3 style={{ margin: 0, fontSize: "calc(14rem / 15)", fontWeight: 700 }}>Custom fields</h3>
               <FormGrid>
                 {fieldDefs.map((def) => (
                   <DynamicField
@@ -639,8 +639,8 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
           {/* Custom fields + attachments already live on the lead's detail
               page — the edit modal only handles the base fields. */}
           {!isEdit && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Attachments</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: "calc(12rem / 15)" }}>
+              <h3 style={{ margin: 0, fontSize: "calc(14rem / 15)", fontWeight: 700 }}>Attachments</h3>
               <Attachments ref={attachmentsRef} entity="lead" entityId={null} />
             </div>
           )}

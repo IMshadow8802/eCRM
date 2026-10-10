@@ -72,7 +72,7 @@ export default function TransferLeadModal({ open, onClose, leadIds = [], onTrans
         onClose={handleClose}
       />
       <Modal.Body>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "calc(16rem / 15)" }}>
           {canCrossBranch && (
             <Combobox
               label="Branch"

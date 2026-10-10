@@ -87,7 +87,7 @@ export const tableDefaults = {
       // Same bracketing, same reason: dropping the cap is a phone measure. At
       // md it left every tablet scrolling the page instead of the container,
       // with the sticky header never engaging.
-      maxHeight: { xs: "none", sm: "calc(100dvh - 220px)" },
+      maxHeight: { xs: "none", sm: "calc(100dvh - calc(220rem / 15))" },
     },
   },
 
@@ -130,7 +130,7 @@ export const tableDefaults = {
     // buttons on the right — show/hide columns, toggle filters — were painted
     // over rather than scrolled off. 260 + 80 + gap is 356px in a 320px box on
     // a 360px phone. Let the field give way there and take the full row.
-    sx: { minWidth: { xs: 0, sm: 260 } },
+    sx: { minWidth: { xs: 0, sm: "calc(260rem / 15)" } },
   },
 
   muiPaginationProps: {

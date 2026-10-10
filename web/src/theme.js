@@ -67,6 +67,9 @@ export function buildTheme(mode = "light") {
       },
     },
     shape: { borderRadius: radii.md },
+    // 8px grid against the 15px design root (index.css), in rem so `p: 2`
+    // grows with the root font size like everything else.
+    spacing: (f) => `${(f * 8) / 15}rem`,
     // Accessible via theme.radii + theme.tokens.
     radii,
     tokens: { ...p, radii, motion: motionTokens, fontFamilies },
@@ -116,12 +119,12 @@ export function buildTheme(mode = "light") {
             textTransform: "none",
             fontWeight: fontWeights.semibold,
             borderRadius: radii.md,
-            paddingInline: 16,
-            minHeight: 36,
+            paddingInline: "calc(16rem / 15)",
+            minHeight: "calc(36rem / 15)",
             transition: `background-color ${motionTokens.duration.slow}ms ${motionTokens.easing.standard}, transform ${motionTokens.duration.base}ms ${motionTokens.easing.standard}, box-shadow ${motionTokens.duration.slow}ms ${motionTokens.easing.standard}`,
           },
-          sizeSmall: { minHeight: 30, paddingInline: 12, fontSize: typoTokens.bodySm.size / 15 + "rem" },
-          sizeLarge: { minHeight: 44, paddingInline: 20 },
+          sizeSmall: { minHeight: "calc(30rem / 15)", paddingInline: "calc(12rem / 15)", fontSize: typoTokens.bodySm.size / 15 + "rem" },
+          sizeLarge: { minHeight: "calc(44rem / 15)", paddingInline: "calc(20rem / 15)" },
         },
       },
       MuiIconButton: {
@@ -157,7 +160,7 @@ export function buildTheme(mode = "light") {
             borderRadius: radii.md,
             border: `1px solid ${p.border.default}`,
             boxShadow: p.shadow.lg,
-            marginTop: 6,
+            marginTop: "calc(6rem / 15)",
           },
         },
       },
@@ -167,7 +170,7 @@ export function buildTheme(mode = "light") {
             fontSize: typoTokens.body.size / 15 + "rem",
             fontWeight: fontWeights.medium,
             borderRadius: radii.sm,
-            marginInline: 4,
+            marginInline: "calc(4rem / 15)",
             marginBlock: 1,
           },
         },
@@ -186,7 +189,7 @@ export function buildTheme(mode = "light") {
           tooltip: {
             fontSize: typoTokens.caption.size / 15 + "rem",
             fontWeight: fontWeights.medium,
-            padding: "6px 10px",
+            padding: "calc(6rem / 15) calc(10rem / 15)",
             borderRadius: radii.sm,
             backgroundColor: isDark ? p.surface.elevated : p.surface.inverse,
             color: isDark ? p.text.primary : p.text.onAccent,
@@ -230,7 +233,7 @@ export function buildTheme(mode = "light") {
           },
           option: {
             borderRadius: radii.sm,
-            marginInline: 4,
+            marginInline: "calc(4rem / 15)",
           },
         },
       },
@@ -245,16 +248,16 @@ export function buildTheme(mode = "light") {
             borderRadius: radii.full,
             fontWeight: fontWeights.semibold,
             fontSize: typoTokens.caption.size / 15 + "rem",
-            height: 24,
+            height: "calc(24rem / 15)",
           },
-          sizeSmall: { height: 20, fontSize: 11 / 15 + "rem" },
+          sizeSmall: { height: "calc(20rem / 15)", fontSize: 11 / 15 + "rem" },
         },
       },
       MuiCheckbox: {
         styleOverrides: {
           root: {
             borderRadius: radii.sm,
-            padding: 6,
+            padding: "calc(6rem / 15)",
             color: p.border.strong,
             "&.Mui-checked": { color: p.primary.main },
           },
@@ -280,7 +283,7 @@ export function buildTheme(mode = "light") {
       MuiTabs: {
         styleOverrides: {
           indicator: {
-            height: 3,
+            height: "calc(3rem / 15)",
             borderRadius: radii.full,
             backgroundColor: p.primary.main,
           },
@@ -292,7 +295,7 @@ export function buildTheme(mode = "light") {
             textTransform: "none",
             fontWeight: fontWeights.semibold,
             fontSize: typoTokens.body.size / 15 + "rem",
-            minHeight: 40,
+            minHeight: "calc(40rem / 15)",
           },
         },
       },
@@ -307,7 +310,7 @@ export function buildTheme(mode = "light") {
       },
       MuiLinearProgress: {
         styleOverrides: {
-          root: { borderRadius: radii.full, height: 6 },
+          root: { borderRadius: radii.full, height: "calc(6rem / 15)" },
           bar: { borderRadius: radii.full },
         },
       },
@@ -316,7 +319,7 @@ export function buildTheme(mode = "light") {
           root: {
             fontSize: typoTokens.body.size / 15 + "rem",
             fontWeight: fontWeights.medium,
-            padding: "10px 14px",
+            padding: "calc(10rem / 15) calc(14rem / 15)",
             borderColor: p.border.subtle,
           },
           head: {

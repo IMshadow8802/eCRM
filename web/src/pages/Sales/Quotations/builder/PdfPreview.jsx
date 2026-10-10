@@ -17,7 +17,7 @@ export default function PdfPreview({ Component, doc, onReady }) {
   return (
     <div data-testid="pdf-preview" style={{ position: "relative", height: "100%", borderRadius: theme.radii.md, overflow: "hidden", border: `1px solid ${p.border.default}`, background: p.surface.subtle }}>
       {instance.error ? (
-        <div role="alert" style={{ padding: 16, fontSize: 13, color: p.error.main }}>The preview could not be drawn. Your changes are safe — try again in a moment.</div>
+        <div role="alert" style={{ padding: "calc(16rem / 15)", fontSize: "calc(13rem / 15)", color: p.error.main }}>The preview could not be drawn. Your changes are safe — try again in a moment.</div>
       ) : instance.url ? (
         <>
           <iframe title="Quotation preview" src={`${instance.url}#toolbar=0&navpanes=0`} style={{ width: "100%", height: "100%", border: "none" }} />
@@ -27,14 +27,14 @@ export default function PdfPreview({ Component, doc, onReady }) {
               Android shows an empty box. This opens the same blob in the
               browser's real viewer, which can zoom and scroll. */}
           <a href={instance.url} target="_blank" rel="noreferrer" data-testid="pdf-preview-open"
-            style={{ position: "absolute", right: 8, bottom: 8, padding: "6px 10px", borderRadius: theme.radii.sm,
+            style={{ position: "absolute", right: "calc(8rem / 15)", bottom: "calc(8rem / 15)", padding: "calc(6rem / 15) calc(10rem / 15)", borderRadius: theme.radii.sm,
               background: p.surface.card, border: `1px solid ${p.border.default}`, color: p.text.primary,
-              fontSize: 12, fontWeight: 600, textDecoration: "none", boxShadow: p.shadow.sm }}>
+              fontSize: "calc(12rem / 15)", fontWeight: 600, textDecoration: "none", boxShadow: p.shadow.sm }}>
             Open full size
           </a>
         </>
       ) : (
-        <div style={{ padding: 16, fontSize: 13, color: p.text.tertiary }}>Drawing the preview…</div>
+        <div style={{ padding: "calc(16rem / 15)", fontSize: "calc(13rem / 15)", color: p.text.tertiary }}>Drawing the preview…</div>
       )}
     </div>
   );

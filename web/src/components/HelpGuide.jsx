@@ -38,8 +38,8 @@ export default function HelpGuide({ guide, defaultLang = "en", isAdmin = false }
       style={{
         border: "none",
         cursor: "pointer",
-        padding: "3px 10px",
-        fontSize: 12,
+        padding: "calc(3rem / 15) calc(10rem / 15)",
+        fontSize: "calc(12rem / 15)",
         fontWeight: 600,
         borderRadius: r.full,
         color: lang === code ? "#fff" : p.text.secondary,
@@ -73,7 +73,7 @@ export default function HelpGuide({ guide, defaultLang = "en", isAdmin = false }
             sx: {
               p: 2,
               mt: 1,
-              maxWidth: 400,
+              maxWidth: "calc(400rem / 15)",
               borderRadius: `${r.lg}px`,
               border: `1px solid ${p.border.default}`,
               backgroundColor: p.surface.card,
@@ -87,11 +87,11 @@ export default function HelpGuide({ guide, defaultLang = "en", isAdmin = false }
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            gap: 12,
-            marginBottom: 10,
+            gap: "calc(12rem / 15)",
+            marginBottom: "calc(10rem / 15)",
           }}
         >
-          <strong style={{ fontSize: 14, color: p.text.primary }}>{title}</strong>
+          <strong style={{ fontSize: "calc(14rem / 15)", color: p.text.primary }}>{title}</strong>
           <div
             data-testid="help-lang-toggle"
             style={{
@@ -107,18 +107,18 @@ export default function HelpGuide({ guide, defaultLang = "en", isAdmin = false }
             {langBtn("en", "English")}
           </div>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 14, maxHeight: 440, overflowY: "auto" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "calc(14rem / 15)", maxHeight: "calc(440rem / 15)", overflowY: "auto" }}>
           {sections.map((section, si) => (
             <div key={si}>
               {(section.headingHi || section.headingEn) && (
                 <div
                   style={{
-                    fontSize: 12,
+                    fontSize: "calc(12rem / 15)",
                     fontWeight: 700,
                     textTransform: "uppercase",
                     letterSpacing: "0.04em",
                     color: section.adminOnly ? p.primary.main : p.text.tertiary,
-                    marginBottom: 6,
+                    marginBottom: "calc(6rem / 15)",
                   }}
                 >
                   {lang === "hi" ? section.headingHi : section.headingEn}
@@ -127,14 +127,14 @@ export default function HelpGuide({ guide, defaultLang = "en", isAdmin = false }
               <ol
                 style={{
                   margin: 0,
-                  paddingLeft: 18,
+                  paddingLeft: "calc(18rem / 15)",
                   display: "flex",
                   flexDirection: "column",
-                  gap: 6,
+                  gap: "calc(6rem / 15)",
                 }}
               >
                 {(section.steps || []).map((step, i) => (
-                  <li key={i} style={{ fontSize: 13, lineHeight: 1.55, color: p.text.secondary }}>
+                  <li key={i} style={{ fontSize: "calc(13rem / 15)", lineHeight: 1.55, color: p.text.secondary }}>
                     {t(step)}
                   </li>
                 ))}

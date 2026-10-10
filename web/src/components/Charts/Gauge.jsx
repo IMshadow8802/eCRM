@@ -1,4 +1,5 @@
 import { useTheme } from "@mui/material/styles";
+import useUiScale from "../../hooks/useUiScale";
 import { Box, Typography } from "@mui/material";
 import {
   PolarAngleAxis,
@@ -21,6 +22,7 @@ export default function Gauge({
   height = 96,
 }) {
   const theme = useTheme();
+  const k = useUiScale();
   const p = theme.tokens;
   const ratio = Math.max(0, Math.min(1, value / max));
   const color =
@@ -36,8 +38,8 @@ export default function Gauge({
       <Typography sx={{ fontSize: "0.7333rem", color: "text.secondary" }}>
         {label}
       </Typography>
-      <Box sx={{ position: "relative", height }}>
-        <ResponsiveContainer width="100%" height={height}>
+      <Box sx={{ position: "relative", height: height * k }}>
+        <ResponsiveContainer width="100%" height={height * k}>
           <RadialBarChart
             innerRadius="70%"
             outerRadius="100%"

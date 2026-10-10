@@ -330,15 +330,15 @@ const Attachments = forwardRef(function Attachments(
         style={{
           border: `1px dashed ${p.border.default}`,
           borderRadius: theme.radii.md,
-          padding: 16,
+          padding: "calc(16rem / 15)",
           textAlign: "center",
           background: p.surface.subtle ?? "transparent",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: 8, color: p.text.secondary }}>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: "calc(8rem / 15)", color: p.text.secondary }}>
           <Paperclip size={18} />
         </div>
-        <div style={{ fontSize: 13, color: p.text.secondary, marginBottom: 10 }}>
+        <div style={{ fontSize: "calc(13rem / 15)", color: p.text.secondary, marginBottom: "calc(10rem / 15)" }}>
           Drag &amp; drop files here, or
         </div>
         <Button
@@ -354,9 +354,9 @@ const Attachments = forwardRef(function Attachments(
         </Button>
       </div>
 
-      <div style={{ marginTop: 12 }}>
+      <div style={{ marginTop: "calc(12rem / 15)" }}>
         {loading ? (
-          <div style={{ fontSize: 13, color: p.text.secondary, padding: 8 }}>Loading…</div>
+          <div style={{ fontSize: "calc(13rem / 15)", color: p.text.secondary, padding: "calc(8rem / 15)" }}>Loading…</div>
         ) : items.length === 0 ? (
           <EmptyState
             size="sm"
@@ -367,11 +367,11 @@ const Attachments = forwardRef(function Attachments(
         ) : (
           <>
             {mediaItems.length > 0 && (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: docItems.length ? 10 : 0 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "calc(10rem / 15)", marginBottom: docItems.length ? 10 : 0 }}>
                 {mediaItems.map((it) => {
                   const url = media[it.key]?.url;
                   return (
-                    <div key={it.key} data-testid="attachment-tile" style={{ position: "relative", width: 84 }}>
+                    <div key={it.key} data-testid="attachment-tile" style={{ position: "relative", width: "calc(84rem / 15)" }}>
                       <button
                         type="button"
                         aria-label={`Preview ${it.name}`}
@@ -380,8 +380,8 @@ const Attachments = forwardRef(function Attachments(
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
-                          width: 84,
-                          height: 84,
+                          width: "calc(84rem / 15)",
+                          height: "calc(84rem / 15)",
                           padding: 0,
                           border: `1px solid ${p.border.default}`,
                           borderRadius: theme.radii.md,
@@ -415,7 +415,7 @@ const Attachments = forwardRef(function Attachments(
                       </span>
                       <div
                         title={it.name}
-                        style={{ width: 84, marginTop: 2, fontSize: 11, color: p.text.secondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                        style={{ width: "calc(84rem / 15)", marginTop: 2, fontSize: "calc(11rem / 15)", color: p.text.secondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                       >
                         {it.name}
                       </div>
@@ -424,7 +424,7 @@ const Attachments = forwardRef(function Attachments(
                 })}
               </div>
             )}
-            <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+            <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "calc(6rem / 15)" }}>
             {docItems.map((it) => (
               <li
                 key={it.key}
@@ -432,8 +432,8 @@ const Attachments = forwardRef(function Attachments(
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 10,
-                  padding: "8px 10px",
+                  gap: "calc(10rem / 15)",
+                  padding: "calc(8rem / 15) calc(10rem / 15)",
                   border: `1px solid ${p.border.default}`,
                   borderRadius: theme.radii.md,
                 }}
@@ -441,13 +441,13 @@ const Attachments = forwardRef(function Attachments(
                 <span style={{ color: p.text.secondary, display: "inline-flex" }}>
                   <TypeIcon name={it.name} />
                 </span>
-                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13, color: p.text.primary }}>
+                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "calc(13rem / 15)", color: p.text.primary }}>
                   {it.name}
                 </span>
                 {/* The row's fixed chrome leaves about 70px for the name on
                     a 360px screen. The byte count is the part a phone can do
                     without — the name is not. */}
-                <span className="attachment-size" style={{ fontSize: 12, color: p.text.secondary, flexShrink: 0 }}>
+                <span className="attachment-size" style={{ fontSize: "calc(12rem / 15)", color: p.text.secondary, flexShrink: 0 }}>
                   {humanSize(it.size)}
                 </span>
                 {live ? (

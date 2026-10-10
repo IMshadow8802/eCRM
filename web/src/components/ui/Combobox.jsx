@@ -4,6 +4,7 @@ import Autocomplete from "@mui/material/Autocomplete";
 import TextFieldMui from "@mui/material/TextField";
 import Chip from "@mui/material/Chip";
 import { ChevronDown } from "lucide-react";
+import { rem } from "../../utils/rem";
 
 import { zIndex as zIndexTokens } from "../../styles/tokens";
 
@@ -65,7 +66,7 @@ const Combobox = forwardRef(function Combobox(
         display: "inline-flex",
         flexDirection: "column",
         width: fullWidth ? "100%" : "auto",
-        gap: 6,
+        gap: "calc(6rem / 15)",
         fontFamily: p.fontFamilies.sans,
       }}
     >
@@ -73,7 +74,7 @@ const Combobox = forwardRef(function Combobox(
         <label
           htmlFor={id}
           style={{
-            fontSize: 13,
+            fontSize: "calc(13rem / 15)",
             fontWeight: 500,
             color: p.text.secondary,
             letterSpacing: "0.01em",
@@ -81,7 +82,7 @@ const Combobox = forwardRef(function Combobox(
         >
           {label}
           {required && (
-            <span style={{ color: p.error.main, marginLeft: 4 }}>*</span>
+            <span style={{ color: p.error.main, marginLeft: "calc(4rem / 15)" }}>*</span>
           )}
         </label>
       )}
@@ -147,10 +148,10 @@ const Combobox = forwardRef(function Combobox(
                   // otherwise make it taller). Multi-value: grow with the chips
                   // but keep the (empty) placeholder vertically centered.
                   ...(multiple
-                    ? { minHeight: inputHeight, paddingTop: "3px", paddingBottom: "3px" }
+                    ? { minHeight: rem(inputHeight), paddingTop: "calc(3rem / 15)", paddingBottom: "calc(3rem / 15)" }
                     : {
-                        minHeight: inputHeight,
-                        height: inputHeight,
+                        minHeight: rem(inputHeight),
+                        height: rem(inputHeight),
                         paddingTop: 0,
                         paddingBottom: 0,
                         flexWrap: "nowrap",
@@ -158,9 +159,9 @@ const Combobox = forwardRef(function Combobox(
                   "& .MuiAutocomplete-input": {
                     paddingTop: "0 !important",
                     paddingBottom: "0 !important",
-                    ...(multiple ? {} : { height: inputHeight - 2 }),
+                    ...(multiple ? {} : { height: rem(inputHeight - 2) }),
                     boxSizing: "border-box",
-                    fontSize: multiple ? 14 : inputFontSize,
+                    fontSize: rem(multiple ? 14 : inputFontSize),
                     fontWeight: 500,
                   },
                   "& fieldset": { borderColor: p.border.default },
@@ -172,8 +173,8 @@ const Combobox = forwardRef(function Combobox(
                   transition: "box-shadow 240ms cubic-bezier(0.4,0,0.2,1)",
                   "&.Mui-focused": {
                     boxShadow: hasError
-                      ? `0 0 0 3px ${p.error.subtle}`
-                      : `0 0 0 3px ${p.primary.subtle}`,
+                      ? `0 0 0 calc(3rem / 15) ${p.error.subtle}`
+                      : `0 0 0 calc(3rem / 15) ${p.primary.subtle}`,
                   },
                 },
               },
@@ -189,7 +190,7 @@ const Combobox = forwardRef(function Combobox(
               borderRadius: `${theme.radii.md}px`,
               border: `1px solid ${p.border.default}`,
               boxShadow: p.shadow.lg,
-              marginTop: "6px",
+              marginTop: "calc(6rem / 15)",
               backgroundColor: p.surface.card,
               color: p.text.primary,
             },
@@ -201,7 +202,7 @@ const Combobox = forwardRef(function Combobox(
         <span
           id={helperId}
           style={{
-            fontSize: 12,
+            fontSize: "calc(12rem / 15)",
             fontWeight: 500,
             color: hasError ? p.error.main : p.text.tertiary,
             lineHeight: 1.4,

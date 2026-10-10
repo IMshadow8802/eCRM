@@ -54,7 +54,7 @@ export default function MarkPaidModal({ open, onClose, ids = [], total = 0, onDo
           <DateField label="Paid on" value={paidOn} onChange={setPaidOn} data-testid="paid-on" required />
           <TextInput label="Reference (UTR / cheque no.)" value={ref} onChange={(e) => setRef(e.target.value)} data-testid="paid-ref" />
         </FormGrid>
-        {serverError && <div role="alert" style={{ color: errorColor, marginTop: 12, fontSize: 13 }}>{serverError}</div>}
+        {serverError && <div role="alert" style={{ color: errorColor, marginTop: "calc(12rem / 15)", fontSize: "calc(13rem / 15)" }}>{serverError}</div>}
       </Modal.Body>
       <Modal.Footer>
         <Button variant="ghost" onClick={close} disabled={pay.isPending}>Cancel</Button>

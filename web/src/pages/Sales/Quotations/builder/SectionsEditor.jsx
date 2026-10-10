@@ -51,10 +51,10 @@ export default function SectionsEditor({ sections, images = {}, disabled = false
 
           {s.type === "images" ? (
             <>
-              <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 1 }}>
+              <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(calc(140rem / 15), 1fr))", gap: 1 }}>
                 {(s.items ?? []).map((im, k) => (
                   <Box key={`${im.attachmentId}-${k}`} sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                    <Box sx={{ height: 90, borderRadius: `${theme.radii.sm}px`, overflow: "hidden", background: p.surface.subtle }}>
+                    <Box sx={{ height: "calc(90rem / 15)", borderRadius: `${theme.radii.sm}px`, overflow: "hidden", background: p.surface.subtle }}>
                       {images[im.attachmentId] && <img src={images[im.attachmentId]} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
                     </Box>
                     <TextInput size="sm" aria-label={`Caption ${k + 1}`} placeholder="Caption" value={im.caption ?? ""} disabled={disabled}
@@ -71,7 +71,7 @@ export default function SectionsEditor({ sections, images = {}, disabled = false
                     onClick={() => inputs.current[s.key]?.click()}>Add picture</Button>
                 </Box>
               )}
-              {errors[i] && <Box role="alert" sx={{ fontSize: 12, color: p.error.main }}>{errors[i]}</Box>}
+              {errors[i] && <Box role="alert" sx={{ fontSize: "calc(12rem / 15)", color: p.error.main }}>{errors[i]}</Box>}
             </>
           ) : (
             <RichTextEditor label="Section text" value={s.body ?? ""} disabled={disabled} minHeight={90} onChange={(body) => patch(i, { body })} data-testid={`section-text-${i}`} />

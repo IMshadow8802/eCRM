@@ -21,6 +21,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import useUiScale from "../../hooks/useUiScale";
 import { truncTick } from "./reportUtils";
 
 /**
@@ -96,21 +97,22 @@ export function ReportShellPage({
  */
 export function ReportBarChart({ data, xKey, bars, legend = true, height = 260 }) {
   const theme = useTheme();
+  const k = useUiScale();
   // Only narrow axes need shortening. Applied unconditionally it cut every
   // category name on a 1920px desktop too, which is a worse outcome than the
   // overlap it was written for.
   const narrow = useMediaQuery(theme.breakpoints.down("md"));
   const p = theme.tokens;
   const axis = {
-    tick: { fill: p.text.tertiary, fontSize: 11 },
+    tick: { fill: p.text.tertiary, fontSize: 11 * k },
     stroke: p.border.default,
     tickLine: false,
     axisLine: false,
   };
 
   return (
-    <ResponsiveContainer width="100%" height={height}>
-      <BarChart data={data} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
+    <ResponsiveContainer width="100%" height={height * k}>
+      <BarChart data={data} margin={{ top: 6 * k, right: 8 * k, left: 0, bottom: 0 }}>
         <CartesianGrid stroke={p.border.subtle} strokeDasharray="3 3" vertical={false} />
         {/* A resolution or category name is free text the company writes in
             Settings — "Replaced under warranty" is a normal one. Left whole,
@@ -119,13 +121,13 @@ export function ReportBarChart({ data, xKey, bars, legend = true, height = 260 }
             Truncating fits more of them; the Tooltip still carries the full
             name, because it reads the raw datum rather than the tick. */}
         <XAxis dataKey={xKey} {...axis} tickFormatter={narrow ? truncTick : undefined} />
-        <YAxis {...axis} width={32} allowDecimals={false} />
+        <YAxis {...axis} width={32 * k} allowDecimals={false} />
         <ChartTooltip
           contentStyle={{
             background: p.surface.card,
             border: `1px solid ${p.border.default}`,
             borderRadius: 8,
-            fontSize: 12,
+            fontSize: "calc(12rem / 15)",
             color: p.text.primary,
           }}
           cursor={{ fill: p.surface.subtle }}
@@ -133,7 +135,7 @@ export function ReportBarChart({ data, xKey, bars, legend = true, height = 260 }
         {legend && (
           <Legend
             iconType="circle"
-            wrapperStyle={{ fontSize: 11, color: p.text.secondary }}
+            wrapperStyle={{ fontSize: "calc(11rem / 15)", color: p.text.secondary }}
           />
         )}
         {bars.map((b) => (
@@ -142,7 +144,7 @@ export function ReportBarChart({ data, xKey, bars, legend = true, height = 260 }
             dataKey={b.key}
             name={b.name}
             fill={p[b.tone ?? "primary"].main}
-            radius={[8, 8, 0, 0]}
+            radius={[8 * k, 8 * k, 0, 0]}
           />
         ))}
       </BarChart>

@@ -129,7 +129,7 @@ const Projects = () => {
               variant="determinate"
               value={cell.getValue() || 0}
               sx={{
-                height: 6,
+                height: "calc(6rem / 15)",
                 borderRadius: 3,
                 backgroundColor: "grey.200",
               }}
@@ -196,7 +196,7 @@ const Projects = () => {
               '&:hover': {
                 backgroundColor: '#f9fafb'
               },
-              padding: '4px'
+              padding: 'calc(4rem / 15)'
             }}
           >
             <EditRounded fontSize="small" />
@@ -211,7 +211,7 @@ const Projects = () => {
               '&:hover': {
                 backgroundColor: '#f9fafb'
               },
-              padding: '4px'
+              padding: 'calc(4rem / 15)'
             }}
           >
             <DeleteRounded fontSize="small" />

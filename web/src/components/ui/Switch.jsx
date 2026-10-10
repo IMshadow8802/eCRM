@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { useTheme } from "@mui/material/styles";
 
 import { motion as motionTokens } from "../../styles/tokens";
+import { rem } from "../../utils/rem";
 
 const SIZE = {
   sm: { w: 32, h: 18, thumb: 14 },
@@ -37,7 +38,7 @@ const Switch = forwardRef(function Switch(
       style={{
         display: "inline-flex",
         alignItems: "center",
-        gap: 10,
+        gap: "calc(10rem / 15)",
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.55 : 1,
         userSelect: "none",
@@ -77,8 +78,8 @@ const Switch = forwardRef(function Switch(
         }}
         style={{
           position: "relative",
-          width: s.w,
-          height: s.h,
+          width: rem(s.w),
+          height: rem(s.h),
           borderRadius: theme.radii.full,
           display: "inline-block",
           flexShrink: 0,
@@ -86,17 +87,17 @@ const Switch = forwardRef(function Switch(
       >
         <motion.span
           aria-hidden="true"
-          animate={{ x: checked ? thumbOffset : 2 }}
+          animate={{ x: rem(checked ? thumbOffset : 2) }}
           transition={{
             duration: motionTokens.duration.base / 1000,
             ease: [0.4, 0, 0.2, 1],
           }}
           style={{
             position: "absolute",
-            top: (s.h - s.thumb) / 2,
+            top: rem((s.h - s.thumb) / 2),
             left: 0,
-            width: s.thumb,
-            height: s.thumb,
+            width: rem(s.thumb),
+            height: rem(s.thumb),
             borderRadius: theme.radii.full,
             background: "#FFFFFF",
             boxShadow: p.shadow.sm,
@@ -104,7 +105,7 @@ const Switch = forwardRef(function Switch(
         />
       </motion.span>
       {label && (
-        <span style={{ fontSize: 14, fontWeight: 500, color: p.text.primary }}>
+        <span style={{ fontSize: "calc(14rem / 15)", fontWeight: 500, color: p.text.primary }}>
           {label}
         </span>
       )}

@@ -6,6 +6,7 @@ import { useTheme } from "@mui/material/styles";
 
 import IconButton from "./IconButton";
 import { motion as motionTokens, zIndex } from "../../styles/tokens";
+import { rem } from "../../utils/rem";
 
 /**
  * Unified Modal with slotted Header / Body / Footer sub-components.
@@ -73,7 +74,7 @@ function Modal({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            padding: 16,
+            padding: "calc(16rem / 15)",
           }}
         >
           <motion.div
@@ -91,8 +92,8 @@ function Modal({
               position: "absolute",
               inset: 0,
               backgroundColor: p.overlay,
-              backdropFilter: "blur(8px) saturate(180%)",
-              WebkitBackdropFilter: "blur(8px) saturate(180%)",
+              backdropFilter: "blur(calc(8rem / 15)) saturate(180%)",
+              WebkitBackdropFilter: "blur(calc(8rem / 15)) saturate(180%)",
             }}
           />
           <motion.div
@@ -112,7 +113,7 @@ function Modal({
             style={{
               position: "relative",
               width: "100%",
-              maxWidth: widthPx,
+              maxWidth: rem(widthPx),
               display: "flex",
               flexDirection: "column",
               backgroundColor: p.surface.card,
@@ -141,8 +142,8 @@ function ModalHeader({ title, subtitle, icon, onClose, children }) {
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 12,
-        padding: "16px 20px",
+        gap: "calc(12rem / 15)",
+        padding: "calc(16rem / 15) calc(20rem / 15)",
         borderBottom: `1px solid ${p.border.default}`,
         flexShrink: 0,
       }}
@@ -153,8 +154,8 @@ function ModalHeader({ title, subtitle, icon, onClose, children }) {
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
-            width: 36,
-            height: 36,
+            width: "calc(36rem / 15)",
+            height: "calc(36rem / 15)",
             borderRadius: theme.radii.md,
             backgroundColor: p.primary.subtle,
             color: p.primary.main,
@@ -166,12 +167,12 @@ function ModalHeader({ title, subtitle, icon, onClose, children }) {
       )}
       <div style={{ flex: 1, minWidth: 0 }}>
         {title && (
-          <div style={{ fontSize: 18, fontWeight: 700, color: p.text.primary, lineHeight: 1.3 }}>
+          <div style={{ fontSize: "calc(18rem / 15)", fontWeight: 700, color: p.text.primary, lineHeight: 1.3 }}>
             {title}
           </div>
         )}
         {subtitle && (
-          <div style={{ fontSize: 13, fontWeight: 500, color: p.text.secondary, marginTop: 2 }}>
+          <div style={{ fontSize: "calc(13rem / 15)", fontWeight: 500, color: p.text.secondary, marginTop: 2 }}>
             {subtitle}
           </div>
         )}
@@ -216,8 +217,8 @@ function ModalFooter({ children, align = "right" }) {
         alignItems: "center",
         justifyContent: align === "left" ? "flex-start" : align === "between" ? "space-between" : "flex-end",
         flexWrap: "wrap",
-        gap: 8,
-        padding: "12px 20px",
+        gap: "calc(8rem / 15)",
+        padding: "calc(12rem / 15) calc(20rem / 15)",
         borderTop: `1px solid ${p.border.default}`,
         backgroundColor: p.surface.subtle,
         flexShrink: 0,

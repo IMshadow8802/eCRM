@@ -13,8 +13,8 @@ function Fact({ label, value }) {
   const p = useTheme().tokens;
   return (
     <div>
-      <div style={{ fontSize: 12, fontWeight: 500, color: p.text.tertiary }}>{label}</div>
-      <div style={{ fontSize: 14, fontWeight: 600, marginTop: 2, color: p.text.primary, overflowWrap: "anywhere" }}>{value || "—"}</div>
+      <div style={{ fontSize: "calc(12rem / 15)", fontWeight: 500, color: p.text.tertiary }}>{label}</div>
+      <div style={{ fontSize: "calc(14rem / 15)", fontWeight: 600, marginTop: 2, color: p.text.primary, overflowWrap: "anywhere" }}>{value || "—"}</div>
     </div>
   );
 }
@@ -49,14 +49,14 @@ export default function CustomerDetailModal({ customerId, open, onClose, onEdit 
       />
       <Modal.Body>
         {isLoading || !customer ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }} data-testid="customer-detail-loading">
+          <div style={{ display: "flex", flexDirection: "column", gap: "calc(12rem / 15)" }} data-testid="customer-detail-loading">
             <Skeleton variant="text" height={24} width={240} />
             <Skeleton variant="rect" height={120} />
           </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "calc(20rem / 15)" }}>
             <Card data-testid="customer-profile">
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(calc(160rem / 15), 1fr))", gap: "calc(16rem / 15)" }}>
                 <Fact label="Mobile" value={customer.Mobile} />
                 <Fact label="Alternate" value={customer.AltMobile} />
                 <Fact label="Email" value={customer.Email} />
@@ -65,7 +65,7 @@ export default function CustomerDetailModal({ customerId, open, onClose, onEdit 
                 <Fact label="Open / total" value={`${customer.OpenTickets ?? 0} / ${customer.TotalTickets ?? 0}`} />
               </div>
               {(address || customer.Remarks) && (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 16, marginTop: 16 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(calc(160rem / 15), 1fr))", gap: "calc(16rem / 15)", marginTop: "calc(16rem / 15)" }}>
                   <Fact label="Address" value={address} />
                   <Fact label="Remarks" value={customer.Remarks} />
                 </div>
@@ -73,7 +73,7 @@ export default function CustomerDetailModal({ customerId, open, onClose, onEdit 
             </Card>
 
             <div>
-              <h3 style={{ margin: "0 0 10px", fontSize: 15, fontWeight: 700 }}>Complaints ({tickets.length})</h3>
+              <h3 style={{ margin: "0 0 calc(10rem / 15)", fontSize: "calc(15rem / 15)", fontWeight: 700 }}>Complaints ({tickets.length})</h3>
               {tickets.length === 0 ? (
                 <EmptyState
                   icon={<Inbox size={24} />}
@@ -83,7 +83,7 @@ export default function CustomerDetailModal({ customerId, open, onClose, onEdit 
                   data-testid="customer-tickets-empty"
                 />
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "calc(8rem / 15)" }}>
                   {tickets.map((t) => (
                     <Card
                       key={t.Id}
@@ -91,16 +91,16 @@ export default function CustomerDetailModal({ customerId, open, onClose, onEdit 
                       onClick={() => navigate(`/support/tickets/${t.Id}`)}
                       data-testid={`customer-ticket-${t.Id}`}
                     >
-                      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: p.text.tertiary }}>{t.TicketNo}</span>
-                        <span style={{ flex: 1, minWidth: 160, fontSize: 14, fontWeight: 600 }}>{t.Subject}</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: "calc(12rem / 15)", flexWrap: "wrap" }}>
+                        <span style={{ fontSize: "calc(12rem / 15)", fontWeight: 600, color: p.text.tertiary }}>{t.TicketNo}</span>
+                        <span style={{ flex: 1, minWidth: "calc(160rem / 15)", fontSize: "calc(14rem / 15)", fontWeight: 600 }}>{t.Subject}</span>
                         <Chip label={t.StatusName || "—"} size="sm" tone={statusTone(t.StatusCode)} />
                         {t.PriorityName && <Chip label={t.PriorityName} size="sm" tone="accent" />}
-                        <span style={{ fontSize: 12, color: t.IsOverdue ? p.error.main : p.text.secondary, fontWeight: t.IsOverdue ? 600 : 500 }}>
+                        <span style={{ fontSize: "calc(12rem / 15)", color: t.IsOverdue ? p.error.main : p.text.secondary, fontWeight: t.IsOverdue ? 600 : 500 }}>
                           {dueLabel(t.DueAt, t.IsOverdue)}
                         </span>
-                        <span style={{ fontSize: 12, color: p.text.secondary }}>{t.AssigneeName || "Unassigned"}</span>
-                        <span style={{ fontSize: 12, color: p.text.tertiary }}>{formatDate(t.CreatedAt)}</span>
+                        <span style={{ fontSize: "calc(12rem / 15)", color: p.text.secondary }}>{t.AssigneeName || "Unassigned"}</span>
+                        <span style={{ fontSize: "calc(12rem / 15)", color: p.text.tertiary }}>{formatDate(t.CreatedAt)}</span>
                       </div>
                     </Card>
                   ))}

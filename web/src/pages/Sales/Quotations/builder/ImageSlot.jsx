@@ -14,7 +14,7 @@ export default function ImageSlot({ label, src, isSample = false, hidden = false
   const input = useRef(null);
 
   return (
-    <div data-testid={testId} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+    <div data-testid={testId} style={{ display: "flex", flexDirection: "column", gap: "calc(6rem / 15)" }}>
       {/* `Chip` is nowrap, so the old 26-character label was ~164px of
           unshrinkable content inside an 88px grid track — it ran across the
           gap and the next slot painted over it, which made the one thing
@@ -23,8 +23,8 @@ export default function ImageSlot({ label, src, isSample = false, hidden = false
           sample logo, or remove it", rendered by QuotationBuilder as
           `finalise-blockers`. Do not delete that banner on the strength of
           this chip. */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 13, fontWeight: 500, color: p.text.secondary }}>{label}</span>
+      <div style={{ display: "flex", alignItems: "center", gap: "calc(8rem / 15)", flexWrap: "wrap" }}>
+        <span style={{ fontSize: "calc(13rem / 15)", fontWeight: 500, color: p.text.secondary }}>{label}</span>
         {isSample && !hidden && <Chip label="Sample" size="sm" tone="warning" />}
       </div>
       {!hidden && (
@@ -33,7 +33,7 @@ export default function ImageSlot({ label, src, isSample = false, hidden = false
         </div>
       )}
       {!disabled && (
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: "calc(6rem / 15)", flexWrap: "wrap" }}>
           {hidden ? (
             <Button size="sm" variant="ghost" leftIcon={<RotateCcw size={13} />} onClick={onRestore}>Show {label.toLowerCase()}</Button>
           ) : (

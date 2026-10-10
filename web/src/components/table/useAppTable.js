@@ -64,6 +64,9 @@ export default function useAppTable(options = {}) {
           viewport: window.innerHeight,
           top: boxRect.top + window.scrollY,
           below: card.getBoundingClientRect().bottom - boxRect.bottom,
+          // The page's bottom padding is 16 design px in rem, so it grows
+          // with the root font size; a fixed 16 overflowed 4K by a few px.
+          gap: (16 * (parseFloat(getComputedStyle(document.documentElement).fontSize) || 15)) / 15,
         }),
       );
     };

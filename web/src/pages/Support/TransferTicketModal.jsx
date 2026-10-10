@@ -101,7 +101,7 @@ export default function TransferTicketModal({ open, onClose, ticketIds = [], onD
         onClose={handleClose}
       />
       <Modal.Body>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "calc(16rem / 15)" }}>
           <Combobox
             label="Branch"
             options={branchOptions}

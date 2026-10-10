@@ -108,11 +108,11 @@ const TopNav = ({ onOpenMobileSidebar }) => {
         borderRadius: 2,
         border: "1px solid",
         borderColor: "divider",
-        boxShadow: "0 4px 16px rgba(0, 0, 0, 0.08)",
+        boxShadow: "0 calc(4rem / 15) calc(16rem / 15) rgba(0, 0, 0, 0.08)",
         zIndex: (t) => t.zIndex.appBar,
       }}
     >
-      <Toolbar sx={{ minHeight: 56, px: { xs: 1.5, md: 2.5 }, borderRadius: 2 }}>
+      <Toolbar sx={{ minHeight: "calc(56rem / 15)", px: { xs: 1.5, md: 2.5 }, borderRadius: 2 }}>
         {isMobile && (
           <IconButton
             edge="start"
@@ -261,7 +261,7 @@ const TopNav = ({ onOpenMobileSidebar }) => {
             paper: {
               sx: {
                 mt: 1,
-                width: 300,
+                width: "calc(300rem / 15)",
                 boxShadow: 3,
                 border: "1px solid",
                 borderColor: "divider",

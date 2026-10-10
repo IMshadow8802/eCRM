@@ -1,5 +1,6 @@
 import { useTheme } from "@mui/material/styles";
 import { X } from "lucide-react";
+import { rem } from "../../utils/rem";
 
 /**
  * Chip — pill-shaped label. Variants:
@@ -89,14 +90,14 @@ export default function Chip({
       style={{
         display: "inline-flex",
         alignItems: "center",
-        gap: s.gap,
-        height: s.h,
-        paddingInline: s.px,
+        gap: rem(s.gap),
+        height: rem(s.h),
+        paddingInline: rem(s.px),
         borderRadius: theme.radii.full,
         backgroundColor: bg,
         color: fg,
         border: `1px solid ${border}`,
-        fontSize: s.fz,
+        fontSize: rem(s.fz),
         fontWeight: 600,
         fontFamily: "inherit",
         letterSpacing: "0.01em",
@@ -133,8 +134,8 @@ export default function Chip({
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
-            width: s.icon + 4,
-            height: s.icon + 4,
+            width: rem(s.icon + 4),
+            height: rem(s.icon + 4),
             border: "none",
             borderRadius: theme.radii.full,
             background: "transparent",

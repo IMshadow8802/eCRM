@@ -70,7 +70,7 @@ export default function EscalateTicketModal({ open, onClose, ticket, onDone }) {
         onClose={handleClose}
       />
       <Modal.Body>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "calc(16rem / 15)" }}>
           <Combobox
             label="Escalate to"
             required

@@ -319,7 +319,7 @@ export default function TaskBoard() {
 
   if (!workspaceId) {
     return (
-      <div style={{ padding: 32 }}>
+      <div style={{ padding: "calc(32rem / 15)" }}>
         <EmptyState
           icon={<LayoutGrid size={32} />}
           title="Welcome — pick or create a workspace"
@@ -338,11 +338,11 @@ export default function TaskBoard() {
         // Adding 24 on top left 288px for a 300px kanban column, so on a
         // 360px phone no column was ever fully on screen. Leads and Tickets
         // add nothing here for the same reason.
-        paddingBlock: 8,
+        paddingBlock: "calc(8rem / 15)",
         display: "flex",
         flexDirection: "column",
         height: "100%",
-        gap: 16,
+        gap: "calc(16rem / 15)",
       }}
     >
       <PageHeader
@@ -369,12 +369,12 @@ export default function TaskBoard() {
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 12,
+          gap: "calc(12rem / 15)",
           flexWrap: "wrap",
         }}
       >
         <WorkspaceSwitcher />
-        <div style={{ minWidth: 260, flex: "1 1 260px", maxWidth: 360 }}>
+        <div style={{ minWidth: "calc(260rem / 15)", flex: "1 1 calc(260rem / 15)", maxWidth: "calc(360rem / 15)" }}>
           <SearchInput
             value={search}
             onChange={setSearch}
@@ -437,9 +437,9 @@ export default function TaskBoard() {
           <div
             style={{
               display: "flex",
-              gap: 12,
+              gap: "calc(12rem / 15)",
               overflowX: "auto",
-              paddingBottom: 12,
+              paddingBottom: "calc(12rem / 15)",
               flex: 1,
             }}
           >

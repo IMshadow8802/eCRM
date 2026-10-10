@@ -12,7 +12,6 @@ import { Box } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { Pencil, Plus } from "lucide-react";
 import { useSnackbar } from "notistack";
-
 import {
   Button,
   Checkbox,
@@ -28,6 +27,7 @@ import { SALES_ENDPOINTS } from "../../api/salesQueries";
 import { saveBranch } from "../../api/masterQueries";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { toTree, descendantsOf } from "../../utils/officeTree";
+import { rem } from "../../utils/rem";
 
 const TOP = { value: 0, label: "Top level" };
 
@@ -153,13 +153,13 @@ const Offices = () => {
               >
                 <Box
                   data-testid={`office-name-${r.Id}`}
-                  style={{ paddingLeft: `${r.depth * 24}px` }}
+                  style={{ paddingLeft: rem(r.depth * 24) }}
                   sx={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 1 }}
                 >
                   <span
                     style={{
                       fontWeight: r.depth === 0 ? 600 : 500,
-                      fontSize: 14,
+                      fontSize: "calc(14rem / 15)",
                       color: inactive ? p.text.tertiary : p.text.primary,
                     }}
                   >
@@ -167,7 +167,7 @@ const Offices = () => {
                   </span>
                   {inactive && <Chip size="sm" label="Inactive" />}
                 </Box>
-                <span style={{ fontSize: 12, color: p.text.tertiary, whiteSpace: "nowrap" }}>
+                <span style={{ fontSize: "calc(12rem / 15)", color: p.text.tertiary, whiteSpace: "nowrap" }}>
                   {people} {people === 1 ? "person" : "people"}
                 </span>
                 <IconButton
@@ -224,7 +224,7 @@ const Offices = () => {
                 />
               )}
               {serverError && (
-                <div role="alert" style={{ color: p.error.main, fontSize: 13 }}>
+                <div role="alert" style={{ color: p.error.main, fontSize: "calc(13rem / 15)" }}>
                   {serverError}
                 </div>
               )}

@@ -46,7 +46,7 @@ export default function DayMarkDialog({ open, person, date, onClose }) {
     <Modal open={open} onClose={onClose} size="sm" data-testid="day-mark-dialog">
       <Modal.Header title="Mark leave or on duty" subtitle={person?.FullName} icon={<CalendarCheck size={18} />} onClose={onClose} />
       <Modal.Body>
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "calc(12rem / 15)" }}>
           <DateField label="Date" value={day} onChange={setDay} required data-testid="day-mark-date" />
           <Tooltip title="Full day, or only the first or second half. Half-day leave means the person still works the other half.">
             <div><FormSelect label="For" options={PARTS} value={part} onChange={(e) => setPart(e.target.value)} data-testid="day-mark-part" /></div>

@@ -87,7 +87,7 @@ const Tickets = () => {
       Cell: ({ row }) => (
         <div>
           <div style={{ fontWeight: 600 }}>{row.original.CustomerName || "—"}</div>
-          <div style={{ fontSize: 12, color: theme.tokens.text.secondary }}>{row.original.CustomerMobile || "—"}</div>
+          <div style={{ fontSize: "calc(12rem / 15)", color: theme.tokens.text.secondary }}>{row.original.CustomerMobile || "—"}</div>
         </div>
       ),
     },
@@ -179,15 +179,15 @@ const Tickets = () => {
           about what it filters. `alignItems: flex-end` no longer has to rescue
           anything, but it stays for the wrapped case. */}
       <Box sx={{ display: "flex", gap: 1, mt: 1, mb: 0.5, flexWrap: "wrap", alignItems: "flex-end" }}>
-        <Box sx={{ width: 160 }}><Combobox size="sm" label="Status" placeholder="All statuses" options={opts.status} value={optById(opts.status, filters.StatusId)} onChange={setFilterValue("StatusId")} data-testid="filter-status" /></Box>
-        <Box sx={{ width: 150 }}><Combobox size="sm" label="Priority" placeholder="All priorities" options={opts.priority} value={optById(opts.priority, filters.Priority)} onChange={setFilterValue("Priority")} data-testid="filter-priority" /></Box>
-        <Box sx={{ width: 160 }}><Combobox size="sm" label="Category" placeholder="All categories" options={opts.category} value={optById(opts.category, filters.CategoryId)} onChange={setFilterValue("CategoryId")} data-testid="filter-category" /></Box>
-        <Box sx={{ width: 150 }}><Combobox size="sm" label="Channel" placeholder="All channels" options={opts.channel} value={optById(opts.channel, filters.ChannelId)} onChange={setFilterValue("ChannelId")} data-testid="filter-channel" /></Box>
-        <Box sx={{ width: 170 }}><Combobox size="sm" label="Product" placeholder="All products" options={opts.product} value={optById(opts.product, filters.ProductId)} onChange={setFilterValue("ProductId")} data-testid="filter-product" /></Box>
-        <Box sx={{ width: 170 }}><Combobox size="sm" label="Assignee" placeholder="All assignees" options={opts.assignee} value={optById(opts.assignee, filters.AssignedTo)} onChange={setFilterValue("AssignedTo")} data-testid="filter-assignee" /></Box>
-        <Box sx={{ width: 170 }}><Combobox size="sm" label="Branch" placeholder="All branches" options={opts.branch} value={optById(opts.branch, filters.BranchId)} onChange={setFilterValue("BranchId")} data-testid="filter-branch" /></Box>
-        <Box sx={{ width: 160 }}><DateField size="sm" label="Raised from" value={range.from} onChange={(v) => setRange((r) => ({ ...r, from: v }))} data-testid="tickets-from" /></Box>
-        <Box sx={{ width: 160 }}><DateField size="sm" label="Raised to" value={range.to} onChange={(v) => setRange((r) => ({ ...r, to: v }))} data-testid="tickets-to" /></Box>
+        <Box sx={{ width: "calc(160rem / 15)" }}><Combobox size="sm" label="Status" placeholder="All statuses" options={opts.status} value={optById(opts.status, filters.StatusId)} onChange={setFilterValue("StatusId")} data-testid="filter-status" /></Box>
+        <Box sx={{ width: "calc(150rem / 15)" }}><Combobox size="sm" label="Priority" placeholder="All priorities" options={opts.priority} value={optById(opts.priority, filters.Priority)} onChange={setFilterValue("Priority")} data-testid="filter-priority" /></Box>
+        <Box sx={{ width: "calc(160rem / 15)" }}><Combobox size="sm" label="Category" placeholder="All categories" options={opts.category} value={optById(opts.category, filters.CategoryId)} onChange={setFilterValue("CategoryId")} data-testid="filter-category" /></Box>
+        <Box sx={{ width: "calc(150rem / 15)" }}><Combobox size="sm" label="Channel" placeholder="All channels" options={opts.channel} value={optById(opts.channel, filters.ChannelId)} onChange={setFilterValue("ChannelId")} data-testid="filter-channel" /></Box>
+        <Box sx={{ width: "calc(170rem / 15)" }}><Combobox size="sm" label="Product" placeholder="All products" options={opts.product} value={optById(opts.product, filters.ProductId)} onChange={setFilterValue("ProductId")} data-testid="filter-product" /></Box>
+        <Box sx={{ width: "calc(170rem / 15)" }}><Combobox size="sm" label="Assignee" placeholder="All assignees" options={opts.assignee} value={optById(opts.assignee, filters.AssignedTo)} onChange={setFilterValue("AssignedTo")} data-testid="filter-assignee" /></Box>
+        <Box sx={{ width: "calc(170rem / 15)" }}><Combobox size="sm" label="Branch" placeholder="All branches" options={opts.branch} value={optById(opts.branch, filters.BranchId)} onChange={setFilterValue("BranchId")} data-testid="filter-branch" /></Box>
+        <Box sx={{ width: "calc(160rem / 15)" }}><DateField size="sm" label="Raised from" value={range.from} onChange={(v) => setRange((r) => ({ ...r, from: v }))} data-testid="tickets-from" /></Box>
+        <Box sx={{ width: "calc(160rem / 15)" }}><DateField size="sm" label="Raised to" value={range.to} onChange={(v) => setRange((r) => ({ ...r, to: v }))} data-testid="tickets-to" /></Box>
       </Box>
 
       <MaterialReactTable table={table} />

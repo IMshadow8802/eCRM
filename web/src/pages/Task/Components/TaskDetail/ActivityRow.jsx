@@ -9,7 +9,7 @@ export default function ActivityRow({ activity: a, isLast }) {
   // repeats the item text already in the description, so skip it.
   const changed = a.OldValue && a.NewValue && a.OldValue !== a.NewValue;
   return (
-    <div style={{ display: "flex", gap: 12, alignItems: "stretch" }}>
+    <div style={{ display: "flex", gap: "calc(12rem / 15)", alignItems: "stretch" }}>
       {/* Rail: avatar with a line running down to the next event. */}
       <div
         style={{ display: "flex", flexDirection: "column", alignItems: "center" }}
@@ -20,7 +20,7 @@ export default function ActivityRow({ activity: a, isLast }) {
             style={{
               flex: 1,
               width: 2,
-              marginTop: 6,
+              marginTop: "calc(6rem / 15)",
               borderRadius: 2,
               background: "var(--color-surface-200)",
             }}
@@ -33,7 +33,7 @@ export default function ActivityRow({ activity: a, isLast }) {
             plus a snippet is enough to tell which event this was. */}
         <div
           style={{
-            fontSize: 13,
+            fontSize: "calc(13rem / 15)",
             lineHeight: 1.4,
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -49,7 +49,7 @@ export default function ActivityRow({ activity: a, isLast }) {
         {changed && (
           <div
             style={{
-              fontSize: 12,
+              fontSize: "calc(12rem / 15)",
               color: "var(--color-surface-500)",
               marginTop: 2,
               overflow: "hidden",
@@ -63,9 +63,9 @@ export default function ActivityRow({ activity: a, isLast }) {
         )}
         <div
           style={{
-            fontSize: 11,
+            fontSize: "calc(11rem / 15)",
             color: "var(--color-surface-400)",
-            marginTop: 3,
+            marginTop: "calc(3rem / 15)",
           }}
         >
           {a.CreatedDate ? dayjs(a.CreatedDate).format("DD/MM/YYYY, hh:mm A") : ""}

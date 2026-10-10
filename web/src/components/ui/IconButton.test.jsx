@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ThemeProvider } from "@mui/material/styles";
 import { buildTheme } from "../../theme";
+import { rem } from "../../utils/rem";
 
 import IconButton from "./IconButton";
 
@@ -106,6 +107,6 @@ it("keeps the small size at a tappable 32px", () => {
     <IconButton size="sm" aria-label="Delete"><span /></IconButton>,
   );
   const btn = screen.getByRole("button", { name: "Delete" });
-  expect(btn.style.width).toBe("32px");
-  expect(btn.style.height).toBe("32px");
+  expect(btn.style.width).toBe(rem(32));
+  expect(btn.style.height).toBe(rem(32));
 });

@@ -68,7 +68,7 @@ export default function ResolveTicketModal({ open, onClose, ticket, status, onDo
         onClose={handleClose}
       />
       <Modal.Body>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "calc(16rem / 15)" }}>
           <Combobox
             label="Resolution"
             required

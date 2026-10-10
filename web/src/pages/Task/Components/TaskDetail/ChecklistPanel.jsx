@@ -20,7 +20,7 @@ export default function ChecklistPanel({
   } = checklist;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "calc(8rem / 15)" }}>
       {checklistItems.length === 0 ? (
         <EmptyState
           icon={<CheckSquare size={28} />}
@@ -46,9 +46,9 @@ export default function ChecklistPanel({
         <div
           style={{
             display: "flex",
-            gap: 8,
+            gap: "calc(8rem / 15)",
             alignItems: "center",
-            marginTop: 6,
+            marginTop: "calc(6rem / 15)",
           }}
         >
           <TextInput

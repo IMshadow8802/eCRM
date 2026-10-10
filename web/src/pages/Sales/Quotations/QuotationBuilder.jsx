@@ -43,8 +43,8 @@ function Section({ title, hint, children, action }) {
     <Card padding="md">
       <Box sx={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 1, mb: 1.5 }}>
         <Box>
-          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>{title}</h3>
-          {hint && <Box sx={{ fontSize: 12, color: "text.secondary", mt: 0.25 }}>{hint}</Box>}
+          <h3 style={{ margin: 0, fontSize: "calc(15rem / 15)", fontWeight: 700 }}>{title}</h3>
+          {hint && <Box sx={{ fontSize: "calc(12rem / 15)", color: "text.secondary", mt: 0.25 }}>{hint}</Box>}
         </Box>
         {action}
       </Box>
@@ -57,7 +57,7 @@ function Confirm({ open, title, body, yes, busy, onYes, onClose }) {
   return (
     <Modal open={open} onClose={() => !busy && onClose()} size="sm">
       <Modal.Header title={title} onClose={() => !busy && onClose()} />
-      <Modal.Body><Box sx={{ fontSize: 14 }}>{body}</Box></Modal.Body>
+      <Modal.Body><Box sx={{ fontSize: "calc(14rem / 15)" }}>{body}</Box></Modal.Body>
       <Modal.Footer>
         <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
         <Button variant="primary" onClick={onYes} loading={busy}>{yes}</Button>
@@ -326,13 +326,13 @@ export default function QuotationBuilder() {
       />
 
       {editable && blockers.length > 0 && (
-        <Box data-testid="finalise-blockers" sx={{ mt: 1, fontSize: 13, color: theme.tokens.warning.hover }}>
+        <Box data-testid="finalise-blockers" sx={{ mt: 1, fontSize: "calc(13rem / 15)", color: theme.tokens.warning.hover }}>
           Before you can finalise: {blockers.join(" · ")}
         </Box>
       )}
-      {!editable && quotation.CloseRemarks && <Box sx={{ mt: 1, fontSize: 13, color: "text.secondary" }}>{quotation.CloseRemarks}</Box>}
+      {!editable && quotation.CloseRemarks && <Box sx={{ mt: 1, fontSize: "calc(13rem / 15)", color: "text.secondary" }}>{quotation.CloseRemarks}</Box>}
 
-      <Box sx={{ mt: 2, display: "grid", gap: 2, alignItems: "start", gridTemplateColumns: { xs: "minmax(0, 1fr)", lg: "minmax(0, 560px) minmax(0, 1fr)" } }}>
+      <Box sx={{ mt: 2, display: "grid", gap: 2, alignItems: "start", gridTemplateColumns: { xs: "minmax(0, 1fr)", lg: "minmax(0, calc(560rem / 15)) minmax(0, 1fr)" } }}>
         <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
           <Section title="Look">
             <LookSection templateCode={form.TemplateCode} accent={c.accent} disabled={!editable}
@@ -343,13 +343,13 @@ export default function QuotationBuilder() {
             action={editable && isAdmin && profile?.IsSet ? (
               <Button size="sm" variant="ghost" loading={saveProfile.isPending} onClick={run(async () => { await saveProfile.mutateAsync(profileFromForm(form, leadId)); })}>Save as our default</Button>
             ) : null}>
-            <Box sx={{ display: "grid", gridTemplateColumns: { xs: "minmax(0, 1fr)", sm: "112px minmax(0, 1fr)" }, gap: 2, mb: 2 }}>
+            <Box sx={{ display: "grid", gridTemplateColumns: { xs: "minmax(0, 1fr)", sm: "calc(112rem / 15) minmax(0, 1fr)" }, gap: 2, mb: 2 }}>
               <ImageSlot label="Logo" data-testid="logo-slot" src={doc.logoSrc} isSample={!c.logoAttachmentId} hidden={c.showLogo === false} disabled={!editable} busy={uploading === "logo"}
                 onUpload={uploadLetterhead("logo")} onRemove={() => setCompany((co) => ({ ...co, showLogo: false }))} onRestore={() => setCompany((co) => ({ ...co, showLogo: true }))} />
               <ImageSlot label="Banner" wide data-testid="header-slot" src={doc.headerSrc} isSample={!c.headerAttachmentId} hidden={c.showHeader === false} disabled={!editable} busy={uploading === "header"}
                 onUpload={uploadLetterhead("header")} onRemove={() => setCompany((co) => ({ ...co, showHeader: false }))} onRestore={() => setCompany((co) => ({ ...co, showHeader: true }))} />
             </Box>
-            {imageError && <Box role="alert" sx={{ fontSize: 12, color: theme.tokens.error.main, mb: 1 }}>{imageError}</Box>}
+            {imageError && <Box role="alert" sx={{ fontSize: "calc(12rem / 15)", color: theme.tokens.error.main, mb: 1 }}>{imageError}</Box>}
             <CompanySection value={c} disabled={!editable} onChange={setCompany} />
           </Section>
 
@@ -382,7 +382,7 @@ export default function QuotationBuilder() {
           </Section>
         </Box>
 
-        <Box sx={{ position: { lg: "sticky" }, top: 16, height: { xs: 560, lg: "calc(100dvh - 150px)" } }}>
+        <Box sx={{ position: { lg: "sticky" }, top: "calc(16rem / 15)", height: { xs: "calc(560rem / 15)", lg: "calc(100dvh - calc(150rem / 15))" } }}>
           <PdfPreview Component={templateByCode(form.TemplateCode).Component} doc={doc} onReady={(blob) => { pdfBlob.current = blob; }} />
         </Box>
       </Box>

@@ -59,21 +59,21 @@ export default function LeadQuotations({ lead, onCount }) {
   if (isLoading) return <Skeleton variant="rect" height={120} />;
 
   return (
-    <div data-testid="lead-quotations" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+    <div data-testid="lead-quotations" style={{ display: "flex", flexDirection: "column", gap: "calc(10rem / 15)" }}>
       {isActiveCode(lead.StatusCode) && (
         <div><Button variant="primary" size="sm" leftIcon={<FilePlus2 size={14} />} onClick={() => setPicking(true)} data-testid="create-quotation-btn">Create quotation</Button></div>
       )}
       {rows.length === 0 && <EmptyState title="No quotations yet" description="A quotation is optional — small leads are often won without one." size="sm" />}
       {rows.map((q) => (
         <Card key={q.Id} interactive padding="md" onClick={() => navigate(`/sales/quotations/${q.Id}`)} data-testid={`quotation-${q.Id}`}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "calc(12rem / 15)", cursor: "pointer" }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 700 }}>{q.QuoteNo || `Draft · revision ${q.Revision}`}</div>
-              <div style={{ fontSize: 12, color: p.text.tertiary, marginTop: 2 }}>
+              <div style={{ fontSize: "calc(14rem / 15)", fontWeight: 700 }}>{q.QuoteNo || `Draft · revision ${q.Revision}`}</div>
+              <div style={{ fontSize: "calc(12rem / 15)", color: p.text.tertiary, marginTop: 2 }}>
                 {formatDate(q.QuoteDate, { empty: "—" })}{q.ValidTill ? ` · valid till ${formatDate(q.ValidTill)}` : ""}{q.IsExpired ? " · expired" : ""}
               </div>
             </div>
-            <div style={{ fontSize: 14, fontWeight: 700 }}>{money(q.GrandTotal)}</div>
+            <div style={{ fontSize: "calc(14rem / 15)", fontWeight: 700 }}>{money(q.GrandTotal)}</div>
             <Chip size="sm" label={QUOTE_STATUS[q.Status]?.label ?? q.Status} tone={QUOTE_STATUS[q.Status]?.tone ?? "default"} />
           </div>
         </Card>

@@ -152,7 +152,7 @@ const Users = () => {
       "mrt-row-actions": { size: 80, grow: false, header: "Actions" },
     },
     muiTableProps: { sx: { tableLayout: "fixed" } },
-    muiTableBodyRowProps: { sx: { height: "40px" } },
+    muiTableBodyRowProps: { sx: { height: "calc(40rem / 15)" } },
     renderRowActions: ({ row }) => (
       <Box sx={{ display: "flex", gap: "0.5rem" }}>
         {canEditRow(row.original) && (
@@ -163,7 +163,7 @@ const Users = () => {
               sx={{
                 color: "#059669",
                 "&:hover": { backgroundColor: "#f9fafb" },
-                padding: "4px",
+                padding: "calc(4rem / 15)",
               }}
             >
               <EditRounded fontSize="small" />
@@ -179,7 +179,7 @@ const Users = () => {
               sx={{
                 color: "#dc2626",
                 "&:hover": { backgroundColor: "#f9fafb" },
-                padding: "4px",
+                padding: "calc(4rem / 15)",
               }}
             >
               <DeleteRounded fontSize="small" />

@@ -132,8 +132,8 @@ describe("NotificationBell", () => {
     const user = userEvent.setup();
     await user.click(screen.getByTestId("notification-bell"));
     await screen.findByText("New comment");
-    const shell = document.querySelector('[style*="min(360px, 100%)"]');
+    const shell = document.querySelector('[style*="min(24rem, 100%)"]');
     expect(shell).toBeTruthy();
-    expect(shell.style.width).toBe("min(360px, 100%)");
+    expect(shell.style.width).toBe("min(24rem, 100%)");
   });
 });

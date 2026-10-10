@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { useTheme } from "@mui/material/styles";
 
 import { motion as motionTokens } from "../../styles/tokens";
+import { rem } from "../../utils/rem";
 
 /**
  * Animated Checkbox. Custom SVG tick draws in via stroke path animation.
@@ -45,7 +46,7 @@ const Checkbox = forwardRef(function Checkbox(
       style={{
         display: "inline-flex",
         alignItems: "center",
-        gap: 8,
+        gap: "calc(8rem / 15)",
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.55 : 1,
         userSelect: "none",
@@ -87,8 +88,8 @@ const Checkbox = forwardRef(function Checkbox(
           display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
-          width: s.box,
-          height: s.box,
+          width: rem(s.box),
+          height: rem(s.box),
           borderRadius: theme.radii.sm,
           border: "1.5px solid",
           boxSizing: "border-box",
@@ -97,8 +98,8 @@ const Checkbox = forwardRef(function Checkbox(
       >
         <svg
           viewBox="0 0 24 24"
-          width={s.tick}
-          height={s.tick}
+          width={rem(s.tick)}
+          height={rem(s.tick)}
           fill="none"
           stroke="white"
           strokeWidth="3.5"
@@ -120,7 +121,7 @@ const Checkbox = forwardRef(function Checkbox(
       {label && (
         <span
           style={{
-            fontSize: 14,
+            fontSize: "calc(14rem / 15)",
             fontWeight: 500,
             color: hasError ? p.error.main : p.text.primary,
           }}

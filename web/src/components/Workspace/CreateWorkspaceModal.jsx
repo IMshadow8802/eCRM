@@ -152,13 +152,13 @@ export default function CreateWorkspaceModal({
         onClose={handleClose}
       />
       <Modal.Body>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "calc(16rem / 15)" }}>
           <div>
             <div
               style={{
-                fontSize: 13,
+                fontSize: "calc(13rem / 15)",
                 fontWeight: 500,
-                marginBottom: 6,
+                marginBottom: "calc(6rem / 15)",
                 color: p.text.secondary,
               }}
             >
@@ -222,10 +222,10 @@ export default function CreateWorkspaceModal({
             renderOption={(props, option) => (
               <li {...props} key={option.value}>
                 <div>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>{option.label}</div>
+                  <div style={{ fontWeight: 600, fontSize: "calc(13rem / 15)" }}>{option.label}</div>
                   <div
                     style={{
-                      fontSize: 12,
+                      fontSize: "calc(12rem / 15)",
                       color: p.text.tertiary,
                       marginTop: 2,
                     }}

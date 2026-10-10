@@ -30,7 +30,7 @@ export default function MyWork() {
   const { ready } = useFocusTaskWorkspace(openTaskId, () => setOpenTaskId(null));
 
   return (
-    <div style={{ paddingBlock: 8, display: "flex", flexDirection: "column", gap: 16 }}>
+    <div style={{ paddingBlock: "calc(8rem / 15)", display: "flex", flexDirection: "column", gap: "calc(16rem / 15)" }}>
       <PageHeader
         title="My Work"
         subtitle={`${tasks.length} open · ${overdue} overdue`}
@@ -55,10 +55,10 @@ export default function MyWork() {
         />
       ) : (
         <div
-          style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))" }}
+          style={{ display: "grid", gap: "calc(12rem / 15)", gridTemplateColumns: "repeat(auto-fill, minmax(calc(260rem / 15), 1fr))" }}
         >
           {tasks.map((t) => (
-            <div key={t.Id} data-testid="my-work-item" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div key={t.Id} data-testid="my-work-item" style={{ display: "flex", flexDirection: "column", gap: "calc(6rem / 15)" }}>
               {t.WorkspaceName ? <div><Chip label={t.WorkspaceName} size="sm" /></div> : null}
               <KanbanCardView task={t} canDrag={false} onOpen={() => setOpenTaskId(t.Id)} />
             </div>

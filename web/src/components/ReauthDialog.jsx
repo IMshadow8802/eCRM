@@ -71,7 +71,7 @@ export default function ReauthDialog() {
       />
       <form onSubmit={submit} noValidate>
         <Modal.Body>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "calc(12rem / 15)" }}>
             <TextInput label="Username" value={reauth?.username ?? ""} readOnly />
             <TextInput
               label="Password"

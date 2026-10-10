@@ -45,11 +45,11 @@ const NotFound = () => {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: 32,
+        padding: "calc(32rem / 15)",
         minHeight: "60vh",
         // The entrance, without a stylesheet: one transitioned inline value.
         opacity: isVisible ? 1 : 0,
-        transform: isVisible ? "translateY(0)" : "translateY(8px)",
+        transform: isVisible ? "translateY(0)" : "translateY(calc(8rem / 15))",
         transition: "opacity 400ms cubic-bezier(0.4,0,0.2,1), transform 400ms cubic-bezier(0.4,0,0.2,1)",
       }}
     >
@@ -61,7 +61,7 @@ const NotFound = () => {
         action={
           // The three actions wrap on a phone rather than sitting in one row
           // that runs off the side.
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "calc(8rem / 15)", justifyContent: "center" }}>
             {/* A real <a>, not a button that navigates: middle-click and
                 "open in new tab" have to work on the way out of a dead URL.
                 ui/Button renders a <button> and is not polymorphic, so this
@@ -72,13 +72,13 @@ const NotFound = () => {
               style={{
                 display: "inline-flex",
                 alignItems: "center",
-                gap: 8,
-                height: 40,
-                paddingInline: 16,
+                gap: "calc(8rem / 15)",
+                height: "calc(40rem / 15)",
+                paddingInline: "calc(16rem / 15)",
                 borderRadius: theme.radii.md,
                 background: p.primary.main,
                 color: p.primary.contrastText,
-                fontSize: 14,
+                fontSize: "calc(14rem / 15)",
                 fontWeight: 600,
                 textDecoration: "none",
               }}

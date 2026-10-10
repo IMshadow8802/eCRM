@@ -93,12 +93,12 @@ export default function Commissions() {
     <Box>
       <Tabs value={tab} onChange={(v) => { setTab(v); setSelection({}); }} items={TABS} data-testid="commission-tabs" />
       <Box sx={{ display: "flex", gap: 1, my: 1.5, flexWrap: "wrap", alignItems: "flex-end" }}>
-        <Box sx={{ flex: "1 1 200px", maxWidth: 260 }}>
+        <Box sx={{ flex: "1 1 calc(200rem / 15)", maxWidth: "calc(260rem / 15)" }}>
           <Combobox size="sm" label="Partner" placeholder="All partners" options={partnerOptions} value={partner}
             onChange={setPartner} data-testid="commission-partner" />
         </Box>
-        <Box sx={{ flex: "0 1 170px" }}><DateField size="sm" label="From" value={from} onChange={(v) => setFrom(v || "")} /></Box>
-        <Box sx={{ flex: "0 1 170px" }}><DateField size="sm" label="To" value={to} onChange={(v) => setTo(v || "")} /></Box>
+        <Box sx={{ flex: "0 1 calc(170rem / 15)" }}><DateField size="sm" label="From" value={from} onChange={(v) => setFrom(v || "")} /></Box>
+        <Box sx={{ flex: "0 1 calc(170rem / 15)" }}><DateField size="sm" label="To" value={to} onChange={(v) => setTo(v || "")} /></Box>
         {canEdit && (
           <Box sx={{ display: "flex", gap: 1, ml: "auto" }}>
             <Button size="sm" variant="tonal" disabled={!allIn("earned")} loading={markDue.isPending}
@@ -110,7 +110,7 @@ export default function Commissions() {
       </Box>
       <MaterialReactTable table={table} />
       {selected.length > 0 && (
-        <Box data-testid="selected-total" sx={{ mt: 1, fontSize: 14, fontWeight: 600 }}>Selected: {formatCurrency(total)}</Box>
+        <Box data-testid="selected-total" sx={{ mt: 1, fontSize: "calc(14rem / 15)", fontWeight: 600 }}>Selected: {formatCurrency(total)}</Box>
       )}
       <MarkPaidModal open={payOpen} onClose={() => setPayOpen(false)} ids={selected.map((r) => r.Id)} total={total}
         onDone={() => setSelection({})} />

@@ -20,7 +20,7 @@ export default function CommentsPanel({ comments: c, currentUserId }) {
   } = c;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "calc(12rem / 15)" }}>
       {comments.length === 0 ? (
         <EmptyState
           title="No comments yet"
@@ -52,7 +52,7 @@ export default function CommentsPanel({ comments: c, currentUserId }) {
       <div
         style={{
           borderTop: "1px solid var(--color-surface-200)",
-          paddingTop: 12,
+          paddingTop: "calc(12rem / 15)",
         }}
       >
         {replyTo && (
@@ -60,10 +60,10 @@ export default function CommentsPanel({ comments: c, currentUserId }) {
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 8,
-              fontSize: 12,
+              gap: "calc(8rem / 15)",
+              fontSize: "calc(12rem / 15)",
               color: "var(--color-surface-500)",
-              marginBottom: 8,
+              marginBottom: "calc(8rem / 15)",
             }}
           >
             <CornerDownRight size={12} />
@@ -87,7 +87,7 @@ export default function CommentsPanel({ comments: c, currentUserId }) {
           style={{
             display: "flex",
             justifyContent: "flex-end",
-            marginTop: 8,
+            marginTop: "calc(8rem / 15)",
           }}
         >
           <Button

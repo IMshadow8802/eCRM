@@ -45,7 +45,7 @@ export default function BreachReasonDialog({ open, tatId, taskId, onClose }) {
         onClose={close}
       />
       <Modal.Body>
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "calc(12rem / 15)" }}>
           <Combobox
             label="Reason"
             options={options}

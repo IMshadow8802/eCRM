@@ -55,7 +55,7 @@ export default function BrandPanel({
           pointerEvents: "none",
           backgroundImage:
             "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.06) 1px, transparent 0)",
-          backgroundSize: "22px 22px",
+          backgroundSize: "calc(22rem / 15) calc(22rem / 15)",
         }}
       />
 
@@ -80,8 +80,8 @@ export default function BrandPanel({
             alt={name}
             onError={() => setLogoBroken(true)}
             sx={{
-              width: 44,
-              height: 44,
+              width: "calc(44rem / 15)",
+              height: "calc(44rem / 15)",
               borderRadius: 2,
               objectFit: "contain",
               bgcolor: "#fff",
@@ -92,8 +92,8 @@ export default function BrandPanel({
           <Box
             aria-hidden
             sx={{
-              width: 44,
-              height: 44,
+              width: "calc(44rem / 15)",
+              height: "calc(44rem / 15)",
               borderRadius: 2,
               bgcolor: "#fff",
               color: "primary.main",
@@ -101,7 +101,7 @@ export default function BrandPanel({
               alignItems: "center",
               justifyContent: "center",
               fontWeight: 800,
-              fontSize: 20,
+              fontSize: "calc(20rem / 15)",
               letterSpacing: "-0.03em",
             }}
           >
@@ -109,10 +109,10 @@ export default function BrandPanel({
           </Box>
         )}
         <Stack spacing={0.25}>
-          <Typography sx={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.2 }}>
+          <Typography sx={{ fontSize: "calc(18rem / 15)", fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.2 }}>
             {name}
           </Typography>
-          <Typography sx={{ fontSize: 12, fontWeight: 600, opacity: 0.8 }}>
+          <Typography sx={{ fontSize: "calc(12rem / 15)", fontWeight: 600, opacity: 0.8 }}>
             {baseURL ? hostLabel(baseURL) : "One login, every company"}
             {compCode ? ` · ${compCode}` : ""}
           </Typography>
@@ -126,8 +126,8 @@ export default function BrandPanel({
         sx={{
           position: "relative",
           py: { xs: 3, md: 6 },
-          maxWidth: 460,
-          fontSize: { xs: 26, md: 38, lg: 44 },
+          maxWidth: "calc(460rem / 15)",
+          fontSize: { xs: "calc(26rem / 15)", md: "calc(38rem / 15)", lg: "calc(44rem / 15)" },
           fontWeight: 800,
           letterSpacing: "-0.035em",
           lineHeight: 1.08,
@@ -136,7 +136,7 @@ export default function BrandPanel({
         Every complaint on a clock.
       </Typography>
 
-      <Typography sx={{ position: "relative", fontSize: 12, fontWeight: 500, opacity: 0.75 }}>
+      <Typography sx={{ position: "relative", fontSize: "calc(12rem / 15)", fontWeight: 500, opacity: 0.75 }}>
         © PRD Infotech · Contact · Privacy
       </Typography>
     </Box>

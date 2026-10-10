@@ -4,6 +4,7 @@ import { useTheme } from "@mui/material/styles";
 import CircularProgress from "@mui/material/CircularProgress";
 
 import { motion as motionTokens } from "../../styles/tokens";
+import { rem } from "../../utils/rem";
 
 /**
  * Unified Button primitive. Replaces ActionButton, CustomButton, raw <Button>.
@@ -138,10 +139,10 @@ const Button = forwardRef(function Button(
         display: "inline-flex",
         alignItems: "center",
         justifyContent: "center",
-        gap: sz.gap,
-        minHeight: sz.minHeight,
-        paddingInline: sz.paddingInline,
-        fontSize: sz.fontSize,
+        gap: rem(sz.gap),
+        minHeight: rem(sz.minHeight),
+        paddingInline: rem(sz.paddingInline),
+        fontSize: rem(sz.fontSize),
         lineHeight: 1,
         fontWeight: 600,
         fontFamily: theme.tokens.fontFamilies.sans,
@@ -190,7 +191,7 @@ const Button = forwardRef(function Button(
         style={{
           display: "inline-flex",
           alignItems: "center",
-          gap: sz.gap,
+          gap: rem(sz.gap),
           visibility: loading ? "hidden" : "visible",
         }}
       >

@@ -32,8 +32,8 @@ export default function Menu({
             borderRadius: `${theme.radii.md}px`,
             border: `1px solid ${p.border.default}`,
             boxShadow: p.shadow.lg,
-            marginTop: "6px",
-            minWidth: 200,
+            marginTop: "calc(6rem / 15)",
+            minWidth: "calc(200rem / 15)",
           },
         },
       }}
@@ -46,12 +46,12 @@ export default function Menu({
                 key={`h-${idx}`}
                 sx={{
                   bgcolor: "transparent",
-                  fontSize: 11,
+                  fontSize: "calc(11rem / 15)",
                   fontWeight: 600,
                   letterSpacing: "0.08em",
                   textTransform: "uppercase",
                   color: p.text.tertiary,
-                  lineHeight: "28px",
+                  lineHeight: "calc(28rem / 15)",
                 }}
               >
                 {item.header}
@@ -67,7 +67,7 @@ export default function Menu({
                 data-testid={testId ? `${testId}-${item.id ?? idx}` : undefined}
                 sx={{
                   gap: 1.25,
-                  fontSize: 14,
+                  fontSize: "calc(14rem / 15)",
                   fontWeight: 500,
                   color: item.destructive
                     ? p.error.main
@@ -88,7 +88,7 @@ export default function Menu({
                 {item.shortcut && (
                   <span
                     style={{
-                      fontSize: 11,
+                      fontSize: "calc(11rem / 15)",
                       fontWeight: 500,
                       color: p.text.tertiary,
                     }}
@@ -123,8 +123,8 @@ export default function Menu({
                       display: "inline-flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      width: 22,
-                      height: 22,
+                      width: "calc(22rem / 15)",
+                      height: "calc(22rem / 15)",
                       borderRadius: theme.radii.sm,
                       color: p.text.tertiary,
                       cursor: "pointer",

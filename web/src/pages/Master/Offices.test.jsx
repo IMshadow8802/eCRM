@@ -1,5 +1,6 @@
 import React from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { rem } from "../../utils/rem";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -49,10 +50,10 @@ describe("Offices", () => {
       "office-row-1", "office-row-2", "office-row-3", "office-row-4",
     ]);
     const indent = (id) => screen.getByTestId(`office-name-${id}`).style.paddingLeft;
-    expect(indent(1)).toBe("0px");
-    expect(indent(2)).toBe("24px");
-    expect(indent(3)).toBe("24px");
-    expect(indent(4)).toBe("0px");
+    expect(indent(1)).toBe(rem(0));
+    expect(indent(2)).toBe(rem(24));
+    expect(indent(3)).toBe(rem(24));
+    expect(indent(4)).toBe(rem(0));
     expect(within(rows[0]).getByText("12 people")).toBeInTheDocument();
     expect(within(rows[2]).getByText("1 person")).toBeInTheDocument();
     expect(within(rows[2]).getByText("Inactive")).toBeInTheDocument();

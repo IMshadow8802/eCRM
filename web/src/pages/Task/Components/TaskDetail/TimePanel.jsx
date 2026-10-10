@@ -18,13 +18,13 @@ export default function TimePanel({
   } = time;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "calc(12rem / 15)" }}>
       <div
         style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          fontSize: 13,
+          fontSize: "calc(13rem / 15)",
         }}
       >
         <div>

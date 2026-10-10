@@ -1,4 +1,5 @@
 import { useTheme } from "@mui/material/styles";
+import useUiScale from "../../hooks/useUiScale";
 import { Box, Typography } from "@mui/material";
 import { ArrowUpRight, ArrowDownRight } from "lucide-react";
 import {
@@ -23,6 +24,7 @@ export default function SparkLine({
   unit = "",
 }) {
   const theme = useTheme();
+  const k = useUiScale();
   const p = theme.tokens;
   const series = Array.isArray(data) && data.length ? data : FALLBACK;
   const rows = series.map((v, i) => ({ i, v }));
@@ -76,9 +78,9 @@ export default function SparkLine({
           </span>
         )}
       </Typography>
-      <Box sx={{ height, mt: 0.5 }}>
-        <ResponsiveContainer width="100%" height={height}>
-          <AreaChart data={rows} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+      <Box sx={{ height: height * k, mt: 0.5 }}>
+        <ResponsiveContainer width="100%" height={height * k}>
+          <AreaChart data={rows} margin={{ top: 4 * k, right: 0, left: 0, bottom: 0 }}>
             <defs>
               <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor={color} stopOpacity={0.45} />
@@ -91,7 +93,7 @@ export default function SparkLine({
                 border: `1px solid ${p.border.default}`,
                 borderRadius: 6,
                 fontSize: 11,
-                padding: "4px 8px",
+                padding: "calc(4rem / 15) calc(8rem / 15)",
               }}
               labelFormatter={() => ""}
               formatter={(v) => [v, ""]}

@@ -17,12 +17,12 @@ export default function LeadPartnerCard({ lead, commissions = [] }) {
 
   return (
     <Card data-testid="lead-partner-card">
-      <div style={{ fontSize: 14, fontWeight: 700 }}>Sent by {lead.PartnerName}</div>
+      <div style={{ fontSize: "calc(14rem / 15)", fontWeight: 700 }}>Sent by {lead.PartnerName}</div>
       {canSee && (
-        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
+        <div style={{ marginTop: "calc(8rem / 15)", display: "flex", flexDirection: "column", gap: "calc(6rem / 15)", fontSize: "calc(13rem / 15)" }}>
           <div>Commission: {terms === "—" ? "None" : terms}</div>
           {latest && (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }} data-testid="partner-commission">
+            <div style={{ display: "flex", alignItems: "center", gap: "calc(8rem / 15)", flexWrap: "wrap" }} data-testid="partner-commission">
               <strong>{formatCurrency(latest.Amount)}</strong>
               <Chip size="sm" tone={status.tone} label={status.label} />
               {latest.Reverted && <Chip size="sm" tone="warning" label="Lead no longer converted" />}

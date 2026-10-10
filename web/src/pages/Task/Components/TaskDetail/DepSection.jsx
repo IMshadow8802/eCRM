@@ -12,9 +12,9 @@ export default function DepSection({
     <div>
       <div
         style={{
-          fontSize: 13,
+          fontSize: "calc(13rem / 15)",
           fontWeight: 600,
-          marginBottom: 8,
+          marginBottom: "calc(8rem / 15)",
           color: "var(--color-surface-600)",
         }}
       >
@@ -23,7 +23,7 @@ export default function DepSection({
       {items.length === 0 ? (
         <div
           style={{
-            fontSize: 13,
+            fontSize: "calc(13rem / 15)",
             color: "var(--color-surface-400)",
             fontStyle: "italic",
           }}
@@ -31,7 +31,7 @@ export default function DepSection({
           {emptyText}
         </div>
       ) : (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "calc(6rem / 15)" }}>
           {items.map((d) => {
             const done = Boolean(d.IsCompleted);
             return (

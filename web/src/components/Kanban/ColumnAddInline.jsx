@@ -51,15 +51,15 @@ export default function ColumnAddInline({ workspaceId, onCreated }) {
       <div
         data-testid="column-add-editor"
         style={{
-          flex: "0 0 280px",
-          minWidth: 280,
+          flex: "0 0 calc(280rem / 15)",
+          minWidth: "calc(280rem / 15)",
           backgroundColor: p.surface.subtle,
           borderRadius: theme.radii.lg,
           border: `1px solid ${p.primary.border}`,
-          padding: 12,
+          padding: "calc(12rem / 15)",
           display: "flex",
           flexDirection: "column",
-          gap: 8,
+          gap: "calc(8rem / 15)",
         }}
       >
         <TextInput
@@ -87,9 +87,9 @@ export default function ColumnAddInline({ workspaceId, onCreated }) {
       data-testid="column-add-button"
       onClick={() => setEditing(true)}
       style={{
-        flex: "0 0 220px",
-        minWidth: 220,
-        padding: "16px 14px",
+        flex: "0 0 calc(220rem / 15)",
+        minWidth: "calc(220rem / 15)",
+        padding: "calc(16rem / 15) calc(14rem / 15)",
         border: `1.5px dashed ${p.border.default}`,
         borderRadius: theme.radii.lg,
         backgroundColor: "transparent",
@@ -98,8 +98,8 @@ export default function ColumnAddInline({ workspaceId, onCreated }) {
         display: "inline-flex",
         alignItems: "center",
         justifyContent: "center",
-        gap: 6,
-        fontSize: 13,
+        gap: "calc(6rem / 15)",
+        fontSize: "calc(13rem / 15)",
         fontWeight: 600,
         fontFamily: "inherit",
         transition:

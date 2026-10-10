@@ -44,7 +44,7 @@ export default function SessionsDialog({ open, person, onClose }) {
           {sessions.length === 0 ? (
             <p>No sign-ins yet.</p>
           ) : (
-            <table style={{ width: "100%", fontSize: 13 }}>
+            <table style={{ width: "100%", fontSize: "calc(13rem / 15)" }}>
               <thead>
                 <tr><th align="left">Device</th><th align="left">IP</th><th align="left">Signed in</th><th align="left">Last active</th><th align="left">Signed out</th></tr>
               </thead>

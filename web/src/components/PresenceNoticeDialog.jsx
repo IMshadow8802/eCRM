@@ -43,7 +43,7 @@ export default function PresenceNoticeDialog() {
     >
       <Modal.Header title="What this workplace records" />
       <Modal.Body>
-        <ul style={{ margin: 0, paddingLeft: 20, display: "flex", flexDirection: "column", gap: 8 }}>
+        <ul style={{ margin: 0, paddingLeft: "calc(20rem / 15)", display: "flex", flexDirection: "column", gap: "calc(8rem / 15)" }}>
           {POINTS.map((p) => (
             <li key={p}>{p}</li>
           ))}

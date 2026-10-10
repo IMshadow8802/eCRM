@@ -207,8 +207,8 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
           <div
             style={{
               display: "flex",
-              gap: 6,
-              marginTop: 6,
+              gap: "calc(6rem / 15)",
+              marginTop: "calc(6rem / 15)",
               alignItems: "center",
             }}
           >
@@ -250,7 +250,7 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
         <div
           style={{
             flexShrink: 0,
-            padding: "12px 20px 0",
+            padding: "calc(12rem / 15) calc(20rem / 15) 0",
             borderBottom: "1px solid var(--color-surface-200)",
             background: "var(--color-surface-0)",
           }}
@@ -291,7 +291,7 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
 
       <Modal.Body>
         {!task ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "calc(10rem / 15)" }}>
             <Skeleton variant="text" height={22} />
             <Skeleton variant="text" height={16} />
             <Skeleton variant="rect" height={120} />
@@ -299,7 +299,7 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
         ) : (
           <div>
               {tab === "details" && draft && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "calc(16rem / 15)" }}>
                   <TextInput
                     label="Title"
                     value={draft.Title}
@@ -320,7 +320,7 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
                     disabled={!canEditThisTask}
                     data-testid="task-description-input"
                   />
-                  <div style={{ display: "flex", gap: 12 }}>
+                  <div style={{ display: "flex", gap: "calc(12rem / 15)" }}>
                     <div style={{ flex: 1 }}>
                       <Combobox
                         label="Column"
@@ -350,7 +350,7 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
                       />
                     </div>
                   </div>
-                  <div style={{ display: "flex", gap: 12 }}>
+                  <div style={{ display: "flex", gap: "calc(12rem / 15)" }}>
                     {!isPersonal && (
                       <div style={{ flex: 1 }}>
                         <Combobox
@@ -399,7 +399,7 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
                     </div>
                   </div>
                   {(draft.DueDate || (!isPersonal && canEditThisTask)) && (
-                    <div style={{ display: "flex", gap: 12 }}>
+                    <div style={{ display: "flex", gap: "calc(12rem / 15)" }}>
                       {draft.DueDate && (
                         <div style={{ flex: 1 }}>
                           <Tooltip title="The time of day the work is due. Leave empty to use the end of the working day on the person's shift.">
@@ -438,7 +438,7 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
                       )}
                     </div>
                   )}
-                  <div style={{ display: "flex", gap: 12 }}>
+                  <div style={{ display: "flex", gap: "calc(12rem / 15)" }}>
                     <div style={{ flex: 1 }}>
                       <NumberInput
                         label="Estimated hours"
@@ -457,9 +457,9 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
                     <div style={{ flex: 1 }}>
                       <div
                         style={{
-                          fontSize: 13,
+                          fontSize: "calc(13rem / 15)",
                           fontWeight: 500,
-                          marginBottom: 6,
+                          marginBottom: "calc(6rem / 15)",
                           color: "var(--color-surface-600)",
                         }}
                       >
@@ -469,8 +469,8 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
                         style={{
                           display: "flex",
                           alignItems: "center",
-                          gap: 8,
-                          height: 40,
+                          gap: "calc(8rem / 15)",
+                          height: "calc(40rem / 15)",
                         }}
                       >
                         <Chip
@@ -532,9 +532,9 @@ export default function TaskDetailModal({ taskId, open, onClose }) {
                   <div>
                     <div
                       style={{
-                        fontSize: 13,
+                        fontSize: "calc(13rem / 15)",
                         fontWeight: 500,
-                        marginBottom: 8,
+                        marginBottom: "calc(8rem / 15)",
                         color: "var(--color-surface-600)",
                       }}
                     >

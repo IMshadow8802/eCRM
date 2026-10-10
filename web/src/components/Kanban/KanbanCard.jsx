@@ -67,7 +67,7 @@ export const KanbanCardView = memo(function KanbanCardView({
       {...dragHandleProps}
       style={{
         position: "relative",
-        padding: 14,
+        padding: "calc(14rem / 15)",
         marginBottom: overlay ? 0 : 10,
         borderRadius: theme.radii.md,
         backgroundColor: p.surface.card,
@@ -95,7 +95,7 @@ export const KanbanCardView = memo(function KanbanCardView({
       data-testid={`kanban-card-${task.Id}`}
       data-completed={isCompleted ? "true" : "false"}
     >
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: "calc(10rem / 15)" }}>
         {onToggleSelect && !overlay && (
           <div
             data-card-checkbox
@@ -115,7 +115,7 @@ export const KanbanCardView = memo(function KanbanCardView({
         <div style={{ flex: 1, minWidth: 0 }}>
           <div
             style={{
-              fontSize: 14,
+              fontSize: "calc(14rem / 15)",
               fontWeight: 600,
               color: isCompleted ? p.text.secondary : p.text.primary,
               marginBottom: task.IsBlocked ? 8 : 6,
@@ -128,7 +128,7 @@ export const KanbanCardView = memo(function KanbanCardView({
           </div>
 
           {task.IsBlocked && (
-            <div style={{ marginBottom: 8 }}>
+            <div style={{ marginBottom: "calc(8rem / 15)" }}>
               <Chip
                 label="Blocked"
                 icon={<Lock size={11} />}
@@ -144,7 +144,7 @@ export const KanbanCardView = memo(function KanbanCardView({
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 6,
+              gap: "calc(6rem / 15)",
               flexWrap: "wrap",
             }}
           >
@@ -167,7 +167,7 @@ export const KanbanCardView = memo(function KanbanCardView({
             )}
             {assignees.length > 0 && (
               <div
-                style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+                style={{ display: "inline-flex", alignItems: "center", gap: "calc(4rem / 15)" }}
                 data-testid={`card-assignees-${task.Id}`}
               >
                 {faces.map((a, i) => (
@@ -196,7 +196,7 @@ export const KanbanCardView = memo(function KanbanCardView({
                 {assignees.length === 1 && faces[0].FullName && (
                   <span
                     style={{
-                      fontSize: 11,
+                      fontSize: "calc(11rem / 15)",
                       fontWeight: 500,
                       color: p.text.secondary,
                     }}
@@ -218,7 +218,7 @@ export const KanbanCardView = memo(function KanbanCardView({
           </div>
         </div>
 
-        <div style={{ flexShrink: 0, marginLeft: 4 }}>
+        <div style={{ flexShrink: 0, marginLeft: "calc(4rem / 15)" }}>
           {isCompleted ? (
             <CheckCircle2
               size={16}

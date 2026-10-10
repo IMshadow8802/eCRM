@@ -31,7 +31,7 @@ export default function Popover({
             borderRadius: `${theme.radii.md}px`,
             border: `1px solid ${p.border.default}`,
             boxShadow: p.shadow.lg,
-            marginTop: "6px",
+            marginTop: "calc(6rem / 15)",
             backgroundColor: p.surface.card,
           },
         },

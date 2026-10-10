@@ -41,7 +41,7 @@ import shiftWarnings, { dayRange } from "./shiftWarnings";
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0]; // shown Monday first
-const DAY_GRID = "100px 70px repeat(4, minmax(90px, 1fr))";
+const DAY_GRID = "calc(100rem / 15) calc(70rem / 15) repeat(4, minmax(calc(90rem / 15), 1fr))";
 const PRIORITIES = ["critical", "high", "medium", "low"];
 const COL_HINT = {
   Day: "The day of the week.",
@@ -122,7 +122,7 @@ function ShiftEditor({ calendar, onClose }) {
         <Box sx={{ display: "grid", gap: 1.5 }}>
           <TextInput label="Shift name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. General" />
           <Checkbox label="Company default shift" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} />
-          <Box sx={{ display: "grid", gridTemplateColumns: DAY_GRID, gap: 1, fontSize: 12, fontWeight: 600 }} data-testid="shift-day-headers">
+          <Box sx={{ display: "grid", gridTemplateColumns: DAY_GRID, gap: 1, fontSize: "calc(12rem / 15)", fontWeight: 600 }} data-testid="shift-day-headers">
             {["Day", "Working", "Start", "End", "Break start", "Break end"].map((h) => (
               <Tooltip key={h} title={COL_HINT[h]}><span tabIndex={0} style={{ cursor: "help" }}>{h}</span></Tooltip>
             ))}
@@ -144,7 +144,7 @@ function ShiftEditor({ calendar, onClose }) {
             );
           })}
           {warnings.length > 0 && (
-            <Box role="status" data-testid="shift-warnings" sx={{ fontSize: 13 }}>
+            <Box role="status" data-testid="shift-warnings" sx={{ fontSize: "calc(13rem / 15)" }}>
               {warnings.map((w) => <div key={w}>Warning: {w}</div>)}
             </Box>
           )}
@@ -174,7 +174,7 @@ function hoursSummary(days) {
 function RowActions({ name, canEdit, onEdit, onDelete, deleteBlocked }) {
   if (!canEdit) return null;
   return (
-    <span style={{ display: "inline-flex", gap: 6 }}>
+    <span style={{ display: "inline-flex", gap: "calc(6rem / 15)" }}>
       <Button variant="outlined" size="sm" leftIcon={<Pencil size={14} />} aria-label={`Edit ${name}`} onClick={onEdit}>Edit</Button>
       <Tooltip title={deleteBlocked}>
         <span>
@@ -327,7 +327,7 @@ function RulesTab({ settings, tatPolicy, canEdit, run }) {
   };
 
   return (
-    <Box sx={{ display: "grid", gap: 1.5, maxWidth: 480 }}>
+    <Box sx={{ display: "grid", gap: 1.5, maxWidth: "calc(480rem / 15)" }}>
       {num("Count as late after (minutes)", "LateGraceMin", "Minutes after shift start someone can sign in without being marked late.")}
       {num("Stay signed in after shift ends (minutes)", "SessionBufferMin", "After the shift ends, people stay signed in this many minutes, then must sign in again.")}
       {num("Warn when this much time is used (%)", "WarnPct", "When this much of a task's allowed time is used up, the card turns amber and a warning is sent. For example 80.")}

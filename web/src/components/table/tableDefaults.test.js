@@ -115,7 +115,7 @@ describe("small-screen table defaults", () => {
   // show/hide-columns and toggle-filters buttons — on every list page, with no
   // way to reach them.
   it("lets the search field give way on a phone instead of pinning the toolbar", () => {
-    expect(tableDefaults.muiSearchTextFieldProps.sx.minWidth).toEqual({ xs: 0, sm: 260 });
+    expect(tableDefaults.muiSearchTextFieldProps.sx.minWidth).toEqual({ xs: 0, sm: "calc(260rem / 15)" });
   });
 
   it("lets the toolbar's action row wrap rather than clip", () => {
@@ -140,7 +140,7 @@ describe("small-screen table defaults", () => {
   it("drops the height cap on a phone and uses dvh above it", () => {
     expect(tableDefaults.muiTableContainerProps.sx.maxHeight).toEqual({
       xs: "none",
-      sm: "calc(100dvh - 220px)",
+      sm: "calc(100dvh - calc(220rem / 15))",
     });
   });
 });

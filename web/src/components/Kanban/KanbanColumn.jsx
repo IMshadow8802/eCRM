@@ -96,14 +96,14 @@ export default function KanbanColumn({
     <div
       data-testid={`kanban-column-${column.Id}`}
       style={{
-        flex: "0 0 300px",
-        minWidth: 300,
+        flex: "0 0 calc(300rem / 15)",
+        minWidth: "calc(300rem / 15)",
         backgroundColor: isDropTarget ? p.primary.subtle : p.surface.subtle,
         borderRadius: theme.radii.lg,
         border: `1px solid ${isDropTarget ? p.primary.border : p.border.default}`,
         display: "flex",
         flexDirection: "column",
-        maxHeight: "calc(100dvh - 240px)",
+        maxHeight: "calc(100dvh - calc(240rem / 15))",
         transition:
           "background-color 240ms cubic-bezier(0.4,0,0.2,1), border-color 240ms cubic-bezier(0.4,0,0.2,1)",
       }}
@@ -112,23 +112,23 @@ export default function KanbanColumn({
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 8,
-          padding: "12px 14px",
+          gap: "calc(8rem / 15)",
+          padding: "calc(12rem / 15) calc(14rem / 15)",
           borderBottom: `1px solid ${p.border.subtle}`,
         }}
       >
         <div
           style={{
-            width: 10,
-            height: 10,
+            width: "calc(10rem / 15)",
+            height: "calc(10rem / 15)",
             borderRadius: theme.radii.full,
             background: column.Color || p.text.tertiary,
-            boxShadow: `0 0 0 3px ${column.Color || p.text.tertiary}22`,
+            boxShadow: `0 0 0 calc(3rem / 15) ${column.Color || p.text.tertiary}22`,
           }}
         />
         {renaming ? (
           <div
-            style={{ flex: 1, display: "inline-flex", alignItems: "center", gap: 4 }}
+            style={{ flex: 1, display: "inline-flex", alignItems: "center", gap: "calc(4rem / 15)" }}
           >
             <TextInput
               size="sm"
@@ -175,7 +175,7 @@ export default function KanbanColumn({
               border: "none",
               padding: 0,
               textAlign: "left",
-              fontSize: 13,
+              fontSize: "calc(13rem / 15)",
               fontWeight: 700,
               color: p.text.primary,
               letterSpacing: "0.01em",
@@ -188,10 +188,10 @@ export default function KanbanColumn({
         )}
         <div
           style={{
-            fontSize: 11,
+            fontSize: "calc(11rem / 15)",
             fontWeight: 600,
             color: p.text.tertiary,
-            padding: "2px 8px",
+            padding: "2px calc(8rem / 15)",
             borderRadius: theme.radii.full,
             backgroundColor: p.surface.card,
           }}
@@ -246,7 +246,7 @@ export default function KanbanColumn({
 
       <div
         ref={dropRef}
-        style={{ padding: 10, overflowY: "auto", flex: 1, minHeight: 100 }}
+        style={{ padding: "calc(10rem / 15)", overflowY: "auto", flex: 1, minHeight: "calc(100rem / 15)" }}
       >
         {tasks.map((task) => (
           <KanbanCard
@@ -268,7 +268,7 @@ export default function KanbanColumn({
             disabled={atCapacity}
             style={{
               width: "100%",
-              padding: "8px 10px",
+              padding: "calc(8rem / 15) calc(10rem / 15)",
               border: `1px dashed ${p.border.default}`,
               borderRadius: theme.radii.md,
               backgroundColor: "transparent",
@@ -277,8 +277,8 @@ export default function KanbanColumn({
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
-              gap: 6,
-              fontSize: 13,
+              gap: "calc(6rem / 15)",
+              fontSize: "calc(13rem / 15)",
               fontWeight: 600,
               fontFamily: "inherit",
               transition:

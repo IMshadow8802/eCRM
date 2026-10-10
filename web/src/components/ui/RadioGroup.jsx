@@ -2,6 +2,7 @@ import { useTheme } from "@mui/material/styles";
 import { motion } from "framer-motion";
 
 import { motion as motionTokens } from "../../styles/tokens";
+import { rem } from "../../utils/rem";
 
 /**
  * Pill-style RadioGroup. Takes options array and controls selection.
@@ -38,8 +39,8 @@ export default function RadioGroup({
       style={{
         display: "inline-flex",
         flexDirection: orientation === "row" ? "row" : "column",
-        gap: 6,
-        padding: 4,
+        gap: "calc(6rem / 15)",
+        padding: "calc(4rem / 15)",
         background: p.surface.subtle,
         borderRadius: theme.radii.md,
         border: `1px solid ${p.border.default}`,
@@ -65,9 +66,9 @@ export default function RadioGroup({
             data-testid={testId ? `${testId}-${opt.value}` : undefined}
             style={{
               position: "relative",
-              minHeight: s.h,
-              paddingInline: s.px,
-              fontSize: s.fz,
+              minHeight: rem(s.h),
+              paddingInline: rem(s.px),
+              fontSize: rem(s.fz),
               fontWeight: 600,
               fontFamily: "inherit",
               border: "none",
@@ -80,7 +81,7 @@ export default function RadioGroup({
               outline: "none",
               display: "inline-flex",
               alignItems: "center",
-              gap: 6,
+              gap: "calc(6rem / 15)",
               transition: `background-color ${motionTokens.duration.base}ms ${motionTokens.easing.standard}, color ${motionTokens.duration.base}ms ${motionTokens.easing.standard}`,
             }}
             data-name={name}

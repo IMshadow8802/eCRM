@@ -30,8 +30,8 @@ export default function EmptyState({
         alignItems: "center",
         justifyContent: "center",
         textAlign: "center",
-        padding: 32,
-        gap: 16,
+        padding: "calc(32rem / 15)",
+        gap: "calc(16rem / 15)",
       }}
     >
       <div
@@ -51,7 +51,7 @@ export default function EmptyState({
             inset: 0,
             borderRadius: theme.radii.full,
             background: p.gradient.emptyBlob,
-            filter: "blur(6px)",
+            filter: "blur(calc(6rem / 15))",
           }}
         />
         {icon && (
@@ -91,7 +91,7 @@ export default function EmptyState({
         <p
           style={{
             margin: 0,
-            maxWidth: 420,
+            maxWidth: "calc(420rem / 15)",
             fontSize: s.descFz,
             color: p.text.secondary,
             lineHeight: 1.5,

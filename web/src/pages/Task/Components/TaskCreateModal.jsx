@@ -141,7 +141,7 @@ export default function TaskCreateModal({
         onClose={handleClose}
       />
       <Modal.Body>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "calc(16rem / 15)" }}>
           <TextInput
             label="Title"
             value={title}
@@ -161,9 +161,9 @@ export default function TaskCreateModal({
           <div>
             <div
               style={{
-                fontSize: 13,
+                fontSize: "calc(13rem / 15)",
                 fontWeight: 500,
-                marginBottom: 6,
+                marginBottom: "calc(6rem / 15)",
                 color: "var(--color-surface-600, #475569)",
                 display: "flex",
                 alignItems: "center",
@@ -173,18 +173,18 @@ export default function TaskCreateModal({
               <span>
                 Checklist <span style={{ color: "var(--color-danger, #dc2626)" }}>*</span>
               </span>
-              <span style={{ fontSize: 11, fontWeight: 400, color: "var(--color-surface-500, #64748b)" }}>
+              <span style={{ fontSize: "calc(11rem / 15)", fontWeight: 400, color: "var(--color-surface-500, #64748b)" }}>
                 At least one. Task auto-completes when all ticked.
               </span>
             </div>
             <div
               data-testid="create-task-steps"
-              style={{ display: "flex", flexDirection: "column", gap: 6 }}
+              style={{ display: "flex", flexDirection: "column", gap: "calc(6rem / 15)" }}
             >
               {steps.map((step, idx) => (
                 <div
                   key={idx}
-                  style={{ display: "flex", gap: 8, alignItems: "center" }}
+                  style={{ display: "flex", gap: "calc(8rem / 15)", alignItems: "center" }}
                 >
                   <TextInput
                     size="sm"
@@ -213,16 +213,16 @@ export default function TaskCreateModal({
                 data-testid="create-task-add-step"
                 style={{ alignSelf: "flex-start" }}
               >
-                <Plus size={14} style={{ marginRight: 4 }} /> Add item
+                <Plus size={14} style={{ marginRight: "calc(4rem / 15)" }} /> Add item
               </Button>
             </div>
           </div>
           <div>
             <div
               style={{
-                fontSize: 13,
+                fontSize: "calc(13rem / 15)",
                 fontWeight: 500,
-                marginBottom: 6,
+                marginBottom: "calc(6rem / 15)",
                 color: "var(--color-surface-600, #475569)",
               }}
             >
@@ -235,7 +235,7 @@ export default function TaskCreateModal({
               size="sm"
             />
           </div>
-          <div style={{ display: "flex", gap: 12 }}>
+          <div style={{ display: "flex", gap: "calc(12rem / 15)" }}>
             {!isPersonal && (
               <div style={{ flex: 1 }}>
                 <Combobox
@@ -258,7 +258,7 @@ export default function TaskCreateModal({
             </div>
           </div>
           {(dueDate || !isPersonal) && (
-            <div style={{ display: "flex", gap: 12 }}>
+            <div style={{ display: "flex", gap: "calc(12rem / 15)" }}>
               {dueDate && (
                 <div style={{ flex: 1 }}>
                   <Tooltip title="The time of day the work is due. Leave empty to use the end of the working day on the person's shift.">
@@ -299,9 +299,9 @@ export default function TaskCreateModal({
           <div>
             <div
               style={{
-                fontSize: 13,
+                fontSize: "calc(13rem / 15)",
                 fontWeight: 500,
-                marginBottom: 6,
+                marginBottom: "calc(6rem / 15)",
                 color: "var(--color-surface-600, #475569)",
               }}
             >

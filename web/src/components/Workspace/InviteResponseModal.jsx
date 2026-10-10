@@ -51,7 +51,7 @@ export default function InviteResponseModal({ workspace, onClose, onResponded })
         onClose={onClose}
       />
       <Modal.Body>
-        <div style={{ fontSize: 14, color: p.text.secondary, lineHeight: 1.5 }}>
+        <div style={{ fontSize: "calc(14rem / 15)", color: p.text.secondary, lineHeight: 1.5 }}>
           Accepting grants you access to every task, column, and comment inside
           this workspace. Declining hides the invite for good.
         </div>

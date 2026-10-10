@@ -30,8 +30,8 @@ function InfoItem({ label, value }) {
   const p = useTheme().tokens;
   return (
     <div>
-      <div style={{ fontSize: 12, fontWeight: 500, color: p.text.tertiary }}>{label}</div>
-      <div style={{ fontSize: 14, fontWeight: 600, marginTop: 2, color: p.text.primary, overflowWrap: "anywhere" }}>{value || "—"}</div>
+      <div style={{ fontSize: "calc(12rem / 15)", fontWeight: 500, color: p.text.tertiary }}>{label}</div>
+      <div style={{ fontSize: "calc(14rem / 15)", fontWeight: 600, marginTop: 2, color: p.text.primary, overflowWrap: "anywhere" }}>{value || "—"}</div>
     </div>
   );
 }
@@ -138,7 +138,7 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
 
   if (isLoading || !ticket) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }} data-testid="ticket-detail-loading">
+      <div style={{ display: "flex", flexDirection: "column", gap: "calc(12rem / 15)" }} data-testid="ticket-detail-loading">
         <Skeleton variant="text" height={28} width={240} />
         <Skeleton variant="rect" height={160} />
       </div>
@@ -153,7 +153,7 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
         title={ticket.TicketNo}
         subtitle={ticket.Subject}
         titleSuffix={
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: "calc(8rem / 15)", flexWrap: "wrap" }}>
             <Chip label={ticket.StatusName || "—"} tone={statusTone(ticket.StatusCode)} size="sm" data-testid="ticket-status-chip" />
             {ticket.PriorityName && <Chip label={ticket.PriorityName} tone="accent" size="sm" data-testid="ticket-priority-chip" />}
             <Chip
@@ -174,8 +174,8 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
           </div>
         }
         actions={
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <div style={{ width: 190 }}>
+          <div style={{ display: "flex", gap: "calc(8rem / 15)", alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ width: "calc(190rem / 15)" }}>
               {/* blurOnSelect: a pick that opens a prompt instead of moving the
                   status must not linger in the input, or the header contradicts
                   the chip beside it. Blurring resyncs to the controlled value. */}
@@ -198,21 +198,21 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
       />
 
       <Card data-testid="ticket-customer-card" padding="md" sx={{ marginTop: 12 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(calc(170rem / 15), 1fr))", gap: "calc(16rem / 15)" }}>
           <InfoItem label="Customer" value={ticket.CustomerName} />
           <InfoItem label="Contact person" value={ticket.CustomerContactPerson} />
           <InfoItem label="Mobile" value={ticket.CustomerMobile} />
           <InfoItem label="Email" value={ticket.CustomerEmail} />
           <InfoItem label="Where" value={address} />
           <div>
-            <div style={{ fontSize: 12, fontWeight: 500, color: p.text.tertiary }}>History</div>
+            <div style={{ fontSize: "calc(12rem / 15)", fontWeight: 500, color: p.text.tertiary }}>History</div>
             <button
               type="button"
               onClick={() => navigate(`/support/customers?customerId=${ticket.CustomerId}`)}
               data-testid="ticket-previous-complaints"
               style={{
                 marginTop: 2, padding: 0, border: "none", background: "none", cursor: "pointer",
-                fontSize: 14, fontWeight: 600, fontFamily: "inherit", color: p.primary.main,
+                fontSize: "calc(14rem / 15)", fontWeight: 600, fontFamily: "inherit", color: p.primary.main,
               }}
             >
               {ticket.PreviousTickets ?? 0} previous complaints
@@ -222,14 +222,14 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
       </Card>
 
       {linkedLead && (
-        <div style={{ margin: "8px 0" }}>
-          <Link to={`/sales/leads/${linkedLead.Id}`} data-testid="linked-lead-link" style={{ fontSize: 13, fontWeight: 600 }}>
+        <div style={{ margin: "calc(8rem / 15) 0" }}>
+          <Link to={`/sales/leads/${linkedLead.Id}`} data-testid="linked-lead-link" style={{ fontSize: "calc(13rem / 15)", fontWeight: 600 }}>
             Linked lead: {linkedLead.Name}
           </Link>
         </div>
       )}
 
-      <div style={{ marginTop: 12 }}>
+      <div style={{ marginTop: "calc(12rem / 15)" }}>
         <Tabs
           value={tab}
           onChange={setTab}
@@ -241,11 +241,11 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
         />
       </div>
 
-      <div style={{ marginTop: 20 }}>
+      <div style={{ marginTop: "calc(20rem / 15)" }}>
         {tab === "details" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "calc(20rem / 15)" }}>
             <Card data-testid="ticket-core-info">
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(calc(180rem / 15), 1fr))", gap: "calc(16rem / 15)" }}>
                 <InfoItem label="Status" value={ticket.StatusName} />
                 <InfoItem label="Priority" value={ticket.PriorityName} />
                 <InfoItem label="Due" value={formatDateTime(ticket.DueAt, { empty: "—" })} />
@@ -262,11 +262,11 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
                 <InfoItem label="Closed" value={formatDateTime(ticket.ClosedAt, { empty: "—" })} />
               </div>
               {ticket.Description && (
-                <div style={{ marginTop: 16 }}>
-                  <div style={{ fontSize: 12, fontWeight: 500, color: p.text.tertiary }}>Description</div>
+                <div style={{ marginTop: "calc(16rem / 15)" }}>
+                  <div style={{ fontSize: "calc(12rem / 15)", fontWeight: 500, color: p.text.tertiary }}>Description</div>
                   <div
                     data-testid="ticket-description-block"
-                    style={{ fontSize: 14, lineHeight: 1.6, marginTop: 6, whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+                    style={{ fontSize: "calc(14rem / 15)", lineHeight: 1.6, marginTop: "calc(6rem / 15)", whiteSpace: "pre-wrap", wordBreak: "break-word" }}
                   >
                     {ticket.Description}
                   </div>
@@ -277,28 +277,28 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
             {/* An unconfigured optional feature earns no screen space. */}
             {fields.length > 0 && (
               <Card data-testid="ticket-custom-fields">
-                <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Custom fields</h3>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 16 }}>
+                <h3 style={{ margin: "0 0 calc(16rem / 15)", fontSize: "calc(15rem / 15)", fontWeight: 700 }}>Custom fields</h3>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(calc(200rem / 15), 1fr))", gap: "calc(16rem / 15)" }}>
                   {fields.map((f) => <InfoItem key={f.FieldId} label={f.Label} value={customValue(f)} />)}
                 </div>
               </Card>
             )}
 
             <Card>
-              <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Attachments</h3>
+              <h3 style={{ margin: "0 0 calc(16rem / 15)", fontSize: "calc(15rem / 15)", fontWeight: 700 }}>Attachments</h3>
               <Attachments entity="ticket" entityId={ticket.Id} />
             </Card>
           </div>
         )}
 
         {tab === "timeline" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "calc(20rem / 15)" }}>
             <Card>
-              <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700 }}>Assignments</h3>
+              <h3 style={{ margin: "0 0 calc(12rem / 15)", fontSize: "calc(15rem / 15)", fontWeight: 700 }}>Assignments</h3>
               {assignments.length === 0 ? (
-                <div style={{ fontSize: 13 }}>Never assigned.</div>
+                <div style={{ fontSize: "calc(13rem / 15)" }}>Never assigned.</div>
               ) : assignments.map((a) => (
-                <div key={a.Id} data-testid="assignment-item" style={{ fontSize: 13, padding: "6px 0" }}>
+                <div key={a.Id} data-testid="assignment-item" style={{ fontSize: "calc(13rem / 15)", padding: "calc(6rem / 15) 0" }}>
                   <strong>{formatDateTime(a.AssignedAt)}</strong> · {a.FromUserName ?? "Unassigned"} → {a.ToUserName ?? "Unassigned"}
                   {a.ToBranchName && a.FromBranchName !== a.ToBranchName ? ` (${a.ToBranchName})` : ""}
                   {a.Reason ? ` · ${a.Reason}` : ""} — {a.Remarks} <em>by {a.AssignedByName}</em>

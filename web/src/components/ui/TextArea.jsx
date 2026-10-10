@@ -55,7 +55,7 @@ const TextArea = forwardRef(function TextArea(
         display: "inline-flex",
         flexDirection: "column",
         width: fullWidth ? "100%" : "auto",
-        gap: 6,
+        gap: "calc(6rem / 15)",
         fontFamily: p.fontFamilies.sans,
       }}
     >
@@ -63,14 +63,14 @@ const TextArea = forwardRef(function TextArea(
         <label
           htmlFor={id}
           style={{
-            fontSize: 13,
+            fontSize: "calc(13rem / 15)",
             fontWeight: 500,
             color: p.text.secondary,
           }}
         >
           {label}
           {required && (
-            <span style={{ color: p.error.main, marginLeft: 4 }}>*</span>
+            <span style={{ color: p.error.main, marginLeft: "calc(4rem / 15)" }}>*</span>
           )}
         </label>
       )}
@@ -94,8 +94,8 @@ const TextArea = forwardRef(function TextArea(
         data-testid={testId}
         style={{
           width: "100%",
-          padding: "10px 12px",
-          fontSize: 14,
+          padding: "calc(10rem / 15) calc(12rem / 15)",
+          fontSize: "calc(14rem / 15)",
           fontWeight: 500,
           fontFamily: "inherit",
           lineHeight: 1.5,
@@ -114,8 +114,8 @@ const TextArea = forwardRef(function TextArea(
             ? p.error.main
             : p.border.focus;
           e.currentTarget.style.boxShadow = hasError
-            ? `0 0 0 3px ${p.error.subtle}`
-            : `0 0 0 3px ${p.primary.subtle}`;
+            ? `0 0 0 calc(3rem / 15) ${p.error.subtle}`
+            : `0 0 0 calc(3rem / 15) ${p.primary.subtle}`;
         }}
         onBlurCapture={(e) => {
           e.currentTarget.style.borderColor = hasError
@@ -130,7 +130,7 @@ const TextArea = forwardRef(function TextArea(
         <span
           id={helperId}
           style={{
-            fontSize: 12,
+            fontSize: "calc(12rem / 15)",
             fontWeight: 500,
             color: hasError ? p.error.main : p.text.tertiary,
             lineHeight: 1.4,

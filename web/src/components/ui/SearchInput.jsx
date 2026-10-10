@@ -69,10 +69,10 @@ const SearchInput = forwardRef(function SearchInput(
         ) : shortcutHint ? (
           <span
             style={{
-              fontSize: 11,
+              fontSize: "calc(11rem / 15)",
               fontWeight: 600,
               color: p.text.tertiary,
-              padding: "2px 6px",
+              padding: "2px calc(6rem / 15)",
               border: `1px solid ${p.border.default}`,
               borderRadius: theme.radii.sm,
             }}

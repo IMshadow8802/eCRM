@@ -27,13 +27,13 @@ export default function LinesEditor({ lines, amounts, products = [], disabled = 
   const move = (i, d) => { const next = [...lines]; [next[i], next[i + d]] = [next[i + d], next[i]]; onChange(next); };
 
   const seg = (active) => ({
-    height: 32, minWidth: 30, border: `1px solid ${active ? p.primary.main : p.border.default}`, background: active ? p.primary.subtle : p.surface.card,
-    color: active ? p.primary.main : p.text.secondary, fontSize: 12, fontWeight: 600, cursor: disabled ? "default" : "pointer",
+    height: "calc(32rem / 15)", minWidth: "calc(30rem / 15)", border: `1px solid ${active ? p.primary.main : p.border.default}`, background: active ? p.primary.subtle : p.surface.card,
+    color: active ? p.primary.main : p.text.secondary, fontSize: "calc(12rem / 15)", fontWeight: 600, cursor: disabled ? "default" : "pointer",
   });
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-      {lines.length === 0 && <Box sx={{ fontSize: 13, color: p.text.tertiary }}>No lines yet — add one, or pick a product.</Box>}
+      {lines.length === 0 && <Box sx={{ fontSize: "calc(13rem / 15)", color: p.text.tertiary }}>No lines yet — add one, or pick a product.</Box>}
       {lines.map((l, i) => (
         <Box key={l.key} data-testid="quote-line" sx={{ border: `1px solid ${p.border.default}`, borderRadius: `${theme.radii.md}px`, p: 1.5, display: "flex", flexDirection: "column", gap: 1 }}>
           <Box sx={{ display: "flex", gap: 1, alignItems: "flex-end" }}>
@@ -53,12 +53,12 @@ export default function LinesEditor({ lines, amounts, products = [], disabled = 
             <TextInput size="sm" label="Rate" value={l.rate} onChange={patchRate(i)} disabled={disabled} {...num} />
             <Box sx={{ display: "flex", alignItems: "flex-end", gridColumn: { sm: "span 2", lg: "span 1" } }}>
               <Box sx={{ flex: 1, minWidth: 0 }}><TextInput size="sm" label="Discount" value={l.discountValue} onChange={patch(i, "discountValue")} disabled={disabled} {...num} /></Box>
-              <button type="button" aria-label="Discount in percent" aria-pressed={l.discountType !== "amt"} disabled={disabled} onClick={() => setType(i, "pct")} style={{ ...seg(l.discountType !== "amt"), borderRadius: "0", marginLeft: 4 }}>%</button>
-              <button type="button" aria-label="Discount in rupees" aria-pressed={l.discountType === "amt"} disabled={disabled} onClick={() => setType(i, "amt")} style={{ ...seg(l.discountType === "amt"), borderRadius: "0 8px 8px 0", borderLeft: "none" }}>₹</button>
+              <button type="button" aria-label="Discount in percent" aria-pressed={l.discountType !== "amt"} disabled={disabled} onClick={() => setType(i, "pct")} style={{ ...seg(l.discountType !== "amt"), borderRadius: "0", marginLeft: "calc(4rem / 15)" }}>%</button>
+              <button type="button" aria-label="Discount in rupees" aria-pressed={l.discountType === "amt"} disabled={disabled} onClick={() => setType(i, "amt")} style={{ ...seg(l.discountType === "amt"), borderRadius: "0 calc(8rem / 15) calc(8rem / 15) 0", borderLeft: "none" }}>₹</button>
             </Box>
             <TextInput size="sm" label="GST %" value={l.taxPct} onChange={patch(i, "taxPct")} disabled={disabled} {...num} />
           </Box>
-          <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 1, fontSize: 13, color: p.text.secondary }}>
+          <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 1, fontSize: "calc(13rem / 15)", color: p.text.secondary }}>
             Amount <strong data-testid="line-amount" style={{ color: p.text.primary }}>{money(amounts?.lines?.[i]?.taxableAmt)}</strong>
           </Box>
         </Box>
@@ -67,7 +67,7 @@ export default function LinesEditor({ lines, amounts, products = [], disabled = 
         <Box sx={{ display: "flex", gap: 1, alignItems: "center", flexWrap: "wrap" }}>
           <Button size="sm" variant="tonal" leftIcon={<Plus size={14} />} onClick={() => onChange([...lines, emptyLine()])}>Add line</Button>
           {productOpts.length > 0 && (
-            <Box sx={{ width: 260 }}>
+            <Box sx={{ width: "calc(260rem / 15)" }}>
               {/* value stays null: this is an action ("add this product"), not a field that holds a choice. */}
               <Combobox size="sm" placeholder="Add from products…" options={productOpts} value={null} blurOnSelect
                 onChange={(opt) => opt && onChange([...lines, lineFromProduct(opt.product)])} data-testid="add-from-product" />

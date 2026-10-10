@@ -69,8 +69,8 @@ function ConfirmModal({
         onClose={onClose}
       />
       <Modal.Body>
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ fontSize: 14, color: p.text.secondary, lineHeight: 1.5 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "calc(12rem / 15)" }}>
+          <div style={{ fontSize: "calc(14rem / 15)", color: p.text.secondary, lineHeight: 1.5 }}>
             {body}
           </div>
           {children}
@@ -109,13 +109,13 @@ function SectionTitle({ children }) {
   return (
     <div
       style={{
-        fontSize: 11,
+        fontSize: "calc(11rem / 15)",
         fontWeight: 600,
         letterSpacing: "0.08em",
         textTransform: "uppercase",
         color: p.text.tertiary,
         borderTop: `1px solid ${p.border.default}`,
-        paddingTop: 12,
+        paddingTop: "calc(12rem / 15)",
       }}
     >
       {children}
@@ -472,7 +472,7 @@ export default function WorkspaceSettingsModal({
   };
 
   const hintStyle = {
-    fontSize: 12,
+    fontSize: "calc(12rem / 15)",
     color: p.text.tertiary,
     fontStyle: "italic",
   };
@@ -496,7 +496,7 @@ export default function WorkspaceSettingsModal({
           onClose={onClose}
         />
         <Modal.Body>
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "calc(14rem / 15)" }}>
             <TextInput
               label="Name"
               value={name}
@@ -549,7 +549,7 @@ export default function WorkspaceSettingsModal({
             {isMemberBoard && members.length > 0 && (
               <>
                 <SectionTitle>Members</SectionTitle>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "calc(8rem / 15)" }}>
                   {members.map((m) => {
                     const gone =
                       m.InviteStatus === "removed" ||
@@ -561,7 +561,7 @@ export default function WorkspaceSettingsModal({
                         style={{
                           display: "flex",
                           alignItems: "center",
-                          gap: 8,
+                          gap: "calc(8rem / 15)",
                           opacity: gone ? 0.55 : 1,
                         }}
                       >
@@ -569,7 +569,7 @@ export default function WorkspaceSettingsModal({
                           style={{
                             flex: 1,
                             minWidth: 0,
-                            fontSize: 13,
+                            fontSize: "calc(13rem / 15)",
                             fontWeight: 500,
                             color: p.text.primary,
                             overflow: "hidden",
@@ -584,7 +584,7 @@ export default function WorkspaceSettingsModal({
                         ) : (
                           !gone &&
                           (canManageMembers && !m.IsOwner ? (
-                            <div style={{ minWidth: 150 }}>
+                            <div style={{ minWidth: "calc(150rem / 15)" }}>
                               <Combobox
                                 options={ROLE_OPTIONS}
                                 value={
@@ -639,7 +639,7 @@ export default function WorkspaceSettingsModal({
                   })}
                 </div>
                 {canManageMembers && (
-                  <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+                  <div style={{ display: "flex", gap: "calc(8rem / 15)", alignItems: "flex-end" }}>
                     <Combobox
                       label="Invite people"
                       options={inviteOptions}

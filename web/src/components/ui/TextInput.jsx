@@ -2,6 +2,7 @@ import { forwardRef, useId } from "react";
 import { useTheme } from "@mui/material/styles";
 
 import { motion as motionTokens } from "../../styles/tokens";
+import { rem } from "../../utils/rem";
 
 /**
  * TextInput — clean wrapper around a native <input>. Themed via MUI
@@ -61,7 +62,7 @@ const TextInput = forwardRef(function TextInput(
         display: "inline-flex",
         flexDirection: "column",
         width: fullWidth ? "100%" : "auto",
-        gap: 6,
+        gap: "calc(6rem / 15)",
         fontFamily: p.fontFamilies.sans,
       }}
       data-testid={testId ? `${testId}-wrapper` : undefined}
@@ -70,7 +71,7 @@ const TextInput = forwardRef(function TextInput(
         <label
           htmlFor={id}
           style={{
-            fontSize: sz.labelFont,
+            fontSize: rem(sz.labelFont),
             fontWeight: 500,
             color: p.text.secondary,
             letterSpacing: "0.01em",
@@ -78,7 +79,7 @@ const TextInput = forwardRef(function TextInput(
         >
           {label}
           {required && (
-            <span style={{ color: p.error.main, marginLeft: 4 }}>*</span>
+            <span style={{ color: p.error.main, marginLeft: "calc(4rem / 15)" }}>*</span>
           )}
         </label>
       )}
@@ -87,8 +88,8 @@ const TextInput = forwardRef(function TextInput(
         style={{
           display: "flex",
           alignItems: "center",
-          height: sz.height,
-          paddingInline: sz.px,
+          height: rem(sz.height),
+          paddingInline: rem(sz.px),
           backgroundColor: disabled
             ? p.surface.subtle
             : p.surface.card,
@@ -104,8 +105,8 @@ const TextInput = forwardRef(function TextInput(
             ? p.error.main
             : p.border.focus;
           e.currentTarget.style.boxShadow = hasError
-            ? `0 0 0 3px ${p.error.subtle}`
-            : `0 0 0 3px ${p.primary.subtle}`;
+            ? `0 0 0 calc(3rem / 15) ${p.error.subtle}`
+            : `0 0 0 calc(3rem / 15) ${p.primary.subtle}`;
         }}
         onBlurCapture={(e) => {
           e.currentTarget.style.borderColor = hasError
@@ -120,7 +121,7 @@ const TextInput = forwardRef(function TextInput(
               display: "inline-flex",
               alignItems: "center",
               color: p.text.tertiary,
-              marginRight: 8,
+              marginRight: "calc(8rem / 15)",
             }}
           >
             {leftAdornment}
@@ -158,10 +159,10 @@ const TextInput = forwardRef(function TextInput(
             outline: "none",
             background: "transparent",
             color: p.text.primary,
-            fontSize: sz.font,
+            fontSize: rem(sz.font),
             fontWeight: 500,
             fontFamily: "inherit",
-            lineHeight: `${sz.height - 2}px`,
+            lineHeight: rem(sz.height - 2),
             padding: 0,
             margin: 0,
             boxSizing: "border-box",
@@ -175,7 +176,7 @@ const TextInput = forwardRef(function TextInput(
               display: "inline-flex",
               alignItems: "center",
               color: p.text.tertiary,
-              marginLeft: 8,
+              marginLeft: "calc(8rem / 15)",
             }}
           >
             {rightAdornment}
@@ -187,7 +188,7 @@ const TextInput = forwardRef(function TextInput(
         <span
           id={helperId}
           style={{
-            fontSize: 12,
+            fontSize: "calc(12rem / 15)",
             fontWeight: 500,
             color: hasError ? p.error.main : p.text.tertiary,
             lineHeight: 1.4,

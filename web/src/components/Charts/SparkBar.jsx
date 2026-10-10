@@ -1,4 +1,5 @@
 import { useTheme } from "@mui/material/styles";
+import useUiScale from "../../hooks/useUiScale";
 import { Box, Typography } from "@mui/material";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip } from "recharts";
 
@@ -16,6 +17,7 @@ export default function SparkBar({
   height = 64,
 }) {
   const theme = useTheme();
+  const k = useUiScale();
   const p = theme.tokens;
   const series = Array.isArray(data) && data.length ? data : FALLBACK;
   const rows = series.map((v, i) => ({ i, v }));
@@ -38,22 +40,22 @@ export default function SparkBar({
           {total}
         </Typography>
       </Box>
-      <Box sx={{ width: "100%", height }}>
-        <ResponsiveContainer width="100%" height={height}>
-          <BarChart data={rows} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+      <Box sx={{ width: "100%", height: height * k }}>
+        <ResponsiveContainer width="100%" height={height * k}>
+          <BarChart data={rows} margin={{ top: 2 * k, right: 0, left: 0, bottom: 0 }}>
             <Tooltip
               contentStyle={{
                 background: p.surface.card,
                 border: `1px solid ${p.border.default}`,
                 borderRadius: 6,
                 fontSize: 11,
-                padding: "4px 8px",
+                padding: "calc(4rem / 15) calc(8rem / 15)",
               }}
               labelFormatter={() => ""}
               formatter={(v) => [v, ""]}
               cursor={{ fill: p.surface.subtle }}
             />
-            <Bar dataKey="v" radius={[3, 3, 0, 0]}>
+            <Bar dataKey="v" radius={[3 * k, 3 * k, 0, 0]}>
               {rows.map((row, idx) => (
                 <Cell
                   key={idx}

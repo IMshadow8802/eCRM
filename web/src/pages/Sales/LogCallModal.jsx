@@ -63,7 +63,7 @@ export default function LogCallModal({ open, onClose, leadId, ticketId, onLogged
     <Modal open={open} onClose={handleClose} size="sm" data-testid="log-call-modal">
       <Modal.Header title="Log Call" icon={<PhoneCall size={18} />} onClose={handleClose} />
       <Modal.Body>
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "calc(14rem / 15)" }}>
           <Combobox
             label="Outcome"
             options={outcomeOptions}

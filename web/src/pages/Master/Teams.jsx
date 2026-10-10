@@ -61,7 +61,7 @@ const Teams = () => {
               size="small"
               variant="outlined"
               color="primary"
-              sx={{ margin: 0, height: '24px' }}
+              sx={{ margin: 0, height: 'calc(24rem / 15)' }}
             />
           );
         },
@@ -73,8 +73,8 @@ const Teams = () => {
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             <Box
               sx={{
-                width: 20,
-                height: 20,
+                width: "calc(20rem / 15)",
+                height: "calc(20rem / 15)",
                 borderRadius: "50%",
                 backgroundColor: cell.getValue() || "#gray",
                 border: "1px solid #ddd",
@@ -93,7 +93,7 @@ const Teams = () => {
             color={cell.getValue() ? "success" : "error"}
             size="small"
             variant="outlined"
-            sx={{ margin: 0, height: '24px' }}
+            sx={{ margin: 0, height: 'calc(24rem / 15)' }}
           />
         ),
       },
@@ -173,7 +173,7 @@ const Teams = () => {
               '&:hover': {
                 backgroundColor: '#f9fafb'
               },
-              padding: '4px'
+              padding: 'calc(4rem / 15)'
             }}
           >
             <EditRounded fontSize="small" />
@@ -188,7 +188,7 @@ const Teams = () => {
               '&:hover': {
                 backgroundColor: '#f9fafb'
               },
-              padding: '4px'
+              padding: 'calc(4rem / 15)'
             }}
           >
             <DeleteRounded fontSize="small" />

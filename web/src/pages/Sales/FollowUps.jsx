@@ -251,7 +251,7 @@ const FollowUps = () => {
       <Modal open={Boolean(deleting)} onClose={() => setDeleting(null)} size="sm" data-testid="delete-followup-modal">
         <Modal.Header title="Delete follow-up?" icon={<Trash2 size={18} />} onClose={() => setDeleting(null)} />
         <Modal.Body>
-          <div style={{ fontSize: 14 }}>
+          <div style={{ fontSize: "calc(14rem / 15)" }}>
             Removes the open follow-up due {formatDate(deleting?.DueAt, { empty: "—" })}. Logged ones are history and cannot be deleted.
           </div>
         </Modal.Body>

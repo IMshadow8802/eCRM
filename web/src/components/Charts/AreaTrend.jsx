@@ -1,4 +1,5 @@
 import { useTheme } from "@mui/material/styles";
+import useUiScale from "../../hooks/useUiScale";
 import { Box, Typography } from "@mui/material";
 import { ArrowUpRight, ArrowDownRight } from "lucide-react";
 import SampleBadge from "./SampleBadge";
@@ -54,7 +55,7 @@ const DeltaChip = ({ delta, tone }) => {
 
 const LegendDot = ({ color, label, value }) => (
   <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-    <Box sx={{ width: 10, height: 10, borderRadius: 999, backgroundColor: color }} />
+    <Box sx={{ width: "calc(10rem / 15)", height: "calc(10rem / 15)", borderRadius: 999, backgroundColor: color }} />
     <Typography sx={{ fontSize: "0.7333rem", color: "text.secondary" }}>
       {label}
     </Typography>
@@ -64,6 +65,7 @@ const LegendDot = ({ color, label, value }) => (
 
 export default function AreaTrend({ data, height = 240 }) {
   const theme = useTheme();
+  const k = useUiScale();
   const p = theme.tokens;
   const hasData = Array.isArray(data) && data.length > 0;
   const rows = hasData ? data : FALLBACK;
@@ -129,9 +131,9 @@ export default function AreaTrend({ data, height = 240 }) {
       </Box>
 
       {/* Chart */}
-      <Box sx={{ height }}>
-        <ResponsiveContainer width="100%" height={height}>
-          <AreaChart data={rows} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+      <Box sx={{ height: height * k }}>
+        <ResponsiveContainer width="100%" height={height * k}>
+          <AreaChart data={rows} margin={{ top: 8 * k, right: 8 * k, left: 0, bottom: 0 }}>
             <defs>
               <linearGradient id="leadsGradient" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor={p.primary.main} stopOpacity={0.55} />
@@ -149,17 +151,17 @@ export default function AreaTrend({ data, height = 240 }) {
             />
             <XAxis
               dataKey="name"
-              tick={{ fill: p.text.tertiary, fontSize: 11 }}
+              tick={{ fill: p.text.tertiary, fontSize: 11 * k }}
               stroke={p.border.default}
               tickLine={false}
               axisLine={false}
             />
             <YAxis
-              tick={{ fill: p.text.tertiary, fontSize: 11 }}
+              tick={{ fill: p.text.tertiary, fontSize: 11 * k }}
               stroke={p.border.default}
               tickLine={false}
               axisLine={false}
-              width={32}
+              width={32 * k}
             />
             <Tooltip
               contentStyle={{
@@ -169,7 +171,7 @@ export default function AreaTrend({ data, height = 240 }) {
                 fontSize: 12,
                 color: p.text.primary,
               }}
-              labelStyle={{ color: p.text.secondary, marginBottom: 4 }}
+              labelStyle={{ color: p.text.secondary, marginBottom: "calc(4rem / 15)" }}
               cursor={{ stroke: p.border.strong }}
             />
             <Area
@@ -179,8 +181,8 @@ export default function AreaTrend({ data, height = 240 }) {
               stroke={p.primary.main}
               strokeWidth={2.5}
               fill="url(#leadsGradient)"
-              dot={{ r: 3, fill: p.primary.main, strokeWidth: 0 }}
-              activeDot={{ r: 5, fill: p.primary.main, stroke: p.surface.card, strokeWidth: 2 }}
+              dot={{ r: 3 * k, fill: p.primary.main, strokeWidth: 0 }}
+              activeDot={{ r: 5 * k, fill: p.primary.main, stroke: p.surface.card, strokeWidth: 2 }}
             />
             <Area
               type="monotone"
@@ -189,8 +191,8 @@ export default function AreaTrend({ data, height = 240 }) {
               stroke={p.accent.main}
               strokeWidth={2.5}
               fill="url(#convGradient)"
-              dot={{ r: 3, fill: p.accent.main, strokeWidth: 0 }}
-              activeDot={{ r: 5, fill: p.accent.main, stroke: p.surface.card, strokeWidth: 2 }}
+              dot={{ r: 3 * k, fill: p.accent.main, strokeWidth: 0 }}
+              activeDot={{ r: 5 * k, fill: p.accent.main, stroke: p.surface.card, strokeWidth: 2 }}
             />
           </AreaChart>
         </ResponsiveContainer>

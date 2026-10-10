@@ -33,7 +33,7 @@ export default function LogTimeModal({ time, task }) {
         onClose={() => setLogOpen(false)}
       />
       <Modal.Body>
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "calc(12rem / 15)" }}>
           <NumberInput
             label="Hours"
             value={logHours}

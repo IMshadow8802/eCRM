@@ -1,5 +1,6 @@
 import { useTheme } from "@mui/material/styles";
 import { parseAvatar } from "../../utils/avatarPresets";
+import { rem } from "../../utils/rem";
 
 /**
  * Avatar — text initials fallback, optional image `src`, or a `preset` string
@@ -71,8 +72,8 @@ export default function Avatar({
           display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
-          width: s.box,
-          height: s.box,
+          width: rem(s.box),
+          height: rem(s.box),
           borderRadius: theme.radii.full,
           overflow: "hidden",
           background: src
@@ -81,7 +82,7 @@ export default function Avatar({
               ? presetBg
               : `linear-gradient(135deg, hsl(${hue}, 68%, 60%), hsl(${(hue + 40) % 360}, 68%, 52%))`,
           color: "#FFFFFF",
-          fontSize: av?.kind === "emoji" ? Math.round(s.box * 0.58) : s.fz,
+          fontSize: rem(av?.kind === "emoji" ? Math.round(s.box * 0.58) : s.fz),
           fontWeight: 700,
           border: `2px solid ${p.surface.card}`,
           cursor: onClick ? "pointer" : "default",
@@ -108,8 +109,8 @@ export default function Avatar({
             position: "absolute",
             right: -1,
             bottom: -1,
-            width: Math.max(8, s.box / 4),
-            height: Math.max(8, s.box / 4),
+            width: rem(Math.max(8, s.box / 4)),
+            height: rem(Math.max(8, s.box / 4)),
             borderRadius: theme.radii.full,
             backgroundColor: online ? p.success.main : p.text.tertiary,
             border: `2px solid ${p.surface.card}`,

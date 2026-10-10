@@ -48,8 +48,8 @@ function InfoItem({ label, value }) {
   const p = theme.tokens;
   return (
     <div>
-      <div style={{ fontSize: 12, fontWeight: 500, color: p.text.tertiary }}>{label}</div>
-      <div style={{ fontSize: 14, fontWeight: 600, marginTop: 2, color: p.text.primary, overflowWrap: "anywhere" }}>
+      <div style={{ fontSize: "calc(12rem / 15)", fontWeight: 500, color: p.text.tertiary }}>{label}</div>
+      <div style={{ fontSize: "calc(14rem / 15)", fontWeight: 600, marginTop: 2, color: p.text.primary, overflowWrap: "anywhere" }}>
         {value || "—"}
       </div>
     </div>
@@ -189,7 +189,7 @@ export default function LeadDetail({ leadId: leadIdProp }) {
   };
 
   if (isLoading || !lead) return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }} data-testid="lead-detail-loading">
+    <div style={{ display: "flex", flexDirection: "column", gap: "calc(12rem / 15)" }} data-testid="lead-detail-loading">
       <Skeleton variant="text" height={28} width={240} /><Skeleton variant="rect" height={160} />
     </div>
   );
@@ -206,8 +206,8 @@ export default function LeadDetail({ leadId: leadIdProp }) {
           // flexWrap here, not only in ui/PageHeader: the slot wraps its
           // children, and this row IS one child — without it the row stays a
           // single unbroken line and PageHeader's wrap cannot reach inside.
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <div style={{ minWidth: 150, flex: "1 1 160px", maxWidth: 220 }}>
+          <div style={{ display: "flex", gap: "calc(8rem / 15)", alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ minWidth: "calc(150rem / 15)", flex: "1 1 calc(160rem / 15)", maxWidth: "calc(220rem / 15)" }}>
               {/* blurOnSelect: picking `lost` opens a modal instead of moving
                   the status, and a focused Autocomplete keeps showing what was
                   picked. Blurring resyncs the input to the controlled value, so
@@ -231,16 +231,16 @@ export default function LeadDetail({ leadId: leadIdProp }) {
         { value: "history", label: "History", badge: activity.length },
       ]} />
 
-      <div style={{ marginTop: 20 }}>
+      <div style={{ marginTop: "calc(20rem / 15)" }}>
         {tab === "details" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "calc(20rem / 15)" }}>
             {lead.StatusCode === "converted" && (
               <Card variant="outlined" padding="md" data-testid="won-banner">
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "calc(12rem / 15)" }}>
                   <Trophy size={20} />
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 15, fontWeight: 700 }}>Won for {formatCurrency(lead.WonValue, { empty: "—" })}</div>
-                    <div style={{ fontSize: 13, marginTop: 2 }}>
+                    <div style={{ fontSize: "calc(15rem / 15)", fontWeight: 700 }}>Won for {formatCurrency(lead.WonValue, { empty: "—" })}</div>
+                    <div style={{ fontSize: "calc(13rem / 15)", marginTop: 2 }}>
                       {fmt(lead.WonAt)}{lead.CustomerName ? ` · customer: ${lead.CustomerName}` : ""}
                     </div>
                   </div>
@@ -249,7 +249,7 @@ export default function LeadDetail({ leadId: leadIdProp }) {
             )}
             <LeadPartnerCard lead={lead} commissions={data?.commissions} />
             <Card data-testid="lead-core-info">
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(calc(180rem / 15), 1fr))", gap: "calc(16rem / 15)" }}>
                 <InfoItem label="Mobile" value={lead.MobileNo} />
                 <InfoItem label="Alternate" value={lead.AltMobile} />
                 <InfoItem label="Email" value={lead.Email} />
@@ -263,7 +263,7 @@ export default function LeadDetail({ leadId: leadIdProp }) {
                 {Boolean(lead.LostReason) && <InfoItem label="Lost reason" value={lead.LostReason} />}
               </div>
               {(address || lead.Remarks) && (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 16, marginTop: 16 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(calc(220rem / 15), 1fr))", gap: "calc(16rem / 15)", marginTop: "calc(16rem / 15)" }}>
                   <InfoItem label="Address" value={address} />
                   <InfoItem label="Remarks" value={lead.Remarks} />
                 </div>
@@ -279,10 +279,10 @@ export default function LeadDetail({ leadId: leadIdProp }) {
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
-                    marginBottom: 16,
+                    marginBottom: "calc(16rem / 15)",
                   }}
                 >
-                  <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Custom fields</h3>
+                  <h3 style={{ margin: 0, fontSize: "calc(15rem / 15)", fontWeight: 700 }}>Custom fields</h3>
                   <Button
                     variant="primary"
                     size="sm"
@@ -298,8 +298,8 @@ export default function LeadDetail({ leadId: leadIdProp }) {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-                    gap: 16,
+                    gridTemplateColumns: "repeat(auto-fill, minmax(calc(220rem / 15), 1fr))",
+                    gap: "calc(16rem / 15)",
                   }}
                 >
                   {fields.map(({ def }) => (
@@ -317,25 +317,25 @@ export default function LeadDetail({ leadId: leadIdProp }) {
             )}
 
             <Card>
-              <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Attachments</h3>
+              <h3 style={{ margin: "0 0 calc(16rem / 15)", fontSize: "calc(15rem / 15)", fontWeight: 700 }}>Attachments</h3>
               <Attachments entity="lead" entityId={lead.Id} />
             </Card>
           </div>
         )}
 
         {tab === "followups" && (
-          <div data-testid="lead-followups" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div data-testid="lead-followups" style={{ display: "flex", flexDirection: "column", gap: "calc(10rem / 15)" }}>
             {followups.length === 0 && <EmptyState title="No follow-ups" description="Schedule one from the header." size="sm" data-testid="followups-empty" />}
             {followups.map((f) => (
               <Card key={f.Id} data-testid="followup-item">
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "calc(12rem / 15)" }}>
                   <div>
-                    <div style={{ fontSize: 14, fontWeight: 600 }}>
+                    <div style={{ fontSize: "calc(14rem / 15)", fontWeight: 600 }}>
                       {FOLLOWUP_TYPES.find((t) => t.value === f.Type)?.label ?? f.Type} · {f.Status === "open" ? `due ${fmt(f.DueAt)}` : `${f.Status} ${fmt(f.DoneAt, "DD-MM-YYYY HH:mm")} by ${f.DoneByName ?? "—"}`}
                       {f.IsOverdue ? " · overdue" : ""}
                     </div>
-                    {(f.Outcome || f.Remarks) && <div style={{ fontSize: 13, marginTop: 2 }}>{[f.Outcome, f.Remarks].filter(Boolean).join(" — ")}</div>}
-                    {f.Status === "open" && f.AssignedToName && <div style={{ fontSize: 12, marginTop: 2 }}>Assigned to {f.AssignedToName}</div>}
+                    {(f.Outcome || f.Remarks) && <div style={{ fontSize: "calc(13rem / 15)", marginTop: 2 }}>{[f.Outcome, f.Remarks].filter(Boolean).join(" — ")}</div>}
+                    {f.Status === "open" && f.AssignedToName && <div style={{ fontSize: "calc(12rem / 15)", marginTop: 2 }}>Assigned to {f.AssignedToName}</div>}
                   </div>
                   {f.Status === "open"
                     ? <Button size="sm" variant="primary" onClick={() => setLogging(f)} data-testid={`log-followup-${f.Id}`}>Log</Button>
@@ -350,11 +350,11 @@ export default function LeadDetail({ leadId: leadIdProp }) {
         <div hidden={tab !== "quotations"}><LeadQuotations lead={lead} onCount={setQuoteCount} /></div>
 
         {tab === "history" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "calc(20rem / 15)" }}>
             <Card>
-              <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700 }}>Assignments</h3>
-              {assignments.length === 0 ? <div style={{ fontSize: 13 }}>Never assigned.</div> : assignments.map((a) => (
-                <div key={a.Id} data-testid="assignment-item" style={{ fontSize: 13, padding: "6px 0" }}>
+              <h3 style={{ margin: "0 0 calc(12rem / 15)", fontSize: "calc(15rem / 15)", fontWeight: 700 }}>Assignments</h3>
+              {assignments.length === 0 ? <div style={{ fontSize: "calc(13rem / 15)" }}>Never assigned.</div> : assignments.map((a) => (
+                <div key={a.Id} data-testid="assignment-item" style={{ fontSize: "calc(13rem / 15)", padding: "calc(6rem / 15) 0" }}>
                   <strong>{fmt(a.AssignedAt, "DD-MM-YYYY HH:mm")}</strong> · {a.FromUserName ?? "Unassigned"} → {a.ToUserName ?? "Unassigned"}
                   {a.ToBranchName && a.FromBranchName !== a.ToBranchName ? ` (${a.ToBranchName})` : ""}
                   {a.Reason ? ` · ${a.Reason}` : ""} — {a.Remarks} <em>by {a.AssignedByName}</em>
@@ -378,7 +378,7 @@ export default function LeadDetail({ leadId: leadIdProp }) {
       <Modal open={scheduleOpen} onClose={() => setScheduleOpen(false)} size="sm" data-testid="schedule-modal">
         <Modal.Header title="Schedule follow-up" onClose={() => setScheduleOpen(false)} />
         <Modal.Body>
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "calc(16rem / 15)" }}>
             {/* disableClearable: a follow-up with no type is not a thing the
                 SP accepts, and a cleared value would blow up submitSchedule. */}
             <Combobox label="Type" disableClearable options={FOLLOWUP_TYPES} value={scheduleType} onChange={setScheduleType} data-testid="schedule-type" />

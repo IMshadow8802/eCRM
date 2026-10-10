@@ -56,8 +56,8 @@ export default function Drawer({
               position: "absolute",
               inset: 0,
               backgroundColor: p.overlay,
-              backdropFilter: "blur(6px)",
-              WebkitBackdropFilter: "blur(6px)",
+              backdropFilter: "blur(calc(6rem / 15))",
+              WebkitBackdropFilter: "blur(calc(6rem / 15))",
             }}
           />
           <motion.aside

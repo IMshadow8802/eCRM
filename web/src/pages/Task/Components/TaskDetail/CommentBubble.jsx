@@ -38,8 +38,8 @@ export default function CommentBubble({
       data-testid={`comment-${c.Id}`}
       style={{
         display: "flex",
-        gap: 12,
-        padding: "6px 0",
+        gap: "calc(12rem / 15)",
+        padding: "calc(6rem / 15) 0",
         marginLeft: c.ParentCommentId ? 28 : 0,
       }}
     >
@@ -55,7 +55,7 @@ export default function CommentBubble({
                 background: "var(--color-warning-50)",
                 border: "1px solid var(--color-warning-500)",
                 borderRadius: 10,
-                padding: "8px 10px",
+                padding: "calc(8rem / 15) calc(10rem / 15)",
               }
             : {}),
         }}
@@ -64,13 +64,13 @@ export default function CommentBubble({
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 8,
-            marginBottom: 6,
+            gap: "calc(8rem / 15)",
+            marginBottom: "calc(6rem / 15)",
           }}
         >
         <span
           style={{
-            fontSize: 14,
+            fontSize: "calc(14rem / 15)",
             fontWeight: 700,
             color: "var(--color-surface-900)",
           }}
@@ -78,13 +78,13 @@ export default function CommentBubble({
           {c.UserName}
         </span>
         {c.IsEdited ? (
-          <span style={{ fontSize: 11, color: "var(--color-surface-400)" }}>
+          <span style={{ fontSize: "calc(11rem / 15)", color: "var(--color-surface-400)" }}>
             edited
           </span>
         ) : null}
         <span
           style={{
-            fontSize: 11,
+            fontSize: "calc(11rem / 15)",
             color: "var(--color-surface-400)",
             marginLeft: "auto",
           }}
@@ -141,7 +141,7 @@ export default function CommentBubble({
         )}
       </div>
       {isEditing ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "calc(8rem / 15)" }}>
           <TextArea
             value={editingText}
             onChange={(e) => onEditText(e.target.value)}
@@ -149,7 +149,7 @@ export default function CommentBubble({
             autoGrow
             data-testid={`edit-input-${c.Id}`}
           />
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "calc(8rem / 15)" }}>
             <Button
               variant="text"
               size="sm"
@@ -173,7 +173,7 @@ export default function CommentBubble({
       ) : (
         <div
           style={{
-            fontSize: 14,
+            fontSize: "calc(14rem / 15)",
             fontWeight: 400,
             lineHeight: 1.5,
             color: c.IsDeleted
@@ -188,9 +188,9 @@ export default function CommentBubble({
       {c.ReadByUserIds && (
         <div
           style={{
-            fontSize: 11,
+            fontSize: "calc(11rem / 15)",
             color: "var(--color-surface-400)",
-            marginTop: 6,
+            marginTop: "calc(6rem / 15)",
           }}
         >
           Seen by {c.ReadByUserIds.split(",").length}

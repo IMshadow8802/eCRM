@@ -23,14 +23,14 @@ export default function Progress({
   return (
     <div
       data-testid={testId}
-      style={{ display: "flex", flexDirection: "column", gap: 4 }}
+      style={{ display: "flex", flexDirection: "column", gap: "calc(4rem / 15)" }}
     >
       {label && (
         <div
           style={{
             display: "flex",
             justifyContent: "space-between",
-            fontSize: 12,
+            fontSize: "calc(12rem / 15)",
             fontWeight: 500,
             color: p.text.secondary,
           }}

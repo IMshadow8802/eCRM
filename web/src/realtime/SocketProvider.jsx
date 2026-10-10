@@ -200,8 +200,8 @@ export function ConnectionStatus() {
     >
       <Box
         sx={{
-          width: 6,
-          height: 6,
+          width: "calc(6rem / 15)",
+          height: "calc(6rem / 15)",
           borderRadius: "50%",
           backgroundColor: color,
         }}

@@ -37,13 +37,13 @@ export default class ErrorBoundary extends Component {
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          gap: 12,
-          padding: 32,
+          gap: "calc(12rem / 15)",
+          padding: "calc(32rem / 15)",
           textAlign: "center",
         }}
       >
-        <div style={{ fontSize: 18, fontWeight: 700 }}>Something went wrong</div>
-        <div style={{ fontSize: 14, opacity: 0.7, maxWidth: 420 }}>
+        <div style={{ fontSize: "calc(18rem / 15)", fontWeight: 700 }}>Something went wrong</div>
+        <div style={{ fontSize: "calc(14rem / 15)", opacity: 0.7, maxWidth: "calc(420rem / 15)" }}>
           The page hit an unexpected error. Your data is safe — reload to
           continue.
         </div>
@@ -55,7 +55,7 @@ export default class ErrorBoundary extends Component {
             that can fail a second time. `currentColor` and `font: inherit`
             keep it looking like the app in both light and dark without
             reading a palette. */}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8, justifyContent: "center" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "calc(8rem / 15)", marginTop: "calc(8rem / 15)", justifyContent: "center" }}>
           <button
             type="button"
             onClick={this.handleDismiss}
@@ -63,8 +63,8 @@ export default class ErrorBoundary extends Component {
             style={{
               font: "inherit",
               fontWeight: 600,
-              minHeight: 40,
-              padding: "8px 16px",
+              minHeight: "calc(40rem / 15)",
+              padding: "calc(8rem / 15) calc(16rem / 15)",
               borderRadius: 12,
               border: "1px solid currentColor",
               background: "transparent",
@@ -83,8 +83,8 @@ export default class ErrorBoundary extends Component {
             style={{
               font: "inherit",
               fontWeight: 600,
-              minHeight: 40,
-              padding: "8px 16px",
+              minHeight: "calc(40rem / 15)",
+              padding: "calc(8rem / 15) calc(16rem / 15)",
               borderRadius: 12,
               // Two identical outlines left no primary action on the one screen
               // where the user most needs to be told what to press.

@@ -28,8 +28,8 @@ export default function PageHeader({
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: 8,
-        paddingBottom: 10,
+        gap: "calc(8rem / 15)",
+        paddingBottom: "calc(10rem / 15)",
         borderBottom: tabs ? undefined : `1px solid ${p.border.subtle}`,
       }}
     >
@@ -39,14 +39,14 @@ export default function PageHeader({
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 6,
-            fontSize: 12,
+            gap: "calc(6rem / 15)",
+            fontSize: "calc(12rem / 15)",
             fontWeight: 500,
             color: p.text.tertiary,
           }}
         >
           {breadcrumb.map((crumb, i) => (
-            <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: "calc(6rem / 15)" }}>
               {crumb.href ? (
                 <a
                   href={crumb.href}
@@ -67,7 +67,7 @@ export default function PageHeader({
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 16,
+          gap: "calc(16rem / 15)",
           flexWrap: "wrap",
         }}
       >
@@ -77,8 +77,8 @@ export default function PageHeader({
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
-              width: 44,
-              height: 44,
+              width: "calc(44rem / 15)",
+              height: "calc(44rem / 15)",
               borderRadius: r.md,
               background: iconBg ?? p.gradient.statAccent,
               color: iconFg ?? "#FFFFFF",
@@ -92,14 +92,14 @@ export default function PageHeader({
           <h1
             style={{
               margin: 0,
-              fontSize: 24,
+              fontSize: "calc(24rem / 15)",
               fontWeight: 700,
               color: p.text.primary,
               letterSpacing: "-0.02em",
               lineHeight: 1.25,
               display: "inline-flex",
               alignItems: "center",
-              gap: 10,
+              gap: "calc(10rem / 15)",
               flexWrap: "wrap",
             }}
           >
@@ -109,8 +109,8 @@ export default function PageHeader({
           {subtitle && (
             <p
               style={{
-                margin: "4px 0 0",
-                fontSize: 14,
+                margin: "calc(4rem / 15) 0 0",
+                fontSize: "calc(14rem / 15)",
                 fontWeight: 500,
                 color: p.text.secondary,
                 lineHeight: 1.5,
@@ -128,13 +128,13 @@ export default function PageHeader({
           // primary button away. Wrapping here fixes every page at once; the
           // title block's `flex: 1; minWidth: 0` still keeps actions on their
           // own line wherever there is room.
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <div style={{ display: "flex", gap: "calc(8rem / 15)", flexWrap: "wrap", justifyContent: "flex-end" }}>
             {actions}
           </div>
         )}
       </div>
 
-      {tabs && <div style={{ marginTop: 4 }}>{tabs}</div>}
+      {tabs && <div style={{ marginTop: "calc(4rem / 15)" }}>{tabs}</div>}
     </div>
   );
 }

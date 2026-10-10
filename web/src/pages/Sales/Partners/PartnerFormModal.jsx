@@ -144,7 +144,7 @@ export default function PartnerFormModal({ open, onClose, partner = null }) {
             <Field {...f} name="Notes" label="Notes" multiline rows={3} />
           </FormGridSpan>
         </FormGrid>
-        {serverError && <div role="alert" style={{ color: errorColor, marginTop: 12, fontSize: 13 }} data-testid="partner-server-error">{serverError}</div>}
+        {serverError && <div role="alert" style={{ color: errorColor, marginTop: "calc(12rem / 15)", fontSize: "calc(13rem / 15)" }} data-testid="partner-server-error">{serverError}</div>}
       </Modal.Body>
       <Modal.Footer>
         <Button variant="ghost" onClick={handleClose} disabled={save.isPending}>Cancel</Button>

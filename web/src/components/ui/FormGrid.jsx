@@ -1,4 +1,5 @@
 import { Box } from "@mui/material";
+import { rem } from "../../utils/rem";
 
 /**
  * The field grid every form modal lays out on.
@@ -20,7 +21,7 @@ export default function FormGrid({ min = 220, gap = 2, sx, children, ...rest }) 
     <Box
       sx={{
         display: "grid",
-        gridTemplateColumns: `repeat(auto-fill, minmax(${min}px, 1fr))`,
+        gridTemplateColumns: `repeat(auto-fill, minmax(${rem(min)}, 1fr))`,
         gap,
         ...sx,
       }}

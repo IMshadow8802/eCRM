@@ -1,4 +1,5 @@
 import { useTheme } from "@mui/material/styles";
+import useUiScale from "../../hooks/useUiScale";
 import { Box } from "@mui/material";
 import SampleBadge from "./SampleBadge";
 import {
@@ -23,6 +24,7 @@ const FALLBACK = [
 
 export default function RadialLoad({ data, height = 240 }) {
   const theme = useTheme();
+  const k = useUiScale();
   const p = theme.tokens;
   const hasData = Array.isArray(data) && data.length > 0;
   const rows = hasData ? data : FALLBACK;
@@ -41,7 +43,7 @@ export default function RadialLoad({ data, height = 240 }) {
   return (
     <Box sx={{ position: "relative" }}>
       {!hasData && <SampleBadge />}
-      <ResponsiveContainer width="100%" height={height}>
+      <ResponsiveContainer width="100%" height={height * k}>
         <RadialBarChart
         innerRadius="30%"
         outerRadius="95%"
@@ -71,9 +73,9 @@ export default function RadialLoad({ data, height = 240 }) {
         />
         <Legend
           iconType="circle"
-          wrapperStyle={{ fontSize: 11, color: p.text.secondary }}
+          wrapperStyle={{ fontSize: "calc(11rem / 15)", color: p.text.secondary }}
           verticalAlign="bottom"
-          height={24}
+          height={24 * k}
         />
         </RadialBarChart>
       </ResponsiveContainer>

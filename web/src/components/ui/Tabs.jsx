@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { useTheme } from "@mui/material/styles";
 
 import { motion as motionTokens } from "../../styles/tokens";
+import { rem } from "../../utils/rem";
 
 /**
  * Animated underline tabs. Indicator slides between active items.
@@ -42,7 +43,7 @@ export default function Tabs({
         scrollbarWidth: "none",
         msOverflowStyle: "none",
         borderBottom: `1px solid ${p.border.default}`,
-        gap: 4,
+        gap: "calc(4rem / 15)",
       }}
     >
       {items.map((item) => {
@@ -58,13 +59,13 @@ export default function Tabs({
             data-testid={testId ? `${testId}-${item.value}` : undefined}
             style={{
               position: "relative",
-              minHeight: s.h,
-              paddingInline: s.px,
+              minHeight: rem(s.h),
+              paddingInline: rem(s.px),
               flexShrink: 0,
               whiteSpace: "nowrap",
               border: "none",
               background: "transparent",
-              fontSize: s.fz,
+              fontSize: rem(s.fz),
               fontWeight: 600,
               fontFamily: "inherit",
               color: active ? p.primary.main : p.text.secondary,
@@ -77,7 +78,7 @@ export default function Tabs({
               style={{
                 display: "inline-flex",
                 alignItems: "center",
-                gap: 6,
+                gap: "calc(6rem / 15)",
               }}
             >
               {item.icon && <span style={{ display: "inline-flex" }}>{item.icon}</span>}
@@ -85,9 +86,9 @@ export default function Tabs({
               {item.badge != null && (
                 <span
                   style={{
-                    fontSize: 11,
+                    fontSize: "calc(11rem / 15)",
                     fontWeight: 600,
-                    padding: "2px 6px",
+                    padding: "2px calc(6rem / 15)",
                     borderRadius: theme.radii.full,
                     backgroundColor: active ? p.primary.subtle : p.surface.subtle,
                     color: active ? p.primary.main : p.text.secondary,
@@ -106,10 +107,10 @@ export default function Tabs({
                 }}
                 style={{
                   position: "absolute",
-                  left: 8,
-                  right: 8,
+                  left: "calc(8rem / 15)",
+                  right: "calc(8rem / 15)",
                   bottom: -1,
-                  height: 3,
+                  height: "calc(3rem / 15)",
                   borderRadius: theme.radii.full,
                   backgroundColor: p.primary.main,
                 }}

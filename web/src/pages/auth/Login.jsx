@@ -45,7 +45,7 @@ function FormError({ children }) {
       <Box sx={{ display: "flex", pt: "1px" }}>
         <CircleAlert size={16} />
       </Box>
-      <Typography sx={{ fontSize: 13, fontWeight: 600, lineHeight: 1.45 }}>
+      <Typography sx={{ fontSize: "calc(13rem / 15)", fontWeight: 600, lineHeight: 1.45 }}>
         {children}
       </Typography>
     </Stack>
@@ -178,13 +178,13 @@ export default function Login() {
         >
           {/* Fixed width in both states, so binding a company does not resize
               or re-centre the column the user is typing into. */}
-          <Box sx={{ width: "100%", maxWidth: 380 }}>
+          <Box sx={{ width: "100%", maxWidth: "calc(380rem / 15)" }}>
             {!isClientConfigured ? (
               <Stack spacing={3}>
                 {/* No explanatory paragraph. The field is labelled, the button
                     says Continue, and that is the whole task. Whether the code
                     is remembered afterwards is our problem, not the user's. */}
-                <Typography sx={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.03em", lineHeight: 1.2 }}>
+                <Typography sx={{ fontSize: "calc(26rem / 15)", fontWeight: 700, letterSpacing: "-0.03em", lineHeight: 1.2 }}>
                   Which company?
                 </Typography>
 
@@ -242,10 +242,10 @@ export default function Login() {
                   }}
                 >
                   <Stack spacing={0} sx={{ minWidth: 0 }}>
-                    <Typography sx={{ fontSize: 10.5, fontWeight: 700, letterSpacing: "0.08em", color: "text.secondary" }}>
+                    <Typography sx={{ fontSize: "calc(10.5rem / 15)", fontWeight: 700, letterSpacing: "0.08em", color: "text.secondary" }}>
                       SIGNING IN TO
                     </Typography>
-                    <Typography noWrap sx={{ fontSize: 14, fontWeight: 700, letterSpacing: "-0.01em" }}>
+                    <Typography noWrap sx={{ fontSize: "calc(14rem / 15)", fontWeight: 700, letterSpacing: "-0.01em" }}>
                       {companyName ?? boundCode ?? "this company"}
                     </Typography>
                   </Stack>
@@ -260,7 +260,7 @@ export default function Login() {
                   </Button>
                 </Stack>
 
-                <Typography sx={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.03em", lineHeight: 1.2 }}>
+                <Typography sx={{ fontSize: "calc(26rem / 15)", fontWeight: 700, letterSpacing: "-0.03em", lineHeight: 1.2 }}>
                   Sign in
                 </Typography>
 
@@ -346,7 +346,7 @@ export default function Login() {
                         component="a"
                         href="#"
                         sx={{
-                          fontSize: 13,
+                          fontSize: "calc(13rem / 15)",
                           fontWeight: 600,
                           color: "primary.main",
                           textDecoration: "none",

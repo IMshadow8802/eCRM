@@ -32,7 +32,7 @@ export default function NoAccess() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: 32,
+        padding: "calc(32rem / 15)",
         minHeight: "60vh",
       }}
       data-testid="no-access"

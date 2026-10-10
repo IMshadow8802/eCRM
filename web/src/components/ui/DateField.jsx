@@ -7,6 +7,7 @@ import dayjs from "dayjs";
 import { Calendar } from "lucide-react";
 
 import { zIndex as zIndexTokens } from "../../styles/tokens";
+import { rem } from "../../utils/rem";
 
 const HEIGHT = { sm: 32, md: 40, lg: 48 };
 
@@ -60,7 +61,7 @@ const DateField = forwardRef(function DateField(
         display: "inline-flex",
         flexDirection: "column",
         width: fullWidth ? "100%" : "auto",
-        gap: 6,
+        gap: "calc(6rem / 15)",
         fontFamily: p.fontFamilies.sans,
       }}
     >
@@ -68,7 +69,7 @@ const DateField = forwardRef(function DateField(
         <label
           htmlFor={id}
           style={{
-            fontSize: 13,
+            fontSize: "calc(13rem / 15)",
             fontWeight: 500,
             color: p.text.secondary,
             letterSpacing: "0.01em",
@@ -76,7 +77,7 @@ const DateField = forwardRef(function DateField(
         >
           {label}
           {required && (
-            <span style={{ color: p.error.main, marginLeft: 4 }}>*</span>
+            <span style={{ color: p.error.main, marginLeft: "calc(4rem / 15)" }}>*</span>
           )}
         </label>
       )}
@@ -119,8 +120,8 @@ const DateField = forwardRef(function DateField(
                 "& .MuiPickersInputBase-root.MuiPickersInputBase-root": {
                   borderRadius: `${theme.radii.md}px`,
                   backgroundColor: p.surface.card,
-                  minHeight: inputHeight,
-                  height: inputHeight,
+                  minHeight: rem(inputHeight),
+                  height: rem(inputHeight),
                   // Set on the root so the section spans inherit it — they carry
                   // the visible text, and each one is its own element.
                   //
@@ -129,13 +130,13 @@ const DateField = forwardRef(function DateField(
                   // 0.9333rem — 14/15 of the browser root, not of ours). Whose
                   // rule lands then depends on stylesheet order, which is not
                   // something a design-system primitive should be gambling on.
-                  fontSize: `${inputFontSize}px !important`,
+                  fontSize: `${rem(inputFontSize)} !important`,
                   fontWeight: 500,
                 },
                 "& .MuiPickersInputBase-sectionsContainer": {
                   paddingTop: 0,
                   paddingBottom: 0,
-                  height: inputHeight - 2,
+                  height: rem(inputHeight - 2),
                   boxSizing: "border-box",
                   display: "flex",
                   alignItems: "center",
@@ -174,7 +175,7 @@ const DateField = forwardRef(function DateField(
         <span
           id={helperId}
           style={{
-            fontSize: 12,
+            fontSize: "calc(12rem / 15)",
             fontWeight: 500,
             color: hasError ? p.error.main : p.text.tertiary,
             lineHeight: 1.4,

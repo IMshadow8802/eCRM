@@ -45,8 +45,8 @@ export function StatisticsCard({
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 10,
-          marginBottom: 14,
+          gap: "calc(10rem / 15)",
+          marginBottom: "calc(14rem / 15)",
         }}
       >
         <span
@@ -54,8 +54,8 @@ export function StatisticsCard({
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
-            width: 32,
-            height: 32,
+            width: "calc(32rem / 15)",
+            height: "calc(32rem / 15)",
             flexShrink: 0,
             borderRadius: theme.radii.md,
             backgroundColor: gradient
@@ -68,7 +68,7 @@ export function StatisticsCard({
         </span>
         <span
           style={{
-            fontSize: 13,
+            fontSize: "calc(13rem / 15)",
             fontWeight: 500,
             color: gradient ? "rgba(255,255,255,0.88)" : p.text.secondary,
             lineHeight: 1.2,
@@ -93,7 +93,7 @@ export function StatisticsCard({
           // A money KPI like ₹45,23,180.00 is 13 tabular digits — wider than
           // a two-up tile on a phone, and one unbreakable "word", so it spilled
           // into the neighbouring card. Let it shrink, then break.
-          fontSize: "clamp(22px, 6vw, 30px)",
+          fontSize: "clamp(calc(22rem / 15), 6vw, calc(30rem / 15))",
           fontWeight: 700,
           color: gradient ? "#FFFFFF" : p.text.primary,
           lineHeight: 1.1,
@@ -110,8 +110,8 @@ export function StatisticsCard({
           style={{
             display: "flex",
             alignItems: "baseline",
-            gap: 6,
-            marginTop: 10,
+            gap: "calc(6rem / 15)",
+            marginTop: "calc(10rem / 15)",
           }}
         >
           {trend && (
@@ -119,8 +119,8 @@ export function StatisticsCard({
               style={{
                 display: "inline-flex",
                 alignItems: "center",
-                gap: 4,
-                fontSize: 12,
+                gap: "calc(4rem / 15)",
+                fontSize: "calc(12rem / 15)",
                 fontWeight: 600,
                 color: gradient
                   ? "#FFFFFF"
@@ -144,7 +144,7 @@ export function StatisticsCard({
           {footer && (
             <span
               style={{
-                fontSize: 12,
+                fontSize: "calc(12rem / 15)",
                 fontWeight: 500,
                 color: gradient ? "rgba(255,255,255,0.85)" : p.text.secondary,
               }}

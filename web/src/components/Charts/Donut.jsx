@@ -1,4 +1,5 @@
 import { useTheme } from "@mui/material/styles";
+import useUiScale from "../../hooks/useUiScale";
 import { Box } from "@mui/material";
 import SampleBadge from "./SampleBadge";
 import {
@@ -24,6 +25,7 @@ const FALLBACK = [
 
 export default function Donut({ data, height = 240, variant = "donut" }) {
   const theme = useTheme();
+  const k = useUiScale();
   const p = theme.tokens;
   const hasData = Array.isArray(data) && data.length > 0;
   const rows = hasData ? data : FALLBACK;
@@ -40,7 +42,7 @@ export default function Donut({ data, height = 240, variant = "donut" }) {
   return (
     <Box sx={{ position: "relative" }}>
       {!hasData && <SampleBadge />}
-      <ResponsiveContainer width="100%" height={height}>
+      <ResponsiveContainer width="100%" height={height * k}>
       <RechartsPie>
         <Pie
           data={rows}
@@ -70,9 +72,9 @@ export default function Donut({ data, height = 240, variant = "donut" }) {
         />
         <Legend
           verticalAlign="bottom"
-          height={24}
+          height={24 * k}
           iconType="circle"
-          wrapperStyle={{ fontSize: 11, color: p.text.secondary }}
+          wrapperStyle={{ fontSize: "calc(11rem / 15)", color: p.text.secondary }}
         />
       </RechartsPie>
       </ResponsiveContainer>

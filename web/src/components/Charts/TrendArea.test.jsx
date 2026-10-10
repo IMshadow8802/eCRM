@@ -26,6 +26,20 @@ const DATA = [
 ];
 
 describe("TrendArea", () => {
+  // A fit-to-window table sits under the chart; on a 720p screen a fixed
+  // 240px chart pushed the page into scrolling.
+  it("takes a fifth of a short window, never more than its height", () => {
+    const box = () => document.querySelector(".recharts-responsive-container").style.height;
+    window.innerHeight = 720;
+    const { unmount } = wrap(<TrendArea data={DATA} series={SERIES} />);
+    expect(box()).toBe("144px");
+    unmount();
+    window.innerHeight = 2000;
+    wrap(<TrendArea data={DATA} series={SERIES} />);
+    expect(box()).toBe("240px");
+    window.innerHeight = 768; // jsdom default, for the tests below
+  });
+
   it("renders one legend entry per series, in order", () => {
     wrap(<TrendArea data={DATA} series={SERIES} />);
     expect(screen.getByTestId("trend-area-legend-Created")).toHaveTextContent("Created");

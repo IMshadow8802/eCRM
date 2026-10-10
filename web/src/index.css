@@ -132,9 +132,76 @@
    Base layer
    ============================================================ */
 @layer base {
+  /* The whole UI scales from this one line. The design is drawn at a 15px
+     root (every rem in the app is px / 15); 15px at 1920 wide, 14px floor
+     (reached at ~1700 and below), 18px at 2560, 24px at 3840. Phones keep
+     15px: a narrower root there only makes text smaller, not the page fit. */
   html {
-    font-size: 15px;
+    font-size: clamp(14px, calc(6px + 0.46875vw), 24px);
   }
+  @media (max-width: 767.98px) {
+    html { font-size: 15px; }
+  }
+
+  /* lucide draws `size` as fixed width/height attributes; CSS beats a
+     presentation attribute, so every icon scales with the root too. */
+  svg.lucide[width="8"] { width: calc(8rem / 15); height: calc(8rem / 15); }
+  svg.lucide[width="9"] { width: calc(9rem / 15); height: calc(9rem / 15); }
+  svg.lucide[width="10"] { width: calc(10rem / 15); height: calc(10rem / 15); }
+  svg.lucide[width="11"] { width: calc(11rem / 15); height: calc(11rem / 15); }
+  svg.lucide[width="12"] { width: calc(12rem / 15); height: calc(12rem / 15); }
+  svg.lucide[width="13"] { width: calc(13rem / 15); height: calc(13rem / 15); }
+  svg.lucide[width="14"] { width: calc(14rem / 15); height: calc(14rem / 15); }
+  svg.lucide[width="15"] { width: calc(15rem / 15); height: calc(15rem / 15); }
+  svg.lucide[width="16"] { width: calc(16rem / 15); height: calc(16rem / 15); }
+  svg.lucide[width="17"] { width: calc(17rem / 15); height: calc(17rem / 15); }
+  svg.lucide[width="18"] { width: calc(18rem / 15); height: calc(18rem / 15); }
+  svg.lucide[width="19"] { width: calc(19rem / 15); height: calc(19rem / 15); }
+  svg.lucide[width="20"] { width: calc(20rem / 15); height: calc(20rem / 15); }
+  svg.lucide[width="21"] { width: calc(21rem / 15); height: calc(21rem / 15); }
+  svg.lucide[width="22"] { width: calc(22rem / 15); height: calc(22rem / 15); }
+  svg.lucide[width="23"] { width: calc(23rem / 15); height: calc(23rem / 15); }
+  svg.lucide[width="24"] { width: calc(24rem / 15); height: calc(24rem / 15); }
+  svg.lucide[width="25"] { width: calc(25rem / 15); height: calc(25rem / 15); }
+  svg.lucide[width="26"] { width: calc(26rem / 15); height: calc(26rem / 15); }
+  svg.lucide[width="27"] { width: calc(27rem / 15); height: calc(27rem / 15); }
+  svg.lucide[width="28"] { width: calc(28rem / 15); height: calc(28rem / 15); }
+  svg.lucide[width="29"] { width: calc(29rem / 15); height: calc(29rem / 15); }
+  svg.lucide[width="30"] { width: calc(30rem / 15); height: calc(30rem / 15); }
+  svg.lucide[width="31"] { width: calc(31rem / 15); height: calc(31rem / 15); }
+  svg.lucide[width="32"] { width: calc(32rem / 15); height: calc(32rem / 15); }
+  svg.lucide[width="33"] { width: calc(33rem / 15); height: calc(33rem / 15); }
+  svg.lucide[width="34"] { width: calc(34rem / 15); height: calc(34rem / 15); }
+  svg.lucide[width="35"] { width: calc(35rem / 15); height: calc(35rem / 15); }
+  svg.lucide[width="36"] { width: calc(36rem / 15); height: calc(36rem / 15); }
+  svg.lucide[width="37"] { width: calc(37rem / 15); height: calc(37rem / 15); }
+  svg.lucide[width="38"] { width: calc(38rem / 15); height: calc(38rem / 15); }
+  svg.lucide[width="39"] { width: calc(39rem / 15); height: calc(39rem / 15); }
+  svg.lucide[width="40"] { width: calc(40rem / 15); height: calc(40rem / 15); }
+  svg.lucide[width="41"] { width: calc(41rem / 15); height: calc(41rem / 15); }
+  svg.lucide[width="42"] { width: calc(42rem / 15); height: calc(42rem / 15); }
+  svg.lucide[width="43"] { width: calc(43rem / 15); height: calc(43rem / 15); }
+  svg.lucide[width="44"] { width: calc(44rem / 15); height: calc(44rem / 15); }
+  svg.lucide[width="45"] { width: calc(45rem / 15); height: calc(45rem / 15); }
+  svg.lucide[width="46"] { width: calc(46rem / 15); height: calc(46rem / 15); }
+  svg.lucide[width="47"] { width: calc(47rem / 15); height: calc(47rem / 15); }
+  svg.lucide[width="48"] { width: calc(48rem / 15); height: calc(48rem / 15); }
+  svg.lucide[width="49"] { width: calc(49rem / 15); height: calc(49rem / 15); }
+  svg.lucide[width="50"] { width: calc(50rem / 15); height: calc(50rem / 15); }
+  svg.lucide[width="51"] { width: calc(51rem / 15); height: calc(51rem / 15); }
+  svg.lucide[width="52"] { width: calc(52rem / 15); height: calc(52rem / 15); }
+  svg.lucide[width="53"] { width: calc(53rem / 15); height: calc(53rem / 15); }
+  svg.lucide[width="54"] { width: calc(54rem / 15); height: calc(54rem / 15); }
+  svg.lucide[width="55"] { width: calc(55rem / 15); height: calc(55rem / 15); }
+  svg.lucide[width="56"] { width: calc(56rem / 15); height: calc(56rem / 15); }
+  svg.lucide[width="57"] { width: calc(57rem / 15); height: calc(57rem / 15); }
+  svg.lucide[width="58"] { width: calc(58rem / 15); height: calc(58rem / 15); }
+  svg.lucide[width="59"] { width: calc(59rem / 15); height: calc(59rem / 15); }
+  svg.lucide[width="60"] { width: calc(60rem / 15); height: calc(60rem / 15); }
+  svg.lucide[width="61"] { width: calc(61rem / 15); height: calc(61rem / 15); }
+  svg.lucide[width="62"] { width: calc(62rem / 15); height: calc(62rem / 15); }
+  svg.lucide[width="63"] { width: calc(63rem / 15); height: calc(63rem / 15); }
+  svg.lucide[width="64"] { width: calc(64rem / 15); height: calc(64rem / 15); }
 
   body {
     @apply font-sans text-base text-surface-900 bg-surface-50 antialiased;
@@ -276,8 +343,8 @@
    second and keeps today's behaviour. This cannot live in the inline style —
    a JS object keeps only the last of two identical keys. */
 .ui-modal-dialog {
-  max-height: calc(100vh - 48px);
-  max-height: calc(100dvh - 48px);
+  max-height: calc(100vh - calc(48rem / 15));
+  max-height: calc(100dvh - calc(48rem / 15));
 }
 
 /* ui/Tabs scrolls horizontally so a long, DB-driven tab list is reachable on

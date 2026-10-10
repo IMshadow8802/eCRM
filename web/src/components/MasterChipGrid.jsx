@@ -121,7 +121,7 @@ const MasterChipGrid = ({
                 ),
               },
             }}
-            sx={{ minWidth: { xs: 0, sm: 260 }, flex: { xs: "1 1 100%", sm: "0 1 auto" } }}
+            sx={{ minWidth: { xs: 0, sm: "calc(260rem / 15)" }, flex: { xs: "1 1 100%", sm: "0 1 auto" } }}
           />
           <Chip
             size="small"
@@ -163,7 +163,7 @@ const MasterChipGrid = ({
           sx={{
             display: "grid",
             gap: 1.5,
-            gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+            gridTemplateColumns: "repeat(auto-fill, minmax(calc(220rem / 15), 1fr))",
           }}
           data-testid="master-grid-loading"
         >
@@ -182,7 +182,7 @@ const MasterChipGrid = ({
           }}
           data-testid="master-grid-empty"
         >
-          <InboxRounded sx={{ fontSize: 40, opacity: 0.5, mb: 1 }} />
+          <InboxRounded sx={{ fontSize: "calc(40rem / 15)", opacity: 0.5, mb: 1 }} />
           <Typography variant="body1">{emptyLabel}</Typography>
         </Box>
       ) : (
@@ -190,7 +190,7 @@ const MasterChipGrid = ({
           sx={{
             display: "grid",
             gap: 1.5,
-            gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+            gridTemplateColumns: "repeat(auto-fill, minmax(calc(220rem / 15), 1fr))",
           }}
           data-testid="master-grid-items"
         >
@@ -213,7 +213,7 @@ const MasterChipGrid = ({
                   transition: "all 180ms",
                   "&:hover": {
                     borderColor: "primary.main",
-                    boxShadow: "0 6px 16px rgba(63, 79, 175, 0.12)",
+                    boxShadow: "0 calc(6rem / 15) calc(16rem / 15) rgba(63, 79, 175, 0.12)",
                     "& .master-tile-actions": { opacity: 1 },
                   },
                 }}
@@ -227,8 +227,8 @@ const MasterChipGrid = ({
                   }}>
                     <Box
                       sx={{
-                        width: 40,
-                        height: 40,
+                        width: "calc(40rem / 15)",
+                        height: "calc(40rem / 15)",
                         borderRadius: 1.5,
                         background: `linear-gradient(135deg, ${color}, ${color}cc)`,
                         color: "common.white",
@@ -270,8 +270,8 @@ const MasterChipGrid = ({
                   className="master-tile-actions"
                   sx={{
                     position: "absolute",
-                    top: 6,
-                    right: 6,
+                    top: "calc(6rem / 15)",
+                    right: "calc(6rem / 15)",
                     display: "flex",
                     gap: 0.25,
                     opacity: { xs: 1, md: 0 },

@@ -1,4 +1,5 @@
 import { useTheme } from "@mui/material/styles";
+import useUiScale, { useViewportHeight } from "../../hooks/useUiScale";
 import { Box, Typography } from "@mui/material";
 import dayjs from "dayjs";
 import {
@@ -27,10 +28,15 @@ export default function TrendArea({
   "data-testid": testId = "trend-area",
 }) {
   const theme = useTheme();
+  const k = useUiScale();
+  const vh = useViewportHeight();
+  // A fifth of the window, between 120 and `height` design px: short screens
+  // keep room for the table under the chart.
+  const chartHeight = Math.round(Math.min(height * k, Math.max(120 * k, vh * 0.2)));
   const p = theme.tokens;
   const tone = (t) => (p[t] ?? p.primary).main;
   const axis = {
-    tick: { fill: p.text.tertiary, fontSize: 11 },
+    tick: { fill: p.text.tertiary, fontSize: 11 * k },
     stroke: p.border.default,
     tickLine: false,
     axisLine: false,
@@ -44,7 +50,7 @@ export default function TrendArea({
         {series.map((s) => (
           <Box key={s.key} sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
             <Box
-              sx={{ width: 10, height: 10, borderRadius: 999, backgroundColor: tone(s.tone) }}
+              sx={{ width: "calc(10rem / 15)", height: "calc(10rem / 15)", borderRadius: 999, backgroundColor: tone(s.tone) }}
             />
             <Typography
               sx={{ fontSize: "0.7333rem", color: "text.secondary" }}
@@ -55,8 +61,8 @@ export default function TrendArea({
           </Box>
         ))}
       </Box>
-      <ResponsiveContainer width="100%" height={height}>
-        <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+      <ResponsiveContainer width="100%" height={chartHeight}>
+        <AreaChart data={data} margin={{ top: 8 * k, right: 8 * k, left: 0, bottom: 0 }}>
           <defs>
             {series.map((s) => (
               <linearGradient key={s.key} id={`${testId}-grad-${s.key}`} x1="0" y1="0" x2="0" y2="1">
@@ -67,7 +73,7 @@ export default function TrendArea({
           </defs>
           <CartesianGrid stroke={p.border.subtle} strokeDasharray="4 4" vertical={false} />
           <XAxis dataKey={xKey} tickFormatter={fmtX} {...axis} />
-          <YAxis {...axis} width={40} allowDecimals={false} />
+          <YAxis {...axis} width={40 * k} allowDecimals={false} />
           <Tooltip
             labelFormatter={fmtX}
             contentStyle={{

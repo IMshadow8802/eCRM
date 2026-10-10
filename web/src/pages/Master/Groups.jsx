@@ -266,7 +266,7 @@ const Groups = () => {
         {/* Left: groups list */}
         <Box
           sx={{
-            width: { xs: "100%", sm: 280 },
+            width: { xs: "100%", sm: "calc(280rem / 15)" },
             flexShrink: 0,
             border: `1px solid ${p.border.default}`,
             borderRadius: `${theme.radii.lg}px`,
@@ -297,7 +297,7 @@ const Groups = () => {
               }
             />
           ) : groups.length === 0 ? (
-            <Box sx={{ p: 2, fontSize: 13, color: p.text.tertiary }}>No roles yet.</Box>
+            <Box sx={{ p: 2, fontSize: "calc(13rem / 15)", color: p.text.tertiary }}>No roles yet.</Box>
           ) : (
             groups.map((g) => {
               const active = g.Id === selectedGroupId;
@@ -319,11 +319,11 @@ const Groups = () => {
                   }}
                 >
                   <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, color: p.text.primary, fontSize: 14 }}>
+                    <div style={{ fontWeight: 600, color: p.text.primary, fontSize: "calc(14rem / 15)" }}>
                       {g.Name}
                     </div>
                     {g.Description && (
-                      <div style={{ fontSize: 12, color: p.text.tertiary }}>{g.Description}</div>
+                      <div style={{ fontSize: "calc(12rem / 15)", color: p.text.tertiary }}>{g.Description}</div>
                     )}
                   </Box>
                   <IconButton
@@ -374,10 +374,10 @@ const Groups = () => {
                 }}
               >
                 <Box>
-                  <div style={{ fontWeight: 700, fontSize: 16, color: p.text.primary }}>
+                  <div style={{ fontWeight: 700, fontSize: "calc(16rem / 15)", color: p.text.primary }}>
                     {selectedGroup.Name} — Permissions
                   </div>
-                  <div style={{ fontSize: 12, color: p.text.tertiary }}>
+                  <div style={{ fontSize: "calc(12rem / 15)", color: p.text.tertiary }}>
                     Changes apply on the user's next action.
                   </div>
                 </Box>
@@ -403,7 +403,7 @@ const Groups = () => {
                   }
                 />
               ) : !ready ? (
-                <Box sx={{ p: 2, fontSize: 13, color: p.text.tertiary }}>Loading permissions…</Box>
+                <Box sx={{ p: 2, fontSize: "calc(13rem / 15)", color: p.text.tertiary }}>Loading permissions…</Box>
               ) : roleIsAdmin ? (
                 <EmptyState
                   title="Administrators can do everything; there is nothing to set."
@@ -413,21 +413,21 @@ const Groups = () => {
                   <Box sx={{ overflowX: "auto", border: `1px solid ${p.border.default}`, borderRadius: `${theme.radii.lg}px` }}>
                     {/* A grid of a module name, four checkboxes and a reach select
                         cannot usefully shrink; give it a floor so the pane scrolls. */}
-                    <table style={{ width: "100%", minWidth: 760, borderCollapse: "collapse", fontSize: 14 }}>
+                    <table style={{ width: "100%", minWidth: "calc(760rem / 15)", borderCollapse: "collapse", fontSize: "calc(14rem / 15)" }}>
                       <thead>
                         <tr style={{ backgroundColor: p.surface.subtle }}>
-                          <th style={{ textAlign: "left", padding: "10px 14px", color: p.text.secondary }}>
+                          <th style={{ textAlign: "left", padding: "calc(10rem / 15) calc(14rem / 15)", color: p.text.secondary }}>
                             Module
                           </th>
                           {PERMS.map((perm) => (
                             <th
                               key={perm.field}
-                              style={{ padding: "10px 14px", width: 72, color: p.text.secondary }}
+                              style={{ padding: "calc(10rem / 15) calc(14rem / 15)", width: "calc(72rem / 15)", color: p.text.secondary }}
                             >
                               {perm.label}
                             </th>
                           ))}
-                          <th style={{ textAlign: "left", padding: "10px 14px", width: 240, color: p.text.secondary }}>
+                          <th style={{ textAlign: "left", padding: "calc(10rem / 15) calc(14rem / 15)", width: "calc(240rem / 15)", color: p.text.secondary }}>
                             Reach
                           </th>
                         </tr>
@@ -441,7 +441,7 @@ const Groups = () => {
                               data-testid={`module-row-${key}`}
                               style={{ borderTop: `1px solid ${p.border.subtle}` }}
                             >
-                              <td style={{ padding: "8px 14px", fontWeight: 500, color: p.text.primary }}>
+                              <td style={{ padding: "calc(8rem / 15) calc(14rem / 15)", fontWeight: 500, color: p.text.primary }}>
                                 <Tooltip title={ROW_HINT[key]}>
                                   <span tabIndex={ROW_HINT[key] ? 0 : undefined}>
                                     {reach && row.CanView ? <label htmlFor={`reach-${key}`}>{label}</label> : label}
@@ -449,7 +449,7 @@ const Groups = () => {
                                 </Tooltip>
                               </td>
                               {PERMS.map((perm) => (
-                                <td key={perm.field} style={{ textAlign: "center", padding: "8px 14px" }}>
+                                <td key={perm.field} style={{ textAlign: "center", padding: "calc(8rem / 15) calc(14rem / 15)" }}>
                                   <Checkbox
                                     checked={!!row[perm.field]}
                                     onChange={() => toggleCell(key, perm.field)}
@@ -458,7 +458,7 @@ const Groups = () => {
                                   />
                                 </td>
                               ))}
-                              <td style={{ padding: "6px 14px" }}>
+                              <td style={{ padding: "calc(6rem / 15) calc(14rem / 15)" }}>
                                 {/* No View, no reach: an empty select read as a broken control. */}
                                 {reach && !row.CanView && (
                                   <span data-testid={`reach-${key}-none`} style={{ color: p.text.tertiary }}>—</span>

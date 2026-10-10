@@ -25,7 +25,7 @@ describe("StatisticsCard", () => {
     wrap(<StatisticsCard title="Open value" value="₹45,23,180.00" icon={<Users />} />);
     const value = screen.getByText("₹45,23,180.00");
     expect(value.style.overflowWrap).toBe("anywhere");
-    expect(value.style.fontSize).toBe("clamp(22px, 6vw, 30px)");
+    expect(value.style.fontSize).toMatch(/^clamp\([\d.]+rem, 6vw, 2rem\)$/);
   });
 
   it("keeps the icon at its size and makes the label absorb the squeeze", () => {
@@ -34,7 +34,7 @@ describe("StatisticsCard", () => {
     );
     const iconSlot = container.querySelector("span");
     expect(iconSlot.style.flexShrink).toBe("0");
-    expect(iconSlot.style.width).toBe("32px");
+    expect(iconSlot.style.width).toBe("calc(2.13333rem)");
 
     const label = screen.getByText("TODAY'S FOLLOW-UPS");
     expect(label.style.minWidth).toBe("0");

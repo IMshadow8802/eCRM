@@ -122,7 +122,7 @@ const Sidebar = ({ collapsed, onToggleCollapsed, mobileOpen, onMobileClose }) =>
           my: 0.25,
           px: effectiveCollapsed ? 0 : 1.5,
           py: 1,
-          minHeight: 40,
+          minHeight: "calc(40rem / 15)",
           justifyContent: effectiveCollapsed ? "center" : "flex-start",
           borderRadius: 1.5,
           fontSize: asChild ? "0.8667rem" : "0.9333rem",
@@ -218,7 +218,7 @@ const Sidebar = ({ collapsed, onToggleCollapsed, mobileOpen, onMobileClose }) =>
           alignItems: "center",
           gap: 1.25,
           justifyContent: effectiveCollapsed ? "center" : "space-between",
-          minHeight: 64,
+          minHeight: "calc(64rem / 15)",
         }}
       >
         <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
@@ -228,13 +228,13 @@ const Sidebar = ({ collapsed, onToggleCollapsed, mobileOpen, onMobileClose }) =>
                 data-testid="sidebar-toggle"
                 onClick={onToggleCollapsed}
                 sx={{
-                  width: 40,
-                  height: 40,
+                  width: "calc(40rem / 15)",
+                  height: "calc(40rem / 15)",
                   borderRadius: 1.5,
                   background: (t) =>
                     `linear-gradient(135deg, ${t.palette.primary.main} 0%, ${t.palette.primary.dark} 100%)`,
                   color: "common.white",
-                  boxShadow: "0 4px 10px rgba(63, 79, 175, 0.35)",
+                  boxShadow: "0 calc(4rem / 15) calc(10rem / 15) rgba(63, 79, 175, 0.35)",
                   "&:hover": {
                     background: (t) =>
                       `linear-gradient(135deg, ${t.palette.primary.light} 0%, ${t.palette.primary.main} 100%)`,
@@ -247,8 +247,8 @@ const Sidebar = ({ collapsed, onToggleCollapsed, mobileOpen, onMobileClose }) =>
           ) : (
             <Box
               sx={{
-                width: 40,
-                height: 40,
+                width: "calc(40rem / 15)",
+                height: "calc(40rem / 15)",
                 borderRadius: 1.5,
                 background: (t) =>
                   `linear-gradient(135deg, ${t.palette.primary.main} 0%, ${t.palette.primary.dark} 100%)`,
@@ -256,7 +256,7 @@ const Sidebar = ({ collapsed, onToggleCollapsed, mobileOpen, onMobileClose }) =>
                 alignItems: "center",
                 justifyContent: "center",
                 flexShrink: 0,
-                boxShadow: "0 4px 10px rgba(63, 79, 175, 0.35)",
+                boxShadow: "0 calc(4rem / 15) calc(10rem / 15) rgba(63, 79, 175, 0.35)",
               }}
             >
               <BusinessRounded sx={{ color: "common.white" }} fontSize="small" />
@@ -323,7 +323,7 @@ const Sidebar = ({ collapsed, onToggleCollapsed, mobileOpen, onMobileClose }) =>
         paper: {
           sx: {
             ml: 0.5,
-            minWidth: 220,
+            minWidth: "calc(220rem / 15)",
             boxShadow: 3,
             border: "1px solid",
             borderColor: "divider",
@@ -359,7 +359,7 @@ const Sidebar = ({ collapsed, onToggleCollapsed, mobileOpen, onMobileClose }) =>
             sx={{ fontSize: "0.8667rem", fontWeight: 500, py: 0.875 }}
           >
             {ChildIcon && (
-              <ListItemIcon sx={{ minWidth: 32 }}>
+              <ListItemIcon sx={{ minWidth: "calc(32rem / 15)" }}>
                 <ChildIcon fontSize="small" />
               </ListItemIcon>
             )}

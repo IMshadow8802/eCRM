@@ -106,16 +106,16 @@ export const useDeleteMutation = ({
       variant: "warning",
       persist: true,
       action: (key) => (
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: 'calc(8rem / 15)' }}>
           <button
             style={{
               backgroundColor: '#1976d2',
               color: 'white',
               border: 'none',
-              borderRadius: '4px',
-              padding: '4px 12px',
+              borderRadius: 'calc(4rem / 15)',
+              padding: 'calc(4rem / 15) calc(12rem / 15)',
               cursor: 'pointer',
-              fontSize: '14px'
+              fontSize: 'calc(14rem / 15)'
             }}
             onClick={() => {
               closeSnackbar(key);
@@ -135,10 +135,10 @@ export const useDeleteMutation = ({
               backgroundColor: '#f44336',
               color: 'white',
               border: 'none',
-              borderRadius: '4px',
-              padding: '4px 12px',
+              borderRadius: 'calc(4rem / 15)',
+              padding: 'calc(4rem / 15) calc(12rem / 15)',
               cursor: 'pointer',
-              fontSize: '14px'
+              fontSize: 'calc(14rem / 15)'
             }}
             onClick={() => closeSnackbar(key)}
           >

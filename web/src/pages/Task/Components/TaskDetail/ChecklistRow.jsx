@@ -21,8 +21,8 @@ export default function ChecklistRow({
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 10,
-        padding: "6px 8px",
+        gap: "calc(10rem / 15)",
+        padding: "calc(6rem / 15) calc(8rem / 15)",
         borderRadius: 8,
         opacity: pending ? 0.6 : 1,
       }}
@@ -48,7 +48,7 @@ export default function ChecklistRow({
       <span
         style={{
           flex: 1,
-          fontSize: 14,
+          fontSize: "calc(14rem / 15)",
           color: "var(--color-surface-700)",
           textDecoration: item.IsCompleted ? "line-through" : "none",
           opacity: item.IsCompleted ? 0.6 : 1,

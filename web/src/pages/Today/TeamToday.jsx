@@ -47,7 +47,7 @@ export function StatusCell({ status }) {
   const mark = markText(status);
   const markOnly = status.code === "leave" || status.code === "on_duty";
   return (
-    <span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+    <span style={{ display: "inline-flex", gap: "calc(6rem / 15)", flexWrap: "wrap", alignItems: "center" }}>
       {!markOnly && <Tip title={STATUS_HINT[status.code]}><span>{status.label}</span></Tip>}
       {mark && (
         <Tip title={MARK_HINT[status.code] ?? MARK_HINT.half}>
@@ -86,8 +86,8 @@ export default function TeamToday() {
   const rows = data?.team ?? [];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ maxWidth: 200 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "calc(12rem / 15)" }}>
+      <div style={{ maxWidth: "calc(200rem / 15)" }}>
         <DateField label="Day" value={date} onChange={(v) => v && setDate(v)} data-testid="team-day" />
       </div>
       {!isLoading && rows.length === 0 ? (
@@ -110,7 +110,7 @@ export default function TeamToday() {
               header: "Actions",
               key: "actions",
               cell: (r) => (
-                <span style={{ display: "inline-flex", gap: 6, whiteSpace: "nowrap" }}>
+                <span style={{ display: "inline-flex", gap: "calc(6rem / 15)", whiteSpace: "nowrap" }}>
                   <Tooltip title="Record leave (full or half day) or working away from office (on duty) for this person on the chosen day. Past days are fine.">
                     <span><Button size="sm" variant="outlined" onClick={() => setMark(r)} data-testid={`mark-day-${r.UserId}`}>Leave / on duty</Button></span>
                   </Tooltip>

@@ -210,7 +210,7 @@ const Dashboard = () => {
           // full-width tiles and ~2000px of scroll on a screen with room for
           // six columns.
           gridTemplateColumns: { xs: "1fr", sm: "repeat(6, 1fr)", md: "repeat(12, 1fr)" },
-          gridAutoRows: { xs: "auto", sm: "150px", md: "150px" },
+          gridAutoRows: { xs: "auto", sm: "calc(150rem / 15)", md: "calc(150rem / 15)" },
           gap: 1.5,
         }}
       >

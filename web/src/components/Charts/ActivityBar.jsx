@@ -1,4 +1,5 @@
 import { useTheme } from "@mui/material/styles";
+import useUiScale from "../../hooks/useUiScale";
 import { Box } from "@mui/material";
 import SampleBadge from "./SampleBadge";
 import {
@@ -24,6 +25,7 @@ const FALLBACK = [
 
 export default function ActivityBar({ data, height = 240 }) {
   const theme = useTheme();
+  const k = useUiScale();
   const p = theme.tokens;
   const hasData = Array.isArray(data) && data.length > 0;
   const rows = hasData ? data : FALLBACK;
@@ -31,8 +33,8 @@ export default function ActivityBar({ data, height = 240 }) {
   return (
     <Box sx={{ position: "relative" }}>
       {!hasData && <SampleBadge />}
-      <ResponsiveContainer width="100%" height={height}>
-        <BarChart data={rows} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
+      <ResponsiveContainer width="100%" height={height * k}>
+        <BarChart data={rows} margin={{ top: 6 * k, right: 8 * k, left: 0, bottom: 0 }}>
         <CartesianGrid
           stroke={p.border.subtle}
           strokeDasharray="3 3"
@@ -40,17 +42,17 @@ export default function ActivityBar({ data, height = 240 }) {
         />
         <XAxis
           dataKey="name"
-          tick={{ fill: p.text.tertiary, fontSize: 11 }}
+          tick={{ fill: p.text.tertiary, fontSize: 11 * k }}
           stroke={p.border.default}
           tickLine={false}
           axisLine={false}
         />
         <YAxis
-          tick={{ fill: p.text.tertiary, fontSize: 11 }}
+          tick={{ fill: p.text.tertiary, fontSize: 11 * k }}
           stroke={p.border.default}
           tickLine={false}
           axisLine={false}
-          width={32}
+          width={32 * k}
         />
         <Tooltip
           contentStyle={{
@@ -64,11 +66,11 @@ export default function ActivityBar({ data, height = 240 }) {
         />
         <Legend
           iconType="circle"
-          wrapperStyle={{ fontSize: 11, color: p.text.secondary }}
+          wrapperStyle={{ fontSize: "calc(11rem / 15)", color: p.text.secondary }}
         />
-        <Bar dataKey="leads" name="Leads" fill={p.primary.main} radius={[8, 8, 0, 0]} />
-        <Bar dataKey="calls" name="Calls" fill={p.accent.main} radius={[8, 8, 0, 0]} />
-        <Bar dataKey="tickets" name="Tickets" fill={p.warning.main} radius={[8, 8, 0, 0]} />
+        <Bar dataKey="leads" name="Leads" fill={p.primary.main} radius={[8 * k, 8 * k, 0, 0]} />
+        <Bar dataKey="calls" name="Calls" fill={p.accent.main} radius={[8 * k, 8 * k, 0, 0]} />
+        <Bar dataKey="tickets" name="Tickets" fill={p.warning.main} radius={[8 * k, 8 * k, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </Box>

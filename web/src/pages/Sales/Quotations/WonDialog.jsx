@@ -56,11 +56,11 @@ export default function WonDialog({ open, lead, onClose, onWon }) {
   };
 
   const option = (id, labelText, detail) => (
-    <label key={id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: theme.radii.sm, cursor: "pointer",
+    <label key={id} style={{ display: "flex", alignItems: "center", gap: "calc(10rem / 15)", padding: "calc(8rem / 15) calc(10rem / 15)", borderRadius: theme.radii.sm, cursor: "pointer",
       border: `1px solid ${choice === id ? p.primary.main : p.border.default}`, background: choice === id ? p.primary.subtle : p.surface.card }}>
       <input type="radio" name="won-quotation" checked={choice === id} onChange={() => setChoice(id)} aria-label={labelText} />
-      <span style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>{labelText}</span>
-      {detail && <span style={{ fontSize: 13, color: p.text.secondary }}>{detail}</span>}
+      <span style={{ flex: 1, fontSize: "calc(14rem / 15)", fontWeight: 600 }}>{labelText}</span>
+      {detail && <span style={{ fontSize: "calc(13rem / 15)", color: p.text.secondary }}>{detail}</span>}
     </label>
   );
 
@@ -68,10 +68,10 @@ export default function WonDialog({ open, lead, onClose, onWon }) {
     <Modal open={open} onClose={() => !convert.isPending && onClose?.()} size="md" data-testid="won-dialog">
       <Modal.Header title="Mark this lead won" subtitle={lead?.Name} icon={<Trophy size={18} />} onClose={() => !convert.isPending && onClose?.()} />
       <Modal.Body>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "calc(16rem / 15)" }}>
           {needsChoice && (
-            <div role="radiogroup" aria-label="Which quotation did they accept?" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <span style={{ fontSize: 13, fontWeight: 500, color: p.text.secondary }}>Which quotation did they accept?</span>
+            <div role="radiogroup" aria-label="Which quotation did they accept?" style={{ display: "flex", flexDirection: "column", gap: "calc(6rem / 15)" }}>
+              <span style={{ fontSize: "calc(13rem / 15)", fontWeight: 500, color: p.text.secondary }}>Which quotation did they accept?</span>
               {finals.map((q) => option(q.Id, q.QuoteNo, money(q.TaxableTotal)))}
               {option("none", "None — won without a quotation")}
             </div>

@@ -331,7 +331,7 @@ export default function TicketCreateModal({ open, onClose, ticket = null, onSave
               they live on the detail page — one upload surface per record. */}
           {!isEdit && (
             <Box sx={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: 1.25 }} data-testid="ticket-attachments">
-              <Box component="h3" sx={{ m: 0, fontSize: 14, fontWeight: 700 }}>Attachments</Box>
+              <Box component="h3" sx={{ m: 0, fontSize: "calc(14rem / 15)", fontWeight: 700 }}>Attachments</Box>
               <Attachments ref={attachmentsRef} entity="ticket" entityId={null} />
             </Box>
           )}

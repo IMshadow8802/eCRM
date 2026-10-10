@@ -176,6 +176,33 @@ describe("useAppTable fit to window", () => {
   });
 });
 
+describe("useAppTable on a scaled-up screen", () => {
+  // The page's bottom padding is rem; at a 24px root (4K) a fixed 16px gap
+  // left the card 9px past the window and the page scrolled.
+  it("keeps the bottom gap in step with the root font size", async () => {
+    const { default: renderWithProviders } = await import("../../test/renderWithProviders");
+    const { MaterialReactTable } = await import("material-react-table");
+    const rect = (top, bottom) => ({ top, bottom, left: 0, right: 0, width: 0, height: bottom - top });
+    const spy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function () {
+      if (this.classList.contains("MuiTableContainer-root")) return rect(300, 500);
+      if (this.classList.contains("MuiPaper-root")) return rect(250, 556);
+      return rect(0, 0);
+    });
+    window.innerHeight = 1000;
+    document.documentElement.style.fontSize = "24px";
+    function T() {
+      const table = useAppTable({ columns: [{ accessorKey: "a", header: "A" }], data: [{ a: 1 }] });
+      return <MaterialReactTable table={table} />;
+    }
+    renderWithProviders(<T />, { router: false });
+    // 1000 - 300 - 56 - 25.6
+    const css = [...document.querySelectorAll("style")].map((s) => s.textContent).join("");
+    expect(css).toMatch(/max-height:\s*618px/);
+    document.documentElement.style.fontSize = "";
+    spy.mockRestore();
+  });
+});
+
 describe("useAppTable refit when content above changes", () => {
   it("grows the table when something above it shrinks (the page itself never resizes)", async () => {
     const { act } = await import("@testing-library/react");

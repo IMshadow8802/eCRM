@@ -169,7 +169,7 @@ const App = () => {
       <BrowserRouter basename="/prdcrm/">
         <SnackbarProvider
           maxSnack={3}
-          style={{ maxWidth: "400px" }}
+          style={{ maxWidth: "calc(400rem / 15)" }}
           anchorOrigin={{ vertical: "top", horizontal: "center" }}
           dense
           preventDuplicate

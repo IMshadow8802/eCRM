@@ -30,7 +30,7 @@ export default function DeleteTicketModal({ open, onClose, ticketId, ticketNo, o
     <Modal open={open} onClose={onClose} size="sm" data-testid="delete-ticket-modal">
       <Modal.Header title="Delete Ticket" icon={<Trash2 size={18} />} onClose={onClose} />
       <Modal.Body>
-        <p style={{ margin: 0, fontSize: 14 }}>
+        <p style={{ margin: 0, fontSize: "calc(14rem / 15)" }}>
           Delete {ticketNo ? `"${ticketNo}"` : "this ticket"}? This action cannot be undone.
         </p>
       </Modal.Body>

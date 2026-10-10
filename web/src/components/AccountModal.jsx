@@ -30,11 +30,11 @@ const Swatch = ({ colorKey, active, onClick }) => (
     aria-label={colorKey}
     data-testid={`swatch-${colorKey}`}
     style={{
-      width: 24,
-      height: 24,
+      width: "calc(24rem / 15)",
+      height: "calc(24rem / 15)",
       borderRadius: "50%",
       background: colorOf(colorKey),
-      border: active ? "3px solid var(--color-surface-900)" : "2px solid var(--color-surface-0)",
+      border: active ? "calc(3rem / 15) solid var(--color-surface-900)" : "2px solid var(--color-surface-0)",
       boxShadow: "0 0 0 1px var(--color-surface-200)",
       cursor: "pointer",
       padding: 0,
@@ -56,8 +56,8 @@ function AvatarPicker({ value, onChange }) {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "calc(12rem / 15)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "calc(12rem / 15)" }}>
         <Avatar name="You" preset={value} size="xl" data-testid="account-avatar-preview" />
         <Tabs
           value={mode}
@@ -71,7 +71,7 @@ function AvatarPicker({ value, onChange }) {
 
       {/* Color row applies to icon + colored-initials modes. */}
       {mode === "icon" && (
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: "calc(8rem / 15)", flexWrap: "wrap" }}>
           {AVATAR_COLOR_KEYS.map((c) => (
             <Swatch
               key={c}
@@ -87,8 +87,8 @@ function AvatarPicker({ value, onChange }) {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(38px, 1fr))",
-            gap: 8,
+            gridTemplateColumns: "repeat(auto-fill, minmax(calc(38rem / 15), 1fr))",
+            gap: "calc(8rem / 15)",
           }}
         >
           {AVATAR_ICON_KEYS.map((k) => {
@@ -105,7 +105,7 @@ function AvatarPicker({ value, onChange }) {
                   display: "inline-flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  height: 34,
+                  height: "calc(34rem / 15)",
                   borderRadius: 8,
                   cursor: "pointer",
                   color: "#fff",
@@ -122,8 +122,8 @@ function AvatarPicker({ value, onChange }) {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(38px, 1fr))",
-            gap: 8,
+            gridTemplateColumns: "repeat(auto-fill, minmax(calc(38rem / 15), 1fr))",
+            gap: "calc(8rem / 15)",
           }}
         >
           {AVATAR_EMOJIS.map((e) => {
@@ -136,9 +136,9 @@ function AvatarPicker({ value, onChange }) {
                 aria-label={e}
                 data-testid={`emoji-${e}`}
                 style={{
-                  height: 34,
+                  height: "calc(34rem / 15)",
                   borderRadius: 8,
-                  fontSize: 18,
+                  fontSize: "calc(18rem / 15)",
                   cursor: "pointer",
                   background: active ? "var(--color-surface-200)" : "transparent",
                   border: "1px solid var(--color-surface-200)",
@@ -233,9 +233,9 @@ export default function AccountModal({ open, onClose }) {
             { value: "password", label: "Password" },
           ]}
         />
-        <div style={{ marginTop: 16 }}>
+        <div style={{ marginTop: "calc(16rem / 15)" }}>
           {tab === "profile" ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "calc(16rem / 15)" }}>
               <TextInput
                 label="Display name"
                 value={fullName}
@@ -259,14 +259,14 @@ export default function AccountModal({ open, onClose }) {
                 data-testid="account-mobile"
               />
               <div>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
+                <div style={{ fontSize: "calc(13rem / 15)", fontWeight: 600, marginBottom: "calc(8rem / 15)" }}>
                   Avatar
                 </div>
                 <AvatarPicker value={avatar} onChange={setAvatar} />
               </div>
             </div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "calc(16rem / 15)" }}>
               <TextInput
                 label="Current password"
                 type="password"
