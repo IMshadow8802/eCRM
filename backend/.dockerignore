@@ -5,7 +5,7 @@ npm-debug.log
 *.md
 ecosystem.config.js
 .env
-.env.prd
+.env.*
 .env.production
 .env.development
 .env.local
@@ -19,4 +19,4 @@ logs
 .idea
 sql
 uploads
-CRMUploads
+*Uploads

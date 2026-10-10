@@ -70,6 +70,20 @@ services:
     volumes:
       - ./SolarCRMUploads:/app/uploads
 
+  # Test copy of PRD — https://shadowcodes.in/TestCRM  (CompCode TestCRM, DB TestCRM)
+  crm_test:
+    <<: *crm
+    container_name: nexus_crm_test
+    ports:
+      - "5003:5003"
+    environment:
+      <<: *crm-env
+      PORT: 5003
+    env_file:
+      - .env.testcrm
+    volumes:
+      - ./TestCRMUploads:/app/uploads
+
 networks:
   nexus_network:
     driver: bridge
