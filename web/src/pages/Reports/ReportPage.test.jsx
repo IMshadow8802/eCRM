@@ -84,6 +84,25 @@ describe("ReportPage", () => {
     await waitFor(() => expect(cap.body).toMatchObject({ FromDate: "2026-08-01", ToDate: "2026-08-31" }));
   });
 
+  it("labels every control in the filter row (the date field ignores placeholders)", async () => {
+    mockReportEndpoints("/api/reports/funnel", DATA);
+    renderPage("/reports/funnel?preset=custom&from=2026-08-01&to=2026-08-31");
+    await screen.findByTestId("funnel-table");
+    for (const l of ["From", "To", "Date basis", "Branch", "Owner", "Source", "Product"]) expect(screen.getByLabelText(l)).toBeInTheDocument();
+  });
+
+  it("a custom range with To before From says so and does not fetch", async () => {
+    const cap = mockReportEndpoints("/api/reports/funnel", DATA);
+    renderPage("/reports/funnel?preset=custom&from=2026-08-31&to=2026-08-01");
+    expect(await screen.findByRole("alert")).toHaveTextContent("To is before From");
+    await screen.findByTestId("report-BranchId");
+    await new Promise((r) => setTimeout(r, 50));
+    expect(cap.body).toBeUndefined();
+    // regression: no fake report (zero KPIs, "Nothing in this range") under the message
+    expect(screen.queryByTestId("report-kpis")).toBeNull();
+    expect(screen.queryByTestId("funnel-empty")).toBeNull();
+  });
+
   it("narrows on an owner from the assignable roster and on a basis", async () => {
     const cap = mockReportEndpoints("/api/reports/funnel", DATA);
     renderPage();

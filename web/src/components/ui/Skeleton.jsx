@@ -44,8 +44,7 @@ export default function Skeleton({
         width: w,
         height: h,
         borderRadius: radius,
-        backgroundColor:
-          p.mode === "dark" ? "rgba(148,163,184,0.08)" : "rgba(148,163,184,0.18)",
+        backgroundColor: p.surface.track,
         ...style,
       }}
       {...rest}

@@ -1,10 +1,8 @@
 // src/api/presenceQueries.js
-// Today page + sessions (backend routes/presenceRoutes.js, tatRoutes.js).
+// Sessions + presence (backend routes/presenceRoutes.js).
 import { apiClient } from "../utils/axiosConfig";
 
 export const PRESENCE_ENDPOINTS = {
-  fetchToday: "/api/tat/fetchToday",
-  fetchTeamToday: "/api/tat/fetchTeamToday",
   fetchSessions: "/api/presence/fetchSessions",
   endSession: "/api/presence/endSession",
   heartbeat: "/api/presence/heartbeat",

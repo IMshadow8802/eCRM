@@ -25,3 +25,4 @@ export { default as Progress } from "./Progress";
 export { default as PageHeader } from "./PageHeader";
 export { default as SearchInput } from "./SearchInput";
 export { default as FormGrid, FormGridSpan } from "./FormGrid";
+export { default as IconBadge } from "./IconBadge";

@@ -210,7 +210,12 @@ describe("reportController.tat", () => {
     req.access.teamOwners = team;
     return req;
   };
-  const sp = (rs = [[{ Clocks: 2 }], [{ GroupKey: "7", GroupLabel: "Asha" }], [{ Bucket: new Date(2026, 7, 3), Closed: 1 }]]) => {
+  const sp = (rs = [
+    [{ Finished: 3, OnTime: 3, OnTimePct: "100.0", MedianUsedPct: ".0", P90UsedPct: null, OldestOverdueAt: null }],
+    [{ GroupKey: "7", GroupLabel: "Asha", Finished: 3, OnTimePct: null }],
+    [{ Bucket: new Date(2026, 7, 3), Finished: "1", OnTime: 1 }],
+    [{ Finished: 5, OnTime: 4 }],
+  ]) => {
     database.executeStoredProcedure.mockImplementation(async (name) => (name === "sp_FetchCalendarContext"
       ? { recordsets: [[{ UserId: 20, BranchId: 2, CalendarId: null }], [], [], []] }
       : { recordsets: rs }));
@@ -227,9 +232,10 @@ describe("reportController.tat", () => {
     });
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json.mock.calls[0][0].data).toEqual({
-      kpis: { Clocks: 2 }, rows: [{ GroupKey: "7", GroupLabel: "Asha" }], // NVARCHAR key passes through as a string
-      trend: [{ Bucket: "2026-08-03", Closed: 1 }],
-      range: { from: "2026-08-01", to: "2026-08-31", basis: "assigned", groupBy: "person" },
+      kpis: expect.objectContaining({ Finished: 3, OnTimePct: 100, MedianUsedPct: 0, P90UsedPct: null, OldestOverdueAt: null }),
+      rows: [{ GroupKey: "7", GroupLabel: "Asha", Finished: 3, OnTimePct: null }], // NVARCHAR key stays a string; DECIMALs become numbers
+      trend: [{ Bucket: "2026-08-03", Finished: 1, OnTime: 1 }],
+      previous: { Finished: 5, OnTime: 4 },
     });
   });
 
@@ -270,16 +276,83 @@ describe("reportController.tat", () => {
     const res = mockRes();
     await reportController.tat(tatReq({ OwnerId: 99 }, { admin: true }), res);
     expect(tatCall()).toMatchObject({ UserIdsJson: null });
-    expect(res.json.mock.calls[0][0].data).toMatchObject({ kpis: {}, rows: [], trend: [] });
+    const data = res.json.mock.calls[0][0].data;
+    expect(data).toMatchObject({ rows: [], trend: [], previous: { Finished: 0, OnTime: 0 } });
+    expect(data.kpis.Finished).toBe(0);
+    expect(data.kpis.OnTimePct).toBeNull();
   });
 
-  it("400s a DateBasis other than assigned, and an unknown GroupBy, without the DB", async () => {
-    for (const body of [{ DateBasis: "created" }, { GroupBy: "owner" }]) {
+  it("400s a DateBasis other than assigned, and an unknown GroupBy (verdict_by is gone), without the DB", async () => {
+    for (const body of [{ DateBasis: "created" }, { GroupBy: "owner" }, { GroupBy: "verdict_by" }]) {
       const res = mockRes();
       await reportController.tat(tatReq(body), res);
       expect(res.status).toHaveBeenCalledWith(400);
     }
     expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+});
+
+describe("reportController.tatClocks", () => {
+  const req = (body = {}, { admin = false, team = [] } = {}) => {
+    const r = baseReq({ body });
+    r.access = mockAccess({ admin, modules: [["tasks", "v"]] }, 7);
+    r.access.teamOwners = team;
+    return r;
+  };
+  const clocksCall = () => database.executeStoredProcedure.mock.calls.find((c) => c[0] === "sp_RptTatClocks")[1];
+  const stub = (rows = [{ TatId: 1 }]) => database.executeStoredProcedure.mockImplementation(async (name) => (name === "sp_FetchCalendarContext"
+    ? { recordsets: [[], [], [], []] } : { recordsets: [rows] }));
+
+  it("passes Metric, GroupKey and the scoped UserIdsJson, returns clocks", async () => {
+    stub();
+    const res = mockRes();
+    await reportController.tatClocks(req({ FromDate: "2026-08-01", ToDate: "2026-08-31", GroupBy: "priority", GroupKey: "3", Metric: "missed" }), res);
+    expect(clocksCall()).toEqual({
+      CompId: 5, FromDate: "2026-08-01", ToDate: "2026-08-31", GroupBy: "priority", GroupKey: "3", Metric: "missed",
+      BranchId: null, OwnerId: null, UserIdsJson: "[7]",
+    });
+    expect(res.json.mock.calls[0][0].data).toEqual({ clocks: [{ TatId: 1 }] });
+  });
+
+  it("keeps an empty GroupKey as '' and an absent one as null", async () => {
+    stub();
+    await reportController.tatClocks(req({ Metric: "finished", GroupKey: "" }), mockRes());
+    expect(clocksCall().GroupKey).toBe("");
+    database.executeStoredProcedure.mockClear();
+    stub();
+    await reportController.tatClocks(req({ Metric: "finished" }), mockRes());
+    expect(clocksCall().GroupKey).toBeNull();
+  });
+
+  it("an admin sends NULL scope", async () => {
+    stub();
+    await reportController.tatClocks(req({ Metric: "overdue_now" }, { admin: true }), mockRes());
+    expect(clocksCall().UserIdsJson).toBeNull();
+  });
+
+  it("400s a bad or missing Metric, bad GroupBy, bad dates, without the DB", async () => {
+    for (const body of [{ Metric: "nope" }, {}, { Metric: "missed", GroupBy: "owner" }, { Metric: "missed", FromDate: "x" }]) {
+      const res = mockRes();
+      await reportController.tatClocks(req(body), res);
+      expect(res.status).toHaveBeenCalledWith(400);
+    }
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  it("an out-of-scope OwnerId sends [] and answers clocks: [] (never 403)", async () => {
+    stub([]);
+    const res = mockRes();
+    await reportController.tatClocks(req({ Metric: "missed", OwnerId: 99 }), res);
+    expect(clocksCall()).toMatchObject({ OwnerId: 99, UserIdsJson: "[]" });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json.mock.calls[0][0].data).toEqual({ clocks: [] });
+  });
+
+  it("500s when the SP throws", async () => {
+    database.executeStoredProcedure.mockRejectedValue(new Error("boom"));
+    const res = mockRes();
+    await reportController.tatClocks(req({ Metric: "missed", OwnerId: 7 }), res);
+    expect(res.status).toHaveBeenCalledWith(500);
   });
 });
 

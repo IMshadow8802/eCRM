@@ -110,7 +110,8 @@ describe("KanbanCard", () => {
     );
     const card = screen.getByTestId("kanban-card-35");
     expect(card).toHaveAttribute("aria-disabled", "true");
-    expect(card).toHaveStyle({ cursor: "default" });
+    // Not draggable, but it still opens on click, so the cursor says so.
+    expect(card).toHaveStyle({ cursor: "pointer" });
     // dnd-kit drops its listeners when disabled, so a pointer press starts nothing.
     fireEvent.pointerDown(card, { button: 0 });
     expect(card).not.toHaveAttribute("aria-pressed");

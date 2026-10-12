@@ -1,5 +1,5 @@
 import React from "react";
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
@@ -56,14 +56,18 @@ import { ThemeProvider } from "@mui/material/styles";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import TopNav from "./TopNav";
+import useAuthStore from "../stores/useAuthStore";
+import { HeaderSlotContext } from "./ui/headerSlot";
 import { buildTheme } from "../theme";
+import { chrome } from "../styles/tokens";
+import { rem } from "../utils/rem";
 import { useSocketStatus } from "../realtime/SocketProvider";
 
-const renderTopNav = (onOpenMobileSidebar = vi.fn()) =>
+const renderTopNav = (onOpenMobileSidebar = vi.fn(), route = "/dashboard") =>
   render(
     <ThemeProvider theme={buildTheme("light")}>
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <MemoryRouter initialEntries={["/dashboard"]}>
+        <MemoryRouter initialEntries={[route]}>
           <TopNav onOpenMobileSidebar={onOpenMobileSidebar} />
         </MemoryRouter>
       </QueryClientProvider>
@@ -102,6 +106,22 @@ describe("TopNav", () => {
   it("shows a page title derived from the route", () => {
     renderTopNav();
     expect(screen.getByTestId("page-title")).toHaveTextContent("Dashboard");
+  });
+
+  it("renders the header slot the page portals into, setting it on the layout", () => {
+    const setSlot = vi.fn();
+    render(
+      <ThemeProvider theme={buildTheme("light")}>
+        <QueryClientProvider client={new QueryClient()}>
+          <HeaderSlotContext.Provider value={{ slot: null, setSlot }}>
+            <MemoryRouter initialEntries={["/dashboard"]}>
+              <TopNav onOpenMobileSidebar={vi.fn()} />
+            </MemoryRouter>
+          </HeaderSlotContext.Provider>
+        </QueryClientProvider>
+      </ThemeProvider>,
+    );
+    expect(setSlot).toHaveBeenCalledWith(screen.getByTestId("header-slot"));
   });
 
   it("does not render the hamburger on desktop", () => {
@@ -243,5 +263,72 @@ describe("TopNav notification routing", () => {
     capturedOnOpenEntity({});
     capturedOnOpenEntity(null);
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  describe("two rows: app chrome, then the page", () => {
+    const base = useAuthStore.getMockImplementation();
+    const withMenu = () =>
+      useAuthStore.mockImplementation(() => ({
+        user: { Id: 1, FullName: "Super", JobTitle: "Super Admin" },
+        logout: vi.fn(),
+        companyName: "PRD Infotech",
+        menuRights: [
+          { menuid: 30, parentid: 0, description: "Team Reports", route: "/reports/team" },
+          { menuid: 31, parentid: 30, description: "Task deadlines", route: "/reports/tat" },
+          { menuid: 1, parentid: 0, description: "Today", route: "/today" },
+        ],
+      }));
+    afterEach(() => useAuthStore.mockImplementation(base));
+
+    it("breadcrumbs the parent menu and titles the page from the menu", () => {
+      withMenu();
+      renderTopNav(vi.fn(), "/reports/tat");
+      expect(screen.getByTestId("breadcrumb")).toHaveTextContent("DashboardTeam Reports");
+      expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute("href", "/dashboard");
+      expect(screen.getByTestId("page-title")).toHaveTextContent("Task deadlines");
+      expect(screen.getByTestId("page-row")).toContainElement(screen.getByTestId("header-slot"));
+      expect(screen.getByTestId("app-context")).toHaveTextContent("PRD Infotech");
+    });
+
+    it("a top-level page reads Dashboard › page", () => {
+      withMenu();
+      renderTopNav(vi.fn(), "/today");
+      expect(screen.getByTestId("breadcrumb")).toHaveTextContent(/^Dashboard$/);
+      expect(screen.getByTestId("page-title")).toHaveTextContent("Today");
+    });
+
+    it("the Dashboard itself has no breadcrumb", () => {
+      withMenu();
+      renderTopNav(vi.fn(), "/dashboard");
+      expect(screen.queryByTestId("breadcrumb")).not.toBeInTheDocument();
+    });
+
+    it("is flat at the top and casts a shadow once something scrolls under it", () => {
+      const { container } = renderTopNav();
+      const bar = container.querySelector("header");
+      expect(bar.dataset.scrolled).toBe("false");
+      const scroller = document.createElement("div");
+      document.body.appendChild(scroller);
+      Object.defineProperty(scroller, "scrollTop", { value: 40, configurable: true });
+      act(() => { scroller.dispatchEvent(new Event("scroll")); });
+      expect(bar.dataset.scrolled).toBe("true");
+      Object.defineProperty(scroller, "scrollTop", { value: 0, configurable: true });
+      act(() => { scroller.dispatchEvent(new Event("scroll")); });
+      expect(bar.dataset.scrolled).toBe("false");
+      scroller.remove();
+    });
+
+    it("row 1 is exactly chrome.row1 high, the sidebar header's height", () => {
+      renderTopNav();
+      expect(getComputedStyle(screen.getByTestId("topnav-row1")).height).toBe(rem(chrome.row1));
+    });
+
+    it("is attached: sticky at the very top, no floating margin or radius", () => {
+      const { container } = renderTopNav();
+      const cs = getComputedStyle(container.querySelector("header"));
+      expect(cs.position).toBe("sticky");
+      expect(cs.top).toBe("0px");
+      expect(["0", "0px"]).toContain(cs.borderRadius);
+    });
   });
 });

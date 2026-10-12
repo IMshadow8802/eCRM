@@ -23,6 +23,7 @@ import {
 } from "./contract";
 import { dragGuard } from "./dragGuard";
 import { isSessionCode, requestReauth } from "../utils/reauth";
+import { refreshAccess } from "../utils/refreshAccess";
 
 // Connection status for the header pill.
 // "idle"    = never connected yet (show nothing — never alarm on first load)
@@ -65,6 +66,8 @@ export const SCOPE_INVALIDATIONS = {
   [SCOPES.NOTIFICATIONS]: () => [["notifications"]],
   // Nothing to refetch: the provider opens the re-sign-in dialog instead.
   [SCOPES.SESSION]: () => [],
+  // Not a query: the provider re-reads access into the auth store instead.
+  [SCOPES.ACCESS]: () => [],
 };
 
 function joinWorkspace(socket, workspaceId) {
@@ -133,6 +136,11 @@ export default function SocketProvider() {
       // An admin ended this user's sessions: sign in again over the page.
       if (payload?.scope === SCOPES.SESSION) {
         requestReauth(payload.reason);
+        return;
+      }
+      // A role/grant/office change: re-read access now (the sidebar re-renders).
+      if (payload?.scope === SCOPES.ACCESS) {
+        refreshAccess({ force: true });
         return;
       }
       const toKeys = SCOPE_INVALIDATIONS[payload?.scope];

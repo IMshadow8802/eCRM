@@ -57,7 +57,8 @@ export default function HelpGuide({ guide, defaultLang = "en", isAdmin = false }
         onClick={(e) => setAnchor(e.currentTarget)}
         aria-label="How to use this screen"
         data-testid="help-guide-button"
-        sx={{ color: p.text.secondary, "&:hover": { color: p.primary.main } }}
+        // 32 square: flush with the sm buttons beside it in the top bar.
+        sx={{ width: "calc(32rem / 15)", height: "calc(32rem / 15)", flexShrink: 0, color: p.text.secondary, "&:hover": { color: p.primary.main } }}
       >
         <HelpCircle size={18} />
       </IconButton>

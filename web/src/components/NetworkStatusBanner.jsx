@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { alpha, useTheme } from '@mui/material/styles';
+import { useTheme } from '@mui/material/styles';
 import { WifiOff } from 'lucide-react';
 
 /**
@@ -184,9 +184,9 @@ const NetworkStatusBanner = () => {
           onClick={handleRetry}
           disabled={isTestingConnection}
           style={{
-            backgroundColor: alpha(theme.palette.common.white, 0.2),
+            backgroundColor: 'transparent',
             color: 'inherit',
-            border: 'none',
+            border: '1px solid currentColor',
             borderRadius: 'calc(4rem / 15)',
             padding: 'calc(6rem / 15) calc(12rem / 15)',
             cursor: isTestingConnection ? 'not-allowed' : 'pointer',
@@ -197,11 +197,13 @@ const NetworkStatusBanner = () => {
           }}
           onMouseOver={(e) => {
             if (!isTestingConnection) {
-              e.target.style.backgroundColor = alpha(theme.palette.common.white, 0.3);
+              e.target.style.backgroundColor = theme.palette.common.white;
+              e.target.style.color = theme.palette.error.main;
             }
           }}
           onMouseOut={(e) => {
-            e.target.style.backgroundColor = alpha(theme.palette.common.white, 0.2);
+            e.target.style.backgroundColor = 'transparent';
+            e.target.style.color = 'inherit';
           }}
         >
           {isTestingConnection ? 'Testing...' : 'Retry'}

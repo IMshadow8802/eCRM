@@ -456,6 +456,20 @@ describe("authController.fetchMyAccess", () => {
     expect(data.permissions.menuItems[0].children).toHaveLength(1);
   });
 
+  it("threads tblMenu.SortOrder (110) through as sortOrder; null before 110 is applied", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[
+        { MenuId: 1, ParentId: 0, Description: "Sales", Route: "/sales", CanView: 1, SortOrder: 50 },
+        { MenuId: 2, ParentId: 1, Description: "Leads", Route: "/sales/leads", CanView: 1 },
+      ]],
+    });
+    const res = mockRes();
+    await authController.fetchMyAccess({ user: { UserId: 5 }, access: buildAccess(ACCESS_RS.recordsets, 5) }, res);
+    const raw = res.json.mock.calls[0][0].data.permissions.rawPermissions;
+    expect(raw.find((m) => m.menuid === 1).sortOrder).toBe(50);
+    expect(raw.find((m) => m.menuid === 2).sortOrder).toBeNull();
+  });
+
   it("500s when the DB throws", async () => {
     database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
     const res = mockRes();

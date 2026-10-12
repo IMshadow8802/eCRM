@@ -37,7 +37,7 @@ import {
   PeopleOutlined,
   RequestQuoteOutlined,
 } from "@mui/icons-material";
-import { getMenuIcon, menuPath, buildDynamicMenu } from "./menuBuilder";
+import { getMenuIcon, menuPath, buildDynamicMenu, menuTrail, isMenuPathActive } from "./menuBuilder";
 
 describe("getMenuIcon", () => {
   it.each([
@@ -165,4 +165,59 @@ describe("buildDynamicMenu", () => {
     expect(support.submenus.find((s) => s.title === "Customers").icon).toBe(PeopleOutlined);
     expect(support.submenus.find((s) => s.title === "Tickets").path).toBe("/tickets");
   });
+
+  it("orders parents and children by sortOrder (110), unranked last by id", () => {
+    const rights = [
+      { menuid: 1, parentid: 0, description: "Dashboard", sortOrder: 10 },
+      { menuid: 2, parentid: 0, description: "Tasks", sortOrder: 30 },
+      { menuid: 3, parentid: 0, description: "Today", sortOrder: 20 },
+      { menuid: 11, parentid: 0, description: "Sales Reports", sortOrder: 80 },
+      { menuid: 14, parentid: 0, description: "Sales", sortOrder: 50 },
+      { menuid: 99, parentid: 0, description: "Unranked B", sortOrder: null },
+      { menuid: 60, parentid: 0, description: "Unranked A" },
+      { menuid: 20, parentid: 11, description: "Funnel", sortOrder: 1 },
+      { menuid: 21, parentid: 11, description: "Activity", sortOrder: 5 },
+      { menuid: 45, parentid: 11, description: "Pipeline Value", sortOrder: 3 },
+      { menuid: 70, parentid: 11, description: "New report" },
+      { menuid: 22, parentid: 11, description: "Conversion by Source", sortOrder: 2 },
+    ];
+    const menus = buildDynamicMenu(rights);
+    expect(menus.map((m) => m.title)).toEqual([
+      "Dashboard", "Today", "Tasks", "Sales", "Sales Reports", "Unranked A", "Unranked B",
+    ]);
+    expect(menus.find((m) => m.menuId === 11).submenus.map((s) => s.title)).toEqual([
+      "Funnel", "Conversion by Source", "Pipeline Value", "Activity", "New report",
+    ]);
+  });
+
+  it("keeps Id order when no row has a sortOrder (before 110 is applied)", () => {
+    const rights = [
+      { menuid: 49, parentid: 0, description: "My Work" },
+      { menuid: 3, parentid: 0, description: "Today" },
+      { menuid: 1, parentid: 0, description: "Dashboard" },
+    ];
+    expect(buildDynamicMenu(rights).map((m) => m.menuId)).toEqual([1, 3, 49]);
+  });
+
+describe("menuTrail / isMenuPathActive", () => {
+  const menus = buildDynamicMenu([
+    { menuid: 30, parentid: 0, description: "Team Reports", route: "/reports/team" },
+    { menuid: 31, parentid: 30, description: "Task deadlines", route: "/reports/tat" },
+    { menuid: 32, parentid: 30, description: "By source", route: "/reports/funnel?groupBy=source" },
+    { menuid: 1, parentid: 0, description: "Leads", route: "/sales/leads" },
+  ]);
+  const at = (pathname, search = "") => ({ pathname, search });
+
+  it("finds parent + child for a submenu page, the item for a top-level one", () => {
+    expect(menuTrail(menus, at("/reports/tat")).map((m) => m.title)).toEqual(["Team Reports", "Task deadlines"]);
+    expect(menuTrail(menus, at("/sales/leads/42")).map((m) => m.title)).toEqual(["Leads"]);
+    expect(menuTrail(menus, at("/nowhere"))).toEqual([]);
+  });
+
+  it("a route with a query string needs its params in the URL", () => {
+    expect(isMenuPathActive("/reports/funnel?groupBy=source", at("/reports/funnel", "?groupBy=source&x=1"))).toBe(true);
+    expect(isMenuPathActive("/reports/funnel?groupBy=source", at("/reports/funnel", "?groupBy=owner"))).toBe(false);
+    expect(isMenuPathActive("/sales/lead", at("/sales/leads"))).toBe(false);
+  });
+});
 });

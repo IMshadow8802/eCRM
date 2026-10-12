@@ -1,7 +1,7 @@
 import { forwardRef, useId } from "react";
 import { useTheme } from "@mui/material/styles";
 
-import { motion as motionTokens } from "../../styles/tokens";
+import { controlHeight, motion as motionTokens } from "../../styles/tokens";
 import { rem } from "../../utils/rem";
 
 /**
@@ -12,9 +12,9 @@ import { rem } from "../../utils/rem";
  * it directly. Supports label, hint, error, leftAdornment, rightAdornment.
  */
 const SIZE = {
-  sm: { height: 32, font: 13, px: 10, labelFont: 12 },
-  md: { height: 40, font: 14, px: 12, labelFont: 13 },
-  lg: { height: 48, font: 15, px: 14, labelFont: 14 },
+  sm: { height: controlHeight.sm, font: 13, px: 10, labelFont: 12 },
+  md: { height: controlHeight.md, font: 14, px: 12, labelFont: 13 },
+  lg: { height: controlHeight.lg, font: 15, px: 14, labelFont: 14 },
 };
 
 const TextInput = forwardRef(function TextInput(

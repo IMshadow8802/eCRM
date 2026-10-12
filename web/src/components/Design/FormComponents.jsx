@@ -6,6 +6,7 @@
 // and z-index fixes without call-site changes.
 
 import React from "react";
+import { useTheme } from "@mui/material/styles";
 
 import TextInput from "../ui/TextInput";
 import TextArea from "../ui/TextArea";
@@ -350,10 +351,12 @@ export const FormButtons = ({
   isLoading = false,
   disabled = false,
   className = "",
-}) => (
+}) => {
+  const p = useTheme().tokens;
+  return (
   <div
     className={`flex items-center justify-end gap-2 border-t px-5 py-3 ${className}`}
-    style={{ borderColor: "rgba(148,163,184,0.2)" }}
+    style={{ borderColor: p.border.default }}
   >
     <Button variant="ghost" onClick={onCancel} type="button">
       {cancelText}
@@ -368,7 +371,8 @@ export const FormButtons = ({
       {submitText}
     </Button>
   </div>
-);
+  );
+};
 
 // ---------------- Modal ----------------
 

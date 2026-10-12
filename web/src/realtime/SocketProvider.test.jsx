@@ -36,6 +36,9 @@ const ioMock = vi.fn((url, opts) => {
 });
 vi.mock("socket.io-client", () => ({ io: (...args) => ioMock(...args) }));
 
+vi.mock("../api/masterQueries", () => ({ fetchMyAccess: vi.fn() }));
+import { fetchMyAccess } from "../api/masterQueries";
+import { refreshAccess, resetRefreshThrottle } from "../utils/refreshAccess";
 import useAuthStore from "../stores/useAuthStore";
 import { resetReauthForTests } from "../utils/reauth";
 import useWorkspaceStore from "../stores/useWorkspaceStore";
@@ -218,6 +221,24 @@ describe("SocketProvider", () => {
         expected.map((queryKey) => ({ queryKey })),
       );
     }
+  });
+
+  it("an access event re-reads access at once, bypassing the focus throttle", async () => {
+    const rights = [{ menuid: 3, parentid: 0, description: "Leads", route: "/leads" }];
+    fetchMyAccess.mockReset();
+    fetchMyAccess.mockResolvedValue({ data: { data: { access: { isAdmin: false, modules: { leads: {} } }, permissions: { rawPermissions: rights } } } });
+    resetRefreshThrottle();
+    useAuthStore.setState({ access: { isAdmin: false, modules: {} } });
+    await refreshAccess(); // a focus refresh just ran: the throttle is now closed
+    expect(fetchMyAccess).toHaveBeenCalledTimes(1);
+    useAuthStore.setState({ menuRights: [] });
+    loginWith();
+    renderProvider();
+    queryClient.invalidateQueries.mockClear();
+    await act(async () => lastSocket().handlers[EVENT_INVALIDATE]({ scope: SCOPES.ACCESS }));
+    expect(fetchMyAccess).toHaveBeenCalledTimes(2);
+    expect(useAuthStore.getState().menuRights).toEqual(rights);
+    expect(queryClient.invalidateQueries).not.toHaveBeenCalled();
   });
 
   it("a session event opens the re-sign-in dialog instead of refetching", () => {

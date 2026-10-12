@@ -1,15 +1,21 @@
 import { useState } from "react";
 import { MonitorSmartphone } from "lucide-react";
+import dayjs from "dayjs";
 
 import { Modal, Button, Tooltip } from "../../components/ui";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { apiClient } from "../../utils/axiosConfig";
 import useAuthStore from "../../stores/useAuthStore";
 import { PRESENCE_ENDPOINTS } from "../../api/presenceQueries";
-import { istStamp } from "../../utils/tatChip";
+import { istStamp, parseIst } from "../../utils/tatChip";
+
+// The IST calendar day of a timestamp, YYYY-MM-DD (en-CA formats that way).
+const istDay = (v) => parseIst(v)?.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+const KEPT = 30; // sp_FetchSessions returns the latest 30
 
 // Admin only (the route is requireAdmin; the caller hides the button for everyone else).
-export default function SessionsDialog({ open, person, onClose }) {
+// `date` (YYYY-MM-DD, optional) narrows the list to sign-ins that touched that IST day.
+export default function SessionsDialog({ open, person, onClose, date }) {
   const me = useAuthStore((s) => s.user?.UserId ?? s.UserId);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState("");
@@ -20,7 +26,12 @@ export default function SessionsDialog({ open, person, onClose }) {
     enabled: open && Boolean(person?.UserId),
     staleTime: 0,
   });
-  const sessions = data?.sessions ?? [];
+  const all = data?.sessions ?? [];
+  const sessions = date
+    ? all.filter((s) => istDay(s.StartedAt) <= date && istDay(s.EndedAt ?? s.LastSeenAt ?? s.StartedAt) >= date)
+    : all;
+  // ponytail: filtered client-side from the latest 30; a date param on sp_FetchSessions if older days matter.
+  const cutOff = date && all.length >= KEPT && all.every((s) => istDay(s.StartedAt) > date);
   const isSelf = Number(me) === Number(person?.UserId);
 
   const endAll = async () => {
@@ -38,11 +49,17 @@ export default function SessionsDialog({ open, person, onClose }) {
   return (
     <>
       <Modal open={open} onClose={onClose} size="lg" data-testid="sessions-dialog">
-        <Modal.Header title="Sign-ins" subtitle={person?.FullName} icon={<MonitorSmartphone size={18} />} onClose={onClose} />
+        <Modal.Header title="Sign-ins" subtitle={date ? `${person?.FullName} · ${dayjs(date).format("ddd D MMM YYYY")}` : person?.FullName} icon={<MonitorSmartphone size={18} />} onClose={onClose} />
         <Modal.Body>
           {error && <div role="alert">{error}</div>}
           {sessions.length === 0 ? (
-            <p>No sign-ins yet.</p>
+            <p>
+              {cutOff
+                ? "This day is older than the sign-ins kept here (only the latest 30 sign-ins are shown)."
+                : date
+                  ? "No sign-ins on this day."
+                  : "No sign-ins yet."}
+            </p>
           ) : (
             <table style={{ width: "100%", fontSize: "calc(13rem / 15)" }}>
               <thead>

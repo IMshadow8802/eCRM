@@ -22,6 +22,7 @@ const SCOPES = {
   WORKSPACES: "workspaces",           // { }                        switcher list (lifecycle/membership)
   NOTIFICATIONS: "notifications",     // { }                        bell unread count + list
   SESSION: "session",                 // { reason }                 this user's sessions were ended (SESSION_FORCED)
+  ACCESS: "access",                   // { }                        this user's role grants / office / manager changed: re-read access
 };
 
 // Room name builders — the only two room shapes that exist.

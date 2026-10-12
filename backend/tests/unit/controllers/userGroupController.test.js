@@ -2,7 +2,10 @@ jest.mock("../../../src/config/database", () => ({
   executeStoredProcedure: jest.fn(),
 }));
 
+jest.mock("../../../src/realtime/events", () => ({ emitToUser: jest.fn(), emitToWorkspace: jest.fn() }));
+
 const database = require("../../../src/config/database");
+const { emitToUser } = require("../../../src/realtime/events");
 const userGroupController = require("../../../src/controllers/userGroupController");
 const { mockRes } = require("../../helpers/mockRes");
 
@@ -19,6 +22,7 @@ function baseReq(overrides = {}) {
 
 beforeEach(() => {
   database.executeStoredProcedure.mockReset();
+  emitToUser.mockReset();
 });
 
 const spResult = (rows) => ({ recordsets: [rows] });
@@ -363,5 +367,56 @@ describe("userGroupController.saveModules", () => {
     const res = mockRes();
     await userGroupController.saveModules(baseReq({ body: { GroupId: 3, Modules: [] } }), res);
     expect(res.json.mock.calls[0][0].code).toBe("ROLE_MODULES_SAVE_ERROR");
+  });
+});
+
+describe("realtime access push to a role's members", () => {
+  // Routes each proc to its own canned result, so call order does not matter.
+  const route = (map) =>
+    database.executeStoredProcedure.mockImplementation(async (name) => {
+      const v = map[name];
+      if (v instanceof Error) throw v;
+      return v ?? spResult([{ ResponseCode: 200 }]);
+    });
+  const members = spResult([{ UserId: 41 }, { UserId: 42 }]);
+  const ok = spResult([{ Id: 3, GroupId: 3, ResponseCode: 200, ResponseMess: "Saved" }]);
+
+  it("saveModules pushes `access` to every member, asked by the caller's company", async () => {
+    route({ sp_SaveGroupModules: ok, sp_FetchGroupMembers: members });
+    await userGroupController.saveModules(baseReq({ body: { GroupId: 3, Modules: [] } }), mockRes());
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_FetchGroupMembers", { GroupId: 3, CompId: 5 });
+    expect(emitToUser.mock.calls).toEqual([[41, "access"], [42, "access"]]);
+  });
+
+  it("a refused save pushes nothing and never lists members", async () => {
+    route({ sp_SaveGroupModules: spResult([{ ResponseCode: 404, ResponseMess: "Role not found" }]) });
+    await userGroupController.saveModules(baseReq({ body: { GroupId: 3, Modules: [] } }), mockRes());
+    expect(database.executeStoredProcedure).not.toHaveBeenCalledWith("sp_FetchGroupMembers", expect.anything());
+    expect(emitToUser).not.toHaveBeenCalled();
+  });
+
+  it("a missing member proc (112 not applied) still answers 200", async () => {
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+    route({ sp_SaveGroupModules: ok, sp_FetchGroupMembers: new Error("Could not find stored procedure") });
+    const res = mockRes();
+    await userGroupController.saveModules(baseReq({ body: { GroupId: 3, Modules: [] } }), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(emitToUser).not.toHaveBeenCalled();
+    expect(spy).toHaveBeenCalledWith("sp_FetchGroupMembers skipped:", "Could not find stored procedure");
+    spy.mockRestore();
+  });
+
+  it("editing a role (e.g. switching it off) pushes to its members", async () => {
+    route({ sp_SaveUserGroup: ok, sp_FetchGroupMembers: members });
+    await userGroupController.save(baseReq({ body: { Id: 3, Name: "Sales", IsActive: false } }), mockRes());
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_FetchGroupMembers", { GroupId: 3, CompId: 5 });
+    expect(emitToUser).toHaveBeenCalledTimes(2);
+  });
+
+  it("creating a role pushes nothing (it has no members yet)", async () => {
+    route({ sp_SaveUserGroup: ok, sp_FetchGroupMembers: members });
+    await userGroupController.save(baseReq({ body: { Name: "New" } }), mockRes());
+    expect(database.executeStoredProcedure).not.toHaveBeenCalledWith("sp_FetchGroupMembers", expect.anything());
+    expect(emitToUser).not.toHaveBeenCalled();
   });
 });

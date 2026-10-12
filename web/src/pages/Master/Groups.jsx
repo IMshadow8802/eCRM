@@ -57,7 +57,7 @@ const MODULE_ROWS = [
   { key: "support_reports", label: "Support reports" },
   { key: "customers", label: "Customers", reach: true },
   { key: "people", label: "People", reach: true },
-  { key: "tasks", label: "Tasks & My Work" },
+  { key: "tasks", label: "Tasks & Today" },
   { key: "teams", label: "Teams" },
   { key: "projects", label: "Projects" },
   { key: "attendance", label: "Attendance (team presence)", reach: true },

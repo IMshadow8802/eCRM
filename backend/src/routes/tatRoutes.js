@@ -18,8 +18,5 @@ router.post("/release", requirePayload, requireModule("tasks", "view"), c.releas
 router.post("/myPartDone", requirePayload, requireModule("tasks", "view"), c.myPartDone);
 router.post("/saveReason", requirePayload, requireModule("tasks", "view"), c.saveReason);
 router.post("/saveVerdict", requirePayload, requireModule("tasks", "view"), c.saveVerdict);
-// Today: the caller's own day, and the people their attendance reach covers.
-router.post("/fetchToday", allowEmptyPayload, open(), c.fetchToday);
-router.post("/fetchTeamToday", allowEmptyPayload, open(), c.fetchTeamToday);
 
 module.exports = router;

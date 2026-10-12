@@ -1,27 +1,20 @@
 // src/pages/Reports/ReportPage.jsx
-import { useMemo } from "react";
 import { Helmet } from "react-helmet-async";
 import { Box, Typography } from "@mui/material";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Download } from "lucide-react";
 
-import { Button, Chip, Combobox, Skeleton, Tabs } from "../../components/ui";
-import DateField from "../../components/ui/DateField";
+import { Button, Skeleton } from "../../components/ui";
 import PageHeader from "../../components/ui/PageHeader";
 import HelpGuide from "../../components/HelpGuide";
 import { HELP_GUIDES } from "../../data/helpGuides";
 import StatisticsCard from "../../components/StatCard";
 import TrendArea from "../../components/Charts/TrendArea";
 import { ReportTable } from "./ReportShell";
+import ReportFilters, { useReportFilters } from "./ReportFilters";
 import { useApiQuery } from "../../hooks/useApiQuery";
-import { useLookups } from "../../hooks/useLookups";
-import { useAssignableUsers } from "../../hooks/useAssignableUsers";
-import { SALES_ENDPOINTS } from "../../api/salesQueries";
 import {
-  PRESETS,
   DATE_BASES,
-  readFilters,
-  writeFilters,
   toBody,
   formatValue,
   toCsv,
@@ -30,13 +23,6 @@ import {
 } from "./reportUtils";
 
 const defaultDrill = (row, filters) => leadsUrl(drillParams(filters, row));
-
-const PICKERS = [
-  ["branch", "BranchId", "All branches"],
-  ["owner", "OwnerId", "All owners"],
-  ["source", "SourceId", "All sources"],
-  ["product", "ProductId", "All products"],
-];
 
 /**
  * The one frame every sales report renders through (spec 4a §5):
@@ -69,59 +55,14 @@ export default function ReportPage({
   hideMissing = false,
 }) {
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const filters = useMemo(() => {
-    const f = readFilters(searchParams, { groupBys, defaultBasis });
-    // readFilters validates against every known basis; a page may offer fewer.
-    // Without this, /reports/aging?basis=activity is accepted, changes the
-    // numbers, and hides the control that would let you see or undo it.
-    return dateBases.some((b) => b.value === f.basis) ? f : { ...f, basis: defaultBasis };
-  }, [searchParams, groupBys, dateBases, defaultBasis]);
-  const update = (patch) =>
-    setSearchParams(writeFilters({ ...filters, ...patch }, defaultBasis), { replace: true });
-
-  // Pick-lists. The owner roster is the caller's assignable set, so the filter
-  // can never name someone the report would not show anyway.
-  // A picker that is hidden fetches nothing.
-  const has = (name) => pickers.includes(name);
-  const { data: branchData } = useApiQuery({
-    queryKey: ["branches"],
-    endpoint: SALES_ENDPOINTS.users.fetchBranches,
-    enabled: has("branch"),
-    showErrorMessage: false,
-  });
-  const { users } = useAssignableUsers({ enabled: has("owner") });
-  const { lookups: sources } = useLookups("lead_source", { enabled: has("source"), showErrorMessage: false });
-  const { data: productData } = useApiQuery({
-    queryKey: ["products", "active"],
-    endpoint: SALES_ENDPOINTS.products.fetchProducts,
-    params: { PageSize: 200, IsActive: true },
-    enabled: has("product"),
-    showErrorMessage: false,
-  });
-  const opts = {
-    BranchId: (branchData?.branches ?? []).map((b) => ({ value: b.Id, label: b.BranchName })),
-    OwnerId: users.map((u) => ({ value: u.Id, label: u.FullName })),
-    SourceId: sources.map((s) => ({ value: s.Id, label: s.Value })),
-    ProductId: (productData?.products ?? []).map((p) => ({ value: p.Id, label: p.Name })),
-  };
-  // A URL can name an id that is not in the caller's pick-list (another
-  // branch, a deleted product, a hand-typed number). The filter IS applied —
-  // toBody posts it and the server ANDs it inside scope — so showing the
-  // placeholder would have the control deny a filter that is demonstrably on,
-  // and the user could neither see nor clear it. Name it instead. The
-  // list.length guard keeps a valid id from flashing "Unknown" while the
-  // pick-lists are still loading.
-  const optById = (list, v) => {
-    if (v === null || v === undefined) return null;
-    return list.find((o) => o.value === v) ?? (list.length ? { value: v, label: `Unknown (#${v})` } : null);
-  };
+  const { filters, update, rangeError } = useReportFilters({ groupBys, dateBases, defaultBasis });
 
   const body = toBody(filters);
   const { data, isLoading, error } = useApiQuery({
     queryKey: ["report", reportKey, body],
     endpoint,
     params: body,
+    enabled: !rangeError,
     retry: false,
     showErrorMessage: false,
   });
@@ -177,76 +118,17 @@ export default function ReportPage({
         <title>PRD Infotech | {title}</title>
       </Helmet>
 
-      {/* Filter bar */}
-      <Box sx={{ display: "flex", gap: 1, alignItems: "center", flexWrap: "wrap" }}>
-        {PRESETS.map((p) => (
-          <Chip
-            key={p.value}
-            label={p.label}
-            size="lg"
-            tone="primary"
-            variant={filters.preset === p.value ? "solid" : "tonal"}
-            // Solid vs tonal is colour alone; aria-pressed is what tells a
-            // screen reader which range is actually showing.
-            aria-pressed={filters.preset === p.value}
-            onClick={() => update({ preset: p.value })}
-            data-testid={`report-preset-${p.value}`}
-          />
-        ))}
-        {filters.preset === "custom" && (
-          <>
-            <Box sx={{ width: "calc(160rem / 15)" }}>
-              <DateField
-                size="sm"
-                value={filters.from}
-                onChange={(v) => v && update({ from: v })}
-                data-testid="report-from"
-              />
-            </Box>
-            <Box sx={{ width: "calc(160rem / 15)" }}>
-              <DateField
-                size="sm"
-                value={filters.to}
-                onChange={(v) => v && update({ to: v })}
-                data-testid="report-to"
-              />
-            </Box>
-          </>
-        )}
-        {dateBases.length > 1 && (
-          <Box sx={{ width: "calc(150rem / 15)" }}>
-            <Combobox
-              size="sm"
-              options={dateBases}
-              value={dateBases.find((b) => b.value === filters.basis) ?? null}
-              onChange={(o) => o && update({ basis: o.value })}
-              data-testid="report-basis"
-            />
-          </Box>
-        )}
-        {PICKERS.filter(([name]) => pickers.includes(name)).map(([name, key, placeholder]) => (
-          <Box key={key} sx={{ width: "calc(170rem / 15)" }}>
-            <Combobox
-              size="sm"
-              placeholder={name === "owner" ? ownerPlaceholder : placeholder}
-              options={opts[key]}
-              value={optById(opts[key], filters[key])}
-              onChange={(o) => update({ [key]: o?.value ?? null })}
-              data-testid={`report-${key}`}
-            />
-          </Box>
-        ))}
-      </Box>
-      {groupBys.length > 1 && (
-        <Tabs
-          size="sm"
-          value={filters.groupBy}
-          onChange={(v) => update({ groupBy: v })}
-          items={groupBys}
-          data-testid="report-groupby"
-        />
-      )}
+      <ReportFilters
+        filters={filters}
+        update={update}
+        groupBys={groupBys}
+        dateBases={dateBases}
+        pickers={pickers}
+        ownerPlaceholder={ownerPlaceholder}
+      />
 
+      {/* A backwards range shows only the filter bar's message, never a report of zeros. */}
+      {!rangeError && (<>
       {/* KPI strip */}
       {shownKpis.length > 0 && (
         <Box
@@ -294,6 +176,7 @@ export default function ReportPage({
           onRowClick={drill ? (row) => navigate(drill(row, filters)) : undefined}
         />
       )}
+      </>)}
     </Box>
   );
 }

@@ -11,7 +11,10 @@ jest.mock("../../../src/utils/activityLogger", () => ({
   },
 }));
 
+jest.mock("../../../src/realtime/events", () => ({ emitToUser: jest.fn(), emitToWorkspace: jest.fn() }));
+
 const database = require("../../../src/config/database");
+const { emitToUser } = require("../../../src/realtime/events");
 const { logActivity } = require("../../../src/utils/activityLogger");
 const { mockAccess } = require("../../helpers/mockAccess");
 const controller = require("../../../src/controllers/userBranchAccessController");
@@ -271,5 +274,41 @@ describe("userBranchAccessController.delete", () => {
 
     expect(res.status).toHaveBeenCalledWith(500);
     expect(res.json.mock.calls[0][0].success).toBe(false);
+  });
+});
+
+// Extra offices widen a person's reach: they re-read their access live. The
+// target comes from the SP's row (checked against CompId, 112), never the
+// body, so a push cannot cross companies.
+describe("userBranchAccessController realtime access push", () => {
+  beforeEach(() => {
+    database.executeStoredProcedure.mockReset();
+    emitToUser.mockReset();
+  });
+
+  it("save pushes `access` to the UserId the SP returns, not the body's", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(spResult([{ ResponseCode: 200, Id: 4, UserId: 31 }]));
+    await controller.save(baseReq({ body: { Id: 4, UserId: 99, BranchId: 2 } }), mockRes());
+    expect(emitToUser.mock.calls).toEqual([[31, "access"]]);
+  });
+
+  it("save pushes nothing when the SP refuses or returns no UserId (112 not applied)", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(spResult([{ ResponseCode: 404, ResponseMess: "User not found" }]));
+    await controller.save(baseReq({ body: { UserId: 31, BranchId: 2 } }), mockRes());
+    database.executeStoredProcedure.mockResolvedValueOnce(spResult([{ ResponseCode: 201, Id: 4 }]));
+    await controller.save(baseReq({ body: { UserId: 31, BranchId: 2 } }), mockRes());
+    expect(emitToUser).not.toHaveBeenCalled();
+  });
+
+  it("delete pushes `access` to the row's owner", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(spResult([{ ResponseCode: 200, UserId: 31 }]));
+    await controller.delete(baseReq({ body: { Id: 12 } }), mockRes());
+    expect(emitToUser.mock.calls).toEqual([[31, "access"]]);
+  });
+
+  it("a refused delete pushes nothing", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(spResult([{ ResponseCode: 404 }]));
+    await controller.delete(baseReq({ body: { Id: 12 } }), mockRes());
+    expect(emitToUser).not.toHaveBeenCalled();
   });
 });

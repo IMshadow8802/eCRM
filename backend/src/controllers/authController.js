@@ -14,6 +14,7 @@ function mapMenuRow(item) {
     description: item.Description,
     image: item.Image,
     route: item.Route,
+    sortOrder: item.SortOrder ?? null, // 110; null = unranked (sorts last, by Id)
     formname: item.FormName,
     formclass: item.FormClass,
     openStyle: item.OpenStyle,

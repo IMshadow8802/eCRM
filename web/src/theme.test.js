@@ -53,4 +53,26 @@ describe("buildTheme", () => {
     const t = buildTheme("light");
     expect(t.components.MuiChip.styleOverrides.root.borderRadius).toBe(radii.full);
   });
+
+  it.each(["light", "dark"])("raised surfaces read the %s elevation tokens", (mode) => {
+    const t = buildTheme(mode);
+    const base = t.components.MuiCssBaseline.styleOverrides;
+    // Neutral: the elevation and nothing else (no tone strip variable).
+    expect(base[".nx-raised"].boxShadow).toBe(palettes[mode].elevation[1]);
+    expect(base[".nx-lift:hover:not(:disabled), .nx-lift:focus-within"].boxShadow).toBe(palettes[mode].elevation[2]);
+    expect(t.components.MuiPaper.styleOverrides.elevation1.boxShadow).toBe(palettes[mode].elevation[1]);
+  });
+
+  it("small buttons are 32 high, flush with small inputs", () => {
+    expect(buildTheme("light").components.MuiButton.styleOverrides.sizeSmall.minHeight).toBe("calc(32rem / 15)");
+  });
+
+  it("everything clickable shows a pointer, at the source", () => {
+    const base = buildTheme("light").components.MuiCssBaseline.styleOverrides;
+    const key = Object.keys(base).find((k) => k.includes('[role="button"]'));
+    expect(key).toMatch(/button:not\(:disabled\)/);
+    expect(key).toContain(".nx-clickable");
+    expect(base[key].cursor).toBe("pointer");
+    expect(base[".nx-clickable:hover"].backgroundColor).toBe(palettes.light.surface.subtle);
+  });
 });

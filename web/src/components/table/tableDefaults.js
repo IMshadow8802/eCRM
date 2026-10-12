@@ -19,10 +19,21 @@ export const tableDefaults = {
         "No records match your filters. Try widening the search or creating one.",
       size: "md",
     }),
-  enableColumnResizing: false,    // off by default so MRT uses semantic table layout; columns stretch to fill container
+  enableColumnResizing: false,
+  // Grid layout with growing columns: every table spans its card, and the
+  // spare width is shared out rather than handed to whichever column the
+  // browser's auto layout liked (a 300px "Person" beside a cramped
+  // "Waiting for"). A column's `size` is its floor; `grow: false` opts out.
+  layoutMode: "grid",
+  defaultColumn: { grow: true, minSize: 60 },
+  // Row-action icons need a fixed lane: a grow-able or narrow one lets the
+  // "Actions" header run into the next column's.
+  displayColumnDefOptions: { "mrt-row-actions": { size: 120, grow: false } },
   enableStickyHeader: true,
   enableDensityToggle: false,
-  enableFullScreenToggle: false,
+  // Full screen on every table (MRT's own; it sits at zIndex.modal, above the
+  // sticky top bar, and Esc leaves it — see useAppTable).
+  enableFullScreenToggle: true,
   enableHiding: true,
   enableColumnActions: false,     // hide the per-column "⋮" header menu globally
   paginationDisplayMode: "pages",
@@ -65,14 +76,14 @@ export const tableDefaults = {
     sx: {
       // The gap above the card lives here, not on each page. Six pages had six
       // different margins (0, 1, 1.5, 2) between their filters and their table.
-      mt: 2,
+      mt: 1.5,
       borderRadius: (theme) => `${theme.radii.xl}px`,
       border: "1px solid",
       borderColor: "divider",
       overflow: "hidden",
       backgroundColor: "background.paper",
       backgroundImage: "none",
-      boxShadow: (theme) => theme.tokens.shadow.md,
+      boxShadow: (theme) => theme.tokens.elevation[1],
     },
   },
 
@@ -109,6 +120,11 @@ export const tableDefaults = {
       fontSize: "0.9333rem",
       fontWeight: 500,
       py: 1,
+      // Grid cells are fixed-width boxes: a long name wraps to a second line
+      // instead of being cut off mid-word at the column edge.
+      whiteSpace: "normal",
+      overflowWrap: "break-word",
+      minWidth: 0,
     },
   },
 

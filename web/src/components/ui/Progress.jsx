@@ -48,8 +48,7 @@ export default function Progress({
           width: "100%",
           height: h,
           borderRadius: theme.radii.full,
-          backgroundColor:
-            p.mode === "dark" ? "rgba(148,163,184,0.12)" : "rgba(148,163,184,0.2)",
+          backgroundColor: p.surface.track,
           overflow: "hidden",
         }}
       >

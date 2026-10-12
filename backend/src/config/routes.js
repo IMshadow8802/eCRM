@@ -24,6 +24,7 @@ const attachmentRoutes = require("../routes/attachmentRoutes");
 const workSettingsRoutes = require("../routes/workSettingsRoutes");
 const presenceRoutes = require("../routes/presenceRoutes");
 const tatRoutes = require("../routes/tatRoutes");
+const todayRoutes = require("../routes/todayRoutes");
 const { success, dbErrors } = require("../utils/responseHelper");
 const database = require("./database");
 
@@ -59,6 +60,7 @@ function setupRoutes(app) {
   app.use("/api/work", workSettingsRoutes);
   app.use("/api/presence", presenceRoutes);
   app.use("/api/tat", tatRoutes);
+  app.use("/api/today", todayRoutes);
 
   app.get("/health", (req, res) => {
     return success(res, "CRM API is running", {

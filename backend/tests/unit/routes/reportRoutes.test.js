@@ -34,6 +34,7 @@ jest.mock("../../../src/controllers/reportController", () => ({
   pipelineValue: hit("pipelineValue"),
   leaderboard: hit("leaderboard"),
   tat: hit("tat"),
+  tatClocks: hit("tatClocks"),
   partners: hit("partners"),
 }));
 jest.mock("../../../src/controllers/attendanceReport", () => ({
@@ -75,6 +76,7 @@ describe("reportRoutes", () => {
   // P4 Team Reports are open(): the data is scoped, so a role with no report grant still reaches them.
   it.each([
     ["/api/reports/tat", "tat"],
+    ["/api/reports/tatClocks", "tatClocks"],
     ["/api/reports/attendance", "attendance"],
   ])("routes %s to %s for a role with no report modules", async (path, handler) => {
     const saved = mockAcc;

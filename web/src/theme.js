@@ -61,8 +61,8 @@ export function buildTheme(mode = "light") {
       },
       divider: p.border.default,
       action: {
-        hover: isDark ? "rgba(255,255,255,0.04)" : "rgba(15,23,42,0.04)",
-        selected: isDark ? "rgba(255,255,255,0.08)" : "rgba(15,23,42,0.06)",
+        hover: p.surface.hover,
+        selected: p.surface.selected,
         disabled: p.text.disabled,
       },
     },
@@ -110,6 +110,32 @@ export function buildTheme(mode = "light") {
             outline: `2px solid ${p.border.focus}`,
             outlineOffset: 2,
           },
+          // Everything clickable shows it, at the source: a button, a link, or
+          // anything given a clickable role (ui/Card with onClick, tiles,
+          // count buttons, table rows that open). An inline `cursor` still wins.
+          [`button:not(:disabled), a[href], [role="button"]:not([aria-disabled="true"]), [role="link"], [role="tab"], [role="menuitem"], [role="option"], .nx-lift, .nx-clickable`]: {
+            cursor: "pointer",
+          },
+          ".nx-clickable": {
+            transition: `background-color ${motionTokens.duration.fast}ms ${motionTokens.easing.standard}`,
+          },
+          ".nx-clickable:hover": { backgroundColor: p.surface.subtle },
+          // Raised surfaces for the many inline-styled cards: a class, because
+          // an inline style cannot carry :hover. Neutral on purpose — no tone
+          // strips or coloured edges; a card's colour lives in its content.
+          ".nx-raised": {
+            boxShadow: p.elevation[1],
+          },
+          ".nx-lift": {
+            transition: `transform ${motionTokens.duration.fast}ms ${motionTokens.easing.standard}, box-shadow ${motionTokens.duration.base}ms ${motionTokens.easing.standard}`,
+          },
+          ".nx-lift:hover:not(:disabled), .nx-lift:focus-within": {
+            transform: "translateY(-1px)",
+            boxShadow: p.elevation[2],
+          },
+          "@media (prefers-reduced-motion: reduce)": {
+            ".nx-lift:hover:not(:disabled), .nx-lift:focus-within": { transform: "none" },
+          },
         },
       },
       MuiButton: {
@@ -123,7 +149,7 @@ export function buildTheme(mode = "light") {
             minHeight: "calc(36rem / 15)",
             transition: `background-color ${motionTokens.duration.slow}ms ${motionTokens.easing.standard}, transform ${motionTokens.duration.base}ms ${motionTokens.easing.standard}, box-shadow ${motionTokens.duration.slow}ms ${motionTokens.easing.standard}`,
           },
-          sizeSmall: { minHeight: "calc(30rem / 15)", paddingInline: "calc(12rem / 15)", fontSize: typoTokens.bodySm.size / 15 + "rem" },
+          sizeSmall: { minHeight: "calc(32rem / 15)", paddingInline: "calc(12rem / 15)", fontSize: typoTokens.bodySm.size / 15 + "rem" },
           sizeLarge: { minHeight: "calc(44rem / 15)", paddingInline: "calc(20rem / 15)" },
         },
       },
@@ -142,6 +168,9 @@ export function buildTheme(mode = "light") {
             backgroundColor: p.surface.card,
             borderRadius: radii.lg,
           },
+          elevation1: { boxShadow: p.elevation[1] },
+          elevation2: { boxShadow: p.elevation[2] },
+          elevation3: { boxShadow: p.elevation[3] },
         },
       },
       MuiDialog: {

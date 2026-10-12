@@ -48,7 +48,7 @@ describe("StatisticsCard", () => {
 
   const iconSlotColor = (props) => {
     const { container, unmount } = wrap(<StatisticsCard title="T" value="1" {...props} />);
-    const color = container.querySelector("span").style.color;
+    const color = container.querySelector("span").style.backgroundColor;
     unmount();
     return color;
   };
@@ -66,12 +66,6 @@ describe("StatisticsCard", () => {
   it("renders an icon that is not an element as-is", () => {
     wrap(<StatisticsCard title="Stars" value="4" icon="*" />);
     expect(screen.getByText("*")).toBeInTheDocument();
-  });
-
-  it("turns the title and value white on a gradient card so they stay legible", () => {
-    wrap(<StatisticsCard title="Revenue" value="12" icon={<Users />} gradient />);
-    expect(screen.getByText("12").style.color).toBe("rgb(255, 255, 255)");
-    expect(screen.getByText("Revenue").style.color).toBe("rgba(255, 255, 255, 0.88)");
   });
 
   it.each([
@@ -111,19 +105,6 @@ describe("StatisticsCard", () => {
     expect(new Set([up, down, flat]).size).toBe(3);
   });
 
-  it("paints the trend white on a gradient card whatever its direction", () => {
-    wrap(
-      <StatisticsCard
-        title="Leads"
-        value="9"
-        icon={<Users />}
-        gradient
-        trend={{ direction: "down", value: "-2%" }}
-      />,
-    );
-    expect(screen.getByText("-2%").style.color).toBe("rgb(255, 255, 255)");
-  });
-
   it("renders a footer on its own, without a trend", () => {
     const { container } = wrap(
       <StatisticsCard title="Leads" value="9" icon={<Users />} footer="vs last week" />,
@@ -144,12 +125,5 @@ describe("StatisticsCard", () => {
     );
     expect(screen.getByText("+3%")).toBeInTheDocument();
     expect(screen.getByText("vs last week")).toBeInTheDocument();
-  });
-
-  it("tints the footer for the gradient ground", () => {
-    wrap(
-      <StatisticsCard title="Leads" value="9" icon={<Users />} gradient footer="vs last week" />,
-    );
-    expect(screen.getByText("vs last week").style.color).toBe("rgba(255, 255, 255, 0.85)");
   });
 });

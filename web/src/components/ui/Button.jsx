@@ -17,11 +17,13 @@ import { rem } from "../../utils/rem";
  *   destructive  — red solid
  *   text         — no background, colored text, minimal
  *
- * Sizes: sm (30) / md (36) / lg (44) — matches theme MuiButton heights.
+ * Sizes: sm (32) / md (36) / lg (44) — matches theme MuiButton heights.
+ * sm is 32 so a small button sits flush with a small TextInput / Combobox /
+ * DateField and a small IconButton in a filter row or the top bar.
  */
 
 const SIZE_STYLES = {
-  sm: { minHeight: 30, paddingInline: 12, fontSize: 13, gap: 6 },
+  sm: { minHeight: 32, paddingInline: 12, fontSize: 13, gap: 6 },
   md: { minHeight: 36, paddingInline: 16, fontSize: 14, gap: 8 },
   lg: { minHeight: 44, paddingInline: 20, fontSize: 15, gap: 10 },
 };
@@ -38,10 +40,10 @@ function variantStyles(variant, tokens) {
       };
     case "hero":
       return {
-        background: p.gradient.heroCTA,
+        background: p.brand.cta,
         color: "#FFFFFF",
         boxShadow: p.shadow.sm,
-        hover: { background: p.gradient.heroCTAHover, boxShadow: p.shadow.md },
+        hover: { background: p.brand.ctaHover, boxShadow: p.shadow.md },
       };
     case "secondary":
       return {
@@ -68,7 +70,7 @@ function variantStyles(variant, tokens) {
         color: p.text.primary,
         hover: {
           background:
-            p.mode === "dark" ? "rgba(255,255,255,0.06)" : "rgba(15,23,42,0.04)",
+            p.surface.hover,
         },
       };
     case "destructive":
@@ -149,56 +151,54 @@ const Button = forwardRef(function Button(
         borderRadius: theme.radii.md,
         border: "none",
         cursor: isDisabled ? "not-allowed" : "pointer",
-        opacity: isDisabled && !loading ? 0.5 : 1,
         width: fullWidth ? "100%" : "auto",
         transition: `box-shadow ${motionTokens.duration.slow}ms ${motionTokens.easing.standard}`,
-        background: v.background,
-        color: v.color,
-        boxShadow: v.boxShadow ?? "none",
-        outline: "none",
+        // Disabled is a solid grey, not the variant faded with opacity.
+        ...(isDisabled && !loading
+          ? { background: theme.tokens.surface.selected, color: theme.tokens.text.disabled, boxShadow: "none" }
+          : { background: v.background, color: v.color, boxShadow: v.boxShadow ?? "none" }),
+        // No inline `outline: none`: it beat the global :focus-visible ring.
         ...(typeof sx === "object" ? sx : {}),
       }}
       {...rest}
     >
       {/*
-        Centred on both axes, not parked at the left padding edge.
+        Centred by a full-size flex layer, not by transforming the spinner.
 
-        It used to be `left: sz.paddingInline` — the slot a leftIcon occupies —
-        which only looks deliberate on a narrow button whose label is still
-        visible. The label is hidden below, so on a fullWidth button that read
-        as a small spinner jammed against the left edge of a wide empty bar.
-
-        `translate(-50%, -50%)` because left/top place the spinner's corner at
-        the centre; the transform pulls it back by half its own size. The
-        absolute position keeps it out of flow so the hidden label continues to
-        hold the button's width.
+        It was `left/top: 50%; transform: translate(-50%, -50%)` on the
+        CircularProgress itself — but MUI's indeterminate spinner animates
+        `transform: rotate(...)` on that same element, and the keyframes replace
+        the translate. The spinner's corner sat at the centre, so it drew down
+        and to the right of centre on every loading button. The layer is
+        absolute and out of flow, so the hidden label still holds the width.
       */}
       {loading && (
-        <CircularProgress
-          size={sz.fontSize}
-          thickness={5}
-          sx={{
-            color: v.color,
-            position: "absolute",
-            left: "50%",
-            top: "50%",
-            transform: "translate(-50%, -50%)",
-          }}
-          data-testid={testId ? `${testId}-spinner` : undefined}
-        />
+        <span
+          aria-hidden
+          data-testid={testId ? `${testId}-spinner-layer` : undefined}
+          style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}
+        >
+          <CircularProgress
+            size={rem(sz.fontSize + 1)}
+            thickness={5}
+            sx={{ color: v.color, display: "block" }}
+            data-testid={testId ? `${testId}-spinner` : undefined}
+          />
+        </span>
       )}
       <span
         style={{
           display: "inline-flex",
           alignItems: "center",
           gap: rem(sz.gap),
+          whiteSpace: "nowrap",
           visibility: loading ? "hidden" : "visible",
         }}
       >
-        {leftIcon && <span style={{ display: "inline-flex" }}>{leftIcon}</span>}
+        {leftIcon && <span style={{ display: "inline-flex", flexShrink: 0 }}>{leftIcon}</span>}
         {children}
         {rightIcon && (
-          <span style={{ display: "inline-flex" }}>{rightIcon}</span>
+          <span style={{ display: "inline-flex", flexShrink: 0 }}>{rightIcon}</span>
         )}
       </span>
     </motion.button>

@@ -2,7 +2,7 @@
 //
 // The left half of the sign-in page — and, narrow, the strip across its top.
 //
-// It carries OUR brand, always: `gradient.loginPanel` from the design tokens,
+// It carries OUR brand, always: `brand.loginPanel` from the design tokens,
 // which is dark/light aware and defined in one place. What changes once Central
 // answers is the *identity* on it — the company's logo, their name, and the
 // backend their data lives on. The colour never changes.
@@ -39,39 +39,12 @@ export default function BrandPanel({
         flexDirection: "column",
         justifyContent: "space-between",
         color: "#fff",
-        background: theme.tokens.gradient.loginPanel,
+        background: theme.tokens.brand.loginPanel,
         px: { xs: 3, md: 6, lg: 8 },
         py: { xs: 3, md: 6 },
         minHeight: { xs: "auto", md: "100dvh" },
       }}
     >
-      {/* A fine dot grid, barely visible, so a large flat panel has some
-          surface to it instead of reading as printed card stock. */}
-      <Box
-        aria-hidden
-        sx={{
-          position: "absolute",
-          inset: 0,
-          pointerEvents: "none",
-          backgroundImage:
-            "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.06) 1px, transparent 0)",
-          backgroundSize: "calc(22rem / 15) calc(22rem / 15)",
-        }}
-      />
-
-      {/* One light source, behind the mark. A single off-centre glow gives the
-          panel a direction; two competing ones just look like smudges. */}
-      <Box
-        aria-hidden
-        sx={{
-          position: "absolute",
-          inset: 0,
-          pointerEvents: "none",
-          background:
-            "radial-gradient(38rem 30rem at 8% 8%, rgba(129,140,248,0.28) 0%, transparent 60%)",
-        }}
-      />
-
       <Stack direction="row" spacing={1.5} sx={{ position: "relative", alignItems: "center" }}>
         {showLogo ? (
           <Box

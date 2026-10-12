@@ -50,8 +50,7 @@ export default function EmptyState({
             position: "absolute",
             inset: 0,
             borderRadius: theme.radii.full,
-            background: p.gradient.emptyBlob,
-            filter: "blur(calc(6rem / 15))",
+            background: p.primary.subtle,
           }}
         />
         {icon && (

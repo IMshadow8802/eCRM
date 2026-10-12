@@ -25,9 +25,12 @@ const REPORTS = {
   pipelineValue:      { sp: "sp_RptPipelineValue",      groupBys: ["status", "owner", "product", "branch"] },
   leaderboard:        { sp: "sp_RptLeaderboard",        groupBys: ["owner"] },
   // Task TAT (P4): one basis, the clock's AssignedAt; its own handler in reportController.
-  tat:                { sp: "sp_RptTat",                groupBys: ["person", "priority", "workspace", "verdict_by"], bases: ["assigned"] },
+  tat:                { sp: "sp_RptTat",                groupBys: ["person", "priority", "workspace"], bases: ["assigned"] },
   partners:           { sp: "sp_RptPartners",           groupBys: ["partner"] },
 };
+
+// Which clocks a TAT headline number counts (sp_RptTatClocks @Metric).
+const TAT_METRICS = ["finished", "ontime", "missed", "not_excused", "excused", "no_decision", "reason_pending", "overdue_now"];
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 const pad = (n) => String(n).padStart(2, "0");
@@ -132,4 +135,4 @@ async function runReport(spName, req, res, key, shape = identity) {
   }));
 }
 
-module.exports = { REPORTS, DATE_BASES, MAX_RANGE_DAYS, parseDay, parseRange, parseReportArgs, runReport };
+module.exports = { REPORTS, TAT_METRICS, DATE_BASES, MAX_RANGE_DAYS, parseDay, parseRange, parseReportArgs, runReport };

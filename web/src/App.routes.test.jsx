@@ -194,3 +194,12 @@ describe("retired support routes", () => {
     expect(paths).not.toContain("/settings/pipelines");
   });
 });
+
+// My Work was retired into Today › Mine; an old link must still land somewhere.
+describe("retired My Work", () => {
+  it("/my-work redirects to /today", () => {
+    const route = routesConfig.find((r) => r.path === "/my-work");
+    expect(route.element.props.to).toBe("/today");
+    expect(route.element.props.replace).toBe(true);
+  });
+});

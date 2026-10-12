@@ -6,10 +6,10 @@ import { useTheme } from "@mui/material/styles";
 import dayjs from "dayjs";
 import { Calendar } from "lucide-react";
 
-import { zIndex as zIndexTokens } from "../../styles/tokens";
+import { controlHeight, zIndex as zIndexTokens } from "../../styles/tokens";
 import { rem } from "../../utils/rem";
 
-const HEIGHT = { sm: 32, md: 40, lg: 48 };
+const HEIGHT = controlHeight; // shared scale, styles/tokens.js
 
 // MUI injects `ownerState` into slot components; lucide icons forward unknown
 // props onto the <svg>, which React warns about. Swallow it here.
@@ -24,6 +24,9 @@ const DateField = forwardRef(function DateField(
     value,
     onChange,
     label,
+    // Label beside the field instead of above it: for a toolbar row (a tab
+    // strip, a filter line) where a stacked label would cost a row.
+    inlineLabel = false,
     hint,
     error,
     required = false,
@@ -59,9 +62,10 @@ const DateField = forwardRef(function DateField(
     <div
       style={{
         display: "inline-flex",
-        flexDirection: "column",
+        flexDirection: inlineLabel ? "row" : "column",
+        alignItems: inlineLabel ? "center" : undefined,
         width: fullWidth ? "100%" : "auto",
-        gap: "calc(6rem / 15)",
+        gap: inlineLabel ? "calc(8rem / 15)" : "calc(6rem / 15)",
         fontFamily: p.fontFamilies.sans,
       }}
     >

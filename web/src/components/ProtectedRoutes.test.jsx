@@ -158,9 +158,17 @@ describe("ProtectedRoute focus refresh", () => {
     expect(useAuthStore.getState().access).toEqual({ isAdmin: true, modules: {} });
   });
 
-  it("does not refresh on mount when access is already held", async () => {
+  // Regression: access is persisted, so a reload used to keep the stale menu
+  // until a focus event — users thought they had to sign out to see a change.
+  it("refreshes once per page load even when access is already held, not on later navigations", async () => {
+    const rights = [menu(2, 0, "Tasks", "/tasks"), menu(3, 0, "Leads", "/leads")];
+    fetchMyAccess.mockResolvedValue({ data: { data: { access: { isAdmin: true, modules: {} }, permissions: { rawPermissions: rights } } } });
+    const first = await act(async () => mount());
+    expect(fetchMyAccess).toHaveBeenCalledTimes(1);
+    expect(useAuthStore.getState().menuRights).toEqual(rights);
+    first.unmount();
     await act(async () => { mount(); });
-    expect(fetchMyAccess).not.toHaveBeenCalled();
+    expect(fetchMyAccess).toHaveBeenCalledTimes(1);
   });
 
   it("the throttle survives a remount (navigation), but null access bypasses it", async () => {

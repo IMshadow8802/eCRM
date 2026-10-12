@@ -12,7 +12,7 @@ const { visibleUserIds } = require("./workSettingsController");
 const { emitToUser } = require("../realtime/events");
 const { getIo } = require("../realtime/socket");
 const { SCOPES, rooms } = require("../realtime/contract");
-const { dateKey, at, effectiveStart, lateMinutes } = require("../utils/workCalendar");
+const { dateKey, at, effectiveStart, lateMinutes, workIntervals } = require("../utils/workCalendar");
 const { success, validationError } = require("../utils/responseHelper");
 const { asyncRoute, firstRow, spStatus, spOk, spMessage, positiveInt } = require("../utils/controllerKit");
 
@@ -56,9 +56,10 @@ function presenceStatus(row, now, settings, holidayToday) {
  */
 function withStatus(r, u, key, now, settings) {
   const ShiftStart = r.ShiftStart ?? (u ? effectiveStart(key, u.ctx) : null);
+  const ShiftEnd = r.ShiftEnd ?? (u ? workIntervals(key, u.ctx).at(-1)?.[1] ?? null : null);
   const LateMinutes = u && r.FirstSignInAt ? lateMinutes(r.FirstSignInAt, key, u.ctx) : r.LateMinutes;
   const asOf = { ...r, ShiftStart, LateMinutes, HasOpenSession: key === dateKey(now) && r.HasOpenSession };
-  return { ...r, LateMinutes, status: presenceStatus(asOf, now, settings, !!u?.ctx.holidays.has(key)) };
+  return { ...r, ShiftStart, ShiftEnd, LateMinutes, status: presenceStatus(asOf, now, settings, !!u?.ctx.holidays.has(key)) };
 }
 
 const reply = (res, row, data = null) => {

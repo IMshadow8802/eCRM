@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 
 import useAuthStore from "../stores/useAuthStore";
-import { fetchMyAccess } from "../api/masterQueries";
+import { firstLoad, refreshAccess } from "../utils/refreshAccess";
 import { canAccessPath } from "../utils/routeAccess";
 import NoAccess from "../pages/NoAccess";
 
@@ -27,42 +27,23 @@ import NoAccess from "../pages/NoAccess";
  * whether anyone was signed in. `isAuthenticated` is persisted and rehydrates
  * synchronously with the rest of the store, so a reload still lands correctly.
  */
-const REFRESH_MS = 60_000;
-
-// Module-level, not a ref: every route mounts its own ProtectedRoute, so a ref
-// would reset on each navigation and defeat the throttle.
-let lastRefresh = 0;
-export const resetRefreshThrottle = () => { lastRefresh = 0; };
+export { resetRefreshThrottle } from "../utils/refreshAccess";
 
 const ProtectedRoute = ({ element }) => {
   const location = useLocation();
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const menuRights = useAuthStore((state) => state.menuRights);
 
-  // Rights are read at login; an admin's change reaches a signed-in user the
-  // next time the tab regains focus (at most once a minute). A failure is
-  // ignored: the 401 interceptor already handles an expired session.
+  // Access is persisted, so without this a reload would keep yesterday's menu:
+  // refresh once per page load (forced), then on focus at most once a minute.
+  // The realtime `access` scope covers changes made while the tab is open.
   useEffect(() => {
     if (!isAuthenticated) return undefined;
-    const refresh = async () => {
-      // A null access (a session saved before this shipped, or a reload) always
-      // refreshes; otherwise at most once a minute.
-      const missing = !useAuthStore.getState().access;
-      if (!missing && Date.now() - lastRefresh < REFRESH_MS) return;
-      lastRefresh = Date.now();
-      try {
-        const res = await fetchMyAccess();
-        const data = res?.data?.data;
-        const { setAccess, setMenuRights } = useAuthStore.getState();
-        if (data?.access) setAccess(data.access);
-        if (data?.permissions?.rawPermissions) setMenuRights(data.permissions.rawPermissions);
-      } catch {
-        // see above
-      }
-    };
-    if (!useAuthStore.getState().access) refresh();
-    window.addEventListener("focus", refresh);
-    return () => window.removeEventListener("focus", refresh);
+    const onFocus = () => refreshAccess();
+    if (firstLoad()) refreshAccess({ force: true });
+    else if (!useAuthStore.getState().access) refreshAccess();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
   }, [isAuthenticated]);
 
   if (!isAuthenticated) {

@@ -56,14 +56,16 @@ const idOf = (v) => (v && /^\d+$/.test(v) ? Number(v) : null);
  * so Lost passes "closed". Without this the page has no lever at all — the
  * `dateBases` prop only feeds the picker's options.
  */
-export function readFilters(params, { groupBys, defaultBasis = "created", today = dayjs() }) {
+export function readFilters(params, { groupBys, defaultBasis = "created", today = dayjs(), presets = PRESETS, defaultPreset = "30d" }) {
   const get = (k) => params.get(k);
   const hasDates = isIso(get("from")) || isIso(get("to"));
-  const preset = PRESETS.some((p) => p.value === get("preset"))
+  const preset = presets.some((p) => p.value === get("preset"))
     ? get("preset")
     : hasDates
       ? "custom"
-      : "30d";
+      : defaultPreset;
+  // A page's preset may bring its own range (Attendance: whole calendar months).
+  const own = presets.find((p) => p.value === preset)?.range;
   let range;
   if (preset === "custom") {
     const fallback = presetRange("30d", today);
@@ -72,7 +74,7 @@ export function readFilters(params, { groupBys, defaultBasis = "created", today 
       to: isIso(get("to")) ? get("to") : fallback.to,
     };
   } else {
-    range = presetRange(preset, today);
+    range = own ? own(today) : presetRange(preset, today);
   }
   const basis = DATE_BASES.some((b) => b.value === get("basis")) ? get("basis") : defaultBasis;
   const groupBy = groupBys.some((g) => g.value === get("groupBy")) ? get("groupBy") : groupBys[0].value;
@@ -80,13 +82,16 @@ export function readFilters(params, { groupBys, defaultBasis = "created", today 
   return { preset, from: range.from, to: range.to, basis, groupBy, ...ids };
 }
 
+// A custom range picked backwards. Every report shows this and fetches nothing.
+export const rangeError = (f) => (f.from > f.to ? "To is before From" : null);
+
 /**
  * Filter state -> URL params. Defaults are left out so a fresh page has a
  * clean address; groupBy always stays so a shared link says what it shows.
  */
-export function writeFilters(f, defaultBasis = "created") {
+export function writeFilters(f, defaultBasis = "created", defaultPreset = "30d") {
   const out = { groupBy: f.groupBy };
-  if (f.preset !== "30d") out.preset = f.preset;
+  if (f.preset !== defaultPreset) out.preset = f.preset;
   if (f.preset === "custom") {
     out.from = f.from;
     out.to = f.to;

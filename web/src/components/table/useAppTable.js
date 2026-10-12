@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { useMaterialReactTable } from "material-react-table";
 import { tableDefaults } from "./tableDefaults";
 
@@ -24,6 +24,7 @@ export default function useAppTable(options = {}) {
     muiTopToolbarProps,
     muiBottomToolbarProps,
     initialState,
+    displayColumnDefOptions,
     ...rest
   } = options;
 
@@ -36,6 +37,11 @@ export default function useAppTable(options = {}) {
   const table = useMaterialReactTable({
     ...tableDefaults,
     ...rest,
+    displayColumnDefOptions: {
+      ...tableDefaults.displayColumnDefOptions,
+      ...displayColumnDefOptions,
+      "mrt-row-actions": { ...tableDefaults.displayColumnDefOptions["mrt-row-actions"], ...displayColumnDefOptions?.["mrt-row-actions"] },
+    },
     initialState: { ...tableDefaults.initialState, ...(initialState || {}) },
     muiTableProps: mergeSxProps(tableDefaults.muiTableProps, muiTableProps),
     muiTablePaperProps: mergeSxProps(tableDefaults.muiTablePaperProps, muiTablePaperProps),
@@ -51,6 +57,16 @@ export default function useAppTable(options = {}) {
     muiTopToolbarProps: mergeSxProps(tableDefaults.muiTopToolbarProps, muiTopToolbarProps),
     muiBottomToolbarProps: mergeSxProps(tableDefaults.muiBottomToolbarProps, muiBottomToolbarProps),
   });
+
+  // Esc leaves full screen wherever focus is. MRT only listens on its own
+  // Paper, so a click on the page behind first left Esc doing nothing.
+  const isFullScreen = table.getState().isFullScreen;
+  useEffect(() => {
+    if (!isFullScreen) return undefined;
+    const onKey = (e) => e.key === "Escape" && table.setIsFullScreen(false);
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [isFullScreen, table]);
 
   const { tableContainerRef, tablePaperRef } = table.refs;
   useLayoutEffect(() => {

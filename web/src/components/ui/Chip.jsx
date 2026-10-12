@@ -5,9 +5,9 @@ import { rem } from "../../utils/rem";
 /**
  * Chip — pill-shaped label. Variants:
  *   solid, tonal (default), outlined, ghost
- * Tones: default, primary, accent, success, warning, error, info
+ * Tones: default, primary, accent, success, warning, error, info, violet
  */
-const TONES = ["default", "primary", "accent", "success", "warning", "error", "info"];
+const TONES = ["default", "primary", "accent", "success", "warning", "error", "info", "violet"];
 
 function resolveTone(tone, tokens) {
   const p = tokens;
