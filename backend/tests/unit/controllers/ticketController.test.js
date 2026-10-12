@@ -67,6 +67,11 @@ function mockCustomer(row = { Id: 31, BranchId: 2, CreatedBy: 7 }) {
   database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [row ? [row] : [], []] });
 }
 
+// visibleRecord's lead lookup (sp_FetchLeadDetail RS1).
+function mockLead(row = { Id: 9, BranchId: 2, OwnerId: 7, CreatedBy: 7 }) {
+  database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [row ? [row] : []] });
+}
+
 const okRow = (extra = {}) => ({
   recordset: [{ Id: 1, ResponseCode: 200, ResponseMess: "ok", ...extra }],
 });
@@ -81,6 +86,7 @@ describe("ticketController.save — create", () => {
   it("injects Id=0/CompId/BranchId/UserId, trims Subject, forwards exactly sp_SaveTicket's columns, echoes TicketNo", async () => {
     mockRoster(18); // AssignedTo 18 is assignable by the caller
     mockCustomer();
+    mockLead();
     database.executeStoredProcedure.mockResolvedValueOnce(okRow({ Id: 12, TicketNo: "TKT-000012" }));
     const res = mockRes();
     await ticketController.save(baseReq({ body: CREATE_BODY }), res);
@@ -101,12 +107,13 @@ describe("ticketController.save — create", () => {
   // undeclared parameter outright — and the body never names its own tenant.
   it("drops the retired columns and unknown keys; the body cannot override CompId", async () => {
     mockCustomer();
+    mockLead();
     database.executeStoredProcedure.mockResolvedValueOnce(okRow());
     await ticketController.save(
       baseReq({ body: { ...CREATE_BODY, AssignedTo: null, CustomerName: "Acme", Channel: "Phone", PipelineId: 1, StageId: 2, CompId: 999, CreatedBy: 1, Nonsense: "x" } }),
       mockRes(),
     );
-    const params = database.executeStoredProcedure.mock.calls[1][1];
+    const params = database.executeStoredProcedure.mock.calls[2][1];
     expect(params.CompId).toBe(5);
     for (const k of ["CustomerName", "Channel", "PipelineId", "StageId", "CreatedBy", "Nonsense"]) {
       expect(params).not.toHaveProperty(k);
@@ -155,17 +162,19 @@ describe("ticketController.save — create", () => {
 
   it("skips the roster check for an unassigned create", async () => {
     mockCustomer();
+    mockLead();
     database.executeStoredProcedure.mockResolvedValueOnce(okRow());
     const res = mockRes();
     await ticketController.save(baseReq({ body: { ...CREATE_BODY, AssignedTo: null } }), res);
-    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(2);
-    expect(database.executeStoredProcedure.mock.calls[1][0]).toBe("sp_SaveTicket");
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(3); // customer + lead + save
+    expect(database.executeStoredProcedure.mock.calls[2][0]).toBe("sp_SaveTicket");
     expect(res.status).toHaveBeenCalledWith(200);
   });
 
   // The SP checks the customer is active and in this company (spec §3: 404).
   it("surfaces the SP's 404 for a customer outside the company", async () => {
     mockCustomer();
+    mockLead();
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordset: [{ Id: 0, ResponseCode: 404, ResponseMess: "Customer not found" }],
     });
@@ -177,6 +186,7 @@ describe("ticketController.save — create", () => {
 
   it("handles DB error as 500", async () => {
     mockCustomer();
+    mockLead();
     database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
     const res = mockRes();
     await ticketController.save(baseReq({ body: { ...CREATE_BODY, AssignedTo: null } }), res);
@@ -188,7 +198,7 @@ describe("ticketController.save — update", () => {
   // Ownership moves through transfer (history + notification), status through
   // setStatus (guards). An edit must not be a side door for either.
   it("gates on the ticket, then saves with AssignedTo dropped and no status key", async () => {
-    mockTicketLookup(visibleTicket);
+    mockTicketLookup({ ...visibleTicket, LinkedLeadId: 9 }); // link unchanged: no lead lookup
     mockCustomer();
     database.executeStoredProcedure.mockResolvedValueOnce({ recordset: [{ Priority: 3, AssignedTo: 18 }] }); // sp_FetchTicketDue: unchanged priority
     database.executeStoredProcedure.mockResolvedValueOnce(okRow());
@@ -346,6 +356,92 @@ describe("ticketController.fetch", () => {
   });
 });
 
+// REGRESSION (audit 2026-10-12, A1): a complaint could be linked to ANY lead id,
+// and its detail then showed that lead's name, mobile and email — so an Own-scope
+// support agent with no leads access could loop over ids and read every lead.
+describe("ticketController.save — linked lead visibility", () => {
+  const hidden = { Id: 9, BranchId: 9, OwnerId: 3, CreatedBy: 3 };
+
+  it("refuses a create linked to a lead the caller cannot see, never calling sp_SaveTicket", async () => {
+    mockCustomer();
+    mockLead(hidden);
+    const res = mockRes();
+    await ticketController.save(baseReq({ body: { ...CREATE_BODY, AssignedTo: null } }), res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_FetchLeadDetail", { CompId: 5, LeadId: 9 });
+    expect(database.executeStoredProcedure).not.toHaveBeenCalledWith("sp_SaveTicket", expect.anything());
+  });
+
+  it("refuses a link without the leads module, before any lead lookup", async () => {
+    mockCustomer();
+    const req = baseReq({ body: { ...CREATE_BODY, AssignedTo: null } });
+    delete req.access.modules.leads;
+    const res = mockRes();
+    await ticketController.save(req, res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalledWith("sp_FetchLeadDetail", expect.anything());
+    expect(database.executeStoredProcedure).not.toHaveBeenCalledWith("sp_SaveTicket", expect.anything());
+  });
+
+  it("re-checks on an edit that changes the link", async () => {
+    mockTicketLookup({ ...visibleTicket, LinkedLeadId: 4 });
+    mockLead(hidden);
+    const res = mockRes();
+    await ticketController.save(baseReq({ body: { Id: 1, LinkedLeadId: 9 } }), res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalledWith("sp_SaveTicket", expect.anything());
+  });
+
+  // A lead moved away later must not freeze the complaint: re-saving the same
+  // link is no new act of linking.
+  it("lets an edit keep an existing link the caller can no longer see", async () => {
+    mockTicketLookup({ ...visibleTicket, LinkedLeadId: 9 });
+    database.executeStoredProcedure.mockResolvedValueOnce(okRow());
+    const res = mockRes();
+    await ticketController.save(baseReq({ body: { Id: 1, LinkedLeadId: 9, Description: "x" } }), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalledWith("sp_FetchLeadDetail", expect.anything());
+  });
+});
+
+describe("ticketController.detail — linked lead visibility", () => {
+  function detailWith(lead) {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[{ Id: 1, BranchId: 2, AssignedTo: 7, CreatedBy: 7, LinkedLeadId: 9 }], [], [], [],
+        [{ Id: 9, Name: "Acme Corp", MobileNo: "9876543210", Email: "a@acme.in", StatusId: 1 }]],
+    });
+    mockLead(lead);
+  }
+
+  it("hides the linked lead's contact details from a caller who cannot see that lead", async () => {
+    detailWith({ Id: 9, BranchId: 9, OwnerId: 3, CreatedBy: 3 });
+    const res = mockRes();
+    await ticketController.detail(baseReq({ body: { TicketId: 1 } }), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    const { data } = res.json.mock.calls[0][0];
+    expect(data.linkedLead).toBeNull();
+    expect(JSON.stringify(data)).not.toMatch(/9876543210|a@acme\.in/);
+  });
+
+  it("shows it to a caller who can", async () => {
+    detailWith({ Id: 9, BranchId: 2, OwnerId: 7, CreatedBy: 7 });
+    const res = mockRes();
+    await ticketController.detail(baseReq({ body: { TicketId: 1 } }), res);
+    expect(res.json.mock.calls[0][0].data.linkedLead).toMatchObject({ Id: 9, MobileNo: "9876543210" });
+  });
+
+  it("hides it when the lead lookup fails, rather than failing the whole complaint", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[{ Id: 1, BranchId: 2, AssignedTo: 7, CreatedBy: 7, LinkedLeadId: 9 }], [], [], [], [{ Id: 9, Name: "Acme" }]],
+    });
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("timeout"));
+    const res = mockRes();
+    await ticketController.detail(baseReq({ body: { TicketId: 1 } }), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json.mock.calls[0][0].data.linkedLead).toBeNull();
+  });
+});
+
 describe("ticketController.detail", () => {
   it("maps the five recordsets to ticket / fields / activity / assignments / linkedLead", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
@@ -357,6 +453,7 @@ describe("ticketController.detail", () => {
         [{ Id: 9, Name: "Acme Corp" }],
       ],
     });
+    mockLead({ Id: 9, BranchId: 2, OwnerId: 4, CreatedBy: 4 });
     const res = mockRes();
     await ticketController.detail(baseReq({ body: { TicketId: "1" } }), res);
     expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_FetchTicketDetail", { CompId: 5, TicketId: 1 });
@@ -1145,6 +1242,7 @@ describe("ticketController — DueAtOverride", () => {
   it("create: TatHours of the chosen priority, assignee from the body, anchored now", async () => {
     mockRoster(18);
     mockCustomer();
+    mockLead();
     database.executeStoredProcedure.mockResolvedValueOnce(okRow({ Id: 12 }));
     ticketDue.priorityTatHours.mockResolvedValueOnce(4);
     ticketDue.compute.mockResolvedValueOnce(DUE);
@@ -1163,6 +1261,7 @@ describe("ticketController — DueAtOverride", () => {
       ticketDue.compute.mockClear();
       mockTicketLookup(visibleTicket);
       mockCustomer();
+      mockLead();
       database.executeStoredProcedure.mockResolvedValueOnce({ recordset: [row] });
       database.executeStoredProcedure.mockResolvedValueOnce(okRow());
       ticketDue.priorityTatHours.mockResolvedValueOnce(4);
@@ -1178,6 +1277,7 @@ describe("ticketController — DueAtOverride", () => {
   it("update with an unchanged or absent priority passes nothing", async () => {
     mockTicketLookup(visibleTicket);
     mockCustomer();
+    mockLead();
     database.executeStoredProcedure.mockResolvedValueOnce({ recordset: [{ Priority: 3, AssignedTo: 18 }] });
     database.executeStoredProcedure.mockResolvedValueOnce(okRow());
     ticketDue.compute.mockClear();
@@ -1190,6 +1290,7 @@ describe("ticketController — DueAtOverride", () => {
     const spy = jest.spyOn(console, "error").mockImplementation(() => {});
     mockTicketLookup(visibleTicket);
     mockCustomer();
+    mockLead();
     database.executeStoredProcedure.mockRejectedValueOnce(new Error("sp missing"));
     database.executeStoredProcedure.mockResolvedValueOnce(okRow());
     const res = mockRes();

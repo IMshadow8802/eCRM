@@ -179,6 +179,19 @@ describe("TopNav", () => {
     expect(screen.queryByText("My Account")).not.toBeInTheDocument();
   });
 
+  // REGRESSION (audit 2026-10-12, W1): logout navigated in-app and kept the
+  // React Query cache, so the next person on a shared PC was served the
+  // previous user's leads and complaints from it.
+  it("clears every cached query on logout", async () => {
+    const clear = vi.spyOn(QueryClient.prototype, "clear");
+    renderTopNav();
+    fireEvent.click(screen.getByText("Super"));
+    fireEvent.click(screen.getByText("Logout"));
+    await new Promise((r) => setTimeout(r, 200));
+    expect(clear).toHaveBeenCalled();
+    clear.mockRestore();
+  });
+
   it("falls back to capitalised FullName/JobTitle fields when present", () => {
     localStorage.setItem(
       "userData",

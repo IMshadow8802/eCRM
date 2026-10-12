@@ -154,60 +154,45 @@ describe("authController.login response shape", () => {
     expect(raw.find((m) => m.menuid === 30).route).toBe("/support");
   });
 
-  it("rejects wrong password with 401 + WRONG_PASSWORD code (distinct from missing-user)", async () => {
+  // Audit 2026-10-12 (A2): an unknown username and a wrong password get the SAME
+  // answer, or the login form tells an outsider which accounts exist.
+  const BAD_LOGIN = { code: "INVALID_CREDENTIALS", message: "Incorrect username or password", success: false };
+
+  it("rejects a wrong password with 401 and the shared wording", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
-      recordsets: [
-        [
-          {
-            ResponseCode: 200,
-            ResponseMess: "ok",
-            UserId: 1,
-            Password: "bcrypt-hash",
-          },
-        ],
-        [],
-      ],
+      recordsets: [[{ ResponseCode: 200, ResponseMess: "ok", UserId: 1, Password: "bcrypt-hash" }], []],
     });
     comparePassword.mockResolvedValueOnce(false);
 
     const res = mockRes();
-    await authController.login(
-      { body: { username: "x", password: "wrong" } },
-      res,
-    );
+    await authController.login({ body: { username: "x", password: "wrong" } }, res);
 
     expect(res.status).toHaveBeenCalledWith(401);
-    const payload = res.json.mock.calls[0][0];
-    expect(payload.code).toBe("WRONG_PASSWORD");
-    expect(payload.message).toBe("Incorrect password");
+    expect(res.json.mock.calls[0][0]).toMatchObject(BAD_LOGIN);
   });
 
-  it("returns 404 + USER_NOT_FOUND when sp_ValidateUser reports the username does not exist", async () => {
+  it("answers an unknown username exactly like a wrong password", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
-      recordsets: [
-        [
-          {
-            ResponseCode: 404,
-            ResponseMess: "Username does not exist",
-          },
-        ],
-        [],
-      ],
+      recordsets: [[{ ResponseCode: 404, ResponseMess: "Username does not exist" }], []],
     });
 
     const res = mockRes();
-    await authController.login(
-      { body: { username: "ghost", password: "anything" } },
-      res,
-    );
+    await authController.login({ body: { username: "ghost", password: "anything" } }, res);
 
-    expect(res.status).toHaveBeenCalledWith(404);
-    const payload = res.json.mock.calls[0][0];
-    expect(payload.code).toBe("USER_NOT_FOUND");
-    expect(payload.message).toBe("Username does not exist");
-    expect(payload.success).toBe(false);
-    // bcrypt must NOT run when the user does not exist.
-    expect(comparePassword).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json.mock.calls[0][0]).toMatchObject(BAD_LOGIN);
+    expect(JSON.stringify(res.json.mock.calls[0][0])).not.toMatch(/exist|USER_NOT_FOUND/);
+  });
+
+  // Timing: bcrypt costs ~300 ms, so skipping it for an unknown name would
+  // still tell the two cases apart by response time.
+  it("still runs a password check for an unknown username, against a real bcrypt hash", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[{ ResponseCode: 404, ResponseMess: "Username does not exist" }], []],
+    });
+    await authController.login({ body: { username: "ghost", password: "anything" } }, mockRes());
+    expect(comparePassword).toHaveBeenCalledTimes(1);
+    expect(comparePassword).toHaveBeenCalledWith("anything", expect.stringMatching(/^\$2[aby]\$12\$.{53}$/));
   });
 
   it("returns 403 + USER_INACTIVE when sp_ValidateUser reports the account is disabled", async () => {

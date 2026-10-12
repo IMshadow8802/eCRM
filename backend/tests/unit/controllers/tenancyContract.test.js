@@ -232,7 +232,7 @@ const KNOWN_WRAPPERS = new Set([
   "configController.js:runSp",
   "configController.js:fetchRows",
   "reportKit.js:runReport",
-  "permission.js:assertRecordAccess",
+  "permission.js:visibleRecord", // assertRecordAccess's lookup half; ENTITY_LOOKUP SPs all take CompId
 ]);
 
 /**

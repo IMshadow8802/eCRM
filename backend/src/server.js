@@ -14,8 +14,10 @@ const sweep = require("./jobs/sweep");
 const app = express();
 const PORT = process.env.PORT || 5001;
 
-// Trust proxy headers when behind IIS
-app.set("trust proxy", true);
+// One proxy hop: aaPanel nginx in front of the container. `true` would take the
+// LEFTMOST X-Forwarded-For entry, which the client writes, so anyone could pick
+// their own IP and walk past the per-address login limit (routes/authRoutes.js).
+app.set("trust proxy", 1);
 
 console.log("🚀 Starting CRM API Server...");
 

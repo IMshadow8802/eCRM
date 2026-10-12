@@ -19,6 +19,7 @@ vi.mock("react-router-dom", async () => {
 });
 
 import Login from "./Login";
+import { QueryClient } from "@tanstack/react-query";
 import renderWithProviders from "../../test/renderWithProviders";
 import useAuthStore from "../../stores/useAuthStore";
 
@@ -204,6 +205,33 @@ describe("Login", () => {
     await waitFor(() => expect(navigate).toHaveBeenCalled());
     expect(navigate).toHaveBeenCalledWith("/tasks", { replace: true });
     expect(navigate).not.toHaveBeenCalledWith("/dashboard");
+  });
+
+  // REGRESSION (audit 2026-10-12, W1): whatever the cache holds belongs to the
+  // previous user — every way out of a session ends at this form, so a new
+  // sign-in starts from an empty cache.
+  it("drops every cached query before the new user is stored", async () => {
+    const clear = vi.spyOn(QueryClient.prototype, "clear");
+    post.mockResolvedValueOnce(loginResponse([]));
+
+    renderWithProviders(<Login />, { router: true });
+    await signIn();
+
+    await waitFor(() => expect(navigate).toHaveBeenCalled());
+    expect(clear).toHaveBeenCalledTimes(1);
+    clear.mockRestore();
+  });
+
+  it("keeps the cache when the credentials are rejected", async () => {
+    const clear = vi.spyOn(QueryClient.prototype, "clear");
+    post.mockResolvedValueOnce({ data: { success: false, responseCode: 401, message: "Incorrect username or password" } });
+
+    renderWithProviders(<Login />, { router: true });
+    await signIn();
+
+    await waitFor(() => expect(post).toHaveBeenCalled());
+    expect(clear).not.toHaveBeenCalled();
+    clear.mockRestore();
   });
 
   it("falls back to / when the user has no menus, so HomeRedirect explains it", async () => {

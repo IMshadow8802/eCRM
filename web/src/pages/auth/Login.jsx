@@ -121,6 +121,9 @@ export default function Login() {
       const response = await loginUser({ identifier, password, Device: "web" });
       const responseData = response.data;
       if (responseData.success && responseData.responseCode === 200) {
+        // Every way out of a session ends at this form, so this is the one
+        // place a shared PC can be made to forget the previous user's data.
+        queryClient.clear();
         login(responseData.data);
         // Land on the first page this user's menu rights grant. The rights are
         // in the login response, so read them from there rather than waiting a

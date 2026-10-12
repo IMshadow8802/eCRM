@@ -6,6 +6,7 @@ const {
   scopeFor,
   canSeeRecord,
   assertRecordAccess,
+  visibleRecord,
   assertCanAssign,
   canReopen,
 } = require("../middleware/permission");
@@ -78,6 +79,20 @@ const transferArgs = (body) => ({
   Remarks: trimmed(body.Remarks),
 });
 
+// A complaint's linked lead carries the lead's name, mobile and email, and the
+// detail SP is CompId-scoped only — so it is shown only to someone who may see
+// that lead. Hidden on any doubt, a failed lookup included: the complaint itself
+// still opens.
+async function linkedLeadFor(req, lead) {
+  if (!lead) return null;
+  try {
+    return (await visibleRecord(req, "lead", lead.Id)) ? lead : null;
+  } catch (err) {
+    console.error("linked lead check failed:", err.message);
+    return null;
+  }
+}
+
 const ticketController = {
   async save(req, res) {
     const { CompId, BranchId, UserId } = req.user;
@@ -96,8 +111,11 @@ const ticketController = {
       // everyone, while assertCanAssign 403s a null target below Branch scope.
       if (fields.AssignedTo
           && !(await assertCanAssign(req, res, { toUserId: fields.AssignedTo, toBranchId: null }))) return;
-    } else {
-      if (!(await assertRecordAccess(req, res, "ticket", Id, "write"))) return;
+    }
+    let current = null;
+    if (Id > 0) {
+      current = await assertRecordAccess(req, res, "ticket", Id, "write");
+      if (!current) return;
       // Ownership moves through transfer (history + notification), status
       // through setStatus (the reopen gate). The SP ignores AssignedTo on
       // update; not sending it keeps that fact visible here, not in T-SQL.
@@ -106,6 +124,12 @@ const ticketController = {
     // A ticket may only hang off a customer the caller can see (customers scope).
     if (fields.CustomerId
         && !(await assertCustomerVisible(req, res, fields.CustomerId, scopeFor(req, "customers")))) return;
+    // ...and only link a lead the caller can see: the detail shows the linked
+    // lead's contact details (audit 2026-10-12). Keeping the link a ticket
+    // already has is no new act of linking, so a lead moved away later does
+    // not freeze the complaint.
+    if (fields.LinkedLeadId && Number(current?.LinkedLeadId) !== fields.LinkedLeadId
+        && !(await assertRecordAccess(req, res, "lead", fields.LinkedLeadId))) return;
     // P4: DueAt on the assignee's working calendar. Create always stamps; an
     // update re-stamps only when the priority changed (from the original anchor).
     // A transfer never does (R-P4-3). Any failure sends null = the SP's old clock.
@@ -212,7 +236,7 @@ const ticketController = {
         fields: rs[1] || [],
         activity: rs[2] || [],
         assignments: rs[3] || [],
-        linkedLead: rs[4]?.[0] || null,
+        linkedLead: await linkedLeadFor(req, rs[4]?.[0]),
       });
     } catch (err) {
       console.error("sp_FetchTicketDetail error:", err);
