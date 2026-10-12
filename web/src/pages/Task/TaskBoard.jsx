@@ -71,7 +71,6 @@ export default function TaskBoard() {
   const workspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   const activeRole = useWorkspaceStore((s) => s.activeWorkspaceRole);
   const activeType = useWorkspaceStore((s) => s.activeWorkspaceType);
-  const activeName = useWorkspaceStore((s) => s.activeWorkspaceName);
   const activeColor = useWorkspaceStore((s) => s.activeWorkspaceColor);
   const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace);
   const isAdmin = useIsAdmin();
@@ -347,17 +346,8 @@ export default function TaskBoard() {
     >
       <PageHeader
         title="Tasks"
-        titleSuffix={
-          activeName ? (
-            <Chip
-              label={activeName}
-              tone="primary"
-              variant="tonal"
-              size="md"
-              data-testid="active-workspace-chip"
-            />
-          ) : null
-        }
+        // No workspace-name chip here: the WorkspaceSwitcher right under the
+        // bar already names it, and the bar repeating it was noise.
         subtitle="Your boards, shared work, and team projects — all in one place."
         icon={TYPE_ICON[activeType] ?? <CheckSquare size={22} />}
         iconBg={activeColor ?? undefined}

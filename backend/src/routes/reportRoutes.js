@@ -38,6 +38,7 @@ router.post("/partners", allowEmptyPayload, requireModule("sales_reports", "view
 // P4 Team Reports — open to every signed-in user; the data is scoped per caller
 // (self + ReportsTo subtree + attendance reach), out-of-reach rows are dropped.
 router.post("/tat", allowEmptyPayload, open(), reportController.tat);
+router.post("/tatClocks", allowEmptyPayload, open(), reportController.tatClocks);
 router.post("/attendance", allowEmptyPayload, open(), attendanceReport.attendance);
 
 module.exports = router;

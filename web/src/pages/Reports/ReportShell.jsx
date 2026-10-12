@@ -4,6 +4,8 @@ import { MaterialReactTable } from "material-react-table";
 import useAppTable from "../../components/table/useAppTable";
 import PageHeader from "../../components/ui/PageHeader";
 import Tooltip from "../../components/ui/Tooltip";
+import TextInput from "../../components/ui/TextInput";
+import { Search } from "lucide-react";
 import {
   Box,
   CircularProgress,
@@ -51,12 +53,12 @@ export function ReportShellPage({
   children,
 }) {
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", flexGrow: 1 }}>
+    <Box sx={{ display: "flex", flexDirection: "column", flexGrow: 1, gap: 1.5 }}>
       <PageHeader title={title} subtitle={subtitle} actions={actions} />
       <Helmet>
         <title>PRD Infotech | {documentTitle}</title>
       </Helmet>
-      <Box sx={{ mt: 1.5, display: "flex", flexDirection: "column", gap: 2 }}>
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
         {isLoading ? (
           <Box
             sx={{ display: "flex", justifyContent: "center", py: 4 }}
@@ -71,7 +73,7 @@ export function ReportShellPage({
         ) : isEmpty ? (
           <Typography
             data-testid={`${testId}-empty`}
-            sx={{ color: "text.secondary", py: 4, textAlign: "center" }}
+            sx={{ color: "text.secondary", py: 2, textAlign: "center" }}
           >
             {emptyText}
           </Typography>
@@ -159,15 +161,18 @@ export function ReportBarChart({ data, xKey, bars, legend = true, height = 260 }
  * sorting and show/hide columns. The first column is pinned so the row's name
  * stays visible while scrolling.
  *
- * `columns` is `{ key?, header, align?, hint?, cell(row) }`. `key` names the
+ * `columns` is `{ key?, header, align?, hint?, size?, cell(row) }` (`size` in px, also the minimum width). `key` names the
  * row field (sorting and search use it) and keeps two columns with one header
  * apart (the Lost report heads two "Reason"). A column without a usable field
  * sorts on what `cell` returns, unless that is an element.
  *
+ * `rowTint(row)` optionally returns a background colour for the row (a light
+ * status wash); null leaves it plain.
+ *
  * `onRowClick` (spec 4a drill-down) makes rows hoverable, clickable and
  * keyboard-activatable. Without it rows carry no handler, cursor or tab stop.
  */
-export function ReportTable({ rows, columns, rowKey, testId, onRowClick, rowTestId }) {
+export function ReportTable({ rows, columns, rowKey, testId, onRowClick, rowTestId, rowTint }) {
   const mrtColumns = useMemo(
     () =>
       columns.map((c, i) => {
@@ -190,6 +195,7 @@ export function ReportTable({ rows, columns, rowKey, testId, onRowClick, rowTest
           Cell: ({ row }) => c.cell(row.original),
           muiTableHeadCellProps: { align: c.align },
           muiTableBodyCellProps: { align: c.align },
+          ...(c.size && { size: c.size, minSize: c.size }),
         };
       }),
     [columns, rows],
@@ -204,8 +210,27 @@ export function ReportTable({ rows, columns, rowKey, testId, onRowClick, rowTest
     enableBottomToolbar: rows.length > 25,
     initialState: { columnPinning: { left: mrtColumns[0] ? [mrtColumns[0].id] : [] } },
     muiTablePaperProps: { "data-testid": testId },
+    // MRT's built-in search box still passes MUI v9 the removed inputProps/InputProps,
+    // which leak onto the DOM. Ours sets the same global filter through ui/TextInput.
+    // ponytail: list pages on useAppTable keep MRT's box (and the warning); move this into useAppTable if it matters there.
+    positionGlobalFilter: "none",
+    renderTopToolbarCustomActions: ({ table: t }) => (
+      <Box sx={{ width: { xs: "100%", sm: "calc(260rem / 15)" } }}>
+        <TextInput
+          size="sm"
+          placeholder="Search…"
+          aria-label="Search"
+          leftAdornment={<Search size={14} />}
+          value={t.getState().globalFilter ?? ""}
+          onChange={(e) => t.setGlobalFilter(e.target.value || undefined)}
+        />
+      </Box>
+    ),
     muiTableBodyRowProps: ({ row }) => ({
       "data-testid": rowTestId?.(row.original) ?? (onRowClick && testId ? `${testId}-row` : undefined),
+      // `rowTint(row)` → a background for the whole row (a status wash). On the
+      // cells, not the row: a pinned cell paints its own background (on ::before) over a row's.
+      ...(rowTint?.(row.original) && { "data-tint": rowTint(row.original), sx: { "& td, & td[data-pinned='true']::before": { backgroundColor: rowTint(row.original) } } }),
       ...(onRowClick && {
         onClick: () => onRowClick(row.original),
         // A pointer row only the mouse can reach is a dead end for keyboard

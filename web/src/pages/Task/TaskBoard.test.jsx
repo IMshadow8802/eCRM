@@ -307,7 +307,8 @@ describe("TaskBoard", () => {
     expect(useWorkspaceStore.getState().activeWorkspaceType).toBe("personal");
   });
 
-  it("names the active workspace in the header", async () => {
+  // The switcher under the bar names the workspace; the bar no longer repeats it.
+  it("does not repeat the workspace name in the header", async () => {
     useWorkspaceStore.getState().setActiveWorkspace({
       Id: 100,
       Type: "project",
@@ -316,19 +317,9 @@ describe("TaskBoard", () => {
       Color: "#123456",
     });
     renderBoard();
-    const chip = await screen.findByTestId("active-workspace-chip");
-    expect(chip).toHaveTextContent("Q4 Launch");
-  });
-
-  it("leaves the name out of the header when the workspace has none", async () => {
-    useWorkspaceStore.getState().setActiveWorkspace({
-      Id: 100,
-      Type: "personal",
-      MyRole: "owner",
-    });
-    renderBoard();
     await screen.findByText("To Do");
     expect(screen.queryByTestId("active-workspace-chip")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 })).not.toHaveTextContent("Q4 Launch");
   });
 
   it.each([
@@ -381,7 +372,7 @@ describe("TaskBoard", () => {
     });
     renderBoard();
     expect((await screen.findByTestId("kanban-card-811")).style.cursor).toBe("grab");
-    expect(screen.getByTestId("kanban-card-812").style.cursor).toBe("default");
+    expect(screen.getByTestId("kanban-card-812").style.cursor).toBe("pointer"); // no drag, but it still opens
   });
 
   it("falls back to the store's own UserId when the user record carries none", async () => {
@@ -409,7 +400,7 @@ describe("TaskBoard", () => {
     });
     renderBoard();
     expect((await screen.findByTestId("kanban-card-821")).style.cursor).toBe("grab");
-    expect(screen.getByTestId("kanban-card-822").style.cursor).toBe("default");
+    expect(screen.getByTestId("kanban-card-822").style.cursor).toBe("pointer"); // no drag, but it still opens
   });
 
   it("lets an admin drag a card they neither created nor own", async () => {
@@ -552,7 +543,7 @@ describe("TaskBoard", () => {
     useWorkspaceStore.getState().setActiveWorkspace({ Id: 100, Type: "shared", MyRole: "viewer" });
     taskFixture.seed({ Id: 831, Title: "Not mine", ColumnId: 1, Priority: "low", WorkspaceId: 100, CreatedByUserId: 7 });
     renderBoard();
-    expect((await screen.findByTestId("kanban-card-831")).style.cursor).toBe("default");
+    expect((await screen.findByTestId("kanban-card-831")).style.cursor).toBe("pointer"); // no drag, but it still opens
     expect(screen.queryByTestId("quick-add-btn-1")).not.toBeInTheDocument();
   });
 

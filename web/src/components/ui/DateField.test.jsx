@@ -109,7 +109,7 @@ describe("DateField", () => {
 
   it.each([
     ["sm", rem(32)],
-    ["md", rem(40)],
+    ["md", rem(36)],
     ["lg", rem(48)],
   ])("honours the shared control height at size=%s", (size, expected) => {
     const { container } = wrap(<DateField size={size} label="Due" onChange={() => {}} />);
@@ -126,5 +126,11 @@ describe("DateField", () => {
   it("dark mode renders", () => {
     wrap(<DateField label="DarkLabel" onChange={() => {}} />, "dark");
     expect(screen.getByLabelText(/DarkLabel/)).toBeInTheDocument();
+  });
+
+  it("inlineLabel puts the label beside the field, still tied to it", () => {
+    const { container } = wrap(<DateField inlineLabel label="Day" size="sm" onChange={() => {}} />);
+    expect(container.firstElementChild.style.flexDirection).toBe("row");
+    expect(screen.getByText("Day").tagName).toBe("LABEL");
   });
 });

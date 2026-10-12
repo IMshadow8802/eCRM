@@ -1,7 +1,6 @@
 jest.mock("../../../src/config/database", () => ({ executeStoredProcedure: jest.fn() }));
 jest.mock("../../../src/services/calendarContext", () => ({ load: jest.fn(), settings: jest.fn() }));
 jest.mock("../../../src/services/tatService", () => ({ afterTaskWrite: jest.fn() }));
-jest.mock("../../../src/controllers/workSettingsController", () => ({ visibleUserIds: jest.fn() }));
 jest.mock("../../../src/realtime/events", () => ({ emitToUser: jest.fn() }));
 jest.mock("../../../src/middleware/permission", () => ({
   ...jest.requireActual("../../../src/middleware/permission"),
@@ -11,13 +10,12 @@ jest.mock("../../../src/middleware/permission", () => ({
 const database = require("../../../src/config/database");
 const cc = require("../../../src/services/calendarContext");
 const tatService = require("../../../src/services/tatService");
-const { visibleUserIds } = require("../../../src/controllers/workSettingsController");
 const { emitToUser } = require("../../../src/realtime/events");
 const { SCOPES } = require("../../../src/realtime/contract");
 const { taskAllowed } = require("../../../src/middleware/permission");
 const c = require("../../../src/controllers/tatController");
 const { mockRes } = require("../../helpers/mockRes");
-const { DEFAULT_DAYS, dateKey, at } = require("../../../src/utils/workCalendar");
+const { DEFAULT_DAYS } = require("../../../src/utils/workCalendar");
 
 const req = (body = {}, over = {}) => ({ user: { UserId: 7, CompId: 1, BranchId: 2 }, scope: { isAdmin: false }, body, ...over });
 const ok = (extra = {}, ...more) => ({ recordsets: [[{ ResponseCode: 200, ResponseMess: "ok", ...extra }], ...more] });
@@ -139,12 +137,13 @@ describe("assignee / manager actions", () => {
   it("hold Mine: own clock, auto-release 3 working days on, emits to the notified managers", async () => {
     cc.load.mockResolvedValue(new Map([[7, { ctx }]]));
     database.executeStoredProcedure.mockResolvedValue(ok({ Held: 1 }, [{ UserId: 3 }]));
+    const before = Date.now();
     const res = await run("hold", { TaskId: 5, Mine: true, ReasonId: 4, Remarks: "client" });
     expect(status(res)).toBe(200);
     const p = calls("sp_TatHold")[0];
     expect(p).toMatchObject({ CompId: 1, TaskId: 5, UserId: 7, ReasonId: 4, Remarks: "client", ActorUserId: 7 });
     expect(p.AutoReleaseAt).toBeInstanceOf(Date);
-    expect(p.AutoReleaseAt.getTime()).toBeGreaterThan(Date.now() + 3 * 86400000 - 1);
+    expect(p.AutoReleaseAt.getTime()).toBeGreaterThanOrEqual(before + 3 * 86400000);
     expect(emitToUser).toHaveBeenCalledWith(3, SCOPES.NOTIFICATIONS);
   });
 
@@ -271,115 +270,9 @@ describe("assignee / manager actions", () => {
   });
 });
 
-describe("Today", () => {
-  const TODAY = dateKey(new Date());
-  const stubToday = (presence = [], today = []) => database.executeStoredProcedure.mockImplementation(async (name) => {
-    if (name === "sp_FetchToday") return { recordsets: [today, [{ TatId: 1 }], [{ TatId: 2 }]] };
-    if (name === "sp_FetchPresence") return { recordsets: [presence] };
-    return { recordsets: [[]] };
-  });
-
-  it("fetchToday: presence carries the same grace-aware status the team view shows", async () => {
-    stubToday([{ UserId: 7, FirstSignInAt: "x", LateMinutes: 5, HasOpenSession: true, LastSeenAt: new Date().toISOString() }], [{ ShiftEnd: "y" }]);
-    cc.load.mockResolvedValue(new Map([[7, { ctx }]]));
-    cc.settings.mockResolvedValue({ lateGraceMin: 10 });
-    const res = await run("fetchToday");
-    expect(data(res).presence).toMatchObject({ UserId: 7, ShiftEnd: "y", status: { code: "online", label: "Online" } });
-    expect(data(res).presence.status.late).toBeUndefined(); // 5 min is inside the 10 min grace
-    expect(data(res)).toMatchObject({ clocks: [{ TatId: 1 }], reasonPending: [{ TatId: 2 }] });
-    expect(calls("sp_FetchToday")[0]).toEqual({ CompId: 1, UserId: 7 });
-    expect(calls("sp_FetchPresence")[0]).toEqual({ CompId: 1, WorkDate: at(TODAY, 0), UserIdsJson: "[7]" });
-  });
-
-  it("N2: Today re-derives late from the current marks (a half-day leave after sign-in clears it)", async () => {
-    const signIn = at(TODAY, 12 * 60 + 14);
-    stubToday([{ UserId: 7, FirstSignInAt: signIn, SignedOutAt: signIn, LateMinutes: 194, MarkKind: "leave", MarkPart: "first_half" }]);
-    cc.load.mockResolvedValue(new Map([[7, { ctx: { ...ctx, marks: new Map([[TODAY, { kind: "leave", part: "first_half" }]]) } }]]));
-    cc.settings.mockResolvedValue({ lateGraceMin: 10 });
-    const p = data(await run("fetchToday")).presence;
-    expect(p.LateMinutes).toBe(0);
-    expect(p.status.late).toBeUndefined();
-  });
-
-  it("fetchToday with no presence row still has a status (holiday / leave)", async () => {
-    stubToday([{ UserId: 7 }]);
-    cc.load.mockResolvedValue(new Map([[7, { ctx: { ...ctx, holidays: new Set([TODAY]) } }]]));
-    cc.settings.mockResolvedValue({});
-    expect(data(await run("fetchToday")).presence.status).toEqual({ code: "holiday", label: "Holiday" });
-
-    stubToday([{ UserId: 7, MarkKind: "leave", MarkPart: "full" }]);
-    cc.load.mockResolvedValue(new Map());
-    expect(data(await run("fetchToday")).presence.status).toEqual({ code: "leave", label: "On leave" });
-  });
-
-  it("fetchToday for an inactive caller (no presence row at all) is null", async () => {
-    stubToday([]);
-    cc.load.mockResolvedValue(new Map());
-    cc.settings.mockResolvedValue({});
-    expect(data(await run("fetchToday")).presence).toBeNull();
-  });
-
-  const stubTeam = () => database.executeStoredProcedure.mockImplementation(async (name) => {
-    if (name === "sp_FetchUser") return { recordsets: [[{ Id: 7 }, { Id: 8 }, { Id: 9 }, { Id: 10 }]] };
-    if (name === "sp_FetchPresence") return { recordsets: [[{ UserId: 8, FullName: "A" }, { UserId: 10, FullName: "C", ShiftStart: null }]] };
-    if (name === "sp_FetchTeamToday") return { recordsets: [[{ UserId: 8, Open: 3, AtRisk: 1, Over: 1, ReasonPending: 1 }]] };
-    return { recordsets: [[]] };
-  });
-
-  it("fetchTeamToday: only people in reach, never self, merged with counts and status", async () => {
-    stubTeam();
-    visibleUserIds.mockResolvedValue([7, 8, 10]);
-    cc.load.mockResolvedValue(new Map([[8, { ctx }]]));
-    cc.settings.mockResolvedValue({ lateGraceMin: 10 });
-    const res = await run("fetchTeamToday");
-    expect(visibleUserIds).toHaveBeenCalledWith(expect.anything(), [8, 9, 10]);
-    expect(JSON.parse(calls("sp_FetchPresence")[0].UserIdsJson)).toEqual([8, 10]);
-    expect(JSON.parse(calls("sp_FetchTeamToday")[0].UserIdsJson)).toEqual([8, 10]);
-    const team = data(res).team;
-    expect(team[0]).toMatchObject({ UserId: 8, Open: 3, AtRisk: 1, Over: 1, ReasonPending: 1 });
-    expect(team[0].status.code).toBeDefined();
-    expect(team[1]).toMatchObject({ UserId: 10, Open: 0, AtRisk: 0, Over: 0, ReasonPending: 0, status: { code: "offline" } });
-  });
-
-  it("fetchTeamToday honours WorkDate: passed to both procs; another day is never Online", async () => {
-    database.executeStoredProcedure.mockImplementation(async (name) => {
-      if (name === "sp_FetchUser") return { recordsets: [[{ Id: 8 }]] };
-      if (name === "sp_FetchPresence") return { recordsets: [[{ UserId: 8, FirstSignInAt: "x", HasOpenSession: true, LastSeenAt: new Date().toISOString() }]] };
-      return { recordsets: [[]] };
-    });
-    visibleUserIds.mockResolvedValue(null);
-    cc.load.mockResolvedValue(new Map());
-    cc.settings.mockResolvedValue({});
-    const res = await run("fetchTeamToday", { WorkDate: "2026-01-05" });
-    expect(calls("sp_FetchPresence")[0].WorkDate).toEqual(at("2026-01-05", 0));
-    expect(calls("sp_FetchTeamToday")[0].WorkDate).toEqual(at("2026-01-05", 0));
-    expect(cc.load).toHaveBeenCalledWith(1, [8], "2026-01-05", "2026-01-05");
-    expect(data(res).team[0].status.code).toBe("offline");
-  });
-
-  it("fetchTeamToday 400s on a bad WorkDate", async () => {
-    expect(status(await run("fetchTeamToday", { WorkDate: "05-01-2026" }))).toBe(400);
-    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
-  });
-
-  it("fetchTeamToday: company-wide reach takes everyone else; nobody in reach is an empty team", async () => {
-    stubTeam();
-    visibleUserIds.mockResolvedValueOnce(null);
-    cc.load.mockResolvedValue(new Map());
-    cc.settings.mockResolvedValue({});
-    await run("fetchTeamToday");
-    expect(JSON.parse(calls("sp_FetchPresence")[0].UserIdsJson)).toEqual([8, 9, 10]);
-
-    database.executeStoredProcedure.mockClear();
-    visibleUserIds.mockResolvedValueOnce([7]);
-    expect(data(await run("fetchTeamToday"))).toEqual({ team: [] });
-    expect(calls("sp_FetchPresence")).toHaveLength(0);
-  });
-});
-
 describe("errors", () => {
   it("a thrown SP becomes a 500", async () => {
     database.executeStoredProcedure.mockRejectedValue(new Error("down"));
-    expect(status(await run("fetchToday"))).toBe(500);
+    expect(status(await run("fetchTatPolicy"))).toBe(500);
   });
 });

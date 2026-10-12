@@ -72,7 +72,8 @@ export const KanbanCardView = memo(function KanbanCardView({
         borderRadius: theme.radii.md,
         backgroundColor: p.surface.card,
         border: `1px solid ${selected ? p.primary.main : p.border.default}`,
-        cursor: overlay ? "grabbing" : canDrag ? "grab" : "default",
+        // A card always opens on click; "default" told users it was inert.
+        cursor: overlay ? "grabbing" : canDrag ? "grab" : "pointer",
         // Dim the real card while its overlay clone follows the cursor.
         opacity: dragging && !overlay ? 0.4 : isCompleted ? 0.72 : 1,
         boxShadow: overlay ? p.shadow.lg : selected ? p.shadow.md : p.shadow.xs,

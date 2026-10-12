@@ -10,9 +10,21 @@ describe("tableDefaults", () => {
     expect(tableDefaults.enableStickyHeader).toBe(true);
   });
 
-  it("disables density + fullscreen toggles", () => {
+  it("hides the density toggle but offers full screen on every table", () => {
     expect(tableDefaults.enableDensityToggle).toBe(false);
-    expect(tableDefaults.enableFullScreenToggle).toBe(false);
+    expect(tableDefaults.enableFullScreenToggle).toBe(true);
+  });
+
+  // Tables span their card: grid layout, every column grows from its size.
+  it("lays tables out as a grid whose columns share the spare width", () => {
+    expect(tableDefaults.layoutMode).toBe("grid");
+    expect(tableDefaults.defaultColumn.grow).toBe(true);
+    // ...and a long value wraps rather than being clipped at the column edge
+    expect(tableDefaults.muiTableBodyCellProps.sx.whiteSpace).toBe("normal");
+  });
+
+  it("gives the actions column a fixed floor that never grows", () => {
+    expect(tableDefaults.displayColumnDefOptions["mrt-row-actions"]).toMatchObject({ size: 120, grow: false });
   });
 
   it("defaults to compact density with search visible", () => {
@@ -40,7 +52,7 @@ describe("tableDefaults", () => {
     const { boxShadow } = tableDefaults.muiTablePaperProps.sx;
     expect(typeof boxShadow).toBe("function");
     // Reads the token, so retuning the scale retunes the table with it.
-    expect(boxShadow({ tokens: { shadow: { md: "TOKEN" } } })).toBe("TOKEN");
+    expect(boxShadow({ tokens: { elevation: { 1: "TOKEN" } } })).toBe("TOKEN");
   });
 
   // A sticky header or a toolbar left on the page colour puts a stripe of
@@ -96,7 +108,7 @@ describe("tableDefaults", () => {
    * card, not to whatever happens to sit above it.
    */
   it("keeps a gap above itself, so it never sits flush against the filters", () => {
-    expect(tableDefaults.muiTablePaperProps.sx.mt).toBe(2);
+    expect(tableDefaults.muiTablePaperProps.sx.mt).toBe(1.5);
   });
 
   it("uses page-based pagination with default page size 25", () => {

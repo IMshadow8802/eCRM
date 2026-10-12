@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { screen, within } from "@testing-library/react";
+import { screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import renderWithProviders from "../../test/renderWithProviders";
@@ -32,6 +32,23 @@ describe("ReportTable", () => {
     expect(trs[0].style.cursor).toBe("");
     expect(trs[0]).not.toHaveAttribute("tabindex");
     expect(screen.queryAllByTestId("t-row")).toHaveLength(0);
+  });
+
+  it("a column's size passes through as its minimum width; others keep the default", () => {
+    const sized = [columns[0], { ...columns[1], size: 260 }];
+    renderWithProviders(<ReportTable rows={rows} columns={sized} rowKey={(r) => r.Id} testId="t" />, { router: false });
+    const [name, n] = within(screen.getByTestId("t")).getAllByRole("columnheader");
+    expect(getComputedStyle(n).minWidth).toContain("260px");
+    expect(getComputedStyle(name).minWidth).not.toContain("260px");
+  });
+
+  // MRT's own search box hands MUI v9 the removed inputProps/InputProps, which leak to the DOM.
+  it("searches rows with a box that leaks no legacy MUI props", async () => {
+    renderWithProviders(<ReportTable rows={rows} columns={columns} rowKey={(r) => r.Id} testId="t" />, { router: false });
+    await userEvent.type(screen.getByPlaceholderText("Search…"), "B");
+    await waitFor(() => expect(screen.getByTestId("t").querySelectorAll("tbody tr")).toHaveLength(1));
+    // React dedupes its console warning per run, so assert on the DOM it leaves instead.
+    expect(document.body.innerHTML).not.toMatch(/inputprops=/i);
   });
 
   it("calls onRowClick with the row and marks rows clickable", async () => {

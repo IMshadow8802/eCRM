@@ -38,10 +38,7 @@ function variantStyles(variant, tokens) {
       return {
         background: "transparent",
         color: p.text.secondary,
-        hoverBg:
-          p.mode === "dark"
-            ? "rgba(255,255,255,0.06)"
-            : "rgba(15,23,42,0.04)",
+        hoverBg: p.surface.hover,
       };
   }
 }
@@ -101,12 +98,13 @@ const IconButton = forwardRef(function IconButton(
         border: "none",
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.5 : 1,
-        outline: "none",
+        flexShrink: 0,
+        // No inline `outline: none`: it beat the global :focus-visible ring.
         transition: `background-color ${motionTokens.duration.slow}ms ${motionTokens.easing.standard}`,
       }}
       {...rest}
     >
-      <span style={{ display: "inline-flex", width: rem(s.icon), height: rem(s.icon) }}>
+      <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: rem(s.icon), height: rem(s.icon) }}>
         {children}
       </span>
     </motion.button>

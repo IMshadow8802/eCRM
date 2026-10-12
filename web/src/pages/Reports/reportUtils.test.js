@@ -77,6 +77,33 @@ describe("a page's own default basis", () => {
   });
 });
 
+describe("a page's own presets", () => {
+  // Attendance: whole calendar months, "This month" by default (spec §2.4).
+  const MONTHS = [
+    { value: "month", label: "This month", range: (t) => ({ from: t.startOf("month").format("YYYY-MM-DD"), to: t.endOf("month").format("YYYY-MM-DD") }) },
+    { value: "custom", label: "Custom" },
+  ];
+  const opts = { groupBys: GROUP_BYS, today: TODAY, presets: MONTHS, defaultPreset: "month" };
+
+  it("readFilters defaults to the page's preset and uses its own range", () => {
+    expect(readFilters(params(""), opts)).toMatchObject({ preset: "month", from: "2026-09-01", to: "2026-09-30" });
+  });
+
+  it("a preset the page does not offer falls back to its default", () => {
+    expect(readFilters(params("preset=7d"), opts)).toMatchObject({ preset: "month", from: "2026-09-01" });
+  });
+
+  it("custom dates still imply custom", () => {
+    expect(readFilters(params("from=2026-08-01&to=2026-08-31"), opts)).toMatchObject({ preset: "custom", from: "2026-08-01", to: "2026-08-31" });
+  });
+
+  it("writeFilters keeps the page's default preset out of the URL", () => {
+    const f = { preset: "month", from: "2026-09-01", to: "2026-09-30", basis: "created", groupBy: "person" };
+    expect(writeFilters(f, "created", "month")).toEqual({ groupBy: "person" });
+    expect(writeFilters({ ...f, preset: "30d" }, "created", "month")).toEqual({ groupBy: "person", preset: "30d" });
+  });
+});
+
 describe("drill helpers", () => {
   const f = { from: "2026-08-01", to: "2026-08-31", basis: "created", groupBy: "source", BranchId: 2, OwnerId: null, SourceId: 11, ProductId: null };
 

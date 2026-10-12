@@ -6,9 +6,9 @@ import Chip from "@mui/material/Chip";
 import { ChevronDown } from "lucide-react";
 import { rem } from "../../utils/rem";
 
-import { zIndex as zIndexTokens } from "../../styles/tokens";
+import { controlHeight, zIndex as zIndexTokens } from "../../styles/tokens";
 
-const HEIGHT = { sm: 32, md: 40, lg: 48 };
+const HEIGHT = controlHeight; // shared scale, styles/tokens.js
 
 /**
  * Searchable Combobox. Thin wrapper over MUI Autocomplete using our

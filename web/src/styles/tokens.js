@@ -77,6 +77,15 @@ const sky = {
   900: "#0C4A6E",
 };
 
+const violet = {
+  50: "#F5F3FF",
+  200: "#DDD6FE",
+  400: "#A78BFA",
+  500: "#8B5CF6",
+  600: "#7C3AED",
+  700: "#6D28D9",
+};
+
 const slate = {
   50: "#F8FAFC",
   100: "#F1F5F9",
@@ -121,6 +130,8 @@ export const palettes = {
       subtle: amber[50],
       border: amber[200],
       contrastText: slate[900],
+      // Amber as TEXT on a card: amber[500/600] fail WCAG AA (~2-3:1); 700 is ~5:1.
+      text: amber[700],
     },
     error: {
       main: red[500],
@@ -136,11 +147,25 @@ export const palettes = {
       border: sky[200],
       contrastText: "#FFFFFF",
     },
+    // A sixth hue for icon badges and pills (Open tasks), so a row of them
+    // does not repeat indigo. Not a brand colour; never a button.
+    violet: {
+      main: violet[600],
+      hover: violet[700],
+      subtle: violet[50],
+      border: violet[200],
+      contrastText: "#FFFFFF",
+    },
     surface: {
-      page: slate[50],
+      // One step darker than a card: depth comes from contrast first, the
+      // elevation shadow sits on top. slate[50] next to white read as flat.
+      page: "#EEF2F7",
       card: "#FFFFFF",
       elevated: "#FFFFFF",
       subtle: slate[100],
+      hover: slate[100],
+      selected: slate[200],
+      track: slate[200],
       sidebar: "#FFFFFF",
       inverse: slate[900],
     },
@@ -166,16 +191,19 @@ export const palettes = {
       xl: "0 24px 48px rgba(15,23,42,0.12), 0 8px 16px rgba(15,23,42,0.08)",
       glow: `0 0 0 3px ${indigo[100]}`,
     },
-    gradient: {
-      heroCTA: `linear-gradient(135deg, ${indigo[600]} 0%, ${pink[500]} 100%)`,
-      heroCTAHover: `linear-gradient(135deg, ${indigo[700]} 0%, ${pink[600]} 100%)`,
-      // Deep and near-monochrome on purpose. This was indigo → pink → amber,
-      // which on a full-height panel reads as a fruit salad rather than a
-      // product. Slate and indigo are neighbours, so the ramp stays one
-      // colour getting deeper, and white text sits at ~8:1 on every stop.
-      loginPanel: `linear-gradient(150deg, ${slate[900]} 0%, ${indigo[900]} 55%, ${indigo[800]} 100%)`,
-      statAccent: `linear-gradient(135deg, ${indigo[500]} 0%, ${pink[400]} 100%)`,
-      emptyBlob: `radial-gradient(circle at 30% 30%, ${indigo[100]} 0%, transparent 60%), radial-gradient(circle at 70% 70%, ${pink[100]} 0%, transparent 60%)`,
+    // Raised surfaces: a tight contact shadow + a soft ambient one. 1 = resting
+    // card, 2 = hovered / lifted, 3 = floating (sticky bars, popovers).
+    elevation: {
+      1: "0 1px 2px rgba(15,23,42,0.06), 0 2px 8px -2px rgba(15,23,42,0.08)",
+      2: "0 1px 3px rgba(15,23,42,0.08), 0 8px 20px -6px rgba(15,23,42,0.16)",
+      3: "0 2px 4px rgba(15,23,42,0.06), 0 16px 36px -10px rgba(15,23,42,0.22)",
+    },
+    // Solid colours only — no gradients, no translucent fills (web and
+    // mobile alike). The overlay scrim and shadows are the only alpha.
+    brand: {
+      cta: indigo[600],
+      ctaHover: indigo[700],
+      loginPanel: indigo[900],
     },
   },
   dark: {
@@ -183,50 +211,61 @@ export const palettes = {
     primary: {
       main: indigo[500],
       hover: indigo[400],
-      subtle: "rgba(99,102,241,0.14)",
-      border: "rgba(129,140,248,0.36)",
+      subtle: "#1F2549",
+      border: "#3B4377",
       contrastText: "#FFFFFF",
     },
     accent: {
       main: pink[500],
       hover: pink[400],
-      subtle: "rgba(236,72,153,0.14)",
-      border: "rgba(244,114,182,0.36)",
+      subtle: "#32203D",
+      border: "#653A5F",
       contrastText: "#FFFFFF",
     },
     success: {
       main: emerald[500],
       hover: emerald[400],
-      subtle: "rgba(16,185,129,0.14)",
-      border: "rgba(52,211,153,0.36)",
+      subtle: "#13303A",
+      border: "#205D55",
       contrastText: "#FFFFFF",
     },
     warning: {
       main: amber[500],
       hover: amber[400],
-      subtle: "rgba(245,158,11,0.14)",
-      border: "rgba(251,191,36,0.36)",
+      subtle: "#342C29",
+      border: "#67552A",
       contrastText: slate[900],
+      text: amber[400],
     },
     error: {
       main: red[500],
       hover: red[400],
-      subtle: "rgba(239,68,68,0.14)",
-      border: "rgba(248,113,113,0.36)",
+      subtle: "#332031",
+      border: "#663946",
       contrastText: "#FFFFFF",
     },
     info: {
       main: sky[500],
       hover: sky[400],
-      subtle: "rgba(14,165,233,0.14)",
-      border: "rgba(56,189,248,0.36)",
+      subtle: "#132D48",
+      border: "#215577",
+      contrastText: "#FFFFFF",
+    },
+    violet: {
+      main: violet[500],
+      hover: violet[400],
+      subtle: "#25234A",
+      border: "#494377",
       contrastText: "#FFFFFF",
     },
     surface: {
       page: "#0B1020",
       card: "#141A2E",
       elevated: "#1E2642",
-      subtle: "rgba(255,255,255,0.03)",
+      subtle: "#1B2134",
+      hover: "#1D2336",
+      selected: "#272C3F",
+      track: "#232A3F",
       sidebar: "#0E1428",
       inverse: slate[50],
     },
@@ -238,9 +277,9 @@ export const palettes = {
       onAccent: slate[900],
     },
     border: {
-      default: "rgba(148,163,184,0.12)",
-      subtle: "rgba(148,163,184,0.06)",
-      strong: "rgba(148,163,184,0.24)",
+      default: "#232A3F",
+      subtle: "#1C2236",
+      strong: "#333B4F",
       focus: indigo[400],
     },
     overlay: "rgba(2, 6, 23, 0.72)",
@@ -252,12 +291,19 @@ export const palettes = {
       xl: "0 24px 48px rgba(0,0,0,0.7), 0 8px 16px rgba(0,0,0,0.5)",
       glow: `0 0 0 3px rgba(129,140,248,0.24)`,
     },
-    gradient: {
-      heroCTA: `linear-gradient(135deg, ${indigo[500]} 0%, ${pink[500]} 100%)`,
-      heroCTAHover: `linear-gradient(135deg, ${indigo[400]} 0%, ${pink[400]} 100%)`,
-      loginPanel: `linear-gradient(150deg, ${slate[950]} 0%, ${indigo[900]} 60%, ${slate[900]} 100%)`,
-      statAccent: `linear-gradient(135deg, ${indigo[400]} 0%, ${pink[400]} 100%)`,
-      emptyBlob: `radial-gradient(circle at 30% 30%, rgba(99,102,241,0.18) 0%, transparent 60%), radial-gradient(circle at 70% 70%, rgba(236,72,153,0.16) 0%, transparent 60%)`,
+    // Dark: the shadow barely shows against a dark page, so a hairline top
+    // highlight does the lifting and the shadows stay soft.
+    elevation: {
+      1: "inset 0 1px 0 rgba(255,255,255,0.04), 0 1px 2px rgba(0,0,0,0.35), 0 4px 12px -4px rgba(0,0,0,0.35)",
+      2: "inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 4px rgba(0,0,0,0.4), 0 10px 24px -8px rgba(0,0,0,0.5)",
+      3: "inset 0 1px 0 rgba(255,255,255,0.07), 0 4px 8px rgba(0,0,0,0.4), 0 20px 40px -12px rgba(0,0,0,0.6)",
+    },
+    // Solid colours only — no gradients, no translucent fills (web and
+    // mobile alike). The overlay scrim and shadows are the only alpha.
+    brand: {
+      cta: indigo[500],
+      ctaHover: indigo[400],
+      loginPanel: slate[950],
     },
   },
 };
@@ -273,6 +319,18 @@ export const radii = {
   "2xl": 32,
   full: 9999,
 };
+
+// ---------- Control heights ----------
+// One scale for every input (TextInput, Combobox, DateField, and the wrappers
+// over them). md is 36 to sit flush with a medium Button (2026-10-11: was 40,
+// which left every form a step taller than its buttons). sm 32 = small Button.
+export const controlHeight = { sm: 32, md: 36, lg: 48 };
+
+// ---------- App chrome ----------
+// Row 1 of the top bar and the sidebar's brand header share this height, so
+// the sidebar's divider and the bar's hairline sit on exactly the same line.
+// Row 2 is the page row (breadcrumb, title, actions).
+export const chrome = { row1: 48, row2: 44 };
 
 // ---------- Spacing (4px grid) ----------
 export const spacing = {

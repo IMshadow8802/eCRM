@@ -868,6 +868,23 @@ describe("userController.save (094: role, branch, actor, unassign fan-out)", () 
     expect(res.json.mock.calls[0][0].data.unassignedTasks).toBe(2);
   });
 
+  it("an edit pushes the realtime `access` scope to that user only", async () => {
+    await run(saveBody({ Id: 5 }), [[{ ResponseCode: 200, ResponseMess: "ok", UserId: 5 }]]);
+    expect(emitToUser.mock.calls).toEqual([[5, "access"]]);
+  });
+
+  it("deactivating a user pushes `access` to them", async () => {
+    await run(saveBody({ Id: 5, UserActive: false }), [[{ ResponseCode: 200, ResponseMess: "ok", UserId: 5 }]]);
+    expect(emitToUser).toHaveBeenCalledWith(5, "access");
+  });
+
+  it("a create or a refused edit pushes no `access`", async () => {
+    await run(saveBody({ Id: 0 }), [[{ ResponseCode: 201, ResponseMess: "ok", UserId: 9 }]]);
+    database.executeStoredProcedure.mockReset();
+    await run(saveBody({ Id: 5 }), [[{ ResponseCode: 400, ResponseMess: "no" }]]);
+    expect(emitToUser).not.toHaveBeenCalledWith(expect.anything(), "access");
+  });
+
   it("emits nothing and reports 0 when there is no second result set", async () => {
     const { res } = await run(saveBody());
     expect(emitToWorkspace).not.toHaveBeenCalled();

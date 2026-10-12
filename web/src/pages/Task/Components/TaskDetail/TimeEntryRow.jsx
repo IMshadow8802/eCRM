@@ -1,9 +1,11 @@
 import dayjs from "dayjs";
+import { useTheme } from "@mui/material/styles";
 import { Clock, Trash2 } from "lucide-react";
 
 import { IconButton } from "../../../../components/ui";
 
 export default function TimeEntryRow({ entry, canEdit, onDelete }) {
+  const p = useTheme().tokens;
   return (
     <div
       style={{
@@ -12,10 +14,10 @@ export default function TimeEntryRow({ entry, canEdit, onDelete }) {
         gap: "calc(10rem / 15)",
         padding: "calc(8rem / 15) calc(12rem / 15)",
         borderRadius: 8,
-        border: "1px solid rgba(148,163,184,0.18)",
+        border: `1px solid ${p.border.default}`,
       }}
     >
-      <Clock size={14} style={{ color: "#6366F1" }} />
+      <Clock size={14} style={{ color: p.primary.main }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: "calc(13rem / 15)", fontWeight: 600 }}>
           {Number(entry.Hours ?? 0).toFixed(2)} h

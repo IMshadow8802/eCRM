@@ -235,4 +235,18 @@ describe("KanbanColumn", () => {
     await user.click(await screen.findByTestId("column-delete-confirm-10"));
     await vi.waitFor(() => expect(onUpdated).toHaveBeenCalled());
   });
+
+  // A full column used to bury "Add task" under every card.
+  it("puts Add task above the cards, right under the header", () => {
+    wrap(
+      <KanbanColumn
+        column={baseColumn}
+        tasks={[{ Id: 3, Title: "T3", Priority: "low" }, { Id: 4, Title: "T4", Priority: "low" }]}
+        onRequestAddTask={() => {}}
+      />,
+    );
+    const add = screen.getByTestId("quick-add-btn-10");
+    const card = screen.getByTestId("kanban-card-3");
+    expect(add.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
 });

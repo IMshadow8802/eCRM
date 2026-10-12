@@ -13,6 +13,12 @@ const {
   pageParams,
   positiveInt,
 } = require("../utils/controllerKit");
+const { emitToUser } = require("../realtime/events");
+const { SCOPES } = require("../realtime/contract");
+
+// Extra offices change reach: tell that person to re-read access. The UserId is
+// the SP's (checked against CompId, 112), never the body's, so no cross-company push.
+const pushAccess = (row) => { if (positiveInt(row?.UserId)) emitToUser(positiveInt(row.UserId), SCOPES.ACCESS); };
 
 class UserBranchAccessController {
   save = asyncRoute(
@@ -57,6 +63,7 @@ class UserBranchAccessController {
           description: `Branch access ${Id === 0 ? "granted" : "updated"} for user ${UserId} on branch ${BranchId}`,
           req,
         });
+        pushAccess(sp);
       }
       return res.status(spStatus(sp)).json({
         success: ok,
@@ -132,6 +139,7 @@ class UserBranchAccessController {
           description: "Branch access revoked",
           req,
         });
+        pushAccess(sp);
       }
       return res.status(spStatus(sp)).json({
         success: spOk(sp),

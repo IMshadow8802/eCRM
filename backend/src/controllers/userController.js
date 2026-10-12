@@ -204,6 +204,9 @@ class UserController {
         emitToUser(r.OwnerUserId, SCOPES.NOTIFICATIONS, {});
       }
 
+      // Role, office or manager may have moved: the person re-reads their access live.
+      if (ok && isEdit && spResponse.UserId) emitToUser(spResponse.UserId, SCOPES.ACCESS);
+
       if (ok && spResponse.UserId) {
         await logActivity({
           entityType: "User",

@@ -37,17 +37,6 @@ describe("Card", () => {
     },
   );
 
-  it("still paints the gradient variant with its gradient", () => {
-    const { container } = wrap(<Card variant="gradient">x</Card>);
-    expect(getComputedStyle(container.firstElementChild).backgroundImage).toContain(
-      "linear-gradient",
-    );
-  });
-  it("renders children", () => {
-    wrap(<Card data-testid="c">hello</Card>);
-    expect(screen.getByTestId("c")).toHaveTextContent("hello");
-  });
-
   it("onClick fires + role=button", () => {
     const onClick = vi.fn();
     wrap(
@@ -75,7 +64,7 @@ describe("Card", () => {
   });
 
   it("all variants render", () => {
-    for (const v of ["default", "flat", "ghost", "outlined", "gradient"]) {
+    for (const v of ["default", "flat", "ghost", "outlined"]) {
       wrap(
         <Card variant={v} data-testid={`c-${v}`}>
           {v}
@@ -108,5 +97,29 @@ describe("Card", () => {
   it("dark mode", () => {
     wrap(<Card data-testid="d">x</Card>, "dark");
     expect(screen.getByTestId("d")).toBeInTheDocument();
+  });
+
+  it("raises by default and lifts only when clickable", () => {
+    wrap(<><Card data-testid="a">x</Card><Card data-testid="b" onClick={() => {}}>y</Card><Card variant="outlined" data-testid="c">z</Card></>);
+    expect(screen.getByTestId("a")).toHaveClass("nx-raised");
+    expect(screen.getByTestId("a")).not.toHaveClass("nx-lift");
+    expect(screen.getByTestId("b")).toHaveClass("nx-raised", "nx-lift");
+    expect(screen.getByTestId("c")).not.toHaveClass("nx-raised");
+  });
+
+  // 2026-10-11 ruling: tone strips along a card's edge read as template
+  // chrome. A card is neutral; colour lives in what it says.
+  it("is neutral: a hairline border and no coloured strip", () => {
+    const { container } = wrap(<Card data-testid="a">x</Card>);
+    const a = screen.getByTestId("a");
+    expect(a.style.border).toContain("1px solid");
+    expect(container.innerHTML).not.toContain("inset 0 3px");
+  });
+
+  // Regression: an inline `outline: none` beat the global :focus-visible ring,
+  // so a keyboard user on a clickable card saw no focus at all.
+  it("leaves the focus ring alone", () => {
+    wrap(<Card onClick={() => {}} data-testid="c">x</Card>);
+    expect(screen.getByTestId("c").style.outline).toBe("");
   });
 });

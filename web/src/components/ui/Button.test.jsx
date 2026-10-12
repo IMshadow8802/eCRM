@@ -62,13 +62,37 @@ describe("Button", () => {
         Sign in
       </Button>,
     );
+    const layer = screen.getByTestId("btn-spinner-layer");
+    expect(layer).toHaveStyle({ position: "absolute", display: "flex", alignItems: "center", justifyContent: "center" });
+    expect(["0", "0px"]).toContain(layer.style.inset);
+    expect(layer).toContainElement(screen.getByTestId("btn-spinner"));
+  });
+
+  /**
+   * Regression (2026-10-11): the spinner centred itself with
+   * `transform: translate(-50%, -50%)`, but MUI's indeterminate spinner
+   * animates `transform: rotate()` on the same element and the keyframes won,
+   * so every loading spinner sat down-right of centre. The spinner itself must
+   * carry no positioning transform; the layer centres it.
+   */
+  it("does not position the spinner with a transform the rotation would replace", () => {
+    wrap(<Button loading data-testid="btn">Save</Button>);
     const spinner = screen.getByTestId("btn-spinner");
-    expect(spinner).toHaveStyle({
-      position: "absolute",
-      left: "50%",
-      top: "50%",
-      transform: "translate(-50%, -50%)",
-    });
+    expect(spinner.style.transform).toBe("");
+    expect(getComputedStyle(spinner).position).not.toBe("absolute");
+  });
+
+  it("keeps its width while loading: the label stays in flow, hidden, on one line", () => {
+    wrap(<Button loading data-testid="btn">Save changes</Button>);
+    const label = screen.getByText("Save changes");
+    expect(label.style.visibility).toBe("hidden");
+    expect(label.style.whiteSpace).toBe("nowrap");
+    expect(screen.getByTestId("btn")).toHaveAttribute("aria-busy", "true");
+  });
+
+  it("small is 32 high, flush with a small input", () => {
+    wrap(<Button size="sm" data-testid="btn">Go</Button>);
+    expect(screen.getByTestId("btn").style.minHeight).toBe(`${32 / 15}rem`);
   });
 
   it("keeps the label in the layout while loading so the button cannot resize", () => {
@@ -144,5 +168,11 @@ describe("Button", () => {
   it("renders in dark mode", () => {
     wrap(<Button data-testid="dark">Dark</Button>, "dark");
     expect(screen.getByTestId("dark")).toBeInTheDocument();
+  });
+  it("draws disabled as solid grey, not a faded variant", () => {
+    wrap(<Button disabled data-testid="d">Save</Button>);
+    const el = screen.getByTestId("d");
+    expect(el.style.opacity).toBe("");
+    expect(el.style.color).not.toBe("");
   });
 });

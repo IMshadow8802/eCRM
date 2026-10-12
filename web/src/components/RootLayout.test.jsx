@@ -9,14 +9,22 @@ vi.mock("../stores/useAuthStore", () => ({
   default: (selector) => selector({ isAuthenticated: mockIsAuthenticated }),
 }));
 
-vi.mock("./TopNav", () => ({
-  __esModule: true,
-  default: ({ onOpenMobileSidebar }) => (
-    <button data-testid="topnav" onClick={onOpenMobileSidebar}>
-      topnav
-    </button>
-  ),
-}));
+vi.mock("./TopNav", async () => {
+  // The stub still hosts the header slot, as the real bar does.
+  const { useHeaderSlot } = await import("./ui/headerSlot");
+  function TopNavStub({ onOpenMobileSidebar }) {
+    const { setSlot } = useHeaderSlot();
+    return (
+      <>
+        <button data-testid="topnav" onClick={onOpenMobileSidebar}>
+          topnav
+        </button>
+        <div ref={setSlot} data-testid="topnav-slot" />
+      </>
+    );
+  }
+  return { __esModule: true, default: TopNavStub };
+});
 
 vi.mock("./Sidebar", () => ({
   __esModule: true,
@@ -39,14 +47,17 @@ const heartbeat = vi.fn();
 vi.mock("../hooks/useHeartbeat", () => ({ __esModule: true, default: () => heartbeat() }));
 
 import RootLayout from "./RootLayout";
+import PageHeader from "./ui/PageHeader";
+import { ThemeProvider } from "@mui/material/styles";
+import { buildTheme } from "../theme";
 
-const renderLayout = (path = "/dashboard") =>
+const renderLayout = (path = "/dashboard", page = <div data-testid="page-content" />) =>
   render(
-    <MemoryRouter initialEntries={[path]}>
-      <RootLayout>
-        <div data-testid="page-content" />
-      </RootLayout>
-    </MemoryRouter>,
+    <ThemeProvider theme={buildTheme("light")}>
+      <MemoryRouter initialEntries={[path]}>
+        <RootLayout>{page}</RootLayout>
+      </MemoryRouter>
+    </ThemeProvider>,
   );
 
 describe("RootLayout", () => {
@@ -115,5 +126,14 @@ describe("RootLayout", () => {
     expect(sidebar).toHaveAttribute("data-mobile-open", "true");
     fireEvent.click(screen.getByTestId("close-mobile"));
     expect(sidebar).toHaveAttribute("data-mobile-open", "false");
+  });
+
+  it("a page's PageHeader lands in the top bar, not under it", () => {
+    mockIsAuthenticated = true;
+    renderLayout("/leads", <PageHeader title="Leads" actions={<button>New Lead</button>} />);
+    const slot = screen.getByTestId("topnav-slot");
+    expect(slot).toContainElement(screen.getByRole("heading", { level: 1, name: "Leads" }));
+    expect(slot).toContainElement(screen.getByRole("button", { name: "New Lead" }));
+    expect(screen.getByRole("main")).not.toHaveTextContent("Leads");
   });
 });

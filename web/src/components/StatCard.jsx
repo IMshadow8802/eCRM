@@ -28,7 +28,6 @@ export function StatisticsCard({
   value,
   footer = null,
   trend = null,
-  gradient = false,
 }) {
   const theme = useTheme();
   const p = theme.tokens;
@@ -40,13 +39,13 @@ export function StatisticsCard({
     : icon;
 
   return (
-    <Card variant={gradient ? "gradient" : "default"} padding="lg">
+    <Card variant="default" padding="md">
       <div
         style={{
           display: "flex",
           alignItems: "center",
           gap: "calc(10rem / 15)",
-          marginBottom: "calc(14rem / 15)",
+          marginBottom: "calc(10rem / 15)",
         }}
       >
         <span
@@ -58,10 +57,8 @@ export function StatisticsCard({
             height: "calc(32rem / 15)",
             flexShrink: 0,
             borderRadius: theme.radii.md,
-            backgroundColor: gradient
-              ? "rgba(255,255,255,0.15)"
-              : tone.subtle,
-            color: gradient ? "#FFFFFF" : tone.main,
+            backgroundColor: tone.main,
+            color: tone.contrastText,
           }}
         >
           {sizedIcon}
@@ -69,11 +66,9 @@ export function StatisticsCard({
         <span
           style={{
             fontSize: "calc(13rem / 15)",
-            fontWeight: 500,
-            color: gradient ? "rgba(255,255,255,0.88)" : p.text.secondary,
+            color: p.text.secondary,
+            fontWeight: 600,
             lineHeight: 1.2,
-            textTransform: "uppercase",
-            letterSpacing: "0.05em",
             // "TODAY'S FOLLOW-UPS" breaks at the hyphen into three lines in a
             // narrow tile, and "FOLLOW-" alone is wider than the content box.
             minWidth: 0,
@@ -95,10 +90,10 @@ export function StatisticsCard({
           // into the neighbouring card. Let it shrink, then break.
           fontSize: "clamp(calc(22rem / 15), 6vw, calc(30rem / 15))",
           fontWeight: 700,
-          color: gradient ? "#FFFFFF" : p.text.primary,
+          color: p.text.primary,
           lineHeight: 1.1,
           letterSpacing: "-0.02em",
-          fontFeatureSettings: "'tnum'",
+          fontVariantNumeric: "tabular-nums",
           overflowWrap: "anywhere",
         }}
       >
@@ -122,9 +117,7 @@ export function StatisticsCard({
                 gap: "calc(4rem / 15)",
                 fontSize: "calc(12rem / 15)",
                 fontWeight: 600,
-                color: gradient
-                  ? "#FFFFFF"
-                  : trend.direction === "up"
+                color: trend.direction === "up"
                     ? p.success.main
                     : trend.direction === "down"
                       ? p.error.main
@@ -146,7 +139,7 @@ export function StatisticsCard({
               style={{
                 fontSize: "calc(12rem / 15)",
                 fontWeight: 500,
-                color: gradient ? "rgba(255,255,255,0.85)" : p.text.secondary,
+                color: p.text.secondary,
               }}
             >
               {footer}

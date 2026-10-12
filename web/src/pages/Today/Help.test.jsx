@@ -1,7 +1,7 @@
 // Plain-language help for the presence + TAT screens: the "?" guides (EN/हिंदी)
 // and the hover/focus tooltips on terms an office worker will not know.
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 
@@ -17,15 +17,17 @@ import useAuthStore from "../../stores/useAuthStore";
 import { HELP_GUIDES } from "../../data/helpGuides";
 import { server } from "../../test/mocks/server";
 import { tatHandlers } from "../../test/tatMocks";
-import { mockReportEndpoints, reportData } from "../../test/reportMocks";
+import { mockReportEndpoints } from "../../test/reportMocks";
 import renderWithProviders from "../../test/renderWithProviders";
 
 vi.mock("../../components/ui/DateField", () => import("../../test/DateFieldStub"));
 
 const ok = (data = {}) => HttpResponse.json({ success: true, message: "ok", responseCode: 200, data });
 
+const zero = { given: 0, done: 0, open: 0, working: 0, overdue: 0, atRisk: 0, reasonOwed: 0, toRule: 0 };
 const team = [
-  { UserId: 5, FullName: "Asha", status: { code: "not_signed_in_yet", label: "Not signed in yet", late: "Late by 12 min" }, FirstSignInAt: null, Open: 3, AtRisk: 1, Over: 1, ReasonPending: 2 },
+  { UserId: 5, FullName: "Asha", status: { code: "not_signed_in_yet", label: "Not signed in yet" }, FirstSignInAt: null, counts: { ...zero, open: 3, atRisk: 1, overdue: 1 } },
+  { UserId: 6, FullName: "Ravi", status: { code: "online", label: "Online", late: "Late by 12 min" }, LateMinutes: 12, FirstSignInAt: "2026-10-11 09:42:00", counts: zero },
 ];
 
 function signIn(admin) {
@@ -73,8 +75,10 @@ describe("Today", () => {
     signIn(true);
     server.use(...tatHandlers());
     server.use(
-      http.post("*/api/tat/fetchToday", () => ok({ presence: { FirstSignInAt: null, status: { code: "online", label: "Online" } }, clocks: [], reasonPending: [] })),
-      http.post("*/api/tat/fetchTeamToday", () => ok({ team })),
+      http.post("*/api/today/teamSize", () => ok({ count: team.length })),
+      http.post("*/api/today/mine", () => ok({ day: { key: "2026-10-11", live: true }, me: { UserId: 1, FullName: "Me", status: { code: "online", label: "Online" }, counts: zero, tasks: [] } })),
+      http.post("*/api/today/team", () => ok({ day: { key: "2026-10-11", live: true }, people: team })),
+      http.post("*/api/users/fetchBranches", () => ok({ branches: [] })),
       http.post("*/api/presence/fetchSessions", () => ok({ sessions: [] })),
     );
   });
@@ -84,28 +88,25 @@ describe("Today", () => {
     await guideWorks(userEvent.setup(), /Not signed in yet.*Leave \/ on duty.*Sign-ins/s, /साइन-इन/);
   });
 
-  it("explains Leave / on duty, Sign-ins, headers and statuses on hover", async () => {
+  it("explains Leave / on duty, Sign-ins, tiles and statuses on hover", async () => {
     const user = userEvent.setup();
     renderWithProviders(<Today />, { route: "/today?tab=team" });
-    await screen.findByTestId("team-table");
+    await screen.findByTestId("person-card-5");
     await tipOf(user, screen.getByTestId("mark-day-5"), /leave.*on duty/i);
     await tipOf(user, screen.getByTestId("sessions-5"), /sign them out everywhere/);
-    await tipOf(user, screen.getByText("Tasks running"), /deadline running/);
-    await tipOf(user, screen.getByText("Close to deadline"), /most of the allowed time/);
-    await tipOf(user, screen.getByText("Waiting for reason"), /not yet said why/);
-    await tipOf(user, screen.getByText("Not signed in yet"), /count as late after.'? minutes are still running/);
-    await tipOf(user, screen.getByText("Late by 12 min"), /after the .count as late after. minutes/);
+    await tipOf(user, screen.getByTestId("tile-overdue"), /gone past their deadline/);
+    await tipOf(user, screen.getByTestId("tile-atRisk"), /most of the allowed time/);
+    await tipOf(user, screen.getByText("Not signed in yet", { selector: "span" }), /count as late after.'? minutes are still running/);
+    await tipOf(user, screen.getByText("Late 12m"), /after the .count as late after. minutes/);
   });
 
-  it("a header tooltip opens on keyboard focus too", async () => {
+  it("a status tooltip opens on keyboard focus too", async () => {
     const user = userEvent.setup();
     renderWithProviders(<Today />, { route: "/today?tab=team" });
-    await screen.findByTestId("team-table");
-    await user.tab(); // walk until the "Status" header is focused
-    // MRT makes the header cell itself a tab stop; the hint is the span inside it.
-    const onHint = () => document.activeElement?.tagName === "SPAN" && document.activeElement.textContent === "Status";
-    for (let i = 0; i < 40 && !onHint(); i += 1) await user.tab();
-    expect(await screen.findByRole("tooltip")).toHaveTextContent(/at work today/);
+    await screen.findByTestId("person-card-5");
+    const onPill = () => document.activeElement?.tagName === "SPAN" && document.activeElement.textContent === "Not signed in yet";
+    for (let i = 0; i < 60 && !onPill(); i += 1) await user.tab();
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(/still running/);
   });
 
   it("explains the Leave / on duty options and Sign out everywhere", async () => {
@@ -175,35 +176,39 @@ describe("Work calendar", () => {
 });
 
 describe("Team reports", () => {
-  it("TAT: guide and KPI/column tooltips", async () => {
+  it("TAT: guide and column tooltips say how each number is counted", async () => {
     signIn(true);
-    mockReportEndpoints("/api/reports/tat", reportData({
-      kpis: { Clocks: 10, Closed: 8, OnTimePct: 80, RanOver: 2, RanOverNotExcused: 1, MedianWorkMin: 190, P90WorkMin: 45 },
-      rows: [{ GroupKey: 5, GroupLabel: "Asha", Clocks: 10 }],
-    }));
+    mockReportEndpoints("/api/reports/tat", {
+      kpis: { Finished: 8, OnTime: 6, OnTimePct: 75, Missed: 2, NotExcused: 1, Excused: 0, NoDecision: 1, ReasonPending: 0, OverdueNow: 0, MedianUsedPct: 70, P90UsedPct: 120 },
+      rows: [{ GroupKey: "5", GroupLabel: "Asha", Finished: 8, OnTime: 6, OnTimePct: 75, Missed: 2, NotExcused: 1, Excused: 0, NoDecision: 1, ReasonPending: 0, OverdueNow: 0, MedianUsedPct: 70 }],
+      trend: [], previous: { Finished: 0, OnTime: 0 },
+    });
     const user = userEvent.setup();
     renderWithProviders(<TatReport />, { route: "/reports/tat" });
-    await screen.findByTestId("tat-table");
-    await tipOf(user, within_kpi("On time (of finished)"), /share that was done before the deadline/);
-    await tipOf(user, screen.getAllByText("Delay accepted")[0], /accepted the delay/);
-    await guideWorks(user, /Slowest 10% took/, /Slowest 10%/);
+    const table = await screen.findByTestId("tat-table");
+    await tipOf(user, within(table).getByText("Health"), /Red: late now or late without excuse/);
+    await tipOf(user, within(table).getByText("Missed"), /still undecided/);
+    await tipOf(user, within(table).getByText("Waiting for"), /reason, or your decision/);
+    await guideWorks(user, /Missed counts by the day the deadline was missed.*Every number opens its list/s, /डेडलाइन निकली/);
   });
 
-  it("Attendance: guide and tooltips", async () => {
+  it("Attendance: guide, the late-streak dot and the half-day / online notes", async () => {
     signIn(true);
-    mockReportEndpoints("/api/reports/attendance", reportData({
-      kpis: { People: 4, WorkingDays: 80, PresentDays: 70, LateDays: 6, MedianLateMin: 75, NotSignedInDays: 4 },
-      rows: [{ GroupKey: 5, GroupLabel: "Asha", WorkingDays: 20 }],
-    }));
+    mockReportEndpoints("/api/reports/attendance", {
+      kpis: { PresentPct: 75, PresentDays: 1.5, WorkingDays: 2, LateCount: 1, LateMinutesTotal: 14, LateMinutesMedian: 14, Absent: 0, AbsentTop: [], OnlineMedianMin: 300, ShiftMedianMin: 540 },
+      days: ["2026-10-01", "2026-10-02"],
+      rows: [{
+        UserId: 5, FullName: "Asha", Present: 1.5, WorkingDays: 2, Late: 1, LateMinutes: 14, Absent: 0, Leave: 0.5, LeftEarly: 0,
+        OnlineMedianMin: 300, ShiftMedianMin: 540, LateStreak: true,
+        cells: [{ date: "2026-10-01", code: "late", lateMin: 14, onlineMin: 300 }, { date: "2026-10-02", code: "half", lateMin: 0, onlineMin: 200 }],
+      }],
+      range: { from: "2026-10-01", to: "2026-10-02" },
+    });
     const user = userEvent.setup();
     renderWithProviders(<AttendanceReport />, { route: "/reports/attendance" });
-    await screen.findByTestId("attendance-table");
-    await tipOf(user, within_kpi("Present"), /On duty count as present/);
-    await guideWorks(user, /Working days/, /उपस्थित/);
+    await screen.findByTestId("attendance-grid");
+    expect(screen.getByLabelText("Late 3 working days in a row")).toBeInTheDocument();
+    expect(screen.getByText(/½ day counts as half a working day.*not hours worked/)).toBeInTheDocument();
+    await guideWorks(user, /½ day counts as half a day.*not hours worked.*late 3 working days in a row/s, /आधा दिन/);
   });
 });
-
-// KPI titles also appear as table headers; the KPI strip is the first match.
-function within_kpi(label) {
-  return screen.getAllByText(label)[0];
-}

@@ -145,7 +145,7 @@ describe("Roles & Permissions (Groups) page", () => {
     expect(await screen.findByText(/Salesperson — Permissions/)).toBeInTheDocument();
     const labels = [
       "Leads, follow-ups, quotations", "Sales reports", "Partners & commission", "Complaints", "Support reports",
-      "Customers", "People", "Tasks & My Work", "Teams", "Projects",
+      "Customers", "People", "Tasks & Today", "Teams", "Projects",
       "Attendance (team presence)", "Settings & products", "Dashboard",
     ];
     for (const l of labels) expect(screen.getByText(l)).toBeInTheDocument();

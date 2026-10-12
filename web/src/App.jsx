@@ -22,7 +22,6 @@ import ErrorBoundary from "./components/ErrorBoundary";
 const Login = lazy(() => import("./pages/auth/Login"));
 const Dashboard = lazy(() => import("./components/Dashboard"));
 const Task = lazy(() => import("./pages/Task/TaskBoard"));
-const MyWork = lazy(() => import("./pages/Task/MyWork"));
 const Today = lazy(() => import("./pages/Today/Today"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
@@ -83,7 +82,9 @@ export const routesConfig = [
   { path: "/reports", element: <SectionRedirect prefix="/reports" fallback="/reports/funnel" /> },
   { path: "/admin", element: <SectionRedirect prefix="/admin" fallback="/users" /> },
   { path: "/dashboard/*", element: <ProtectedRoute element={<Dashboard />} /> },
-  { path: "/my-work", element: <ProtectedRoute element={<MyWork />} /> },
+  // My Work is retired (2026-10-11): Today › Mine shows the same open tasks
+  // and more. The redirect keeps old links and a stale menu row working.
+  { path: "/my-work", element: <Navigate to="/today" replace /> },
   { path: "/today", element: <ProtectedRoute element={<Today />} /> },
   { path: "/tasks/*", element: <ProtectedRoute element={<Task />} /> },
   // Admin — user/team/project provisioning (backend was always live).

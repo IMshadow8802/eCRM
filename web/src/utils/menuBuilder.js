@@ -118,12 +118,17 @@ export function menuPath(title) {
 // tblMenu row is still present.
 const HIDDEN_MENU_IDS = new Set([6]); // 6 = "Kanban Columns"
 
+// tblMenu.SortOrder (110) orders siblings; a row without one sorts after the
+// ranked rows, by id — which is also the whole order before 110 is applied.
+const rank = (item) => (typeof item.sortOrder === "number" ? item.sortOrder : Infinity);
+const bySortOrder = (a, b) => rank(a) - rank(b) || a.menuid - b.menuid;
+
 export function buildDynamicMenu(menuRights) {
   if (!menuRights || menuRights.length === 0) return [];
 
-  const visible = menuRights.filter(
-    (item) => !HIDDEN_MENU_IDS.has(item.menuid),
-  );
+  const visible = menuRights
+    .filter((item) => !HIDDEN_MENU_IDS.has(item.menuid))
+    .sort(bySortOrder);
 
   const parentMenus = visible.filter(
     (item) => item.parentid === 0 || item.parentid === item.menuid
@@ -155,4 +160,31 @@ export function buildDynamicMenu(menuRights) {
           : null,
     };
   });
+}
+
+/**
+ * Does a menu path match the current location? A Route may carry a query
+ * string (tblMenu row 22 is /reports/funnel?groupBy=source), so the path part
+ * is compared (exact or as a prefix segment), then the row's params must be
+ * present in the URL. Shared by the sidebar highlight and the breadcrumb.
+ */
+export function isMenuPathActive(path, location) {
+  const [pathname, search] = String(path).split("?");
+  if (location.pathname !== pathname && !location.pathname.startsWith(`${pathname}/`)) return false;
+  if (!search) return true;
+  const here = new URLSearchParams(location.search);
+  return [...new URLSearchParams(search)].every(([k, v]) => here.get(k) === v);
+}
+
+/**
+ * The menu trail to the current page: [parent, child] for a submenu page,
+ * [item] for a top-level one, [] when no menu row matches.
+ */
+export function menuTrail(menus, location) {
+  for (const m of menus) {
+    const child = (m.submenus ?? []).find((c) => isMenuPathActive(c.path, location));
+    if (child) return [m, child];
+    if (isMenuPathActive(m.path, location)) return [m];
+  }
+  return [];
 }

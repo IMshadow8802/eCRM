@@ -92,7 +92,8 @@ describe("parseReportArgs", () => {
   it("validates DateBasis against the report's own bases (tat: assigned only)", () => {
     const { args } = parseReportArgs({}, "tat", TODAY);
     expect(args).toMatchObject({ DateBasis: "assigned", GroupBy: "person" });
-    expect(parseReportArgs({ DateBasis: "assigned", GroupBy: "verdict_by" }, "tat", TODAY).args.GroupBy).toBe("verdict_by");
+    expect(parseReportArgs({ GroupBy: "workspace" }, "tat", TODAY).args.GroupBy).toBe("workspace");
+    expect(parseReportArgs({ GroupBy: "verdict_by" }, "tat", TODAY).error).toMatch(/GroupBy must be one of person, priority, workspace/);
     expect(parseReportArgs({ DateBasis: "created" }, "tat", TODAY).error).toMatch(/DateBasis must be one of assigned/);
     expect(parseReportArgs({ DateBasis: "assigned" }, "funnel", TODAY).error).toMatch(/DateBasis must be one of created/);
   });

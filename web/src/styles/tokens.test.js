@@ -8,6 +8,7 @@ import {
   typography,
   motion,
   zIndex,
+  controlHeight,
 } from "./tokens";
 
 describe("design tokens", () => {
@@ -41,11 +42,33 @@ describe("design tokens", () => {
     }
   });
 
-  it("provides gradient tokens for both modes", () => {
+  it("has three elevation steps in both modes, each a layered shadow", () => {
     for (const mode of ["light", "dark"]) {
-      expect(palettes[mode].gradient.heroCTA).toContain("linear-gradient");
-      expect(palettes[mode].gradient.loginPanel).toContain("linear-gradient");
-      expect(palettes[mode].gradient.emptyBlob).toContain("radial-gradient");
+      for (const step of [1, 2, 3]) {
+        const e = palettes[mode].elevation[step];
+        // contact shadow + ambient shadow (dark adds a top highlight)
+        expect(e.split("), ").length).toBeGreaterThanOrEqual(2);
+      }
+    }
+    // dark lifts with a hairline highlight; light does not need one
+    expect(palettes.dark.elevation[1]).toContain("inset");
+    expect(palettes.light.elevation[1]).not.toContain("inset");
+  });
+
+  it("the page sits one step darker than a card, so a card reads as raised", () => {
+    expect(palettes.light.surface.page).not.toBe(palettes.light.surface.card);
+    expect(palettes.dark.surface.page).not.toBe(palettes.dark.surface.card);
+  });
+
+  it("inputs share one height scale, md flush with a medium button (36)", () => {
+    expect(controlHeight).toEqual({ sm: 32, md: 36, lg: 48 });
+  });
+
+  it("is solid: no gradients, and no alpha outside the scrim and shadows", () => {
+    for (const mode of ["light", "dark"]) {
+      const { overlay, shadow, elevation, ...rest } = palettes[mode];
+      expect(JSON.stringify(rest)).not.toMatch(/gradient|rgba\(/);
+      expect(palettes[mode].brand.cta).toMatch(/^#[0-9A-F]{6}$/i);
     }
   });
 
@@ -108,6 +131,22 @@ describe("design tokens", () => {
     const order = ["base", "dropdown", "sticky", "overlay", "modal", "popover", "tooltip", "toast"];
     for (let i = 1; i < order.length; i++) {
       expect(zIndex[order[i]]).toBeGreaterThan(zIndex[order[i - 1]]);
+    }
+  });
+
+  it("warning.text is amber readable as text (WCAG AA 4.5:1 on a card) in both modes", () => {
+    const lum = (hex) => {
+      const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+        .map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const ratio = (a, b) => {
+      const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+      return (hi + 0.05) / (lo + 0.05);
+    };
+    expect(palettes.light.warning.text).toBe("#B45309");
+    for (const mode of ["light", "dark"]) {
+      expect(ratio(palettes[mode].warning.text, palettes[mode].surface.card)).toBeGreaterThanOrEqual(4.5);
     }
   });
 });

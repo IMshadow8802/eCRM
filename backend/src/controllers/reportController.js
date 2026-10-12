@@ -1,7 +1,7 @@
 const database = require("../config/database");
 const { scopeParams, scopeFor, scopeJson } = require("../middleware/permission");
 const { asyncRoute, positiveInt } = require("../utils/controllerKit");
-const { runReport, REPORTS, parseReportArgs } = require("../utils/reportKit");
+const { runReport, REPORTS, parseReportArgs, TAT_METRICS } = require("../utils/reportKit");
 const { success, error } = require("../utils/responseHelper");
 const { dayKey } = require("../utils/workCalendar");
 const { visibleUserIds } = require("./workSettingsController");
@@ -139,7 +139,7 @@ controller.partners = asyncRoute(
 // attendance reach), sent as a user allow-list: NULL = everyone, [] = nobody.
 // An OwnerId outside it yields no rows, never that person's clocks.
 // With no OwnerId the company's users are the candidates, or Office reach would drop the office.
-const MAX_COMPANY_USERS = 1000; // ponytail: one page of sp_FetchUser, same ceiling as tatController.fetchTeamToday
+const MAX_COMPANY_USERS = 1000; // ponytail: one page of sp_FetchUser, same ceiling as todayData.teamIds
 async function companyUserIds(req) {
   const result = await database.executeStoredProcedure("sp_FetchUser", {
     Id: 0, CompId: req.user.CompId, BranchId: req.user.BranchId ?? null, IsAdmin: 1, AccessibleBranchIdsJson: null,
@@ -148,24 +148,58 @@ async function companyUserIds(req) {
   return (result?.recordsets?.[0] ?? []).map((u) => Number(u.Id)).filter(Boolean);
 }
 
+// mssql hands DECIMALs back as numbers or strings; the page wants numbers, NULL kept.
+const num = (v) => (v == null ? null : Number(v));
+const numRow = (row, keep = []) => Object.fromEntries(
+  Object.entries(row).map(([k, v]) => [k, keep.includes(k) ? v : num(v)]));
+const EMPTY_KPIS = {
+  Finished: 0, OnTime: 0, OnTimePct: null, Missed: 0, NotExcused: 0, Excused: 0, NoDecision: 0,
+  ReasonPending: 0, OverdueNow: 0, OldestOverdueAt: null, MedianUsedPct: null, P90UsedPct: null,
+};
+
+// Same scope for the report and its drill-down: a user allow-list (NULL = everyone),
+// [] when OwnerId is outside it.
+async function tatScopeJson(req, OwnerId) {
+  const allowed = await visibleUserIds(req, OwnerId ? [OwnerId] : await companyUserIds(req));
+  const ids = allowed && OwnerId && !allowed.includes(OwnerId) ? [] : allowed;
+  return ids === null ? null : JSON.stringify(ids);
+}
+
 controller.tat = asyncRoute(
   async (req, res) => {
     const parsed = parseReportArgs(req.body, "tat");
     if (parsed.error) return error(res, parsed.error, "VALIDATION_ERROR", 400);
-    const { FromDate, ToDate, DateBasis, GroupBy, BranchId, OwnerId } = parsed.args;
-    const allowed = await visibleUserIds(req, OwnerId ? [OwnerId] : await companyUserIds(req));
-    const ids = allowed && OwnerId && !allowed.includes(OwnerId) ? [] : allowed;
+    const { FromDate, ToDate, GroupBy, BranchId, OwnerId } = parsed.args;
     const result = await database.executeStoredProcedure("sp_RptTat", {
       CompId: req.user.CompId, FromDate, ToDate, GroupBy, BranchId, OwnerId,
-      UserIdsJson: ids === null ? null : JSON.stringify(ids),
+      UserIdsJson: await tatScopeJson(req, OwnerId),
     });
     const rs = result?.recordsets ?? [];
     return success(res, "Report fetched successfully", {
-      kpis: rs[0]?.[0] ?? {},
-      rows: rs[1] ?? [],
-      trend: (rs[2] ?? []).map((r) => ({ ...r, Bucket: dayKey(r.Bucket) })),
-      range: { from: FromDate, to: ToDate, basis: DateBasis, groupBy: GroupBy },
+      kpis: rs[0]?.[0] ? numRow(rs[0][0], ["OldestOverdueAt"]) : EMPTY_KPIS,
+      rows: (rs[1] ?? []).map((r) => numRow(r, ["GroupKey", "GroupLabel"])),
+      trend: (rs[2] ?? []).map((r) => ({ ...numRow(r, ["Bucket"]), Bucket: dayKey(r.Bucket) })),
+      previous: rs[3]?.[0] ? numRow(rs[3][0]) : { Finished: 0, OnTime: 0 },
     });
+  },
+  "Failed to fetch report",
+  "REPORT_ERROR",
+);
+
+// Drill-down: the clocks behind one headline number or one group row (TOP 500 in the SP).
+controller.tatClocks = asyncRoute(
+  async (req, res) => {
+    const parsed = parseReportArgs(req.body, "tat");
+    if (parsed.error) return error(res, parsed.error, "VALIDATION_ERROR", 400);
+    const { Metric, GroupKey } = req.body ?? {};
+    if (!TAT_METRICS.includes(Metric)) return error(res, `Metric must be one of ${TAT_METRICS.join(", ")}`, "VALIDATION_ERROR", 400);
+    const { FromDate, ToDate, GroupBy, BranchId, OwnerId } = parsed.args;
+    const result = await database.executeStoredProcedure("sp_RptTatClocks", {
+      CompId: req.user.CompId, FromDate, ToDate, GroupBy,
+      GroupKey: GroupKey == null ? null : String(GroupKey), // '' is a real group (no priority / board)
+      Metric, BranchId, OwnerId, UserIdsJson: await tatScopeJson(req, OwnerId),
+    });
+    return success(res, "Report fetched successfully", { clocks: result?.recordsets?.[0] ?? [] });
   },
   "Failed to fetch report",
   "REPORT_ERROR",

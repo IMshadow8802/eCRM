@@ -3,6 +3,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 
+import { useLocation } from "react-router-dom";
 import Today from "./Today";
 import useAuthStore from "../../stores/useAuthStore";
 import { server } from "../../test/mocks/server";
@@ -14,109 +15,93 @@ vi.mock("../../components/ui/DateField", () => import("../../test/DateFieldStub"
 const ok = (data = {}) => HttpResponse.json({ success: true, message: "ok", responseCode: 200, data });
 const fail = (status, message) => HttpResponse.json({ success: false, message, responseCode: status }, { status });
 
-const clocks = [
-  { TatId: 2, TaskId: 22, TaskTitle: "Later task", DueAt: "2099-01-02 17:00:00", WarnedAt: null, BreachedAt: null },
-  { TatId: 1, TaskId: 11, TaskTitle: "Sooner task", DueAt: "2099-01-01 11:00:00", WarnedAt: null, BreachedAt: null },
-];
+const zero = { given: 0, done: 0, open: 0, working: 0, overdue: 0, atRisk: 0, reasonOwed: 0, toRule: 0 };
+const row = (UserId, FullName, o = {}) => ({ UserId, FullName, FirstSignInAt: null, ...o, counts: { ...zero, ...o.counts } });
 const team = [
-  { UserId: 5, FullName: "Asha", status: { code: "online", label: "Online", late: "Late by 12 min" }, FirstSignInAt: "2026-10-08 09:12:00", Open: 3, AtRisk: 1, Over: 1, ReasonPending: 2, MarkKind: null },
-  { UserId: 6, FullName: "Ravi", status: { code: "leave", label: "On leave" }, FirstSignInAt: null, Open: 0, AtRisk: 0, Over: 0, ReasonPending: 0, MarkKind: "leave", MarkPart: "full" },
+  row(5, "Asha", { status: { code: "online", label: "Online", late: "Late by 12 min" }, LateMinutes: 12, FirstSignInAt: "2026-10-08 09:12:00", counts: { open: 3, atRisk: 1, overdue: 1, reasonOwed: 2 } }),
+  row(6, "Ravi", { status: { code: "leave", label: "On leave" }, MarkKind: "leave", MarkPart: "full" }),
 ];
 
 let calls;
-function setup({ teamRows = team, admin = false, today = {} } = {}) {
+let sized;
+const mine = { day: { key: "2026-10-11", live: true }, me: {
+  UserId: 1, FullName: "Ayush Mishra", FirstSignInAt: "2026-10-11 09:42:00", LateMinutes: 12,
+  status: { code: "online", label: "Online", late: "Late by 12 min" },
+  session: { onlineMinutes: 250, signIns: 1, devices: ["web"], lastSeenAt: null, open: true },
+  counts: { done: 0, doneLate: 0, open: 0, working: 0, notStarted: 0 }, tasks: [] } };
+
+function setup({ teamRows = team, admin = false, size = teamRows.length } = {}) {
   calls = [];
+  sized = false;
   useAuthStore.setState({ isAuthenticated: true, token: null, user: { UserId: 1 }, UserId: 1, API_BASE_URL: "https://x/CRM", access: { isAdmin: admin, modules: {} } });
   server.use(...tatHandlers());
   server.use(
-    http.post("*/api/tat/fetchToday", () =>
-      ok({ presence: { FirstSignInAt: "2026-10-08 09:12:00", status: { code: "online", label: "Online", late: "Late by 12 min" } }, clocks, reasonPending: [{ TatId: 9, TaskId: 99, TaskTitle: "Ran over" }], ...today })),
-    http.post("*/api/tat/fetchTeamToday", () => ok({ team: teamRows })),
+    http.post("*/api/today/mine", () => ok(mine)),
+    http.post("*/api/today/teamSize", () => { sized = true; return ok({ count: size }); }),
+    http.post("*/api/today/team", () => ok({ day: { key: "2026-10-11", live: true }, people: teamRows })),
+    http.post("*/api/users/fetchBranches", () => ok({ branches: [] })),
     http.post("*/api/work/saveDayMark", async ({ request }) => { const b = await request.json(); calls.push(["save", b]); return b.UserId === 6 ? fail(403, "Not your report") : ok({ id: 1 }); }),
     http.post("*/api/work/deleteDayMark", async ({ request }) => { calls.push(["delete", await request.json()]); return ok(); }),
     http.post("*/api/presence/fetchSessions", () => ok({ sessions: [{ SessionId: 1, Device: "Chrome on Mac", Ip: "1.2.3.4", StartedAt: "2026-10-08 09:12:00", LastSeenAt: "2026-10-08 10:00:00", EndedAt: null }] })),
     http.post("*/api/presence/endSession", async ({ request }) => { calls.push(["end", await request.json()]); return ok({ ended: 1 }); }),
   );
 }
-const view = (route = "/today") => renderWithProviders(<Today />, { route });
+function Where() {
+  const loc = useLocation();
+  return <div data-testid="where">{loc.search}</div>;
+}
+const view = (route = "/today") => renderWithProviders(<><Today /><Where /></>, { route });
 
 describe("Today", () => {
   beforeEach(() => setup());
 
-  it("Mine lists clocks by due, sign-in time and late", async () => {
-    view();
-    expect(await screen.findByText("Signed in at 09:12 IST")).toBeInTheDocument();
-    expect(screen.getAllByText("Late by 12 min").length).toBeGreaterThan(0);
-    const rows = await screen.findAllByTestId(/^clock-/);
-    expect(rows.map((r) => r.getAttribute("data-testid"))).toEqual(["clock-1", "clock-2"]);
-  });
-
-  it("shows status from the server only, even with null presence fields; null DueAt sorts last", async () => {
-    setup({ today: { presence: { FirstSignInAt: null, LateMinutes: 7, status: { code: "not_signed_in_yet", label: "Not signed in yet" } },
-      clocks: [{ TatId: 3, TaskId: 33, TaskTitle: "No due", DueAt: null }, clocks[0], clocks[1]], reasonPending: [] } });
-    view();
-    expect(await screen.findByText("Not signed in yet")).toBeInTheDocument();
-    expect(screen.queryByText(/Late by/)).not.toBeInTheDocument();
-    const rows = await screen.findAllByTestId(/^clock-/);
-    expect(rows.map((r) => r.getAttribute("data-testid"))).toEqual(["clock-1", "clock-2", "clock-3"]);
-  });
-
-  it("shows the day mark as a badge: half leave, full leave, on duty", async () => {
-    const row = (UserId, FullName, status) => ({ UserId, FullName, status, FirstSignInAt: null, Open: 0, AtRisk: 0, Over: 0, ReasonPending: 0 });
+  it("shows the day mark: half leave on the presence line, full leave and on duty as the status", async () => {
     setup({ teamRows: [
-      row(5, "Asha", { code: "online", label: "Online", half: "first_half" }),
-      row(6, "Ravi", { code: "offline", label: "Offline", half: "second_half" }),
-      row(7, "Meena", { code: "on_duty", label: "On duty" }),
-      row(8, "Kiran", { code: "leave", label: "On leave" }),
-      row(9, "Plain", { code: "offline", label: "Offline" }),
+      row(5, "Asha", { status: { code: "online", label: "Online", half: "first_half" } }),
+      row(7, "Meena", { status: { code: "on_duty", label: "On duty" } }),
+      row(8, "Kiran", { status: { code: "leave", label: "On leave" } }),
+      row(9, "Plain", { status: { code: "offline", label: "Offline" } }),
     ] });
     view("/today?tab=team");
-    await screen.findByTestId("team-table");
-    expect(within(screen.getByTestId("team-row-5")).getByText("On leave · first half")).toBeInTheDocument();
-    expect(within(screen.getByTestId("team-row-6")).getByText("On leave · second half")).toBeInTheDocument();
-    expect(within(screen.getByTestId("team-row-7")).getByText("On duty")).toBeInTheDocument();
-    expect(within(screen.getByTestId("team-row-8")).getByText("On leave")).toBeInTheDocument();
-    expect(within(screen.getByTestId("team-row-9")).queryByText(/On leave|On duty/)).toBeNull();
+    expect(within(await screen.findByTestId("person-card-5")).getByText(/Leave · first half/)).toBeInTheDocument();
+    expect(within(screen.getByTestId("person-card-7")).getAllByText("On duty").length).toBeGreaterThan(0);
+    expect(within(screen.getByTestId("person-card-8")).getAllByText("On leave").length).toBeGreaterThan(0);
+    expect(within(screen.getByTestId("person-card-9")).queryByText(/On leave|On duty/)).toBeNull();
   });
 
-  it("Mine shows the day mark badge", async () => {
-    setup({ today: { presence: { FirstSignInAt: null, status: { code: "online", label: "Online", half: "second_half" } } } });
+  it("Mine is the default tab and shows my day", async () => {
     view();
-    expect(await screen.findByText("On leave · second half")).toBeInTheDocument();
+    expect(await screen.findByText("Late 12m")).toBeInTheDocument();
+    expect(await screen.findByText("My team")).toBeInTheDocument();
   });
 
-  it("team Day filter sends WorkDate", async () => {
-    let body;
-    server.use(http.post("*/api/tat/fetchTeamToday", async ({ request }) => { body = await request.json(); return ok({ team }); }));
-    view("/today?tab=team");
-    await screen.findByTestId("team-table");
-    expect(body.WorkDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-  });
-
-  it("Reason pending opens the reason dialog", async () => {
+  it("switching tabs keeps other URL params", async () => {
     const user = userEvent.setup();
-    view();
-    await user.click(await screen.findByRole("button", { name: "Explain delay" }));
-    expect(await screen.findByTestId("breach-reason-dialog")).toBeInTheDocument();
+    view("/today?day=2026-10-09");
+    await user.click(await screen.findByText("My team"));
+    expect(screen.getByTestId("where")).toHaveTextContent("day=2026-10-09");
+    expect(screen.getByTestId("where")).toHaveTextContent("tab=team");
   });
 
-  it("hides the team tab when nobody reports in", async () => {
-    setup({ teamRows: [] });
-    view();
-    await screen.findByText("Signed in at 09:12 IST");
+  it("hides the My team tab when teamSize is 0, even with ?tab=team", async () => {
+    setup({ size: 0 });
+    view("/today?tab=team");
+    await screen.findByText("Late 12m");
+    await waitFor(() => expect(sized).toBe(true));
     expect(screen.queryByText("My team")).not.toBeInTheDocument();
+    expect(screen.queryByTestId(/^person-card-/)).not.toBeInTheDocument();
   });
 
   it("team tab shows statuses and counts", async () => {
     const user = userEvent.setup();
     view("/today?tab=team");
-    await screen.findByTestId("team-table");
-    expect(within(await screen.findByTestId("team-row-5")).getByText("Online")).toBeInTheDocument();
-    expect(within(screen.getByTestId("team-row-5")).getByText("Late by 12 min")).toBeInTheDocument();
-    expect(within(screen.getByTestId("team-row-6")).getByText("On leave")).toBeInTheDocument();
+    const asha = await screen.findByTestId("person-card-5");
+    expect(within(asha).getByText("Late 12m")).toBeInTheDocument();
+    expect(within(asha).getByRole("button", { name: "Open: 3" })).toBeInTheDocument();
+    expect(within(screen.getByTestId("person-card-6")).getAllByText("On leave").length).toBeGreaterThan(0);
     expect(screen.queryByTestId("sessions-5")).not.toBeInTheDocument();
     await user.click(screen.getByText("Mine"));
-    expect(await screen.findByText("Signed in at 09:12 IST")).toBeInTheDocument();
+    expect(await screen.findByText("Late 12m")).toBeInTheDocument();
   });
 
   it("Mark day saves, and a 403 is shown in the dialog", async () => {
@@ -159,11 +144,11 @@ describe("Today", () => {
   });
 
   it("sessions: no Sessions button on your own row; empty and ended sessions render", async () => {
-    setup({ admin: true, teamRows: [{ UserId: 1, FullName: "Me", Open: 0 }, { UserId: 5, FullName: "Asha" }] });
+    setup({ admin: true, teamRows: [row(1, "Me", { isMe: true }), row(5, "Asha")] });
     server.use(http.post("*/api/presence/fetchSessions", () => ok({ sessions: [{ SessionId: 3, EndedAt: "2026-10-08 10:00:00", EndReason: "forced" }] })));
     const user = userEvent.setup();
     view("/today?tab=team");
-    await screen.findByTestId("team-row-1");
+    await screen.findByTestId("person-card-1");
     expect(screen.queryByTestId("sessions-1")).not.toBeInTheDocument();
     await user.click(screen.getByTestId("sessions-5"));
     expect(await screen.findByText(/\(forced\)/)).toBeInTheDocument();
@@ -173,7 +158,7 @@ describe("Today", () => {
   });
 
   it("sessions: none yet; self cannot be ended", async () => {
-    setup({ admin: true, teamRows: [{ UserId: 1, FullName: "Me" }, { UserId: 5, FullName: "Asha" }] });
+    setup({ admin: true, teamRows: [row(1, "Me", { isMe: true }), row(5, "Asha")] });
     server.use(http.post("*/api/presence/fetchSessions", () => ok({ sessions: [] })));
     const user = userEvent.setup();
     view("/today?tab=team");
@@ -190,5 +175,13 @@ describe("Today", () => {
     expect(await screen.findByTestId("day-mark-error")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByTestId("day-mark-dialog")).not.toBeInTheDocument());
+  });
+
+  it("puts My team's Day picker on the tab row, not on a row of its own", async () => {
+    setup();
+    view("/today?tab=team");
+    await screen.findByTestId("person-card-5");
+    expect(screen.getByTestId("today-tabs-end")).toContainElement(screen.getByTestId("team-day"));
+    expect(screen.getByText(/people in your team, most urgent first/)).toBeInTheDocument();
   });
 });

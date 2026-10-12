@@ -76,11 +76,12 @@ const Leads = () => {
   // Every label comes from the SP now; no client-side id → name resolution.
   const overdueSx = { color: theme.tokens.error.main, fontWeight: 600 };
   const columns = useMemo(() => [
-    { accessorKey: "Name", header: "Name", enableSorting: true },
+    // Grid layout shares spare width: the name takes twice the share, the short ones less.
+    { accessorKey: "Name", header: "Name", enableSorting: true, size: 200, grow: 2 },
     { accessorKey: "Company", header: "Company", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "—" },
-    { accessorKey: "MobileNo", header: "Mobile", enableSorting: false },
-    { accessorKey: "City", header: "City", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "—" },
-    { accessorKey: "StatusName", header: "Status", enableSorting: false,
+    { accessorKey: "MobileNo", header: "Mobile", enableSorting: false, size: 120 },
+    { accessorKey: "City", header: "City", enableSorting: false, size: 110, Cell: ({ cell }) => cell.getValue() || "—" },
+    { accessorKey: "StatusName", header: "Status", enableSorting: false, size: 110,
       Cell: ({ row }) => <Chip label={row.original.StatusName || "—"} size="sm" tone={isActiveCode(row.original.StatusCode) ? "primary" : "default"} /> },
     { accessorKey: "ProductName", header: "Product", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "—" },
     { accessorKey: "OwnerName", header: "Owner", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "Unassigned" },

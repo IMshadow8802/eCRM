@@ -136,7 +136,7 @@ const MasterChipGrid = ({
             data-testid="master-grid-create"
             sx={{
               background: (t) =>
-                `linear-gradient(135deg, ${t.palette.primary.main} 0%, ${t.palette.primary.dark} 100%)`,
+                t.palette.primary.main,
               color: "common.white",
               borderRadius: 2,
               px: 1.5,
@@ -146,7 +146,7 @@ const MasterChipGrid = ({
               fontWeight: 600,
               "&:hover": {
                 background: (t) =>
-                  `linear-gradient(135deg, ${t.palette.primary.light} 0%, ${t.palette.primary.main} 100%)`,
+                  t.palette.primary.dark,
               },
             }}
           >
@@ -230,7 +230,7 @@ const MasterChipGrid = ({
                         width: "calc(40rem / 15)",
                         height: "calc(40rem / 15)",
                         borderRadius: 1.5,
-                        background: `linear-gradient(135deg, ${color}, ${color}cc)`,
+                        background: color,
                         color: "common.white",
                         display: "flex",
                         alignItems: "center",

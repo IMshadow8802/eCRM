@@ -111,6 +111,11 @@ describe("useAppTable", () => {
     expect(o.muiTablePaperProps.sx.backgroundColor).toBe("background.paper");
   });
 
+  it("keeps the actions column size when a page only sets its header", () => {
+    const o = build({ displayColumnDefOptions: { "mrt-row-actions": { grow: false, header: "Actions" } } });
+    expect(o.displayColumnDefOptions["mrt-row-actions"]).toMatchObject({ size: 120, grow: false, header: "Actions" });
+  });
+
   it("lets a page override a default without losing its siblings", () => {
     const o = build({ muiTableContainerProps: { sx: { maxHeight: "500px" } } });
     expect(o.muiTableContainerProps.sx.maxHeight).toBe("500px");
@@ -237,5 +242,20 @@ describe("useAppTable refit when content above changes", () => {
     expect(css()).toMatch(/max-height:\s*684px/);
     spy.mockRestore();
     vi.unstubAllGlobals();
+  });
+});
+
+describe("useAppTable full screen", () => {
+  it("Esc anywhere on the page leaves full screen", async () => {
+    const { result } = renderHook(() =>
+      useAppTable({ columns: [{ accessorKey: "a", header: "A" }], data: [], initialState: { isFullScreen: true } }),
+    );
+    expect(result.current.getState().isFullScreen).toBe(true);
+    const { act } = await import("@testing-library/react");
+    act(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); });
+    expect(result.current.getState().isFullScreen).toBe(false);
+    // another key does nothing once it is off
+    act(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "a" })); });
+    expect(result.current.getState().isFullScreen).toBe(false);
   });
 });

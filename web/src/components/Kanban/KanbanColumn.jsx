@@ -248,18 +248,8 @@ export default function KanbanColumn({
         ref={dropRef}
         style={{ padding: "calc(10rem / 15)", overflowY: "auto", flex: 1, minHeight: "calc(100rem / 15)" }}
       >
-        {tasks.map((task) => (
-          <KanbanCard
-            key={task.Id}
-            task={task}
-            columnId={column.Id}
-            onOpen={onOpenTask}
-            selected={selectedTaskIds.includes(task.Id)}
-            onToggleSelect={onToggleSelect}
-            canDrag={canDragCard(task)}
-          />
-        ))}
-
+        {/* Add task sits at the TOP of the column, under the header: with 10–20
+            cards a button after the last one was a scroll away. */}
         {canCreate && !isOrphan ? (
           <button
             type="button"
@@ -268,6 +258,7 @@ export default function KanbanColumn({
             disabled={atCapacity}
             style={{
               width: "100%",
+              marginBottom: "calc(8rem / 15)",
               padding: "calc(8rem / 15) calc(10rem / 15)",
               border: `1px dashed ${p.border.default}`,
               borderRadius: theme.radii.md,
@@ -301,6 +292,18 @@ export default function KanbanColumn({
             {atCapacity ? "Column full" : "Add task"}
           </button>
         ) : null}
+        {tasks.map((task) => (
+          <KanbanCard
+            key={task.Id}
+            task={task}
+            columnId={column.Id}
+            onOpen={onOpenTask}
+            selected={selectedTaskIds.includes(task.Id)}
+            onToggleSelect={onToggleSelect}
+            canDrag={canDragCard(task)}
+          />
+        ))}
+
       </div>
 
       <Modal

@@ -11,6 +11,20 @@ const {
   pageParams,
   positiveInt,
 } = require("../utils/controllerKit");
+const { emitToUser } = require("../realtime/events");
+const { SCOPES } = require("../realtime/contract");
+
+// A role changed: tell its signed-in members to re-read their access (sidebar,
+// route gates). Members come from the role's own company only. Best effort —
+// the save already succeeded, and a member still catches up on reload / focus.
+async function pushAccessToMembers(groupId, compId) {
+  try {
+    const result = await database.executeStoredProcedure("sp_FetchGroupMembers", { GroupId: groupId, CompId: compId });
+    for (const r of result?.recordsets?.[0] ?? []) emitToUser(r.UserId, SCOPES.ACCESS);
+  } catch (err) {
+    console.error("sp_FetchGroupMembers skipped:", err.message);
+  }
+}
 
 class UserGroupController {
   // A role's module grants (spec 2026-10-07): RS1 head + sensitive/admin flags, RS2 one row per module.
@@ -58,6 +72,7 @@ class UserGroupController {
           description: `Module permissions updated (${Modules.length} module(s))`,
           req,
         });
+        await pushAccessToMembers(groupId, req.user.CompId);
       }
       return res.status(spStatus(row)).json({
         success: ok,
@@ -116,6 +131,8 @@ class UserGroupController {
           description: `Group "${Name ?? GroupName}" ${Id === 0 ? "created" : "updated"}`,
           req,
         });
+        // An edit can switch the role off (IsActive), which drops its grants.
+        if (positiveInt(Id)) await pushAccessToMembers(positiveInt(Id), req.user.CompId);
       }
 
       return res.status(spStatus(spResponse)).json({

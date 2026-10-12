@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Box, useMediaQuery } from "@mui/material";
 import { useLocation } from "react-router-dom";
 import NetworkStatusBanner from "./NetworkStatusBanner";
@@ -9,6 +9,7 @@ import SocketProvider from "../realtime/SocketProvider";
 import ReauthDialog from "./ReauthDialog";
 import PresenceNoticeDialog from "./PresenceNoticeDialog";
 import useHeartbeat from "../hooks/useHeartbeat";
+import { HeaderSlotContext } from "./ui/headerSlot";
 
 const COLLAPSED_KEY = "sidebarCollapsed";
 
@@ -46,6 +47,9 @@ function RootLayout({ children }) {
   };
 
   const [mobileOpen, setMobileOpen] = useState(false);
+  // The top bar's header slot (TopNav sets it, PageHeader portals into it).
+  const [slot, setSlot] = useState(null);
+  const headerSlot = useMemo(() => ({ slot, setSlot }), [slot]);
   const openMobile = () => setMobileOpen(true);
   const closeMobile = () => setMobileOpen(false);
 
@@ -59,6 +63,7 @@ function RootLayout({ children }) {
   }
 
   return (
+    <HeaderSlotContext.Provider value={headerSlot}>
     <Box
       sx={{
         minHeight: "100dvh",
@@ -101,14 +106,18 @@ function RootLayout({ children }) {
             flex: 1,
             overflowX: "hidden",
             overflowY: "auto",
+            // Same side gutter as the bar's rows, so the title and the first
+            // card share a left edge. Comfortable, not cramped: 20 / 12 on a phone.
             px: { xs: 1.5, md: 2.5 },
-            py: 2,
+            pt: { xs: 1.5, md: 2.5 },
+            pb: 3,
           }}
         >
           {children}
         </Box>
       </Box>
     </Box>
+    </HeaderSlotContext.Provider>
   );
 }
 

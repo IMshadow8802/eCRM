@@ -58,7 +58,7 @@ export default function Avatar({
             position: "absolute",
             inset: -3,
             borderRadius: theme.radii.full,
-            background: p.gradient.statAccent,
+            background: p.primary.main,
           }}
         />
       )}
@@ -80,7 +80,7 @@ export default function Avatar({
             ? undefined
             : presetBg
               ? presetBg
-              : `linear-gradient(135deg, hsl(${hue}, 68%, 60%), hsl(${(hue + 40) % 360}, 68%, 52%))`,
+              : `hsl(${hue}, 60%, 48%)`,
           color: "#FFFFFF",
           fontSize: rem(av?.kind === "emoji" ? Math.round(s.box * 0.58) : s.fz),
           fontWeight: 700,

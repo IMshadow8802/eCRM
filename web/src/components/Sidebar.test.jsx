@@ -81,6 +81,8 @@ vi.mock("../stores/useAuthStore", () => {
 });
 
 import Sidebar from "./Sidebar";
+import { chrome } from "../styles/tokens";
+import { rem } from "../utils/rem";
 
 const renderSidebar = (overrides = {}) => {
   const props = {
@@ -241,5 +243,12 @@ describe("Sidebar", () => {
     // Explicitly not `parseFloat(...) || 0` — that also passes when the
     // property is absent, so it could never fail.
     expect(["0", "0px"]).toContain(getComputedStyle(paper).borderRadius);
+  });
+
+  // The brand header's divider must continue the top bar's row-1 hairline:
+  // both heights come from one token (chrome.row1), expanded or collapsed.
+  it.each([false, true])("brand header is exactly the bar's row-1 height (collapsed=%s)", (collapsed) => {
+    renderSidebar({ collapsed });
+    expect(getComputedStyle(screen.getByTestId("sidebar-brand")).height).toBe(rem(chrome.row1));
   });
 });

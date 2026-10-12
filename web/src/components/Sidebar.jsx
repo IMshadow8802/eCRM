@@ -22,7 +22,9 @@ import {
 } from "@mui/icons-material";
 
 import useAuthStore from "../stores/useAuthStore";
-import { buildDynamicMenu } from "../utils/menuBuilder";
+import { buildDynamicMenu, isMenuPathActive } from "../utils/menuBuilder";
+import { chrome } from "../styles/tokens";
+import { rem } from "../utils/rem";
 
 export const SIDEBAR_WIDTH_EXPANDED = 240;
 export const SIDEBAR_WIDTH_RAIL = 68;
@@ -66,18 +68,7 @@ const Sidebar = ({ collapsed, onToggleCollapsed, mobileOpen, onMobileClose }) =>
     setFlyoutMenu(null);
   };
 
-  // A menu Route may carry a query string (tblMenu row 22 is
-  // /reports/funnel?groupBy=source), so compare the path part and then require
-  // the row's params to be present in the current URL. Comparing the whole
-  // string would leave such a row permanently dark, and comparing search
-  // exactly would blank the highlight the moment a report page writes a filter.
-  const isActive = (path) => {
-    const [pathname, search] = path.split("?");
-    if (location.pathname !== pathname && !location.pathname.startsWith(`${pathname}/`)) return false;
-    if (!search) return true;
-    const here = new URLSearchParams(location.search);
-    return [...new URLSearchParams(search)].every(([k, v]) => here.get(k) === v);
-  };
+  const isActive = (path) => isMenuPathActive(path, location);
 
   const navigateTo = (menu, parentPermissions) => {
     setActiveMenuRights(menu.permissions || parentPermissions || null);
@@ -211,14 +202,18 @@ const Sidebar = ({ collapsed, onToggleCollapsed, mobileOpen, onMobileClose }) =>
       {/* Brand header + collapse toggle (top).
           Collapsed mode: the brand square doubles as the expand button. */}
       <Box
+        data-testid="sidebar-brand"
         sx={{
           px: effectiveCollapsed ? 1 : 2,
-          py: effectiveCollapsed ? 1.25 : 2,
           display: "flex",
           alignItems: "center",
           gap: 1.25,
           justifyContent: effectiveCollapsed ? "center" : "space-between",
-          minHeight: "calc(64rem / 15)",
+          // Exactly the top bar's row 1 (chrome.row1): the divider under this
+          // header continues the bar's hairline across the sidebar.
+          boxSizing: "border-box",
+          height: rem(chrome.row1),
+          flexShrink: 0,
         }}
       >
         <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
@@ -232,12 +227,12 @@ const Sidebar = ({ collapsed, onToggleCollapsed, mobileOpen, onMobileClose }) =>
                   height: "calc(40rem / 15)",
                   borderRadius: 1.5,
                   background: (t) =>
-                    `linear-gradient(135deg, ${t.palette.primary.main} 0%, ${t.palette.primary.dark} 100%)`,
+                    t.palette.primary.main,
                   color: "common.white",
-                  boxShadow: "0 calc(4rem / 15) calc(10rem / 15) rgba(63, 79, 175, 0.35)",
+                  boxShadow: 2,
                   "&:hover": {
                     background: (t) =>
-                      `linear-gradient(135deg, ${t.palette.primary.light} 0%, ${t.palette.primary.main} 100%)`,
+                      t.palette.primary.dark,
                   },
                 }}
               >
@@ -251,12 +246,12 @@ const Sidebar = ({ collapsed, onToggleCollapsed, mobileOpen, onMobileClose }) =>
                 height: "calc(40rem / 15)",
                 borderRadius: 1.5,
                 background: (t) =>
-                  `linear-gradient(135deg, ${t.palette.primary.main} 0%, ${t.palette.primary.dark} 100%)`,
+                  t.palette.primary.main,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 flexShrink: 0,
-                boxShadow: "0 calc(4rem / 15) calc(10rem / 15) rgba(63, 79, 175, 0.35)",
+                boxShadow: 2,
               }}
             >
               <BusinessRounded sx={{ color: "common.white" }} fontSize="small" />
@@ -269,11 +264,6 @@ const Sidebar = ({ collapsed, onToggleCollapsed, mobileOpen, onMobileClose }) =>
                 fontWeight: 700,
                 color: "primary.main",
                 letterSpacing: "-0.01em",
-                background: (t) =>
-                  `linear-gradient(135deg, ${t.palette.primary.main}, ${t.palette.primary.light})`,
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-                backgroundClip: "text",
               }}
             >
               CRM

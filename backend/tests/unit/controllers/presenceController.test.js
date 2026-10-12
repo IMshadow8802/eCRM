@@ -137,6 +137,19 @@ describe("fetchPresence", () => {
     expect(rows[1].status).toEqual({ code: "holiday", label: "Holiday" });
   });
 
+  it("returns the calendar's ShiftStart/ShiftEnd when no presence row exists yet (regression: payload kept null)", async () => {
+    visibleUserIds.mockResolvedValue(null);
+    database.executeStoredProcedure.mockResolvedValue({ recordsets: [[row(8), row(9), row(10, { ShiftStart: ist(DAY, "08:00"), ShiftEnd: ist(DAY, "17:00") })]] });
+    cc.load.mockResolvedValue(new Map([[8, ctxInfo()], [9, ctxInfo({ ctx: { days: DEFAULT_DAYS, holidays: new Set([DAY]), marks: new Map() } })], [10, ctxInfo()]]));
+    const res = mockRes();
+    await c.fetchPresence(req({ WorkDate: DAY, UserIds: [8, 9, 10, 11] }), res);
+    const rows = out(res).data.presence;
+    expect(rows[0].ShiftStart).toEqual(ist(DAY, "09:00"));
+    expect(rows[0].ShiftEnd).toEqual(ist(DAY, "18:00"));
+    expect(rows[1]).toMatchObject({ ShiftStart: null, ShiftEnd: null }); // holiday: no shift
+    expect(rows[2]).toMatchObject({ ShiftStart: ist(DAY, "08:00"), ShiftEnd: ist(DAY, "17:00") }); // stored row wins
+  });
+
   it("a past date never reports Online: the stored row decides (Signed out / Offline)", async () => {
     visibleUserIds.mockResolvedValue(null);
     const live = { HasOpenSession: true, LastSeenAt: new Date(NOW.getTime() - 60000) };

@@ -1,18 +1,21 @@
 import { forwardRef } from "react";
-import { motion } from "framer-motion";
 import { useTheme } from "@mui/material/styles";
 
-import { motion as motionTokens } from "../../styles/tokens";
-
 /**
- * Card — container surface. Defaults to padding, rounded-lg, soft shadow.
- * `interactive` adds hover lift. `variant=flat` removes shadow; `ghost`
+ * Card — container surface. Defaults to padding, rounded-lg, elevation 1.
+ * `interactive`/`onClick` add the hover lift (elevation 2, 1px up).
+ * Always neutral: hairline border + soft shadow. No coloured strips or edges —
+ * semantic colour belongs to the content (a number, a dot, a tinted cell).
+ * `variant=flat|outlined` removes shadow; `ghost`
  * removes border + shadow for subtle grouping.
+ *
+ * Shadow and lift come from the `.nx-raised` / `.nx-lift` classes in the
+ * theme's CssBaseline — an inline style cannot carry :hover.
  */
 const Card = forwardRef(function Card(
   {
     children,
-    variant = "default", // default | flat | ghost | outlined | gradient
+    variant = "default", // default | flat | ghost | outlined
     interactive = false,
     padding = "lg",
     onClick,
@@ -31,25 +34,21 @@ const Card = forwardRef(function Card(
 
   let bg = p.surface.card;
   let border = `1px solid ${p.border.default}`;
-  let shadow = p.shadow.sm;
+  let raised = true;
 
-  if (variant === "flat") {
-    shadow = "none";
+  if (variant === "flat" || variant === "outlined") {
+    raised = false;
   } else if (variant === "ghost") {
     border = "none";
-    shadow = "none";
+    raised = false;
     bg = p.surface.subtle;
-  } else if (variant === "outlined") {
-    shadow = "none";
-  } else if (variant === "gradient") {
-    bg = p.gradient.statAccent;
-    border = "none";
   }
 
   const clickable = Boolean(onClick) || interactive;
+  const classes = [raised && "nx-raised", clickable && "nx-lift", className].filter(Boolean).join(" ");
 
   return (
-    <motion.div
+    <div
       ref={ref}
       role={onClick ? "button" : undefined}
       tabIndex={onClick ? 0 : undefined}
@@ -61,13 +60,7 @@ const Card = forwardRef(function Card(
           onClick(e);
         }
       }}
-      whileHover={clickable ? { y: -2, boxShadow: p.shadow.md } : undefined}
-      whileTap={clickable ? { scale: 0.995 } : undefined}
-      transition={{
-        duration: motionTokens.duration.base / 1000,
-        ease: [0.4, 0, 0.2, 1],
-      }}
-      className={className}
+      className={classes || undefined}
       data-testid={testId}
       // Lets a page assert that everything claiming to be a card really is one
       // — see the surface test in Dashboard.test.jsx.
@@ -83,16 +76,17 @@ const Card = forwardRef(function Card(
         // takes a flat colour and a gradient equally, so one key covers both.
         background: bg,
         border,
-        boxShadow: shadow,
+        ...(!raised && { boxShadow: "none" }),
         cursor: clickable ? "pointer" : "default",
-        color: variant === "gradient" ? "#FFFFFF" : p.text.primary,
-        outline: "none",
+        color: p.text.primary,
+        // No `outline: none` here: it beat the global :focus-visible ring and
+        // left a keyboard user on a clickable card with no visible focus.
         ...(typeof sx === "object" ? sx : {}),
       }}
       {...rest}
     >
       {children}
-    </motion.div>
+    </div>
   );
 });
 
