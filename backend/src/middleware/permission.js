@@ -205,6 +205,27 @@ const ENTITY_LOOKUP = {
   quoteprofile: { sp: "sp_FetchQuoteProfileById", idParam: "ProfileId", companyWide: true },
 };
 
+// The lookup half of assertRecordAccess for lead / ticket / quotation /
+// quoteprofile: the record when the caller may see it (or edit it, for
+// "write"), else false. Sends nothing — for a caller that must hide a related
+// record rather than refuse the whole request (a complaint's linked lead).
+// Throws on a lookup failure; deciding the response is the caller's job.
+async function visibleRecord(req, entity, entityId, level = "view") {
+  const { sp, idParam, ownerField, companyWide, module } = ENTITY_LOOKUP[entity];
+  // The module is the outer gate: no right on it = refuse before the fetch.
+  // Its scope (not req.scope, which may be bound to another module) then
+  // judges the record.
+  const s = module ? scopeFor(req, module) : null;
+  if (s && (!s.can.view || (level === "write" && !s.can.edit))) return false;
+  const result = await database.executeStoredProcedure(sp, {
+    CompId: req.user.CompId,
+    [idParam]: Number(entityId) || 0,
+  });
+  const record = result.recordsets?.[0]?.[0] || null;
+  if (companyWide) return record || false;
+  return canSeeRecord({ ...req, scope: s }, record, ownerField) ? record : false;
+}
+
 async function assertRecordAccess(req, res, entity, entityId, level = "view") {
   try {
     // What the caller gets on success: the record itself for lead/ticket, so
@@ -230,23 +251,7 @@ async function assertRecordAccess(req, res, entity, entityId, level = "view") {
       const row = result.recordsets?.[0]?.[0] ?? result.recordset?.[0];
       granted = row?.Allowed === true || row?.Allowed === 1;
     } else if (ENTITY_LOOKUP[entity]) {
-      const { sp, idParam, ownerField, companyWide, module } = ENTITY_LOOKUP[entity];
-      // The module is the outer gate: no right on it = refuse before the fetch.
-      // Its scope (not req.scope, which may be bound to another module) then
-      // judges the record.
-      const s = module ? scopeFor(req, module) : null;
-      if (s && (!s.can.view || (level === "write" && !s.can.edit))) {
-        responseHelper.error(res, `You do not have access to this ${entity}`, "FORBIDDEN", 403);
-        return false;
-      }
-      const result = await database.executeStoredProcedure(sp, {
-        CompId: req.user.CompId,
-        [idParam]: Number(entityId) || 0,
-      });
-      const record = result.recordsets?.[0]?.[0] || null;
-      granted = companyWide
-        ? record || false
-        : canSeeRecord({ ...req, scope: s }, record, ownerField) ? record : false;
+      granted = await visibleRecord(req, entity, entityId, level);
     }
 
     if (granted) return granted;
@@ -374,6 +379,7 @@ module.exports = {
   canWriteBranch,
   canReadBranch,
   assertRecordAccess,
+  visibleRecord,
   taskAllowed,
   assertCanAssign,
   canReopen,

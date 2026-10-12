@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link as RouterLink, useLocation, useNavigate } from "react-router-dom";
 import { useSnackbar } from "notistack";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   AppBar,
   Box,
@@ -95,6 +96,7 @@ const TopNav = ({ onOpenMobileSidebar }) => {
     return () => document.removeEventListener("scroll", onScroll, { capture: true });
   }, []);
 
+  const queryClient = useQueryClient();
   const handleLogout = async () => {
     try {
       setIsLoggingOut(true);
@@ -106,6 +108,9 @@ const TopNav = ({ onOpenMobileSidebar }) => {
       }
       localStorage.removeItem("userData");
       logout();
+      // An in-app navigate keeps the cache; the next person on this PC must
+      // not be served the previous user's leads from it.
+      queryClient.clear();
       enqueueSnackbar("Logged out successfully", { variant: "success" });
       navigate("/login");
     } catch (error) {

@@ -57,6 +57,19 @@ function menuPayload(rows) {
   };
 }
 
+// Unknown username and wrong password give one answer, or the form tells an
+// outsider which accounts exist (audit 2026-10-12). An unknown name is checked
+// against this throwaway hash so both cases also take the same ~300 ms.
+const BAD_LOGIN_MESSAGE = "Incorrect username or password";
+const TIMING_HASH = "$2b$12$12MHWOd5Bogp8QZd05Z2D.pPoALlI6wn5cNMBz9JS4YuonzRjyEHa";
+const badLogin = (res) => res.status(401).json({
+  success: false,
+  message: BAD_LOGIN_MESSAGE,
+  code: "INVALID_CREDENTIALS",
+  responseCode: 401,
+  timestamp: new Date().toISOString(),
+});
+
 class AuthController {
   async login(req, res) {
     try {
@@ -87,15 +100,7 @@ class AuthController {
       if (spResponse.ResponseCode === 200) {
         const isPasswordValid = await comparePassword(password, spResponse.Password);
 
-        if (!isPasswordValid) {
-          return res.status(401).json({
-            success: false,
-            message: "Incorrect password",
-            code: "WRONG_PASSWORD",
-            responseCode: 401,
-            timestamp: new Date().toISOString(),
-          });
-        }
+        if (!isPasswordValid) return badLogin(res);
 
         const accessResult = await database.executeStoredProcedure("sp_FetchUserAccess", {
           UserId: spResponse.UserId,
@@ -168,11 +173,13 @@ class AuthController {
           },
           timestamp: new Date().toISOString(),
         });
+      } else if (spResponse.ResponseCode === 404) {
+        await comparePassword(password, TIMING_HASH);
+        return badLogin(res);
       } else {
-        const codeByResponse = {
-          404: "USER_NOT_FOUND",
-          403: "USER_INACTIVE",
-        };
+        // An inactive account still says so: it cannot be signed into, so
+        // naming it gives an attacker nothing to try a password against.
+        const codeByResponse = { 403: "USER_INACTIVE" };
         return res.status(spResponse.ResponseCode).json({
           success: false,
           message: spResponse.ResponseMess,
