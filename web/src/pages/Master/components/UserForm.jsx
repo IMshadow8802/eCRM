@@ -183,6 +183,12 @@ const UserForm = ({
     if (editingUser) {
       return {
         ...editingUser,
+        // Optional text columns arrive as NULL; the schema takes "" for blank, so a
+        // null Email blocked every edit of a user who has none.
+        Email: editingUser.Email ?? "",
+        JobTitle: editingUser.JobTitle ?? "",
+        Mobile: editingUser.Mobile ?? "",
+        UserIp: editingUser.UserIp ?? "",
         // SQL bigint ids arrive as strings ("3"); the schema wants numbers.
         GroupId: numId(editingUser.GroupId),
         BranchId: numId(editingUser.BranchId),

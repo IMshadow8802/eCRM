@@ -100,6 +100,17 @@ const slate = {
   950: "#020617",
 };
 
+// Visiting-card faces (VisiScan's pastels). A tile is its own surface, so the
+// same solid pastels + dark ink serve both modes. inkDim is a solid step, not
+// faded ink (≥4.5:1 on every face).
+const cardFace = {
+  ink: "#231C2E",
+  inkDim: "#4A4057",
+  faces: ["#FFB59A", "#C3B1FF", "#9EE6C4", "#A9C8FF", "#FFE08A", "#FFB3C7"],
+  // Same order, one step lighter: the photo slot's placeholder on that face.
+  tints: ["#FFD1BF", "#DCD1FF", "#C2F0DA", "#C9DBFF", "#FFEDB8", "#FFD3DF"],
+};
+
 export const palettes = {
   light: {
     mode: "light",
@@ -200,6 +211,7 @@ export const palettes = {
     },
     // Solid colours only — no gradients, no translucent fills (web and
     // mobile alike). The overlay scrim and shadows are the only alpha.
+    cardFace,
     brand: {
       cta: indigo[600],
       ctaHover: indigo[700],
@@ -300,6 +312,7 @@ export const palettes = {
     },
     // Solid colours only — no gradients, no translucent fills (web and
     // mobile alike). The overlay scrim and shadows are the only alpha.
+    cardFace,
     brand: {
       cta: indigo[500],
       ctaHover: indigo[400],

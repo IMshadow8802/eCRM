@@ -40,7 +40,9 @@ const schema = z
       .refine((v) => v === "" || isValidGstin(v), "GSTIN must be 15 characters, e.g. 24ABCDE1234F1Z5")
       .optional(),
     Remarks: z.string().optional(),
-    BranchId: z.union([z.number(), z.literal("")]).optional(),
+    // Not validated here: the office has no visible error, so a bad value
+    // would make Save do nothing silently. onSubmit normalises; the server checks.
+    BranchId: z.any().optional(),
   })
   .refine((v) => Boolean(v.Mobile?.trim() || v.Email?.trim()), {
     message: "A mobile number or an email is required",
@@ -53,8 +55,11 @@ const EMPTY = {
 };
 
 const toForm = (c) => Object.fromEntries(Object.keys(EMPTY).map((k) => [k, c[k] ?? ""]));
-const homeOffice = () => useAuthStore.getState().user?.BranchId ?? "";
 const clean = (s) => (s?.trim() ? s.trim() : null);
+const officeId = (v) => (Number(v) > 0 ? Number(v) : null);
+// A number, so the office dropdown (which matches by ===) shows it.
+const homeOffice = () => officeId(useAuthStore.getState().user?.BranchId) ?? "";
+const ONE_OF = "Mobile or email: at least one";
 
 // One Controller-wrapped input; defined at module level so the component type
 // is stable across renders (an inline component would remount — and drop
@@ -135,7 +140,8 @@ export default function CustomerFormModal({ open, onClose, customer = null, onSa
     };
     // Create: the office rides along. Edit: only a changed office, because the
     // server treats BranchId on an edit as a move.
-    if (showOffice && v.BranchId !== "" && (!isEdit || v.BranchId !== customer.BranchId)) body.BranchId = v.BranchId;
+    const office = officeId(v.BranchId);
+    if (showOffice && office && (!isEdit || office !== officeId(customer.BranchId))) body.BranchId = office;
     try {
       const saved = await saveMutation.mutateAsync(body);
       reset(EMPTY);
@@ -160,9 +166,9 @@ export default function CustomerFormModal({ open, onClose, customer = null, onSa
         <FormGrid component="form" id="customer-form" onSubmit={handleSubmit(onSubmit)}>
           <Field {...f} name="Name" label="Name" required placeholder="Shop, company or person" autoFocus />
           <Field {...f} name="ContactPerson" label="Contact person" placeholder="Who to speak to" />
-          <Field {...f} name="Mobile" label="Mobile" mobile />
+          <Field {...f} name="Mobile" label="Mobile" mobile hint={ONE_OF} />
           <Field {...f} name="AltMobile" label="Alternate mobile" mobile />
-          <Field {...f} name="Email" label="Email" inputMode="email" />
+          <Field {...f} name="Email" label="Email" inputMode="email" hint={ONE_OF} />
           <Field {...f} name="Address" label="Address" />
           <Field {...f} name="City" label="City" />
           <Field {...f} name="State" label="State" />

@@ -144,6 +144,16 @@ describe("design tokens", () => {
       const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
       return (hi + 0.05) / (lo + 0.05);
     };
+    // Visiting-card faces: solid hex, same in both modes, ink + inkDim readable on every face.
+    expect(palettes.dark.cardFace).toEqual(palettes.light.cardFace);
+    const { ink, inkDim, faces, tints } = palettes.light.cardFace;
+    expect(faces).toHaveLength(6);
+    expect(tints).toHaveLength(6);
+    for (const f of [...faces, ...tints]) {
+      expect(f).toMatch(/^#[0-9A-F]{6}$/i);
+      expect(ratio(ink, f)).toBeGreaterThanOrEqual(7);
+      expect(ratio(inkDim, f)).toBeGreaterThanOrEqual(4.5);
+    }
     expect(palettes.light.warning.text).toBe("#B45309");
     for (const mode of ["light", "dark"]) {
       expect(ratio(palettes[mode].warning.text, palettes[mode].surface.card)).toBeGreaterThanOrEqual(4.5);

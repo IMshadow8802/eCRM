@@ -130,6 +130,12 @@ describe("CustomerFormModal", () => {
     expect(cap.save.GSTIN).toBe("24ABCDE1234F1Z5");
   });
 
+  it("says under Mobile and Email that one of them is required", async () => {
+    mockCustomerEndpoints();
+    renderModal({ customer: customerRow() });
+    expect(await screen.findAllByText("Mobile or email: at least one")).toHaveLength(2);
+  });
+
   it("Cancel closes without posting", async () => {
     const cap = mockCustomerEndpoints();
     const onClose = vi.fn();
@@ -209,6 +215,36 @@ describe("CustomerFormModal", () => {
       wideAccess(); branches(WITH_CLOSED);
       renderModal({ customer: customerRow({ BranchId: 3 }) });
       expect(await screen.findByTestId("customer-BranchId-input")).toHaveValue("OLD TOWN");
+    });
+
+    // Regression: the office has no visible error, so a home office that
+    // arrived as text failed validation silently and Save did nothing.
+    it("saves when the home office id arrives as text, posting it as a number", async () => {
+      wideAccess(); branches(TWO);
+      useAuthStore.setState({ user: { UserId: 17, BranchId: "1" } });
+      const cap = mockCustomerEndpoints();
+      renderModal();
+      const user = userEvent.setup();
+      expect(await screen.findByTestId("customer-BranchId-input")).toHaveValue("HEAD OFFICE");
+      await user.type(screen.getByTestId("customer-Name"), "Epsilon");
+      await user.type(screen.getByTestId("customer-Email"), "e@example.com");
+      await user.click(screen.getByTestId("customer-form-submit"));
+      await waitFor(() => expect(cap.save).toBeTruthy());
+      expect(cap.save.BranchId).toBe(1);
+    });
+
+    it("saves with no home office, leaving the office to the server", async () => {
+      wideAccess(); branches(TWO);
+      useAuthStore.setState({ user: { UserId: 17, BranchId: null } });
+      const cap = mockCustomerEndpoints();
+      renderModal();
+      const user = userEvent.setup();
+      await screen.findByTestId("customer-BranchId-input");
+      await user.type(screen.getByTestId("customer-Name"), "Zeta");
+      await user.type(screen.getByTestId("customer-Email"), "z@example.com");
+      await user.click(screen.getByTestId("customer-form-submit"));
+      await waitFor(() => expect(cap.save).toBeTruthy());
+      expect(cap.save).not.toHaveProperty("BranchId");
     });
 
     it("on edit sends the new office when it was moved", async () => {

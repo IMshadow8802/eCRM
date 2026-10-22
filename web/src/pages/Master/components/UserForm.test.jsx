@@ -100,6 +100,19 @@ describe("UserForm password rules", () => {
     ).not.toBeInTheDocument();
   });
 
+  // Regression: a user with no email/job title arrives with nulls; the edit was
+  // blocked by the email rule ("expected string") although Email is optional.
+  it("edits a user whose optional text fields are null", async () => {
+    renderForm({ editingUser: { ...EXISTING_USER, Email: null, JobTitle: null, Mobile: null, UserIp: null } });
+
+    await submit(/update user/i);
+
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    const [, payload] = post.mock.calls[0];
+    expect(payload.Id).toBe(11);
+    expect(screen.queryByText(/email/i, { selector: "p, span" })).toBeNull();
+  });
+
   it("sends the new password when the admin does type one on an edit", async () => {
     renderForm({ editingUser: EXISTING_USER });
 

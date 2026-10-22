@@ -144,12 +144,12 @@ describe("Roles & Permissions (Groups) page", () => {
     await openRole(1);
     expect(await screen.findByText(/Salesperson — Permissions/)).toBeInTheDocument();
     const labels = [
-      "Leads, follow-ups, quotations", "Sales reports", "Partners & commission", "Complaints", "Support reports",
+      "Leads, follow-ups, quotations", "Sales reports", "Partners & commission", "Visiting cards", "Complaints", "Support reports",
       "Customers", "People", "Tasks & Today", "Teams", "Projects",
       "Attendance (team presence)", "Settings & products", "Dashboard",
     ];
     for (const l of labels) expect(screen.getByText(l)).toBeInTheDocument();
-    expect(screen.getAllByTestId(/^module-row-/)).toHaveLength(13);
+    expect(screen.getAllByTestId(/^module-row-/)).toHaveLength(14);
     expect(screen.queryByTestId("module-row-roles")).toBeNull();
     expect(screen.queryByTestId("module-row-offices")).toBeNull();
 
@@ -176,6 +176,14 @@ describe("Roles & Permissions (Groups) page", () => {
     expect(screen.queryByTestId("reach-attendance-input")).toBeNull();
     fireEvent.click(screen.getByTestId("perm-attendance-CanView"));
     expect(screen.getByTestId("reach-attendance-input")).toHaveValue("Own records");
+  });
+
+  it("has a Visiting cards row whose reach select appears once View is ticked", async () => {
+    await openRole(1);
+    await screen.findByText(/Salesperson — Permissions/);
+    expect(screen.queryByTestId("reach-cards-input")).toBeNull();
+    fireEvent.click(screen.getByTestId("perm-cards-CanView"));
+    expect(screen.getByTestId("reach-cards-input")).toHaveValue("Own records");
   });
 
   it("saving the attendance row with Office reach sends Reach Office", async () => {
