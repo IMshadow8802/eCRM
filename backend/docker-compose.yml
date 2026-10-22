@@ -84,6 +84,20 @@ services:
     volumes:
       - ./TestCRMUploads:/app/uploads
 
+  # OSG India — https://shadowcodes.in/OSG  (CompCode OSG, DB OSG; visiting cards + users only)
+  crm_osg:
+    <<: *crm
+    container_name: nexus_crm_osg
+    ports:
+      - "5004:5004"
+    environment:
+      <<: *crm-env
+      PORT: 5004
+    env_file:
+      - .env.osg
+    volumes:
+      - ./OSGUploads:/app/uploads
+
 networks:
   nexus_network:
     driver: bridge

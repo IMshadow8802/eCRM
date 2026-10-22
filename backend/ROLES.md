@@ -23,8 +23,8 @@ No row or `CanView = 0` = no module: 403 and no data, reports and dashboard figu
 
 Modules: `leads` (leads, follow-ups, calls, quotations) · `sales_reports` (uses `leads` reach) ·
 `complaints` (tickets, escalations) · `support_reports` (uses `complaints` reach) · `customers` ·
-`people` · `attendance` · `tasks` · `teams` · `projects` · `roles` (admin) · `offices` (admin) · `settings` · `dashboard`.
-Only `leads`, `complaints`, `customers`, `people`, `attendance` take a reach.
+`people` · `attendance` · `cards` · `tasks` · `teams` · `projects` · `roles` (admin) · `offices` (admin) · `settings` · `dashboard`.
+Only `leads`, `complaints`, `customers`, `people`, `attendance`, `cards` take a reach.
 
 | Reach | Offices | Owner filter |
 |---|---|---|
@@ -96,6 +96,12 @@ Editing a user without `ReportsTo` keeps the current manager; clearing it needs 
 
 V/A/E = view, add, edit; delete stays with admins unless granted. Customers sit at Office reach even for Own/Team roles.
 Tasks: V/A/E/D. Report and dashboard modules: V only. Leads, complaints and customers carry no delete on stock roles.
+
+### Visiting cards (`cards`, 114)
+
+Business cards scanned by the VisiScan app. A card whose `OwnerId` is the caller (the scanner) is always visible; reach widens it.
+Role recipe for a VisiScan-only client: **Manager** (not admin, since an admin gets every module) with `people` Edit Company + `cards` View Company;
+**Card scanner** with `cards` View/Add/Delete Own.
 
 **Legacy:** `tblGroupAccess`, `tblUserGroups.DataScope` and `HierarchyLevel` are read by nothing, except `HierarchyLevel` for ordering roles on screen.
 `tblUser.IsAdmin` is a mirror written by `sp_SaveUser`, read by nothing.

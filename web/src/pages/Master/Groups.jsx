@@ -53,6 +53,7 @@ const MODULE_ROWS = [
   { key: "leads", label: "Leads, follow-ups, quotations", reach: true },
   { key: "sales_reports", label: "Sales reports" },
   { key: "partners", label: "Partners & commission" },
+  { key: "cards", label: "Visiting cards", reach: true },
   { key: "complaints", label: "Complaints", reach: true },
   { key: "support_reports", label: "Support reports" },
   { key: "customers", label: "Customers", reach: true },
@@ -67,6 +68,7 @@ const MODULE_ROWS = [
 // Plain-words help for modules whose name alone does not say what they grant.
 const ROW_HINT = {
   partners: "View: see partners, commission terms and amounts. Add/Edit: add or change partners, mark commission ready to pay or paid. Salespeople pick a partner on a lead without this.",
+  cards: "View: see scanned visiting cards within the reach. Add: scan cards in the VisiScan app. Delete: remove a card.",
   attendance: "Attendance: see who is signed in, late or on leave (Today > My team), mark leave or on duty, and open the Attendance report. "
     + "Reach decides whose attendance this role can see on the Today page and in the Attendance report. Own: only themselves. Their team: people who report to them. Their office: everyone in their office. Their office + offices below: also the offices under it. Whole company: everyone.",
 };

@@ -132,15 +132,17 @@
    Base layer
    ============================================================ */
 @layer base {
-  /* The whole UI scales from this one line. The design is drawn at a 15px
-     root (every rem in the app is px / 15); 15px at 1920 wide, 14px floor
-     (reached at ~1700 and below), 18px at 2560, 24px at 3840. Phones keep
-     15px: a narrower root there only makes text smaller, not the page fit. */
+  /* The whole UI scales from this one line. Every rem in the app is written as
+     px / 15 (the design's reference root), but the root itself runs two steps
+     under that for a more compact UI (2026-10-22, user asked twice for
+     smaller): 13px at 1920 wide, 12px floor (reached at ~1700 and below),
+     16px at 2560, 21px ceiling (~3630 and up). Phones get 13px: a narrower
+     root there only makes text smaller, not the page fit. */
   html {
-    font-size: clamp(14px, calc(6px + 0.46875vw), 24px);
+    font-size: clamp(12px, calc(4px + 0.46875vw), 21px);
   }
   @media (max-width: 767.98px) {
-    html { font-size: 15px; }
+    html { font-size: 13px; }
   }
 
   /* lucide draws `size` as fixed width/height attributes; CSS beats a

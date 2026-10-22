@@ -25,6 +25,8 @@ const workSettingsRoutes = require("../routes/workSettingsRoutes");
 const presenceRoutes = require("../routes/presenceRoutes");
 const tatRoutes = require("../routes/tatRoutes");
 const todayRoutes = require("../routes/todayRoutes");
+const cardRoutes = require("../routes/cardRoutes");
+const cardPhotoRoutes = require("../routes/cardPhotoRoutes");
 const { success, dbErrors } = require("../utils/responseHelper");
 const database = require("./database");
 
@@ -61,6 +63,8 @@ function setupRoutes(app) {
   app.use("/api/presence", presenceRoutes);
   app.use("/api/tat", tatRoutes);
   app.use("/api/today", todayRoutes);
+  app.use("/api/Card", cardRoutes); // VisiScan app paths (JRS contract)
+  app.use("/uploads/cards", cardPhotoRoutes);
 
   app.get("/health", (req, res) => {
     return success(res, "CRM API is running", {

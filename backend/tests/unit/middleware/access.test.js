@@ -21,8 +21,17 @@ const LISTS = [
 describe("module list", () => {
   it("holds the spec keys and the four reach modules", () => {
     expect(MODULES).toEqual(["leads", "sales_reports", "complaints", "support_reports", "customers", "people",
-      "tasks", "teams", "projects", "roles", "offices", "settings", "dashboard", "attendance", "partners"]);
-    expect([...REACH_MODULES]).toEqual(["leads", "complaints", "customers", "people", "attendance"]);
+      "tasks", "teams", "projects", "roles", "offices", "settings", "dashboard", "attendance", "partners", "cards"]);
+    expect([...REACH_MODULES]).toEqual(["leads", "complaints", "customers", "people", "attendance", "cards"]);
+  });
+});
+
+describe("cards module", () => {
+  it("Own reach yields ownerIds = [userId]", () => {
+    const a = buildAccess(rs({ modules: [mod("cards", "Own", 1, 1)], lists: LISTS, owners: [7, 8] }), 7);
+    const s = scopeFor(a, "cards", 7);
+    expect(s).toMatchObject({ reach: "Own", ownerIds: [7] });
+    expect(s.can.add).toBe(true);
   });
 });
 
