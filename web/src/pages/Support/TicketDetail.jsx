@@ -8,7 +8,7 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useTheme } from "@mui/material/styles";
-import { ArrowRightLeft, Flag, Pencil, PhoneCall } from "lucide-react";
+import { ArrowRightLeft, CircleCheck, Flag, Pencil, PhoneCall } from "lucide-react";
 
 import { PageHeader, Card, Chip, Button, Tabs, Skeleton, Combobox } from "../../components/ui";
 import Attachments from "../../components/Attachments";
@@ -93,6 +93,7 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
     () => statuses.map((s) => ({ value: s.Id, label: s.Value, code: s.Code })),
     [statuses],
   );
+  const resolvedOpt = statusOpts.find((o) => o.code === "resolved") ?? null;
 
   const statusMutation = useApiMutation({
     endpoint: SUPPORT_ENDPOINTS.tickets.setTicketStatus,
@@ -190,6 +191,9 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
               />
             </div>
             <Button variant="ghost" leftIcon={<PhoneCall size={14} />} onClick={() => setCallOpen(true)} data-testid="log-call-btn">Log call</Button>
+            {isActiveCode(ticket.StatusCode) && resolvedOpt && (
+              <Button variant="primary" leftIcon={<CircleCheck size={14} />} onClick={() => setResolvePick(resolvedOpt)} data-testid="resolve-ticket-btn">Resolve</Button>
+            )}
             <Button variant="tonal" leftIcon={<ArrowRightLeft size={14} />} onClick={() => setTransferOpen(true)} data-testid="transfer-ticket-btn">Transfer</Button>
             <Button variant="tonal" leftIcon={<Flag size={14} />} onClick={() => setEscalateOpen(true)} data-testid="escalate-ticket-btn">Escalate</Button>
             <Button variant="tonal" leftIcon={<Pencil size={14} />} onClick={() => setEditOpen(true)} data-testid="edit-ticket-btn">Edit</Button>

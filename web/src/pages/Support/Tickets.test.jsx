@@ -40,7 +40,7 @@ vi.mock("../../hooks", () => ({
 vi.mock("../../hooks/useLookups", () => ({
   useLookups: vi.fn((kind) => ({
     lookups: {
-      ticket_status: [{ Id: 62, Value: "In Progress", Code: "open" }, { Id: 65, Value: "Closed", Code: "closed" }],
+      ticket_status: [{ Id: 62, Value: "In Progress", Code: "open" }, { Id: 64, Value: "Resolved", Code: "resolved" }, { Id: 65, Value: "Closed", Code: "closed" }],
       priority: [{ Id: 3, Value: "High", TatHours: 24 }],
       ticket_category: [{ Id: 6, Value: "Billing" }],
       ticket_channel: [{ Id: 71, Value: "Phone" }],
@@ -62,7 +62,9 @@ vi.mock("material-react-table", () => ({
     </div>
   ),
 }));
-vi.mock("./TicketDetailModal", () => ({ __esModule: true, default: ({ open, ticketId }) => (open ? <div data-testid="ticket-detail-modal">ticket:{ticketId}</div> : null) }));
+const mockNavigate = vi.fn();
+vi.mock("react-router-dom", async () => ({ ...(await vi.importActual("react-router-dom")), useNavigate: () => mockNavigate }));
+vi.mock("./ResolveTicketModal", () => ({ __esModule: true, default: ({ open, ticket, status }) => (open ? <div data-testid="resolve-modal">ticket:{ticket?.Id} status:{status?.value}</div> : null) }));
 vi.mock("./TicketCreateModal", () => ({ __esModule: true, default: ({ open, ticket }) => (open ? <div data-testid="ticket-form-modal">{ticket?.Id ?? "new"}</div> : null) }));
 vi.mock("./TransferTicketModal", () => ({ __esModule: true, default: ({ open, ticketIds }) => (open ? <div data-testid="transfer-ticket-modal">{ticketIds.join(",")}</div> : null) }));
 vi.mock("./DeleteTicketModal", () => ({ __esModule: true, default: ({ open, ticketId }) => (open ? <div data-testid="delete-ticket-modal">delete:{ticketId}</div> : null) }));
@@ -220,10 +222,34 @@ describe("Tickets list (spec 2)", () => {
     expect(screen.queryByTestId("bulk-reassign-btn")).toBeNull();
   });
 
-  it("a row click opens the detail modal; the row actions open the rest", async () => {
+  // Regression: the eye and a row click opened a read-only popup with no status
+  // control, so a complaint could not be closed from the list at all.
+  it("a row click and the eye open the full complaint page", async () => {
+    mockNavigate.mockClear();
     renderPage();
     lastCfg().muiTableBodyRowProps({ row: { original: { Id: 7 } } }).onClick();
-    expect(await screen.findByTestId("ticket-detail-modal")).toHaveTextContent("ticket:7");
+    expect(mockNavigate).toHaveBeenLastCalledWith("/support/tickets/7");
+    withTheme(lastCfg().renderRowActions({ row: { original: FIXTURE_TICKETS[0] } }));
+    await userEvent.setup().click(screen.getByTestId("view-ticket-7"));
+    expect(mockNavigate).toHaveBeenCalledTimes(2);
+    expect(mockNavigate).toHaveBeenLastCalledWith("/support/tickets/7");
+  });
+
+  it("an active row offers Resolve, which opens the resolve prompt with the resolved status", async () => {
+    renderPage();
+    withTheme(lastCfg().renderRowActions({ row: { original: FIXTURE_TICKETS[0] } }));
+    await userEvent.setup().click(screen.getByTestId("resolve-ticket-7"));
+    expect(await screen.findByTestId("resolve-modal")).toHaveTextContent("ticket:7 status:64");
+  });
+
+  it("a finished row offers no Resolve", () => {
+    renderPage();
+    withTheme(lastCfg().renderRowActions({ row: { original: { ...FIXTURE_TICKETS[0], StatusCode: "closed" } } }));
+    expect(screen.queryByTestId("resolve-ticket-7")).toBeNull();
+  });
+
+  it("the row actions open the rest", async () => {
+    renderPage();
 
     withTheme(lastCfg().renderRowActions({ row: { original: FIXTURE_TICKETS[0] } }));
     const user = userEvent.setup();

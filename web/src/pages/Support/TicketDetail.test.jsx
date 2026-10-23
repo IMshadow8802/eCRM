@@ -135,6 +135,22 @@ describe("TicketDetail (spec 2)", () => {
     expect(cap.status).toBeUndefined();
   });
 
+  it("the Resolve button opens the resolve prompt with the resolved status", async () => {
+    mockTicketEndpoints();
+    renderDetail();
+    await userEvent.setup().click(await screen.findByTestId("resolve-ticket-btn"));
+    expect(await screen.findByTestId("resolve-modal")).toHaveTextContent("status:64");
+  });
+
+  it("a finished complaint has no Resolve button", async () => {
+    mockTicketEndpoints({}, {
+      detail: ticketDetail({ ticket: ticketRow({ StatusId: 65, StatusName: "Closed", StatusCode: "closed" }) }),
+    });
+    renderDetail();
+    expect(await screen.findByTestId("ticket-status-chip")).toHaveTextContent("Closed");
+    expect(screen.queryByTestId("resolve-ticket-btn")).toBeNull();
+  });
+
   it("a resolved status opens the resolve prompt with THAT status id", async () => {
     const cap = mockTicketEndpoints();
     renderDetail();

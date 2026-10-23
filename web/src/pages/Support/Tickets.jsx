@@ -10,8 +10,8 @@ import { Helmet } from "react-helmet-async";
 import { Box } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { MaterialReactTable } from "material-react-table";
-import { useSearchParams } from "react-router-dom";
-import { ArrowRightLeft, Eye, Flag, Pencil, Plus, Trash2, Users } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { ArrowRightLeft, CircleCheck, Eye, Flag, Pencil, Plus, Trash2, Users } from "lucide-react";
 
 import { Button, Chip, Combobox, DateField, IconButton, Tabs, Tooltip } from "../../components/ui";
 import PageHeader from "../../components/ui/PageHeader";
@@ -25,9 +25,9 @@ import useAuthStore from "../../stores/useAuthStore";
 import { SUPPORT_ENDPOINTS } from "../../api/supportQueries";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
 import { getUserName } from "../../utils/userShape";
-import { TICKET_PRESETS, presetParams, ticketsParamsToState, statusTone, dueLabel } from "./ticketStatus";
+import { TICKET_PRESETS, presetParams, ticketsParamsToState, statusTone, dueLabel, isActiveCode } from "./ticketStatus";
 import TicketCreateModal from "./TicketCreateModal";
-import TicketDetailModal from "./TicketDetailModal";
+import ResolveTicketModal from "./ResolveTicketModal";
 import TransferTicketModal from "./TransferTicketModal";
 import DeleteTicketModal from "./DeleteTicketModal";
 
@@ -50,7 +50,9 @@ const Tickets = () => {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editTicket, setEditTicket] = useState(null);
-  const [detailTicketId, setDetailTicketId] = useState(null);
+  const navigate = useNavigate();
+  const openTicket = (id) => navigate(`/support/tickets/${id}`);
+  const [resolveTicket, setResolveTicket] = useState(null);
   const [transferIds, setTransferIds] = useState([]);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
@@ -58,6 +60,10 @@ const Tickets = () => {
 
   const quiet = { showErrorMessage: false };
   const { lookups: statuses } = useLookups("ticket_status", quiet);
+  const resolvedStatus = useMemo(() => {
+    const r = statuses.find((x) => x.Code === "resolved");
+    return r ? { value: r.Id, label: r.Value, code: r.Code } : null;
+  }, [statuses]);
   const { lookups: priorities } = useLookups("priority", quiet);
   const { lookups: categories } = useLookups("ticket_category", quiet);
   const { lookups: channels } = useLookups("ticket_channel", quiet);
@@ -137,10 +143,13 @@ const Tickets = () => {
     initialPageSize: 25, getRowId: (row) => row.Id,
     enableRowSelection: true, enableRowActions: true,
     displayColumnDefOptions: { "mrt-row-actions": { grow: false, header: "Actions" } },
-    muiTableBodyRowProps: ({ row }) => ({ hover: true, sx: { cursor: "pointer" }, onClick: () => setDetailTicketId(row.original.Id) }),
+    muiTableBodyRowProps: ({ row }) => ({ hover: true, sx: { cursor: "pointer" }, onClick: () => openTicket(row.original.Id) }),
     renderRowActions: ({ row }) => (
       <Box sx={{ display: "flex", gap: 0.5 }} onClick={(e) => e.stopPropagation()}>
-        <Tooltip title="Open the complaint"><IconButton size="sm" variant="ghost" tone="primary" aria-label="View complaint" data-testid={`view-ticket-${row.original.Id}`} onClick={() => setDetailTicketId(row.original.Id)}><Eye size={16} /></IconButton></Tooltip>
+        <Tooltip title="Open the complaint"><IconButton size="sm" variant="ghost" tone="primary" aria-label="View complaint" data-testid={`view-ticket-${row.original.Id}`} onClick={() => openTicket(row.original.Id)}><Eye size={16} /></IconButton></Tooltip>
+        {isActiveCode(row.original.StatusCode) && resolvedStatus && (
+          <Tooltip title="Resolve"><IconButton size="sm" variant="ghost" tone="success" aria-label="Resolve complaint" data-testid={`resolve-ticket-${row.original.Id}`} onClick={() => setResolveTicket(row.original)}><CircleCheck size={16} /></IconButton></Tooltip>
+        )}
         <Tooltip title="Edit details"><IconButton size="sm" variant="ghost" tone="info" aria-label="Edit complaint" data-testid={`edit-ticket-${row.original.Id}`} onClick={() => setEditTicket(row.original)}><Pencil size={16} /></IconButton></Tooltip>
         <Tooltip title="Transfer / reassign"><IconButton size="sm" variant="ghost" tone="warning" aria-label="Transfer complaint" data-testid={`transfer-ticket-${row.original.Id}`} onClick={() => setTransferIds([row.original.Id])}><ArrowRightLeft size={16} /></IconButton></Tooltip>
         <Tooltip title="Delete"><IconButton size="sm" variant="ghost" tone="error" aria-label="Delete complaint" data-testid={`delete-ticket-${row.original.Id}`} onClick={() => setDeleteTarget(row.original)}><Trash2 size={16} /></IconButton></Tooltip>
@@ -196,9 +205,9 @@ const Tickets = () => {
         open={createOpen || Boolean(editTicket)}
         ticket={editTicket}
         onClose={() => { setCreateOpen(false); setEditTicket(null); }}
-        onSaved={(res) => { if (createOpen && res?.Id) setDetailTicketId(res.Id); }}
+        onSaved={(res) => { if (createOpen && res?.Id) openTicket(res.Id); }}
       />
-      <TicketDetailModal ticketId={detailTicketId} open={Boolean(detailTicketId)} onClose={() => setDetailTicketId(null)} />
+      <ResolveTicketModal open={Boolean(resolveTicket)} ticket={resolveTicket} status={resolvedStatus} onClose={() => setResolveTicket(null)} />
       <TransferTicketModal open={transferIds.length > 0} ticketIds={transferIds} onClose={() => setTransferIds([])} onDone={() => table.resetRowSelection?.()} />
       <DeleteTicketModal open={Boolean(deleteTarget)} ticketId={deleteTarget?.Id} ticketNo={deleteTarget?.TicketNo} onClose={() => setDeleteTarget(null)} />
     </Box>
