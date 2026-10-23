@@ -3,6 +3,7 @@
 // With useUTC:false + container TZ=Asia/Kolkata, DATETIME round-trips as IST.
 jest.mock("mssql", () => ({
   connect: jest.fn(),
+  on: jest.fn(),
   Int: "Int",
   NVarChar: "NVarChar",
   Bit: "Bit",
@@ -138,5 +139,90 @@ describe("connection lifecycle", () => {
   it("close() is a no-op when there is no pool", async () => {
     db.pool = null;
     await expect(db.close()).resolves.toBeUndefined();
+  });
+});
+
+// devlens monitoring: the API must stay up and say so when SQL Server is not.
+describe("health probe", () => {
+  afterEach(() => {
+    db.connected = false;
+    db.pool = null;
+    db.connecting = null;
+    db.healthCheck = null;
+    jest.useRealTimers();
+    jest.clearAllMocks();
+  });
+
+  it("registers a pool error listener so an 'error' event cannot crash the process", () => {
+    jest.isolateModules(() => require("../../../src/config/database"));
+    expect(sql.on).toHaveBeenCalledWith("error", expect.any(Function));
+  });
+
+  it("ping reports up with a latency", async () => {
+    sql.connect.mockResolvedValue({ request: () => ({ query: jest.fn().mockResolvedValue({}) }) });
+    const r = await db.ping();
+    expect(r).toEqual({ database: "up", dbLatencyMs: expect.any(Number) });
+  });
+
+  it("ping reports the error code only, never the message with the server address", async () => {
+    const err = Object.assign(new Error("Failed to connect to 10.0.0.5:1433 - ECONNREFUSED"), {
+      name: "ConnectionError",
+      code: "ESOCKET",
+    });
+    sql.connect.mockRejectedValue(err);
+    await expect(db.ping()).resolves.toEqual({ database: "down", error: "ESOCKET" });
+  });
+
+  it("ping falls back to the driver's own code, and to EUNKNOWN for anything else", async () => {
+    sql.connect.mockRejectedValueOnce(Object.assign(new Error("x"), { originalError: { code: "ELOGIN" } }));
+    await expect(db.ping()).resolves.toEqual({ database: "down", error: "ELOGIN" });
+    sql.connect.mockRejectedValueOnce(Object.assign(new Error("x"), { code: "server 10.0.0.5" }));
+    await expect(db.ping()).resolves.toEqual({ database: "down", error: "EUNKNOWN" });
+  });
+
+  it("ping gives up after the timeout with ETIMEOUT instead of hanging", async () => {
+    jest.useFakeTimers();
+    sql.connect.mockReturnValue(new Promise(() => {}));
+    const r = db.ping(3000);
+    jest.advanceTimersByTime(3000);
+    await expect(r).resolves.toEqual({ database: "down", error: "ETIMEOUT" });
+  });
+
+  it("dials once while a connect is in flight", async () => {
+    let resolve;
+    sql.connect.mockReturnValue(new Promise((r) => (resolve = r)));
+    const a = db.connect();
+    const b = db.connect();
+    resolve({ request: jest.fn() });
+    await Promise.all([a, b]);
+    expect(sql.connect).toHaveBeenCalledTimes(1);
+  });
+
+  it("health caches the probe for 10 s, then probes again", async () => {
+    jest.useFakeTimers();
+    const query = jest.fn().mockResolvedValue({});
+    sql.connect.mockResolvedValue({ request: () => ({ query }) });
+    await db.health();
+    await db.health();
+    expect(query).toHaveBeenCalledTimes(1);
+    jest.advanceTimersByTime(10000);
+    await db.health();
+    expect(query).toHaveBeenCalledTimes(2);
+  });
+
+  it("a connection failure in a stored procedure drops the cache; a query timeout does not", async () => {
+    db.connected = true;
+    const execute = jest.fn();
+    db.pool = { request: () => ({ input: jest.fn(), execute }) };
+    db.healthCheck = Promise.resolve({ database: "up" });
+    db.healthAt = Date.now();
+
+    execute.mockRejectedValueOnce(Object.assign(new Error("t"), { name: "RequestError", code: "ETIMEOUT" }));
+    await expect(db.executeStoredProcedure("sp_Slow")).rejects.toThrow();
+    expect(db.healthCheck).not.toBeNull();
+
+    execute.mockRejectedValueOnce(Object.assign(new Error("gone"), { name: "RequestError", code: "ESOCKET" }));
+    await expect(db.executeStoredProcedure("sp_Thing")).rejects.toThrow();
+    expect(db.healthCheck).toBeNull();
   });
 });

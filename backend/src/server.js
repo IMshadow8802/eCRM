@@ -43,11 +43,11 @@ async function startServer() {
   try {
     console.log("📡 Testing database connection...");
 
-    const dbConnected = await database.testConnection();
-
-    if (!dbConnected) {
-      console.error("❌ Cannot start server - database connection failed");
-      process.exit(1);
+    // A DB that is down at boot must not keep the API down: requests answer
+    // 503 until the pool reconnects, and /health reports it.
+    const db = await database.health();
+    if (db.database === "down") {
+      console.warn(`⚠️  Database unreachable at startup (${db.error}) — starting anyway; requests get 503 until it is back`);
     }
 
     // Bind host: 127.0.0.1 locally (IIS reverse proxy), 0.0.0.0 in Docker.

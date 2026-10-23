@@ -29,8 +29,17 @@ const cardRoutes = require("../routes/cardRoutes");
 const cardPhotoRoutes = require("../routes/cardPhotoRoutes");
 const { success, dbErrors } = require("../utils/responseHelper");
 const database = require("./database");
+const { version } = require("../../package.json");
+
+const startedAt = new Date().toISOString();
 
 function setupRoutes(app) {
+  // While SQL Server is unreachable every /api call answers 503 at once instead
+  // of waiting out the connect timeout. Backed by the cached health probe.
+  app.use("/api", async (req, res, next) =>
+    (await database.health()).database === "up" ? next() : dbErrors.connectionFailed(res),
+  );
+
   app.use("/api/auth", authRoutes);
   app.use("/api/users", userRoutes);
   app.use("/api/user-groups", userGroupRoutes);
@@ -66,11 +75,20 @@ function setupRoutes(app) {
   app.use("/api/Card", cardRoutes); // VisiScan app paths (JRS contract)
   app.use("/uploads/cards", cardPhotoRoutes);
 
-  app.get("/health", (req, res) => {
-    return success(res, "CRM API is running", {
-      uptime: process.uptime(),
-      memoryMb: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+  // Polled by Docker's HEALTHCHECK and devlens. Public, so it names no DB server,
+  // user or connection string, and a failure is reported by its code only.
+  app.get("/health", async (req, res) => {
+    const db = await database.health();
+    const up = db.database === "up";
+    return res.status(up ? 200 : 503).json({
+      status: up ? "ok" : "degraded",
+      ...db,
+      service: process.env.SERVICE_NAME || "Nexus CRM API",
+      version,
       environment: process.env.NODE_ENV || "development",
+      startedAt,
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
     });
   });
 

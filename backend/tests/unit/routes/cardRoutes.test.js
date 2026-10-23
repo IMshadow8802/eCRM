@@ -1,6 +1,9 @@
 // /api/Card/* (the VisiScan app) and the guarded photo route, through setupRoutes with the real verifyToken.
 let mockAcc;
-jest.mock("../../../src/config/database", () => ({ executeStoredProcedure: jest.fn() }));
+jest.mock("../../../src/config/database", () => ({
+  executeStoredProcedure: jest.fn(),
+  health: async () => ({ database: "up" }),
+}));
 jest.mock("../../../src/services/sessionService", () => ({ check: jest.fn(async () => ({ ok: true, userId: 7 })) }));
 jest.mock("../../../src/middleware/permission", () => {
   const actual = jest.requireActual("../../../src/middleware/permission");
