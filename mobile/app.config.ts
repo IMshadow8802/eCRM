@@ -16,19 +16,28 @@
 // surface as a broken build.
 import type { ConfigContext, ExpoConfig } from "expo/config";
 
+// Build number = build date + time, readable: Y MM DD HH mm, Y = years since 2020.
+// 610232146 -> 2026-10-23 21:46. Same on Android and iOS; under Play's cap until end of 2040.
+// ship-ios refuses to upload unless this is here and ios/ carries a valid stamp.
+const pad = (n: number) => String(n).padStart(2, '0');
+const buildStamp = (d = new Date()) =>
+  Number(`${d.getFullYear() - 2020}${pad(d.getMonth() + 1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())}`);
+const BUILD = buildStamp();
+
 const IS_DEV = process.env.APP_VARIANT === "development";
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: IS_DEV ? "Nexus CRM (Dev)" : "Nexus CRM",
   slug: "eCRM",
-  version: "1.0.0",
+  version: "1.0.1",
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "light",
   scheme: "nexuscrm",
 
   ios: {
+    buildNumber: String(BUILD),
     supportsTablet: true,
     bundleIdentifier: IS_DEV ? "com.shadowider.eCRM.dev" : "com.shadowider.eCRM",
     infoPlist: {
@@ -47,6 +56,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
 
   android: {
+    versionCode: BUILD,
     package: IS_DEV ? "com.shadowider.eCRM.dev" : "com.shadowider.eCRM",
     adaptiveIcon: {
       foregroundImage: "./assets/adaptive-icon.png",
