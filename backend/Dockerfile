@@ -1,9 +1,11 @@
-FROM node:22-alpine
+# Node 24 LTS (security fixes to April 2028). Build with --pull always so a
+# patched base image is fetched, not a cached one.
+FROM node:24-alpine
 WORKDIR /app
 
-# Pinned: pnpm 11 imports node:sqlite (needs Node >= 22.13), and an unpinned
-# major that cannot read lockfileVersion 9.0 would fail --frozen-lockfile.
-RUN npm install -g pnpm@11.24.0
+# Pinned to package.json's packageManager: pnpm 12 rejects a lockfile written by
+# an older major under --frozen-lockfile, so the two move together.
+RUN npm install -g pnpm@12.15.0
 
 # Install prod deps from the locked manifest first (cached layer).
 # pnpm-workspace.yaml is needed so --frozen-lockfile matches the workspace

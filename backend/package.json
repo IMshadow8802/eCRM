@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "",
   "main": "src/server.js",
+  "packageManager": "pnpm@12.15.0",
   "scripts": {
     "start": "node src/server.js",
     "dev": "NODE_ENV=development nodemon src/server.js",
