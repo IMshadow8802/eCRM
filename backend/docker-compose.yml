@@ -24,6 +24,10 @@ x-crm: &crm
     # node:22-alpine defaults to UTC; pin to IST so node-mssql (useUTC:false)
     # reads SQL Server's IST wall-clock timestamps correctly.
     TZ: Asia/Kolkata
+    # devlens agent (src/devlens-agent.mjs): request stats, logs, failed calls at
+    # /__devlens/*, served only when the client's env file sets DEVLENS_KEY.
+    # Remove this line before deleting the file, or the service will not boot.
+    NODE_OPTIONS: "--import ./src/devlens-agent.mjs"
   networks:
     - nexus_network
   logging:
