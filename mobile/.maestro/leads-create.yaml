@@ -1,0 +1,12 @@
+# A pasted +91 mobile is stored as its ten digits; the detail shows it all.
+appId: com.shadowider.eCRM
+---
+- runFlow:
+    file: common/new-lead.yaml
+    env:
+      MOBILE: "+91 98250 12345"
+- assertVisible: "9825012345"
+- assertVisible: "MAESTRO Co ${output.stamp}"
+- assertVisible: "₹1,20,000"
+- assertVisible: "Ayush Mishra"
+- takeScreenshot: lead-created-detail

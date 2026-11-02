@@ -1,0 +1,35 @@
+# Transfer to an agent (reason + remarks), then escalate to their manager.
+appId: com.shadowider.eCRM
+---
+- runFlow: common/new-complaint.yaml
+- tapOn: "Complaint actions"
+- tapOn: "Transfer"
+- assertVisible: "Transfer to…"
+- tapOn: "Amit Singh \\(Exec HO, under Neha\\)"
+- assertVisible: "Transfer to Amit Singh.*"
+- assertVisible: "Remarks \\*"
+- tapOn: "Overloaded"
+- tapOn: "Anything the next person should know"
+- inputText: "MAESTRO transfer ${output.stamp}"
+- tapOn: "Transfer"
+- assertVisible: "Amit Singh \\(Exec HO, under Neha\\)"
+- assertNotVisible: "Unassigned"
+- waitForAnimationToEnd
+
+- tapOn: "Complaint actions"
+- assertVisible: "Now with Amit Singh.*"
+- tapOn: "Escalate"
+- assertVisible: "Escalate to…"
+- tapOn: "Neha Gupta \\(TL Head Office\\)"
+- assertVisible: "Escalate to Neha Gupta.*"
+- tapOn: "What they need to know — they get a notification"
+- inputText: "MAESTRO escalate ${output.stamp}"
+- tapOn: "Escalate"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element: "Escalated to"
+- assertVisible: "Neha Gupta \\(TL Head Office\\)"
+- tapOn: "History.*"
+- assertVisible: ".*MAESTRO transfer ${output.stamp}.*"
+- assertVisible: ".*MAESTRO escalate ${output.stamp}.*"
+- takeScreenshot: transfer-escalate-history

@@ -1,0 +1,39 @@
+# Schedule a follow-up for Tomorrow, log one with the next In 3 days, skip one.
+appId: com.shadowider.eCRM
+---
+- runFlow: common/new-lead.yaml
+- tapOn: "Lead actions"
+- tapOn: "Schedule follow-up"
+- assertVisible: "Schedule follow-up"
+- tapOn: "Visit"
+- tapOn: "Tomorrow"
+- tapOn: "Add follow-up"
+- waitForAnimationToEnd
+- tapOn: "Follow-ups.*"
+- assertVisible: "Visit"
+- tapOn:
+    text: "Log"
+    index: 0
+- assertVisible: "Log the visit"
+- tapOn: "In 3 days"
+- tapOn: "Connected"
+- tapOn: "What was discussed — the next person reads this"
+- inputText: "MAESTRO visit ${output.stamp}"
+- tapOn: "Mark done"
+- waitForAnimationToEnd
+# The visit is done and a new one is booked in 3 days.
+- assertVisible: "Done"
+- assertVisible: ".*MAESTRO visit ${output.stamp}.*"
+- assertVisible: "Due .*"
+- takeScreenshot: followup-logged
+
+- tapOn:
+    text: "Skip"
+    index: 0
+- assertVisible: "Skip this follow-up"
+- tapOn: "Why it is not happening"
+- inputText: "MAESTRO skip ${output.stamp}"
+- tapOn: "Skip follow-up"
+- waitForAnimationToEnd
+- assertVisible: "Skipped"
+- takeScreenshot: followup-skipped

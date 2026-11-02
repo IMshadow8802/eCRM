@@ -1,0 +1,28 @@
+appId: com.shadowider.eCRM
+---
+- runFlow: common/open-work.yaml
+- tapOn: "Leads"
+- assertVisible: "\\d+ yours"
+- tapOn: "All"
+- assertVisible: "\\d+ you can see"
+- tapOn: "Overdue"
+- assertVisible: "\\d+ overdue"
+- swipe:
+    from: "Overdue"
+    direction: LEFT
+- tapOn: "Unassigned"
+- assertVisible: "\\d+ unassigned"
+- swipe:
+    from: "Unassigned"
+    direction: RIGHT
+- tapOn: "Mine"
+- tapOn: "Name, company or mobile"
+- inputText: "zzzz-no-match"
+- assertVisible: "Nothing matches"
+- eraseText: 20
+- hideKeyboard
+- tapOn: "Name, company or mobile"
+- inputText: "MAESTRO Lead"
+- hideKeyboard
+- assertVisible: "MAESTRO Lead \\d+"
+- takeScreenshot: leads-list
