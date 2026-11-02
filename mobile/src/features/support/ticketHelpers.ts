@@ -1,4 +1,4 @@
-import type { FetchTicketsParams } from "../../api/ticketQueries";
+import { fetchTickets, type FetchTicketsParams } from "../../api/ticketQueries";
 import type {
   CustomFieldDef,
   CustomFieldValue,
@@ -6,7 +6,6 @@ import type {
   Ticket,
   TicketStatusCode,
 } from "../../types/api";
-import type { ChipTone } from "../../ui";
 
 // ---------------------------------------------------------------- lookups
 
@@ -19,25 +18,28 @@ export const asOptions = (lookups: Lookup[] | undefined) =>
 
 // ------------------------------------------------------------------ queues
 
-/** The complaint queues — WHICH rows. A status chip then narrows within one. */
+/** The complaint queues — WHICH rows. A status pill then narrows within one. */
 export type ComplaintQueue = "mine" | "team" | "unassigned" | "overdue" | "escalated";
 
-/** "active" = every open/onhold status; a number = one ticket_status id. */
-export type ComplaintStatusFilter = "active" | number;
+/**
+ * "all" = no status filter (E's "All" pill); "active" = open + onhold (what
+ * Home and the preset counts mean); a number = one ticket_status id.
+ */
+export type ComplaintStatusFilter = "all" | "active" | number;
 
 /**
  * Which server-side filters each queue is, in one place, so the list, its
- * header count and Home's numbers cannot disagree about what "Mine" means.
+ * preset counts and Home's numbers cannot disagree about what "Mine" means.
  *
- *   mine       assigned to me, still active
- *   team       everything I can see, still active — scope is the SP's
- *   unassigned active and nobody has it (web's preset of the same name)
+ *   mine       assigned to me
+ *   team       everything I can see — scope is the SP's
+ *   unassigned nobody has it (web's preset of the same name)
  *   overdue    non-terminal and past DueAt (the SP computes it; never stored)
- *   escalated  non-terminal and (escalated to me OR overdue) — a manager's queue
+ *   escalated  non-terminal and (escalated to me OR overdue under me) — §7.7
  *
- * A status chip other than "Active" replaces StatusCode with StatusId: sending
- * both would AND them, and "Resolved" within "active" is the empty set.
- * PageSize 50 (the controller caps it at 200); a count overrides it with 1.
+ * A status id replaces StatusCode: sending both would AND them, and
+ * "Resolved" within "active" is the empty set. PageSize 50 (the controller
+ * caps it at 200); a count overrides it with 1.
  */
 export function complaintQueueParams(
   queue: ComplaintQueue,
@@ -50,12 +52,21 @@ export function complaintQueueParams(
     SearchTerm: term || null,
     AssignedTo: queue === "mine" ? userId : null,
     StatusCode: status === "active" ? "active" : null,
-    StatusId: status === "active" ? null : status,
+    StatusId: typeof status === "number" ? status : null,
     Unassigned: queue === "unassigned",
     Overdue: queue === "overdue",
     Escalated: queue === "escalated",
   };
 }
+
+/**
+ * A count (G13): the same filters at PageSize 1, under `["tickets", "count",
+ * params]` — Home's key, so a preset count and Home's number are one request.
+ */
+export const complaintCountQuery = (params: FetchTicketsParams) => ({
+  queryKey: ["tickets", "count", params],
+  queryFn: () => fetchTickets({ ...params, PageSize: 1 }),
+});
 
 // --------------------------------------------------------------- lifecycle
 
@@ -92,68 +103,99 @@ export const isActive = (code: TicketStatusCode): boolean =>
 /** Resolved, closed or rejected — nothing left to do unless it is reopened. */
 export const isTerminal = (code: TicketStatusCode): boolean => !isActive(code);
 
-export const STATUS_TONE: Record<TicketStatusCode, ChipTone> = {
-  open: "info",
-  onhold: "warning",
-  resolved: "success",
-  closed: "neutral",
-  rejected: "danger",
+/** The company's first status row with this code (Code, never a label). */
+export const statusFor = (
+  statuses: Lookup[],
+  code: TicketStatusCode,
+): Lookup | undefined => statuses.find((s) => asStatusCode(s.Code) === code);
+
+// ------------------------------------------------------------ E's wording
+
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+const parse = (iso: string | null | undefined): Date | null => {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+
+/** "5:30 pm" */
+export const clock = (d: Date): string =>
+  `${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, "0")} ${d.getHours() < 12 ? "am" : "pm"}`;
+
+/** "Tue, 3 Nov" */
+export const dayMonth = (d: Date): string =>
+  `${DAYS[d.getDay()]}, ${d.getDate()} ${MONTHS[d.getMonth()]}`;
+
+/** "40 m" / "2 h" / "3 d" — whole units, never "1.5 h". */
+export const span = (ms: number): string => {
+  const mins = Math.max(1, Math.round(Math.abs(ms) / 60_000));
+  if (mins < 60) return `${mins} m`;
+  const hrs = Math.round(mins / 60);
+  return hrs < 48 ? `${hrs} h` : `${Math.round(hrs / 24)} d`;
 };
 
-export const statusTone = (code: TicketStatusCode): ChipTone =>
-  STATUS_TONE[code];
+/** A time today reads as the clock ("2:05 pm"), any other day as the date. */
+export const whenText = (iso: string | null | undefined, now = new Date()): string => {
+  const d = parse(iso);
+  return d ? (sameDay(d, now) ? clock(d) : dayMonth(d)) : "";
+};
+
+/** "Opened Mon, 2 Nov · 10:30 am" — the record band's subtitle. */
+export const openedText = (iso: string): string => {
+  const d = parse(iso);
+  return d ? `Opened ${dayMonth(d)} · ${clock(d)}` : "";
+};
+
+/** When it is due: "12:40 pm" today, else "Tue, 3 Nov, 5:30 pm". */
+export const dueWhen = (iso: string | null | undefined, now = new Date()): string | null => {
+  const d = parse(iso);
+  if (!d) return null;
+  return sameDay(d, now) ? clock(d) : `${dayMonth(d)}, ${clock(d)}`;
+};
+
+export type DueTone = "default" | "danger" | "success";
+
+type DueFields = Pick<Ticket, "DueAt" | "IsOverdue" | "StatusCode" | "ResolvedAt" | "ClosedAt" | "UpdatedAt">;
 
 /**
- * Priority is a per-company lookup row, so its *name* is the only thing that
- * can be matched on — there is no enum and ids differ between companies.
- * Anything unrecognised falls back to neutral rather than guessing.
+ * The right side of a list row (E 10): "Overdue 2 h" (danger) · "Due 5:30 pm"
+ * today · "Tue, 3 Nov" later · "Done 1:10 pm" (success) on a resolved one ·
+ * the day it closed on a closed or rejected one. Null when there is no clock.
+ *
+ * Overdue is the row's `IsOverdue` alone — the SP's clock decides it, the
+ * device clock only phrases the gap.
  */
-export function priorityTone(name: string | null | undefined): ChipTone {
-  const key = (name ?? "").toLowerCase();
-  if (key.includes("urgent") || key.includes("critical")) return "danger";
-  if (key.includes("high")) return "danger";
-  if (key.includes("medium") || key.includes("normal")) return "warning";
-  if (key.includes("low")) return "success";
-  return "neutral";
+export function rowDue(ticket: DueFields, now = new Date()): { text: string; tone: DueTone } | null {
+  const code = lifecycleOf(ticket);
+  if (code === "resolved") {
+    return parse(ticket.ResolvedAt) ? { text: `Done ${whenText(ticket.ResolvedAt, now)}`, tone: "success" } : null;
+  }
+  if (isTerminal(code)) {
+    const at = ticket.ClosedAt ?? ticket.UpdatedAt;
+    return parse(at) ? { text: whenText(at, now), tone: "default" } : null;
+  }
+  const due = parse(ticket.DueAt);
+  if (!due) return null;
+  if (ticket.IsOverdue) return { text: `Overdue ${span(now.getTime() - due.getTime())}`, tone: "danger" };
+  return { text: sameDay(due, now) ? `Due ${clock(due)}` : dayMonth(due), tone: "default" };
 }
 
-// --------------------------------------------------------------------- TAT
-
-/** "45m" / "4h" / "3d" — whole units, never "1.5h". */
-const span = (ms: number): string => {
-  const mins = Math.max(1, Math.round(Math.abs(ms) / 60_000));
-  if (mins < 60) return `${mins}m`;
-  const hrs = Math.round(mins / 60);
-  if (hrs < 48) return `${hrs}h`;
-  return `${Math.round(hrs / 24)}d`;
-};
-
 /**
- * "Due in 4h" / "Overdue by 2d", or null.
- *
- * Null for a terminal ticket (the clock has stopped) and when the priority has
- * no TAT (`DueAt` NULL — such a ticket is never overdue). `overdue` is taken
- * from the row's `IsOverdue` alone, which the SP computes against its own
- * clock — the device clock never decides overdue, it only phrases the gap
- * (`gap`, via `span()`, for the "in 4h" / "by 2d" wording). A phone with a
- * wrong clock would otherwise disagree with the server, the web and every
- * other client about what is late. `DueAt` is a datetime instant (the backend
- * runs `useUTC: false`, pinned to Asia/Kolkata), so plain `new Date()` parsing
- * is right here — unlike a task's date-only DueDate.
+ * The Due fact (E 11): "12:40 pm · 2 h over" while overdue, else when it is
+ * due. A terminal ticket keeps the time it was due — the clock stopped, the
+ * time did not.
  */
-export function dueLabel(
+export function dueFact(
   ticket: Pick<Ticket, "DueAt" | "IsOverdue" | "StatusCode">,
   now = new Date(),
-): { label: string; overdue: boolean } | null {
-  if (!ticket.DueAt || isTerminal(lifecycleOf(ticket))) return null;
-  const due = new Date(ticket.DueAt).getTime();
-  if (Number.isNaN(due)) return null;
-  const gap = due - now.getTime();
-  const overdue = Boolean(ticket.IsOverdue);
-  return {
-    label: overdue ? `Overdue by ${span(gap)}` : `Due in ${span(gap)}`,
-    overdue,
-  };
+): { text: string; overdue: boolean } | null {
+  const when = dueWhen(ticket.DueAt, now);
+  if (!when) return null;
+  if (!ticket.IsOverdue || isTerminal(lifecycleOf(ticket))) return { text: when, overdue: false };
+  return { text: `${when} · ${span(now.getTime() - new Date(ticket.DueAt!).getTime())} over`, overdue: true };
 }
 
 /**
@@ -163,15 +205,6 @@ export function dueLabel(
  */
 export const tatLabel = (hours: number | null | undefined): string | null =>
   hours == null ? null : `${hours} working hour${hours === 1 ? "" : "s"}`;
-
-/** "03-11-2026 15:30" (DD-MM-YYYY HH:mm, the web's format), or null. */
-export function dateTime(iso: string | null | undefined): string | null {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${p(d.getDate())}-${p(d.getMonth() + 1)}-${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
-}
 
 // ------------------------------------------------------------ custom fields
 
@@ -195,6 +228,16 @@ export function draftFromValues(
     }
   }
   return draft;
+}
+
+/** The EAV row as one line of text: Yes/No, the number, the date, the text. */
+export function customValue(field: CustomFieldValue): string {
+  if (field.Type === "checkbox") {
+    return field.ValueText === "true" || field.ValueNumber === 1 ? "Yes" : "No";
+  }
+  if (field.Type === "number") return field.ValueNumber?.toString() ?? "—";
+  if (field.Type === "date") return field.ValueDate ? field.ValueDate.slice(0, 10) : "—";
+  return field.ValueText || "—";
 }
 
 /** Seed a blank entry per definition so every field is controlled from render one. */

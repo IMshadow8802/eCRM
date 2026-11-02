@@ -4,19 +4,19 @@ import { fileMeta, humanSize, MAX_UPLOAD_BYTES, refusedType, screenPicked, uploa
 
 // csv/rar/7z are not listed: the backend refuses them, so no row ever carries one.
 it.each([
-  ["data.csv", null, FileIcon, "textSecondary"],
-  ["old.rar", null, FileIcon, "textSecondary"],
-  ["photo.HEIC", "image/jpeg", ImageIcon, "info"],
-  ["clip.mov", "video/quicktime", Film, "neutralIcon"],
-  ["quote.pdf", null, FileText, "danger"],
-  ["scan.bin", "application/pdf", FileText, "danger"],
-  ["sheet.XLSX", null, Table, "success"],
-  ["letter.docx", null, FileText, "primary"],
-  ["build.apk", null, Smartphone, "success"],
-  ["logs.zip", null, FileArchive, "priorityMedium"],
-  ["README", null, FileIcon, "textSecondary"],
-])("%s (%s) gets its own icon", (name, mime, Icon, tint) => {
-  expect(fileMeta(name, mime)).toEqual({ Icon, tint });
+  ["data.csv", null, FileIcon, "slate", "CSV"],
+  ["old.rar", null, FileIcon, "slate", "RAR"],
+  ["photo.HEIC", "image/jpeg", ImageIcon, "sky", "HEIC"],
+  ["clip.mov", "video/quicktime", Film, "slate", "MOV"],
+  ["quote.pdf", null, FileText, "red", "PDF"],
+  ["scan.bin", "application/pdf", FileText, "red", "PDF"],
+  ["sheet.XLSX", null, Table, "green", "XLSX"],
+  ["letter.docx", null, FileText, "indigo", "DOCX"],
+  ["build.apk", null, Smartphone, "mint", "APK"],
+  ["logs.zip", null, FileArchive, "butter", "ZIP"],
+  ["README", null, FileIcon, "slate", "FILE"],
+])("%s (%s) gets its own badge and kind (E 12)", (name, mime, Icon, tone, kind) => {
+  expect(fileMeta(name, mime)).toEqual({ Icon, tone, kind });
 });
 
 it.each([

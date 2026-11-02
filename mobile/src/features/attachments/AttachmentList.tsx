@@ -1,8 +1,8 @@
 import { useRef, useState } from "react";
 import {
   ActivityIndicator,
-  FlatList,
   Pressable,
+  ScrollView,
   StyleSheet,
   View,
 } from "react-native";
@@ -13,9 +13,8 @@ import {
   Download,
   FolderOpen,
   Images,
-  Plus,
+  Paperclip,
   Trash2,
-  type LucideIcon,
 } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
@@ -27,14 +26,16 @@ import {
 } from "../../api/attachmentQueries";
 import { apiErrorMessage } from "../../api/errors";
 import type { Attachment, AttachmentEntity } from "../../types/api";
-import { colors, radius, spacing, SCREEN_PADDING } from "../../theme";
+import { colors, spacing } from "../../theme";
 import {
-  Card,
+  Button,
   Dialog,
-  Fab,
-  Glyph,
+  ListGroup,
+  ListRow,
   Sheet,
+  SkeletonRows,
   Text,
+  useLayout,
   useToast,
   type SheetRef,
 } from "../../ui";
@@ -47,14 +48,18 @@ interface AttachmentListProps {
   entityId: number;
   /** manageArtifacts — assignees, creator, owner/manager. Viewers are read-only. */
   canManage: boolean;
+  /** Inside a screen's own scroll (the complaint record): no scroll of its own. */
+  embedded?: boolean;
 }
 
 export default function AttachmentList({
   entity,
   entityId,
   canManage,
+  embedded = false,
 }: AttachmentListProps) {
   const queryClient = useQueryClient();
+  const { gutter } = useLayout();
   const toast = useToast();
   const sheetRef = useRef<SheetRef>(null);
   const [viewing, setViewing] = useState<Attachment | null>(null);
@@ -150,76 +155,67 @@ export default function AttachmentList({
     send(picked.assets);
   };
 
-  return (
-    <View style={styles.container}>
-      <FlatList
-        data={attachments}
-        keyExtractor={(a) => String(a.Id)}
-        contentContainerStyle={styles.list}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          isLoading ? (
-            <ActivityIndicator color={colors.primary} />
-          ) : (
-            <Text variant="secondary">No files yet.</Text>
-          )
-        }
-        renderItem={({ item: a }) => {
-          const { Icon, tint } = fileMeta(a.FileName, a.MimeType);
-          return (
-            <Card style={styles.row} onPress={() => setViewing(a)}>
-              <Glyph icon={Icon} tint={colors[tint]} size="sm" />
-
-              <View style={styles.rowText}>
-                <Text variant="body" numberOfLines={1}>
-                  {a.FileName}
-                </Text>
-                <Text variant="caption" color="textMuted">
-                  {[humanSize(a.FileSize), a.UploaderName]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </Text>
-              </View>
-
-              {/* Save is always available, even to a viewer — reading a file
-                  you can already open is not a privileged act, and a build you
-                  cannot get off the phone is no use to anyone. */}
-              <Pressable
-                hitSlop={spacing[2]}
-                disabled={busyId === a.Id}
-                onPress={() => download(a)}
-                accessibilityLabel={`Download ${a.FileName}`}
-                accessibilityRole="button"
-                style={styles.rowAction}
-              >
-                {busyId === a.Id ? (
-                  <ActivityIndicator size="small" color={colors.primary} />
-                ) : (
-                  <Download size={19} color={colors.primary} />
-                )}
-              </Pressable>
-
-              {canManage ? (
+  const rows = isLoading ? (
+    <SkeletonRows rows={2} />
+  ) : attachments.length ? (
+    <ListGroup>
+      {attachments.map((a, i) => {
+        const { Icon, tone, kind } = fileMeta(a.FileName, a.MimeType);
+        return (
+          <ListRow
+            key={a.Id}
+            noSeparator={i === 0}
+            badge={{ tone, icon: Icon }}
+            title={a.FileName}
+            meta={[kind, humanSize(a.FileSize), a.UploaderName].filter(Boolean).join(" · ")}
+            onPress={() => setViewing(a)}
+            trailing={
+              <View style={styles.actions}>
+                {/* Save is always available, even to a viewer — reading a file
+                    you can already open is not a privileged act. */}
                 <Pressable
                   hitSlop={spacing[2]}
-                  onPress={() => setPendingDelete(a)}
-                  accessibilityLabel={`Delete ${a.FileName}`}
+                  disabled={busyId === a.Id}
+                  onPress={() => download(a)}
+                  accessibilityLabel={`Download ${a.FileName}`}
                   accessibilityRole="button"
                   style={styles.rowAction}
                 >
-                  {/* A cross means dismiss; this destroys the file. */}
-                  <Trash2 size={19} color={colors.danger} />
+                  {busyId === a.Id ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  ) : (
+                    <Download size={19} color={colors.primary} />
+                  )}
                 </Pressable>
-              ) : null}
-            </Card>
-          );
-        }}
-      />
+                {canManage ? (
+                  <Pressable
+                    hitSlop={spacing[2]}
+                    onPress={() => setPendingDelete(a)}
+                    accessibilityLabel={`Delete ${a.FileName}`}
+                    accessibilityRole="button"
+                    style={styles.rowAction}
+                  >
+                    {/* A cross means dismiss; this destroys the file. */}
+                    <Trash2 size={19} color={colors.danger} />
+                  </Pressable>
+                ) : null}
+              </View>
+            }
+          />
+        );
+      })}
+    </ListGroup>
+  ) : (
+    <Text variant="meta">No files yet.</Text>
+  );
+
+  const body = (
+    <>
+      {rows}
 
       {/* Only the messages you have to ACT on stay here: the file was too big,
           or camera/photo access is off and has to be turned on in Settings.
-          Those are instructions, and they should sit still while you go and
-          follow them. Outcomes — upload failed, download failed — are toasts. */}
+          Outcomes — upload failed, download failed — are toasts. */}
       {error ? (
         <Pressable
           style={styles.error}
@@ -228,25 +224,31 @@ export default function AttachmentList({
           accessibilityRole="button"
         >
           <CircleAlert size={16} color={colors.danger} />
-          <Text variant="caption" color="danger" style={styles.errorText}>
+          <Text variant="label" color="dangerText" style={styles.errorText}>
             {error}
           </Text>
         </Pressable>
       ) : null}
 
       {canManage ? (
-        <Fab
-          icon={Plus}
+        <Button
+          title="Add a file"
           accessibilityLabel="Add a file"
+          variant="secondary"
+          size="sm"
+          icon={Paperclip}
           loading={uploading}
           onPress={() => sheetRef.current?.present()}
+          style={styles.add}
         />
       ) : null}
 
-      <Sheet ref={sheetRef} title="Add a file">
-        <PickOption Icon={Camera} label="Take a photo" onPress={takePhoto} />
-        <PickOption Icon={Images} label="Choose from library" onPress={pickImage} />
-        <PickOption Icon={FolderOpen} label="Choose a file" onPress={pickDocument} />
+      <Sheet ref={sheetRef} title="Add a file" padded>
+        <ListGroup>
+          <ListRow noSeparator badge={{ tone: "sky", icon: Camera }} title="Take a photo" onPress={takePhoto} />
+          <ListRow badge={{ tone: "teal", icon: Images }} title="Choose from library" onPress={pickImage} />
+          <ListRow badge={{ tone: "indigo", icon: FolderOpen }} title="Choose a file" onPress={pickDocument} />
+        </ListGroup>
       </Sheet>
 
       <FileViewer attachment={viewing} onClose={() => setViewing(null)} />
@@ -263,37 +265,20 @@ export default function AttachmentList({
         }
         onCancel={() => setPendingDelete(null)}
       />
-    </View>
+    </>
   );
-}
 
-function PickOption({
-  Icon,
-  label,
-  onPress,
-}: {
-  Icon: LucideIcon;
-  label: string;
-  onPress: () => void;
-}) {
+  if (embedded) return <View>{body}</View>;
   return (
-    <Pressable style={styles.pickOption} onPress={onPress}>
-      <View style={styles.pickGlyph}>
-        <Icon size={20} color={colors.textOnBrand} />
-      </View>
-      <Text variant="body">{label}</Text>
-    </Pressable>
+    <ScrollView testID="attachments-scroll" contentContainerStyle={[styles.page, { paddingHorizontal: gutter }]} showsVerticalScrollIndicator={false}>
+      {body}
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingHorizontal: SCREEN_PADDING },
-  // Clears the FAB so the last row is never hidden behind it.
-  list: { gap: spacing[3], paddingBottom: spacing[20] },
-  // ui/Card owns the surface and the press physics — a colour tint for pressed
-  // is exactly what Card replaced (§9.5: press SINKS, it does not shade).
-  row: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
-  rowText: { flex: 1, gap: spacing[1] },
+  page: { paddingTop: spacing[4], paddingBottom: spacing[8] },
+  actions: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
   // A fixed box so the spinner that replaces the icon mid-download does not
   // shift the row width.
   rowAction: { width: 28, alignItems: "center", justifyContent: "center" },
@@ -301,22 +286,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing[2],
-    paddingBottom: spacing[2],
+    paddingTop: spacing[2],
   },
   errorText: { flex: 1 },
-  pickOption: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[3],
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[3],
-  },
-  pickGlyph: {
-    width: 38,
-    height: 38,
-    borderRadius: radius.full,
-    backgroundColor: colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  add: { alignSelf: "flex-start", marginTop: spacing[3] },
 });

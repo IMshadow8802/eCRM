@@ -9,29 +9,30 @@ import {
   type LucideIcon,
 } from "lucide-react-native";
 
-import { colors } from "../../theme";
+import type { BadgeTone } from "../../theme";
 
-/** Icon + colour per file kind, so a list of files is scannable at a glance. */
+/**
+ * Badge + kind per file (E 12: a red file-text badge, "PDF · 284 KB"), so a
+ * list of files is scannable at a glance.
+ */
 export function fileMeta(
   fileName: string,
   mimeType: string | null,
-): { Icon: LucideIcon; tint: keyof typeof colors } {
+): { Icon: LucideIcon; tone: BadgeTone; kind: string } {
   const mime = mimeType ?? "";
-  const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
+  const dot = fileName.lastIndexOf(".");
+  const ext = dot > 0 ? fileName.slice(dot + 1).toLowerCase() : "";
+  const kind = (mime === "application/pdf" ? "pdf" : ext || "file").toUpperCase();
+  const meta = (Icon: LucideIcon, tone: BadgeTone) => ({ Icon, tone, kind });
 
-  if (mime.startsWith("image/")) return { Icon: ImageIcon, tint: "info" };
-  if (mime.startsWith("video/")) return { Icon: Film, tint: "neutralIcon" };
-  if (mime === "application/pdf" || ext === "pdf")
-    return { Icon: FileText, tint: "danger" };
-  if (["xls", "xlsx"].includes(ext))
-    return { Icon: Table, tint: "success" };
-  if (["doc", "docx"].includes(ext))
-    return { Icon: FileText, tint: "primary" };
-  if (["apk", "aab"].includes(ext))
-    return { Icon: Smartphone, tint: "success" };
-  if (ext === "zip")
-    return { Icon: FileArchive, tint: "priorityMedium" };
-  return { Icon: FileIcon, tint: "textSecondary" };
+  if (mime.startsWith("image/")) return meta(ImageIcon, "sky");
+  if (mime.startsWith("video/")) return meta(Film, "slate");
+  if (mime === "application/pdf" || ext === "pdf") return meta(FileText, "red");
+  if (["xls", "xlsx"].includes(ext)) return meta(Table, "green");
+  if (["doc", "docx"].includes(ext)) return meta(FileText, "indigo");
+  if (["apk", "aab"].includes(ext)) return meta(Smartphone, "mint");
+  if (ext === "zip") return meta(FileArchive, "butter");
+  return meta(FileIcon, "slate");
 }
 
 /** "2.4 MB" — files here run from a few KB to a 200MB build. */

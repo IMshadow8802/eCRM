@@ -12,6 +12,7 @@ import {
 import type { Attachment } from "../../types/api";
 import { envelope } from "../../test/fixtures";
 import { renderWithProviders } from "../../test/renderWithProviders";
+import { spySheets } from "../../test/sheets";
 import AttachmentList from "./AttachmentList";
 import { PICKER_TYPES } from "./attachmentHelpers";
 
@@ -69,8 +70,32 @@ beforeEach(() => {
 it("lists the record's files with size and uploader", async () => {
   await mount();
   expect(await screen.findByText("invoice.pdf")).toBeOnTheScreen();
-  expect(screen.getByText("2.4 MB · Asha")).toBeOnTheScreen();
+  expect(screen.getByText("PDF · 2.4 MB · Asha")).toBeOnTheScreen();
   expect(fetchAttachments).toHaveBeenCalledWith({ Entity: "ticket", EntityId: 7 });
+});
+
+it("E: rows in one group, each led by its kind's badge; Add a file opens the picker sheet", async () => {
+  const { present } = spySheets();
+  await mount();
+  await screen.findByText("invoice.pdf");
+  expect(screen.getByTestId("attachments-scroll")).toBeOnTheScreen();
+  expect(screen.getAllByText("invoice.pdf")).toHaveLength(1);
+  await fireEvent.press(screen.getByRole("button", { name: "Add a file" }));
+  expect(present).toHaveBeenCalled();
+});
+
+it("embedded: no scroll of its own (it sits in the record's scroll)", async () => {
+  const r = await renderWithProviders(<AttachmentList entity="ticket" entityId={7} canManage={false} embedded />);
+  client = r.queryClient;
+  await screen.findByText("invoice.pdf");
+  expect(screen.queryByTestId("attachments-scroll")).toBeNull();
+});
+
+it("loading shows skeleton rows", async () => {
+  jest.mocked(fetchAttachments).mockReturnValue(new Promise(() => {}));
+  // Not `mount()`: the afterEach would wait on a fetch that never lands.
+  await renderWithProviders(<AttachmentList entity="ticket" entityId={7} canManage={false} />);
+  expect(screen.getAllByTestId("skeleton-row")).toHaveLength(2);
 });
 
 it("says when there are no files", async () => {
