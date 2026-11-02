@@ -226,5 +226,6 @@ export const customer = (overrides: Partial<Customer> = {}): Customer => ({
   TotalTickets: 3,
   LastTicketAt: null,
   CreatedAt: "2026-10-01T00:00:00",
+  UpdatedAt: null,
   ...overrides,
 });

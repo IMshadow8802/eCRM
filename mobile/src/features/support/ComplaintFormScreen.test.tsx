@@ -5,8 +5,8 @@ import { fetchCustomers, saveCustomer } from "../../api/customerQueries";
 import { fetchProducts } from "../../api/productQueries";
 import { fetchTicketDetail, saveTicket } from "../../api/ticketQueries";
 import { fetchAssignableUsers } from "../../api/userQueries";
-import type { Customer, Lookup } from "../../types/api";
-import { envelope, ticket } from "../../test/fixtures";
+import type { Lookup } from "../../types/api";
+import { customer, envelope, ticket } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import ComplaintFormScreen from "./ComplaintFormScreen";
 
@@ -29,12 +29,7 @@ const LOOKUPS: Record<string, Lookup[]> = {
   ],
 };
 
-const sharma: Customer = {
-  Id: 3, CompId: 1, BranchId: 1, BranchName: "Head Office", Name: "Sharma Traders",
-  ContactPerson: "Mr Sharma", Mobile: "9825012345", AltMobile: null, Email: null,
-  Address: null, City: "Surat", State: null, Pincode: null, Remarks: null, IsActive: true,
-  OpenTickets: 1, TotalTickets: 3, LastTicketAt: null, CreatedAt: "2026-10-01T00:00:00",
-} as Customer;
+const sharma = customer();
 
 const mount = (ticketId?: number, navigation = makeNavigation<"ComplaintForm">()) =>
   renderWithProviders(

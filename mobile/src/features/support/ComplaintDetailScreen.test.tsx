@@ -1,5 +1,4 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react-native";
-import { AxiosError, AxiosHeaders, type AxiosResponse } from "axios";
 
 import { fetchCalls, logCall } from "../../api/callQueries";
 import { fetchLookups, LOOKUP_KIND } from "../../api/configQueries";
@@ -13,7 +12,7 @@ import {
 } from "../../api/ticketQueries";
 import { fetchAssignableUsers, fetchUserDirectory } from "../../api/userQueries";
 import type { AssignableUser, Lookup, Ticket, TicketDetail } from "../../types/api";
-import { envelope, ticket } from "../../test/fixtures";
+import { envelope, serverError, ticket } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import ComplaintDetailScreen from "./ComplaintDetailScreen";
 
@@ -48,16 +47,6 @@ const priya: AssignableUser = {
 const detail = (row: Ticket | null = ticket(), extra: Partial<TicketDetail> = {}): TicketDetail => ({
   ticket: row, fields: [], activity: [], assignments: [], linkedLead: null, ...extra,
 });
-
-/** A rejected request the way the client's interceptor hands it on. */
-const httpError = (status: number, message?: string) =>
-  new AxiosError("Request failed", "ERR_BAD_REQUEST", undefined, undefined, {
-    status,
-    statusText: "",
-    headers: {},
-    config: { headers: new AxiosHeaders() },
-    data: { message },
-  } as AxiosResponse);
 
 const mount = (navigation = makeNavigation<"ComplaintDetail">()) =>
   renderWithProviders(
@@ -96,7 +85,7 @@ beforeEach(() => {
 
 describe("when the complaint cannot be shown", () => {
   it("a 404 says it is not available, not to check the connection", async () => {
-    jest.mocked(fetchTicketDetail).mockRejectedValue(httpError(404));
+    jest.mocked(fetchTicketDetail).mockRejectedValue(serverError(404, "Not found"));
     await mount();
     expect(await screen.findByText("Complaint not available")).toBeOnTheScreen();
     expect(screen.queryByText(/Check your connection/)).toBeNull();
@@ -109,7 +98,7 @@ describe("when the complaint cannot be shown", () => {
   });
 
   it("a server fault offers a retry", async () => {
-    jest.mocked(fetchTicketDetail).mockRejectedValue(httpError(500));
+    jest.mocked(fetchTicketDetail).mockRejectedValue(serverError(500, "Server error"));
     await mount();
     expect(
       await screen.findByText("The complaint could not be loaded. Check your connection and try again."),
@@ -137,12 +126,12 @@ describe("an open complaint", () => {
         }),
         {
           fields: [
-            { FieldId: 1, Label: "Serial", Type: "text", ValueText: "SN-1", ValueNumber: null, ValueDate: null },
-            { FieldId: 2, Label: "Warranty", Type: "checkbox", ValueText: "true", ValueNumber: null, ValueDate: null },
-            { FieldId: 3, Label: "Units", Type: "number", ValueText: null, ValueNumber: 4, ValueDate: null },
-            { FieldId: 4, Label: "Installed", Type: "date", ValueText: null, ValueNumber: null, ValueDate: "2026-01-05T00:00:00" },
-          ] as TicketDetail["fields"],
-          linkedLead: { Id: 11, Name: "Sharma lead", MobileNo: null, Email: "s@x.in" } as TicketDetail["linkedLead"],
+            { FieldId: 1, FieldKey: "serial", Label: "Serial", Type: "text", ValueText: "SN-1", ValueNumber: null, ValueDate: null },
+            { FieldId: 2, FieldKey: "warranty", Label: "Warranty", Type: "checkbox", ValueText: "true", ValueNumber: null, ValueDate: null },
+            { FieldId: 3, FieldKey: "units", Label: "Units", Type: "number", ValueText: null, ValueNumber: 4, ValueDate: null },
+            { FieldId: 4, FieldKey: "installed", Label: "Installed", Type: "date", ValueText: null, ValueNumber: null, ValueDate: "2026-01-05T00:00:00" },
+          ],
+          linkedLead: { Id: 11, Name: "Sharma lead", MobileNo: null, Email: "s@x.in", StatusId: null },
         },
       ),
     );
@@ -209,7 +198,7 @@ describe("an open complaint", () => {
   });
 
   it("a rejected status move shows the server's own message", async () => {
-    jest.mocked(setTicketStatus).mockRejectedValue(httpError(400, "Resolution is required"));
+    jest.mocked(setTicketStatus).mockRejectedValue(serverError(400, "Resolution is required"));
     await mount();
     await loaded();
     await fireEvent.press(screen.getByText("On hold"));
@@ -234,7 +223,7 @@ describe("an open complaint", () => {
   });
 
   it("a failed transfer says why", async () => {
-    jest.mocked(transferTicket).mockRejectedValue(httpError(403, "Not in your team"));
+    jest.mocked(transferTicket).mockRejectedValue(serverError(403, "Not in your team"));
     await mount();
     await loaded();
     await fireEvent.press(screen.getByText("Priya Shah"));
@@ -270,7 +259,7 @@ describe("an open complaint", () => {
     jest.mocked(fetchEscalationTargets).mockResolvedValue([
       { Id: 50, FullName: "Ravi Mehta", JobTitle: null, BranchId: 1, BranchName: null, Depth: 2 },
     ]);
-    jest.mocked(escalateTicket).mockRejectedValue(httpError(400, "Already escalated"));
+    jest.mocked(escalateTicket).mockRejectedValue(serverError(400, "Already escalated"));
     await mount();
     await fireEvent.press(await screen.findByText("Ravi Mehta"));
     expect(screen.getByText("2 levels up")).toBeOnTheScreen();
@@ -299,7 +288,7 @@ describe("an open complaint", () => {
   });
 
   it("a failed call log shows the reason inside the sheet", async () => {
-    jest.mocked(logCall).mockRejectedValue(httpError(500, "Call log failed"));
+    jest.mocked(logCall).mockRejectedValue(serverError(500, "Call log failed"));
     await mount();
     await loaded();
     await fireEvent.press(screen.getByText("Incoming"));
@@ -324,7 +313,7 @@ describe("an open complaint", () => {
   });
 
   it("a failed delete stays on screen and says why", async () => {
-    jest.mocked(deleteTicket).mockRejectedValue(httpError(409, "It has open calls"));
+    jest.mocked(deleteTicket).mockRejectedValue(serverError(409, "It has open calls"));
     const navigation = makeNavigation<"ComplaintDetail">();
     await mount(navigation);
     await loaded();
@@ -383,7 +372,7 @@ describe("a terminal complaint", () => {
 
   it("offers a reopen, and sends remarks — the reopen gate is the server's", async () => {
     jest.mocked(fetchTicketDetail).mockResolvedValue(detail(resolved));
-    jest.mocked(setTicketStatus).mockRejectedValue(httpError(403, "Reopening requires a manager"));
+    jest.mocked(setTicketStatus).mockRejectedValue(serverError(403, "Reopening requires a manager"));
     await mount();
     await loaded();
     // No escalate entry once terminal; the SP refuses it anyway.
