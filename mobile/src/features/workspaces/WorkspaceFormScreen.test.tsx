@@ -54,11 +54,23 @@ it("creates a shared board with the people picked as invites, then goes back", a
     Color: null,
     Icon: null,
     Members: [5],
+    TemplateKey: "basic",
   });
   await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
   // A shared board reads the directory for its invites; creating loads no existing board.
   expect(fetchUserDirectory).toHaveBeenCalled();
   expect(fetchWorkspaces).not.toHaveBeenCalled();
+});
+
+it("a new board starts from the column template picked (WS-12)", async () => {
+  await mount();
+  await fireEvent.changeText(screen.getByPlaceholderText("Client onboarding"), "Sprint 4");
+  await fireEvent.press(screen.getByText("Scrum"));
+  await fireEvent.press(screen.getByText("Create board"));
+  await waitFor(() => expect(saveWorkspace).toHaveBeenCalled());
+  expect(jest.mocked(saveWorkspace).mock.calls[0]![0]).toEqual(
+    expect.objectContaining({ Name: "Sprint 4", TemplateKey: "scrum" }),
+  );
 });
 
 it("a personal board sends no invites and hides the picker", async () => {
@@ -126,6 +138,9 @@ it("renaming keeps Color and Icon and never re-sends invites", async () => {
   );
   expect(fetchWorkspaces).toHaveBeenCalledWith(expect.objectContaining({ IncludeArchived: true }));
   expect(fetchUserDirectory).not.toHaveBeenCalled();
+  // Templates seed columns on create only; an edit offers none and sends none.
+  expect(screen.queryByText("Scrum")).toBeNull();
+  expect(jest.mocked(saveWorkspace).mock.calls[0]![0]).not.toHaveProperty("TemplateKey");
 });
 
 it("renaming a project board re-sends its ProjectId (WS-01)", async () => {

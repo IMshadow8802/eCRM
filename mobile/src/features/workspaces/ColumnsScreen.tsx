@@ -103,6 +103,13 @@ export default function ColumnsScreen({ route, navigation }: Props) {
   const submit = (values: Record<string, string>) => {
     const title = (values.title ?? "").trim();
     if (!title) return;
+    // Like the title, a blank limit keeps what the column had; 0 clears it.
+    const limit = (values.limit ?? "").trim();
+    if (limit && !/^\d+$/.test(limit)) {
+      setComposeError("The limit is a whole number of tasks, or 0 for none.");
+      return;
+    }
+    const maxTasks = limit ? Number(limit) || null : (editing?.MaxTasks ?? null);
     // sp_SaveKanbanColumn is a full upsert, so every field has to go back up —
     // omitting Color on a rename would quietly blank it.
     save.mutate({
@@ -110,8 +117,10 @@ export default function ColumnsScreen({ route, navigation }: Props) {
       WorkspaceId: workspaceId,
       Title: title,
       Color: editing?.Color ?? null,
-      SortOrder: editing?.SortOrder ?? columns.length,
-      MaxTasks: editing?.MaxTasks ?? null,
+      // 0 tells sp_SaveKanbanColumn to append at MAX+1; columns.length tied
+      // the last column, whose seeded order is already n.
+      SortOrder: editing?.SortOrder ?? 0,
+      MaxTasks: maxTasks,
       // The server 400s IsActive: false — a column is deleted, never parked.
       IsActive: true,
     });
@@ -224,6 +233,13 @@ export default function ColumnsScreen({ route, navigation }: Props) {
             key: "title",
             placeholder: editing?.Title ?? "To do",
             required: true,
+          },
+          {
+            key: "limit",
+            placeholder: editing?.MaxTasks
+              ? `Task limit: ${editing.MaxTasks} (0 = none)`
+              : "Task limit (blank = none)",
+            numeric: true,
           },
         ]}
         busy={save.isPending}

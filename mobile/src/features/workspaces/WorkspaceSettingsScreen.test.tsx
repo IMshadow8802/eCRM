@@ -57,7 +57,7 @@ beforeEach(() => {
   for (const fn of [addWorkspaceMember, setWorkspaceMemberRole, removeWorkspaceMember, transferWorkspaceOwnership, archiveWorkspace]) {
     jest.mocked(fn).mockResolvedValue(ok);
   }
-  jest.mocked(deleteWorkspace).mockResolvedValue(envelope({ taskCount: 3, attachmentCount: 1 }));
+  jest.mocked(deleteWorkspace).mockResolvedValue(envelope({ taskCount: 3, commentCount: 4, attachmentCount: 1, memberCount: 2 }));
   jest.mocked(syncProjectWorkspaceMembers).mockResolvedValue(
     envelope({ workspaceId: WS, membersAddedOrRestored: 2, membersDeactivated: 1 }),
   );
@@ -347,7 +347,7 @@ describe("an archived board", () => {
     const navigation = makeNavigation<"WorkspaceSettings">();
     await mount(navigation);
     await fireEvent.press(await screen.findByText("Delete board"));
-    expect(await screen.findByText(/3 tasks and 1 file will be destroyed\./)).toBeOnTheScreen();
+    expect(await screen.findByText(/3 tasks, 4 comments and 1 file will be destroyed\./)).toBeOnTheScreen();
     expect(jest.mocked(deleteWorkspace).mock.calls[0]![0]).toEqual({ WorkspaceId: WS, DryRun: true });
     await fireEvent.press(screen.getByText("Delete"));
     await waitFor(() => expect(deleteWorkspace).toHaveBeenCalledTimes(2));
@@ -356,7 +356,7 @@ describe("an archived board", () => {
   });
 
   it("an empty board's dry run says nothing else goes", async () => {
-    jest.mocked(deleteWorkspace).mockResolvedValue(envelope({ taskCount: 0, attachmentCount: 0 }));
+    jest.mocked(deleteWorkspace).mockResolvedValue(envelope({ taskCount: 0, commentCount: 0, attachmentCount: 0, memberCount: 0 }));
     await mount();
     await fireEvent.press(await screen.findByText("Delete board"));
     expect(await screen.findByText(/It is empty — nothing else goes with it\./)).toBeOnTheScreen();
@@ -366,10 +366,10 @@ describe("an archived board", () => {
   });
 
   it("one task and two files read naturally", async () => {
-    jest.mocked(deleteWorkspace).mockResolvedValue(envelope({ taskCount: 1, attachmentCount: 2 }));
+    jest.mocked(deleteWorkspace).mockResolvedValue(envelope({ taskCount: 1, commentCount: 1, attachmentCount: 2, memberCount: 1 }));
     await mount();
     await fireEvent.press(await screen.findByText("Delete board"));
-    expect(await screen.findByText(/1 task and 2 files will be destroyed\./)).toBeOnTheScreen();
+    expect(await screen.findByText(/1 task, 1 comment and 2 files will be destroyed\./)).toBeOnTheScreen();
   });
 
   it("a failed dry run or delete says why", async () => {
@@ -378,7 +378,7 @@ describe("an archived board", () => {
     await fireEvent.press(await screen.findByText("Delete board"));
     expect(await screen.findByText("Dry run failed")).toBeOnTheScreen();
     jest.mocked(deleteWorkspace)
-      .mockResolvedValueOnce(envelope({ taskCount: 0, attachmentCount: 0 }))
+      .mockResolvedValueOnce(envelope({ taskCount: 0, commentCount: 0, attachmentCount: 0, memberCount: 0 }))
       .mockRejectedValueOnce(new Error("Delete refused"));
     await fireEvent.press(screen.getByText("Delete board"));
     await fireEvent.press(await screen.findByText("Delete"));

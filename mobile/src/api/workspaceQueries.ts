@@ -125,7 +125,14 @@ export const archiveWorkspace = (params: {
 export const deleteWorkspace = (params: {
   WorkspaceId: number;
   DryRun?: boolean;
-}): Promise<ApiEnvelope<{ taskCount: number; attachmentCount: number }>> =>
+}): Promise<
+  ApiEnvelope<{
+    taskCount: number;
+    commentCount: number;
+    attachmentCount: number;
+    memberCount: number;
+  }>
+> =>
   post(WORKSPACE_ENDPOINTS.deleteWorkspace, { DryRun: false, ...params });
 
 export const convertWorkspaceToShared = (params: {

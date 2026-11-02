@@ -1,10 +1,11 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useMemo, useRef, useState } from "react";
 import { FlatList, StyleSheet, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRightLeft,
   Columns3,
   Plus,
+  Search,
   Settings,
 } from "lucide-react-native";
 import type { StackScreenProps } from "@react-navigation/stack";
@@ -22,6 +23,7 @@ import {
   BoardColumns,
   EmptyState,
   Fab,
+  Input,
   Refresher,
   Screen,
   ScreenHeader,
@@ -34,6 +36,7 @@ import { TaskCard } from "../tasks/TaskCard";
 import { abilitiesFor, workspaceAbilities } from "../tasks/taskHelpers";
 
 type Props = StackScreenProps<RootStackParamList, "Board">;
+type TasksReply = Awaited<ReturnType<typeof fetchTasks>>;
 
 /** Tasks whose ColumnId is null still have to live somewhere visible. */
 const UNSORTED_ID = -1;
@@ -62,9 +65,15 @@ export default function BoardScreen({ route, navigation }: Props) {
     queryFn: () => fetchKanbanColumns({ WorkspaceId: workspaceId }),
   });
 
+  const [search, setSearch] = useState("");
+  // Deferred so each keystroke does not fire its own request.
+  const term = useDeferredValue(search.trim());
+  const tasksKey = ["tasks", "board", workspaceId, term] as const;
+
   const tasksQuery = useQuery({
-    queryKey: ["tasks", "board", workspaceId],
-    queryFn: () => fetchTasks({ WorkspaceId: workspaceId, PageSize: 200 }),
+    queryKey: tasksKey,
+    queryFn: () =>
+      fetchTasks({ WorkspaceId: workspaceId, PageSize: 200, SearchTerm: term || null }),
   });
 
   const { data: workspaces } = useQuery({
@@ -77,19 +86,40 @@ export default function BoardScreen({ route, navigation }: Props) {
   const wsAbilities = workspaceAbilities(role, isAdmin, workspace?.Type ?? null);
   const manages = wsAbilities.manageColumns;
 
+  // Optimistic: the card jumps columns at once and jumps back if the server
+  // refuses. The key is captured per move, so a search typed mid-flight
+  // cannot roll back the wrong list.
   const move = useMutation({
     mutationFn: moveTaskColumn,
-    // Clearing `moving` here too, not just on success. The move sheet is driven
-    // by that state, so a refused move used to leave it pinned open on a card
-    // that had not gone anywhere, with nothing said about why.
-    onError: (err) => {
+    onMutate: async (vars) => {
+      const key = tasksKey;
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<TasksReply>(key);
+      queryClient.setQueryData<TasksReply>(key, (old) =>
+        old?.data
+          ? {
+              ...old,
+              data: {
+                ...old.data,
+                tasks: old.data.tasks.map((t) =>
+                  t.Id === vars.TaskId ? { ...t, ColumnId: vars.ColumnId } : t,
+                ),
+              },
+            }
+          : old,
+      );
+      setMoving(null);
+      return { key, previous };
+    },
+    // Clearing `moving` on error too. The move sheet is driven by that state,
+    // so a refused move used to leave it pinned open on a card that had not
+    // gone anywhere, with nothing said about why.
+    onError: (err, _vars, ctx) => {
+      if (ctx) queryClient.setQueryData(ctx.key, ctx.previous);
       setMoving(null);
       toast.error(apiErrorMessage(err, "Could not move that task."));
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["tasks"] });
-      setMoving(null);
-    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["tasks"] }),
   });
 
   const tasks = useMemo(
@@ -163,7 +193,17 @@ export default function BoardScreen({ route, navigation }: Props) {
     : [];
 
   const loading = columnsQuery.isLoading || tasksQuery.isLoading;
+  // Board = completion: a new task is open, so adding from the last column
+  // lands it in the first — sp_SaveTask would re-place it there anyway, and
+  // the label has to say where it really goes. From Unsorted the server picks.
   const target = columns[columnIndex];
+  const real = columns.filter((c) => c.Id !== UNSORTED_ID);
+  const landing =
+    !target || target.Id === UNSORTED_ID
+      ? null
+      : real.length > 1 && target.Id === real[real.length - 1]!.Id
+        ? real[0]!
+        : target;
 
   return (
     <Screen>
@@ -212,12 +252,26 @@ export default function BoardScreen({ route, navigation }: Props) {
           }
         />
       ) : (
+        <>
+        <View style={styles.search}>
+          <Input
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Search this board"
+            leftIcon={Search}
+            autoCorrect={false}
+            returnKeyType="search"
+          />
+        </View>
         <BoardColumns
           columns={columns}
           keyOf={(column) => String(column.Id)}
           onSettle={setColumnIndex}
           renderColumn={(column) => {
             const cards = byColumn.get(column.Id) ?? [];
+            // A WIP limit is a flag, not a gate — the server never refuses on it.
+            const max = column.MaxTasks;
+            const full = max != null && max > 0 && cards.length >= max;
             return (
               <>
                 <View style={styles.columnHeader}>
@@ -230,9 +284,14 @@ export default function BoardScreen({ route, navigation }: Props) {
                   <Text variant="h3" numberOfLines={1} style={styles.columnTitle}>
                     {column.Title}
                   </Text>
-                  <View style={styles.count}>
-                    <Text variant="caption" color="textSecondary">
-                      {cards.length}
+                  <View
+                    style={[styles.count, full && styles.countFull]}
+                    accessibilityLabel={
+                      full ? `${cards.length} of ${max} tasks, at the limit` : undefined
+                    }
+                  >
+                    <Text variant="caption" color={full ? "danger" : "textSecondary"}>
+                      {max ? `${cards.length} / ${max}` : cards.length}
                     </Text>
                   </View>
                 </View>
@@ -269,17 +328,17 @@ export default function BoardScreen({ route, navigation }: Props) {
             );
           }}
         />
+        </>
       )}
 
       {columns.length && wsAbilities.createTask ? (
         <Fab
           icon={Plus}
-          accessibilityLabel="Add a task to this column"
+          accessibilityLabel={`Add a task to ${landing?.Title ?? "this board"}`}
           onPress={() =>
             navigation.navigate("TaskForm", {
               workspaceId,
-              columnId:
-                target && target.Id !== UNSORTED_ID ? target.Id : null,
+              columnId: landing?.Id ?? null,
             })
           }
         />
@@ -313,6 +372,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     alignItems: "center",
   },
+  countFull: { backgroundColor: colors.dangerSoft },
+  search: { paddingHorizontal: spacing[4], paddingBottom: spacing[3] },
   // Clears the FAB so the last card in a full column stays reachable.
   // Cards on a board carry no shadow (see ui/boardSurface), so this gap is
   // pure breathing room rather than shadow clearance.

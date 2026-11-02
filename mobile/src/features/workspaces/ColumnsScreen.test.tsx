@@ -57,10 +57,57 @@ it("adds a column with a trimmed title", async () => {
   await fireEvent.changeText(screen.getByPlaceholderText("To do"), "  Review  ");
   await fireEvent.press(screen.getByText("Add column"));
   await waitFor(() => expect(saveKanbanColumn).toHaveBeenCalled());
-  // parity: COL-01 — SortOrder for a new column is wrong today; not pinned.
-  expect(jest.mocked(saveKanbanColumn).mock.calls[0]![0]).toEqual(
-    expect.objectContaining({ Id: 0, WorkspaceId: WS, Title: "Review", Color: null, MaxTasks: null, IsActive: true }),
-  );
+  // COL-01: SortOrder 0 makes sp_SaveKanbanColumn append at MAX+1. Sending
+  // columns.length tied the last seeded column (orders 1..n).
+  expect(jest.mocked(saveKanbanColumn).mock.calls[0]![0]).toEqual({
+    Id: 0,
+    WorkspaceId: WS,
+    Title: "Review",
+    Color: null,
+    SortOrder: 0,
+    MaxTasks: null,
+    IsActive: true,
+  });
+});
+
+it("a new column can carry a task limit (COL-02)", async () => {
+  await mount();
+  await screen.findByText("2 tasks");
+  await fireEvent.press(screen.getByLabelText("Add a column"));
+  await fireEvent.changeText(screen.getByPlaceholderText("To do"), "Review");
+  await fireEvent.changeText(screen.getByPlaceholderText("Task limit (blank = none)"), " 4 ");
+  await fireEvent.press(screen.getByText("Add column"));
+  await waitFor(() => expect(saveKanbanColumn).toHaveBeenCalled());
+  expect(jest.mocked(saveKanbanColumn).mock.calls[0]![0]).toEqual(expect.objectContaining({ MaxTasks: 4 }));
+});
+
+it("editing a limit: blank keeps it, 0 clears it (COL-02)", async () => {
+  await mount();
+  await screen.findByText("2 tasks");
+  await fireEvent.press(screen.getByLabelText("Rename Backlog"));
+  // The current limit is the placeholder, like the current name.
+  await fireEvent.changeText(screen.getByPlaceholderText("Backlog"), "Icebox");
+  await fireEvent.press(screen.getByText("Save"));
+  await waitFor(() => expect(saveKanbanColumn).toHaveBeenCalledTimes(1));
+  expect(jest.mocked(saveKanbanColumn).mock.calls[0]![0]).toEqual(expect.objectContaining({ MaxTasks: 5 }));
+
+  await fireEvent.press(screen.getByLabelText("Rename Backlog"));
+  await fireEvent.changeText(screen.getByPlaceholderText("Backlog"), "Icebox");
+  await fireEvent.changeText(screen.getByPlaceholderText("Task limit: 5 (0 = none)"), "0");
+  await fireEvent.press(screen.getByText("Save"));
+  await waitFor(() => expect(saveKanbanColumn).toHaveBeenCalledTimes(2));
+  expect(jest.mocked(saveKanbanColumn).mock.calls[1]![0]).toEqual(expect.objectContaining({ MaxTasks: null }));
+});
+
+it("a limit that is not a whole number is refused before any request (COL-02)", async () => {
+  await mount();
+  await screen.findByText("2 tasks");
+  await fireEvent.press(screen.getByLabelText("Add a column"));
+  await fireEvent.changeText(screen.getByPlaceholderText("To do"), "Review");
+  await fireEvent.changeText(screen.getByPlaceholderText("Task limit (blank = none)"), "2.5");
+  await fireEvent.press(screen.getByText("Add column"));
+  expect(screen.getByText("The limit is a whole number of tasks, or 0 for none.")).toBeOnTheScreen();
+  expect(saveKanbanColumn).not.toHaveBeenCalled();
 });
 
 it("renaming sends every field back so nothing is blanked", async () => {

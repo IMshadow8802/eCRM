@@ -1,3 +1,4 @@
+import { Dimensions } from "react-native";
 import { fireEvent, screen, waitFor } from "@testing-library/react-native";
 
 import { fetchKanbanColumns } from "../../api/kanbanQueries";
@@ -6,6 +7,8 @@ import { fetchWorkspaces } from "../../api/workspaceQueries";
 import type { KanbanColumn, Task, Workspace, WorkspaceRole } from "../../types/api";
 import { access, envelope, pagination } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
+import { spacing } from "../../theme";
+import { BOARD_COLUMN_RATIO } from "../../ui/BoardColumns";
 import BoardScreen from "./BoardScreen";
 
 jest.mock("../../api/kanbanQueries");
@@ -141,13 +144,13 @@ it("a member sees no management shortcuts, a viewer cannot add tasks", async () 
   // WS-05: every member reaches settings (read-only roster, Leave); columns stay managers'.
   expect(screen.queryByLabelText("Manage columns")).toBeNull();
   expect(screen.getByLabelText("Workspace settings")).toBeOnTheScreen();
-  expect(screen.getByLabelText("Add a task to this column")).toBeOnTheScreen();
+  expect(screen.getByLabelText(/^Add a task/)).toBeOnTheScreen();
   await unmount();
 
   jest.mocked(fetchWorkspaces).mockResolvedValue([board("viewer")]);
   await mount();
   await screen.findByText("Fix the gate");
-  expect(screen.queryByLabelText("Add a task to this column")).toBeNull();
+  expect(screen.queryByLabelText(/^Add a task/)).toBeNull();
 });
 
 it("an admin outside the board gets both shortcuts on a shared board (WS-07)", async () => {
@@ -159,13 +162,119 @@ it("an admin outside the board gets both shortcuts on a shared board (WS-07)", a
   expect(screen.getByLabelText("Workspace settings")).toBeOnTheScreen();
 });
 
+/** Swipe the board so the column at `index` is the one on screen. */
+const settleOn = async (index: number) => {
+  const snap = Math.round(Dimensions.get("window").width * BOARD_COLUMN_RATIO) + spacing[3];
+  // Fired on the first column's header; it bubbles to the horizontal list.
+  await fireEvent(screen.getAllByText("Backlog")[0]!, "momentumScrollEnd", {
+    nativeEvent: { contentOffset: { x: snap * index, y: 0 } },
+  });
+};
+
 it("the FAB adds a task to the column on screen", async () => {
   const navigation = makeNavigation<"Board">();
   await mount(navigation);
   await screen.findByText("Fix the gate");
-  await fireEvent.press(screen.getByLabelText("Add a task to this column"));
-  // parity: COL-03 — only the first-column case is pinned; the last-column rule changes.
+  await fireEvent.press(screen.getByLabelText("Add a task to Backlog"));
   expect(navigation.navigate).toHaveBeenCalledWith("TaskForm", { workspaceId: WS, columnId: 1 });
+});
+
+it("a middle column is where the FAB adds", async () => {
+  jest.mocked(fetchKanbanColumns).mockResolvedValue([todo, doing, column(3, "Finished")]);
+  const navigation = makeNavigation<"Board">();
+  await mount(navigation);
+  await screen.findByText("Fix the gate");
+  await settleOn(1);
+  await fireEvent.press(screen.getByLabelText("Add a task to Underway"));
+  expect(navigation.navigate).toHaveBeenCalledWith("TaskForm", { workspaceId: WS, columnId: 2 });
+});
+
+it("in the last column the FAB adds to the first — a new task is open (COL-03)", async () => {
+  const navigation = makeNavigation<"Board">();
+  await mount(navigation);
+  await screen.findByText("Fix the gate");
+  await settleOn(1);
+  // The label tells the truth about where it lands.
+  await fireEvent.press(screen.getByLabelText("Add a task to Backlog"));
+  expect(navigation.navigate).toHaveBeenCalledWith("TaskForm", { workspaceId: WS, columnId: 1 });
+});
+
+it("a one-column board adds to that column", async () => {
+  jest.mocked(fetchKanbanColumns).mockResolvedValue([todo]);
+  const navigation = makeNavigation<"Board">();
+  await mount(navigation);
+  await screen.findByText("Fix the gate");
+  await fireEvent.press(screen.getByLabelText("Add a task to Backlog"));
+  expect(navigation.navigate).toHaveBeenCalledWith("TaskForm", { workspaceId: WS, columnId: 1 });
+});
+
+it("from the Unsorted column the FAB lets the server place the task", async () => {
+  jest.mocked(fetchTasks).mockResolvedValue(tasksReply([mineTask, orphan]));
+  const navigation = makeNavigation<"Board">();
+  await mount(navigation);
+  await screen.findByText("Lost card");
+  await settleOn(2);
+  await fireEvent.press(screen.getByLabelText("Add a task to this board"));
+  expect(navigation.navigate).toHaveBeenCalledWith("TaskForm", { workspaceId: WS, columnId: null });
+});
+
+it("a column with a limit shows n / max and flags when it is full (COL-02)", async () => {
+  jest.mocked(fetchKanbanColumns).mockResolvedValue([
+    { ...todo, MaxTasks: 1 },
+    { ...doing, MaxTasks: 3 },
+  ]);
+  await mount();
+  await screen.findByText("Fix the gate");
+  expect(screen.getByText("1 / 1")).toBeOnTheScreen();
+  expect(screen.getByLabelText("1 of 1 tasks, at the limit")).toBeOnTheScreen();
+  expect(screen.getByText("1 / 3")).toBeOnTheScreen();
+  expect(screen.queryByLabelText("1 of 3 tasks, at the limit")).toBeNull();
+});
+
+it("searching the board asks the server with SearchTerm (COL-04)", async () => {
+  await mount();
+  await screen.findByText("Fix the gate");
+  expect(fetchTasks).toHaveBeenCalledWith(expect.objectContaining({ SearchTerm: null }));
+  jest.mocked(fetchTasks).mockResolvedValue(tasksReply([theirTask]));
+  await fireEvent.changeText(screen.getByPlaceholderText("Search this board"), "  cement ");
+  await waitFor(() =>
+    expect(fetchTasks).toHaveBeenLastCalledWith({ WorkspaceId: WS, PageSize: 200, SearchTerm: "cement" }),
+  );
+  await waitFor(() => expect(screen.queryByText("Fix the gate")).toBeNull());
+  expect(screen.getByText("Order cement")).toBeOnTheScreen();
+});
+
+it("a move shows at once, before the server answers (COL-05)", async () => {
+  let finish: (v: Awaited<ReturnType<typeof moveTaskColumn>>) => void = () => {};
+  jest.mocked(moveTaskColumn).mockReturnValue(new Promise((resolve) => (finish = resolve)));
+  await mount();
+  await fireEvent(await screen.findByText("Fix the gate"), "longPress");
+  expect(screen.queryByText("Nothing here yet.")).toBeNull();
+  const rows = screen.getAllByText("Underway");
+  await fireEvent.press(rows[rows.length - 1]!);
+  // Backlog emptied while the request is still in flight.
+  expect(await screen.findByText("Nothing here yet.")).toBeOnTheScreen();
+  expect(screen.getByText("Fix the gate")).toBeOnTheScreen();
+  finish(envelope(null));
+  await waitFor(() => expect(fetchTasks).toHaveBeenCalledTimes(2));
+});
+
+it("a refused move puts the card back and says why (COL-05)", async () => {
+  jest.mocked(fetchTasks)
+    .mockResolvedValueOnce(tasksReply([mineTask, theirTask]))
+    // The refetch after the error never lands, so only the rollback can restore the card.
+    .mockReturnValue(new Promise(() => {}));
+  let refuse: (e: Error) => void = () => {};
+  jest.mocked(moveTaskColumn).mockReturnValue(new Promise((_, reject) => (refuse = reject)));
+  await mount();
+  await fireEvent(await screen.findByText("Fix the gate"), "longPress");
+  const rows = screen.getAllByText("Underway");
+  await fireEvent.press(rows[rows.length - 1]!);
+  expect(await screen.findByText("Nothing here yet.")).toBeOnTheScreen();
+  refuse(new Error("Blocked by a dependency"));
+  expect(await screen.findByText("Blocked by a dependency")).toBeOnTheScreen();
+  await waitFor(() => expect(screen.queryByText("Nothing here yet.")).toBeNull());
+  expect(screen.getByText("Fix the gate")).toBeOnTheScreen();
 });
 
 it("a cardless, columnless board: managers are pointed at column setup", async () => {
@@ -175,7 +284,7 @@ it("a cardless, columnless board: managers are pointed at column setup", async (
   await mount(navigation);
   expect(await screen.findByText("This board has no columns")).toBeOnTheScreen();
   expect(screen.getByText("Add a column to start placing tasks.")).toBeOnTheScreen();
-  expect(screen.queryByLabelText("Add a task to this column")).toBeNull();
+  expect(screen.queryByLabelText(/^Add a task/)).toBeNull();
   await fireEvent.press(screen.getByText("Manage columns"));
   expect(navigation.navigate).toHaveBeenCalledWith("Columns", { workspaceId: WS });
 });

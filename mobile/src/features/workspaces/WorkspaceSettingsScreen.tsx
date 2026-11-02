@@ -178,10 +178,13 @@ export default function WorkspaceSettingsScreen({ route, navigation }: Props) {
     onError: (err) => toast.error(apiErrorMessage(err, "Could not check what deleting would remove.")),
     onSuccess: (response) => {
       const tasks = response.data?.taskCount ?? 0;
+      const comments = response.data?.commentCount ?? 0;
       const files = response.data?.attachmentCount ?? 0;
+      const n = (count: number, word: string) =>
+        `${count} ${word}${count === 1 ? "" : "s"}`;
       setBlastRadius(
-        tasks || files
-          ? `${tasks} task${tasks === 1 ? "" : "s"} and ${files} file${files === 1 ? "" : "s"} will be destroyed.`
+        tasks || comments || files
+          ? `${n(tasks, "task")}, ${n(comments, "comment")} and ${n(files, "file")} will be destroyed.`
           : "It is empty — nothing else goes with it.",
       );
       setConfirmDelete(true);

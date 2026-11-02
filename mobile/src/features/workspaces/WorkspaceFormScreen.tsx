@@ -46,6 +46,14 @@ const TYPES = [
   },
 ];
 
+/** The keys sp_ApplyKanbanTemplate knows — same list as the web's create modal. */
+const TEMPLATES = [
+  { value: "basic", label: "Basic", sublabel: "To Do / In Progress / Done" },
+  { value: "scrum", label: "Scrum", sublabel: "Backlog / Sprint / In Progress / Review / Done" },
+  { value: "bug", label: "Bug Triage", sublabel: "New / Triaged / In Progress / Fixed / Verified" },
+  { value: "content", label: "Content", sublabel: "Idea / Draft / Review / Published" },
+];
+
 export default function WorkspaceFormScreen({ route, navigation }: Props) {
   const workspaceId = route.params?.workspaceId;
   const editing = workspaceId != null;
@@ -87,6 +95,7 @@ function WorkspaceForm({ navigation, workspace }: WorkspaceFormProps) {
   const [name, setName] = useState(workspace?.Name ?? "");
   const [type, setType] = useState<WorkspaceType>(workspace?.Type ?? "shared");
   const [members, setMembers] = useState<number[]>([]);
+  const [template, setTemplate] = useState("basic");
   const [error, setError] = useState<string | null>(null);
 
   // Only needed while composing the invite list.
@@ -143,6 +152,8 @@ function WorkspaceForm({ navigation, workspace }: WorkspaceFormProps) {
       // Members are invitations, and only shared boards have them. Sending them
       // on an edit would re-invite everyone who already declined.
       Members: !editing && type === "shared" ? members : [],
+      // Columns are seeded on create only; an edit never re-applies one.
+      ...(editing ? {} : { TemplateKey: template }),
     });
   };
 
@@ -192,10 +203,13 @@ function WorkspaceForm({ navigation, workspace }: WorkspaceFormProps) {
         ) : null}
 
         {!editing ? (
-          <Text variant="caption" color="textMuted">
-            New boards start with the basic column set — To do, In progress,
-            Done. You can change them straight after.
-          </Text>
+          <Select
+            label="Columns"
+            value={template}
+            options={TEMPLATES}
+            onChange={(v) => setTemplate(v as string)}
+            sheetTitle="Start with which columns?"
+          />
         ) : null}
 
         {error ? (
