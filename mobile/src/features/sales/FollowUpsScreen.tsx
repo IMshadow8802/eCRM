@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { FlatList, StyleSheet, View } from "react-native";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { CalendarCheck, CalendarClock, CloudOff, Phone, Search } from "lucide-react-native";
 import type { StackScreenProps } from "@react-navigation/stack";
 
@@ -36,29 +36,41 @@ export default function FollowUpsScreen({ navigation }: Props) {
     return () => clearTimeout(t);
   }, [search]);
 
-  // ponytail: one page of 100, no load-more. A queue past 100 rows is a
-  // backlog to triage on the web; add useInfiniteQuery if phones need it.
   const params = useMemo(
-    () => ({ ...followUpViewParams(view), SearchTerm: term || null, PageSize: 100 }),
+    () => ({ ...followUpViewParams(view), SearchTerm: term || null, PageSize: 50 }),
     [view, term],
   );
 
-  const query = useQuery({
-    queryKey: ["followups", params],
-    queryFn: () => fetchFollowUps(params),
+  // Pages of 50, fetched as the list nears its end (as Leads and Complaints).
+  const query = useInfiniteQuery({
+    queryKey: ["followups", "list", params],
+    queryFn: ({ pageParam }) => fetchFollowUps({ ...params, PageNumber: pageParam }),
+    initialPageParam: 1,
+    getNextPageParam: (last, all) =>
+      all.length < (last.data?.pagination.totalPages ?? 0) ? all.length + 1 : undefined,
     // The old rows stay up while a new view or search loads.
     placeholderData: keepPreviousData,
   });
 
-  const rows = query.data?.data?.followups ?? [];
-  const total = query.data?.data?.pagination.totalRecords ?? rows.length;
-  const viewLabel = FOLLOWUP_VIEWS.find((v) => v.value === view)?.label.toLowerCase() ?? "";
+  // Offset paging: a row that shifts mid-scroll can land on two pages.
+  const rows = useMemo(() => {
+    const seen = new Set<number>();
+    return (query.data?.pages.flatMap((page) => page.data?.followups ?? []) ?? []).filter(
+      (f) => !seen.has(f.Id) && seen.add(f.Id),
+    );
+  }, [query.data]);
+  const total = query.data?.pages[0]?.data?.pagination.totalRecords ?? rows.length;
+
+  const { hasNextPage, isFetchingNextPage, isPlaceholderData, fetchNextPage } = query;
+  const loadMore = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage && !isPlaceholderData) void fetchNextPage();
+  }, [hasNextPage, isFetchingNextPage, isPlaceholderData, fetchNextPage]);
 
   return (
     <Screen>
       <ScreenHeader
         title="Follow-ups"
-        subtitle={`${total} ${viewLabel}`}
+        subtitle={`${total} follow-ups`}
         tint="success"
         onBack={navigation.goBack}
       />
@@ -76,13 +88,20 @@ export default function FollowUpsScreen({ navigation }: Props) {
       </View>
 
       <FlatList
+        testID="followups-list"
         data={rows}
         keyExtractor={(f) => String(f.Id)}
         contentContainerStyle={[styles.list, !rows.length && styles.listEmpty]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.5}
         refreshControl={
-          <Refresher refreshing={query.isRefetching && !query.isLoading} onRefresh={query.refetch} />
+          // A view switch or search refetches too; only a pull spins.
+          <Refresher
+            refreshing={query.isRefetching && !isPlaceholderData && !isFetchingNextPage}
+            onRefresh={query.refetch}
+          />
         }
         renderItem={({ item: f }) => (
           <View style={styles.cardWrap}>
@@ -114,7 +133,8 @@ export default function FollowUpsScreen({ navigation }: Props) {
           </View>
         )}
         ListEmptyComponent={
-          query.isLoading ? null : (
+          // Placeholder rows belong to the previous view: no verdict on this one yet.
+          query.isLoading || isPlaceholderData ? null : (
             <EmptyState
               icon={query.isError ? CloudOff : CalendarCheck}
               title={query.isError ? "Couldn't load follow-ups" : term ? "Nothing matches" : EMPTY[view].title}
