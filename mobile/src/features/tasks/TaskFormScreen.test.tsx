@@ -74,9 +74,8 @@ describe("create", () => {
     await fireEvent.press(screen.getByText("Bug"));
     await fireEvent.changeText(screen.getByPlaceholderText("0"), "2.5");
     await fireEvent.press(screen.getByText("Select a date"));
-    // The native picker is a plain View in jest; its change event carries the date.
-    const picker = screen.container.queryAll((n) => n.props.mode === "date")[0]!;
-    await fireEvent(picker, "change", { type: "set" }, new Date(2026, 10, 20));
+    // The native picker is a plain View in jest; its valueChange event carries the date.
+    await fireEvent(screen.getByTestId("date-picker"), "valueChange", {}, new Date(2026, 10, 20));
     await fireEvent.press(screen.getByText("Create task"));
 
     await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());

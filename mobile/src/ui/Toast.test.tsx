@@ -59,6 +59,11 @@ it("a confirmation leaves on its own; an error outlives it", async () => {
 });
 
 it("useToast outside the provider throws instead of silently doing nothing", async () => {
-  jest.spyOn(console, "error").mockImplementation(() => {});
-  await expect(render(<Trigger tone="error" message="x" />)).rejects.toThrow(/inside <ToastProvider>/);
+  // React logs the thrown render error; silenced for this test only.
+  const quiet = jest.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    await expect(render(<Trigger tone="error" message="x" />)).rejects.toThrow(/inside <ToastProvider>/);
+  } finally {
+    quiet.mockRestore();
+  }
 });

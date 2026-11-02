@@ -9,7 +9,7 @@ const dismiss = jest.spyOn(BottomSheetModal.prototype, "dismiss");
 
 it("a row closes the sheet, then runs its action", async () => {
   const order: string[] = [];
-  dismiss.mockImplementation(() => void order.push("dismiss"));
+  dismiss.mockImplementationOnce(() => void order.push("dismiss"));
   const remove = jest.fn(() => order.push("remove"));
   await renderWithProviders(
     <ActionSheet

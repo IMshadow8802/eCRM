@@ -1,3 +1,9 @@
+// Every user is in IST. Set here, in the main jest process before any worker
+// starts, so the zone does not depend on the machine (or a `TZ=` in the shell).
+// A `process.env.TZ` inside a test file does nothing: the test sandbox's env
+// is not the worker's.
+process.env.TZ = "Asia/Kolkata";
+
 module.exports = {
   preset: "jest-expo",
   setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],

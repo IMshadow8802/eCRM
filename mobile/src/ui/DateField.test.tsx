@@ -3,10 +3,8 @@ import { fireEvent, render, screen } from "@testing-library/react-native";
 
 import { DateField } from "./DateField";
 
-// IST, like every user: a UTC conversion would roll a just-past-midnight pick
-// back to the previous day. Node applies a TZ assigned at runtime.
-process.env.TZ = "Asia/Kolkata";
-
+// The suite runs in IST (jest.config.js), so a UTC conversion rolls a
+// just-past-midnight pick back a day — the bug the first test guards.
 const nativeEvent = { timestamp: 0, utcOffset: 330 };
 
 async function openPicker(props: Partial<Parameters<typeof DateField>[0]> = {}) {
