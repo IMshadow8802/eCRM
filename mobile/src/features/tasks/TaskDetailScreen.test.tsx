@@ -178,6 +178,8 @@ describe("summary", () => {
     // 08: the band leads with "Workspace · Column", the title, then the chip row.
     expect(screen.getByText("Ops board · To do")).toBeOnTheScreen();
     expect(screen.getByRole("header", { name: "Fit the inverter" })).toBeOnTheScreen();
+    // E 08: the title sits 2 under the lead line (metrics.nudge).
+    expect(screen.getByRole("header", { name: "Fit the inverter" })).toHaveStyle({ marginTop: 2 });
     expect(screen.getByText("high")).toHaveStyle({ color: chipTones.red.text });
     // A past due date is a red date chip in the band.
     expect(screen.getByText(shortDay(localDay(-1)))).toHaveStyle({ color: chipTones.red.text });

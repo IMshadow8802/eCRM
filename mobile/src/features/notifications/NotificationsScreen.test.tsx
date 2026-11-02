@@ -119,7 +119,10 @@ describe("E 18 — Today / Earlier", () => {
 
     expect(flat(screen.getByTestId(`notification-${unread.Id}`)).backgroundColor).toBe(colors.unreadTint);
     expect(flat(screen.getByText("Fresh"))).toMatchObject({ fontFamily: typography.rowTitle.fontFamily, color: colors.text });
-    expect(within(screen.getByTestId(`notification-${unread.Id}`)).getByTestId("unread-dot")).toBeOnTheScreen();
+    const dot = within(screen.getByTestId(`notification-${unread.Id}`)).getByTestId("unread-dot");
+    // E 18: the dot ends line 2 (the body), not the row.
+    const line2 = screen.getByText("Fix the inverter").parent!;
+    expect(line2.children[line2.children.length - 1]).toBe(dot);
 
     expect(flat(screen.getByTestId(`notification-${read.Id}`)).backgroundColor).toBe(colors.surface);
     expect(flat(screen.getByText("Seen"))).toMatchObject({

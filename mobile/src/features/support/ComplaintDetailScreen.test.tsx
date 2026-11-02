@@ -177,6 +177,10 @@ describe("E 11 · facts and activity", () => {
     await loaded();
     expect(await screen.findByRole("link", { name: "All 7" })).toBeOnTheScreen();
     expect(screen.getByText("Subject edited")).toBeOnTheScreen();
+    // E 11: the verb bold, the rest regular.
+    expect(flat(screen.getByText("Escalated"))).toMatchObject({ fontFamily: "Inter_600SemiBold" });
+    expect(flat(screen.getByText("Escalated to Neha Kapoor"))).toMatchObject({ fontFamily: "Inter_400Regular" });
+    expect(flat(screen.getByText("Call logged"))).toMatchObject({ fontFamily: "Inter_600SemiBold" });
     expect(screen.queryByText("Created by Ravi Kumar")).toBeNull();
     // The activity's own 'call' row gives way to the richer call row.
     expect(screen.queryByText("Outbound call logged")).toBeNull();

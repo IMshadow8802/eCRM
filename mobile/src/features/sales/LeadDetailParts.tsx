@@ -215,21 +215,20 @@ export function FollowUpsTab({
 const styles = StyleSheet.create({
   flex: { flex: 1, minWidth: 0 },
   row: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
-  // E's off-grid numbers read the nearest metrics: 14 = rowPadH, 6 = inlineGap,
-  // 66 = the badge separator inset, 10 = pairGap; E's 2 under the next card's
-  // title is rowLineGap (3) until the central pass adds a 2.
+  // E's off-grid numbers are metrics: 14 = cardPad, 6 = inlineGap, 66 = the
+  // badge separator inset, 10 = stackGap, 2 = nudge.
   person: { flexDirection: "row", alignItems: "center", gap: metrics.inlineGap },
   contact: { flexDirection: "row", alignItems: "center", gap: spacing[3], paddingVertical: spacing[3], paddingHorizontal: metrics.rowPadH },
-  contactWide: { paddingVertical: metrics.rowPadH, paddingHorizontal: spacing[4] },
+  contactWide: { paddingVertical: metrics.cardPad, paddingHorizontal: spacing[4] },
   facts: { flexDirection: "row", gap: spacing[4], paddingLeft: metrics.sepInset.badge, paddingRight: metrics.rowPadH, paddingBottom: spacing[3] },
   factValue: { marginTop: spacing[1] },
   factsList: { paddingHorizontal: spacing[4], paddingBottom: metrics.inlineGap },
   stack: { gap: spacing[3] },
-  next: { padding: metrics.rowPadH },
+  next: { padding: metrics.cardPad },
   nextWide: { padding: spacing[4] },
-  sub: { marginTop: metrics.rowLineGap },
-  remarks: { marginTop: metrics.pairGap },
+  sub: { marginTop: metrics.nudge },
+  remarks: { marginTop: metrics.stackGap },
   buttons: { flexDirection: "row", gap: spacing[2], marginTop: spacing[3] },
-  after: { marginTop: metrics.pairGap },
+  after: { marginTop: metrics.stackGap },
   none: { paddingVertical: spacing[4] },
 });

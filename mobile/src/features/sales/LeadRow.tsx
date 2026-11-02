@@ -47,8 +47,7 @@ function LeadRowBase({ lead, statuses, onPress, selected = false, first = false 
           </Text>
         ) : (
           <>
-            {/* ponytail: no icon-size token; 14 is rowPadH until the central pass adds an iconSm. */}
-            <CalendarClock size={metrics.rowPadH} color={colors[LINE_INK[line.tone]]} />
+            <CalendarClock size={metrics.iconSm} color={colors[LINE_INK[line.tone]]} />
             <Text variant="label" color={LINE_INK[line.tone]} numberOfLines={1}>
               {line.text}
             </Text>

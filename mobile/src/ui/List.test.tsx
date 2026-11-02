@@ -76,6 +76,11 @@ describe("ListRow gaps closed in Task 37b", () => {
     expect(line).toHaveTextContent("Escalated to Neha Kapoor");
     expect(flat(line)).toMatchObject({ fontSize: 14, fontFamily: "Inter_400Regular" });
   });
+
+  it("titleVerb with nothing after it is the verb alone, no trailing space", async () => {
+    await render(<ListRow title="" titleVerb="Created" />);
+    expect(screen.getByText("Created").parent).toHaveTextContent(/^Created$/);
+  });
 });
 
 describe("ListRow (E .rw)", () => {

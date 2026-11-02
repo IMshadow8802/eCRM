@@ -86,6 +86,17 @@ export interface ComplaintDetailBodyProps {
   onOpenTicket: (ticketId: number) => void;
 }
 
+/**
+ * E 11 / T2 activity titles: the verb bold, the rest regular ("**Escalated**
+ * to Neha Kapoor"). ponytail: the summary's first word is taken as its verb —
+ * sp_LogTicketActivity writes "Escalated to …", "Assigned to …", "Created by …";
+ * one that does not lead with a verb still reads, its first word bold.
+ */
+function verbFirst(text: string): { titleVerb: string; title: string } {
+  const at = text.indexOf(" ");
+  return at < 0 ? { titleVerb: text, title: "" } : { titleVerb: text.slice(0, at), title: text.slice(at + 1) };
+}
+
 /** Activity shows four until "All n" (E 11). */
 const COLLAPSED = 4;
 
@@ -236,7 +247,7 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
           key: `a-${a.Id}`,
           at: a.CreatedAt,
           badge: { tone: b.tone, icon: b.icon, size: rowBadge },
-          title: a.Summary ?? a.Type,
+          ...verbFirst(a.Summary ?? a.Type ?? ""),
           meta: a.UserName ? `By ${a.UserName}` : undefined,
           right: { text: whenText(a.CreatedAt) },
         };
@@ -248,10 +259,12 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
         key: `c-${c.Id}`,
         at: c.CalledAt,
         badge: { tone: b.tone, icon: b.icon, size: rowBadge },
-        // E 11 (phone) reads "Call logged · 4 min"; T2 adds the direction.
-        title: ["Call logged", c.Duration ? `${c.Duration} min` : null, outcome ?? (inBand ? (c.Direction === "in" ? "incoming" : "outgoing") : null)]
+        // E 11 (phone) reads "**Call logged** · 4 min"; T2 adds the direction.
+        titleVerb: "Call logged",
+        title: [c.Duration ? `${c.Duration} min` : null, outcome ?? (inBand ? (c.Direction === "in" ? "incoming" : "outgoing") : null)]
           .filter(Boolean)
-          .join(" · "),
+          .map((part) => `· ${part}`)
+          .join(" "),
         meta: c.Notes ?? undefined,
         right: { text: whenText(c.CalledAt) },
       };

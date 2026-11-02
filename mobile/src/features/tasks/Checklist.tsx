@@ -103,11 +103,10 @@ export function Checklist({ items, onToggle, onLongPress, onAdd, canToggle, canM
 }
 
 const styles = StyleSheet.create({
-  summary: { padding: metrics.rowPadH },
+  summary: { padding: metrics.cardPad },
   line: { flexDirection: "row", alignItems: "baseline", gap: metrics.inlineGap },
   flex: { flex: 1, minWidth: 0 },
-  // ponytail: E's 10 has no spacing step; pairGap is the 10 in the scale.
-  bar: { marginTop: metrics.pairGap },
+  bar: { marginTop: metrics.stackGap },
   why: { marginTop: spacing[2] },
   group: { marginTop: spacing[3] },
   row: {

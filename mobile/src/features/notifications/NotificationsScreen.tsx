@@ -1,5 +1,4 @@
 import { useCallback, useEffect } from "react";
-import { StyleSheet, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, CheckCheck } from "lucide-react-native";
 import { useNavigation } from "@react-navigation/native";
@@ -12,7 +11,7 @@ import {
 } from "../../api/notificationQueries";
 import { apiErrorMessage } from "../../api/errors";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
-import { colors, notificationBadge } from "../../theme";
+import { notificationBadge } from "../../theme";
 import type { AppNotification } from "../../types/api";
 import {
   Band, BandSheet, EmptyState, ErrorCard, GroupHeader, HeaderButton, ListGroup, ListRow, Screen, SkeletonRows, Text,
@@ -97,8 +96,8 @@ export default function NotificationsScreen() {
         titleWeight={n.IsRead ? "read" : "strong"}
         right={{ text: isToday ? clockTime(at) : shortDate(at) }}
         meta={n.Body ?? undefined}
-        // ponytail: E puts the dot at the end of line 2; ListRow has no slot there, so it trails the row.
-        trailing={n.IsRead ? null : <View testID="unread-dot" style={styles.dot} />}
+        // E 18: the indigo dot ends line 2.
+        unreadDot={!n.IsRead}
         align="top"
         unread={!n.IsRead}
         noSeparator={i === 0}
@@ -160,7 +159,3 @@ export default function NotificationsScreen() {
     </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  dot: { width: 8, height: 8, borderRadius: 4, marginTop: 6, backgroundColor: colors.primary },
-});

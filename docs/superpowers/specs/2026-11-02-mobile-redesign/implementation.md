@@ -352,6 +352,14 @@ All text is Inter. Weight is the family: 400 Regular, 500 Medium, 600 SemiBold, 
 | `pairGap` | 10 | `.two` |
 | `bentoGap` | 10 (tablet 16) | `.bento` |
 | `tileHeight` | 112 (tablet 128) | `.tile` |
+| `nudge` | 2 | title/shift nudges (`margin-top:2px`; 04 shift row, 08 title, 15 next-card line) — Task 37b |
+| `stackGap` | 10 | card/figure gap inside a card (08 comments, 09, checklist bar, 15) — Task 37b |
+| `iconSm` | 14 | `.i14` inline row icon (14 / T3 line 3) — Task 37b |
+| `cardPad` | 14 | card padding `14px` (08, 09, 15) — Task 37b |
+| `sheetActionGap` | 14 | space above a sheet's action button (25) — Task 37b |
+| `errorTop` | 72 | 20c error card top — Task 37b |
+| `pane.listBand` / `pane.listSheet` | 20 / 16 | T2/T3 list pane band / sheet side padding — Task 37b |
+| `pane.detailBand` / `pane.detailSheet` | 28 / 24 | T2/T3 record pane band / sheet side padding — Task 37b |
 
 `HIT_TARGET` stays 44. Tappables that are smaller (pill 32, chip-button 28, Done 32, Button sm 36 / xs 32, CircleAction 40, search clear 18) get `hitSlop` to reach 44; sheet rows without a badge get `minHeight` 44 (Task 33 review). `TAB_BAR_HEIGHT` and `TAB_BAR_CLEARANCE` are no longer needed, because the bar is docked rather than floating. In Phase 1 `TAB_BAR_CLEARANCE` becomes 0; it is deleted in Task 40.
 
@@ -510,7 +518,10 @@ interface BandProps {
   tone?: "band" | "raised";         // raised = tablet detail pane (Navy 800)
   align?: "start" | "center";       // profile = center
   children?: ReactNode;
+  leading?: ReactNode;              // Task 37b: leads the row after back (04: avatar + date/greeting); replaces the title block when there is no title
+  gutter?: number;                  // Task 37b: side padding override (T2/T3 panes: metrics.pane.*Band); BandSheet takes the same prop (*Sheet)
 }
+// Task 37b: a centred band (align="center") with no title, subtitle, back, actions or leading draws NO row (19: avatar 16 under the status bar).
 ```
 
 ### 3.2 `BandSheet` (sheet over the band) — new; works with `Screen`
@@ -609,6 +620,8 @@ interface ActionBarProps { actions: BarAction[] }
 
 **ListGroup.** Outer `View`: `surface`, radius 16, `elevation.whisper`. Inner `View`: radius 16, `overflow: hidden`. The clip sits on the child, per the Card rule.
 
+**ListGroupCell** (Task 37b). The same group cut per FlatList cell so a long list stays virtualised: `first` rounds the top corners, `last` the bottom; whisper on the outer view, clip on the inner (a SwipeRow's blocks stay inside the corners). Complaints, Leads, Follow-ups.
+
 **ListRow**
 - Row: direction row, gap 12, aligned centre, padding 11 14, background `surface`.
 - `align="top"` variant: aligned flex-start, padding 12 / 12 (05).
@@ -633,6 +646,10 @@ interface ListRowProps {
   trailing?: ReactNode; chevron?: boolean;
   selected?: boolean; unread?: boolean; separatorInset?: 66 | 48 | 14; noSeparator?: boolean;
   onPress?: () => void; onLongPress?: () => void; testID?: string;
+  // Task 37b
+  titleVerb?: string;         // rich title: verb bodyStrong-weight, rest `text` 14 regular (11, T2 activity)
+  unreadDot?: boolean;        // 8 primary dot at the end of line 2 (18)
+  menu?: boolean;             // 19 menu rows: `bodyStrong` 15/600 title, padding 12 14
 }
 ```
 
@@ -659,6 +676,7 @@ interface ListRowProps {
 | 40 (default) | 40 | 12 | 20 |
 | 48 | 48 | 14 | 22 |
 | 52 | 52 | 16 | 22 |
+| 56 | 56 | 14 | 28 (sign-in tenant placeholder, 02 — Task 37b) |
 | 72 | 72 | 22 | 32 (error) |
 
 - Fill and icon come from `badgeTones[tone]`.
@@ -773,6 +791,7 @@ interface BandTabsProps<T> { value: T; options: TabOption<T>[]; onChange: (v: T)
 
 - Sizes: `sm` height 36, radius 18, 14/600, padding 0 16; `xs` height 32, padding 0 14, 13/600 (Accept, 06).
 - Loading shows a spinner in the text colour. Pressed fills: §1.2.
+- `trailingIcon` (Task 37b): the icon after the label, same size and ink ("Continue →", 01).
 
 **IconButton** (`.ib`)
 - 40, radius 20, `bandRaised`, white icon 20.
@@ -800,6 +819,7 @@ interface BandTabsProps<T> { value: T; options: TabOption<T>[]; onChange: (v: T)
 - **Prefix** ("+91", "₹"): `textSecondary` 600, padding-right 8, 1 px right border `border`, height 22.
 - **Multiline:** min-height 72 (sheets 64–84), aligned top, padding-top 11, line-height 20.
 - **Help:** `small` `textMuted`, margin-top 6. Error help: `label` `dangerText`.
+- **Task 37b:** `invalid` = the error ring + red leading icon with no help line (03: the box above says why). `right` = a node inside the field after the text (12: clear X 18 `textMuted`). Inside any `Sheet` the field is gorhom's `BottomSheetTextInput` automatically (`ui/sheetContext`), so a sheet input keeps focus and rides the keyboard. `Select` and `DateField` take `labelTag` like `Input`; `DynamicField` passes its `tag` ("Custom", T4) to whichever it renders.
 - **Select:**
   - Same field + chevron-down 18 `textMuted`. The value may render as a `Chip` (status, priority, resolution) or an Avatar 24 + name.
   - Opens a `Sheet` list using `ChoiceList` (§3.15).
@@ -820,6 +840,7 @@ interface BandTabsProps<T> { value: T; options: TabOption<T>[]; onChange: (v: T)
 - Keyboard: the sheet rides above the keyboard (13). Keep `keyboardAware`.
 
 **ComposeSheet / ActionSheet:** same shell.
+- ComposeSheet fields are `Input` (sheet-aware). `secure: true` masks a field with the show/hide eye and sends it untrimmed; `onDismiss` runs after the reset. Change password (19) is this sheet (Task 37b).
 - ActionSheet rows become `ChoiceList` rows: padding 7 4, no separator, badge 36, `bodyStrong` label, flex; optional chip ("Current", lilac) or note (`small` `textMuted`); then the Radio.
 - Selected row: background `fieldTint` (or `dangerRowTint` + `dangerText` label for a destructive choice, 25), radius 14.
 - **Radio:** 22 circle, 2 px `borderStrong`; on = 7 px `primary` ring.

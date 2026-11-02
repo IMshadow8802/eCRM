@@ -60,6 +60,8 @@ it("follow-ups: no planner, no remarks, view-only rows; a skipped one reads skip
   expect(screen.queryByText(/planned by/)).toBeNull();
   expect(screen.getByText("Other")).toBeOnTheScreen();
   expect(screen.getByText("Other · Fri, 2 Jan · skipped")).toBeOnTheScreen();
+  // E 15 / T3: the next card pads 16 at the rail; its line sits 2 under the title.
+  expect(screen.getByText(/^Call · /)).toHaveStyle({ marginTop: 2 });
   // View-only at the rail: no Mark done / Reschedule on the card.
   expect(screen.queryByText("Mark done")).toBeNull();
 });

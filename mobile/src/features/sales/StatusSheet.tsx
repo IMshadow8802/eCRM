@@ -160,8 +160,8 @@ const styles = StyleSheet.create({
   panel: { marginTop: spacing[3], padding: spacing[3], borderRadius: radius.card, backgroundColor: colors.surfaceMuted },
   gap: { marginTop: spacing[3] },
   error: { marginTop: spacing[2] },
-  // E's 14 above the button; nearest token (central pass: a sheetActionGap metric).
-  save: { marginTop: metrics.rowPadH },
+  // E's 14 above the button.
+  save: { marginTop: metrics.sheetActionGap },
 });
 
 export default StatusSheet;

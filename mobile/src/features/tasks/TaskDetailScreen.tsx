@@ -818,21 +818,19 @@ const COMMENT_AVATAR = 28;
 
 const styles = StyleSheet.create({
   flex: { flex: 1, minWidth: 0 },
-  // ponytail: E's 2 has no token; rowLineGap (3) is the nearest.
-  title: { marginTop: metrics.rowLineGap },
+  title: { marginTop: metrics.nudge },
   chips: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: spacing[2], marginTop: spacing[3] },
   note: { marginBottom: spacing[3] },
   panel: { marginTop: spacing[3] },
   gapTop: { marginTop: spacing[3] },
-  comment: { paddingVertical: spacing[3], paddingHorizontal: metrics.rowPadH, marginBottom: spacing[2] },
+  comment: { paddingVertical: spacing[3], paddingHorizontal: metrics.cardPad, marginBottom: spacing[2] },
   replyComment: {
     paddingVertical: spacing[3],
-    paddingHorizontal: metrics.rowPadH,
+    paddingHorizontal: metrics.cardPad,
     marginBottom: spacing[2],
     marginLeft: spacing[6],
   },
-  // ponytail: E's 10 has no spacing step; pairGap is the 10 in the scale.
-  commentHead: { flexDirection: "row", alignItems: "center", gap: metrics.pairGap },
-  commentText: { marginTop: metrics.rowLineGap, marginLeft: COMMENT_AVATAR + metrics.pairGap },
+  commentHead: { flexDirection: "row", alignItems: "center", gap: metrics.stackGap },
+  commentText: { marginTop: metrics.rowLineGap, marginLeft: COMMENT_AVATAR + metrics.stackGap },
   deleted: { fontStyle: "italic" },
 });

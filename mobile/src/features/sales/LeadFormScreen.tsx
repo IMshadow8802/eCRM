@@ -297,9 +297,11 @@ function LeadForm({ lead, navigation }: { lead: Lead | null; navigation: Props["
     });
   };
 
-  const customField = (def: CustomFieldDef) => (
+  // T4: the custom field beside Owner carries an xs "Custom" chip on its label.
+  const customField = (def: CustomFieldDef, tag?: string) => (
     <DynamicField
       key={def.Id}
+      tag={tag}
       field={def}
       value={customDraft[def.Id] ?? ""}
       error={fieldErrors[`c${def.Id}`]}
@@ -361,7 +363,7 @@ function LeadForm({ lead, navigation }: { lead: Lead | null; navigation: Props["
       />
       {editing ? null : (
         <>
-          {pairedField ? <Pair left={owner} right={customField(pairedField)} /> : <Field>{owner}</Field>}
+          {pairedField ? <Pair left={owner} right={customField(pairedField, "Custom")} /> : <Field>{owner}</Field>}
           <Field>
             <FieldLabel label="First follow-up" />
             <SegmentedTabs

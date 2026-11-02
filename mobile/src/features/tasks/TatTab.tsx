@@ -399,11 +399,10 @@ export function TatTab({
 
 const styles = StyleSheet.create({
   flex: { flex: 1, minWidth: 0 },
-  // ponytail: E's 10 has no spacing step; pairGap is the 10 in the scale.
-  foot: { flexDirection: "row", alignItems: "center", gap: spacing[2], marginTop: metrics.pairGap },
-  actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing[2], marginTop: metrics.pairGap },
-  holdCard: { marginTop: metrics.pairGap, paddingVertical: metrics.pairGap, paddingHorizontal: metrics.rowPadH },
+  foot: { flexDirection: "row", alignItems: "center", gap: spacing[2], marginTop: metrics.stackGap },
+  actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing[2], marginTop: metrics.stackGap },
+  holdCard: { marginTop: metrics.stackGap, paddingVertical: metrics.stackGap, paddingHorizontal: metrics.cardPad },
   holdRow: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
-  timeline: { marginTop: metrics.pairGap },
+  timeline: { marginTop: metrics.stackGap },
   judge: { gap: spacing[1] },
 });

@@ -111,7 +111,7 @@ export function ListRow({
           {titleVerb ? (
             <Text variant="text" color={titleColor} numberOfLines={1} style={styles.flex}>
               <Text variant="rowTitle" color={titleColor}>{titleVerb}</Text>
-              {` ${title}`}
+              {title ? ` ${title}` : null}
             </Text>
           ) : (
             <Text
