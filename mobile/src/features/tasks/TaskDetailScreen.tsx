@@ -136,7 +136,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   // The clock a just-finished tick owes a reason on. TatTab opens its sheet;
   // leaving the tab drops the request, so coming back does not pop it again.
-  const [explainTatId, setExplainTatId] = useState<number | null>(null);
+  const [explainTatId, setExplainTatId] = useState<number | null>(route.params.explainTatId ?? null);
   const switchTab = (next: Tab) => {
     setTab(next);
     setExplainTatId(null);

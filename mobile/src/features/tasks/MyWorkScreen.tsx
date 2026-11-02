@@ -117,7 +117,14 @@ export default function MyWorkScreen() {
 
   const openNeed = useCallback(
     (t: DayTask) =>
-      navigation.navigate("TaskDetail", { taskId: t.TaskId, workspaceId: t.WorkspaceId, tab: "tat" }),
+      navigation.navigate("TaskDetail", {
+        taskId: t.TaskId,
+        workspaceId: t.WorkspaceId,
+        tab: "tat",
+        // Straight to the reason sheet, on the clock that owes it (a reopened
+        // task can have a newer clock).
+        ...(t.flags.reasonOwed && t.TatId ? { explainTatId: t.TatId } : {}),
+      }),
     [navigation],
   );
 

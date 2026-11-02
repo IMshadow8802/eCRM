@@ -97,7 +97,7 @@ function serve({ task = TASK, ws = makeWorkspace({ Id: 10 }), items = [item(1, "
   jest.mocked(saveTatReason).mockResolvedValue(envelope(null));
 }
 
-const mount = async (extra: { tab?: "tat" } = {}) => {
+const mount = async (extra: { tab?: "tat"; explainTatId?: number } = {}) => {
   const navigation = makeNavigation<"TaskDetail">();
   await renderWithProviders(
     <TaskDetailScreen navigation={navigation} route={makeRoute("TaskDetail", { taskId: 1, workspaceId: 10, ...extra })} />,
@@ -140,6 +140,19 @@ describe("loading", () => {
     await mount({ tab: "tat" });
     expect(await screen.findByText("No deadline on you")).toBeOnTheScreen();
     expect(screen.queryByText("Order parts")).toBeNull();
+  });
+
+  it("asked to explain a clock, opens the reason sheet on that clock", async () => {
+    jest.mocked(fetchTaskTat).mockResolvedValue({ clocks: [breachedClock], holds: [], events: [] });
+    jest.mocked(fetchLookups).mockResolvedValue([reasonLookup]);
+    const { present } = spySheets();
+    await mount({ tab: "tat", explainTatId: 500 });
+    expect(await screen.findByText("Why was the deadline missed?")).toBeOnTheScreen();
+    await waitFor(() => expect(present).toHaveBeenCalledTimes(1));
+    await fireEvent.press(await screen.findByText("Parts late"));
+    await fireEvent.press(screen.getByText("Save reason"));
+    await waitFor(() => expect(saveTatReason).toHaveBeenCalled());
+    expect(jest.mocked(saveTatReason).mock.calls[0]![0]).toEqual({ TaskId: 1, TatId: 500, ReasonId: 2, Remarks: null });
   });
 });
 

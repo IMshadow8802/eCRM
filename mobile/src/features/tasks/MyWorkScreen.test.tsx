@@ -1,3 +1,4 @@
+import type { QueryClient } from "@tanstack/react-query";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react-native";
 
 import { logout } from "../../api/authQueries";
@@ -179,40 +180,52 @@ describe("Needs you", () => {
     expect(screen.getByText("Late task")).toBeOnTheScreen();
   });
 
-  it("a row opens the task on its Deadline tab", async () => {
+  it("a reason-owed row opens the Deadline tab with the reason sheet on its clock", async () => {
     serveDay([owesReason]);
     await renderWithProviders(<MyWorkScreen />);
     await fireEvent.press(await screen.findByText("Owes a reason"));
-    expect(mockNavigation.navigate).toHaveBeenCalledWith("TaskDetail", { taskId: 6, workspaceId: 26, tab: "tat" });
+    expect(mockNavigation.navigate).toHaveBeenCalledWith("TaskDetail", { taskId: 6, workspaceId: 26, tab: "tat", explainTatId: 600 });
   });
+
+  it("an overdue or at-risk row just opens the Deadline tab", async () => {
+    serveDay([runningLate]);
+    await renderWithProviders(<MyWorkScreen />);
+    await fireEvent.press(await screen.findByText("Running late"));
+    expect(mockNavigation.navigate).toHaveBeenCalledWith("TaskDetail", { taskId: 8, workspaceId: 28, tab: "tat" });
+  });
+
+  /** The Today query has answered (or failed) and the screen re-rendered with it. */
+  const settled = async (queryClient: QueryClient, status: "success" | "error" = "success") => {
+    await screen.findByText("Late task");
+    await waitFor(() => expect(queryClient.getQueryState(["tasks", "today", "mine"])?.status).toBe(status));
+  };
 
   it("is hidden when nothing needs you", async () => {
     serveDay([fine]);
-    await renderWithProviders(<MyWorkScreen />);
-    await screen.findByText("Late task");
-    await waitFor(() => expect(fetchMyDay).toHaveBeenCalled());
+    const { queryClient } = await renderWithProviders(<MyWorkScreen />);
+    await settled(queryClient);
     expect(screen.queryByText("Needs you")).toBeNull();
   });
 
-  it("is hidden on a day without live flags, and when there is no day at all", async () => {
+  it("is hidden on a day without live flags", async () => {
     serveDay([runningLate], false);
-    const { unmount } = await renderWithProviders(<MyWorkScreen />);
-    await screen.findByText("Late task");
-    await waitFor(() => expect(fetchMyDay).toHaveBeenCalled());
+    const { queryClient } = await renderWithProviders(<MyWorkScreen />);
+    await settled(queryClient);
     expect(screen.queryByText("Needs you")).toBeNull();
-    await unmount();
+  });
 
+  it("is hidden when there is no day at all", async () => {
     jest.mocked(fetchMyDay).mockResolvedValue(envelope({ day: { key: "2026-11-02", live: true }, me: null }));
-    await renderWithProviders(<MyWorkScreen />);
-    await screen.findByText("Late task");
+    const { queryClient } = await renderWithProviders(<MyWorkScreen />);
+    await settled(queryClient);
     expect(screen.queryByText("Needs you")).toBeNull();
   });
 
   it("a failed Today load leaves the rest of My Work working", async () => {
     jest.mocked(fetchMyDay).mockRejectedValue(new Error("boom"));
-    await renderWithProviders(<MyWorkScreen />);
-    expect(await screen.findByText("Late task")).toBeOnTheScreen();
-    await waitFor(() => expect(fetchMyDay).toHaveBeenCalled());
+    const { queryClient } = await renderWithProviders(<MyWorkScreen />);
+    await settled(queryClient, "error");
+    expect(screen.getByText("Late task")).toBeOnTheScreen();
     expect(screen.queryByText("Needs you")).toBeNull();
     expect(screen.queryByText("Couldn't load your tasks")).toBeNull();
   });
@@ -221,8 +234,11 @@ describe("Needs you", () => {
     serveDay([runningLate]);
     await renderWithProviders(<MyWorkScreen />);
     await screen.findByText("Needs you");
-    await fireEvent.press(screen.getByText("All"));
+    await fireEvent.press(screen.getByText("Unassigned"));
     await screen.findByText("Nobody's task");
+    expect(screen.queryByText("Needs you")).toBeNull();
+    await fireEvent.press(screen.getByText("All"));
+    await screen.findByText("Late task");
     expect(screen.queryByText("Needs you")).toBeNull();
   });
 });
