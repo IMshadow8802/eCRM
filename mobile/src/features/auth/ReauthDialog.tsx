@@ -3,7 +3,7 @@ import { useState } from "react";
 import { login as loginRequest } from "../../api/authQueries";
 import useAuthStore from "../../stores/useAuthStore";
 import { Dialog, Input, Text } from "../../ui";
-import { FALLBACK_ERROR, REASONS } from "./LoginScreen";
+import { FALLBACK_ERROR, REASONS } from "./authMessages";
 
 /**
  * Sign in again over the screen when the server closes the session (shift end,
@@ -14,17 +14,18 @@ import { FALLBACK_ERROR, REASONS } from "./LoginScreen";
  */
 export default function ReauthDialog() {
   const reauth = useAuthStore((s) => s.reauth);
+  // Mounted only while open: a password typed into a dialog that was closed
+  // from outside (another request's logout) must not pre-fill the next one.
+  return reauth ? <ReauthPrompt reauth={reauth} /> : null;
+}
+
+function ReauthPrompt({ reauth }: { reauth: { code: string; message: string | null } }) {
   const username = useAuthStore((s) => s.user?.Username ?? "");
   const resumeSession = useAuthStore((s) => s.resumeSession);
   const logout = useAuthStore((s) => s.logout);
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
-  const reset = () => {
-    setPassword("");
-    setError(null);
-  };
 
   const submit = async () => {
     if (busy) return;
@@ -37,7 +38,6 @@ export default function ReauthDialog() {
     try {
       const body = await loginRequest({ identifier: username, password });
       if (body.success && body.data) {
-        reset();
         resumeSession(body.data);
         return;
       }
@@ -50,16 +50,11 @@ export default function ReauthDialog() {
     }
   };
 
-  const signInAsSomeoneElse = () => {
-    reset();
-    logout();
-  };
-
-  const reason = reauth?.message || (reauth && REASONS[reauth.code]) || "Please sign in again.";
+  const reason = reauth.message || REASONS[reauth.code] || "Please sign in again.";
 
   return (
     <Dialog
-      visible={Boolean(reauth)}
+      visible
       title="Sign in again"
       message={reason}
       confirmLabel="Sign in"
@@ -67,7 +62,7 @@ export default function ReauthDialog() {
       loading={busy}
       dismissable={false}
       onConfirm={submit}
-      onCancel={signInAsSomeoneElse}
+      onCancel={logout}
     >
       <Text variant="secondary">Your work on this screen is kept. Signed in as {username}.</Text>
       <Input

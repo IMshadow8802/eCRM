@@ -144,6 +144,21 @@ it("falls back to the login screen's wording when the server sends no message", 
   expect(screen.getByText("An admin ended your session.")).toBeOnTheScreen();
 });
 
+it("a password typed before the dialog was closed from outside never pre-fills the next one", async () => {
+  await mount();
+  await fireEvent.changeText(screen.getByLabelText("Password"), BAD);
+  await fireEvent.press(screen.getByText("Sign in")); // leaves an error showing too
+  await screen.findByText("Invalid username or password");
+  await act(() => useAuthStore.getState().logout()); // e.g. another request's TOKEN_EXPIRED
+  expect(screen.queryByText("Sign in again")).toBeNull();
+  await act(() => seedAuth({ UserId: 9, user: { Username: "asha" } }));
+  server();
+  await fireEvent.press(screen.getByText("Save"));
+  await screen.findByText("Sign in again");
+  expect(screen.getByLabelText("Password").props.value).toBe("");
+  expect(screen.queryByText("Invalid username or password")).toBeNull();
+});
+
 it("a refused sign-in that answers 200 shows its message (or a fallback)", async () => {
   await mount();
   adapter.mockImplementation(async (config) => reply(config, 200, { success: false, message: "Your account is inactive" }));

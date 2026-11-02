@@ -10,7 +10,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import { fetchMyAccess } from "../api/authQueries";
+import { fetchMyAccess, logout as logoutRequest } from "../api/authQueries";
 import { setApiBaseUrl, setAuthToken, setReauthHandler, setUnauthorizedHandler } from "../api/client";
 import { queryClient } from "../api/queryClient";
 import { DEV_API_BASE_URL, isTrustedApiUrl } from "../config/env";
@@ -155,6 +155,9 @@ const useAuthStore = create<AuthState>()(
         // A different person must not inherit this screen or its parked requests.
         if (Number(data.user?.Id) !== Number(get().UserId)) {
           get().logout();
+          // Their sign-in just minted a server session we are throwing away: end it.
+          // After logout(), so the client holds no token to overwrite this one.
+          logoutRequest(data.token).catch(() => {});
           return;
         }
         // Not login(): that clears the query cache, and the screen underneath is still using it.

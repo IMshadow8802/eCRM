@@ -27,7 +27,14 @@ export const setApiBaseUrl = (url: string | null): void => {
 
 export const getApiBaseUrl = (): string | null => apiBaseUrl;
 
+// Bumped on every sign-out. A request carries the lineage it was sent in; a
+// 401 from an earlier one belongs to a session that is gone and must never be
+// replayed with (or sign out) whoever signed in since. A same-user re-sign-in
+// swaps the token without a sign-out, so it keeps the lineage.
+let lineage = 0;
+
 export const setAuthToken = (token: string | null): void => {
+  if (!token) lineage += 1;
   authToken = token || null;
 };
 
@@ -74,6 +81,7 @@ apiClient.interceptors.request.use((config) => {
   if (authToken) {
     config.headers.Authorization = `Bearer ${authToken}`;
   }
+  (config as typeof config & { _lineage?: number })._lineage = lineage;
   return config;
 });
 
@@ -82,6 +90,7 @@ apiClient.interceptors.response.use(
   async (error) => {
     const config = error?.config;
     if (error?.response?.status !== 401 || shouldSkipAuthRedirect(config?.url)) return Promise.reject(error);
+    if (config?._lineage !== lineage) return Promise.reject(error);
     const { code, message } = error.response.data ?? {};
     // `_retried` survives axios's config merge on the retry, so a second 401 is final.
     if (reauthHandler && config && !config._retried && SESSION_CODES.includes(code)) {

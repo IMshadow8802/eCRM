@@ -360,6 +360,26 @@ describe("a closed session asks for the password instead of logging out", () => 
     expect(queryClient.getQueryData(["tasks", "mine"])).toBeUndefined();
   });
 
+  it("the other person's fresh session is ended on the server, not left open", async () => {
+    seedAuth({ UserId: 5 });
+    const { request } = await parkedOn("SESSION_EXPIRED");
+    respond({ success: true, data: {} });
+    state().resumeSession(loginData({ token: "tok-B" })); // user 9
+    await expect(request).rejects.toBeTruthy();
+    await waitFor(() => expect(lastRequest().url).toBe("/api/auth/logoutUser"));
+    expect(lastRequest().config.headers.Authorization).toBe("Bearer tok-B");
+  });
+
+  it("a failed server logout for that session is ignored", async () => {
+    seedAuth({ UserId: 5 });
+    const { request } = await parkedOn("SESSION_EXPIRED");
+    fail(500);
+    state().resumeSession(loginData({ token: "tok-B" }));
+    await expect(request).rejects.toBeTruthy();
+    await waitFor(() => expect(lastRequest().url).toBe("/api/auth/logoutUser"));
+    expect(state().isAuthenticated).toBe(false);
+  });
+
   it("a stale session 401 after logout opens nothing", async () => {
     fail(401, { code: "SESSION_EXPIRED" });
     await expect(post("/api/tasks/fetchTasks")).rejects.toBeTruthy();

@@ -21,8 +21,9 @@ export const login = (params: {
   password: string;
 }): Promise<ApiEnvelope<LoginData>> => post<LoginData>(AUTH_ENDPOINTS.login, { ...params, Device: "mobile" });
 
-export const logout = (): Promise<ApiEnvelope<unknown>> =>
-  post(AUTH_ENDPOINTS.logout, {});
+/** `token`: end that session rather than the current one (a sign-in the app is discarding). */
+export const logout = (token?: string): Promise<ApiEnvelope<unknown>> =>
+  post(AUTH_ENDPOINTS.logout, {}, token ? { headers: { Authorization: `Bearer ${token}` } } : undefined);
 
 /**
  * The caller's role grants and menu rights, re-read so a role change reaches a

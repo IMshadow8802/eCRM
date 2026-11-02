@@ -19,17 +19,8 @@ import { fetchClientConfig } from "../../api/centralQueries";
 import useAuthStore from "../../stores/useAuthStore";
 import { colors, gradients, radius, spacing } from "../../theme";
 import { Button, Input, Text } from "../../ui";
+import { FALLBACK_ERROR, REASONS } from "./authMessages";
 import FloatingShapes from "./FloatingShapes";
-
-// Fallback only: the 401 normally carries its own message (sessionEndedMessage).
-export const REASONS: Record<string, string> = {
-  SESSION_EXPIRED: "Your session ended at the end of your shift. Sign in again.",
-  SESSION_FORCED: "An admin ended your session.",
-};
-
-/** Anything the API didn't explain — network down, DNS, timeout. */
-export const FALLBACK_ERROR =
-  "Could not reach the server. Check your connection and try again.";
 
 export default function LoginScreen() {
   const setSession = useAuthStore((s) => s.login);
