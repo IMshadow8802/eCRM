@@ -31,7 +31,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   name: IS_DEV ? "Nexus CRM (Dev)" : "Nexus CRM",
   slug: "eCRM",
   version: "1.0.1",
-  orientation: "portrait",
+  // Tablets rotate (E T1–T4); a landscape phone gets the rail, never two panes (ui/useLayout).
+  orientation: "default",
   icon: "./assets/icon.png",
   userInterfaceStyle: "light",
   scheme: "nexuscrm",

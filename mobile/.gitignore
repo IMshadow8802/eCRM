@@ -45,3 +45,6 @@ andrroid/
 # applying (expo-doctor flags exactly this). Never commit them back.
 /android
 /ios
+
+# Screenshot comparison output (spec §5.2): review material, not source.
+e2e-shots/
