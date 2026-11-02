@@ -59,6 +59,10 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
     containerStyle,
     editable = true,
     multiline,
+    // Pulled out of `rest`: spread after the wrappers below, they replaced
+    // them and a caller's onFocus switched the focus ring off.
+    onFocus,
+    onBlur,
     ...rest
   },
   ref,
@@ -102,11 +106,11 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
           multiline={multiline}
           onFocus={(e) => {
             setFocused(true);
-            rest.onFocus?.(e);
+            onFocus?.(e);
           }}
           onBlur={(e) => {
             setFocused(false);
-            rest.onBlur?.(e);
+            onBlur?.(e);
           }}
           {...rest}
         />

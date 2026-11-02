@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
 import DateTimePicker, {
-  type DateTimePickerEvent,
+  type DateTimePickerChangeEvent,
 } from "@react-native-community/datetimepicker";
 import { Calendar, X } from "lucide-react-native";
 
@@ -52,11 +52,12 @@ export function DateField({
 }: DateFieldProps) {
   const [open, setOpen] = useState(false);
 
-  const handleChange = (event: DateTimePickerEvent, picked?: Date) => {
-    // Android fires "dismissed" for cancel; iOS keeps the spinner mounted.
+  // datetimepicker 9.1 split the deprecated `onChange` into a pick and a
+  // dismiss. Android's dialog closes itself either way; iOS keeps the inline
+  // calendar mounted until Done.
+  const handlePick = (_event: DateTimePickerChangeEvent, picked: Date) => {
     if (Platform.OS === "android") setOpen(false);
-    if (event.type === "dismissed") return;
-    if (picked) onChange(toISODate(picked));
+    onChange(toISODate(picked));
   };
 
   return (
@@ -86,7 +87,12 @@ export function DateField({
           {value ? format(value) : placeholder}
         </Text>
         {value && clearable ? (
-          <Pressable onPress={() => onChange(null)} hitSlop={spacing[2]}>
+          <Pressable
+            onPress={() => onChange(null)}
+            hitSlop={spacing[2]}
+            accessibilityRole="button"
+            accessibilityLabel="Clear date"
+          >
             <X size={18} color={colors.textSecondary} />
           </Pressable>
         ) : null}
@@ -100,7 +106,8 @@ export function DateField({
           mode="date"
           display={Platform.OS === "ios" ? "inline" : "default"}
           minimumDate={minimumDate}
-          onChange={handleChange}
+          onValueChange={handlePick}
+          onDismiss={() => setOpen(false)}
         />
       ) : null}
 
