@@ -10,7 +10,7 @@ import { useParamState } from "../../hooks/useParamState";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
 import type { Lead } from "../../types/api";
-import { colors, metrics, radius, spacing } from "../../theme";
+import { metrics, spacing } from "../../theme";
 import {
   Band,
   BandSheet,
@@ -19,6 +19,7 @@ import {
   FilterPills,
   GroupHeader,
   HeaderButton,
+  ListGroupCell,
   Refresher,
   Screen,
   SkeletonRows,
@@ -79,7 +80,8 @@ export default function LeadsScreen({ navigation, route }: Props) {
   const userId = useAuthStore((s) => s.UserId);
   const { add: canAdd } = useAccess("leads");
   const { isTwoPane, gutter } = useLayout();
-  const pad = { paddingTop: metrics.sheetPadTop, paddingHorizontal: gutter };
+  // E T3: the 420 list pane's sheet pads 16, whatever the window gutter (32 at expanded).
+  const pad = { paddingTop: metrics.sheetPadTop, paddingHorizontal: isTwoPane ? metrics.pane.listSheet : gutter };
 
   const [status, setStatus] = useState<LeadStatusFilter>("all");
   // Search's "See all" carries its term in; Home and Search carry a queue.
@@ -198,6 +200,8 @@ export default function LeadsScreen({ navigation, route }: Props) {
       <Band
         variant="tabs"
         title="Leads"
+        // E T3: the list pane's band pads 20.
+        gutter={isTwoPane ? metrics.pane.listBand : undefined}
         count={`${total} ${SUBTITLE[queue]}`}
         actions={
           // Courtesy only: a create needs the add grant, so hide what would 403.
@@ -248,9 +252,9 @@ export default function LeadsScreen({ navigation, route }: Props) {
             }
             renderItem={({ item, index }) => (
               // One rounded white group, cut row by row so the list can page.
-              <View style={[styles.cell, index === 0 && styles.cellFirst, index === leads.length - 1 && styles.cellLast]}>
+              <ListGroupCell first={index === 0} last={index === leads.length - 1}>
                 <LeadRow lead={item} statuses={statuses} onPress={openLead} first={index === 0} selected={shown?.Id === item.Id} />
-              </View>
+              </ListGroupCell>
             )}
             ListEmptyComponent={
               <EmptyState
@@ -273,7 +277,7 @@ export default function LeadsScreen({ navigation, route }: Props) {
         {shown ? (
           <LeadDetailBody key={shown.Id} leadId={shown.Id} navigation={navigation} useBar={inPane} pane />
         ) : (
-          <BandSheet center>
+          <BandSheet center gutter={metrics.pane.detailSheet}>
             <EmptyState module="leads" title="No lead selected" message="Pick a lead on the left to see it here." />
           </BandSheet>
         )}
@@ -289,7 +293,4 @@ const styles = StyleSheet.create({
   pills: { marginBottom: spacing[3] },
   list: { paddingBottom: spacing[6] },
   listEmpty: { flexGrow: 1 },
-  cell: { backgroundColor: colors.surface, overflow: "hidden" },
-  cellFirst: { borderTopLeftRadius: radius.card, borderTopRightRadius: radius.card },
-  cellLast: { borderBottomLeftRadius: radius.card, borderBottomRightRadius: radius.card },
 });

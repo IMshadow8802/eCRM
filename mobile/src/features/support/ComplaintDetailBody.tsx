@@ -195,7 +195,7 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
     const forbidden = status === 403 || status === 404 || (detailQuery.isSuccess && !ticket);
     return (
       <>
-        <Band variant="record" title="Complaint" titleVariant="h2" tone={inBand ? "raised" : "band"} {...back} />
+        <Band variant="record" title="Complaint" titleVariant="h2" tone={inBand ? "raised" : "band"} gutter={inBand ? metrics.pane.detailBand : undefined} {...back} />
         <BandSheet center={forbidden}>
           {forbidden ? (
             <EmptyState
@@ -410,6 +410,7 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
         title={ticket.TicketNo}
         subtitle={inBand ? undefined : openedText(ticket.CreatedAt)}
         tone={inBand ? "raised" : "band"}
+        gutter={inBand ? metrics.pane.detailBand : undefined}
         actions={bandActions}
         {...back}
       >
@@ -534,7 +535,7 @@ const styles = StyleSheet.create({
   bandActions: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
   content: { paddingTop: metrics.sheetPadTop, paddingBottom: spacing[8] },
   // T2: the record pane's sheet pads 20 24 (E), whatever the window's gutter.
-  contentPane: { paddingTop: spacing[5], paddingHorizontal: metrics.gutterMedium },
+  contentPane: { paddingTop: spacing[5], paddingHorizontal: metrics.pane.detailSheet },
   customerCard: { paddingVertical: spacing[3], paddingHorizontal: metrics.rowPadH },
   customer: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
   mobileRow: { flexDirection: "row", alignItems: "center", gap: metrics.pairGap, marginTop: metrics.rowPadH },

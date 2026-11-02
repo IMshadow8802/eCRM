@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { StatusBar } from "expo-status-bar";
-import { Building2, Hexagon, LogOut, Lock, OctagonAlert, User } from "lucide-react-native";
+import { ArrowRight, Building2, Hexagon, LogOut, Lock, OctagonAlert, User } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { login as loginRequest } from "../../api/authQueries";
@@ -11,7 +11,7 @@ import useAuthStore from "../../stores/useAuthStore";
 import { colors, gradients, radius, spacing } from "../../theme";
 import { Button, InfoNote, Input, StatusBadge, Text } from "../../ui";
 import { appVersion } from "./appVersion";
-import { REASONS, UNREACHABLE, loginError, type AuthError } from "./authMessages";
+import { LOGIN_ERRORS, REASONS, UNREACHABLE, loginError, type AuthError } from "./authMessages";
 
 /** A field-level prompt (on the field) or a server answer (the box, E 03). */
 type FormError = { field: "code" | "identifier" | "password"; message: string } | { box: AuthError };
@@ -145,7 +145,7 @@ export default function LoginScreen() {
                     onError={() => setLogoBroken(true)}
                   />
                 ) : (
-                  <StatusBadge testID="tenant-placeholder" tone="slate" icon={Building2} size={52} iconSize={28} />
+                  <StatusBadge testID="tenant-placeholder" tone="slate" icon={Building2} size={56} />
                 )}
               </View>
               <Text variant="h1" color="textOnBrand" align="center" style={styles.tenant}>
@@ -190,7 +190,7 @@ export default function LoginScreen() {
                   returnKeyType="go"
                   containerStyle={styles.firstField}
                 />
-                <Button title="Continue" onPress={verifyCompany} loading={busy} fullWidth style={styles.button} />
+                <Button title="Continue" trailingIcon={ArrowRight} onPress={verifyCompany} loading={busy} fullWidth style={styles.button} />
               </>
             ) : (
               <>
@@ -228,6 +228,8 @@ export default function LoginScreen() {
                   password
                   leftIcon={Lock}
                   error={fieldError("password")}
+                  // E 03: wrong credentials ring the password; the box above says why.
+                  invalid={box === LOGIN_ERRORS.INVALID_CREDENTIALS}
                   autoCapitalize="none"
                   autoComplete="password"
                   editable={!busy}

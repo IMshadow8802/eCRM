@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef } from "react";
 import { StyleSheet, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { CalendarClock, Inbox, Key, LayoutDashboard, LogOut, ShieldCheck, User } from "lucide-react-native";
@@ -14,14 +14,14 @@ import useAuthStore from "../../stores/useAuthStore";
 import { moduleTones, spacing, type ChipTone } from "../../theme";
 import type { Workspace } from "../../types/api";
 import {
-  Avatar, Band, BandSheet, Chip, CountBadge, Dialog, Footnote, ListGroup, ListRow, Screen, Text,
+  Avatar, Band, BandSheet, Chip, CountBadge, Dialog, Footnote, ListGroup, ListRow, Screen, Text, type SheetRef,
 } from "../../ui";
 import { appVersion } from "../auth/appVersion";
 import { useAccess } from "../auth/useAccess";
 import { useSignOut } from "../auth/useSignOut";
 import { useUnreadCount } from "../notifications/useUnreadCount";
 import { clockTime } from "../notifications/timeLabels";
-import { ChangePasswordDialog } from "../profile/AccountForms";
+import { ChangePasswordSheet } from "../profile/AccountForms";
 import { followUpViewParams } from "../sales/leadHelpers";
 
 type Nav = StackNavigationProp<RootStackParamList>;
@@ -56,7 +56,7 @@ export default function MoreScreen() {
   const followUpsIsTab = useTabs().includes("FollowUps");
   const showFollowUps = can.leads && !followUpsIsTab;
   const signOut = useSignOut();
-  const [changingPassword, setChangingPassword] = useState(false);
+  const passwordSheet = useRef<SheetRef>(null);
 
   // Shared caches: Boards and the complaint form read the same keys.
   const { data: workspaces } = useQuery({
@@ -97,7 +97,10 @@ export default function MoreScreen() {
   return (
     <Screen band>
       <Band variant="profile" align="center">
-        <Avatar name={user?.FullName} uri={user?.Avatar} userId={userId} size={88} ring="bandField" />
+        {/* No row above it (Band skips an empty one): the avatar sits 16 under the status bar (E 19). */}
+        <View testID="profile-avatar" style={styles.avatar}>
+          <Avatar name={user?.FullName} uri={user?.Avatar} userId={userId} size={88} ring="bandField" />
+        </View>
         <Text variant="recordTitle" color="textOnBrand" align="center" style={styles.name}>
           {user?.FullName ?? "—"}
         </Text>
@@ -116,6 +119,7 @@ export default function MoreScreen() {
             title="Inbox"
             trailing={<CountBadge count={unread} ringColor="surface" />}
             chevron
+            menu
             noSeparator
             onPress={() => navigation.navigate("Inbox")}
           />
@@ -125,6 +129,7 @@ export default function MoreScreen() {
               title="Workspaces"
               right={workspaces ? { text: String(workspaces.filter(isMine).length) } : undefined}
               chevron
+            menu
               onPress={() => navigation.navigate("Boards")}
             />
           ) : null}
@@ -134,6 +139,7 @@ export default function MoreScreen() {
               title="Follow-ups"
               trailing={followUpsToday > 0 ? <Chip label={`${followUpsToday} today`} tone="butter" /> : null}
               chevron
+            menu
               onPress={() => navigation.navigate("FollowUps", undefined)}
             />
           ) : null}
@@ -144,6 +150,7 @@ export default function MoreScreen() {
             badge={{ tone: "slate", icon: User }}
             title="Profile"
             chevron
+            menu
             noSeparator
             onPress={() => navigation.navigate("Me")}
           />
@@ -151,12 +158,14 @@ export default function MoreScreen() {
             badge={{ tone: "slate", icon: Key }}
             title="Change password"
             chevron
-            onPress={() => setChangingPassword(true)}
+            menu
+            onPress={() => passwordSheet.current?.present()}
           />
           <ListRow
             badge={{ tone: "red", icon: LogOut }}
             title="Sign out"
             titleTone="danger"
+            menu
             onPress={() => signOut.setConfirming(true)}
           />
         </ListGroup>
@@ -173,7 +182,7 @@ export default function MoreScreen() {
         </View>
       </BandSheet>
 
-      <ChangePasswordDialog visible={changingPassword} onClose={() => setChangingPassword(false)} />
+      <ChangePasswordSheet ref={passwordSheet} />
       <Dialog
         visible={signOut.confirming}
         title="Sign out?"
@@ -190,6 +199,7 @@ export default function MoreScreen() {
 }
 
 const styles = StyleSheet.create({
+  avatar: { marginTop: spacing[4] },
   name: { marginTop: spacing[3] },
   roleRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing[2], marginTop: 6 },
   shrink: { flexShrink: 1 },

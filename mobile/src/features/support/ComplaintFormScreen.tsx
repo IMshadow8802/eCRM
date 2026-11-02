@@ -456,6 +456,14 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
         onChangeText={setSearch}
         placeholder="Search customer (mobile or name)"
         leftIcon={Search}
+        // E 12: a muted X inside the field clears the term.
+        right={
+          search ? (
+            <Pressable onPress={() => setSearch("")} hitSlop={spacing[3]} accessibilityRole="button" accessibilityLabel="Clear search">
+              <X size={18} color={colors.textMuted} />
+            </Pressable>
+          ) : null
+        }
         autoCapitalize="none"
         autoCorrect={false}
         returnKeyType="search"

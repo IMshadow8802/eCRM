@@ -161,6 +161,17 @@ describe("E 10 · the row", () => {
     expect(within(row).queryByTestId("escalated-dot")).toBeNull();
   });
 
+  it("rows sit in one rounded group cut per cell: whisper outside, clip inside (ListGroupCell)", async () => {
+    rows = [ticket({ Id: 1 }), ticket({ Id: 2 }), ticket({ Id: 3 })];
+    await mount();
+    await screen.findByTestId("complaint-3");
+    const cells = screen.getAllByTestId("list-cell");
+    expect(cells).toHaveLength(3);
+    expect(flat(cells[0]!)).toMatchObject({ boxShadow: "0 1px 2px #DCE0EC", borderTopLeftRadius: 16 });
+    expect(flat(cells[1]!).borderTopLeftRadius).toBeUndefined();
+    expect(flat(cells[2]!)).toMatchObject({ borderBottomLeftRadius: 16 });
+  });
+
   it("the violet corner dot only when escalated; a closed one reads quieter", async () => {
     rows = [
       ticket({ Id: 1, EscalatedTo: 5 }),
@@ -254,6 +265,8 @@ describe("20a–c · states", () => {
     jest.mocked(fetchTickets).mockRejectedValue(new Error("boom"));
     await mount();
     expect(await screen.findByText("Could not load. Try again")).toBeOnTheScreen();
+    // E 20c: the card sits 72 down the sheet.
+    expect(flat(screen.getByTestId("error-top")).paddingTop).toBe(72);
     const before = listCalls().length;
     serve();
     await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
@@ -390,13 +403,22 @@ describe("T2 · two panes", () => {
     expect(screen.queryByText("Pick a complaint")).toBeNull();
   });
 
-  it("E's pane gutters: the list 16, the record 24", async () => {
+  it("E's pane gutters: list band 20 / sheet 16, record band 28 / sheet 24", async () => {
     await mount();
     expect(flat(await screen.findByTestId("list-body")).paddingHorizontal).toBe(16);
+    const bandOf = (n: ReturnType<typeof screen.getByText>) => {
+      let b: typeof n | null = n;
+      while (b && !flat(b).paddingBottom) b = b.parent;
+      return flat(b!);
+    };
+    expect(bandOf(screen.getByRole("header", { name: "Complaints" })).paddingHorizontal).toBe(20);
     await fireEvent.press(await screen.findByTestId("complaint-7"));
     await screen.findByRole("header", { name: "T-7" });
     const scroll = screen.getByTestId("record-scroll");
     expect(StyleSheet.flatten(scroll.props.contentContainerStyle).paddingHorizontal).toBe(24);
+    let band = screen.getByRole("header", { name: "T-7" }).parent;
+    while (band && !flat(band).paddingBottom) band = band.parent;
+    expect(flat(band!).paddingHorizontal).toBe(28);
   });
 
   it("deleting the selected complaint empties the pane; Edit opens the form", async () => {

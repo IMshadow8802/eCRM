@@ -64,6 +64,8 @@ export interface ComposeSheetProps {
     values: Record<string, string>,
     choices: Record<string, string | number>,
   ) => void;
+  /** After the sheet closes and has reset its fields. */
+  onDismiss?: () => void;
 }
 
 /**
@@ -77,7 +79,7 @@ export interface ComposeSheetProps {
  */
 export const ComposeSheet = forwardRef<SheetRef, ComposeSheetProps>(
   function ComposeSheet(
-    { title, subtitle, badge, submitLabel, fields, choices = [], busy = false, error, initialValues, onSubmit },
+    { title, subtitle, badge, submitLabel, fields, choices = [], busy = false, error, initialValues, onSubmit, onDismiss },
     ref,
   ) {
     const [values, setValues] = useState<Record<string, string>>(initialValues ?? {});
@@ -121,7 +123,8 @@ export const ComposeSheet = forwardRef<SheetRef, ComposeSheetProps>(
     const submit = () => {
       if (!complete) return;
       const trimmed: Record<string, string> = {};
-      for (const field of fields) trimmed[field.key] = (values[field.key] ?? "").trim();
+      // A password is sent as typed: its spaces are part of it.
+      for (const field of fields) trimmed[field.key] = field.secure ? (values[field.key] ?? "") : (values[field.key] ?? "").trim();
       onSubmit(trimmed, picked);
     };
 
@@ -133,7 +136,10 @@ export const ComposeSheet = forwardRef<SheetRef, ComposeSheetProps>(
         badge={badge}
         keyboardAware
         padded
-        onDismiss={reset}
+        onDismiss={() => {
+          reset();
+          onDismiss?.();
+        }}
       >
         <View style={styles.body}>
           {/* Choices first: they are the shape of the record, and picking one

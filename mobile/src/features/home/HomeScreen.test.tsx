@@ -141,6 +141,19 @@ describe("04 · complaints, tasks and leads", () => {
     expect([...at].sort((a, b) => a - b)).toEqual(at);
   });
 
+  it("E 04 band is the shared Band: row 56 gap 10 led by the avatar + date/greeting; shift row 2 below", async () => {
+    signInWith("tasks", "complaints", "leads");
+    await renderWithProviders(<HomeScreen />);
+    await screen.findByText("Good afternoon, Ayush");
+    const lead = screen.getByTestId("home-lead");
+    const row = lead.parent!;
+    expect(flat(row)).toMatchObject({ height: 56, gap: 10, alignItems: "center" });
+    // avatar, the date/greeting stack, then search and the bell.
+    expect(row.children.indexOf(lead)).toBe(1);
+    expect(flat(row.parent!)).toMatchObject({ backgroundColor: colors.band, paddingBottom: 28, paddingHorizontal: 16 });
+    expect(flat(screen.getByTestId("shift-row")).marginTop).toBe(2);
+  });
+
   it("hero stats Open · Overdue · Escalated · Resolved; Overdue is the warm figure", async () => {
     signInWith("tasks", "complaints", "leads");
     await renderWithProviders(<HomeScreen />);

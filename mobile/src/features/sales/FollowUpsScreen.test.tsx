@@ -100,6 +100,10 @@ it("E 17 row: the type badge, the name and time, type · company · remarks, a g
   expect(row.getByText("3:00 pm")).toBeOnTheScreen();
   expect(row.getByText("Call · Patel Solar · 10 kW quote")).toBeOnTheScreen();
   expect(row.getByRole("button", { name: "Mark Ramesh Patel done" })).toBeOnTheScreen();
+  // One rounded group cut per cell (ListGroupCell): whisper outside, clip inside.
+  const [cell] = screen.getAllByTestId("list-cell");
+  expect(flat(cell!)).toMatchObject({ boxShadow: "0 1px 2px #DCE0EC", borderTopLeftRadius: 16, borderBottomLeftRadius: 16 });
+  expect(flat(cell!.children[0] as never)).toMatchObject({ overflow: "hidden" });
 });
 
 it("an overdue row: red badge and red day", async () => {

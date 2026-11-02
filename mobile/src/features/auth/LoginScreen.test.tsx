@@ -6,6 +6,8 @@ import { login } from "../../api/authQueries";
 import { fetchClientConfig } from "../../api/centralQueries";
 import { getApiBaseUrl } from "../../api/client";
 import { envelope, loginData } from "../../test/fixtures";
+import { flat } from "../../test/style";
+import { colors } from "../../theme";
 import { renderWithProviders } from "../../test/renderWithProviders";
 import useAuthStore from "../../stores/useAuthStore";
 import type { ClientConfig } from "../../types/api";
@@ -64,6 +66,11 @@ describe("01 — company code", () => {
     expect(screen.getByText("Company code")).toBeOnTheScreen();
     expect(screen.getByText("Not case-sensitive. Example: TestCRM")).toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Continue" })).toBeOnTheScreen();
+    // "Continue →": the arrow trails the label (E 01).
+    const label = screen.getByText("Continue");
+    const content = label.parent!;
+    expect(content.children.indexOf(label)).toBe(0);
+    expect(content.children).toHaveLength(2);
     expect(screen.getByText("Nexus CRM · v1.0.1")).toBeOnTheScreen();
   });
 
@@ -171,7 +178,8 @@ describe("02 — sign in", () => {
     configured({ ...CONFIG, companyName: null, logoURL: null });
     await renderWithProviders(<LoginScreen />);
     expect(screen.getByText("TESTCRM")).toBeOnTheScreen();
-    expect(screen.getByTestId("tenant-placeholder")).toBeOnTheScreen();
+    // E 02: a 56 slate badge, radius 14, inside the white 72 frame.
+    expect(flat(screen.getByTestId("tenant-placeholder"))).toMatchObject({ width: 56, height: 56, borderRadius: 14 });
     await act(async () => useAuthStore.setState({ compCode: null }));
     expect(screen.getByText("Welcome back")).toBeOnTheScreen();
     expect(screen.queryByText(/^Company code /)).toBeNull();
@@ -197,6 +205,10 @@ describe("03 — sign-in error, in the form", () => {
     expect(screen.getByText("Check both and try again. Your admin can reset the password.")).toBeOnTheScreen();
     // The box replaces the sub line.
     expect(screen.queryByText("Use the username your admin set up for you.")).toBeNull();
+    // E 03: the password field takes the danger ring, with no help line under it.
+    const field = flat(screen.getByLabelText("Password").parent!);
+    expect(field).toMatchObject({ borderWidth: 2, borderColor: colors.danger });
+    expect(flat(screen.getByLabelText("Username").parent!).borderColor).toBe(colors.border);
     expect(state().isAuthenticated).toBe(false);
     // Typing again clears it.
     await fireEvent.changeText(screen.getByLabelText("Password"), "other");

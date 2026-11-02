@@ -1,3 +1,4 @@
+import { StyleSheet } from "react-native";
 import { useState } from "react";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react-native";
 
@@ -10,6 +11,7 @@ import useAuthStore from "../../stores/useAuthStore";
 import type { Access, Lead, Lookup } from "../../types/api";
 import { envelope, lead, pagination } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
+import { flat } from "../../test/style";
 import { PHONE, setWindow, TABLET } from "../../test/window";
 import { leadQueueParams } from "./leadHelpers";
 import LeadsScreen from "./LeadsScreen";
@@ -356,6 +358,24 @@ describe("T3: tablet two-pane", () => {
     expect(await screen.findByRole("header", { name: "Meera Joshi" })).toBeOnTheScreen();
     expect(navigation.navigate).not.toHaveBeenCalledWith("LeadDetail", expect.anything());
     expect(screen.getByTestId("lead-row-12").props.accessibilityState).toEqual({ selected: true });
+  });
+
+  it("E T3 gutters: list band 20 / sheet 16; record band 28; rows in ListGroupCells", async () => {
+    await mount();
+    await screen.findByRole("header", { name: "Ravi Patel" });
+    const bandOf = (n: ReturnType<typeof screen.getByText>) => {
+      let b: typeof n | null = n;
+      while (b && !flat(b).paddingBottom) b = b.parent;
+      return flat(b!);
+    };
+    expect(bandOf(screen.getByRole("header", { name: "Leads" })).paddingHorizontal).toBe(20);
+    expect(bandOf(screen.getByRole("header", { name: "Ravi Patel" })).paddingHorizontal).toBe(28);
+    const list = screen.getByTestId("leads-list");
+    expect(StyleSheet.flatten(list.props.contentContainerStyle).paddingHorizontal).toBe(16);
+    const cells = screen.getAllByTestId("list-cell");
+    expect(cells).toHaveLength(2);
+    expect(flat(cells[0]!)).toMatchObject({ boxShadow: "0 1px 2px #DCE0EC", borderTopLeftRadius: 16 });
+    expect(flat(cells[1]!)).toMatchObject({ borderBottomLeftRadius: 16 });
   });
 
   it("an empty list leaves the pane saying nothing is selected", async () => {

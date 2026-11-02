@@ -3,8 +3,6 @@ import { StyleSheet, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigation } from "@react-navigation/native";
 import type { StackNavigationProp } from "@react-navigation/stack";
-import { StatusBar } from "expo-status-bar";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Bell, Clock, Hand, Headset, ListChecks, Lock, Plus, Search, Target, Timer } from "lucide-react-native";
 
 import { fetchLookups, LOOKUP_KIND } from "../../api/configQueries";
@@ -21,7 +19,7 @@ import {
 } from "../../theme";
 import type { DayTask, FollowUp, Ticket } from "../../types/api";
 import {
-  Avatar, BandSheet, EmptyState, GroupHeader, HeaderButton, HeroCard, IconButton, ListGroup,
+  Avatar, Band, BandSheet, EmptyState, GroupHeader, HeaderButton, HeroCard, IconButton, ListGroup,
   ListRow, ModuleTile, Screen, SearchField, Text, useLayout, type HeroStat, type ListRowProps,
 } from "../../ui";
 import { useAccess } from "../auth/useAccess";
@@ -74,7 +72,6 @@ interface Tile {
  */
 export default function HomeScreen() {
   const navigation = useNavigation<Nav>();
-  const insets = useSafeAreaInsets();
   const layout = useLayout();
   const tablet = layout.nav === "rail";
   const create = useCreate();
@@ -387,30 +384,35 @@ export default function HomeScreen() {
     <IconButton icon={Bell} accessibilityLabel={unread ? `Notifications, ${unread} unread` : "Notifications"} badge={unread} onPress={() => navigation.navigate("Inbox")} />
   );
 
+  // E 04 band row: avatar 40 (no ring) + date/greeting, then search · bell (· New on tablet).
   const band = (
-    <View
-      testID="home-band"
-      style={[styles.band, { paddingTop: insets.top, paddingHorizontal: layout.gutter }]}
+    <Band
+      variant="home"
+      leading={
+        <>
+          <Avatar name={user?.FullName} uri={user?.Avatar} userId={userId} size={tablet ? 44 : 40} ring={null} />
+          <View testID="home-lead" style={styles.flex}>
+            <Text variant="small" color="onBandMuted" numberOfLines={1}>
+              {tablet && shiftEnd ? `${longDate()} · On shift until ${shiftEnd}` : longDate()}
+            </Text>
+            {greeting}
+          </View>
+        </>
+      }
+      actions={
+        <>
+          {tablet ? (
+            <SearchField placeholder="Search complaints, leads, tasks" width={340} onPress={() => navigation.navigate("Search")} />
+          ) : (
+            <IconButton icon={Search} accessibilityLabel="Search" onPress={() => navigation.navigate("Search")} />
+          )}
+          {bell}
+          {tablet ? newButton : null}
+        </>
+      }
     >
-      <StatusBar style="light" />
-      <View style={[styles.bandRow, { height: tablet ? metrics.bandRowTablet : metrics.bandRowHome }]}>
-        <Avatar name={user?.FullName} uri={user?.Avatar} userId={userId} size={tablet ? 44 : 40} ring={null} />
-        <View style={styles.flex}>
-          <Text variant="small" color="onBandMuted" numberOfLines={1}>
-            {tablet && shiftEnd ? `${longDate()} · On shift until ${shiftEnd}` : longDate()}
-          </Text>
-          {greeting}
-        </View>
-        {tablet ? (
-          <SearchField placeholder="Search complaints, leads, tasks" width={340} onPress={() => navigation.navigate("Search")} />
-        ) : (
-          <IconButton icon={Search} accessibilityLabel="Search" onPress={() => navigation.navigate("Search")} />
-        )}
-        {bell}
-        {tablet ? newButton : null}
-      </View>
       {tablet ? null : (
-        <View style={styles.shiftRow}>
+        <View testID="shift-row" style={styles.shiftRow}>
           {shiftEnd ? (
             <>
               <Clock size={16} color={colors.onBandMuted} />
@@ -420,7 +422,7 @@ export default function HomeScreen() {
           {newButton}
         </View>
       )}
-    </View>
+    </Band>
   );
 
   // ------------------------------------------------------------ layout
@@ -494,11 +496,8 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  band: { backgroundColor: colors.band, paddingBottom: metrics.bandPadBottom.home },
-  bandRow: { flexDirection: "row", alignItems: "center", gap: metrics.pairGap },
   greetLine: { flexDirection: "row", alignItems: "center", gap: metrics.inlineGap },
-  // ponytail: E's 2 above the shift row has no token; rowLineGap (3) is the nearest.
-  shiftRow: { flexDirection: "row", alignItems: "center", gap: spacing[2], height: spacing[10], marginTop: metrics.rowLineGap },
+  shiftRow: { flexDirection: "row", alignItems: "center", gap: spacing[2], height: spacing[10], marginTop: metrics.nudge },
   needsTop: { marginTop: metrics.rowPadH - metrics.bentoGap },
   shrink: { flexShrink: 1 },
   flex: { flex: 1, minWidth: 0 },

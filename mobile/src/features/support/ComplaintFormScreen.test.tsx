@@ -72,6 +72,19 @@ beforeEach(() => {
   jest.mocked(uploadAttachment).mockResolvedValue(envelope({ attachmentId: 1 }));
 });
 
+it("E 12: once a term is typed, an X inside the search field clears it", async () => {
+  await mount();
+  const field = screen.getByPlaceholderText("Search customer (mobile or name)");
+  expect(screen.queryByRole("button", { name: "Clear search" })).toBeNull();
+  await fireEvent.changeText(field, "Sharma");
+  const clear = screen.getByRole("button", { name: "Clear search" });
+  // Inside the field box, after the text.
+  expect(clear.parent).toBe(screen.getByPlaceholderText("Search customer (mobile or name)").parent);
+  await fireEvent.press(clear);
+  expect(screen.getByPlaceholderText("Search customer (mobile or name)").props.value).toBe("");
+  expect(screen.queryByRole("button", { name: "Clear search" })).toBeNull();
+});
+
 it("will not save without a customer", async () => {
   await mount();
   await screen.findByText("Wiring");

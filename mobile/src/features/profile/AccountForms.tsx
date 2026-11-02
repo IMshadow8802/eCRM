@@ -1,5 +1,5 @@
 // Self-service account edits — the phone's half of web/src/components/AccountModal.jsx.
-import { useState } from "react";
+import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { useMutation } from "@tanstack/react-query";
 import { Check, KeyRound } from "lucide-react-native";
@@ -9,7 +9,7 @@ import { changeMyPassword } from "../../api/userQueries";
 import { badgeTones, colors, radius, spacing } from "../../theme";
 import { AVATAR_PRESET_TONE } from "../../ui/Avatar";
 import { AVATAR_COLORS, AVATAR_ICONS } from "../../ui/avatarPresets";
-import { Dialog, FieldLabel, Input, Text, useToast } from "../../ui";
+import { ComposeSheet, FieldLabel, useToast, type SheetRef } from "../../ui";
 
 export interface AvatarPreset {
   icon: string | null;
@@ -74,63 +74,52 @@ export function AvatarPicker({ value, onChange }: { value: AvatarPreset; onChang
   );
 }
 
-type PasswordField = "current" | "next" | "confirm" | "form";
-
 /**
- * Change your own password (E 19's "Change password" row). A dialog, not a
- * ComposeSheet: ComposeSheet's fields cannot be masked.
+ * Change your own password (E 19's "Change password" row → spec §4 19: the
+ * password ComposeSheet). Masked fields; the sheet resets on close, so a
+ * closed sheet never keeps a typed password. Present it through the ref.
  */
-export function ChangePasswordDialog({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  // Mounted only while open, so a closed dialog never keeps a typed password.
-  return visible ? <ChangePasswordPrompt onClose={onClose} /> : null;
-}
-
-function ChangePasswordPrompt({ onClose }: { onClose: () => void }) {
+export const ChangePasswordSheet = forwardRef<SheetRef>(function ChangePasswordSheet(_, ref) {
   const toast = useToast();
-  const [current, setCurrent] = useState("");
-  const [next, setNext] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [error, setError] = useState<{ field: PasswordField; message: string } | null>(null);
+  const inner = useRef<SheetRef>(null);
+  useImperativeHandle(ref, () => inner.current as SheetRef, []);
+  const [error, setError] = useState<string | null>(null);
 
   const save = useMutation({
     mutationFn: (p: Parameters<typeof changeMyPassword>[0]) => changeMyPassword(p),
     onSuccess: () => {
       toast.success("Password changed");
-      onClose();
+      inner.current?.dismiss();
     },
-    onError: (err) => setError({ field: "form", message: apiErrorMessage(err, "Could not change your password.") }),
+    onError: (err) => setError(apiErrorMessage(err, "Could not change your password.")),
   });
 
-  const submit = () => {
-    if (!current) return setError({ field: "current", message: "Enter your current password." });
+  const submit = ({ current, next, confirm }: Record<string, string>) => {
     // The server's floor (userController.changeMyPassword).
-    if (next.length < 6) return setError({ field: "next", message: "At least 6 characters." });
-    if (next !== confirm) return setError({ field: "confirm", message: "The two new passwords do not match." });
+    if ((next ?? "").length < 6) return setError("The new password needs at least 6 characters.");
+    if (next !== confirm) return setError("The two new passwords do not match.");
     setError(null);
-    save.mutate({ CurrentPassword: current, NewPassword: next });
+    save.mutate({ CurrentPassword: current ?? "", NewPassword: next ?? "" });
   };
 
-  const fieldError = (f: PasswordField) => (error?.field === f ? error.message : null);
-
   return (
-    <Dialog
-      visible
+    <ComposeSheet
+      ref={inner}
       title="Change password"
       badge={{ tone: "slate", icon: KeyRound }}
-      confirmLabel="Save password"
-      loading={save.isPending}
-      onConfirm={submit}
-      onCancel={onClose}
-    >
-      <View style={styles.fields}>
-        <Input label="Current password" accessibilityLabel="Current password" password value={current} onChangeText={setCurrent} error={fieldError("current")} autoFocus />
-        <Input label="New password" accessibilityLabel="New password" password value={next} onChangeText={setNext} error={fieldError("next")} hint="At least 6 characters" />
-        <Input label="Confirm new password" accessibilityLabel="Confirm new password" password value={confirm} onChangeText={setConfirm} error={fieldError("confirm")} />
-        {error?.field === "form" ? <Text variant="label" color="dangerText">{error.message}</Text> : null}
-      </View>
-    </Dialog>
+      submitLabel="Save password"
+      busy={save.isPending}
+      error={error}
+      fields={[
+        { key: "current", label: "Current password", placeholder: "Your current password", secure: true, required: true },
+        { key: "next", label: "New password", placeholder: "At least 6 characters", secure: true, required: true },
+        { key: "confirm", label: "Confirm new password", placeholder: "Type it again", secure: true, required: true },
+      ]}
+      onSubmit={submit}
+      onDismiss={() => setError(null)}
+    />
   );
-}
+});
 
 const styles = StyleSheet.create({
   picker: { gap: spacing[2] },
@@ -142,5 +131,4 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  fields: { gap: spacing[3] },
 });

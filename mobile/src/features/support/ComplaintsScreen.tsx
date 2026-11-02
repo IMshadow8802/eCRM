@@ -10,7 +10,7 @@ import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { useParamState } from "../../hooks/useParamState";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
-import { colors, complaintBadge, metrics, radius, spacing } from "../../theme";
+import { complaintBadge, metrics, spacing } from "../../theme";
 import type { Ticket } from "../../types/api";
 import {
   Band,
@@ -20,6 +20,7 @@ import {
   FilterPills,
   HeaderButton,
   InfoNote,
+  ListGroupCell,
   Refresher,
   Screen,
   SkeletonRows,
@@ -175,6 +176,7 @@ export default function ComplaintsScreen({ navigation, route }: Props) {
   const band = (
     <Band
       title="Complaints"
+      gutter={layout.isTwoPane ? metrics.pane.listBand : undefined}
       actions={
         can.add ? (
           <HeaderButton label="New" icon={Plus} onPress={() => navigation.navigate("ComplaintForm", {})} accessibilityLabel="New complaint" />
@@ -192,7 +194,7 @@ export default function ComplaintsScreen({ navigation, route }: Props) {
     body = <SkeletonRows pills rows={6} />;
   } else if (ticketsQuery.isError && !tickets.length) {
     body = (
-      <View style={styles.errorTop}>
+      <View testID="error-top" style={styles.errorTop}>
         <ErrorCard onRetry={() => void ticketsQuery.refetch()} />
       </View>
     );
@@ -218,7 +220,7 @@ export default function ComplaintsScreen({ navigation, route }: Props) {
           }
           renderItem={({ item, index }) => (
             // One white group (E `.lg`), built per cell so the list stays virtualised.
-            <View style={[styles.cell, index === 0 && styles.cellFirst, index === tickets.length - 1 && styles.cellLast]}>
+            <ListGroupCell first={index === 0} last={index === tickets.length - 1}>
               <ComplaintRow
                 ticket={item}
                 first={index === 0}
@@ -228,7 +230,7 @@ export default function ComplaintsScreen({ navigation, route }: Props) {
                 canWrite={can.edit}
                 canHold={canHold}
               />
-            </View>
+            </ListGroupCell>
           )}
           ListFooterComponent={
             hint && tickets.length && can.edit ? (
@@ -259,7 +261,7 @@ export default function ComplaintsScreen({ navigation, route }: Props) {
       {band}
       <BandSheet padded={false}>
         {/* E T2: the list pane pads 16 whatever the window gutter (32 at expanded). */}
-        <View testID="list-body" style={[styles.body, { paddingHorizontal: layout.isTwoPane ? metrics.gutter : layout.gutter }]}>
+        <View testID="list-body" style={[styles.body, { paddingHorizontal: layout.isTwoPane ? metrics.pane.listSheet : layout.gutter }]}>
           {body}
         </View>
       </BandSheet>
@@ -282,8 +284,8 @@ export default function ComplaintsScreen({ navigation, route }: Props) {
               />
             ) : (
               <>
-                <Band variant="record" tone="raised" />
-                <BandSheet center>
+                <Band variant="record" tone="raised" gutter={metrics.pane.detailBand} />
+                <BandSheet center gutter={metrics.pane.detailSheet}>
                   <EmptyState module="complaints" title="Pick a complaint" message="Its details open here, beside the list." />
                 </BandSheet>
               </>
@@ -299,15 +301,12 @@ export default function ComplaintsScreen({ navigation, route }: Props) {
 }
 
 const styles = StyleSheet.create({
-  // E 20c: 72 from the top; spacing[16] (64) is the nearest token (theme/ is not this task's).
-  errorTop: { paddingTop: spacing[16] },
+  // E 20c: the error card 72 from the top of the sheet.
+  errorTop: { paddingTop: metrics.errorTop },
   body: { flex: 1, paddingTop: metrics.sheetPadTop },
   list: { marginTop: spacing[3] },
   listContent: { paddingBottom: spacing[6] },
   grow: { flexGrow: 1 },
-  cell: { backgroundColor: colors.surface, overflow: "hidden" },
-  cellFirst: { borderTopLeftRadius: radius.card, borderTopRightRadius: radius.card },
-  cellLast: { borderBottomLeftRadius: radius.card, borderBottomRightRadius: radius.card },
   hint: { marginTop: spacing[3] },
   panes: { flex: 1, flexDirection: "row" },
   listPane: { width: metrics.listPaneWidth },

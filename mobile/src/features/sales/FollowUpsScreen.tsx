@@ -11,7 +11,7 @@ import { overdueFollowUpsCountQuery } from "../../navigation/badges";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import type { FollowUp } from "../../types/api";
 import { followUpBadge } from "../../theme/statusBadges";
-import { colors, metrics, radius, spacing } from "../../theme";
+import { metrics, spacing } from "../../theme";
 import {
   Band,
   BandSheet,
@@ -23,6 +23,7 @@ import {
   GroupHeader,
   IconButton,
   ListGroup,
+  ListGroupCell,
   ListRow,
   Refresher,
   Screen,
@@ -169,7 +170,7 @@ export default function FollowUpsScreen({ navigation, route, pushed = false }: P
       />
     );
     return (
-      <View key={f.Id} style={[styles.cell, index === 0 && styles.cellFirst, last && styles.cellLast]}>
+      <ListGroupCell key={f.Id} first={index === 0} last={last}>
         {actionable ? (
           <SwipeRow
             left={[{ key: "done", label: "Done", icon: Check, color: "success", onPress: () => sheets.current?.done(f) }]}
@@ -180,7 +181,7 @@ export default function FollowUpsScreen({ navigation, route, pushed = false }: P
         ) : (
           body
         )}
-      </View>
+      </ListGroupCell>
     );
   };
 
@@ -325,7 +326,4 @@ const styles = StyleSheet.create({
   pick: { marginTop: spacing[3] },
   list: { paddingBottom: spacing[6] },
   empty: { paddingVertical: spacing[10] },
-  cell: { backgroundColor: colors.surface, overflow: "hidden" },
-  cellFirst: { borderTopLeftRadius: radius.card, borderTopRightRadius: radius.card },
-  cellLast: { borderBottomLeftRadius: radius.card, borderBottomRightRadius: radius.card },
 });

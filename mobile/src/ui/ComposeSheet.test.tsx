@@ -199,7 +199,18 @@ it("a secure field is masked with the show/hide eye (Change password)", async ()
   expect(screen.getByPlaceholderText("Current password").props.secureTextEntry).toBe(true);
   await fireEvent.press(screen.getByLabelText("Show password"));
   expect(screen.getByPlaceholderText("Current password").props.secureTextEntry).toBe(false);
-  await fireEvent.changeText(screen.getByPlaceholderText("Current password"), "fixture-1");
+  // Sent as typed: spaces are part of a password.
+  await fireEvent.changeText(screen.getByPlaceholderText("Current password"), " fixture-1 ");
   await fireEvent.press(submitButton());
-  expect(onSubmit).toHaveBeenCalledWith({ pw: "fixture-1" }, {});
+  expect(onSubmit).toHaveBeenCalledWith({ pw: " fixture-1 " }, {});
+});
+
+it("onDismiss runs after the sheet has reset", async () => {
+  const onDismiss = jest.fn();
+  const ref = createRef<SheetRef>();
+  await renderSheet({ onDismiss, ref } as Partial<ComposeSheetProps>);
+  await fireEvent.changeText(screen.getByPlaceholderText("Hours"), "2");
+  await act(() => ref.current!.dismiss());
+  expect(onDismiss).toHaveBeenCalledTimes(1);
+  expect(screen.getByPlaceholderText("Hours").props.value).toBe("");
 });

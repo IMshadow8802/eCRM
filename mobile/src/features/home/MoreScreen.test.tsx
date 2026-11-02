@@ -12,6 +12,7 @@ import type { ModuleKey } from "../../types/api";
 import { envelope, makeWorkspace, pagination } from "../../test/fixtures";
 import { makeNavigation, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import { flat } from "../../test/style";
+import { spySheets } from "../../test/sheets";
 import { PHONE, setWindow } from "../../test/window";
 import { localDay } from "../sales/leadHelpers";
 import MoreScreen from "./MoreScreen";
@@ -51,7 +52,8 @@ const signInWith = (modules: ModuleKey[], patch: Parameters<typeof seedAuth>[0] 
 };
 const unread = (n: number) => envelope({ notifications: [], unreadCount: n, pagination: pagination(n) });
 const ROWS = ["Inbox", "Workspaces", "Follow-ups", "Profile", "Change password", "Sign out"];
-const rowLabels = () => ROWS.filter((l) => screen.queryByText(l));
+// The password sheet stays mounted (gorhom mock), so its title repeats a row label.
+const rowLabels = () => ROWS.filter((l) => screen.queryAllByText(l).length);
 /** The pill a label sits in: the nearest ancestor with a fill. */
 const fillOf = (label: string) => {
   let el = screen.getByText(label).parent;
@@ -222,13 +224,29 @@ describe("the session footer (G22)", () => {
 });
 
 describe("account rows", () => {
-  it("Change password opens the password dialog", async () => {
+  it("Change password opens the password ComposeSheet (spec 19), masked", async () => {
+    signInWith(["tasks"]);
+    const { present } = spySheets();
+    await renderWithProviders(<MoreScreen />);
+    expect(present).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getAllByText("Change password")[0]!);
+    expect(present).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText("Current password").props.secureTextEntry).toBe(true);
+    expect(screen.getByRole("button", { name: "Save password" })).toBeOnTheScreen();
+  });
+
+  it("E 19: no row above the avatar, which sits 16 down; menu rows are 15/600 with 12 14 padding", async () => {
     signInWith(["tasks"]);
     await renderWithProviders(<MoreScreen />);
-    await fireEvent.press(screen.getByText("Change password"));
-    expect(await screen.findByLabelText("Current password")).toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "Cancel" }));
-    expect(screen.queryByLabelText("Current password")).toBeNull();
+    const avatar = screen.getByTestId("profile-avatar");
+    expect(flat(avatar).marginTop).toBe(16);
+    // The avatar is the band's first content: nothing (no 52 row) before it.
+    const band = avatar.parent!;
+    expect(band.children.some((c) => typeof c !== "string" && flat(c).height === 52)).toBe(false);
+    expect(flat(screen.getByText("Profile"))).toMatchObject({ fontSize: 15, fontFamily: "Inter_600SemiBold" });
+    let row = screen.getByText("Profile").parent;
+    while (row && !flat(row).paddingVertical) row = row.parent;
+    expect(flat(row!)).toMatchObject({ paddingVertical: 12, paddingHorizontal: 14 });
   });
 
   it("Sign out asks first, then signs out and clears the session", async () => {

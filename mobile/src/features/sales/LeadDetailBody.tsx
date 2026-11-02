@@ -217,7 +217,7 @@ export function LeadDetailBody({ leadId, navigation, onBack, useBar, pane = fals
     const forbidden = code === 403 || code === 404 || detailQuery.isSuccess;
     return (
       <>
-        <Band variant="record" title="Lead" onBack={onBack} tone={pane ? "raised" : "band"} />
+        <Band variant="record" title="Lead" onBack={onBack} tone={pane ? "raised" : "band"} gutter={pane ? metrics.pane.detailBand : undefined} />
         <BandSheet center={forbidden}>
           {forbidden ? (
             <EmptyState
@@ -359,6 +359,7 @@ export function LeadDetailBody({ leadId, navigation, onBack, useBar, pane = fals
         variant="record"
         onBack={onBack}
         tone={pane ? "raised" : "band"}
+        gutter={pane ? metrics.pane.detailBand : undefined}
         actions={
           <View style={styles.bandActions}>
             {inBand && can.edit ? (
@@ -495,7 +496,7 @@ const styles = StyleSheet.create({
   statusRow: { flexDirection: "row", alignItems: "center", gap: spacing[2], marginTop: spacing[3] },
   tabsGap: { marginTop: spacing[3] },
   body: { paddingTop: spacing[3], paddingBottom: spacing[6] },
-  sheetWide: { paddingTop: spacing[5], paddingHorizontal: spacing[6] },
+  sheetWide: { paddingTop: spacing[5], paddingHorizontal: metrics.pane.detailSheet },
   columns: { flexDirection: "row", gap: spacing[4] },
   factsColumn: { width: metrics.factsColumn },
 });
