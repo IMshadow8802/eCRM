@@ -45,6 +45,15 @@ describe("HeroCard (E .hero)", () => {
     expect(screen.getByText("kid")).toBeOnTheScreen();
   });
 
+  it("a right-hand slot sits on the title row (09's state chip), in place of the Open link", async () => {
+    await render(<HeroCard icon={Headset} title="Your clock" right={<RNText testID="state">Missed deadline</RNText>} />);
+    const row = screen.getByText("Your clock").parent!.parent!;
+    expect(row.props.style).toBeDefined();
+    expect(flat(row).flexDirection).toBe("row");
+    expect(screen.getByTestId("state").parent).toBe(row);
+    expect(screen.queryByRole("link")).toBeNull();
+  });
+
   it("StatGrid alone", async () => {
     await render(<StatGrid stats={[{ label: "A", value: "3" }]} />);
     expect(screen.getByText("3")).toBeOnTheScreen();

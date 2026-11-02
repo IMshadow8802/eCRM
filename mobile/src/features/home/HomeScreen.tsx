@@ -47,12 +47,12 @@ const clock = (v: string | null | undefined) => {
   return d ? d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" }).toLowerCase() : null;
 };
 
-/** ResolvedFrom = 7 days ago, ResolvedTo = tomorrow 00:00 (exclusive), local Y-M-D (§7.6). */
+/** A rolling 7 days: ResolvedFrom = 6 days ago 00:00, ResolvedTo = tomorrow 00:00 (exclusive), local Y-M-D (§7.6). */
 const ymd = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 export function resolvedWindow(now = new Date()) {
   const day = (n: number) => ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() + n));
-  return { ResolvedFrom: day(-7), ResolvedTo: day(1) };
+  return { ResolvedFrom: day(-6), ResolvedTo: day(1) };
 }
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -217,7 +217,8 @@ export default function HomeScreen() {
         onOpen={() => toLeads("mine")}
         size={tablet ? "tablet" : "phone"}
         stats={[
-          { label: "Open", value: total(leadsMine.data), onPress: () => toLeads("mine") },
+          // All my leads, whatever the status: the same count as the tile ("yours").
+          { label: "Yours", value: total(leadsMine.data), onPress: () => toLeads("mine") },
           { label: "Overdue", value: total(leadsOverdue.data), warn: true, onPress: () => toLeads("overdue") },
           { label: "New", value: total(leadsNew.data) },
           { label: "Won", value: total(leadsWon.data) },
@@ -230,7 +231,13 @@ export default function HomeScreen() {
       { label: "Assigned", value: total(myTasks.data), onPress: toTasks },
       { label: "Needs you", value: myDay.data ? needs.length : undefined, onPress: toTasks },
       { label: "Overdue", value: open?.filter((t) => dueBucket(t.DueDate) === "overdue").length, warn: true },
-      { label: "Done", value: myDone.data ? doneThisWeek(myDone.data.data?.tasks ?? []).length : undefined },
+      // G10: past one full 200-row page the count would be a guess, so "—".
+      {
+        label: "Done",
+        value: myDone.data && (myDone.data.data?.pagination.totalRecords ?? 0) <= PAGE
+          ? doneThisWeek(myDone.data.data?.tasks ?? []).length
+          : undefined,
+      },
     ];
     heroCard = (
       <HeroCard
@@ -347,8 +354,9 @@ export default function HomeScreen() {
   const seeAll = canTasks ? toTasks : canComplaints ? () => toComplaints("overdue") : toFollowUps;
 
   const needsBlock = needRows.length ? (
-    <View>
-      <GroupHeader title="Needs you" count={needCount} link={{ label: "See all", onPress: seeAll }} />
+    // E 04: 14 above the header (the bento gap plus the rest).
+    <View style={tablet ? undefined : styles.needsTop}>
+      <GroupHeader first title="Needs you" count={needCount} link={{ label: "See all", onPress: seeAll }} />
       <ListGroup testID="needs-you">
         {needRows.slice(0, 3).map(({ key, ...r }, i) => <ListRow key={key} {...r} noSeparator={i === 0} />)}
       </ListGroup>
@@ -487,9 +495,11 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   band: { backgroundColor: colors.band, paddingBottom: metrics.bandPadBottom.home },
-  bandRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  greetLine: { flexDirection: "row", alignItems: "center", gap: spacing[1] + 2 },
-  shiftRow: { flexDirection: "row", alignItems: "center", gap: spacing[2], height: 40, marginTop: 2 },
+  bandRow: { flexDirection: "row", alignItems: "center", gap: metrics.pairGap },
+  greetLine: { flexDirection: "row", alignItems: "center", gap: metrics.inlineGap },
+  // ponytail: E's 2 above the shift row has no token; rowLineGap (3) is the nearest.
+  shiftRow: { flexDirection: "row", alignItems: "center", gap: spacing[2], height: spacing[10], marginTop: metrics.rowLineGap },
+  needsTop: { marginTop: metrics.rowPadH - metrics.bentoGap },
   shrink: { flexShrink: 1 },
   flex: { flex: 1, minWidth: 0 },
   flex2: { flex: 2, minWidth: 0 },

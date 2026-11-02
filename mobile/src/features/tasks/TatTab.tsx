@@ -8,7 +8,7 @@ import { fetchLookups, LOOKUP_KIND } from "../../api/configQueries";
 import {
   acknowledgeTat, fetchTaskTat, holdMine, myPartDone, releaseMine, saveTatReason, saveVerdict,
 } from "../../api/tatQueries";
-import { tatEventBadge, type ChipTone } from "../../theme";
+import { metrics, spacing, tatEventBadge, type ChipTone } from "../../theme";
 import type { TaskTatClock, TaskTatHold } from "../../types/api";
 import {
   Button, Card, Chip, ComposeSheet, EmptyState, ErrorCard, FigureBox, GroupHeader, HeroCard, ListGroup, ListRow,
@@ -47,29 +47,35 @@ function clockState(c: TaskTatClock, hold: TaskTatHold | undefined, now: number)
 }
 
 /**
- * E 09's maths. Target = the task's TatMinutes (else the clock's own span);
- * Over by (G28) = wall-clock end − DueAt; the bar is target then overrun.
- * G28 is a flag: the target is working time, the overrun wall time.
+ * E 09's bar, on the clock: (end − start) / (due − start), clamped, then the
+ * overrun past DueAt. Over by (G28) and the time left are wall-clock too. The
+ * target (TatMinutes, working time) is a label and does not drive the bar.
  */
-export function deadlineFigures(c: TaskTatClock, tatMinutes: number | null | undefined, now: number) {
+export function deadlineFigures(c: TaskTatClock, now: number) {
   const start = ms(c.AssignedAt);
   const due = ms(c.DueAt);
   const end = ms(c.ClosedAt) ?? now;
-  const target = tatMinutes && tatMinutes > 0 ? tatMinutes * 60_000 : due != null && start != null ? due - start : null;
+  const span = due != null && start != null ? due - start : 0;
   const over = due != null && end > due ? end - due : 0;
   const left = due != null && end <= due ? due - end : 0;
   let used = 0;
   let overrun = 0;
-  if (target) {
+  if (span > 0 && start != null) {
     if (over > 0) {
-      used = target / (target + over);
-      overrun = over / (target + over);
-    } else used = (target - left) / target;
+      used = span / (span + over);
+      overrun = over / (span + over);
+    } else used = Math.min(1, Math.max(0, (end - start) / span));
   }
-  return { target, over, left, used, overrun };
+  return { over, left, used, overrun };
 }
 
-function timeline(c: TaskTatClock, holds: TaskTatHold[], target: number | null, now: number): TimelineEntry[] {
+/** "8 working hours" / "7.5 working hours" — TatMinutes only (E 09's Due line). */
+const workingHours = (minutes: number) => {
+  const h = minutes / 60;
+  return `${Number.isInteger(h) ? h : h.toFixed(1)} working hour${h === 1 ? "" : "s"}`;
+};
+
+function timeline(c: TaskTatClock, holds: TaskTatHold[], tatMinutes: number | null | undefined, now: number): TimelineEntry[] {
   return [
     ...(c.AssignedAt
       ? [{ key: "started", title: "Started", time: whenIst(c.AssignedAt), meta: `Assigned to ${c.FullName ?? "someone"}`, badge: tatEventBadge("started") }]
@@ -82,7 +88,7 @@ function timeline(c: TaskTatClock, holds: TaskTatHold[], target: number | null, 
       badge: tatEventBadge("held"),
     })),
     ...(c.DueAt
-      ? [{ key: "due", title: "Due", time: whenIst(c.DueAt), meta: target ? `${hm(target)} working time from start` : undefined, badge: tatEventBadge("due") }]
+      ? [{ key: "due", title: "Due", time: whenIst(c.DueAt), meta: tatMinutes && tatMinutes > 0 ? `${workingHours(tatMinutes)} from start` : undefined, badge: tatEventBadge("due") }]
       : []),
     ...(c.BreachedAt
       ? [{
@@ -243,25 +249,25 @@ export function TatTab({
 
   let hero = null;
   if (clock) {
-    const f = deadlineFigures(clock, tatMinutes, now);
+    const f = deadlineFigures(clock, now);
     const state = clockState(clock, hold, now);
+    const working = tatMinutes != null && tatMinutes > 0;
     hero = (
-      <HeroCard icon={Timer} title="Your clock">
-        <View style={styles.stateRow}>
-          <Chip label={state.label} tone={state.tone} />
-        </View>
+      <HeroCard icon={Timer} title="Your clock" right={<Chip label={state.label} tone={state.tone} />}>
         <FigureBox
           figures={[
-            { label: "Target", value: f.target != null ? hm(f.target) : "—" },
+            // A label only: working time, which the wall-clock bar does not measure.
+            { label: "Target", value: working ? hm(tatMinutes * 60_000) : "—" },
             f.over > 0
               ? { label: "Over by", value: hm(f.over), warn: true }
-              : { label: clock.ClosedAt ? "Spare" : "Time left", value: hm(f.left) },
+              // Clock time, labelled so: it is not working time left.
+              : { label: clock.ClosedAt ? "Spare" : "Clock time left", value: hm(f.left) },
           ]}
         />
         <SplitBar used={f.used} overrun={f.overrun} />
         <View style={styles.foot}>
           <View style={styles.flex}>
-            <Text variant="small" color="onBrandMuted">Working time on your shift</Text>
+            <Text variant="small" color="onBrandMuted">{working ? "Working time on your shift" : "Clock time from start"}</Text>
             {clock.DueAt ? <Text variant="small" color="onBrandMuted">{`Due ${whenIst(clock.DueAt)}`}</Text> : null}
           </View>
           {owesReason ? (
@@ -280,21 +286,6 @@ export function TatTab({
   return (
     <View>
       {hero}
-      {canAck || canHold || canResume || canPart ? (
-        <View style={styles.actions}>
-          {canAck ? (
-            <Button title="Accept task" variant="secondary" size="sm" loading={quick.isPending} onPress={() => quick.mutate(() => acknowledgeTat(taskId))} />
-          ) : null}
-          {canHold ? <Button title="Put on hold" variant="secondary" size="sm" onPress={() => present("hold")} /> : null}
-          {canResume ? (
-            <Button title="Resume" variant="secondary" size="sm" loading={quick.isPending} onPress={() => quick.mutate(() => releaseMine(taskId))} />
-          ) : null}
-          {canPart ? (
-            <Button title="My part is done" variant="secondary" size="sm" loading={quick.isPending} onPress={() => quick.mutate(() => myPartDone(taskId))} />
-          ) : null}
-        </View>
-      ) : null}
-
       {shownHold ? (
         <Card gap={0} style={styles.holdCard} testID="hold-card">
           <View style={styles.holdRow}>
@@ -310,9 +301,26 @@ export function TatTab({
 
       {clock ? (
         <Card style={styles.timeline}>
-          <Timeline entries={timeline(clock, holds, deadlineFigures(clock, tatMinutes, now).target, now)} />
+          <Timeline entries={timeline(clock, holds, tatMinutes, now)} />
         </Card>
       ) : null}
+
+      {/* E has no place for these: they sit under the hold card and timeline. */}
+      {canAck || canHold || canResume || canPart ? (
+        <View style={styles.actions}>
+          {canAck ? (
+            <Button title="Accept task" variant="secondary" size="sm" loading={quick.isPending} onPress={() => quick.mutate(() => acknowledgeTat(taskId))} />
+          ) : null}
+          {canHold ? <Button title="Put on hold" variant="secondary" size="sm" onPress={() => present("hold")} /> : null}
+          {canResume ? (
+            <Button title="Resume" variant="secondary" size="sm" loading={quick.isPending} onPress={() => quick.mutate(() => releaseMine(taskId))} />
+          ) : null}
+          {canPart ? (
+            <Button title="My part is done" variant="secondary" size="sm" loading={quick.isPending} onPress={() => quick.mutate(() => myPartDone(taskId))} />
+          ) : null}
+        </View>
+      ) : null}
+
 
       {others.length ? (
         <>
@@ -391,11 +399,11 @@ export function TatTab({
 
 const styles = StyleSheet.create({
   flex: { flex: 1, minWidth: 0 },
-  stateRow: { flexDirection: "row", marginTop: 8 },
-  foot: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 10 },
-  actions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 },
-  holdCard: { marginTop: 10, paddingVertical: 10, paddingHorizontal: 14 },
-  holdRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  timeline: { marginTop: 10 },
-  judge: { gap: 4 },
+  // ponytail: E's 10 has no spacing step; pairGap is the 10 in the scale.
+  foot: { flexDirection: "row", alignItems: "center", gap: spacing[2], marginTop: metrics.pairGap },
+  actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing[2], marginTop: metrics.pairGap },
+  holdCard: { marginTop: metrics.pairGap, paddingVertical: metrics.pairGap, paddingHorizontal: metrics.rowPadH },
+  holdRow: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
+  timeline: { marginTop: metrics.pairGap },
+  judge: { gap: spacing[1] },
 });

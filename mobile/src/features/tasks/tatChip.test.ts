@@ -7,7 +7,6 @@ import {
   istStamp,
   dayIst,
   hm,
-  overBy,
   parseIst,
   VERDICT_LABEL,
   whenIst,
@@ -50,16 +49,6 @@ it("istDay prints the IST day, and nothing for a missing or unparseable date", (
 it("istStamp prints the full IST stamp", () => {
   expect(istStamp("2026-10-08 17:30:00")).toBe("08 Oct 2026, 17:30 IST");
   expect(istStamp(null)).toBe("");
-});
-
-it("overBy rounds down to minutes, hours, days — never zero", () => {
-  const m = 60_000;
-  expect(overBy(0)).toBe("1m");
-  expect(overBy(25 * m)).toBe("25m");
-  expect(overBy(180 * m)).toBe("3h");
-  expect(overBy(190 * m)).toBe("3h 10m");
-  expect(overBy(48 * 60 * m)).toBe("2d");
-  expect(overBy(52 * 60 * m)).toBe("2d 4h");
 });
 
 describe("hm", () => {

@@ -1,3 +1,5 @@
+import { colors } from "../../theme";
+import { flat } from "../../test/style";
 import { fireEvent, screen } from "@testing-library/react-native";
 
 import { assigneesJson, makeTask } from "../../test/fixtures";
@@ -53,7 +55,10 @@ describe("TaskRow (05)", () => {
     expect(screen.getByTestId("stage-inProgress")).toBeOnTheScreen();
     expect(screen.getByText("Medium")).toBeOnTheScreen();
     expect(screen.getByText("Website Revamp · In Progress")).toBeOnTheScreen();
-    expect(screen.getByText("11 of 12")).toBeOnTheScreen();
+    expect(flat(screen.getByText("11 of 12")).color).toBe(colors.textSecondary);
+    // E 05: padding 12 / 14, avatars 28.
+    expect(flat(screen.getByRole("button", { name: "BITME, In progress" }))).toMatchObject({ paddingVertical: 12, paddingHorizontal: 14 });
+    expect(screen.getByText("AM").parent!.props.style).toEqual(expect.arrayContaining([expect.objectContaining({ width: 28 })]));
     expect(screen.getByRole("progressbar")).toBeOnTheScreen();
     expect(screen.getByText("Due in 3 h")).toBeOnTheScreen();
     expect(screen.queryByTestId("row-separator")).toBeNull();

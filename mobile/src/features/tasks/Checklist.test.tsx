@@ -30,8 +30,11 @@ it("08: the summary reads 'x of y' steps done with the percentage and why", asyn
   expect(screen.getByText("The task completes itself when every step is ticked.")).toBeOnTheScreen();
 });
 
-it("done rows are struck through and muted; open rows carry a grip", async () => {
+it("done rows are struck through and muted; no grip — steps are not reordered on mobile", async () => {
   await mount();
+  expect(screen.queryByTestId("step-grip")).toBeNull();
+  // E 08: a wrapping step starts at the top, beside its box.
+  expect(flat(screen.getByRole("checkbox", { name: "Fit inverter" })).alignItems).toBe("flex-start");
   expect(screen.getByRole("checkbox", { name: "Order parts" })).toBeChecked();
   expect(screen.getByRole("checkbox", { name: "Fit inverter" })).not.toBeChecked();
   expect(flat(screen.getByText("Order parts"))).toMatchObject({ textDecorationLine: "line-through", color: colors.textMuted });

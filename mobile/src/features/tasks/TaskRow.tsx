@@ -1,7 +1,7 @@
 import { memo } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 
-import { colors, metrics, priorityChip, taskStage, taskStageBadge } from "../../theme";
+import { colors, metrics, priorityChip, spacing, taskStage, taskStageBadge } from "../../theme";
 import type { Task } from "../../types/api";
 import { AvatarStack, Chip, ProgressBar, StatusBadge, Text } from "../../ui";
 import { assigneesOf, checklistProgress, taskDueChip } from "./taskHelpers";
@@ -48,7 +48,7 @@ function TaskRowBase({ task, onPress, personal = false, first = false }: TaskRow
           <Text variant="meta" numberOfLines={1} style={styles.flex}>{meta}</Text>
           {total > 0 ? (
             <>
-              <Text variant="label" tabular color="text">{`${done} of ${total}`}</Text>
+              <Text variant="label" tabular color="textSecondary">{`${done} of ${total}`}</Text>
               <ProgressBar value={done / total} width={metrics.progress.rowWidth} />
             </>
           ) : null}
@@ -57,7 +57,7 @@ function TaskRowBase({ task, onPress, personal = false, first = false }: TaskRow
           <View style={[styles.line, styles.line3]}>
             {due ? <Chip label={due.label} tone={due.tone} icon={due.icon} /> : null}
             <View style={styles.flex} />
-            {people.length ? <AvatarStack people={people} size={24} /> : null}
+            {people.length ? <AvatarStack people={people} /> : null}
           </View>
         ) : null}
       </View>
@@ -73,7 +73,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     gap: metrics.rowGap,
-    padding: 12,
+    paddingVertical: spacing[3],
+    paddingHorizontal: metrics.rowPadH,
     backgroundColor: colors.surface,
   },
   pressed: { backgroundColor: colors.fieldTint },
@@ -81,6 +82,6 @@ const styles = StyleSheet.create({
   content: { flex: 1, minWidth: 0 },
   line: { flexDirection: "row", alignItems: "center", gap: metrics.inlineGap, minWidth: 0 },
   gap: { marginTop: metrics.rowLineGap },
-  line3: { marginTop: 6 },
+  line3: { marginTop: metrics.inlineGap },
   flex: { flex: 1, minWidth: 0 },
 });

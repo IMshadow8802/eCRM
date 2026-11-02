@@ -10,7 +10,7 @@ import { useParamState } from "../../hooks/useParamState";
 import type { RootStackParamList, TabParamList } from "../../navigation/RootNavigator";
 import { useCreate } from "../../navigation/Shell";
 import useAuthStore from "../../stores/useAuthStore";
-import { taskStage, type TaskStage } from "../../theme";
+import { spacing, taskStage, type TaskStage } from "../../theme";
 import type { DayTask, Task } from "../../types/api";
 import {
   Band, BandSheet, EmptyState, ErrorCard, FilterPills, GroupHeader, HeaderButton, IconButton, ListGroup, ListRow,
@@ -39,9 +39,17 @@ export default function MyWorkScreen() {
   const userId = useAuthStore((s) => s.UserId);
   const create = useCreate();
   const [stage, setStage] = useState<StagePill>("any");
-  const [filter, setFilter] = useParamState<Filter>(route.params, route.params?.filter, "mine", () => setStage("any"));
   const [searching, setSearching] = useState(!!route.params?.term);
   const [term, setTerm] = useParamState<string>(route.params, route.params?.term, "", () => setSearching(true));
+  // A navigate() shows exactly the list it asked for: without a term, any
+  // search typed earlier goes (Home's numbers count the unsearched list).
+  const [filter, setFilter] = useParamState<Filter>(route.params, route.params?.filter, "mine", () => {
+    setStage("any");
+    if (!route.params?.term) {
+      setTerm("");
+      setSearching(false);
+    }
+  });
 
   // WorkspaceId null = every workspace the caller can see. Open tasks only,
   // except Done (G10), which reads my tasks finished or not.
@@ -85,7 +93,8 @@ export default function MyWorkScreen() {
     { value: "any", label: "Any status" },
     { value: "todo", label: "To Do", count: count("todo"), tone: "slate" },
     { value: "inProgress", label: "In Progress", count: count("inProgress"), tone: "teal" },
-    { value: "done", label: "Done", tone: "green" },
+    // G10's count is mine, so Done lives under Mine only.
+    ...(filter === "mine" ? [{ value: "done" as const, label: "Done", tone: "green" as const }] : []),
   ];
 
   const openTask = useCallback(
@@ -210,7 +219,8 @@ export default function MyWorkScreen() {
               badge={{ tone: "green", icon: CheckCheck, size: 36 }}
               title="Completed this week"
               accessibilityLabel="Completed this week"
-              right={{ text: withDone.data ? String(doneWeek.length) : "—" }}
+              // Past one full 200-row page the count would be a guess (G10, like G3/G12).
+              right={{ text: withDone.data && (withDone.data.data?.pagination.totalRecords ?? 0) <= 200 ? String(doneWeek.length) : "—" }}
               chevron
               // The count is mine, so it opens Mine on the Done pill.
               onPress={() => {
@@ -255,5 +265,5 @@ const emptyMessage = (filter: Filter, stage: StagePill) =>
         : "Tasks from all your workspaces will appear here.";
 
 const styles = StyleSheet.create({
-  cards: { marginTop: 12, gap: 8 },
+  cards: { marginTop: spacing[3], gap: spacing[2] },
 });

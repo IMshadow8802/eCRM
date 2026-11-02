@@ -2,7 +2,7 @@ import { memo } from "react";
 import { StyleSheet, View } from "react-native";
 import { ListChecks } from "lucide-react-native";
 
-import { colors, metrics, priorityChip } from "../../theme";
+import { colors, metrics, priorityChip, spacing } from "../../theme";
 import type { Task } from "../../types/api";
 import { AvatarStack, Card, Chip, Text } from "../../ui";
 import { assigneesOf, checklistProgress, taskDueChip } from "./taskHelpers";
@@ -56,8 +56,8 @@ export const TaskCard = memo(TaskCardBase);
 export default TaskCard;
 
 const styles = StyleSheet.create({
-  card: { padding: 12, marginBottom: 8 },
-  meta: { flexDirection: "row", alignItems: "center", gap: metrics.inlineGap, marginTop: 8 },
-  steps: { flexDirection: "row", alignItems: "center", gap: 4 },
+  card: { padding: spacing[3], marginBottom: spacing[2] },
+  meta: { flexDirection: "row", alignItems: "center", gap: metrics.inlineGap, marginTop: spacing[2] },
+  steps: { flexDirection: "row", alignItems: "center", gap: spacing[1] },
   flex: { flex: 1 },
 });

@@ -1,12 +1,9 @@
 import { useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowDown,
   ArrowRightLeft,
-  ArrowUp,
   Ban,
-  ChevronRight,
   EllipsisVertical,
   Eye,
   Flag,
@@ -14,7 +11,6 @@ import {
   Link2,
   Lock,
   MessageCircle,
-  Paperclip,
   Pencil,
   Pin,
   PinOff,
@@ -42,12 +38,11 @@ import {
   claimTask,
 } from "../../api/taskQueries";
 import { apiErrorMessage } from "../../api/errors";
-import { fetchAttachments } from "../../api/attachmentQueries";
 import { fetchKanbanColumns } from "../../api/kanbanQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import type { TaskChecklistItem, TaskComment } from "../../types/api";
 import useAuthStore from "../../stores/useAuthStore";
-import { colors, priorityChip } from "../../theme";
+import { metrics, priorityChip, spacing } from "../../theme";
 import {
   ActionSheet,
   Avatar,
@@ -96,7 +91,7 @@ import {
 
 type Props = StackScreenProps<RootStackParamList, "TaskDetail">;
 /** E 08: four tabs; Files is a drill-in from Details, History lives in Details. */
-type Tab = "details" | "checklist" | "chat" | "tat" | "files";
+type Tab = "details" | "checklist" | "chat" | "tat";
 /** Which form the one compose sheet is currently showing. */
 type Compose = "checklist" | "comment" | "reply" | "edit" | "time";
 
@@ -190,10 +185,6 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
     queryKey: ["task", taskId, "comments"],
     queryFn: () => getTaskComments({ TaskId: taskId }),
   });
-  const attachmentsQuery = useQuery({
-    queryKey: ["attachments", "task", taskId],
-    queryFn: () => fetchAttachments({ Entity: "task", EntityId: taskId }),
-  });
   // Authority comes from the caller's role in THIS task's workspace, which the
   // task row does not carry. Already cached by Boards, so this costs nothing.
   const { data: workspaces } = useQuery(WORKSPACES_QUERY);
@@ -254,15 +245,6 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
     mutationFn: deleteTaskChecklist,
     onError: (err) => toast.error(apiErrorMessage(err, "Could not remove that step.")),
     onSuccess: invalidate,
-  });
-  // Two saves: the step and the neighbour it swaps with take each other's place.
-  const reorder = useMutation({
-    mutationFn: (rows: TaskChecklistItem[]) =>
-      Promise.all(rows.map((r) =>
-        saveTaskChecklist({ Id: r.Id, TaskId: taskId, ItemText: r.ItemText, IsCompleted: r.IsCompleted, SortOrder: r.SortOrder ?? 0, WorkspaceId: taskQuery.data?.WorkspaceId ?? null }),
-      )),
-    onError: (err) => toast.error(apiErrorMessage(err, "Could not move that step.")),
-    onSettled: invalidate,
   });
   const addItem = useMutation({
     mutationFn: saveTaskChecklist,
@@ -607,40 +589,22 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   const editTask = () =>
     task.WorkspaceId != null && navigation.navigate("TaskForm", { workspaceId: task.WorkspaceId, taskId: task.Id });
 
-  // Long-press a step: move it, or remove it (the last step stays — 094).
-  const stepIndex = step ? checklist.findIndex((i) => i.Id === step.Id) : -1;
-  const swapWith = (j: number) => {
-    const other = checklist[j];
-    if (!step || !other) return;
-    reorder.mutate([
-      { ...step, SortOrder: j },
-      { ...other, SortOrder: stepIndex },
-    ]);
-  };
-  const stepActions: SheetAction[] = step
-    ? [
-        ...(stepIndex > 0
-          ? [{ key: "up", label: "Move up", icon: ArrowUp, onPress: () => swapWith(stepIndex - 1) } satisfies SheetAction]
-          : []),
-        ...(stepIndex < checklist.length - 1
-          ? [{ key: "down", label: "Move down", icon: ArrowDown, onPress: () => swapWith(stepIndex + 1) } satisfies SheetAction]
-          : []),
-        ...(checklist.length > 1
-          ? [{
-              key: "remove",
-              label: "Remove step",
-              icon: Trash2,
-              tone: "danger",
-              onPress: () => removeItem.mutate({ Id: step.Id, TaskId: taskId, WorkspaceId: task.WorkspaceId }),
-            } satisfies SheetAction]
-          : []),
-      ]
-    : [];
+  // Long-press a step: remove it (the last step stays — 094). No reorder:
+  // saveTaskChecklist has no reorder semantics (each save logs a tick).
+  const stepActions: SheetAction[] =
+    step && checklist.length > 1
+      ? [{
+          key: "remove",
+          label: "Remove step",
+          icon: Trash2,
+          tone: "danger",
+          onPress: () => removeItem.mutate({ Id: step.Id, TaskId: taskId, WorkspaceId: task.WorkspaceId }),
+        }]
+      : [];
 
   const dueChip = taskDueChip(task, false);
   const people = assignees.map((a) => ({ name: a.FullName, uri: a.Avatar, userId: a.UserId }));
   const personal = ws?.Type === "personal";
-  const segment = tab === "files" ? "details" : tab;
 
   const details = (
     <View>
@@ -666,18 +630,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
         />
       </Card>
       <GroupHeader label="Files" />
-      <Pressable
-        onPress={() => setTab("files")}
-        accessibilityRole="button"
-        accessibilityLabel="Files"
-        style={({ pressed }) => [styles.filesRow, pressed && styles.sink]}
-      >
-        <Paperclip size={18} color={colors.textSecondary} />
-        <Text variant="rowTitle" style={styles.flex}>
-          {`${attachmentsQuery.data?.length ?? 0} file${attachmentsQuery.data?.length === 1 ? "" : "s"}`}
-        </Text>
-        <ChevronRight size={18} color={colors.textMuted} />
-      </Pressable>
+      <AttachmentList entity="task" entityId={taskId} canManage={can.manageArtifacts} embedded />
       <GroupHeader label="History" />
       <ActivityTab taskId={taskId} />
     </View>
@@ -709,7 +662,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
               }
             >
               <View style={styles.commentHead}>
-                <Avatar name={c.UserName} uri={c.Avatar} size={28} ring={null} />
+                <Avatar name={c.UserName} uri={c.Avatar} size={COMMENT_AVATAR} ring={null} />
                 <Text variant="rowTitleBold" numberOfLines={1} style={styles.flex}>{c.UserName ?? "Someone"}</Text>
                 <Text variant="label" tabular>{relativeTime(c.CreatedDate)}</Text>
               </View>
@@ -756,12 +709,6 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
         </View>
       </Band>
 
-      {tab === "files" ? (
-        <BandSheet>
-          <GroupHeader label="Files" first link={{ label: "Back to details", onPress: () => setTab("details") }} />
-          <AttachmentList entity="task" entityId={taskId} canManage={can.manageArtifacts} />
-        </BandSheet>
-      ) : (
         <BandSheet scroll>
           {!can.changeStatus ? (
             <View style={styles.note}>
@@ -769,7 +716,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
             </View>
           ) : null}
           <SegmentedTabs
-            value={segment}
+            value={tab}
             onChange={switchTab}
             options={[
               { value: "details", label: "Details" },
@@ -809,7 +756,6 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
             ) : null}
           </View>
         </BandSheet>
-      )}
 
       <ComposeSheet
         ref={composeRef}
@@ -867,26 +813,26 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   );
 }
 
+/** The comment avatar and its gap: the text lines up under the name. */
+const COMMENT_AVATAR = 28;
+
 const styles = StyleSheet.create({
   flex: { flex: 1, minWidth: 0 },
-  title: { marginTop: 2 },
-  chips: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 12 },
-  note: { marginBottom: 12 },
-  panel: { marginTop: 12 },
-  gapTop: { marginTop: 12 },
-  filesRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 11,
-    paddingHorizontal: 14,
-    borderRadius: 16,
-    backgroundColor: colors.surface,
+  // ponytail: E's 2 has no token; rowLineGap (3) is the nearest.
+  title: { marginTop: metrics.rowLineGap },
+  chips: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: spacing[2], marginTop: spacing[3] },
+  note: { marginBottom: spacing[3] },
+  panel: { marginTop: spacing[3] },
+  gapTop: { marginTop: spacing[3] },
+  comment: { paddingVertical: spacing[3], paddingHorizontal: metrics.rowPadH, marginBottom: spacing[2] },
+  replyComment: {
+    paddingVertical: spacing[3],
+    paddingHorizontal: metrics.rowPadH,
+    marginBottom: spacing[2],
+    marginLeft: spacing[6],
   },
-  sink: { transform: [{ scale: 0.98 }] },
-  comment: { paddingVertical: 12, paddingHorizontal: 14, marginBottom: 8 },
-  replyComment: { paddingVertical: 12, paddingHorizontal: 14, marginBottom: 8, marginLeft: 24 },
-  commentHead: { flexDirection: "row", alignItems: "center", gap: 10 },
-  commentText: { marginTop: 2, marginLeft: 38 },
+  // ponytail: E's 10 has no spacing step; pairGap is the 10 in the scale.
+  commentHead: { flexDirection: "row", alignItems: "center", gap: metrics.pairGap },
+  commentText: { marginTop: metrics.rowLineGap, marginLeft: COMMENT_AVATAR + metrics.pairGap },
   deleted: { fontStyle: "italic" },
 });

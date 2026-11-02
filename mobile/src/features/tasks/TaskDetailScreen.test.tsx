@@ -338,35 +338,27 @@ describe("checklist", () => {
     expect(await screen.findByText("A task needs at least one step")).toBeOnTheScreen();
   });
 
-  it("a step moves down or up by swapping places with its neighbour", async () => {
+  // Controller ruling: saveTaskChecklist has no reorder semantics (each save logs
+  // a tick and acknowledges the clock), so mobile offers no Move up / down.
+  it("a long-press offers Remove step only — no reorder", async () => {
     await mount();
     await loaded();
-    await fireEvent(screen.getByRole("checkbox", { name: "Order parts" }), "longPress");
-    // The first step cannot go up.
-    expect(screen.queryByText("Move up")).toBeNull();
-    await fireEvent.press(screen.getByText("Move down"));
-    await waitFor(() => expect(saveTaskChecklist).toHaveBeenCalledTimes(2));
-    expect(jest.mocked(saveTaskChecklist).mock.calls.map((c) => c[0])).toEqual([
-      { Id: 1, TaskId: 1, ItemText: "Order parts", IsCompleted: true, SortOrder: 1, WorkspaceId: 10 },
-      { Id: 2, TaskId: 1, ItemText: "Fit it", IsCompleted: false, SortOrder: 0, WorkspaceId: 10 },
-    ]);
     await fireEvent(screen.getByRole("checkbox", { name: "Fit it" }), "longPress");
+    expect(screen.getByText("Remove step")).toBeOnTheScreen();
+    expect(screen.queryByText("Move up")).toBeNull();
     expect(screen.queryByText("Move down")).toBeNull();
-    await fireEvent.press(screen.getByText("Move up"));
-    await waitFor(() => expect(saveTaskChecklist).toHaveBeenCalledTimes(4));
+    expect(saveTaskChecklist).not.toHaveBeenCalled();
   });
 
-  it("a refused move says why; the last step cannot be removed", async () => {
+  it("the last step cannot be removed", async () => {
     serve({ items: [item(1, "Only step")] });
-    jest.mocked(saveTaskChecklist).mockRejectedValue(serverError(400, "Nope"));
     await mount();
     await screen.findByText("Only step");
     await fireEvent(screen.getByRole("checkbox", { name: "Only step" }), "longPress");
     expect(screen.queryByText("Remove step")).toBeNull();
-    expect(screen.queryByText("Move up")).toBeNull();
   });
 
-  it("the FAB adds a step at the end of the list", async () => {
+  it("'Add a step' adds one at the end of the list", async () => {
     await mount();
     await loaded();
     const { present, dismiss } = spySheets();
@@ -491,11 +483,11 @@ describe("tabs", () => {
 
     await fireEvent.press(screen.getByRole("tab", { name: "Details" }));
     expect(await screen.findByText("No history yet")).toBeOnTheScreen();
-    expect(screen.getByText("0 files")).toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "Files" }));
-    await waitFor(() => expect(fetchAttachments).toHaveBeenCalledWith({ Entity: "task", EntityId: 1 }));
-    await fireEvent.press(screen.getByRole("link", { name: "Back to details" }));
-    expect(screen.getByRole("tab", { name: "Details", selected: true })).toBeOnTheScreen();
+    // Files sit inside Details (AttachmentList embedded), not behind a drill-in.
+    expect(await screen.findByText("No files yet.")).toBeOnTheScreen();
+    expect(screen.queryByTestId("attachments-scroll")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Back to details" })).toBeNull();
+    expect(fetchAttachments).toHaveBeenCalledWith({ Entity: "task", EntityId: 1 });
 
     await fireEvent.press(screen.getByRole("tab", { name: "Comments, 1" }));
     expect(screen.getByText("Parts arrive Monday")).toBeOnTheScreen();

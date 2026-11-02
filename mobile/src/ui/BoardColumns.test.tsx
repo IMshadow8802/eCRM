@@ -1,4 +1,4 @@
-import { Dimensions, StyleSheet } from "react-native";
+import { Dimensions, FlatList, StyleSheet } from "react-native";
 import { fireEvent, render, screen } from "@testing-library/react-native";
 
 import { BOARD_GAP, BoardColumns, boardColumnWidth } from "./BoardColumns";
@@ -68,4 +68,35 @@ it("a column is the window less 80 (310 on a 390 phone), 10 apart; the left inse
   expect(wrapper.width).toBe(boardColumnWidth(Dimensions.get("window").width));
   const strip = StyleSheet.flatten(screen.root!.props.contentContainerStyle);
   expect(strip).toMatchObject({ paddingLeft: 0, gap: 10 });
+});
+
+describe("index: the caller pages the strip (a band tab tap)", () => {
+  const scroll = jest.spyOn(FlatList.prototype, "scrollToOffset").mockImplementation(() => {});
+  afterAll(() => scroll.mockRestore());
+  const snap = () => boardColumnWidth(Dimensions.get("window").width) + BOARD_GAP;
+  const strip = (index?: number, onSettle?: (i: number) => void) => (
+    <BoardColumns columns={columns} keyOf={(c) => c.id} index={index} onSettle={onSettle} renderColumn={(c) => <Probe title={c.title} />} />
+  );
+
+  it("scrolls to that column's snap offset when the index changes", async () => {
+    const { rerender } = await render(strip(0));
+    scroll.mockClear();
+    await rerender(strip(2));
+    expect(scroll).toHaveBeenLastCalledWith({ offset: snap() * 2, animated: true });
+  });
+
+  it("does not scroll again to where a swipe already settled", async () => {
+    const onSettle = jest.fn();
+    const { rerender } = await render(strip(0, onSettle));
+    await fireEvent(screen.root!, "momentumScrollEnd", { nativeEvent: { contentOffset: { x: snap(), y: 0 } } });
+    scroll.mockClear();
+    await rerender(strip(1, onSettle));
+    expect(scroll).not.toHaveBeenCalled();
+  });
+
+  it("without an index it never scrolls on its own", async () => {
+    scroll.mockClear();
+    await render(strip());
+    expect(scroll).not.toHaveBeenCalled();
+  });
 });

@@ -1,14 +1,14 @@
 import { Pressable, StyleSheet, View } from "react-native";
-import { GripVertical, Plus } from "lucide-react-native";
+import { Plus } from "lucide-react-native";
 
-import { colors, metrics } from "../../theme";
+import { colors, metrics, spacing } from "../../theme";
 import type { TaskChecklistItem } from "../../types/api";
 import { Card, Checkbox, EmptyState, ListGroup, ProgressBar, Text } from "../../ui";
 
 export interface ChecklistProps {
   items: TaskChecklistItem[];
   onToggle: (item: TaskChecklistItem) => void;
-  /** Long-press a step: its actions (move up / down, remove). */
+  /** Long-press a step: its actions (Remove step). Steps are not reordered on mobile. */
   onLongPress?: (item: TaskChecklistItem) => void;
   /** "Add a step" — the last row. */
   onAdd: () => void;
@@ -21,7 +21,8 @@ export interface ChecklistProps {
 /**
  * The task's steps (E 08): a summary card ("3 of 5 steps done", the bar, and
  * why it matters), then one group of rows — done rows struck through and
- * muted, open rows with a grip — ending in "Add a step". Completion is derived
+ * muted — ending in "Add a step". No grip: saveTaskChecklist has no reorder
+ * semantics, so steps keep the server's order. Completion is derived
  * from this list (the IsDone column is retired). Step meta (who ticked it,
  * when) is not on the API (G7), so a row is its text alone.
  */
@@ -82,7 +83,6 @@ export function Checklist({ items, onToggle, onLongPress, onAdd, canToggle, canM
             >
               {item.ItemText}
             </Text>
-            {canManage && !item.IsCompleted ? <GripVertical size={18} color={colors.iconFaint} /> : null}
           </Pressable>
         ))}
         {canManage ? (
@@ -103,15 +103,17 @@ export function Checklist({ items, onToggle, onLongPress, onAdd, canToggle, canM
 }
 
 const styles = StyleSheet.create({
-  summary: { padding: 14 },
+  summary: { padding: metrics.rowPadH },
   line: { flexDirection: "row", alignItems: "baseline", gap: metrics.inlineGap },
   flex: { flex: 1, minWidth: 0 },
-  bar: { marginTop: 10 },
-  why: { marginTop: 8 },
-  group: { marginTop: 12 },
+  // ponytail: E's 10 has no spacing step; pairGap is the 10 in the scale.
+  bar: { marginTop: metrics.pairGap },
+  why: { marginTop: spacing[2] },
+  group: { marginTop: spacing[3] },
   row: {
     flexDirection: "row",
-    alignItems: "center",
+    // A wrapping step starts at the top, beside its box.
+    alignItems: "flex-start",
     gap: metrics.rowGap,
     paddingVertical: metrics.rowPadV,
     paddingHorizontal: metrics.rowPadH,

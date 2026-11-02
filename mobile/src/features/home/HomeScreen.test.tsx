@@ -169,8 +169,8 @@ describe("04 · complaints, tasks and leads", () => {
     expect(overdueFollowUpsCountQuery().queryKey).toEqual(["followups", "count", followUpViewParams("overdue")]);
   });
 
-  it("G11: Resolved is the last 7 days through tonight", () => {
-    expect(resolvedWindow(NOW)).toEqual({ ResolvedFrom: "2026-10-26", ResolvedTo: "2026-11-03" });
+  it("G11: Resolved is a rolling 7 days — six days back through tonight", () => {
+    expect(resolvedWindow(NOW)).toEqual({ ResolvedFrom: "2026-10-27", ResolvedTo: "2026-11-03" });
   });
 
   it("G11: before SQL 118 the Resolved count fails — it reads '—', the rest of Home stands", async () => {
@@ -312,13 +312,13 @@ describe("04 · complaints, tasks and leads", () => {
 });
 
 describe("27 · leads only", () => {
-  it("'My leads' hero (Open · Overdue · New · Won), two tiles, follow-ups need you; + Lead", async () => {
+  it("'My leads' hero (Yours · Overdue · New · Won), two tiles, follow-ups need you; + Lead", async () => {
     mockCreate.label = "Lead";
     signInWith("leads");
     await renderWithProviders(<HomeScreen />);
     expect(await screen.findByText("My leads")).toBeOnTheScreen();
     expect(await screen.findByText("₹14,30,000 open value")).toBeOnTheScreen();
-    expect(await screen.findByRole("button", { name: "Open 12" })).toBeOnTheScreen();
+    expect(await screen.findByRole("button", { name: "Yours 12" })).toBeOnTheScreen();
     expect(await screen.findByRole("button", { name: "Overdue 3" })).toBeOnTheScreen();
     expect(screen.getByText("New")).toBeOnTheScreen();
     expect(screen.getByText("Won")).toBeOnTheScreen();
@@ -357,9 +357,22 @@ describe("other roles", () => {
     expect(await screen.findByRole("button", { name: "Needs you 1" })).toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Tasks, 2 assigned to you" })).toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Inbox, 63 unread" })).toBeOnTheScreen();
-    expect(screen.getByText("Done")).toBeOnTheScreen();
+    await waitFor(() => expect(within(screen.getByText("Done").parent!).getByText("1")).toBeOnTheScreen());
     expect(fetchTasks).toHaveBeenCalledWith({ WorkspaceId: null, AssigneeUserId: ME, OnlyOpen: false, PageSize: 200 });
     for (const fn of [fetchTickets, fetchLeads, fetchFollowUps]) expect(fn).not.toHaveBeenCalled();
+  });
+
+  it("G10: past one full 200-row page, Done reads '—'", async () => {
+    jest.mocked(fetchTasks).mockImplementation(async (p = {}) =>
+      p.OnlyOpen === false
+        ? envelope({ tasks: [makeTask({ Id: 9, IsCompleted: true, CompletedDate: "2026-11-02T10:00:00" })], pagination: pagination(201) })
+        : envelope({ tasks: [], pagination: pagination(0) }),
+    );
+    signInWith("tasks");
+    await renderWithProviders(<HomeScreen />);
+    await screen.findByRole("button", { name: "Assigned 0" });
+    await waitFor(() => expect(fetchTasks).toHaveBeenCalledTimes(2));
+    expect(within(screen.getByText("Done").parent!).getByText("—")).toBeOnTheScreen();
   });
 
   it("complaints only: the hero and one Inbox tile", async () => {

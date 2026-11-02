@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { Pressable } from "react-native";
 import type { QueryClient } from "@tanstack/react-query";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react-native";
 
@@ -165,6 +167,50 @@ it("opens on the filter and term a navigate() brings (Home, Search's See all)", 
   expect(await screen.findByRole("tab", { name: "All, 3", selected: true })).toBeOnTheScreen();
   expect(screen.getByDisplayValue("nobody")).toBeOnTheScreen();
   await waitFor(() => expect(rowTitles()).toEqual(["Nobody's task"]));
+});
+
+it("a Home navigate with a filter and no term clears the search and closes the field", async () => {
+  // The tab stays mounted; a navigate() re-renders it with new params.
+  function Host() {
+    const [, bump] = useState(0);
+    return (
+      <>
+        <MyWorkScreen />
+        <Pressable testID="navigate" onPress={() => bump((n) => n + 1)} />
+      </>
+    );
+  }
+  await renderWithProviders(<Host />);
+  await screen.findByText("Late task");
+  await fireEvent.press(screen.getByRole("button", { name: "Search tasks" }));
+  await fireEvent.changeText(screen.getByLabelText("Search tasks"), "late");
+  expect(rowTitles()).toEqual(["Late task"]);
+  mockRoute = { key: "Tasks-test", name: "Tasks", params: { filter: "mine" } };
+  await fireEvent.press(screen.getByTestId("navigate"));
+  expect(screen.queryByDisplayValue("late")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Close search" })).toBeNull();
+  expect(rowTitles()).toEqual(["Late task", "Due today task"]);
+});
+
+it("the Done pill is offered under Mine only (its count is mine)", async () => {
+  await renderWithProviders(<MyWorkScreen />);
+  await screen.findByText("Late task");
+  expect(screen.getByRole("radio", { name: "Done" })).toBeOnTheScreen();
+  await fireEvent.press(screen.getByRole("tab", { name: "All, 3" }));
+  expect(screen.queryByRole("radio", { name: "Done" })).toBeNull();
+});
+
+it("G10: past one full 200-row page, 'Completed this week' reads '—'", async () => {
+  jest.mocked(fetchTasks).mockImplementation(async (p = {}) =>
+    p.OnlyOpen === false
+      ? envelope({ tasks: [mineDone], pagination: pagination(201) })
+      : reply(p.AssigneeUserId ? [late] : [late]),
+  );
+  await renderWithProviders(<MyWorkScreen />);
+  await screen.findByText("Late task");
+  const done = screen.getByRole("button", { name: "Completed this week" });
+  await waitFor(() => expect(jest.mocked(fetchTasks).mock.calls.some(([p]) => p?.OnlyOpen === false)).toBe(true));
+  await waitFor(() => expect(within(done).getByText("—")).toBeOnTheScreen());
 });
 
 it("search toggles in the band and narrows by title; closing clears it", async () => {

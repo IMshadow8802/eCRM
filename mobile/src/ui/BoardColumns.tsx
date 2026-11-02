@@ -1,4 +1,4 @@
-import { useState, type ReactElement } from "react";
+import { useEffect, useRef, type ReactElement } from "react";
 import {
   FlatList,
   StyleSheet,
@@ -29,6 +29,12 @@ export interface BoardColumnsProps<T> {
   /** Fires with the index that settled under the viewport after a swipe. */
   onSettle?: (index: number) => void;
   /**
+   * The column to show. A change pages the strip there (a band tab tap); a
+   * swipe reports through onSettle, and an index equal to where it settled
+   * does not scroll again.
+   */
+  index?: number;
+  /**
    * Left inset of the strip. Inside a `BandSheet bleedRight` the sheet already
    * pads 16 on the left, so pass 0 there; the default suits a bare screen.
    */
@@ -40,23 +46,32 @@ export interface BoardColumnsProps<T> {
  * snap arithmetic lives once: width and gap must agree exactly or every swipe
  * lands a few pixels off and the drift compounds.
  */
-export function BoardColumns<T>({ columns, keyOf, renderColumn, onSettle, insetLeft = SCREEN_PADDING }: BoardColumnsProps<T>) {
+export function BoardColumns<T>({ columns, keyOf, renderColumn, onSettle, index, insetLeft = SCREEN_PADDING }: BoardColumnsProps<T>) {
   const { width } = useWindowDimensions();
-  const [, setIndex] = useState(0);
+  const list = useRef<FlatList<T>>(null);
+  // Where the strip is now, so an index that only echoes a swipe is not re-scrolled.
+  const at = useRef(index ?? 0);
 
   const columnWidth = boardColumnWidth(width);
   const snap = columnWidth + BOARD_GAP;
 
   const settle = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const next = Math.round(event.nativeEvent.contentOffset.x / snap);
-    setIndex(next);
+    at.current = next;
     onSettle?.(next);
   };
+
+  useEffect(() => {
+    if (index == null || index === at.current) return;
+    at.current = index;
+    list.current?.scrollToOffset({ offset: index * snap, animated: true });
+  }, [index, snap]);
 
   return (
     // Cards inside a column drop their shadow (ui/boardSurface).
     <BoardSurfaceContext value={true}>
       <FlatList
+        ref={list}
         horizontal
         data={columns}
         keyExtractor={keyOf}

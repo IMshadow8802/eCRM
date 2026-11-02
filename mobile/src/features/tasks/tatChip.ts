@@ -57,15 +57,6 @@ export function istDay(value: string | Date | null | undefined): string {
   return `${a.day} ${a.month} ${a.year}`;
 }
 
-/** 25m · 3h 10m · 2d 4h. */
-export function overBy(ms: number): string {
-  const mins = Math.max(1, Math.floor(ms / 60000));
-  if (mins < 60) return `${mins}m`;
-  const h = Math.floor(mins / 60);
-  if (h < 24) return mins % 60 ? `${h}h ${mins % 60}m` : `${h}h`;
-  return h % 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : `${Math.floor(h / 24)}d`;
-}
-
 export const VERDICT_LABEL: Record<string, string> = {
   excused: "Delay accepted",
   not_excused: "Delay rejected",

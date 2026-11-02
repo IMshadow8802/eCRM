@@ -7,7 +7,7 @@ import {
 } from "lucide-react-native";
 
 import { getTaskActivity } from "../../api/taskQueries";
-import type { BadgeTone } from "../../theme";
+import { spacing, type BadgeTone } from "../../theme";
 import { Card, EmptyState, Text, Timeline, type TimelineEntry } from "../../ui";
 import { relativeTime } from "./taskHelpers";
 
@@ -75,5 +75,5 @@ export default function ActivityTab({ taskId }: { taskId: number }) {
 }
 
 const styles = StyleSheet.create({
-  end: { paddingLeft: 40 },
+  end: { paddingLeft: spacing[10] },
 });

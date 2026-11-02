@@ -67,7 +67,8 @@ export function weekStart(now = new Date()): Date {
 /** Completed on or after this Monday (G10). */
 export const doneThisWeek = (tasks: Task[], now = new Date()): Task[] => {
   const from = weekStart(now).getTime();
-  return tasks.filter((t) => t.IsCompleted && t.CompletedDate != null && new Date(t.CompletedDate).getTime() >= from);
+  // parseIst: a DB wall-clock string ("2026-11-02 10:00:00") is IST; Hermes will not parse it with new Date.
+  return tasks.filter((t) => t.IsCompleted && (parseIst(t.CompletedDate)?.getTime() ?? -Infinity) >= from);
 };
 
 /** "42 m" · "3 h" · "2 d" — E's short spans ("Due in 3 h", "Overdue 21 h"). */

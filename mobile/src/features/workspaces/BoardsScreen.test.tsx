@@ -147,6 +147,12 @@ it("a failed fetch shows the error card; Try again asks again", async () => {
   expect(await screen.findByText("Sales Ops")).toBeOnTheScreen();
 });
 
+it("G4: past one full 200-row page the open counts read '—', never a short count", async () => {
+  jest.mocked(fetchTasks).mockResolvedValue(envelope({ tasks: [makeTask({ Id: 1, WorkspaceId: 1 })], pagination: pagination(201) }));
+  await mount();
+  expect(await screen.findByText("Only you · — open")).toBeOnTheScreen();
+});
+
 it("while the task counts load, rows show no count rather than 0", async () => {
   jest.mocked(fetchTasks).mockReturnValue(new Promise(() => {}));
   await mount();

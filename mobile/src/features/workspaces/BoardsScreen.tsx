@@ -9,7 +9,7 @@ import { fetchTasks } from "../../api/taskQueries";
 import { fetchUserDirectory } from "../../api/userQueries";
 import { fetchWorkspaceMembers, fetchWorkspaces, respondInvite } from "../../api/workspaceQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
-import { workspaceBadge } from "../../theme";
+import { spacing, workspaceBadge } from "../../theme";
 import type { Workspace } from "../../types/api";
 import {
   AvatarStack, Band, BandSheet, Button, Chip, EmptyState, ErrorCard, Footnote, GroupHeader, HeaderButton, ListGroup,
@@ -90,7 +90,9 @@ export default function BoardsScreen({ navigation }: Props) {
       : navigation.navigate("Board", { workspaceId: w.Id, name: w.Name });
 
   const metaOf = (w: Workspace) => {
-    const tasks = open.data ? `${openCount.get(w.Id) ?? 0} open` : null;
+    // G4: past one full 200-row page a count would be short, so "—" (like G3/G12).
+    const full = (open.data?.data?.pagination.totalRecords ?? 0) > 200;
+    const tasks = open.data ? `${full ? "—" : (openCount.get(w.Id) ?? 0)} open` : null;
     if (w.Type === "personal") return ["Only you", tasks].filter(Boolean).join(" · ");
     if (w.Type === "project") return ["Team from project", tasks].filter(Boolean).join(" · ");
     return [w.MemberCount != null ? plural(w.MemberCount, "member") : null, tasks, w.MyRole].filter(Boolean).join(" · ");
@@ -211,5 +213,5 @@ export default function BoardsScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, minWidth: 0 },
-  answer: { flexDirection: "row", alignItems: "center", gap: 4 },
+  answer: { flexDirection: "row", alignItems: "center", gap: spacing[1] },
 });

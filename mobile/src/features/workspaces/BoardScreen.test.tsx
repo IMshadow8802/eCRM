@@ -1,4 +1,4 @@
-import { Dimensions } from "react-native";
+import { Dimensions, FlatList } from "react-native";
 import { QueryClient } from "@tanstack/react-query";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react-native";
 
@@ -188,7 +188,7 @@ const settleOn = async (index: number) => {
 
 const col = (id: number) => within(screen.getByTestId(`column-${id}`));
 
-it("each column's Add task adds there; the header plus does too", async () => {
+it("each column's Add task adds there; the head's plus is on the first column only", async () => {
   jest.mocked(fetchKanbanColumns).mockResolvedValue([todo, doing, column(3, "Finished")]);
   const navigation = makeNavigation<"Board">();
   await mount(navigation);
@@ -197,8 +197,10 @@ it("each column's Add task adds there; the header plus does too", async () => {
   expect(navigation.navigate).toHaveBeenLastCalledWith("TaskForm", { workspaceId: WS, columnId: 1 });
   await fireEvent.press(col(2).getByLabelText("Add a task to Underway"));
   expect(navigation.navigate).toHaveBeenLastCalledWith("TaskForm", { workspaceId: WS, columnId: 2 });
-  await fireEvent.press(col(2).getByLabelText("New task in Underway"));
-  expect(navigation.navigate).toHaveBeenLastCalledWith("TaskForm", { workspaceId: WS, columnId: 2 });
+  // E 07: the head's plus is on the first column only.
+  expect(col(2).queryByLabelText("New task in Underway")).toBeNull();
+  await fireEvent.press(col(1).getByLabelText("New task in Backlog"));
+  expect(navigation.navigate).toHaveBeenLastCalledWith("TaskForm", { workspaceId: WS, columnId: 1 });
   expect(col(1).getByText("Add task")).toBeOnTheScreen();
 });
 
@@ -237,8 +239,22 @@ it("a swipe moves the band tab and the page dots with it", async () => {
   await settleOn(1);
   expect(screen.getByRole("tab", { name: "Underway, 1", selected: true })).toBeOnTheScreen();
   expect(screen.getByLabelText("Page 2 of 2")).toBeOnTheScreen();
-  await fireEvent.press(screen.getByRole("tab", { name: "Backlog, 1" }));
-  expect(screen.getByRole("tab", { name: "Backlog, 1", selected: true })).toBeOnTheScreen();
+});
+
+it("a tab tap pages the columns there, so tab, dots and column agree", async () => {
+  const scroll = jest.spyOn(FlatList.prototype, "scrollToOffset").mockImplementation(() => {});
+  try {
+    await mount();
+    await screen.findByText("Fix the gate");
+    scroll.mockClear();
+    await fireEvent.press(screen.getByRole("tab", { name: "Underway, 1" }));
+    const snap = boardColumnWidth(Dimensions.get("window").width) + BOARD_GAP;
+    expect(scroll).toHaveBeenLastCalledWith({ offset: snap, animated: true });
+    expect(screen.getByRole("tab", { name: "Underway, 1", selected: true })).toBeOnTheScreen();
+    expect(screen.getByLabelText("Page 2 of 2")).toBeOnTheScreen();
+  } finally {
+    scroll.mockRestore();
+  }
 });
 
 it("G8: the first column is to do; the last is done once every card in it is", async () => {

@@ -107,15 +107,15 @@ it("a failed load shows the error card with a retry", async () => {
 });
 
 describe("09 · the deadline hero", () => {
-  it("a missed clock: Target 8 h 00 m, Over by in the warm figure, the split bar, Explain delay", async () => {
-    // Due 17:00, now 19:00 IST: two hours over a 480-minute target.
+  it("a missed clock: Target is a label, Over by is warm, the bar is clock time, Explain delay", async () => {
+    // 09:00 → due 17:00, now 19:00 IST: 10 h elapsed over an 8 h clock span.
+    // The target (5 h of working time) is a label; it does not drive the bar.
     jest.setSystemTime(new Date("2026-10-08T19:00:00+05:30"));
     serve({ clocks: [clock({ BreachedAt: "2026-10-08 17:00:00" })] });
-    await renderWithProviders(<TatTab taskId={TASK} userId={ME} tatMinutes={480} />);
+    await renderWithProviders(<TatTab taskId={TASK} userId={ME} tatMinutes={300} />);
     expect(await screen.findByText("Your clock")).toBeOnTheScreen();
-    expect(screen.getAllByText("Missed deadline").length).toBeGreaterThan(0);
     expect(screen.getByText("Target")).toBeOnTheScreen();
-    expect(screen.getByText("8 h 00 m")).toBeOnTheScreen();
+    expect(screen.getByText("5 h 00 m")).toBeOnTheScreen();
     expect(screen.getByText("Over by")).toBeOnTheScreen();
     expect(flat(screen.getByText("2 h 00 m")).color).toBe(colors.onBrandWarn);
     expect(flat(screen.getByTestId("split-used")).flex).toBeCloseTo(0.8);
@@ -125,24 +125,57 @@ describe("09 · the deadline hero", () => {
     expect(screen.getByRole("button", { name: "Explain delay" })).toBeOnTheScreen();
   });
 
-  it("a running clock: Time left, no overrun, a butter Due in, no Explain", async () => {
+  it("the state chip sits on the hero's title row (HeroCard right slot)", async () => {
+    jest.setSystemTime(new Date("2026-10-08T19:00:00+05:30"));
+    serve({ clocks: [clock({ BreachedAt: "2026-10-08 17:00:00" })] });
+    await mount();
+    const title = await screen.findByText("Your clock");
+    const row = title.parent!.parent!;
+    expect(flat(row).flexDirection).toBe("row");
+    expect(within(row).getByText("Missed deadline")).toBeOnTheScreen();
+  });
+
+  it("a running clock: time left is clock time, labelled so; no overrun, a butter Due in, no Explain", async () => {
     jest.setSystemTime(new Date("2026-10-08T15:00:00+05:30"));
     serve({ clocks: [clock()] });
-    await renderWithProviders(<TatTab taskId={TASK} userId={ME} tatMinutes={480} />);
-    expect(await screen.findByText("Time left")).toBeOnTheScreen();
+    await renderWithProviders(<TatTab taskId={TASK} userId={ME} tatMinutes={300} />);
+    expect(await screen.findByText("Clock time left")).toBeOnTheScreen();
     expect(screen.getByText("2 h 00 m")).toBeOnTheScreen();
     expect(screen.getByText("Due in 2 h")).toBeOnTheScreen();
+    // 6 h of an 8 h clock.
     expect(flat(screen.getByTestId("split-used")).flex).toBeCloseTo(0.75);
     expect(screen.queryByTestId("split-overrun")).toBeNull();
     expect(screen.queryByRole("button", { name: "Explain delay" })).toBeNull();
   });
 
-  it("without TatMinutes the target is the clock's own span", () => {
-    const f = deadlineFigures(clock(), null, new Date("2026-10-08T13:00:00+05:30").getTime());
-    expect(f.target).toBe(8 * 3_600_000);
-    expect(f.left).toBe(4 * 3_600_000);
-    expect(f.used).toBeCloseTo(0.5);
-    expect(deadlineFigures(clock({ DueAt: null }), null, 0)).toMatchObject({ target: null, used: 0, overrun: 0 });
+  it("an overnight clock: the bar runs on the clock, across midnight", async () => {
+    // Assigned 17:00, due 11:00 next day; now 08:00 → 15 of 18 h.
+    jest.setSystemTime(new Date("2026-10-09T08:00:00+05:30"));
+    serve({ clocks: [clock({ AssignedAt: "2026-10-08 17:00:00", DueAt: "2026-10-09 11:00:00" })] });
+    await renderWithProviders(<TatTab taskId={TASK} userId={ME} tatMinutes={120} />);
+    expect(await screen.findByText("3 h 00 m")).toBeOnTheScreen();
+    expect(screen.getByText("2 h 00 m")).toBeOnTheScreen();
+    expect(flat(screen.getByTestId("split-used")).flex).toBeCloseTo(15 / 18);
+    expect(screen.getByText("Due Fri, 9 Oct · 11:00 am")).toBeOnTheScreen();
+  });
+
+  it("without TatMinutes there is no target, and nothing is called working time", async () => {
+    jest.setSystemTime(new Date("2026-10-08T13:00:00+05:30"));
+    serve({ clocks: [clock()] });
+    await mount();
+    expect(await screen.findByText("Target")).toBeOnTheScreen();
+    expect(within(screen.getByText("Target").parent!).getByText("—")).toBeOnTheScreen();
+    expect(screen.getByText("Clock time from start")).toBeOnTheScreen();
+    expect(screen.queryByText(/working/i)).toBeNull();
+    expect(flat(screen.getByTestId("split-used")).flex).toBeCloseTo(0.5);
+  });
+
+  it("the figures in one place", () => {
+    const at = (t: string) => new Date(t).getTime();
+    expect(deadlineFigures(clock(), at("2026-10-08T13:00:00+05:30"))).toMatchObject({ left: 4 * 3_600_000, over: 0, used: 0.5, overrun: 0 });
+    expect(deadlineFigures(clock({ DueAt: null }), 0)).toMatchObject({ used: 0, overrun: 0, over: 0, left: 0 });
+    // Before the start the bar is empty, never negative.
+    expect(deadlineFigures(clock(), at("2026-10-08T08:00:00+05:30")).used).toBe(0);
   });
 
   it("closed on time reads On time, with what was spare", async () => {
@@ -150,6 +183,18 @@ describe("09 · the deadline hero", () => {
     await mount();
     expect(await screen.findByText("On time")).toBeOnTheScreen();
     expect(screen.getByText("Spare")).toBeOnTheScreen();
+  });
+
+  it("own-clock buttons sit below the hold card and the timeline (E has no place for them)", async () => {
+    serve({ clocks: [clock()], holds: [hold()] });
+    await mount();
+    const all = (await screen.findAllByText(/./)).map((n) => n.props.children);
+    const timeline = all.indexOf("Started");
+    const card = all.indexOf("Reason given for the hold");
+    const button = screen.getAllByText("Accept task").map((n) => all.indexOf(n.props.children));
+    expect(card).toBeLessThan(timeline);
+    expect(all.lastIndexOf("Accept task")).toBeGreaterThan(timeline);
+    expect(button.length).toBeGreaterThan(0);
   });
 });
 
@@ -166,7 +211,7 @@ describe("timeline (Started · Held · Due · Breached)", () => {
     expect(order.map((n) => all.indexOf(n))).toEqual([...order.map((n) => all.indexOf(n))].sort((a, b) => a - b));
     expect(screen.getByText("Assigned to Asha Rao")).toBeOnTheScreen();
     expect(screen.getByText("Waiting on client · 4 h 10 m added back")).toBeOnTheScreen();
-    expect(screen.getByText("8 h 00 m working time from start")).toBeOnTheScreen();
+    expect(screen.getByText("8 working hours from start")).toBeOnTheScreen();
     expect(screen.getByText("Stays on record, even if reopened · waiting for reason")).toBeOnTheScreen();
     expect(screen.getByText("Thu, 8 Oct · 9:00 am")).toBeOnTheScreen();
   });

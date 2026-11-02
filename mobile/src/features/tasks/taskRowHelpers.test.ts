@@ -25,6 +25,13 @@ describe("doneThisWeek", () => {
     ];
     expect(doneThisWeek(tasks, now).map((t) => t.Id)).toEqual([1]);
   });
+  it("reads a DB wall-clock completion as IST", () => {
+    const tasks = [
+      makeTask({ Id: 7, IsCompleted: true, CompletedDate: "2026-11-02 00:30:00" }),
+      makeTask({ Id: 8, IsCompleted: true, CompletedDate: "2026-11-01 23:30:00" }),
+    ];
+    expect(doneThisWeek(tasks, now).map((t) => t.Id)).toEqual([7]);
+  });
   it("a Sunday belongs to the week that started six days before", () => {
     expect(weekStart(new Date(2026, 10, 8, 23, 0))).toEqual(new Date(2026, 10, 2));
   });

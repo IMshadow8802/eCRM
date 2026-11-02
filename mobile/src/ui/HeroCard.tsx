@@ -20,6 +20,8 @@ export interface HeroCardProps {
   title: string;
   subtitle?: string;
   onOpen?: () => void;
+  /** Right of the title (09's state chip); takes the Open link's place. */
+  right?: ReactNode;
   stats?: HeroStat[];
   children?: ReactNode;
   size?: "phone" | "tablet";
@@ -29,7 +31,7 @@ export interface HeroCardProps {
  * The indigo stat hero (E `.hero`, 04 / 27 / T1): a white circle icon, a
  * title, an "Open" link and up to four tappable figures.
  */
-export function HeroCard({ icon: Icon, title, subtitle, onOpen, stats, children, size = "phone" }: HeroCardProps) {
+export function HeroCard({ icon: Icon, title, subtitle, onOpen, right, stats, children, size = "phone" }: HeroCardProps) {
   const tablet = size === "tablet";
   return (
     <View style={[styles.hero, tablet && styles.heroTablet]}>
@@ -41,7 +43,8 @@ export function HeroCard({ icon: Icon, title, subtitle, onOpen, stats, children,
           <Text variant={tablet ? "h2" : "cardTitle"} color="textOnBrand" numberOfLines={1}>{title}</Text>
           {subtitle ? <Text variant="meta" color="onBrandMuted" numberOfLines={1}>{subtitle}</Text> : null}
         </View>
-        {onOpen ? (
+        {right ?? null}
+        {onOpen && !right ? (
           <Pressable onPress={onOpen} hitSlop={12} accessibilityRole="link" accessibilityLabel={`Open ${title}`} style={styles.open}>
             <Text variant="metaStrong" color="textOnBrand">Open</Text>
             <ArrowRight size={16} color={colors.textOnBrand} />

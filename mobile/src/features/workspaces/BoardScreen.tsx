@@ -10,10 +10,10 @@ import { apiErrorMessage } from "../../api/errors";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
-import { colors, radius, taskStageBadge, type TaskStage } from "../../theme";
+import { colors, HIT_TARGET, metrics, radius, spacing, taskStageBadge, type TaskStage } from "../../theme";
 import type { KanbanColumn, Task } from "../../types/api";
 import {
-  ActionSheet, Band, BandSheet, BoardColumns, EmptyState, IconButton, PageDots, Refresher, Screen, StatusBadge, Text,
+  ActionSheet, Band, BandSheet, BOARD_GAP, BoardColumns, EmptyState, IconButton, PageDots, Refresher, Screen, StatusBadge, Text,
   useToast, type SheetAction, type SheetRef,
 } from "../../ui";
 import { TaskCard } from "../tasks/TaskCard";
@@ -192,8 +192,7 @@ export default function BoardScreen({ route, navigation }: Props) {
           columns.length
             ? {
               value: String(columns[Math.min(columnIndex, columns.length - 1)]!.Id),
-              // ponytail: tabs follow the swipe; a tab tap moves the indicator but
-              // BoardColumns has no scroll-to yet (reported to Task 33's owner).
+              // A tap pages the strip (BoardColumns `index`); a swipe moves the tab.
               onChange: (v) => setColumnIndex(columns.findIndex((c) => String(c.Id) === v)),
               options: columns.map((c) => ({ value: String(c.Id), label: c.Title, count: byColumn.get(c.Id)?.length ?? 0 })),
             }
@@ -219,6 +218,7 @@ export default function BoardScreen({ route, navigation }: Props) {
               columns={columns}
               insetLeft={0}
               keyOf={(column) => String(column.Id)}
+              index={Math.min(columnIndex, Math.max(columns.length - 1, 0))}
               onSettle={setColumnIndex}
               renderColumn={(column) => {
                 const cards = byColumn.get(column.Id) ?? [];
@@ -239,8 +239,9 @@ export default function BoardScreen({ route, navigation }: Props) {
                           {max ? `${cards.length} / ${max}` : String(cards.length)}
                         </Text>
                       </View>
-                      {wsAbilities.createTask ? (
-                        <Pressable onPress={() => addTo(column)} hitSlop={13} accessibilityRole="button" accessibilityLabel={`New task in ${column.Title}`}>
+                      {/* E 07: the head's plus is on the first column only; every column ends in "Add task". */}
+                      {wsAbilities.createTask && column.Id === columns[0]?.Id ? (
+                        <Pressable onPress={() => addTo(column)} hitSlop={(HIT_TARGET - 18) / 2} accessibilityRole="button" accessibilityLabel={`New task in ${column.Title}`}>
                           <Plus size={18} color={colors.textSecondary} />
                         </Pressable>
                       ) : null}
@@ -297,13 +298,28 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.surfaceSunken,
     borderRadius: radius.column,
-    paddingTop: 10,
-    paddingHorizontal: 8,
-    paddingBottom: 8,
+    // ponytail: E's 10 has no spacing step; BOARD_GAP is the board's own 10.
+    paddingTop: BOARD_GAP,
+    paddingHorizontal: spacing[2],
+    paddingBottom: spacing[2],
   },
-  head: { flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 2, paddingHorizontal: 4, paddingBottom: 10 },
-  empty: { paddingHorizontal: 4, paddingBottom: 8 },
-  add: { height: 40, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
+  head: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[2],
+    paddingTop: spacing[1],
+    paddingHorizontal: spacing[1],
+    paddingBottom: BOARD_GAP,
+  },
+  empty: { paddingHorizontal: spacing[1], paddingBottom: spacing[2] },
+  add: {
+    height: spacing[10],
+    marginTop: spacing[1],
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: metrics.inlineGap,
+  },
   sink: { transform: [{ scale: 0.97 }] },
-  dots: { paddingVertical: 10 },
+  dots: { paddingVertical: BOARD_GAP },
 });

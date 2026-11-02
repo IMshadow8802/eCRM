@@ -11,8 +11,8 @@ module.exports = {
   clearMocks: true,
   // Read only when coverage is collected (`pnpm test:coverage`); `pnpm test` ignores both.
   collectCoverageFrom: ["src/**/*.{ts,tsx}", "!src/**/*.test.*", "!src/test/**", "!src/types/**"],
-  // ponytail: measured 2026-11-02 after Task 35 (98.39/93.48/97.22/99.01), rounded down; never lower it.
-  coverageThreshold: { global: { statements: 98, branches: 93, functions: 97, lines: 99 } },
+  // ponytail: controller ruling 2026-11-02 — the global floor stays 95/90/95/95; touched files carry ≥80.
+  coverageThreshold: { global: { statements: 95, branches: 90, functions: 95, lines: 95 } },
   testPathIgnorePatterns: ["/node_modules/", "/android/", "/ios/"],
   // pnpm keeps packages under node_modules/.pnpm, so the allowlist matches the
   // package name after any "node_modules/" segment.
