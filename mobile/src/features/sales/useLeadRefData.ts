@@ -23,6 +23,13 @@ export interface LeadRefData {
   /** True once the lookup has arrived — an empty list before then means "loading", not "none configured". */
   lostReasonsLoaded: boolean;
   transferReasonsLoaded: boolean;
+  /**
+   * The two lists a create sends ids from (status, owner). Until both are
+   * "ready" a create would go out with null ids, so the form waits on this.
+   */
+  choicesState: "loading" | "ready" | "failed";
+  /** Refetches the status and team lists. */
+  retryChoices: () => void;
 }
 
 const lookup = (kind: string) => ({
@@ -44,17 +51,26 @@ export function useLeadRefData(): LeadRefData {
       },
       { queryKey: ["products"], queryFn: () => fetchProducts() },
     ],
-    combine: (r) => ({
-      statuses: r[0]?.data ?? [],
-      sources: r[1]?.data ?? [],
-      lostReasons: r[2]?.data ?? [],
-      transferReasons: r[3]?.data ?? [],
-      callOutcomes: r[4]?.data ?? [],
-      users: r[5]?.data ?? [],
-      products: r[6]?.data ?? [],
-      lostReasonsLoaded: !!r[2]?.isSuccess,
-      transferReasonsLoaded: !!r[3]?.isSuccess,
-    }),
+    combine: (r) => {
+      const choices = [r[0], r[5]];
+      return {
+        statuses: r[0]?.data ?? [],
+        sources: r[1]?.data ?? [],
+        lostReasons: r[2]?.data ?? [],
+        transferReasons: r[3]?.data ?? [],
+        callOutcomes: r[4]?.data ?? [],
+        users: r[5]?.data ?? [],
+        products: r[6]?.data ?? [],
+        lostReasonsLoaded: !!r[2]?.isSuccess,
+        transferReasonsLoaded: !!r[3]?.isSuccess,
+        choicesState: choices.some((q) => q?.isError)
+          ? ("failed" as const)
+          : choices.every((q) => q?.isSuccess)
+            ? ("ready" as const)
+            : ("loading" as const),
+        retryChoices: () => choices.forEach((q) => void q?.refetch()),
+      };
+    },
   });
 }
 

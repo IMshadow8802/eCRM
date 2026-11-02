@@ -141,7 +141,9 @@ function LeadForm({ lead, navigation }: { lead: Lead | null; navigation: Props["
   const [custom, setCustom] = useState<Record<number, string | boolean>>({});
   const [error, setError] = useState<string | null>(null);
 
-  const { statuses, sources, users, products } = useLeadRefData();
+  const { statuses, sources, users, products, choicesState, retryChoices } = useLeadRefData();
+  // Create sends a status and an owner picked from these lists; edit sends neither.
+  const choicesReady = editing || choicesState === "ready";
 
   const { data: fieldDefs = [] } = useQuery({
     queryKey: ["custom-fields", "lead"],
@@ -149,7 +151,9 @@ function LeadForm({ lead, navigation }: { lead: Lead | null; navigation: Props["
     enabled: !editing,
   });
 
-  const statusId = statusPick ?? defaultStatus(statuses);
+  // Won is never a starting status — convert writes it, with a value.
+  const startable = useMemo(() => statuses.filter((s) => s.Code !== "converted"), [statuses]);
+  const statusId = statusPick ?? defaultStatus(startable);
   const ownerId =
     ownerPick !== undefined ? ownerPick : users.some((u) => u.Id === userId) ? userId : null;
   const customDraft = { ...blankDraft(fieldDefs), ...custom };
@@ -164,11 +168,7 @@ function LeadForm({ lead, navigation }: { lead: Lead | null; navigation: Props["
     () => products.map((p) => ({ value: p.Id, label: p.Name })),
     [products],
   );
-  // Won is never a starting status — convert writes it, with a value.
-  const statusOptions = useMemo(
-    () => statuses.filter((s) => s.Code !== "converted").map((s) => ({ value: s.Id, label: s.Value })),
-    [statuses],
-  );
+  const statusOptions = useMemo(() => startable.map((s) => ({ value: s.Id, label: s.Value })), [startable]);
 
   const save = useMutation({
     mutationFn: (base: LeadBaseFields): Promise<ApiEnvelope<{ Id: number }>> =>
@@ -381,10 +381,20 @@ function LeadForm({ lead, navigation }: { lead: Lead | null; navigation: Props["
           </Text>
         ) : null}
 
+        {!editing && choicesState === "failed" ? (
+          <View style={styles.block}>
+            <Text variant="caption" color="danger">
+              Could not load the statuses or the team.
+            </Text>
+            <Button title="Try again" size="sm" variant="secondary" onPress={retryChoices} />
+          </View>
+        ) : null}
+
         <Button
           title={editing ? "Save changes" : "Add lead"}
           onPress={submit}
           loading={save.isPending}
+          disabled={!choicesReady}
           fullWidth
         />
       </ScrollView>

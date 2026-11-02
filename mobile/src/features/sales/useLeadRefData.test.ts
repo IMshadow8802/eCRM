@@ -1,5 +1,5 @@
 import { createElement, type ReactNode } from "react";
-import { renderHook, waitFor } from "@testing-library/react-native";
+import { act, renderHook, waitFor } from "@testing-library/react-native";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { fetchLookups } from "../../api/configQueries";
@@ -43,6 +43,8 @@ it("returns each list under its name, users scoped to the leads module", async (
       products,
       lostReasonsLoaded: true,
       transferReasonsLoaded: true,
+      choicesState: "ready",
+      retryChoices: expect.any(Function),
     }),
   );
   expect(fetchAssignableUsers).toHaveBeenCalledWith({ Module: "leads" });
@@ -66,5 +68,20 @@ it("is empty lists while loading, never undefined", async () => {
     // An empty list while loading is not "none configured".
     lostReasonsLoaded: false,
     transferReasonsLoaded: false,
+    choicesState: "loading",
+    retryChoices: expect.any(Function),
   });
+});
+
+it("reports a failed status or team list, and the retry refetches it", async () => {
+  jest.mocked(fetchLookups).mockImplementation(async ({ Kind }) => row(Kind));
+  jest.mocked(fetchAssignableUsers).mockRejectedValueOnce(new Error("down")).mockResolvedValue(users);
+  jest.mocked(fetchProducts).mockResolvedValue(products);
+
+  const { result } = await renderHook(() => useLeadRefData(), { wrapper });
+
+  await waitFor(() => expect(result.current.choicesState).toBe("failed"));
+  await act(async () => result.current.retryChoices());
+  await waitFor(() => expect(result.current.choicesState).toBe("ready"));
+  expect(result.current.users).toEqual(users);
 });

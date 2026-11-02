@@ -118,6 +118,48 @@ describe("create", () => {
     }
   });
 
+  it("with no open status the default is still never Won", async () => {
+    jest.mocked(fetchLookups).mockImplementation(async ({ Kind }) =>
+      Kind === "lead_status" ? [status(3, "Won", "converted"), status(2, "Hot", "qualified")] : [],
+    );
+    await mount();
+    expect(await screen.findAllByText("Hot")).toHaveLength(2);
+    await fillRequired();
+    await save();
+    await waitFor(() => expect(createLead).toHaveBeenCalledWith(expect.objectContaining({ StatusId: 2 })));
+  });
+
+  it("cannot be saved until the statuses and the team have loaded", async () => {
+    let release!: (users: AssignableUser[]) => void;
+    jest.mocked(fetchAssignableUsers).mockReturnValue(new Promise((resolve) => (release = resolve)));
+    await mount();
+    await screen.findAllByText("New");
+    expect(screen.getByText("Add lead")).toBeDisabled();
+    release([person(42, "Priya Shah")]);
+    await waitFor(() => expect(screen.getByText("Add lead")).toBeEnabled());
+  });
+
+  it("a failed list says so, offers a retry, and keeps the save shut", async () => {
+    jest.mocked(fetchAssignableUsers).mockRejectedValueOnce(serverError(500, "boom"));
+    await mount();
+    expect(await screen.findByText("Could not load the statuses or the team.")).toBeOnTheScreen();
+    expect(screen.getByText("Add lead")).toBeDisabled();
+    await fireEvent.press(screen.getByText("Try again"));
+    await waitFor(() => expect(screen.getByText("Add lead")).toBeEnabled());
+    expect(screen.queryByText("Could not load the statuses or the team.")).toBeNull();
+  });
+
+  it("a create reply without an Id goes back instead of opening a lead", async () => {
+    jest.mocked(createLead).mockResolvedValue({ ...envelope({ Id: 0 }), data: null });
+    const navigation = makeNavigation<"LeadForm">();
+    await mount(undefined, navigation);
+    await screen.findAllByText("Priya Shah");
+    await fillRequired();
+    await save();
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+    expect(navigation.replace).not.toHaveBeenCalled();
+  });
+
   it("owner is nobody when I am not assignable; follow-up None sends null", async () => {
     jest.mocked(fetchAssignableUsers).mockResolvedValue([person(9, "Asha Rao")]);
     await mount();
