@@ -124,13 +124,39 @@ it("switching queue does not spin pull-to-refresh; a pull does", async () => {
   );
   expect(spinning()).toBe(false);
 
+  // Back on Mine with a server that answers: let its background refetch land
+  // so nothing is in flight and the rows are real, not a placeholder.
+  jest.mocked(fetchLeads).mockResolvedValue(leadsReply([row], 3));
+  const settled = jest.mocked(fetchLeads).mock.calls.length;
   await fireEvent.press(screen.getByText("Mine"));
-  await screen.findByText("Ravi Patel");
-  // The refetch never settles (pending mock), so fire the pull without awaiting it.
+  await screen.findByText("3 yours");
+  await waitFor(() => expect(fetchLeads).toHaveBeenCalledTimes(settled + 1));
+  await act(() => jest.advanceTimersByTime(100));
+  expect(spinning()).toBe(false);
+
+  // The pull, and only the pull, starts the spinner. It never settles, so
+  // fire it without awaiting.
+  jest.mocked(fetchLeads).mockReturnValue(new Promise(() => {}));
   await act(() => {
     void screen.getByTestId("leads-list").props.refreshControl.props.onRefresh();
   });
   await waitFor(() => expect(spinning()).toBe(true));
+});
+
+it("a row that shifts onto the next page while scrolling shows once", async () => {
+  jest
+    .mocked(fetchLeads)
+    .mockResolvedValueOnce(leadsReply([row, lead({ Id: 12, Name: "Meera Joshi" })], 120))
+    .mockResolvedValueOnce(
+      leadsReply([lead({ Id: 12, Name: "Meera Joshi (moved)" }), lead({ Id: 13, Name: "Arjun Rao" })], 120),
+    );
+  await mount();
+  await screen.findByText("Meera Joshi");
+  await fireEvent(screen.getByTestId("leads-list"), "onEndReached");
+  expect(await screen.findByText("Arjun Rao")).toBeOnTheScreen();
+  // First occurrence wins: one Meera, the page-1 copy.
+  expect(screen.getAllByText(/^Meera Joshi/)).toHaveLength(1);
+  expect(screen.getByText("Meera Joshi")).toBeOnTheScreen();
 });
 
 it("does not fetch until the signed-in user is known", async () => {

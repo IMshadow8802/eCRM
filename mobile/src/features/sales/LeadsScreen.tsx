@@ -77,10 +77,14 @@ export default function LeadsScreen({ navigation }: Props) {
     [statuses],
   );
 
-  const leads = useMemo(
-    () => leadsQuery.data?.pages.flatMap((page) => page.data?.leads ?? []) ?? [],
-    [leadsQuery.data],
-  );
+  // Offset paging: a lead that changes mid-scroll can land on two pages.
+  // First occurrence wins, so FlatList keys stay unique.
+  const leads = useMemo(() => {
+    const seen = new Set<number>();
+    return (leadsQuery.data?.pages.flatMap((page) => page.data?.leads ?? []) ?? []).filter(
+      (lead) => !seen.has(lead.Id) && seen.add(lead.Id),
+    );
+  }, [leadsQuery.data]);
   const total = leadsQuery.data?.pages[0]?.data?.pagination.totalRecords ?? leads.length;
 
   // Placeholder rows belong to the previous search: paging them would fetch
