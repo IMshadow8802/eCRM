@@ -1,4 +1,4 @@
-import { Linking } from "react-native";
+import { Linking, StyleSheet } from "react-native";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react-native";
 
 import { fetchAttachments } from "../../api/attachmentQueries";
@@ -85,6 +85,16 @@ const loaded = async () => {
   await screen.findByText("Priya Shah");
 };
 
+
+// Found on the emulator (Task 30): a right-aligned one-line value inside a
+// column that shrink-wraps its children is laid out at full text width, and
+// Android cuts the START off ("VIAESTRO Cust..."). The value has to fill the
+// column so numberOfLines ellipsizes the end instead.
+const fillsItsColumn = (text: string) => {
+  const column = screen.getByText(text).parent;
+  expect(StyleSheet.flatten(column?.props.style).alignItems).not.toBe("flex-end");
+};
+
 beforeEach(() => {
   seedAuth({ UserId: 42, access: { modules: { leads: FULL } } });
   jest.mocked(fetchAttachments).mockResolvedValue([]);
@@ -133,6 +143,14 @@ describe("when the lead cannot be shown", () => {
 });
 
 describe("details", () => {
+  it("a long fact value fills its column, so it ellipsizes at the end", async () => {
+    const company = "A company whose name is far too long to fit";
+    jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead({ Company: company })));
+    await mount();
+    expect(await screen.findByText(company)).toBeOnTheScreen();
+    fillsItsColumn(company);
+  });
+
   it("shows the header, the facts and the custom fields off the row", async () => {
     jest.mocked(fetchLeadDetail).mockResolvedValue(
       detail(lead({ Address: "Ring Road", City: "Surat", Remarks: "Wants a site visit" }), {

@@ -1,4 +1,4 @@
-import { Linking } from "react-native";
+import { Linking, StyleSheet } from "react-native";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react-native";
 
 import { fetchAttachments } from "../../api/attachmentQueries";
@@ -74,6 +74,16 @@ const loaded = async () => {
   await screen.findAllByText("Priya Shah");
 };
 
+
+// Found on the emulator (Task 30): a right-aligned one-line value inside a
+// column that shrink-wraps its children is laid out at full text width, and
+// Android cuts the START off ("VIAESTRO Cust..."). The value has to fill the
+// column so numberOfLines ellipsizes the end instead.
+const fillsItsColumn = (text: string) => {
+  const column = screen.getByText(text).parent;
+  expect(StyleSheet.flatten(column?.props.style).alignItems).not.toBe("flex-end");
+};
+
 beforeEach(() => {
   seedAuth({ UserId: 42, access: { modules: { complaints: FULL } } });
   jest.mocked(fetchAttachments).mockResolvedValue([]);
@@ -117,6 +127,16 @@ describe("when the complaint cannot be shown", () => {
 });
 
 describe("an open complaint", () => {
+  it("a long fact value fills its column, so it ellipsizes at the end", async () => {
+    const who = "A reporter whose name is far too long to fit";
+    jest.mocked(fetchTicketDetail).mockResolvedValue(
+      detail(ticket({ ContactPerson: who, Contact: "9825012345" })),
+    );
+    await mount();
+    expect(await screen.findByText(`${who} · 9825012345`)).toBeOnTheScreen();
+    fillsItsColumn(`${who} · 9825012345`);
+  });
+
   it("renders the status chips and the facts off the row", async () => {
     jest.mocked(fetchTicketDetail).mockResolvedValue(
       detail(

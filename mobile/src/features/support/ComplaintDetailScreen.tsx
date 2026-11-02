@@ -1168,7 +1168,9 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.divider,
   },
   factLabel: { width: 96 },
-  factValue: { flex: 1, alignItems: "flex-end" },
+  // No alignItems: flex-end. A shrink-wrapped one-line value is laid out at
+  // full width and Android clips its start; `align="right"` does the aligning.
+  factValue: { flex: 1 },
   block: { gap: spacing[2] },
   fieldRow: { gap: spacing[1] },
   leadRow: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
