@@ -1,93 +1,78 @@
 import { fireEvent, screen } from "@testing-library/react-native";
 
-import { assigneesJson, localDay, makeTask } from "../../test/fixtures";
+import { assigneesJson, makeTask } from "../../test/fixtures";
 import { renderWithProviders } from "../../test/renderWithProviders";
 import { TaskCard } from "./TaskCard";
+import { TaskRow } from "./TaskRow";
 
-// A TAT due time far enough ahead that the chip reads "Due …", whatever today is.
-const FUTURE_TAT = "2099-01-01 10:00:00";
+jest.useFakeTimers();
+beforeEach(() => jest.setSystemTime(new Date("2026-11-02T12:00:00+05:30")));
 
-it("shows the facts sp_FetchTask returns", async () => {
-  await renderWithProviders(
-    <TaskCard
-      onPress={jest.fn()}
-      task={makeTask({
-        Title: "Fix the inverter",
-        Description: "Customer at sector 4",
-        WorkspaceName: "Ops board",
-        ColumnTitle: "Doing",
-        ChecklistDone: 2,
-        ChecklistTotal: 5,
-        Priority: "high",
-        LoggedHours: 1.5,
-        EstimatedHours: 4,
-        SubTaskCount: 3,
-        BlockerCount: 2,
-        DueDate: localDay(1),
-      })}
-    />,
-  );
-  for (const text of ["Fix the inverter", "Customer at sector 4", "Ops board", "Doing", "2 of 5", "high", "1.5h / 4h", "3", "2", "Due tomorrow"]) {
-    expect(screen.getByText(text)).toBeOnTheScreen();
-  }
+describe("TaskCard (07, a board card)", () => {
+  it("title, priority, due chip, steps and assignees", async () => {
+    await renderWithProviders(
+      <TaskCard
+        task={makeTask({ Title: "Call back Arora Traders", Priority: "high", DueDate: "2026-11-03", ChecklistDone: 0, ChecklistTotal: 3, AssigneesJson: assigneesJson([1, "Ayush Mishra"]) })}
+        onPress={jest.fn()}
+      />,
+    );
+    expect(screen.getByText("Call back Arora Traders")).toBeOnTheScreen();
+    expect(screen.getByText("High")).toBeOnTheScreen();
+    expect(screen.getByText("Tue, 3 Nov")).toBeOnTheScreen();
+    expect(screen.getByLabelText("0 of 3 steps")).toBeOnTheScreen();
+    expect(screen.getByText("0/3")).toBeOnTheScreen();
+    expect(screen.getByText("AM")).toBeOnTheScreen();
+  });
+
+  it("a missed clock reads Missed; nothing optional is drawn when absent", async () => {
+    await renderWithProviders(<TaskCard task={makeTask({ Priority: null, TatDueAt: "2026-11-02 11:00:00", ChecklistTotal: 0 })} onPress={jest.fn()} />);
+    expect(screen.getByText("Missed")).toBeOnTheScreen();
+    expect(screen.queryByText(/\/\d/)).toBeNull();
+  });
+
+  it("tap opens; long-press hands the task to Move to…", async () => {
+    const onPress = jest.fn();
+    const onLongPress = jest.fn();
+    const task = makeTask({ Id: 9 });
+    await renderWithProviders(<TaskCard task={task} onPress={onPress} onLongPress={onLongPress} />);
+    await fireEvent.press(screen.getByTestId("task-card-9"));
+    expect(onPress).toHaveBeenCalledWith(task);
+    await fireEvent(screen.getByTestId("task-card-9"), "longPress");
+    expect(onLongPress).toHaveBeenCalledWith(task);
+  });
 });
 
-it("leaves out what the task does not have", async () => {
-  await renderWithProviders(
-    <TaskCard onPress={jest.fn()} showWorkspace={false} task={makeTask({ WorkspaceName: "Ops board", ColumnTitle: null })} />,
-  );
-  expect(screen.queryByText("Ops board")).toBeNull();
-  expect(screen.queryByText(/ of /)).toBeNull();
-  expect(screen.queryByText(/^Due/)).toBeNull();
-});
+describe("TaskRow (05)", () => {
+  it("stage badge, priority, workspace · column, steps, chip and people", async () => {
+    const onPress = jest.fn();
+    const task = makeTask({
+      Title: "BITME", WorkspaceName: "Website Revamp", ColumnTitle: "In Progress", Priority: "medium",
+      ChecklistDone: 11, ChecklistTotal: 12, TatDueAt: "2026-11-02 15:00:00", AssigneesJson: assigneesJson([1, "Ayush Mishra"]),
+    });
+    await renderWithProviders(<TaskRow task={task} onPress={onPress} first />);
+    expect(screen.getByTestId("stage-inProgress")).toBeOnTheScreen();
+    expect(screen.getByText("Medium")).toBeOnTheScreen();
+    expect(screen.getByText("Website Revamp · In Progress")).toBeOnTheScreen();
+    expect(screen.getByText("11 of 12")).toBeOnTheScreen();
+    expect(screen.getByRole("progressbar")).toBeOnTheScreen();
+    expect(screen.getByText("Due in 3 h")).toBeOnTheScreen();
+    expect(screen.queryByTestId("row-separator")).toBeNull();
+    await fireEvent.press(screen.getByRole("button", { name: "BITME, In progress" }));
+    expect(onPress).toHaveBeenCalledWith(task);
+  });
 
-it("shows logged hours alone when there is no estimate", async () => {
-  await renderWithProviders(<TaskCard onPress={jest.fn()} task={makeTask({ LoggedHours: 2 })} />);
-  expect(screen.getByText("2h")).toBeOnTheScreen();
-});
+  it("a personal to-do with no steps or people: Personal chip, no bar, a separator", async () => {
+    await renderWithProviders(<TaskRow task={makeTask({ ChecklistTotal: 0, ChecklistDone: 0, AssigneesJson: null, AssignedToUserId: null })} onPress={jest.fn()} personal />);
+    expect(screen.getByTestId("stage-todo")).toBeOnTheScreen();
+    expect(screen.getByText("Personal")).toBeOnTheScreen();
+    expect(screen.queryByRole("progressbar")).toBeNull();
+    expect(screen.getByTestId("row-separator")).toBeOnTheScreen();
+  });
 
-it("says how late an overdue task is", async () => {
-  await renderWithProviders(<TaskCard onPress={jest.fn()} task={makeTask({ DueDate: localDay(-2) })} />);
-  expect(screen.getByText("2 days overdue")).toBeOnTheScreen();
-});
-
-it("shows two assignees and counts the rest", async () => {
-  await renderWithProviders(
-    <TaskCard
-      onPress={jest.fn()}
-      task={makeTask({ AssigneesJson: assigneesJson([1, "Asha Rao"], [2, "Ravi Kumar"], [3, "Meena Shah"]) })}
-    />,
-  );
-  expect(screen.getByText("AR")).toBeOnTheScreen();
-  expect(screen.getByText("RK")).toBeOnTheScreen();
-  expect(screen.queryByText("MS")).toBeNull();
-  expect(screen.getByText("+1")).toBeOnTheScreen();
-});
-
-it("an open task with a TAT clock shows its chip", async () => {
-  await renderWithProviders(<TaskCard onPress={jest.fn()} task={makeTask({ TatDueAt: FUTURE_TAT })} />);
-  expect(screen.getByText(/^Due .* IST$/)).toBeOnTheScreen();
-});
-
-it("a finished task drops its TAT chip", async () => {
-  // Completion is derived from the checklist; the server reports it as IsCompleted.
-  await renderWithProviders(
-    <TaskCard
-      onPress={jest.fn()}
-      task={makeTask({ TatDueAt: FUTURE_TAT, IsCompleted: true, ChecklistDone: 1, ChecklistTotal: 1 })}
-    />,
-  );
-  expect(screen.queryByText(/IST$/)).toBeNull();
-  expect(screen.getByText("1 of 1")).toBeOnTheScreen();
-});
-
-it("tap opens the task; long-press hands it to the board", async () => {
-  const onPress = jest.fn();
-  const onLongPress = jest.fn();
-  const task = makeTask({ Id: 9, Title: "Tap me" });
-  await renderWithProviders(<TaskCard task={task} onPress={onPress} onLongPress={onLongPress} />);
-  await fireEvent.press(screen.getByText("Tap me"));
-  expect(onPress).toHaveBeenCalledWith(task);
-  await fireEvent(screen.getByText("Tap me"), "longPress");
-  expect(onLongPress).toHaveBeenCalledWith(task);
+  it("a finished task with no date and nobody on it has no third line", async () => {
+    await renderWithProviders(<TaskRow task={makeTask({ IsCompleted: true, DueDate: null, AssigneesJson: null, AssignedToUserId: null })} onPress={jest.fn()} />);
+    expect(screen.getByTestId("stage-done")).toBeOnTheScreen();
+    expect(screen.queryByText("Personal")).toBeNull();
+    expect(screen.queryByLabelText(/people/)).toBeNull();
+  });
 });

@@ -1,6 +1,6 @@
 import { Dimensions } from "react-native";
 import { QueryClient } from "@tanstack/react-query";
-import { act, fireEvent, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react-native";
 
 import { fetchKanbanColumns } from "../../api/kanbanQueries";
 import { fetchTasks, moveTaskColumn } from "../../api/taskQueries";
@@ -8,7 +8,7 @@ import { fetchWorkspaces } from "../../api/workspaceQueries";
 import type { KanbanColumn, Task, Workspace, WorkspaceRole } from "../../types/api";
 import { access, envelope, pagination } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
-import { chipTones } from "../../theme";
+import { colors } from "../../theme";
 import { BOARD_GAP, boardColumnWidth } from "../../ui/BoardColumns";
 import BoardScreen from "./BoardScreen";
 
@@ -68,7 +68,10 @@ it("renders each column with its own cards and a count", async () => {
   await mount();
   expect(await screen.findByText("Fix the gate")).toBeOnTheScreen();
   expect(screen.getByText("Order cement")).toBeOnTheScreen();
-  expect(screen.getByText("2 tasks · 2 columns")).toBeOnTheScreen();
+  expect(screen.getByText("Shared · you are owner")).toBeOnTheScreen();
+  expect(screen.getByRole("tab", { name: "Backlog, 1", selected: true })).toBeOnTheScreen();
+  expect(screen.getByRole("tab", { name: "Underway, 1" })).toBeOnTheScreen();
+  expect(screen.getByLabelText("Page 1 of 2")).toBeOnTheScreen();
   expect(fetchKanbanColumns).toHaveBeenCalledWith({ WorkspaceId: WS });
   expect(fetchTasks).toHaveBeenCalledWith(expect.objectContaining({ WorkspaceId: WS }));
   // Neither column is empty.
@@ -80,8 +83,7 @@ it("a task with no known column lands in an extra Unsorted column", async () => 
   await mount();
   expect(await screen.findByText("Lost card")).toBeOnTheScreen();
   expect(screen.getByText("Ghost")).toBeOnTheScreen();
-  expect(screen.getByText("Unsorted")).toBeOnTheScreen();
-  expect(screen.getByText("2 tasks · 3 columns")).toBeOnTheScreen();
+  expect(screen.getByRole("tab", { name: "Unsorted, 2" })).toBeOnTheScreen();
   // The two real columns are now empty.
   expect(screen.getAllByText("Nothing here yet.")).toHaveLength(2);
 });
@@ -133,9 +135,10 @@ it("a manager gets column and settings shortcuts", async () => {
   const navigation = makeNavigation<"Board">();
   await mount(navigation);
   await screen.findByText("Fix the gate");
-  await fireEvent.press(await screen.findByLabelText("Manage columns"));
+  await fireEvent.press(screen.getByRole("button", { name: "Board options" }));
+  await fireEvent.press(screen.getByText("Manage columns"));
   expect(navigation.navigate).toHaveBeenCalledWith("Columns", { workspaceId: WS });
-  await fireEvent.press(screen.getByLabelText("Workspace settings"));
+  await fireEvent.press(screen.getByText("Workspace settings"));
   expect(navigation.navigate).toHaveBeenLastCalledWith("WorkspaceSettings", { workspaceId: WS });
 });
 
@@ -144,15 +147,17 @@ it("a member sees no management shortcuts, a viewer cannot add tasks", async () 
   const { unmount } = await mount();
   await screen.findByText("Fix the gate");
   // WS-05: every member reaches settings (read-only roster, Leave); columns stay managers'.
-  expect(screen.queryByLabelText("Manage columns")).toBeNull();
-  expect(screen.getByLabelText("Workspace settings")).toBeOnTheScreen();
-  expect(screen.getByLabelText(/^Add a task/)).toBeOnTheScreen();
+  await fireEvent.press(screen.getByRole("button", { name: "Board options" }));
+  expect(screen.queryByText("Manage columns")).toBeNull();
+  expect(screen.getByText("Workspace settings")).toBeOnTheScreen();
+  expect(screen.getAllByLabelText(/^Add a task/).length).toBeGreaterThan(0);
   await unmount();
 
   jest.mocked(fetchWorkspaces).mockResolvedValue([board("viewer")]);
   await mount();
   await screen.findByText("Fix the gate");
   expect(screen.queryByLabelText(/^Add a task/)).toBeNull();
+  expect(screen.queryByLabelText(/^New task in/)).toBeNull();
 });
 
 it("an admin outside the board gets both shortcuts on a shared board (WS-07)", async () => {
@@ -160,64 +165,90 @@ it("an admin outside the board gets both shortcuts on a shared board (WS-07)", a
   jest.mocked(fetchWorkspaces).mockResolvedValue([board(null, { MyInviteStatus: null })]);
   await mount();
   await screen.findByText("Fix the gate");
-  expect(screen.getByLabelText("Manage columns")).toBeOnTheScreen();
-  expect(screen.getByLabelText("Workspace settings")).toBeOnTheScreen();
+  await fireEvent.press(screen.getByRole("button", { name: "Board options" }));
+  expect(screen.getByText("Manage columns")).toBeOnTheScreen();
+  expect(screen.getByText("Workspace settings")).toBeOnTheScreen();
+});
+
+it("someone outside a board with no role gets no options menu", async () => {
+  jest.mocked(fetchWorkspaces).mockResolvedValue([board(null, { MyInviteStatus: null })]);
+  await mount();
+  await screen.findByText("Fix the gate");
+  expect(screen.queryByRole("button", { name: "Board options" })).toBeNull();
 });
 
 /** Swipe the board so the column at `index` is the one on screen. */
 const settleOn = async (index: number) => {
   const snap = boardColumnWidth(Dimensions.get("window").width) + BOARD_GAP;
   // Fired on the first column's header; it bubbles to the horizontal list.
-  await fireEvent(screen.getAllByText("Backlog")[0]!, "momentumScrollEnd", {
+  await fireEvent(within(screen.getByTestId("column-1")).getByText("Backlog"), "momentumScrollEnd", {
     nativeEvent: { contentOffset: { x: snap * index, y: 0 } },
   });
 };
 
-it("the FAB adds a task to the column on screen", async () => {
-  const navigation = makeNavigation<"Board">();
-  await mount(navigation);
-  await screen.findByText("Fix the gate");
-  await fireEvent.press(screen.getByLabelText("Add a task to Backlog"));
-  expect(navigation.navigate).toHaveBeenCalledWith("TaskForm", { workspaceId: WS, columnId: 1 });
-});
+const col = (id: number) => within(screen.getByTestId(`column-${id}`));
 
-it("a middle column is where the FAB adds", async () => {
+it("each column's Add task adds there; the header plus does too", async () => {
   jest.mocked(fetchKanbanColumns).mockResolvedValue([todo, doing, column(3, "Finished")]);
   const navigation = makeNavigation<"Board">();
   await mount(navigation);
   await screen.findByText("Fix the gate");
-  await settleOn(1);
-  await fireEvent.press(screen.getByLabelText("Add a task to Underway"));
-  expect(navigation.navigate).toHaveBeenCalledWith("TaskForm", { workspaceId: WS, columnId: 2 });
+  await fireEvent.press(col(1).getByLabelText("Add a task to Backlog"));
+  expect(navigation.navigate).toHaveBeenLastCalledWith("TaskForm", { workspaceId: WS, columnId: 1 });
+  await fireEvent.press(col(2).getByLabelText("Add a task to Underway"));
+  expect(navigation.navigate).toHaveBeenLastCalledWith("TaskForm", { workspaceId: WS, columnId: 2 });
+  await fireEvent.press(col(2).getByLabelText("New task in Underway"));
+  expect(navigation.navigate).toHaveBeenLastCalledWith("TaskForm", { workspaceId: WS, columnId: 2 });
+  expect(col(1).getByText("Add task")).toBeOnTheScreen();
 });
 
-it("in the last column the FAB adds to the first — a new task is open (COL-03)", async () => {
+it("in the last column Add task adds to the first — a new task is open (COL-03)", async () => {
   const navigation = makeNavigation<"Board">();
   await mount(navigation);
   await screen.findByText("Fix the gate");
-  await settleOn(1);
   // The label tells the truth about where it lands.
-  await fireEvent.press(screen.getByLabelText("Add a task to Backlog"));
+  await fireEvent.press(col(2).getByLabelText("Add a task to Backlog"));
   expect(navigation.navigate).toHaveBeenCalledWith("TaskForm", { workspaceId: WS, columnId: 1 });
 });
 
-it("a one-column board adds to that column", async () => {
+it("a one-column board adds to that column, with no page dots", async () => {
   jest.mocked(fetchKanbanColumns).mockResolvedValue([todo]);
+  jest.mocked(fetchTasks).mockResolvedValue(tasksReply([mineTask]));
   const navigation = makeNavigation<"Board">();
   await mount(navigation);
   await screen.findByText("Fix the gate");
   await fireEvent.press(screen.getByLabelText("Add a task to Backlog"));
   expect(navigation.navigate).toHaveBeenCalledWith("TaskForm", { workspaceId: WS, columnId: 1 });
+  expect(screen.queryByLabelText(/^Page /)).toBeNull();
 });
 
-it("from the Unsorted column the FAB lets the server place the task", async () => {
+it("from the Unsorted column Add task lets the server place the task", async () => {
   jest.mocked(fetchTasks).mockResolvedValue(tasksReply([mineTask, orphan]));
   const navigation = makeNavigation<"Board">();
   await mount(navigation);
   await screen.findByText("Lost card");
-  await settleOn(2);
-  await fireEvent.press(screen.getByLabelText("Add a task to this board"));
+  await fireEvent.press(col(-1).getByLabelText("Add a task to this board"));
   expect(navigation.navigate).toHaveBeenCalledWith("TaskForm", { workspaceId: WS, columnId: null });
+});
+
+it("a swipe moves the band tab and the page dots with it", async () => {
+  await mount();
+  await screen.findByText("Fix the gate");
+  await settleOn(1);
+  expect(screen.getByRole("tab", { name: "Underway, 1", selected: true })).toBeOnTheScreen();
+  expect(screen.getByLabelText("Page 2 of 2")).toBeOnTheScreen();
+  await fireEvent.press(screen.getByRole("tab", { name: "Backlog, 1" }));
+  expect(screen.getByRole("tab", { name: "Backlog, 1", selected: true })).toBeOnTheScreen();
+});
+
+it("G8: the first column is to do; the last is done once every card in it is", async () => {
+  jest.mocked(fetchTasks).mockResolvedValue(tasksReply([mineTask, { ...theirTask, IsCompleted: true }]));
+  jest.mocked(fetchKanbanColumns).mockResolvedValue([todo, column(3, "Middle"), doing]);
+  await mount();
+  await screen.findByText("Fix the gate");
+  expect(col(1).getByTestId("column-stage-todo")).toBeOnTheScreen();
+  expect(col(3).getByTestId("column-stage-inProgress")).toBeOnTheScreen();
+  expect(col(2).getByTestId("column-stage-done")).toBeOnTheScreen();
 });
 
 it("a column with a limit shows n / max and flags when it is full (COL-02)", async () => {
@@ -229,8 +260,8 @@ it("a column with a limit shows n / max and flags when it is full (COL-02)", asy
   await screen.findByText("Fix the gate");
   expect(screen.getByText("1 / 1")).toBeOnTheScreen();
   expect(screen.getByLabelText("1 of 1 tasks, at the limit")).toBeOnTheScreen();
-  expect(screen.getByText("1 / 1")).toHaveStyle({ color: chipTones.danger.text });
-  expect(screen.getByText("1 / 3")).toHaveStyle({ color: chipTones.neutral.text });
+  expect(screen.getByText("1 / 1")).toHaveStyle({ color: colors.dangerText });
+  expect(screen.getByText("1 / 3")).toHaveStyle({ color: colors.textSecondary });
   expect(screen.queryByLabelText("1 of 3 tasks, at the limit")).toBeNull();
 });
 
@@ -239,6 +270,7 @@ it("searching the board asks the server with SearchTerm (COL-04)", async () => {
   await screen.findByText("Fix the gate");
   expect(fetchTasks).toHaveBeenCalledWith(expect.objectContaining({ SearchTerm: null }));
   jest.mocked(fetchTasks).mockResolvedValue(tasksReply([theirTask]));
+  await fireEvent.press(screen.getByRole("button", { name: "Search this board" }));
   await fireEvent.changeText(screen.getByPlaceholderText("Search this board"), "  cement ");
   await waitFor(() =>
     expect(fetchTasks).toHaveBeenLastCalledWith({ WorkspaceId: WS, PageSize: 200, SearchTerm: "cement" }),
@@ -247,9 +279,20 @@ it("searching the board asks the server with SearchTerm (COL-04)", async () => {
   expect(screen.getByText("Order cement")).toBeOnTheScreen();
 });
 
+it("closing the search clears it", async () => {
+  await mount();
+  await screen.findByText("Fix the gate");
+  await fireEvent.press(screen.getByRole("button", { name: "Search this board" }));
+  await fireEvent.changeText(screen.getByPlaceholderText("Search this board"), "cement");
+  await fireEvent.press(screen.getByRole("button", { name: "Close search" }));
+  expect(screen.queryByPlaceholderText("Search this board")).toBeNull();
+  await waitFor(() => expect(fetchTasks).toHaveBeenLastCalledWith(expect.objectContaining({ SearchTerm: null })));
+});
+
 it("quick typing sends one search, for the final term", async () => {
   await mount();
   await screen.findByText("Fix the gate");
+  await fireEvent.press(screen.getByRole("button", { name: "Search this board" }));
   const box = screen.getByPlaceholderText("Search this board");
   await fireEvent.changeText(box, "c");
   await act(() => jest.advanceTimersByTime(100));
@@ -265,6 +308,7 @@ it("the old cards stay on screen while a search loads", async () => {
   await mount();
   await screen.findByText("Fix the gate");
   jest.mocked(fetchTasks).mockReturnValue(new Promise(() => {}));
+  await fireEvent.press(screen.getByRole("button", { name: "Search this board" }));
   await fireEvent.changeText(screen.getByPlaceholderText("Search this board"), "cement");
   await waitFor(() => expect(fetchTasks).toHaveBeenLastCalledWith(expect.objectContaining({ SearchTerm: "cement" })));
   expect(screen.getByText("Fix the gate")).toBeOnTheScreen();
@@ -323,7 +367,7 @@ it("a cardless, columnless board: managers are pointed at column setup", async (
   expect(await screen.findByText("This board has no columns")).toBeOnTheScreen();
   expect(screen.getByText("Add a column to start placing tasks.")).toBeOnTheScreen();
   expect(screen.queryByLabelText(/^Add a task/)).toBeNull();
-  await fireEvent.press(screen.getByText("Manage columns"));
+  await fireEvent.press(screen.getAllByText("Manage columns")[0]!);
   expect(navigation.navigate).toHaveBeenCalledWith("Columns", { workspaceId: WS });
 });
 
@@ -340,6 +384,6 @@ it("before the workspace loads the route's name is the title", async () => {
   jest.mocked(fetchTasks).mockResolvedValue(tasksReply([mineTask]));
   jest.mocked(fetchKanbanColumns).mockResolvedValue([todo]);
   await mount();
-  expect(await screen.findByText("1 task · 1 column")).toBeOnTheScreen();
-  expect(screen.getByText("Site works")).toBeOnTheScreen();
+  expect(await screen.findByText("Fix the gate")).toBeOnTheScreen();
+  expect(screen.getByRole("header", { name: "Site works" })).toBeOnTheScreen();
 });

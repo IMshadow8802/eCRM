@@ -2,6 +2,7 @@ import { Calendar, CirclePause, Lock, Timer, type LucideIcon } from "lucide-reac
 
 import { fetchTasks } from "../../api/taskQueries";
 import { fetchMyDay } from "../../api/todayQueries";
+import { fetchWorkspaces } from "../../api/workspaceQueries";
 import type { ChipTone } from "../../theme";
 import type {
   DayTask,
@@ -53,6 +54,9 @@ export function myDoneQuery(userId: number | null) {
     enabled: userId != null,
   };
 }
+
+/** Every workspace the caller is in (not archived): Boards, TaskDetail, TaskForm, the Shell share it. */
+export const WORKSPACES_QUERY = { queryKey: ["workspaces", false], queryFn: () => fetchWorkspaces({ PageSize: 100 }) };
 
 /** Monday 00:00, local. */
 export function weekStart(now = new Date()): Date {

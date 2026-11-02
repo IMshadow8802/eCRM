@@ -1,315 +1,259 @@
-import { useCallback, useMemo } from "react";
-import { Pressable, SectionList, StyleSheet, View } from "react-native";
+import { Fragment, useCallback, useMemo, useState } from "react";
+import { StyleSheet, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
-import { ClipboardCheck, CloudOff, Hand, Power } from "lucide-react-native";
+import { CheckCheck, LayoutDashboard, Plus, Search, Timer, X } from "lucide-react-native";
 import { useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
 import type { StackNavigationProp } from "@react-navigation/stack";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { fetchTasks } from "../../api/taskQueries";
 import { useParamState } from "../../hooks/useParamState";
 import type { RootStackParamList, TabParamList } from "../../navigation/RootNavigator";
+import { useCreate } from "../../navigation/Shell";
 import useAuthStore from "../../stores/useAuthStore";
+import { taskStage, type TaskStage } from "../../theme";
 import type { DayTask, Task } from "../../types/api";
 import {
-  colors,
-  radius,
-  spacing,
-  SCREEN_PADDING,
-  TAB_BAR_CLEARANCE,
-} from "../../theme";
-import { Card, ChipGroup, Dialog, EmptyState, Refresher, Screen, Text } from "../../ui";
-import { useSignOut } from "../auth/useSignOut";
-import { TaskCard } from "./TaskCard";
-import { greetingFor, longDate } from "./greeting";
+  Band, BandSheet, EmptyState, ErrorCard, FilterPills, GroupHeader, HeaderButton, IconButton, ListGroup, ListRow,
+  Screen, SkeletonRows, type FilterOption,
+} from "../../ui";
+import { TaskRow } from "./TaskRow";
 import {
-  dueBucket,
-  groupByDue,
-  isUnassigned,
-  MY_DAY_QUERY,
-  myTasksQuery,
-  needRank,
-  needsYou,
+  doneThisWeek, groupByDue, isUnassigned, MY_DAY_QUERY, myDoneQuery, myTasksQuery, needRank, needsYou, WORKSPACES_QUERY,
 } from "./taskHelpers";
 
 export type TaskListFilter = "mine" | "unassigned" | "all";
 type Filter = TaskListFilter;
+type StagePill = "any" | TaskStage;
 
-const FILTERS: { value: Filter; label: string }[] = [
-  { value: "mine", label: "Mine" },
-  { value: "unassigned", label: "Unassigned" },
-  { value: "all", label: "All" },
-];
+const NEED_TEXT = ["Tell your manager why", "Past its deadline", "Close to its deadline"];
 
+/**
+ * My Work (E 05): Mine · Unassigned · All in the band, stage pills (G8) and
+ * Done (G10) on the sheet, rows ordered by deadline. "Needs you" stays above
+ * the list on Mine (§7.4). Search narrows the loaded rows by title; Search's
+ * "See all" lands here with the term.
+ */
 export default function MyWorkScreen() {
-  const navigation =
-    useNavigation<StackNavigationProp<RootStackParamList>>();
-  const userId = useAuthStore((s) => s.UserId);
-  const user = useAuthStore((s) => s.user);
-  const insets = useSafeAreaInsets();
+  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<TabParamList, "Tasks">>();
-  // "Mine" unless a navigate() (Home's rows) asks for a filter — the tab is
-  // mounted, so a filter picked earlier would otherwise still be up.
-  const [filter, setFilter] = useParamState<Filter>(route.params, route.params?.filter, "mine");
-  const signOut = useSignOut();
+  const userId = useAuthStore((s) => s.UserId);
+  const create = useCreate();
+  const [stage, setStage] = useState<StagePill>("any");
+  const [filter, setFilter] = useParamState<Filter>(route.params, route.params?.filter, "mine", () => setStage("any"));
+  const [searching, setSearching] = useState(!!route.params?.term);
+  const [term, setTerm] = useParamState<string>(route.params, route.params?.term, "", () => setSearching(true));
 
-  // WorkspaceId: null = every workspace the caller can see. "Mine" is filtered
-  // on the server (AssigneeUserId + OnlyOpen); All/Unassigned need the whole
-  // window, so that query only runs when one of them is up. Open tasks only:
-  // a finished one has no place under Unassigned or in a due bucket.
+  // WorkspaceId null = every workspace the caller can see. Open tasks only,
+  // except Done (G10), which reads my tasks finished or not.
   const mine = useQuery(myTasksQuery(userId));
   const everyone = useQuery({
-    // Not Me's ["tasks", "all-workspaces"]: that one counts finished tasks.
     queryKey: ["tasks", "all-workspaces", "open"],
     queryFn: () => fetchTasks({ WorkspaceId: null, OnlyOpen: true, PageSize: 200 }),
-    enabled: filter !== "mine",
   });
-  // TAT-06: the server's Today flags, not a DueDate guess — the only place a
-  // finished-late task still owing a reason shows up. A failure only hides
-  // the section.
+  const withDone = useQuery(myDoneQuery(userId));
   const myDay = useQuery(MY_DAY_QUERY);
+  const workspaces = useQuery(WORKSPACES_QUERY);
   const needs = useMemo(() => needsYou(myDay.data?.data), [myDay.data]);
-
-  const active = filter === "mine" ? mine : everyone;
-  const { isLoading, isRefetching, refetch, isError } = active;
 
   const mineTasks = useMemo(() => mine.data?.data?.tasks ?? [], [mine.data]);
   const allTasks = useMemo(() => everyone.data?.data?.tasks ?? [], [everyone.data]);
+  const doneWeek = useMemo(() => doneThisWeek(withDone.data?.data?.tasks ?? []), [withDone.data]);
+  const personal = useMemo(
+    () => new Set((workspaces.data ?? []).filter((w) => w.Type === "personal").map((w) => w.Id)),
+    [workspaces.data],
+  );
 
+  const tabList = useMemo(
+    () => ({ mine: mineTasks, unassigned: allTasks.filter(isUnassigned), all: allTasks }),
+    [mineTasks, allTasks],
+  );
+  const q = term.trim().toLowerCase();
+  const matches = useCallback(
+    (t: Task) => !q || t.Title.toLowerCase().includes(q) || (t.WorkspaceName ?? "").toLowerCase().includes(q),
+    [q],
+  );
+  const base = useMemo(() => tabList[filter].filter(matches), [tabList, filter, matches]);
   const visible = useMemo(() => {
-    if (filter === "mine") return mineTasks;
-    if (filter === "unassigned") return allTasks.filter(isUnassigned);
-    return allTasks;
-  }, [mineTasks, allTasks, filter]);
+    if (stage === "done") return doneWeek.filter(matches);
+    return stage === "any" ? base : base.filter((t) => taskStage(t) === stage);
+  }, [stage, base, doneWeek, matches]);
+  const ordered = useMemo(() => groupByDue(visible).flatMap((g) => g.tasks), [visible]);
 
-  /**
-   * Still grouped, but the group labels are gone — the buckets survive only to
-   * ORDER the list, overdue first and undated last.
-   *
-   * The headers were dropped because the top one could never work: a section
-   * header divides what is above it from what is below, and the first one has
-   * nothing above it but the filter chips. The rest were mostly restating what
-   * the card already says two lines down — "Overdue" over "108 days overdue".
-   * The count that was worth keeping moved up to the summary line, where it is
-   * visible without scrolling.
-   */
-  const sections = useMemo(
-    () => groupByDue(visible).map((g) => ({ key: g.bucket, data: g.tasks })),
-    [visible],
-  );
-
-  const mineCount = mineTasks.length;
-
-  // Counted off what is ON SCREEN, not off `tasks` — with the Unassigned or All
-  // filter up, a figure from a set the user cannot see is worse than none.
-  const overdueCount = useMemo(
-    () => visible.filter((t) => !t.IsCompleted && dueBucket(t.DueDate) === "overdue").length,
-    [visible],
-  );
+  const active = stage === "done" ? withDone : filter === "mine" ? mine : everyone;
+  const count = (s: TaskStage) => base.filter((t) => taskStage(t) === s).length;
+  const pills: FilterOption<StagePill>[] = [
+    { value: "any", label: "Any status" },
+    { value: "todo", label: "To Do", count: count("todo"), tone: "slate" },
+    { value: "inProgress", label: "In Progress", count: count("inProgress"), tone: "teal" },
+    { value: "done", label: "Done", tone: "green" },
+  ];
 
   const openTask = useCallback(
-    (task: Task) =>
-      navigation.navigate("TaskDetail", {
-        taskId: task.Id,
-        workspaceId: task.WorkspaceId,
-      }),
+    (task: Task) => navigation.navigate("TaskDetail", { taskId: task.Id, workspaceId: task.WorkspaceId }),
     [navigation],
   );
+  const openNeed = (t: DayTask) =>
+    navigation.navigate("TaskDetail", {
+      taskId: t.TaskId,
+      workspaceId: t.WorkspaceId,
+      tab: "tat",
+      // Straight to the reason sheet, on the clock that owes it.
+      ...(t.flags.reasonOwed && t.TatId ? { explainTatId: t.TatId } : {}),
+    });
+  const newTask = () => {
+    const own = (workspaces.data ?? []).find((w) => w.Type === "personal" && w.OwnerUserId === userId);
+    if (own) navigation.navigate("TaskForm", { workspaceId: own.Id });
+    // No personal board cached: the Shell's create makes one first.
+    else create.open();
+  };
 
-  const openNeed = useCallback(
-    (t: DayTask) =>
-      navigation.navigate("TaskDetail", {
-        taskId: t.TaskId,
-        workspaceId: t.WorkspaceId,
-        tab: "tat",
-        // Straight to the reason sheet, on the clock that owes it (a reopened
-        // task can have a newer clock).
-        ...(t.flags.reasonOwed && t.TatId ? { explainTatId: t.TatId } : {}),
-      }),
-    [navigation],
-  );
+  const updated = active.dataUpdatedAt
+    ? new Date(active.dataUpdatedAt).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" }).toLowerCase()
+    : undefined;
+  const boardCount = workspaces.data?.filter((w) => w.MyInviteStatus !== "pending").length;
 
-  const firstName = (user?.FullName ?? "").split(" ")[0] || "there";
-  const greeting = greetingFor();
+  let list;
+  if (active.isLoading) list = <SkeletonRows rows={4} />;
+  else if (active.isError) list = <ErrorCard onRetry={() => void active.refetch()} />;
+  else if (!ordered.length) {
+    list = (
+      <EmptyState
+        module="tasks"
+        title={q ? "No matches" : emptyTitle(filter, stage)}
+        message={q ? `Nothing here matches "${term.trim()}".` : emptyMessage(filter, stage)}
+      />
+    );
+  } else {
+    list = (
+      <ListGroup testID="task-list">
+        {ordered.map((t, i) => (
+          <TaskRow key={t.Id} task={t} onPress={openTask} personal={t.WorkspaceId != null && personal.has(t.WorkspaceId)} first={i === 0} />
+        ))}
+      </ListGroup>
+    );
+  }
 
   return (
-    <Screen>
-      {/* Fixed — it is a header, not a list row. Only the tasks scroll. */}
-      <View style={[styles.header, { paddingTop: insets.top + spacing[3] }]}>
-        <View style={styles.headerTop}>
-          <View style={styles.greetBlock}>
-            <View style={styles.greetLine}>
-              <Text variant="secondary">{greeting},</Text>
-              <View accessible accessibilityLabel="Waving hand"><Hand size={16} color={colors.warning} /></View>
-            </View>
-            <Text variant="h1">{firstName}</Text>
-            <Text variant="caption" color="textMuted">
-              {longDate()}
-            </Text>
-          </View>
-          {/* Sign-out lives here as well as on Profile: it is the one
-              action people hunt for, and a decorative avatar was occupying the
-              only obvious slot for it. */}
-          <Pressable
-            onPress={() => signOut.setConfirming(true)}
-            accessibilityLabel="Sign out"
-            accessibilityRole="button"
-            hitSlop={spacing[2]}
-            style={({ pressed }) => [
-              styles.signOut,
-              pressed && styles.signOutPressed,
-            ]}
-          >
-            <Power
-              size={20}
-              color={colors.danger}
+    <Screen band>
+      <Band
+        title="My Work"
+        variant="tabs"
+        actions={
+          <>
+            <IconButton
+              icon={searching ? X : Search}
+              accessibilityLabel={searching ? "Close search" : "Search tasks"}
+              onPress={() => {
+                if (searching) setTerm("");
+                setSearching(!searching);
+              }}
             />
-          </Pressable>
-        </View>
-
-        <View style={styles.summaryRow}>
-          <Text variant="secondary">
-            {mineCount > 0
-              ? `${mineCount} task${mineCount === 1 ? "" : "s"} assigned to you`
-              : "Nothing assigned to you right now"}
-          </Text>
-          {/* Split out in red rather than buried in the sentence: the count of
-              things already late is the one number on this screen worth acting
-              on, and it was previously only discoverable by scrolling. */}
-          {overdueCount > 0 ? (
-            <Text variant="secondary" color="danger">
-              {" · "}
-              {overdueCount} overdue
-            </Text>
-          ) : null}
-        </View>
-
-        <ChipGroup
-          label="Filter tasks"
-          value={filter}
-          options={FILTERS}
-          onChange={setFilter}
-        />
-      </View>
-
-      <SectionList
-        sections={sections}
-        keyExtractor={(item) => String(item.Id)}
-        contentContainerStyle={[
-          styles.content,
-          !sections.length && styles.contentEmpty,
-        ]}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <Refresher
-            refreshing={isRefetching && !isLoading}
-            onRefresh={() => {
-              void refetch();
-              void myDay.refetch();
-            }}
-          />
+            <HeaderButton label="New" icon={Plus} onPress={newTask} accessibilityLabel="New task" />
+          </>
         }
-        ListHeaderComponent={
-          filter === "mine" && needs.length > 0 ? (
-            <View style={styles.needs}>
-              <Text variant="label" color="danger">
-                Needs you
-              </Text>
-              {needs.map((t) => (
-                <View key={t.TaskId} testID="needs-you-row">
-                  <Card onPress={() => openNeed(t)} gap={1}>
-                    <Text variant="bodyStrong">{t.Title}</Text>
-                    <Text variant="caption" color={needRank(t) === 2 ? "warning" : "danger"}>
-                      {needLabel(t)}
-                    </Text>
-                  </Card>
-                </View>
-              ))}
-            </View>
-          ) : null
-        }
-        renderItem={({ item }) => (
-          <View style={styles.cardWrap}>
-            <TaskCard task={item} onPress={openTask} />
-          </View>
-        )}
-        ListEmptyComponent={
-          isLoading ? null : (
-            <EmptyState
-              icon={isError ? CloudOff : ClipboardCheck}
-              title={isError ? "Couldn't load your tasks" : emptyTitle(filter)}
-              message={
-                isError ? "Pull down to try again." : emptyMessage(filter)
-              }
+        search={searching ? { placeholder: "Search tasks", value: term, onChangeText: setTerm, autoFocus: !route.params?.term } : undefined}
+        tabs={{
+          value: filter,
+          onChange: (v) => {
+            setFilter(v as Filter);
+            if (stage === "done") setStage("any");
+          },
+          options: [
+            { value: "mine", label: "Mine", count: mine.data ? tabList.mine.length : undefined },
+            { value: "unassigned", label: "Unassigned", count: everyone.data ? tabList.unassigned.length : undefined },
+            { value: "all", label: "All", count: everyone.data ? tabList.all.length : undefined },
+          ],
+        }}
+      />
+      <BandSheet
+        scroll
+        refresh={{
+          refreshing: active.isRefetching && !active.isLoading,
+          onRefresh: () => {
+            void active.refetch();
+            void myDay.refetch();
+          },
+        }}
+      >
+        <FilterPills label="Filter by status" value={stage} options={pills} onChange={setStage} />
+
+        {filter === "mine" && stage === "any" && needs.length > 0 ? (
+          <Fragment>
+            <GroupHeader title="Needs you" count={needs.length} />
+            <ListGroup testID="needs-you">
+              {needs.map((t, i) => {
+                const rank = needRank(t);
+                return (
+                  <ListRow
+                    key={t.TaskId}
+                    testID="needs-you-row"
+                    noSeparator={i === 0}
+                    badge={{ tone: rank === 2 ? "butter" : "red", icon: Timer }}
+                    title={t.Title}
+                    right={rank === 0 ? { text: "Explain", tone: "brand" } : undefined}
+                    meta={[t.WorkspaceName, NEED_TEXT[rank]].filter(Boolean).join(" · ")}
+                    onPress={() => openNeed(t)}
+                  />
+                );
+              })}
+            </ListGroup>
+          </Fragment>
+        ) : null}
+
+        <GroupHeader label={stage === "done" ? "Completed this week" : "Sorted by deadline"} right={updated ? `Updated ${updated}` : undefined} />
+        {list}
+
+        <View style={styles.cards}>
+          <ListGroup>
+            <ListRow
+              noSeparator
+              badge={{ tone: "green", icon: CheckCheck, size: 36 }}
+              title="Completed this week"
+              accessibilityLabel="Completed this week"
+              right={{ text: withDone.data ? String(doneWeek.length) : "—" }}
+              chevron
+              // The count is mine, so it opens Mine on the Done pill.
+              onPress={() => {
+                setFilter("mine");
+                setStage("done");
+              }}
             />
-          )
-        }
-      />
-
-      <Dialog
-        visible={signOut.confirming}
-        title="Sign out?"
-        message="You will need your password to sign back in."
-        confirmLabel="Sign out"
-        destructive
-        loading={signOut.busy}
-        onConfirm={signOut.signOut}
-        onCancel={() => signOut.setConfirming(false)}
-      />
+          </ListGroup>
+          <ListGroup>
+            <ListRow
+              noSeparator
+              badge={{ tone: "lilac", icon: LayoutDashboard, size: 36 }}
+              title="Open a board"
+              accessibilityLabel="Open a board"
+              right={boardCount != null ? { text: `${boardCount} workspace${boardCount === 1 ? "" : "s"}` } : undefined}
+              chevron
+              onPress={() => navigation.navigate("Boards")}
+            />
+          </ListGroup>
+        </View>
+      </BandSheet>
     </Screen>
   );
 }
 
-const needLabel = (t: DayTask) =>
-  ["Tell your manager why", "Past its deadline", "Close to its deadline"][needRank(t)];
+const emptyTitle = (filter: Filter, stage: StagePill) =>
+  stage === "done"
+    ? "Nothing finished this week"
+    : filter === "mine"
+      ? "Nothing assigned to you"
+      : filter === "unassigned"
+        ? "Nothing unassigned"
+        : "No tasks yet";
 
-const emptyTitle = (filter: Filter) =>
-  filter === "mine"
-    ? "Nothing assigned to you"
-    : filter === "unassigned"
-      ? "Nothing unassigned"
-      : "No tasks yet";
-
-const emptyMessage = (filter: Filter) =>
-  filter === "mine"
-    ? "Tasks assigned to you across every workspace show up here."
-    : filter === "unassigned"
-      ? "Every task on your boards has someone on it."
-      : "Tasks from all your workspaces will appear here.";
+const emptyMessage = (filter: Filter, stage: StagePill) =>
+  stage === "done"
+    ? "Tasks you finish show up here until Sunday night."
+    : filter === "mine"
+      ? "Tasks assigned to you across every workspace show up here."
+      : filter === "unassigned"
+        ? "Every task on your boards has someone on it."
+        : "Tasks from all your workspaces will appear here.";
 
 const styles = StyleSheet.create({
-  header: {
-    paddingHorizontal: SCREEN_PADDING,
-    paddingBottom: spacing[3],
-    gap: spacing[4],
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.divider,
-  },
-  headerTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing[3],
-  },
-  greetBlock: { flex: 1, gap: spacing[1] },
-  greetLine: { flexDirection: "row", alignItems: "center", gap: spacing[1] },
-  signOut: {
-    width: 42,
-    height: 42,
-    borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  signOutPressed: { backgroundColor: colors.surfacePressed },
-  summaryRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap" },
-  needs: { paddingHorizontal: SCREEN_PADDING, paddingBottom: spacing[5], gap: spacing[3] },
-  // The gap the section header used to provide, now that there is none.
-  content: { paddingTop: spacing[4], paddingBottom: TAB_BAR_CLEARANCE },
-  contentEmpty: { flexGrow: 1 },
-  // 16, matching the board columns: the gap has to out-reach the card shadow
-  // or stacked shadows meet and the list reads as one grey slab.
-  cardWrap: { paddingHorizontal: SCREEN_PADDING, paddingBottom: spacing[5] },
+  cards: { marginTop: 12, gap: 8 },
 });

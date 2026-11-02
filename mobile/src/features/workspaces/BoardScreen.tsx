@@ -1,55 +1,37 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import { FlatList, StyleSheet, View } from "react-native";
+import { FlatList, Pressable, StyleSheet, View } from "react-native";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  ArrowRightLeft,
-  Columns3,
-  Plus,
-  Search,
-  Settings,
-} from "lucide-react-native";
+import { ArrowRightLeft, Columns3, EllipsisVertical, Plus, Search, Settings, X } from "lucide-react-native";
 import type { StackScreenProps } from "@react-navigation/stack";
 
 import { fetchKanbanColumns } from "../../api/kanbanQueries";
 import { fetchTasks, moveTaskColumn } from "../../api/taskQueries";
-import { fetchWorkspaces } from "../../api/workspaceQueries";
 import { apiErrorMessage } from "../../api/errors";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
+import { colors, radius, taskStageBadge, type TaskStage } from "../../theme";
 import type { KanbanColumn, Task } from "../../types/api";
-import { colors, radius, spacing } from "../../theme";
 import {
-  ActionSheet,
-  BoardColumns,
-  Chip,
-  EmptyState,
-  Fab,
-  Input,
-  Refresher,
-  Screen,
-  ScreenHeader,
-  Text,
-  type SheetAction,
-  type SheetRef,
-  useToast,
+  ActionSheet, Band, BandSheet, BoardColumns, EmptyState, IconButton, PageDots, Refresher, Screen, StatusBadge, Text,
+  useToast, type SheetAction, type SheetRef,
 } from "../../ui";
 import { TaskCard } from "../tasks/TaskCard";
-import { abilitiesFor, boardQuery, workspaceAbilities } from "../tasks/taskHelpers";
+import { abilitiesFor, boardQuery, WORKSPACES_QUERY, workspaceAbilities } from "../tasks/taskHelpers";
 
 type Props = StackScreenProps<RootStackParamList, "Board">;
 type TasksReply = Awaited<ReturnType<typeof fetchTasks>>;
 
 /** Tasks whose ColumnId is null still have to live somewhere visible. */
 const UNSORTED_ID = -1;
+const TYPE_LABEL = { personal: "Personal", shared: "Shared", project: "Project" } as const;
 
 /**
- * One workspace's kanban.
+ * One workspace's kanban (E 07): columns in the band as tabs, each column a
+ * sunken panel with a stage badge (G8), its cards, and "Add task".
  *
- * There is no drag between columns and there will not be: four columns on a
- * 360px screen makes each drop target a few pixels wide. Long-press a card,
- * pick a column, done — same `moveTaskColumn` call, same `change_status` gate,
- * and it works one-handed.
+ * There is no drag between columns and there will not be: long-press a card,
+ * pick a column — same `moveTaskColumn` call, same gate, one-handed.
  */
 export default function BoardScreen({ route, navigation }: Props) {
   const { workspaceId, name } = route.params;
@@ -61,40 +43,30 @@ export default function BoardScreen({ route, navigation }: Props) {
   const [moving, setMoving] = useState<Task | null>(null);
   const [columnIndex, setColumnIndex] = useState(0);
   const moveRef = useRef<SheetRef>(null);
+  const menuRef = useRef<SheetRef>(null);
 
   const columnsQuery = useQuery({
     queryKey: ["columns", workspaceId],
     queryFn: () => fetchKanbanColumns({ WorkspaceId: workspaceId }),
   });
 
+  const [searching, setSearching] = useState(false);
   const [search, setSearch] = useState("");
-  // A real debounce: each settled term is a 200-row fetch, so a keystroke
-  // must not be one. (useDeferredValue only defers rendering, not requests.)
+  // A real debounce: each settled term is a 200-row fetch.
   const term = useDebouncedValue(search.trim());
-  // No search = the same key TaskDetail and Columns read, so opening a card
-  // from the board does not refetch the whole board.
+  // No search = the same key TaskDetail and Columns read.
   const board = boardQuery(workspaceId, term);
   const tasksKey = board.queryKey;
+  // The last list stays up while a search loads — no flash of empty columns.
+  const tasksQuery = useQuery({ ...board, placeholderData: keepPreviousData });
 
-  const tasksQuery = useQuery({
-    ...board,
-    // The last list stays up while a search loads — no flash of empty columns.
-    placeholderData: keepPreviousData,
-  });
-
-  const { data: workspaces } = useQuery({
-    queryKey: ["workspaces", false],
-    queryFn: () => fetchWorkspaces({ PageSize: 100 }),
-  });
-
+  const { data: workspaces } = useQuery(WORKSPACES_QUERY);
   const workspace = workspaces?.find((w) => w.Id === workspaceId);
   const role = workspace?.MyRole ?? null;
   const wsAbilities = workspaceAbilities(role, isAdmin, workspace?.Type ?? null);
   const manages = wsAbilities.manageColumns;
 
-  // Optimistic: the card jumps columns at once and jumps back if the server
-  // refuses. The key is captured per move, so a search typed mid-flight
-  // cannot roll back the wrong list.
+  // Optimistic: the card jumps columns at once and back if the server refuses.
   const move = useMutation({
     mutationFn: moveTaskColumn,
     onMutate: async (vars) => {
@@ -103,23 +75,12 @@ export default function BoardScreen({ route, navigation }: Props) {
       const previous = queryClient.getQueryData<TasksReply>(key);
       queryClient.setQueryData<TasksReply>(key, (old) =>
         old?.data
-          ? {
-              ...old,
-              data: {
-                ...old.data,
-                tasks: old.data.tasks.map((t) =>
-                  t.Id === vars.TaskId ? { ...t, ColumnId: vars.ColumnId } : t,
-                ),
-              },
-            }
+          ? { ...old, data: { ...old.data, tasks: old.data.tasks.map((t) => (t.Id === vars.TaskId ? { ...t, ColumnId: vars.ColumnId } : t)) } }
           : old,
       );
       setMoving(null);
       return { key, previous };
     },
-    // Clearing `moving` on error too. The move sheet is driven by that state,
-    // so a refused move used to leave it pinned open on a card that had not
-    // gone anywhere, with nothing said about why.
     onError: (err, _vars, ctx) => {
       if (ctx) queryClient.setQueryData(ctx.key, ctx.previous);
       setMoving(null);
@@ -128,228 +89,198 @@ export default function BoardScreen({ route, navigation }: Props) {
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["tasks"] }),
   });
 
-  const tasks = useMemo(
-    () => tasksQuery.data?.data?.tasks ?? [],
-    [tasksQuery.data],
-  );
+  const tasks = useMemo(() => tasksQuery.data?.data?.tasks ?? [], [tasksQuery.data]);
 
-  // An "Unsorted" column only exists when something is actually in it — an
-  // empty extra column on a small screen is a wasted swipe.
+  // An "Unsorted" column only exists when something is actually in it.
   const columns = useMemo(() => {
     const real = columnsQuery.data ?? [];
-    const orphans = tasks.some(
-      (t) => t.ColumnId == null || !real.some((c) => c.Id === t.ColumnId),
-    );
+    const orphans = tasks.some((t) => t.ColumnId == null || !real.some((c) => c.Id === t.ColumnId));
     if (!orphans) return real;
-    const unsorted = {
-      Id: UNSORTED_ID,
-      Title: "Unsorted",
-      Color: null,
-    } as KanbanColumn;
-    return [...real, unsorted];
+    return [...real, { Id: UNSORTED_ID, Title: "Unsorted", Color: null } as KanbanColumn];
   }, [columnsQuery.data, tasks]);
+  const real = columns.filter((c) => c.Id !== UNSORTED_ID);
 
   const byColumn = useMemo(() => {
     const known = new Set(columns.map((c) => c.Id));
-    const map = new Map<number, Task[]>();
-    for (const column of columns) map.set(column.Id, []);
-    for (const task of tasks) {
-      const key =
-        task.ColumnId != null && known.has(task.ColumnId)
-          ? task.ColumnId
-          : UNSORTED_ID;
-      map.get(key)?.push(task);
-    }
+    const map = new Map<number, Task[]>(columns.map((c) => [c.Id, []]));
+    for (const task of tasks) map.get(task.ColumnId != null && known.has(task.ColumnId) ? task.ColumnId : UNSORTED_ID)?.push(task);
     return map;
   }, [columns, tasks]);
 
   const openTask = useCallback(
-    (task: Task) =>
-      navigation.navigate("TaskDetail", { taskId: task.Id, workspaceId }),
+    (task: Task) => navigation.navigate("TaskDetail", { taskId: task.Id, workspaceId }),
     [navigation, workspaceId],
   );
-
   const promptMove = useCallback((task: Task) => {
     setMoving(task);
     moveRef.current?.present();
   }, []);
 
-  // Permission is per-task: an assignee may move their own card even though
-  // they may not move anyone else's. The server re-checks either way.
-  const canMove = moving
-    ? abilitiesFor(moving, userId, role, isAdmin, workspace?.Type ?? null).changeStatus
-    : false;
-
+  // Per task: an assignee may move their own card. The server re-checks.
+  const canMove = moving ? abilitiesFor(moving, userId, role, isAdmin, workspace?.Type ?? null).changeStatus : false;
   const moveActions: SheetAction[] = canMove
-    ? columns
-        .filter((c) => c.Id !== UNSORTED_ID)
-        .map((column) => ({
-          key: String(column.Id),
-          label: column.Title,
-          icon: ArrowRightLeft,
-          selected: moving?.ColumnId === column.Id,
-          onPress: () =>
-            moving &&
-            move.mutate({
-              TaskId: moving.Id,
-              ColumnId: column.Id,
-              WorkspaceId: workspaceId,
-            }),
-        }))
+    ? real.map((column) => ({
+      key: String(column.Id),
+      label: column.Title,
+      icon: ArrowRightLeft,
+      selected: moving?.ColumnId === column.Id,
+      onPress: () => moving && move.mutate({ TaskId: moving.Id, ColumnId: column.Id, WorkspaceId: workspaceId }),
+    }))
     : [];
+  const menuActions: SheetAction[] = [
+    ...(manages
+      ? [{ key: "columns", label: "Manage columns", icon: Columns3, onPress: () => navigation.navigate("Columns", { workspaceId }) }]
+      : []),
+    // Every member gets settings (roster + Leave); columns are managers'.
+    ...(manages || role != null
+      ? [{ key: "settings", label: "Workspace settings", icon: Settings, onPress: () => navigation.navigate("WorkspaceSettings", { workspaceId }) }]
+      : []),
+  ];
+
+  /**
+   * A new task is open, so adding from the last column lands it in the first
+   * (sp_SaveTask would re-place it there anyway); from Unsorted the server picks.
+   */
+  const landingFor = (column: KanbanColumn) =>
+    column.Id === UNSORTED_ID ? null : real.length > 1 && column.Id === real[real.length - 1]!.Id ? real[0]! : column;
+  const addTo = (column: KanbanColumn) =>
+    navigation.navigate("TaskForm", { workspaceId, columnId: landingFor(column)?.Id ?? null });
+
+  /** G8 by position: first = to do, last = done once every card in it is, else in progress. */
+  const stageOf = (column: KanbanColumn, cards: Task[]): TaskStage => {
+    const i = real.findIndex((c) => c.Id === column.Id);
+    if (i <= 0) return "todo";
+    if (i === real.length - 1 && cards.length > 0 && cards.every((t) => t.IsCompleted)) return "done";
+    return "inProgress";
+  };
 
   const loading = columnsQuery.isLoading || tasksQuery.isLoading;
-  // Board = completion: a new task is open, so adding from the last column
-  // lands it in the first — sp_SaveTask would re-place it there anyway, and
-  // the label has to say where it really goes. From Unsorted the server picks.
-  const target = columns[columnIndex];
-  const real = columns.filter((c) => c.Id !== UNSORTED_ID);
-  const landing =
-    !target || target.Id === UNSORTED_ID
-      ? null
-      : real.length > 1 && target.Id === real[real.length - 1]!.Id
-        ? real[0]!
-        : target;
+  const members = workspace?.MemberCount;
+  const subtitle = workspace
+    ? [
+      TYPE_LABEL[workspace.Type],
+      members != null ? `${members} member${members === 1 ? "" : "s"}` : null,
+      role ? `you are ${role}` : null,
+    ].filter(Boolean).join(" · ")
+    : undefined;
 
   return (
-    <Screen>
-      <ScreenHeader
+    <Screen band>
+      <Band
+        variant="tabs"
+        titleVariant="h2"
         title={workspace?.Name ?? name}
-        subtitle={`${tasks.length} task${tasks.length === 1 ? "" : "s"} · ${columns.length} column${columns.length === 1 ? "" : "s"}`}
+        subtitle={subtitle}
         onBack={navigation.goBack}
-        // Every member gets settings (roster + Leave); columns are managers'.
         actions={
-          manages || role != null
-            ? [
-                ...(manages
-                  ? [
-                      {
-                        icon: Columns3,
-                        label: "Manage columns",
-                        onPress: () => navigation.navigate("Columns", { workspaceId }),
-                      },
-                    ]
-                  : []),
-                {
-                  icon: Settings,
-                  label: "Workspace settings",
-                  onPress: () =>
-                    navigation.navigate("WorkspaceSettings", { workspaceId }),
-                },
-              ]
+          <>
+            <IconButton
+              icon={searching ? X : Search}
+              accessibilityLabel={searching ? "Close search" : "Search this board"}
+              onPress={() => {
+                if (searching) setSearch("");
+                setSearching(!searching);
+              }}
+            />
+            {menuActions.length ? (
+              <IconButton icon={EllipsisVertical} accessibilityLabel="Board options" onPress={() => menuRef.current?.present()} />
+            ) : null}
+          </>
+        }
+        search={searching ? { placeholder: "Search this board", value: search, onChangeText: setSearch, autoFocus: true } : undefined}
+        tabs={
+          columns.length
+            ? {
+              value: String(columns[Math.min(columnIndex, columns.length - 1)]!.Id),
+              // ponytail: tabs follow the swipe; a tab tap moves the indicator but
+              // BoardColumns has no scroll-to yet (reported to Task 33's owner).
+              onChange: (v) => setColumnIndex(columns.findIndex((c) => String(c.Id) === v)),
+              options: columns.map((c) => ({ value: String(c.Id), label: c.Title, count: byColumn.get(c.Id)?.length ?? 0 })),
+            }
             : undefined
         }
       />
 
       {!loading && !columns.length ? (
-        <EmptyState
-          icon={Columns3}
-          title="This board has no columns"
-          message={
-            manages
-              ? "Add a column to start placing tasks."
-              : "Ask the board's owner to set up its columns."
-          }
-          actionLabel={manages ? "Manage columns" : undefined}
-          onAction={
-            manages
-              ? () => navigation.navigate("Columns", { workspaceId })
-              : undefined
-          }
-        />
-      ) : (
-        <>
-        <View style={styles.search}>
-          <Input
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Search this board"
-            leftIcon={Search}
-            autoCorrect={false}
-            returnKeyType="search"
+        <BandSheet center>
+          <EmptyState
+            module="tasks"
+            icon={Columns3}
+            title="This board has no columns"
+            message={manages ? "Add a column to start placing tasks." : "Ask the board's owner to set up its columns."}
+            actionLabel={manages ? "Manage columns" : undefined}
+            onAction={manages ? () => navigation.navigate("Columns", { workspaceId }) : undefined}
           />
-        </View>
-        <BoardColumns
-          columns={columns}
-          keyOf={(column) => String(column.Id)}
-          onSettle={setColumnIndex}
-          renderColumn={(column) => {
-            const cards = byColumn.get(column.Id) ?? [];
-            // A WIP limit is a flag, not a gate — the server never refuses on it.
-            const max = column.MaxTasks;
-            const full = max != null && max > 0 && cards.length >= max;
-            return (
-              <>
-                <View style={styles.columnHeader}>
-                  <View
-                    style={[
-                      styles.dot,
-                      { backgroundColor: column.Color ?? colors.primary },
-                    ]}
-                  />
-                  <Text variant="h3" numberOfLines={1} style={styles.columnTitle}>
-                    {column.Title}
-                  </Text>
-                  <View
-                    accessibilityLabel={
-                      full ? `${cards.length} of ${max} tasks, at the limit` : undefined
-                    }
-                  >
-                    <Chip
-                      label={max ? `${cards.length} / ${max}` : String(cards.length)}
-                      tone={full ? "danger" : "neutral"}
+        </BandSheet>
+      ) : (
+        <BandSheet bleedRight>
+          <View style={styles.flex}>
+            <BoardColumns
+              columns={columns}
+              insetLeft={0}
+              keyOf={(column) => String(column.Id)}
+              onSettle={setColumnIndex}
+              renderColumn={(column) => {
+                const cards = byColumn.get(column.Id) ?? [];
+                const stageKey = stageOf(column, cards);
+                const stage = taskStageBadge(stageKey);
+                // A WIP limit is a flag, not a gate — the server never refuses on it.
+                const max = column.MaxTasks;
+                const full = max != null && max > 0 && cards.length >= max;
+                const landing = landingFor(column);
+                const addLabel = `Add a task to ${landing?.Title ?? "this board"}`;
+                return (
+                  <View style={styles.column} testID={`column-${column.Id}`}>
+                    <View style={styles.head}>
+                      <StatusBadge size={28} tone={stage.tone} icon={stage.icon} testID={`column-stage-${stageKey}`} />
+                      <Text variant="rowTitleBold" numberOfLines={1} style={styles.flex}>{column.Title}</Text>
+                      <View accessibilityLabel={full ? `${cards.length} of ${max} tasks, at the limit` : undefined} accessible={full}>
+                        <Text variant="label" tabular color={full ? "dangerText" : "textSecondary"}>
+                          {max ? `${cards.length} / ${max}` : String(cards.length)}
+                        </Text>
+                      </View>
+                      {wsAbilities.createTask ? (
+                        <Pressable onPress={() => addTo(column)} hitSlop={13} accessibilityRole="button" accessibilityLabel={`New task in ${column.Title}`}>
+                          <Plus size={18} color={colors.textSecondary} />
+                        </Pressable>
+                      ) : null}
+                    </View>
+                    <FlatList
+                      data={cards}
+                      keyExtractor={(task) => String(task.Id)}
+                      showsVerticalScrollIndicator={false}
+                      // Pull-to-refresh belongs on the vertical list.
+                      refreshControl={<Refresher refreshing={tasksQuery.isRefetching && !loading} onRefresh={tasksQuery.refetch} />}
+                      ListEmptyComponent={<Text variant="meta" style={styles.empty}>Nothing here yet.</Text>}
+                      renderItem={({ item }) => <TaskCard task={item} onPress={openTask} onLongPress={promptMove} />}
+                      ListFooterComponent={
+                        wsAbilities.createTask ? (
+                          <Pressable
+                            onPress={() => addTo(column)}
+                            accessibilityRole="button"
+                            accessibilityLabel={addLabel}
+                            style={({ pressed }) => [styles.add, pressed && styles.sink]}
+                          >
+                            <Plus size={18} color={colors.primary} />
+                            <Text variant="rowTitle" color="primary">Add task</Text>
+                          </Pressable>
+                        ) : null
+                      }
                     />
                   </View>
-                </View>
-
-                <FlatList
-                  data={cards}
-                  keyExtractor={(task) => String(task.Id)}
-                  contentContainerStyle={styles.cards}
-                  showsVerticalScrollIndicator={false}
-                  // Pull-to-refresh belongs on the vertical list. A
-                  // RefreshControl on the horizontal one never fires — the
-                  // gesture it listens for is the one that scrolls the column.
-                  refreshControl={
-                    <Refresher
-                      refreshing={tasksQuery.isRefetching && !loading}
-                      onRefresh={tasksQuery.refetch}
-                    />
-                  }
-                  ListEmptyComponent={
-                    <Text variant="secondary" style={styles.columnEmpty}>
-                      Nothing here yet.
-                    </Text>
-                  }
-                  renderItem={({ item }) => (
-                    <TaskCard
-                      task={item}
-                      onPress={openTask}
-                      onLongPress={promptMove}
-                      showWorkspace={false}
-                    />
-                  )}
-                />
-              </>
-            );
-          }}
-        />
-        </>
+                );
+              }}
+            />
+          </View>
+          {columns.length > 1 ? (
+            <View style={styles.dots}>
+              <PageDots count={columns.length} index={Math.min(columnIndex, columns.length - 1)} />
+            </View>
+          ) : null}
+        </BandSheet>
       )}
 
-      {columns.length && wsAbilities.createTask ? (
-        <Fab
-          icon={Plus}
-          accessibilityLabel={`Add a task to ${landing?.Title ?? "this board"}`}
-          onPress={() =>
-            navigation.navigate("TaskForm", {
-              workspaceId,
-              columnId: landing?.Id ?? null,
-            })
-          }
-        />
-      ) : null}
-
+      {menuActions.length ? <ActionSheet ref={menuRef} title={workspace?.Name ?? name} actions={menuActions} /> : null}
       <ActionSheet
         ref={moveRef}
         title={canMove ? "Move to column" : "Cannot move this task"}
@@ -361,19 +292,18 @@ export default function BoardScreen({ route, navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  columnHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[2],
-    paddingHorizontal: spacing[1],
-    paddingBottom: spacing[3],
+  flex: { flex: 1, minWidth: 0 },
+  column: {
+    flex: 1,
+    backgroundColor: colors.surfaceSunken,
+    borderRadius: radius.column,
+    paddingTop: 10,
+    paddingHorizontal: 8,
+    paddingBottom: 8,
   },
-  dot: { width: 10, height: 10, borderRadius: radius.full },
-  columnTitle: { flex: 1 },
-  search: { paddingHorizontal: spacing[4], paddingBottom: spacing[3] },
-  // Clears the FAB so the last card in a full column stays reachable.
-  // Cards on a board carry no shadow (see ui/boardSurface), so this gap is
-  // pure breathing room rather than shadow clearance.
-  cards: { gap: spacing[5], paddingBottom: spacing[20] },
-  columnEmpty: { paddingHorizontal: spacing[1] },
+  head: { flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 2, paddingHorizontal: 4, paddingBottom: 10 },
+  empty: { paddingHorizontal: 4, paddingBottom: 8 },
+  add: { height: 40, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
+  sink: { transform: [{ scale: 0.97 }] },
+  dots: { paddingVertical: 10 },
 });

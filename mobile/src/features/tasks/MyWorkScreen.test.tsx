@@ -1,22 +1,22 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react-native";
 
-import { logout } from "../../api/authQueries";
 import { fetchTasks } from "../../api/taskQueries";
 import { fetchMyDay } from "../../api/todayQueries";
-import useAuthStore from "../../stores/useAuthStore";
+import { fetchWorkspaces } from "../../api/workspaceQueries";
 import type { DayTask, DayTaskFlags, Task } from "../../types/api";
-import { assigneesJson, envelope, localDay, makeTask, pagination } from "../../test/fixtures";
+import { assigneesJson, envelope, localDay, makeTask, makeWorkspace, pagination } from "../../test/fixtures";
 import { makeNavigation, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
+import { PHONE, setWindow } from "../../test/window";
 import MyWorkScreen from "./MyWorkScreen";
 
 jest.mock("../../api/taskQueries");
-jest.mock("../../api/authQueries");
 jest.mock("../../api/todayQueries");
+jest.mock("../../api/workspaceQueries");
 
 const mockNavigation = makeNavigation<"Tabs">();
 // The Tasks tab's route; a test that opens it on a filter swaps the params.
-let mockRoute: { key: string; name: "Tasks"; params?: { filter?: "mine" | "unassigned" | "all" } } = {
+let mockRoute: { key: string; name: "Tasks"; params?: { filter?: "mine" | "unassigned" | "all"; term?: string } } = {
   key: "Tasks-test",
   name: "Tasks",
 };
@@ -25,23 +25,28 @@ jest.mock("@react-navigation/native", () => ({
   useNavigation: () => mockNavigation,
   useRoute: () => mockRoute,
 }));
+const mockCreate = { open: jest.fn(), label: "New" };
+jest.mock("../../navigation/Shell", () => ({
+  ...jest.requireActual("../../navigation/Shell"),
+  useCreate: () => mockCreate,
+}));
 
-// Lists arm VirtualizedList's 50 ms batch timer on every data change; under
-// load it fired between waitFor polls, outside act(). Fake timers park it
-// (RNTL's waitFor/findBy advance them).
 jest.useFakeTimers();
 
 const ME = 42;
 const reply = (tasks: Task[]) => envelope({ tasks, pagination: pagination(tasks.length) });
 
-const dueToday = makeTask({ Id: 1, Title: "Due today task", DueDate: localDay(0), WorkspaceId: 10, AssigneesJson: assigneesJson([ME, "Asha Rao"]) });
+const dueToday = makeTask({ Id: 1, Title: "Due today task", DueDate: localDay(0), WorkspaceId: 10, WorkspaceName: "Website Revamp", ColumnTitle: "In Progress", ChecklistDone: 11, ChecklistTotal: 12, Priority: "high", AssigneesJson: assigneesJson([ME, "Asha Rao"]) });
 const late = makeTask({ Id: 2, Title: "Late task", DueDate: localDay(-3), WorkspaceId: 11, AssigneesJson: assigneesJson([ME, "Asha Rao"]) });
 const nobodys = makeTask({ Id: 3, Title: "Nobody's task", DueDate: null });
-const lateButDone = makeTask({ Id: 4, Title: "Finished late", DueDate: localDay(-5), IsCompleted: true });
+const mineDone = makeTask({ Id: 5, Title: "Shipped this week", IsCompleted: true, CompletedDate: new Date().toISOString() });
+const mineDoneLong = makeTask({ Id: 6, Title: "Shipped last month", IsCompleted: true, CompletedDate: "2026-01-05T10:00:00" });
 
-/** "Mine" (AssigneeUserId set) gets `mine`; the all-workspaces query gets `all`. */
-function serve(mine: Task[], all: Task[] = []) {
-  jest.mocked(fetchTasks).mockImplementation(async (p = {}) => reply(p.AssigneeUserId ? mine : all));
+/** Mine (open) · my tasks with done (G10) · the all-workspaces open list. */
+function serve(mine: Task[], all: Task[] = [], withDone: Task[] = []) {
+  jest.mocked(fetchTasks).mockImplementation(async (p = {}) =>
+    reply(p.OnlyOpen === false ? withDone : p.AssigneeUserId ? mine : all),
+  );
 }
 
 const NO_FLAGS: DayTaskFlags = {
@@ -60,101 +65,137 @@ function serveDay(tasks: DayTask[], live = true) {
 }
 
 beforeEach(() => {
+  setWindow(...PHONE);
   seedAuth({ UserId: ME, user: { FullName: "Asha Rao" } });
-  serve([dueToday, late], [dueToday, late, nobodys, lateButDone]);
-  jest.mocked(logout).mockResolvedValue(envelope(null));
+  serve([dueToday, late], [dueToday, late, nobodys], [dueToday, mineDone, mineDoneLong]);
+  jest.mocked(fetchWorkspaces).mockResolvedValue([
+    makeWorkspace({ Id: 11, Type: "personal", OwnerUserId: ME, MyInviteStatus: "active" }),
+    makeWorkspace({ Id: 10, Type: "shared", MyInviteStatus: "active" }),
+    makeWorkspace({ Id: 12, Type: "shared", MyInviteStatus: "pending" }),
+  ]);
   serveDay([]);
   mockRoute = { key: "Tasks-test", name: "Tasks" };
 });
 
-// Task 32 review: the Tasks tab is mounted, so Home's rows must bring the filter.
-it("opens on the filter a navigate() asks for", async () => {
-  mockRoute = { key: "Tasks-test", name: "Tasks", params: { filter: "unassigned" } };
+const rowTitles = () =>
+  within(screen.getByTestId("task-list")).getAllByRole("button").map((b) => b.props.accessibilityLabel.split(",")[0]);
+
+it("05: the band reads My Work with Mine · Unassigned · All and their counts", async () => {
   await renderWithProviders(<MyWorkScreen />);
-  expect(await screen.findByText("Nobody's task")).toBeOnTheScreen();
-  expect(screen.queryByText("Late task")).toBeNull();
+  expect(await screen.findByRole("header", { name: "My Work" })).toBeOnTheScreen();
+  expect(await screen.findByRole("tab", { name: "Mine, 2" })).toBeOnTheScreen();
+  expect(await screen.findByRole("tab", { name: "Unassigned, 1" })).toBeOnTheScreen();
+  expect(screen.getByRole("tab", { name: "All, 3" })).toBeOnTheScreen();
+  expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
 });
 
-it("lists my open tasks, overdue first, with the counts in the header", async () => {
+it("lists my open tasks, overdue first, as rows with stage, priority, steps, chips and people", async () => {
   await renderWithProviders(<MyWorkScreen />);
-  expect(await screen.findByText("Late task")).toBeOnTheScreen();
-  expect(fetchTasks).toHaveBeenCalledWith({ WorkspaceId: null, AssigneeUserId: ME, OnlyOpen: true, PageSize: 200 });
-
-  const titles = screen.getAllByText(/ task$/).map((n) => n.props.children);
-  expect(titles).toEqual(["Late task", "Due today task"]);
-  expect(screen.getByText("2 tasks assigned to you")).toBeOnTheScreen();
-  expect(screen.getByText(/1 overdue/)).toBeOnTheScreen();
-  expect(screen.getByText("Asha")).toBeOnTheScreen();
+  await screen.findByText("Late task");
+  expect(rowTitles()).toEqual(["Late task", "Due today task"]);
+  expect(screen.getByText("Sorted by deadline")).toBeOnTheScreen();
+  expect(screen.getByText(/^Updated /)).toBeOnTheScreen();
+  // Due today: in progress (11 of 12 ticked), High, a shared board.
+  expect(screen.getByTestId("stage-inProgress")).toBeOnTheScreen();
+  expect(screen.getByText("High")).toBeOnTheScreen();
+  expect(screen.getByText("Website Revamp · In Progress")).toBeOnTheScreen();
+  expect(screen.getByText("11 of 12")).toBeOnTheScreen();
+  expect(screen.getAllByLabelText("1 people").length).toBe(2);
+  // Late: on my personal board (G9).
+  expect(screen.getByText("Personal")).toBeOnTheScreen();
 });
 
-it("one task reads singular, and no overdue line when nothing is late", async () => {
-  serve([dueToday]);
+it("stage pills count the tab's rows and narrow them (G8)", async () => {
   await renderWithProviders(<MyWorkScreen />);
-  expect(await screen.findByText("1 task assigned to you")).toBeOnTheScreen();
-  expect(screen.queryByText(/overdue/)).toBeNull();
+  await screen.findByText("Late task");
+  expect(screen.getByRole("radio", { name: "To Do, 1" })).toBeOnTheScreen();
+  await fireEvent.press(screen.getByRole("radio", { name: "In Progress, 1" }));
+  expect(rowTitles()).toEqual(["Due today task"]);
+  await fireEvent.press(screen.getByRole("radio", { name: "To Do, 1" }));
+  expect(rowTitles()).toEqual(["Late task"]);
+  await fireEvent.press(screen.getByRole("radio", { name: "Any status" }));
+  expect(rowTitles()).toEqual(["Late task", "Due today task"]);
 });
 
-it("says so when nothing is assigned", async () => {
-  serve([]);
+it("Done and 'Completed this week' show my tasks finished since Monday (G10)", async () => {
+  await renderWithProviders(<MyWorkScreen />);
+  await screen.findByText("Late task");
+  expect(fetchTasks).toHaveBeenCalledWith({ WorkspaceId: null, AssigneeUserId: ME, OnlyOpen: false, PageSize: 200 });
+  const done = await screen.findByRole("button", { name: "Completed this week" });
+  await waitFor(() => expect(within(done).getByText("1")).toBeOnTheScreen());
+  await fireEvent.press(screen.getByRole("tab", { name: "All, 3" }));
+  await fireEvent.press(done);
+  expect(screen.getByRole("tab", { name: "Mine, 2", selected: true })).toBeOnTheScreen();
+  expect(rowTitles()).toEqual(["Shipped this week"]);
+  expect(screen.getAllByText("Completed this week").length).toBe(2);
+  // Leaving the tab leaves Done.
+  await fireEvent.press(screen.getByRole("tab", { name: "Unassigned, 1" }));
+  expect(rowTitles()).toEqual(["Nobody's task"]);
+});
+
+it("Done with nothing finished says so", async () => {
+  serve([late], [late], []);
+  await renderWithProviders(<MyWorkScreen />);
+  await screen.findByText("Late task");
+  await fireEvent.press(screen.getByRole("radio", { name: "Done" }));
+  expect(await screen.findByText("Nothing finished this week")).toBeOnTheScreen();
+});
+
+it("Open a board counts the boards I am in and opens Workspaces", async () => {
+  await renderWithProviders(<MyWorkScreen />);
+  expect(await screen.findByText("2 workspaces")).toBeOnTheScreen();
+  await fireEvent.press(screen.getByRole("button", { name: "Open a board" }));
+  expect(mockNavigation.navigate).toHaveBeenCalledWith("Boards");
+});
+
+it("+ New opens the task form on my personal board, or the Create flow without one", async () => {
+  await renderWithProviders(<MyWorkScreen />);
+  await screen.findByText("2 workspaces");
+  await fireEvent.press(screen.getByRole("button", { name: "New task" }));
+  expect(mockNavigation.navigate).toHaveBeenCalledWith("TaskForm", { workspaceId: 11 });
+  jest.mocked(fetchWorkspaces).mockResolvedValue([]);
+  await renderWithProviders(<MyWorkScreen />);
+  await fireEvent.press(screen.getAllByRole("button", { name: "New task" }).at(-1)!);
+  expect(mockCreate.open).toHaveBeenCalled();
+});
+
+it("opens on the filter and term a navigate() brings (Home, Search's See all)", async () => {
+  mockRoute = { key: "Tasks-test", name: "Tasks", params: { filter: "all", term: "nobody" } };
+  await renderWithProviders(<MyWorkScreen />);
+  expect(await screen.findByRole("tab", { name: "All, 3", selected: true })).toBeOnTheScreen();
+  expect(screen.getByDisplayValue("nobody")).toBeOnTheScreen();
+  await waitFor(() => expect(rowTitles()).toEqual(["Nobody's task"]));
+});
+
+it("search toggles in the band and narrows by title; closing clears it", async () => {
+  await renderWithProviders(<MyWorkScreen />);
+  await screen.findByText("Late task");
+  await fireEvent.press(screen.getByRole("button", { name: "Search tasks" }));
+  await fireEvent.changeText(screen.getByLabelText("Search tasks"), "late");
+  expect(rowTitles()).toEqual(["Late task"]);
+  await fireEvent.changeText(screen.getByLabelText("Search tasks"), "zzz");
+  expect(screen.getByText("No matches")).toBeOnTheScreen();
+  await fireEvent.press(screen.getByRole("button", { name: "Close search" }));
+  expect(rowTitles()).toEqual(["Late task", "Due today task"]);
+});
+
+it("each tab has its own empty state", async () => {
+  serve([], [], []);
   await renderWithProviders(<MyWorkScreen />);
   expect(await screen.findByText("Nothing assigned to you")).toBeOnTheScreen();
-  expect(screen.getByText("Nothing assigned to you right now")).toBeOnTheScreen();
-});
-
-it("greets with a fallback name when the user has none", async () => {
-  useAuthStore.setState({ user: null });
-  await renderWithProviders(<MyWorkScreen />);
-  await screen.findByText("Late task");
-  expect(screen.getByText("there")).toBeOnTheScreen();
-});
-
-it("the greeting's wave is a lucide icon, not an emoji in the text", async () => {
-  await renderWithProviders(<MyWorkScreen />);
-  await screen.findByText("Late task");
-  const greet = screen.getByText(/^(Good|Working)/);
-  expect(greet).toHaveTextContent(/^[A-Za-z ]+,$/);
-  // Beside the text sits the lucide icon, labelled for screen readers.
-  expect(screen.getByLabelText("Waving hand")).toBeOnTheScreen();
-});
-
-it("Unassigned shows only tasks nobody is on", async () => {
-  await renderWithProviders(<MyWorkScreen />);
-  await screen.findByText("Late task");
-  await fireEvent.press(screen.getByText("Unassigned"));
-
-  expect(await screen.findByText("Nobody's task")).toBeOnTheScreen();
-  expect(screen.queryByText("Late task")).toBeNull();
-  // TASK-06: without OnlyOpen, finished tasks leaked into Unassigned/All and
-  // into the due buckets, Overdue included.
-  expect(fetchTasks).toHaveBeenCalledWith({ WorkspaceId: null, OnlyOpen: true, PageSize: 200 });
-});
-
-it("All shows every task, and the overdue count ignores finished ones", async () => {
-  await renderWithProviders(<MyWorkScreen />);
-  await screen.findByText("Late task");
-  await fireEvent.press(screen.getByText("All"));
-
-  expect(await screen.findByText("Nobody's task")).toBeOnTheScreen();
-  expect(screen.getByText("Late task")).toBeOnTheScreen();
-  // Late task is overdue; "Finished late" is complete and must not count.
-  expect(screen.getByText(/1 overdue/)).toBeOnTheScreen();
-});
-
-it("Unassigned and All have their own empty states", async () => {
-  serve([dueToday], []);
-  await renderWithProviders(<MyWorkScreen />);
-  await screen.findByText("Due today task");
-  await fireEvent.press(screen.getByText("Unassigned"));
+  await fireEvent.press(screen.getByRole("tab", { name: /^Unassigned/ }));
   expect(await screen.findByText("Nothing unassigned")).toBeOnTheScreen();
-  await fireEvent.press(screen.getByText("All"));
+  await fireEvent.press(screen.getByRole("tab", { name: /^All/ }));
   expect(await screen.findByText("No tasks yet")).toBeOnTheScreen();
 });
 
-it("a failed load says so instead of showing an empty list", async () => {
+it("a failed load shows the error card, and Try again asks again", async () => {
   jest.mocked(fetchTasks).mockRejectedValue(new Error("boom"));
   await renderWithProviders(<MyWorkScreen />);
-  expect(await screen.findByText("Couldn't load your tasks")).toBeOnTheScreen();
-  expect(screen.queryByText("Nothing assigned to you")).toBeNull();
+  expect(await screen.findByText("Could not load. Try again")).toBeOnTheScreen();
+  serve([late]);
+  await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+  expect(await screen.findByText("Late task")).toBeOnTheScreen();
 });
 
 it("tapping a task opens it on its own board", async () => {
@@ -163,24 +204,6 @@ it("tapping a task opens it on its own board", async () => {
   expect(mockNavigation.navigate).toHaveBeenCalledWith("TaskDetail", { taskId: 2, workspaceId: 11 });
 });
 
-it("sign out asks first, then signs out", async () => {
-  await renderWithProviders(<MyWorkScreen />);
-  await screen.findByText("Late task");
-  await fireEvent.press(screen.getByLabelText("Sign out"));
-  expect(screen.getByText("Sign out?")).toBeOnTheScreen();
-
-  await fireEvent.press(screen.getByText("Cancel"));
-  expect(logout).not.toHaveBeenCalled();
-
-  await fireEvent.press(screen.getByLabelText("Sign out"));
-  // The header button is an icon; the only "Sign out" text is the dialog's confirm.
-  await fireEvent.press(screen.getByText("Sign out"));
-  await waitFor(() => expect(logout).toHaveBeenCalled());
-  await waitFor(() => expect(useAuthStore.getState().isAuthenticated).toBe(false));
-});
-
-// TAT-06: My Work counted overdue by DueDate day only, from OnlyOpen tasks, so
-// a task finished late that still owes a reason was invisible on mobile.
 describe("Needs you", () => {
   const nearlyDue = dayTask(7, "Nearly due", { atRisk: true }, 30);
   const runningLate = dayTask(8, "Running late", { overdue: true }, -15);
@@ -197,9 +220,9 @@ describe("Needs you", () => {
     const rows = screen.getAllByTestId("needs-you-row").map((r) => within(r).getAllByText(/./)[0]!.props.children);
     expect(rows).toEqual(["Owes a reason", "Running late", "Later still", "Nearly due"]);
     expect(screen.queryByText("On track")).toBeNull();
-    expect(screen.getByText("Tell your manager why")).toBeOnTheScreen();
-    expect(screen.getAllByText("Past its deadline")).toHaveLength(2);
-    expect(screen.getByText("Close to its deadline")).toBeOnTheScreen();
+    expect(screen.getByText("Ops · Tell your manager why")).toBeOnTheScreen();
+    expect(screen.getAllByText("Ops · Past its deadline")).toHaveLength(2);
+    expect(screen.getByText("Ops · Close to its deadline")).toBeOnTheScreen();
     // The rest of My Work is still there.
     expect(screen.getByText("Late task")).toBeOnTheScreen();
   });
