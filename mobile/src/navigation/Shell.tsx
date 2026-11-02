@@ -51,6 +51,8 @@ const ACTION_FALLBACK: Partial<Record<StackRoute, TabName>> = { ComplaintDetail:
 /** The focused route: the stack route, its key, and the focused tab when it is Tabs. */
 export interface FocusedRoute { name: StackRoute; key: string; tab: TabName | null }
 
+const FIRST_ROUTE: FocusedRoute = { name: "Tabs", key: "", tab: "Home" };
+
 export interface ShellNavigator {
   navigate: <R extends StackRoute>(name: R, params?: RootStackParamList[R]) => void;
   /** Back to the tab root, on that tab (StackActions.popTo). */
@@ -172,14 +174,21 @@ export function Shell({ route, navigator, children }: ShellProps) {
   const createLabel = single ? CREATE_ROWS[single].short : "New";
   const api = useMemo(() => ({ setActions, openCreate, createLabel, nav }), [setActions, openCreate, createLabel, nav]);
 
-  const owner: RouteOwner = route ? (route.name === "Tabs" ? (route.tab ?? "Home") : ROUTE_OWNER[route.name]) : "none";
-  const routeActions = route ? actions[route.key] : undefined;
+  // Before the container reports its first state, the stack is on Tabs/Home:
+  // seeding it draws the bar on the very first frame instead of popping it in.
+  const at = route ?? FIRST_ROUTE;
+  const owner: RouteOwner = at.name === "Tabs" ? (at.tab ?? "Home") : ROUTE_OWNER[at.name];
+  const routeActions = actions[at.key];
   const activeTab: TabName | null =
-    owner === "action" ? (ACTION_FALLBACK[route!.name] ?? null) : owner === "none" ? null : owner;
-  const railActive: RailItem | null = route?.name === "Inbox" ? "Inbox" : activeTab;
+    owner === "action" ? (ACTION_FALLBACK[at.name] ?? null) : owner === "none" ? null : owner;
+  // The rail carries Inbox and Follow-ups as items of their own, so a pushed
+  // one is its own item there (on the bar they stay under Today / More).
+  const railActive: RailItem | null = at.name === "Inbox" ? "Inbox" : at.name === "FollowUps" ? "FollowUps" : activeTab;
 
   const pressItem = (item: RailItem) => {
-    if (item === "Inbox") navigator.navigate("Inbox");
+    // Follow-ups is a tab only while the bar has room; navigate() lands on the
+    // tab when it exists and pushes the queue when it does not.
+    if (item === "Inbox" || item === "FollowUps") navigator.navigate(item);
     else navigator.toTab(item);
   };
 

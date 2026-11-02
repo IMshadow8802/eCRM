@@ -3,9 +3,18 @@ import { fireEvent, screen } from "@testing-library/react-native";
 import { colors } from "../theme";
 import { renderWithProviders, seedAuth } from "../test/renderWithProviders";
 import { flat } from "../test/style";
+import { Text } from "../ui";
 import { BottomBar } from "./BottomBar";
 import { CreateSheet } from "./CreateSheet";
 import { Rail } from "./Rail";
+import { Shell } from "./Shell";
+import { envelope, pagination } from "../test/fixtures";
+import { fetchNotifications } from "../api/notificationQueries";
+import { heartbeat } from "../api/presenceQueries";
+import { PHONE, setWindow } from "../test/window";
+
+jest.mock("../api/presenceQueries", () => ({ heartbeat: jest.fn() }));
+jest.mock("../api/notificationQueries", () => ({ ...jest.requireActual("../api/notificationQueries"), fetchNotifications: jest.fn() }));
 
 const holdTouch = () => {
   const touch = { pageX: 0, pageY: 0, locationX: 0, locationY: 0, timestamp: 0 };
@@ -63,4 +72,16 @@ it("CreateSheet: a held row sinks; a tap picks it", async () => {
   expect(flat(screen.getByRole("button", { name: "New lead" })).transform).toEqual([{ scale: 0.985 }, { translateY: 1 }]);
   await fireEvent.press(screen.getByRole("button", { name: "New lead" }));
   expect(onPick).toHaveBeenCalledWith("lead");
+});
+
+// Review: the bar appeared only after the container's first state report.
+it("Shell draws the bar on the first frame, before any route is known", async () => {
+  setWindow(...PHONE);
+  jest.mocked(heartbeat).mockResolvedValue(envelope({ expiresAt: null }));
+  jest.mocked(fetchNotifications).mockResolvedValue(envelope({ notifications: [], unreadCount: 0, pagination: pagination(0) }));
+  await renderWithProviders(
+    <Shell route={null} navigator={{ navigate: jest.fn(), toTab: jest.fn() }}><Text>stack</Text></Shell>,
+  );
+  expect(screen.getByTestId("bottom-bar")).toBeOnTheScreen();
+  expect(screen.getByRole("tab", { name: "Today" })).toBeSelected();
 });

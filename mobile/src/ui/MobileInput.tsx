@@ -26,6 +26,7 @@ export const MobileInput = forwardRef<TextInput, MobileInputProps>(function Mobi
       ref={ref}
       placeholder={placeholder}
       prefix={prefix}
+      tabular
       keyboardType="phone-pad"
       autoComplete="tel"
       {...rest}

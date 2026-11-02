@@ -125,7 +125,7 @@ const styles = StyleSheet.create({
   radio: { width: metrics.radio, height: metrics.radio, borderRadius: metrics.radio / 2 },
   radioOff: { borderWidth: 2, borderColor: colors.borderStrong },
   radioOn: { borderWidth: metrics.radioOn, borderColor: colors.primary },
-  row: { flexDirection: "row", alignItems: "center", gap: spacing[3], paddingVertical: 7, paddingHorizontal: spacing[1], borderRadius: radius.badgeLg },
+  row: { flexDirection: "row", alignItems: "center", gap: spacing[3], minHeight: HIT_TARGET, paddingVertical: 7, paddingHorizontal: spacing[1], borderRadius: radius.badgeLg },
   on: { backgroundColor: colors.fieldTint },
   onDanger: { backgroundColor: colors.dangerRowTint },
   pressed: { backgroundColor: colors.fieldTint },

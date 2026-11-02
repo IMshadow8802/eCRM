@@ -25,6 +25,8 @@ it("iconOnly is a 22 square flag, labelled for screen readers", async () => {
   const chip = screen.getByLabelText("High priority");
   expect(StyleSheet.flatten(chip.props.style)).toMatchObject({ width: 22, height: 22 });
   expect(screen.queryByText(/./)).toBeNull();
+  // Exposed as one element, or a screen reader never reads the label.
+  expect(chip.props.accessible).toBe(true);
 });
 
 it("caps its width when asked", async () => {

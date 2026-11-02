@@ -328,7 +328,12 @@ export interface MyDay {
     FullName: string | null;
     ShiftStart?: string | null;
     ShiftEnd?: string | null;
-    status?: { code: string; label: string; online?: boolean } | null;
+    /**
+     * presenceController.presenceStatus: `late` ("Late by 12 min") and `half`
+     * (the leave half) when they apply. `online` exists only on the
+     * "not_tracked" status todayData gives an exempt person.
+     */
+    status?: { code: string; label: string; late?: string; half?: string; online?: boolean } | null;
     tasks: DayTask[];
   } | null;
 }

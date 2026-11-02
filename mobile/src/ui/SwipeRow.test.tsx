@@ -7,6 +7,16 @@ import { SwipeRow, type SwipeAction } from "./SwipeRow";
 
 import { flat } from "../test/style";
 
+// ReanimatedSwipeable under the reanimated jest mock reports its JS callbacks
+// as "not worklets" — library noise in tests only. Swallow exactly that line.
+const realError = console.error;
+beforeEach(() => {
+  jest.spyOn(console, "error").mockImplementation((msg: unknown, ...rest: unknown[]) => {
+    if (!String(msg).includes("Some of the callbacks in the gesture are worklets")) realError(msg, ...rest);
+  });
+});
+afterEach(() => jest.mocked(console.error).mockRestore());
+
 const make = () => {
   const calls = { call: jest.fn(), hold: jest.fn(), resolve: jest.fn(), escalate: jest.fn() };
   const right: SwipeAction[] = [
@@ -27,7 +37,7 @@ it("solid blocks: 72 wide (Escalate 88), each in its colour", async () => {
   expect(flat(screen.getByRole("button", { name: "Escalate" }))).toMatchObject({ width: 88, backgroundColor: colors.escalate });
 });
 
-it("a swipe changes nothing; tapping a block calls only that block's onPress", async () => {
+it("no action runs until a block is tapped; a tap calls only that block's onPress", async () => {
   const { calls, left, right } = make();
   await render(<SwipeRow left={left} right={right}><RNText>Row</RNText></SwipeRow>);
   for (const fn of Object.values(calls)) expect(fn).not.toHaveBeenCalled();

@@ -48,9 +48,12 @@ export function layoutFor(width: number, height: number): Layout {
     isTwoPane,
     contentMaxWidth: metrics.formMaxWidth,
     columns: sizeClass === "expanded" ? 3 : 2,
-    gutter: sizeClass === "expanded" ? 32 : 24,
+    gutter: sizeClass === "expanded" ? metrics.gutterExpanded : metrics.gutterMedium,
   };
 }
+
+/** Tablet geometry (60 band row, 20/24 sheet overlap) follows the rail: one predicate for Band and BandSheet. */
+export const isTabletLayout = (layout: Layout) => layout.nav === "rail";
 
 /** `layoutFor` on the live window; re-renders on rotation and split screen. */
 export function useLayout(): Layout {

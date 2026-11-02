@@ -16,6 +16,8 @@ export interface InputProps extends Omit<TextInputProps, "style"> {
   leftIcon?: LucideIcon;
   /** "+91", "₹" — inside the field, before the text, with a divider. */
   prefix?: string;
+  /** Tabular figures (mobile numbers, amounts). */
+  tabular?: boolean;
   /** Renders the show/hide eye and manages secureTextEntry internally. */
   password?: boolean;
   /**
@@ -34,7 +36,7 @@ export interface InputProps extends Omit<TextInputProps, "style"> {
  */
 export const Input = forwardRef<TextInput, InputProps>(function Input(
   {
-    label, error, hint, required, labelTag, leftIcon: LeftIcon, prefix, password = false, tone = "default",
+    label, error, hint, required, labelTag, leftIcon: LeftIcon, prefix, tabular = false, password = false, tone = "default",
     bare = false, containerStyle, editable = true, multiline,
     // Pulled out of `rest`: spread after the wrappers, a caller's onFocus would switch the ring off.
     onFocus, onBlur,
@@ -73,7 +75,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
         {prefix ? <FieldPrefix text={prefix} /> : null}
         <TextInput
           ref={ref}
-          style={[fieldBox.input, multiline && fieldBox.inputMultiline]}
+          style={[fieldBox.input, multiline && fieldBox.inputMultiline, tabular && styles.tabular]}
           placeholderTextColor={colors.textMuted}
           secureTextEntry={password && !reveal}
           editable={editable}
@@ -113,6 +115,7 @@ const styles = StyleSheet.create({
   bare: { height: undefined, minHeight: undefined, borderWidth: 0, paddingHorizontal: 0, backgroundColor: colors.transparentBorder },
   legacyLabel: { marginBottom: 6 },
   legacyHelp: { marginTop: 6 },
+  tabular: { fontVariant: ["tabular-nums"] },
 });
 
 export default Input;

@@ -106,6 +106,7 @@ export function CircleAction({ icon: Icon, accessibilityLabel, onPress, tone = "
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
+      hitSlop={(HIT_TARGET - size) / 2}
       style={({ pressed: p }) => [
         styles.circle,
         { width: size, height: size, borderRadius: size / 2, backgroundColor: colors[p ? pressed : tone] },
@@ -123,7 +124,7 @@ const styles = StyleSheet.create({
   filled: { width: metrics.iconButton, backgroundColor: colors.bandRaised },
   ghost: { width: metrics.iconButtonGhost, marginLeft: -8, backgroundColor: colors.transparentBorder },
   pressed: { backgroundColor: colors.bandField },
-  badge: { position: "absolute", top: -4, right: -8 },
+  badge: { position: "absolute", top: -5, right: -8 },
   hbtn: { flexDirection: "row", alignItems: "center", gap: metrics.inlineGap, paddingLeft: spacing[3], paddingRight: 14 },
   hbtnGhost: { paddingLeft: 14 },
   hbtnSmall: { paddingLeft: spacing[3], paddingRight: 10 },

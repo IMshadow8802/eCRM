@@ -347,13 +347,13 @@ All text is Inter. Weight is the family: 400 Regular, 500 Medium, 600 SemiBold, 
 | `listPaneWidth` | 420 | T2, T3 |
 | `formMaxWidth` | 640 | T4 |
 | `factsColumn` | 300 | T3 |
-| `boardColumn` | 310 (phone) | 07 |
+| `boardColumn` | window − 80, capped at `boardColumnMax` 360 (phone 390 → 310, E; tablet → several columns + peek, Task 33 review) | 07 |
 | `fieldGap` | 12 | `.fl` margin-bottom |
 | `pairGap` | 10 | `.two` |
 | `bentoGap` | 10 (tablet 16) | `.bento` |
 | `tileHeight` | 112 (tablet 128) | `.tile` |
 
-`HIT_TARGET` stays 44. Tappables that are smaller (pill 32, chip-button 28, Done 32) get `hitSlop` to reach 44 (**proposed**). `TAB_BAR_HEIGHT` and `TAB_BAR_CLEARANCE` are no longer needed, because the bar is docked rather than floating. In Phase 1 `TAB_BAR_CLEARANCE` becomes 0; it is deleted in Task 40.
+`HIT_TARGET` stays 44. Tappables that are smaller (pill 32, chip-button 28, Done 32, Button sm 36 / xs 32, CircleAction 40, search clear 18) get `hitSlop` to reach 44; sheet rows without a badge get `minHeight` 44 (Task 33 review). `TAB_BAR_HEIGHT` and `TAB_BAR_CLEARANCE` are no longer needed, because the bar is docked rather than floating. In Phase 1 `TAB_BAR_CLEARANCE` becomes 0; it is deleted in Task 40.
 
 ### 1.9 Radius
 
@@ -434,7 +434,7 @@ export function useLayout(): Layout;                                 // useWindo
 | `isTwoPane` | false | false (**proposed**) | true |
 | `contentMaxWidth` | width | 640 forms; 720 lists (**proposed**) | 640 forms; list pane 420 |
 | `columns` (Home) | 2 (bento; hero full width) | 2, hero spans 2 (**proposed**) | 3, hero spans 2 (T1) |
-| `gutter` | 16 | 24 (**proposed**) | Home 32 · list pane 20 · detail 28 (T1–T3) |
+| `gutter` | 16 (`metrics.gutter`) | 24 (`metrics.gutterMedium`, **proposed**) | 32 (`metrics.gutterExpanded`); Home 32 · list pane 20 · detail 28 (T1–T3) |
 
 **Landscape phone guard (proposed).** If `height < 480`, the size class is capped at `medium`. A phone at 844 × 390 then gets the rail and a single pane, never two panes squeezed into 390 dp of height.
 
@@ -560,8 +560,8 @@ interface BandProps {
 
   Changed from ClipboardCheck / TrendingUp / Menu.
 - **ActionBar** (`ui/ActionBar.tsx`, record screens 11 and 15):
-  - Same bar. Items: padding-top 10, gap 4, icon 20, label 11 in `onBandMuted`.
-  - The one `main` item: padding-top 6; a `primary` pill 56 × 30, radius 15, white icon 20; label white 600.
+  - Same bar. Items: padding-top 10, gap 4, icon 22 (E `.tb .i`; was 20 here — E wins), label 11 in `onBandMuted`.
+  - The one `main` item: padding-top 6; a `primary` pill 56 × 30, radius 15, white icon 22 (E `.tb .i`); label white 600.
   - Max 5 items. Disabled item: icon and label `bandField` (**proposed**).
 
 **Props**
@@ -593,7 +593,7 @@ interface ActionBarProps { actions: BarAction[] }
   | Route | Bar shows |
   |---|---|
   | TaskDetail, Board, WorkspaceSettings, Columns | Tasks |
-  | Boards, FollowUps (pushed), Me | More |
+  | Boards, FollowUps (pushed), Me | More (at the rail a pushed FollowUps / Inbox lights its own rail item; the rail's Follow-ups uses `navigate("FollowUps")`, which lands on the tab when one exists) |
   | Inbox | Home (18) |
   | ComplaintDetail, LeadDetail | `action` |
   | TaskForm, ComplaintForm, LeadForm, WorkspaceForm | `none` (12, 16) |
@@ -777,7 +777,7 @@ interface BandTabsProps<T> { value: T; options: TabOption<T>[]; onChange: (v: T)
 **IconButton** (`.ib`)
 - 40, radius 20, `bandRaised`, white icon 20.
 - `ghost`: transparent, width 36, margin-left -8, icon 24.
-- Badge slot: `CountBadge` at top -4, right -8.
+- Badge slot: `CountBadge` at top -5, right -8 (E `.ib .bdg`; was -4 here — E wins).
 
 **HeaderButton** (`.hbtn`)
 - Height 36, padding 0 14 0 12, radius 18, `primary`, 14/600, gap 6, icon 18.
@@ -881,7 +881,7 @@ interface BandTabsProps<T> { value: T; options: TabOption<T>[]; onChange: (v: T)
 
 ### 3.17 `Avatar` initials on sorbet — restyle `ui/Avatar.tsx`; new `AvatarStack`
 
-- 28 circle, `avatar` text 11/700, 2 px border `surface` (on the band: border `band`).
+- 28 circle, `avatar` text 11/700, 2 px border `surface` by default at 28 (`ring={null}` removes it, as E's Home and comment avatars have none; on the band: border `band`).
 - Sizes: 22 (9 px, no border), 24 (9), 36 (12), 40 (14), 44 (15), 88 (30, 4 px `bandField` border).
 - Initials fill and ink come from `badgeTones`, cycling through indigo · butter · mint · lilac · peach · teal (a1–a6), picked by a stable hash of `UserId` (or name).
 - Preset `color:<name>` maps to a sorbet tone (**proposed**):
@@ -971,7 +971,7 @@ Every gap stays mobile-only: no SQL and no backend changes. "Real fix" names the
 | G23 | Role chip "Admin" / "Support Agent" | No role (group) name in `AuthUser` | `JobTitle`; else "Admin" when `isAdmin`; else hidden. Tone: lilac if admin; else the tone of the single module the role has (peach complaints, mint leads, lilac tasks); else indigo | group name in login payload |
 | G24 | Office "Head Office" | `AuthUser` has `BranchId` only | `fetchBranches` (cached) lookup | — |
 | G25 | Global search (Home band; T1 "Search complaints, leads, tasks") | No search endpoint | New `SearchScreen`: debounced fan-out to `fetchTickets` / `fetchLeads` / `fetchTasks` with `SearchTerm`, `PageSize: 5` each, grouped by module, each group "See all" → the list with the term | search endpoint |
-| G26 | Inbox badge per kind | `AppNotification.Type` strings live in `sp_Notify*` | Map by substring: `escalat` → lilac; `warn`/`due` → butter; `breach`/`miss` → red; `assign` → indigo user-check; `comment`/`reply` → teal; `workspace`/`added` → indigo user-plus; else slate bell. Verify the real strings (read-only) before coding | — |
+| G26 | Inbox badge per kind | `AppNotification.Type` strings live in `sp_Notify*` | Map by whole words of the snake_case type (Task 33 review: "dismissed" must not read as "miss"): `escalated`/`escalation` → lilac; `warn`/`due`/`overdue` → butter; `breach(ed)`/`miss(ed)` → red; `assign` → indigo user-check; `comment`/`reply` → teal; `workspace`/`added` → indigo user-plus; else slate bell. Verify the real strings (read-only) before coding | — |
 | G27 | Inbox tile "1 escalation" | Counted only from the loaded page | Count unread escalations in the first page (50); hide the subtitle when 0 | — |
 | G28 | TAT "Over by 3 h 41 m" | Working vs wall time | Wall-clock `now - DueAt` of the caller's open clock — **flag** | — |
 | G29 | Swipe "Call" on a complaint row | — | `Linking.openURL("tel:" + CustomerMobile)`; hidden when no mobile | — |
@@ -1091,7 +1091,7 @@ Notation: `Band{…}` = §3.1, `Sheet{…}` = §3.2, `Row` = ListRow, `Group` = 
 - **Tree:**
   - `Band variant=tabs`: back; title block `h2` "Sales Ops" + `meta` "Shared · 6 members · you are manager" (ellipsis); IconButton search; IconButton ⋮ (settings, columns); BandTabs = columns with counts (synced to paging).
   - `Sheet bleedRight` (padding 16 0 0 16):
-    - BoardColumns: column width `window - 80` (310 on 390), gap 10, snap.
+    - BoardColumns: column width `window - 80` (310 on 390), capped at 360 so a tablet shows several, gap 10, snap.
     - Column: `surfaceSunken`, radius 18, padding 10 8 8.
       - Head (padding 2 4 10, gap 8): badge 28 by G8 position; title `rowTitle` 700 (14/700 **proposed** `rowTitleBold`); count `label`; plus 18 `textSecondary` → TaskForm with `columnId`.
       - Cards: `Card` padding 12, margin-bottom 8, no shadow (`useOnBoard`). Title `rowTitle`; meta row margin-top 8 = priority chip (no icon), due chip slate calendar / red timer "Missed", spacer, list-checks 14 + "0/3" `label`, Avatar(s).

@@ -3,7 +3,7 @@ import { act, fireEvent, screen } from "@testing-library/react-native";
 import { fetchLeads } from "../../api/leadQueries";
 import { fetchTasks } from "../../api/taskQueries";
 import { fetchTickets } from "../../api/ticketQueries";
-import { envelope, lead, makeTask, pagination, ticket } from "../../test/fixtures";
+import { envelope, lead, makeTask, pagination, serverError, ticket } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import { PHONE, setWindow } from "../../test/window";
 import type { ModuleKey } from "../../types/api";
@@ -57,9 +57,10 @@ it("debounces, then asks each module once with the term, 5 rows", async () => {
   await act(async () => { jest.advanceTimersByTime(300); });
   expect(await screen.findByText("Complaints · 12")).toBeOnTheScreen();
   expect(fetchTickets).toHaveBeenCalledTimes(1);
-  expect(fetchTickets).toHaveBeenCalledWith({ SearchTerm: "AC", PageSize: 5 });
-  expect(fetchLeads).toHaveBeenCalledWith({ SearchTerm: "AC", PageSize: 5 });
-  expect(fetchTasks).toHaveBeenCalledWith({ SearchTerm: "AC", PageSize: 5 });
+  // The exact filters "See all" opens, so the count matches the list it leads to.
+  expect(fetchTickets).toHaveBeenCalledWith(expect.objectContaining({ SearchTerm: "AC", PageSize: 5, StatusCode: "active", AssignedTo: null, Overdue: false }));
+  expect(fetchLeads).toHaveBeenCalledWith(expect.objectContaining({ SearchTerm: "AC", PageSize: 5, OwnerId: null, StatusId: null }));
+  expect(fetchTasks).toHaveBeenCalledWith({ SearchTerm: "AC", PageSize: 5, WorkspaceId: null, OnlyOpen: true });
   expect(screen.getByText("Leads · 1")).toBeOnTheScreen();
   expect(screen.getByText("Tasks · 1")).toBeOnTheScreen();
   expect(screen.getByTestId("escalated-dot")).toBeOnTheScreen();
@@ -111,4 +112,30 @@ it("shows skeleton rows while the first answers are on their way", async () => {
   await mount();
   await type("Pat");
   expect(screen.getAllByTestId("skeleton-row").length).toBeGreaterThan(0);
+});
+
+it("every module failing shows the error card, and Try again asks again", async () => {
+  jest.mocked(fetchLeads).mockRejectedValue(serverError(500, "down"));
+  jest.mocked(fetchTickets).mockRejectedValue(serverError(500, "down"));
+  signInWith("complaints", "leads");
+  await mount();
+  await type("AC");
+  expect(await screen.findByText("Could not load. Try again")).toBeOnTheScreen();
+  expect(screen.queryByText("No matches")).toBeNull();
+  jest.mocked(fetchLeads).mockResolvedValue(envelope({ leads: [lead({ Id: 8, Name: "Patel Solar" })], pagination: pagination(1) }));
+  await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+  expect(await screen.findByText("Leads · 1")).toBeOnTheScreen();
+  expect(fetchTickets).toHaveBeenCalledTimes(2);
+});
+
+it("one module failing keeps the others and says which could not be searched", async () => {
+  jest.mocked(fetchTasks).mockRejectedValue(serverError(500, "down"));
+  signInWith("complaints", "tasks");
+  await mount();
+  await type("AC");
+  expect(await screen.findByText("Complaints · 12")).toBeOnTheScreen();
+  expect(screen.getByText("Could not search tasks.")).toBeOnTheScreen();
+  jest.mocked(fetchTasks).mockResolvedValue(envelope({ tasks: [makeTask({ Id: 3, Title: "AC quote" })], pagination: pagination(1) }));
+  await fireEvent.press(screen.getByRole("button", { name: "Retry tasks" }));
+  expect(await screen.findByText("Tasks · 1")).toBeOnTheScreen();
 });

@@ -14,8 +14,12 @@ export interface AvatarProps {
   /** Picks the initials tone, so one person keeps one colour everywhere. Falls back to the name. */
   userId?: number | null;
   size?: number;
-  /** A ring in the colour of what the avatar sits on: `surface` in a stack, `band` on the band. */
-  ring?: ColorKey;
+  /**
+   * A ring in the colour of what the avatar sits on: `surface` in a stack,
+   * `band` on the band. E's 28 (`.av`) has a 2 px surface ring by default;
+   * pass null for none (E draws the comment and Home avatars without it).
+   */
+  ring?: ColorKey | null;
 }
 
 const initialsOf = (name?: string | null) =>
@@ -51,7 +55,8 @@ const ringWidth = (size: number) => (size >= 88 ? 4 : 2);
  * Falls back to initials whenever the value is empty or unrecognised — an
  * unknown preset must never render a broken image or take out its row.
  */
-export function Avatar({ name, uri, userId, size = 28, ring }: AvatarProps) {
+export function Avatar({ name, uri, userId, size = 28, ring: ringProp }: AvatarProps) {
+  const ring = ringProp === undefined ? (size === 28 ? "surface" : null) : ringProp;
   const ringStyle = ring ? { borderWidth: ringWidth(size), borderColor: colors[ring] } : null;
   const box = [{ width: size, height: size, borderRadius: radius.full }, ringStyle];
   const preset = parseAvatar(uri);

@@ -65,7 +65,7 @@ export function Chip({
 
   if (!onPress) {
     return (
-      <View accessibilityLabel={accessibilityLabel} style={[styles.chip, shape]}>
+      <View accessible={!!accessibilityLabel} accessibilityLabel={accessibilityLabel} style={[styles.chip, shape]}>
         {body}
       </View>
     );

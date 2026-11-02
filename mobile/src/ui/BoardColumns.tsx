@@ -11,8 +11,13 @@ import {
 import { metrics, SCREEN_PADDING, spacing } from "../theme";
 import { BoardSurfaceContext } from "./boardSurface";
 
-/** E 07: a column is the window less 80 (310 on a 390 phone), so the next one peeks. */
-export const boardColumnWidth = (windowWidth: number) => windowWidth - metrics.boardColumnInset;
+/**
+ * E 07: a column is the window less 80 (310 on a 390 phone), so the next one
+ * peeks. Capped, so a tablet beside the rail shows several columns and a peek
+ * instead of one column a thousand wide.
+ */
+export const boardColumnWidth = (windowWidth: number) =>
+  Math.min(windowWidth - metrics.boardColumnInset, metrics.boardColumnMax);
 /** Gap between columns (E 07). */
 export const BOARD_GAP = 10;
 

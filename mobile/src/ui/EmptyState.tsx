@@ -116,7 +116,7 @@ export function ErrorCard({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, alignItems: "center", paddingHorizontal: spacing[8] },
+  container: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing[8] },
   art: { width: metrics.emptyArt, height: metrics.emptyArt },
   artBox: {
     width: metrics.emptyArt,

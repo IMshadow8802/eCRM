@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import { Search, X } from "lucide-react-native";
 
-import { colors, fontScaleCap, metrics, spacing, typography } from "../theme";
+import { colors, fontScaleCap, HIT_TARGET, metrics, spacing, typography } from "../theme";
 import { Text } from "./Text";
 
 export interface SearchFieldProps {
@@ -53,7 +53,7 @@ export function SearchField({ value = "", onChangeText, placeholder, width, onPr
         style={styles.input}
       />
       {value ? (
-        <Pressable onPress={() => onChangeText?.("")} hitSlop={spacing[3]} accessibilityRole="button" accessibilityLabel="Clear search">
+        <Pressable onPress={() => onChangeText?.("")} hitSlop={(HIT_TARGET - 18) / 2} accessibilityRole="button" accessibilityLabel="Clear search">
           <X size={18} color={colors.onBandMuted} />
         </Pressable>
       ) : null}

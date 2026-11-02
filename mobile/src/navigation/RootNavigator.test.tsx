@@ -367,6 +367,30 @@ describe("the docked bar", () => {
 describe("the rail (tablet, ≥ medium)", () => {
   const railLabels = () => screen.getAllByRole("tab").map((t) => t.props.accessibilityLabel);
 
+  // Review: all three modules → Follow-ups is no tab, so popTo("Tabs", FollowUps) went nowhere.
+  it("all three: Follow-ups opens the pushed queue, and its rail item is the active one", async () => {
+    setWindow(...TABLET);
+    signInWith("tasks", "complaints", "leads");
+    await mountApp();
+    await screen.findByText("Home screen");
+    await fireEvent.press(screen.getByRole("tab", { name: "Follow-ups" }));
+    await act(async () => { jest.runOnlyPendingTimers(); });
+    expect(await screen.findByText("FollowUps screen (pushed)")).toBeOnTheScreen();
+    expect(screen.getByRole("tab", { name: "Follow-ups" })).toBeSelected();
+    expect(screen.getByRole("tab", { name: "More" })).not.toBeSelected();
+  });
+
+  it("leads-only: Follow-ups is the tab", async () => {
+    setWindow(...TABLET);
+    signInWith("leads");
+    await mountApp();
+    await screen.findByText("Home screen");
+    await fireEvent.press(screen.getByRole("tab", { name: "Follow-ups" }));
+    await act(async () => { jest.runOnlyPendingTimers(); });
+    expect(await screen.findByText("FollowUps screen")).toBeOnTheScreen();
+    expect(screen.getByRole("tab", { name: "Follow-ups" })).toBeSelected();
+  });
+
   it.each([
     ["all three", ["tasks", "complaints", "leads"], ["Today", "Tasks", "Complaints", "Leads", "Follow-ups", "Inbox", "More"]],
     ["complaints-only", ["complaints"], ["Today", "Complaints", "Inbox", "More"]],

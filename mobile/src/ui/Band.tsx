@@ -10,7 +10,7 @@ import { Refresher, type RefresherProps } from "./Refresher";
 import { SearchField, type SearchFieldProps } from "./SearchField";
 import { BandTabs, type BandTabsProps } from "./Tabs";
 import { Text } from "./Text";
-import { useLayout } from "./useLayout";
+import { isTabletLayout, useLayout } from "./useLayout";
 
 export type BandVariant = "tabs" | "home" | "record" | "profile";
 
@@ -52,7 +52,7 @@ export function Band({
   const insets = useSafeAreaInsets();
   const layout = useLayout();
   const topInset = noInset ? 0 : insets.top;
-  const tablet = layout.nav === "rail";
+  const tablet = isTabletLayout(layout);
   const rowHeight = tablet ? metrics.bandRowTablet : variant === "home" ? metrics.bandRowHome : metrics.bandRow;
   const bg = tone === "raised" ? colors.bandRaised : colors.band;
 
@@ -132,7 +132,7 @@ export function BandSheet({
   children, scroll = false, refresh, padded = true, bleedRight = false, center = false, contentBottom = 0, style,
 }: BandSheetProps) {
   const layout = useLayout();
-  const tablet = layout.sizeClass === "expanded";
+  const tablet = isTabletLayout(layout);
   const shell = [
     styles.sheet,
     tablet && styles.sheetTablet,

@@ -1,4 +1,4 @@
-import { StyleSheet, Text as RNText } from "react-native";
+import { Text as RNText } from "react-native";
 import { fireEvent, render, screen } from "@testing-library/react-native";
 import { Flag, Headset } from "lucide-react-native";
 
@@ -6,6 +6,12 @@ import { chipTones, colors } from "../theme";
 import { GroupHeader, ListGroup, ListRow } from "./List";
 
 import { flat } from "../test/style";
+
+const holdTouch = () => {
+  const touch = { pageX: 0, pageY: 0, locationX: 0, locationY: 0, timestamp: 0 };
+  return { persist: () => {}, currentTarget: { measure: () => {} }, nativeEvent: { ...touch, touches: [touch], changedTouches: [touch] } };
+};
+
 const rowOf = (text: string) => {
   let n = screen.getByText(text);
   while (n.parent && !flat(n).paddingVertical) n = n.parent;
@@ -89,7 +95,7 @@ describe("ListRow (E .rw)", () => {
     expect(screen.getByText("B")).toBeOnTheScreen();
   });
 
-  it("press and long press; pressed rows are field-tinted", async () => {
+  it("press and long press; a held row is field-tinted", async () => {
     const onPress = jest.fn();
     const onLongPress = jest.fn();
     await render(<ListRow title="Row" onPress={onPress} onLongPress={onLongPress} accessibilityLabel="Open row" />);
@@ -97,8 +103,9 @@ describe("ListRow (E .rw)", () => {
     await fireEvent(screen.getByRole("button"), "longPress");
     expect(onPress).toHaveBeenCalledTimes(1);
     expect(onLongPress).toHaveBeenCalledTimes(1);
-    const style = screen.getByRole("button").props.style;
-    expect(typeof style === "function" ? undefined : StyleSheet.flatten(style).backgroundColor).toBe(colors.surface);
+    expect(flat(screen.getByRole("button")).backgroundColor).toBe(colors.surface);
+    await fireEvent(screen.getByRole("button"), "responderGrant", holdTouch());
+    expect(flat(screen.getByRole("button")).backgroundColor).toBe(colors.fieldTint);
   });
 });
 

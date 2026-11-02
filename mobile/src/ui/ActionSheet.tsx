@@ -2,7 +2,7 @@ import { forwardRef, useImperativeHandle, useRef } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import type { LucideIcon } from "lucide-react-native";
 
-import { colors, radius, spacing, type BadgeTone } from "../theme";
+import { colors, HIT_TARGET, radius, spacing, type BadgeTone } from "../theme";
 import { Chip, type ChipProps } from "./Chip";
 import { Radio } from "./ChoiceList";
 import { Sheet, type SheetRef } from "./Sheet";
@@ -103,7 +103,7 @@ export const ActionSheet = forwardRef<SheetRef, ActionSheetProps>(function Actio
 
 const styles = StyleSheet.create({
   list: { maxHeight: 420 },
-  row: { flexDirection: "row", alignItems: "center", gap: spacing[3], paddingVertical: 7, paddingHorizontal: spacing[1], borderRadius: radius.badgeLg },
+  row: { flexDirection: "row", alignItems: "center", gap: spacing[3], minHeight: HIT_TARGET, paddingVertical: 7, paddingHorizontal: spacing[1], borderRadius: radius.badgeLg },
   on: { backgroundColor: colors.fieldTint },
   onDanger: { backgroundColor: colors.dangerRowTint },
   pressed: { backgroundColor: colors.fieldTint },

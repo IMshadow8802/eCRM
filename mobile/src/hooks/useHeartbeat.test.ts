@@ -9,11 +9,15 @@ import { HEARTBEAT_MS, useHeartbeat } from "./useHeartbeat";
 
 jest.mock("../api/presenceQueries", () => ({ heartbeat: jest.fn() }));
 
-let appState: string | null = null;
+let appState: string | null = "active";
 let listeners: ((s: string) => void)[] = [];
+const emit = async (s: string) => {
+  appState = s;
+  await act(async () => { listeners.forEach((l) => l(s)); });
+};
 beforeEach(() => {
   jest.useFakeTimers();
-  appState = null;
+  appState = "active";
   listeners = [];
   Object.defineProperty(AppState, "currentState", { get: () => appState, configurable: true });
   jest.spyOn(AppState, "addEventListener").mockImplementation((_type, fn) => {
@@ -24,25 +28,48 @@ beforeEach(() => {
 });
 afterEach(() => jest.useRealTimers());
 
-it("beats at once and every 2 minutes, storing the expiry", async () => {
+it("beats at once, then exactly once per 2-minute interval, storing the expiry", async () => {
   seedAuth();
   await renderHook(() => useHeartbeat());
   await act(async () => {});
   expect(heartbeat).toHaveBeenCalledTimes(1);
   expect(useAuthStore.getState().sessionExpiresAt).toBe("2026-11-02T13:30:00.000Z");
-  await act(async () => { jest.advanceTimersByTime(HEARTBEAT_MS); });
-  expect(heartbeat).toHaveBeenCalledTimes(2);
+  for (const n of [2, 3, 4]) {
+    await act(async () => { jest.advanceTimersByTime(HEARTBEAT_MS); });
+    expect(heartbeat).toHaveBeenCalledTimes(n);
+  }
 });
 
-it("skips while in the background and beats again on return", async () => {
+it("stops in the background; coming back beats once and restarts one interval", async () => {
   seedAuth();
-  appState = "background";
   await renderHook(() => useHeartbeat());
-  await act(async () => { jest.advanceTimersByTime(HEARTBEAT_MS); });
-  expect(heartbeat).not.toHaveBeenCalled();
-  appState = "active";
-  await act(async () => { listeners.forEach((l) => l("background")); listeners.forEach((l) => l("active")); });
+  await emit("background");
+  await act(async () => { jest.advanceTimersByTime(HEARTBEAT_MS * 3); });
   expect(heartbeat).toHaveBeenCalledTimes(1);
+  await emit("active");
+  expect(heartbeat).toHaveBeenCalledTimes(2);
+  await act(async () => { jest.advanceTimersByTime(HEARTBEAT_MS); });
+  expect(heartbeat).toHaveBeenCalledTimes(3);
+});
+
+it("a cold start that is not yet active waits for active", async () => {
+  appState = "background";
+  seedAuth();
+  await renderHook(() => useHeartbeat());
+  expect(heartbeat).not.toHaveBeenCalled();
+  await emit("active");
+  expect(heartbeat).toHaveBeenCalledTimes(1);
+});
+
+it("pauses while the re-sign-in dialog is open, and beats as soon as it closes", async () => {
+  seedAuth();
+  await renderHook(() => useHeartbeat());
+  expect(heartbeat).toHaveBeenCalledTimes(1);
+  await act(async () => useAuthStore.setState({ reauth: { code: "SESSION_EXPIRED", message: null } }));
+  await act(async () => { jest.advanceTimersByTime(HEARTBEAT_MS * 2); });
+  expect(heartbeat).toHaveBeenCalledTimes(1);
+  await act(async () => useAuthStore.setState({ reauth: null }));
+  expect(heartbeat).toHaveBeenCalledTimes(2);
 });
 
 it("a failed beat is swallowed; signed out never beats; unmount stops it", async () => {

@@ -250,6 +250,9 @@ export const spacing = {
  */
 export const metrics = Object.freeze({
   gutter: 16,
+  /** Band/sheet padding at medium (proposed) and expanded (T1–T3). */
+  gutterMedium: 24,
+  gutterExpanded: 32,
   bandRow: 52,
   bandRowHome: 56,
   bandRowTablet: 60,
@@ -287,6 +290,8 @@ export const metrics = Object.freeze({
   formMaxWidth: 640,
   factsColumn: 300,
   boardColumnInset: 80,
+  /** A board column never grows past this, so a tablet shows several (E draws only the phone). */
+  boardColumnMax: 360,
   fieldGap: 12,
   pairGap: 10,
   bentoGap: 10,

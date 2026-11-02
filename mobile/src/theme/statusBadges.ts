@@ -115,14 +115,16 @@ export function followUpBadge(type: string | null | undefined, state: "open" | "
  * the mapping is by substring, most specific first.
  */
 export function notificationBadge(type: string | null | undefined): BadgeSpec {
-  const t = (type ?? "").toLowerCase();
-  if (t.includes("escalat")) return b("lilac", ChevronsUp);
-  if (t.includes("breach") || t.includes("miss")) return b("red", OctagonAlert);
-  if (t.includes("warn") || t.includes("due")) return b("butter", Timer);
+  // Whole words of the snake_case type, so "dismissed" is not "miss".
+  const words = new Set((type ?? "").toLowerCase().split(/[^a-z]+/).filter(Boolean));
+  const has = (...w: string[]) => w.some((x) => words.has(x));
+  if (has("escalated", "escalation", "escalate")) return b("lilac", ChevronsUp);
+  if (has("breach", "breached", "miss", "missed")) return b("red", OctagonAlert);
+  if (has("warn", "warning", "due", "overdue")) return b("butter", Timer);
   // Before "added": comment_added is a comment, not a membership.
-  if (t.includes("comment") || t.includes("reply")) return b("teal", MessageSquare);
-  if (t.includes("workspace") || t.includes("added")) return b("indigo", UserPlus);
-  if (t.includes("assign")) return b("indigo", UserCheck);
+  if (has("comment", "reply", "replied")) return b("teal", MessageSquare);
+  if (has("workspace", "added", "invite", "invited")) return b("indigo", UserPlus);
+  if (has("assign", "assigned")) return b("indigo", UserCheck);
   return b("slate", Bell);
 }
 

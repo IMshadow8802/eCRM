@@ -49,10 +49,10 @@ export function ActionBar({ actions }: ActionBarProps) {
           >
             {a.main ? (
               <View testID="action-main" style={styles.mainPill}>
-                <a.icon size={20} color={colors.textOnBrand} />
+                <a.icon size={22} color={colors.textOnBrand} />
               </View>
             ) : (
-              <a.icon size={20} color={ink} />
+              <a.icon size={22} color={ink} />
             )}
             <Text
               variant={a.main ? "navLabelActive" : "navLabel"}

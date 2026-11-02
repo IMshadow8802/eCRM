@@ -79,7 +79,8 @@ export function Timeline({ entries }: TimelineProps) {
                 {/* ponytail: no Inter italic is loaded, so iOS may draw it
                     upright; the muted colour is what reliably reads as "gone". */}
                 <Text
-                  variant="rowTitle"
+                  // E's TAT titles are 14/600; a badge-less entry (a comment) stays running text.
+                  variant={entry.badge ? "rowTitle" : "text"}
                   color={entry.muted ? "textMuted" : entry.danger ? "dangerText" : "text"}
                   style={[styles.flex, entry.muted && styles.muted]}
                 >

@@ -8,7 +8,7 @@ import {
 } from "react-native";
 import type { LucideIcon } from "lucide-react-native";
 
-import { colors, metrics, spacing, type ColorKey, type TypographyVariant } from "../theme";
+import { colors, HIT_TARGET, metrics, spacing, type ColorKey, type TypographyVariant } from "../theme";
 import { Text } from "./Text";
 
 export type ButtonVariant =
@@ -77,6 +77,8 @@ export function Button({
       accessibilityLabel={title}
       accessibilityState={{ disabled: !!isDisabled, busy: loading }}
       disabled={isDisabled}
+      // sm 36 and xs 32 reach the 44 dp target without growing.
+      hitSlop={Math.max(0, (HIT_TARGET - s.height) / 2)}
       style={({ pressed }) => [
         styles.base,
         { height: s.height, borderRadius: s.height / 2, paddingHorizontal: s.padH, backgroundColor: colors[fill] },

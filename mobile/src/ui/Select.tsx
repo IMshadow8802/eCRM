@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { ChevronDown, type LucideIcon } from "lucide-react-native";
 
 import { colors, type BadgeTone, type ChipTone } from "../theme";
+import { Avatar } from "./Avatar";
 import { Chip } from "./Chip";
 import { ChoiceList } from "./ChoiceList";
 import { FieldHelp, FieldLabel, fieldBox } from "./Field";
@@ -21,6 +22,8 @@ export interface SelectOption<T> {
   lead?: ReactNode;
   /** Chosen, the field shows this pill instead of plain text (status, priority, resolution). */
   chip?: { tone: ChipTone; icon?: LucideIcon };
+  /** A person: the field shows Avatar 24 + name, the list an Avatar 36 (E §3.14, 23). */
+  avatar?: { name?: string | null; uri?: string | null; userId?: number | null };
 }
 
 export interface SelectProps<T> {
@@ -83,6 +86,11 @@ export function Select<T extends string | number>({
         <View style={styles.value}>
           {single?.chip ? (
             <Chip label={single.label} tone={single.chip.tone} icon={single.chip.icon} />
+          ) : single?.avatar ? (
+            <View style={styles.person}>
+              <Avatar {...single.avatar} size={24} />
+              <Text variant="body" numberOfLines={1} style={styles.flex}>{single.label}</Text>
+            </View>
           ) : (
             <Text variant="body" color={summary ? "text" : "textMuted"} numberOfLines={1}>{summary ?? placeholder}</Text>
           )}
@@ -102,7 +110,7 @@ export function Select<T extends string | number>({
               label: o.label,
               note: o.sublabel,
               badge: o.badge,
-              lead: o.lead ?? (o.icon ? <o.icon size={18} color={colors.textSecondary} /> : undefined),
+              lead: o.lead ?? (o.avatar ? <Avatar {...o.avatar} size={36} /> : o.icon ? <o.icon size={18} color={colors.textSecondary} /> : undefined),
             }))}
           />
         </ScrollView>
@@ -113,6 +121,8 @@ export function Select<T extends string | number>({
 
 const styles = StyleSheet.create({
   value: { flex: 1, minWidth: 0 },
+  person: { flexDirection: "row", alignItems: "center", gap: 8 },
+  flex: { flex: 1, minWidth: 0 },
   list: { maxHeight: 380 },
 });
 

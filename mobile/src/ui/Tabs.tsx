@@ -5,6 +5,7 @@ import { Check, type LucideIcon } from "lucide-react-native";
 import { chipTones, colors, elevation, fontFamily, HIT_TARGET, metrics, radius, spacing, type ChipTone } from "../theme";
 import { CountPill } from "./CountBadge";
 import { Text } from "./Text";
+import { useLayout } from "./useLayout";
 
 export interface TabOption<T> {
   value: T;
@@ -181,6 +182,8 @@ export function FilterPills<T extends string | number>({
   value, options, onChange, tone = "page", wrap = false, label, testID,
 }: FilterPillsProps<T>) {
   const height = tone === "page" ? metrics.pillHeight : metrics.pillHeightSheet;
+  // Bleeds to the screen edge: by the screen's own gutter (16 phone, 24/32 tablet).
+  const { gutter } = useLayout();
   const pills = options.map((o) => {
     const on = o.value === value;
     const toned = o.tone ? chipTones[o.tone] : null;
@@ -218,7 +221,7 @@ export function FilterPills<T extends string | number>({
       accessibilityRole="radiogroup"
       accessibilityLabel={label}
       showsHorizontalScrollIndicator={false}
-      style={styles.bleed}
+      style={{ marginRight: -gutter }}
       contentContainerStyle={styles.pillRow}
     >
       {pills}
@@ -263,7 +266,6 @@ const styles = StyleSheet.create({
   natural: { paddingHorizontal: 14 },
   segmentOn: { backgroundColor: colors.primary },
   bold: { fontFamily: fontFamily.bold },
-  bleed: { marginRight: -metrics.gutter },
   pillRow: { flexDirection: "row", gap: spacing[2], paddingRight: metrics.gutter },
   pillWrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing[2] },
   pill: { flexDirection: "row", alignItems: "center", gap: metrics.inlineGap, paddingHorizontal: spacing[3] },
