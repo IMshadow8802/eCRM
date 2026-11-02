@@ -21,7 +21,11 @@ export const login = (params: {
   password: string;
 }): Promise<ApiEnvelope<LoginData>> => post<LoginData>(AUTH_ENDPOINTS.login, { ...params, Device: "mobile" });
 
-/** `token`: end that session rather than the current one (a sign-in the app is discarding). */
+/**
+ * `token`: end that session rather than the current one (a sign-in the app is
+ * discarding). Precondition: the client must hold no token when this is called
+ * with one, because the request interceptor overwrites Authorization when it does.
+ */
 export const logout = (token?: string): Promise<ApiEnvelope<unknown>> =>
   post(AUTH_ENDPOINTS.logout, {}, token ? { headers: { Authorization: `Bearer ${token}` } } : undefined);
 

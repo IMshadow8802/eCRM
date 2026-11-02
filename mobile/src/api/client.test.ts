@@ -189,6 +189,28 @@ describe("re-sign-in on a closed session", () => {
     expect(onUnauthorized).not.toHaveBeenCalled(); // nor does it sign B out
   });
 
+  it.each([[{}], [SESSION_401]])("a token-less request sent between sign-out and sign-in never touches the next session (%j)", async (body) => {
+    setAuthToken("tok-A");
+    setAuthToken(null); // signed out
+    const reauth = jest.fn();
+    setReauthHandler(reauth);
+    let land!: () => void;
+    adapter.mockImplementation(
+      (config) =>
+        new Promise((_res, rej) => {
+          land = () => rej(new AxiosError("401", "ERR_BAD_REQUEST", config, null, { data: body, status: 401, statusText: "401", headers: {}, config }));
+        }),
+    );
+    const orphan = post("/api/presence/heartbeat");
+    await new Promise((r) => setTimeout(r, 0));
+    setAuthToken("tok-B"); // B signs in while it is on the wire
+    land();
+    await expect(orphan).rejects.toMatchObject({ response: { status: 401 } });
+    expect(adapter).toHaveBeenCalledTimes(1);
+    expect(reauth).not.toHaveBeenCalled();
+    expect(onUnauthorized).not.toHaveBeenCalled();
+  });
+
   it("a cancelled re-sign-in rejects the original error", async () => {
     fail(401, SESSION_401);
     setReauthHandler(() => Promise.reject(new Error("cancelled")));

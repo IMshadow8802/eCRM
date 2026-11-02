@@ -27,14 +27,16 @@ export const setApiBaseUrl = (url: string | null): void => {
 
 export const getApiBaseUrl = (): string | null => apiBaseUrl;
 
-// Bumped on every sign-out. A request carries the lineage it was sent in; a
-// 401 from an earlier one belongs to a session that is gone and must never be
-// replayed with (or sign out) whoever signed in since. A same-user re-sign-in
-// swaps the token without a sign-out, so it keeps the lineage.
+// Bumped on every sign-out AND sign-in (token <-> none). A request carries the
+// lineage it was sent in; a 401 from an earlier one belongs to a session that
+// is gone and must never be replayed with (or sign out) whoever signed in
+// since, including a token-less request sent between the two. A same-user
+// re-sign-in swaps token for token, so it keeps the lineage. A rehydrate bump
+// is harmless: nothing is in flight before it.
 let lineage = 0;
 
 export const setAuthToken = (token: string | null): void => {
-  if (!token) lineage += 1;
+  if (!token || !authToken) lineage += 1;
   authToken = token || null;
 };
 
