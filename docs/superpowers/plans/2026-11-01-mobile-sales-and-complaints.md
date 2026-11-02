@@ -4,7 +4,7 @@
 
 **Goal:** Lead management on the mobile app (list, detail, follow-ups, calls, status, transfer, create/edit) plus a hardened Complaints module, both built test-first with a Jest + React Native Testing Library suite, then proven end to end with Maestro on the Android emulator.
 
-**Architecture:** Mobile only — zero backend, SQL or web changes. Sales mirrors the Complaints feature shape (`mobile/src/features/support/`) in `mobile/src/features/sales/`: one fetcher file per domain in `src/api/`, a ref-data hook, list → detail → form screens on the root stack, actions through `ActionSheet` / `ComposeSheet` / `Dialog`. Unit/screen tests live beside the code as `*.test.ts(x)`; Maestro flows in `mobile/.maestro/`.
+**Architecture:** Mobile only — zero SQL or web changes; one backend fix (Task 10, user order 2026-11-02). Sales mirrors the Complaints feature shape (`mobile/src/features/support/`) in `mobile/src/features/sales/`: one fetcher file per domain in `src/api/`, a ref-data hook, list → detail → form screens on the root stack, actions through `ActionSheet` / `ComposeSheet` / `Dialog`. Unit/screen tests live beside the code as `*.test.ts(x)`; Maestro flows in `mobile/.maestro/`.
 
 **Tech Stack:** Expo SDK 57 (RN 0.86.3, React 19.2), TypeScript strict, TanStack Query, React Navigation stack, lucide-react-native, @gorhom/bottom-sheet, Jest via `jest-expo`, `@testing-library/react-native`, Maestro 2.12.
 
@@ -133,7 +133,7 @@ Characterization tests for code that already exists. TDD discipline for these: e
 
 ## Phase B — catch up with the web (from the parity audit)
 
-Source: `.superpowers/sdd/2026-11-01-mobile-sales-and-complaints/parity-audit.md` (67 gaps, each with web/backend and mobile file:line and the change needed). Each task below lists audit IDs; the audit row IS the requirement for that ID. Every gap is fixed test-first: a failing test that shows the gap (wrong payload, wrong label, missing control, wrong gate) → fix → green. Rows marked **(unverified)** in the audit: verify first; if the gap is not real, record that in the report and skip it. Out of scope: WS-11 (personal → shared conversion stays web-only by design) and any backend change (the `taskController.js` UTC `WorkDate` fallback is reported to the user, not fixed here).
+Source: `.superpowers/sdd/2026-11-01-mobile-sales-and-complaints/parity-audit.md` (67 gaps, each with web/backend and mobile file:line and the change needed). Each task below lists audit IDs; the audit row IS the requirement for that ID. Every gap is fixed test-first: a failing test that shows the gap (wrong payload, wrong label, missing control, wrong gate) → fix → green. Rows marked **(unverified)** in the audit: verify first; if the gap is not real, record that in the report and skip it. Out of scope: WS-11 (personal → shared conversion stays web-only by design) and backend changes other than the one in Task 10.
 
 ### Task 8: Auth — cache, access refresh, session messages
 **Audit IDs:** AUTH-01, AUTH-02, AUTH-04, AUTH-05.
@@ -144,8 +144,9 @@ Source: `.superpowers/sdd/2026-11-01-mobile-sales-and-complaints/parity-audit.md
 **Audit IDs:** AUTH-03.
 - [ ] Tests first: a session 401 mid-form shows a password-only re-sign-in Dialog over the current screen (typed form state kept); success retries the failed request once and continues; "Sign in as someone else" does a full logout; concurrent 401s share one dialog/promise; login/logout 401s never open it. Gate. Commit.
 
-### Task 10: Tasks — small correctness fixes
+### Task 10: Tasks — small correctness fixes (+ the backend WorkDate fallback)
 **Audit IDs:** TASK-01, TASK-03, TASK-06, TASK-07, TASK-08.
+**Backend (user order 2026-11-02):** `backend/src/controllers/taskController.js:760` falls back to `new Date().toISOString().split("T")[0]` (UTC day) when a time entry has no `WorkDate`/`LogDate`, filing time logged 00:00–05:30 IST under the previous day. Replace it with the IST local day from the existing helper in `backend/src/utils/workCalendar.js` (`dateKey(new Date())` or whatever that file exports for "today in IST") — test-first in `backend/tests/unit/...` with a frozen clock at `2026-11-02T19:00:00Z` (= 00:30 IST on 3 Nov) expecting `WorkDate: "2026-11-03"` passed to the SP. Backend gate: `cd backend && pnpm exec jest --silent` green, ≥80% branches on `taskController.js`'s touched function (CLAUDE.md §0.4). This is the only `toISOString().split` date fallback in `backend/src` (grep-checked 2026-11-02).
 - [ ] Tests first per ID (WorkDate is the local day for a time logged at 00:30 IST; checklist tick with `completionChange`/`tatReasonNeeded` toasts and opens the explain-delay sheet; Unassigned/All send `OnlyOpen: true`; Deadline tab hidden on personal boards; Done + Blocked chips; "Time logged" menu entry always opens the sheet). Gate. Commit.
 
 ### Task 11: Tasks — due time, time allowed, dependencies
