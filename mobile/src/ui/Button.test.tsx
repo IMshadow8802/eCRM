@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react-native";
-import { Bell, ChevronLeft, Phone, Plus } from "lucide-react-native";
+import { ArrowRight, Bell, ChevronLeft, Phone, Plus } from "lucide-react-native";
 
 import { colors } from "../theme";
 import { Button, type ButtonSize, type ButtonVariant } from "./Button";
@@ -22,6 +22,15 @@ describe("Button (E .btn)", () => {
     await render(<Button title="Save" icon={Plus} size="sm" onPress={onPress} />);
     await fireEvent.press(screen.getByRole("button", { name: "Save" }));
     expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it("a trailing icon follows the label, 18 in the text colour (E 01 Continue →)", async () => {
+    await render(<Button title="Continue" trailingIcon={ArrowRight} />);
+    const row = screen.getByText("Continue").parent!;
+    const last = row.children[row.children.length - 1] as { props: { size?: number; color?: string; stroke?: string } };
+    expect(row.children.indexOf(screen.getByText("Continue"))).toBe(0);
+    expect(last.props.size ?? 18).toBe(18);
+    expect(last.props.stroke ?? last.props.color).toBe(colors.textOnBrand);
   });
 
   it("disabled blocks the press and is announced", async () => {

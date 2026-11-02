@@ -1,9 +1,24 @@
-import { StyleSheet } from "react-native";
+import { StyleSheet, Text as RNText } from "react-native";
 import { fireEvent, render, screen } from "@testing-library/react-native";
 import { Search } from "lucide-react-native";
 
 import { colors } from "../theme";
+import { renderWithProviders } from "../test/renderWithProviders";
 import { Input } from "./Input";
+import { InSheetContext } from "./sheetContext";
+import { Sheet } from "./Sheet";
+
+// gorhom's mock makes BottomSheetTextInput a bare TextInput; tag it so a test
+// can tell which one the field rendered.
+jest.mock("@gorhom/bottom-sheet", () => {
+  const mock = jest.requireActual("@gorhom/bottom-sheet/mock");
+  const { createElement, forwardRef } = jest.requireActual("react");
+  const { TextInput } = jest.requireActual("react-native");
+  return {
+    ...mock,
+    BottomSheetTextInput: forwardRef((props: object, ref: unknown) => createElement(TextInput, { ...props, ref, nativeID: "sheet-input" })),
+  };
+});
 
 it("types through, shows label, required mark and error over the hint", async () => {
   const onChangeText = jest.fn();
@@ -101,5 +116,31 @@ describe("E field (§3.14)", () => {
   it("onBrand keeps the old legible label and error on the gradient (retired)", async () => {
     await render(<Input label="Username" tone="onBrand" required error="Required" placeholder="u" />);
     expect(StyleSheet.flatten(screen.getByText("Required").props.style).color).toBe(colors.textOnBrand);
+  });
+
+  it("invalid is the danger ring and a red leading icon with no help line (E 03)", async () => {
+    await render(<Input placeholder="Password" leftIcon={Search} invalid />);
+    expect(box("Password")).toMatchObject({ borderWidth: 2, borderColor: colors.danger, paddingHorizontal: 11 });
+    const icon = screen.getByPlaceholderText("Password").parent!.children[0] as { props: { stroke?: string; color?: string } };
+    expect(icon.props.stroke ?? icon.props.color).toBe(colors.danger);
+  });
+
+  it("a right slot sits inside the field, straight after the text (E 12 clear X)", async () => {
+    await render(<Input placeholder="Customer" right={<RNText>clear</RNText>} />);
+    const kids = screen.getByPlaceholderText("Customer").parent!.children;
+    expect(kids.indexOf(screen.getByText("clear"))).toBe(kids.indexOf(screen.getByPlaceholderText("Customer")) + 1);
+  });
+});
+
+describe("inside a sheet", () => {
+  it("is gorhom's BottomSheetTextInput, so it keeps focus; outside it is a plain TextInput", async () => {
+    await renderWithProviders(<><Input placeholder="Plain" /><Sheet><Input placeholder="Won value" /></Sheet></>);
+    expect(screen.getByPlaceholderText("Plain").props.nativeID).toBeUndefined();
+    expect(screen.getByPlaceholderText("Won value").props.nativeID).toBe("sheet-input");
+  });
+
+  it("any InSheetContext provider switches it", async () => {
+    await render(<InSheetContext.Provider value><Input placeholder="Remarks" /></InSheetContext.Provider>);
+    expect(screen.getByPlaceholderText("Remarks").props.nativeID).toBe("sheet-input");
   });
 });

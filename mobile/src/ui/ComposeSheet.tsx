@@ -1,10 +1,9 @@
 import { forwardRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
-
-import { colors, metrics, radius, spacing, typography } from "../theme";
+import { metrics } from "../theme";
 import { Button } from "./Button";
 import { FieldLabel } from "./Field";
+import { Input } from "./Input";
 import type { StatusBadgeProps } from "./StatusBadge";
 import { FilterPills } from "./Tabs";
 import { Sheet, type SheetRef } from "./Sheet";
@@ -17,6 +16,8 @@ export interface ComposeField {
   multiline?: boolean;
   /** Decimal keypad — hours worked, quantities. */
   numeric?: boolean;
+  /** Masked, with the show/hide eye (Change password). */
+  secure?: boolean;
   /**
    * Submit stays disabled until every required field has content. A function
    * makes it depend on the picked choices ("Other" needs remarks).
@@ -70,10 +71,9 @@ export interface ComposeSheetProps {
  * comment", "log 2.5 hours". One to three fields; anything longer belongs on a
  * screen, where the keyboard does not eat half the form.
  *
- * Uses @gorhom's BottomSheetTextInput rather than the design system's Input:
- * a plain RN TextInput inside a bottom sheet loses focus and sits under the
- * keyboard, because the sheet needs to know about the input to pan with it.
- * This file is inside src/ui, which is where raw inputs are allowed to live.
+ * Its fields are the design system's Input, which turns into @gorhom's
+ * BottomSheetTextInput inside a Sheet (sheetContext): a plain RN TextInput in
+ * a bottom sheet loses focus and sits under the keyboard.
  */
 export const ComposeSheet = forwardRef<SheetRef, ComposeSheetProps>(
   function ComposeSheet(
@@ -156,14 +156,16 @@ export const ComposeSheet = forwardRef<SheetRef, ComposeSheetProps>(
 
           {fields.map((field, i) => (
             <View key={field.key}>
-              {field.label ? <FieldLabel label={field.label} required={isRequired(field)} /> : null}
-              <BottomSheetTextInput
+              <Input
                 testID={`compose-${field.key}`}
+                label={field.label}
+                required={isRequired(field)}
+                accessibilityLabel={field.label ?? field.placeholder}
                 value={values[field.key] ?? ""}
                 onChangeText={(text) => set(field.key, text)}
                 placeholder={field.placeholder}
-                placeholderTextColor={colors.textMuted}
-                style={[styles.input, field.multiline && styles.inputMultiline]}
+                password={field.secure}
+                autoCapitalize={field.secure ? "none" : undefined}
                 multiline={field.multiline}
                 keyboardType={field.numeric ? "decimal-pad" : "default"}
                 // Only the first field grabs focus — autofocusing a later one
@@ -197,29 +199,6 @@ export const ComposeSheet = forwardRef<SheetRef, ComposeSheetProps>(
 
 const styles = StyleSheet.create({
   body: { gap: metrics.fieldGap + 2 },
-  // The E field box (§3.14) on gorhom's input, which must stay a bare TextInput.
-  input: {
-    ...typography.body,
-    color: colors.text,
-    height: metrics.controlHeight,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.badge,
-    paddingHorizontal: spacing[3],
-    paddingVertical: 0,
-    backgroundColor: colors.surface,
-    lineHeight: undefined,
-    includeFontPadding: false,
-    textAlignVertical: "center",
-  },
-  inputMultiline: {
-    height: undefined,
-    minHeight: 76,
-    paddingTop: 11,
-    paddingBottom: 11,
-    lineHeight: 20,
-    textAlignVertical: "top",
-  },
 });
 
 export default ComposeSheet;

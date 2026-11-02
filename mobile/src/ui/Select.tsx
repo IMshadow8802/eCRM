@@ -34,6 +34,8 @@ export interface SelectProps<T> {
   onChange: (value: T | T[]) => void;
   multiple?: boolean;
   required?: boolean;
+  /** An xs chip after the label ("Custom", T4). */
+  labelTag?: string;
   error?: string | null;
   disabled?: boolean;
   sheetTitle?: string;
@@ -46,7 +48,7 @@ export interface SelectProps<T> {
  * stays open.
  */
 export function Select<T extends string | number>({
-  label, placeholder = "Select…", value, options, onChange, multiple = false, required, error, disabled, sheetTitle,
+  label, placeholder = "Select…", value, options, onChange, multiple = false, required, labelTag, error, disabled, sheetTitle,
 }: SelectProps<T>) {
   const sheetRef = useRef<SheetRef>(null);
   const [draft, setDraft] = useState<T[]>([]);
@@ -75,7 +77,7 @@ export function Select<T extends string | number>({
 
   return (
     <View>
-      {label ? <FieldLabel label={label} required={required} /> : null}
+      {label ? <FieldLabel label={label} required={required} tag={labelTag} /> : null}
       <Pressable
         onPress={open}
         disabled={disabled}

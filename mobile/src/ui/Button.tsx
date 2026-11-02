@@ -30,6 +30,8 @@ export interface ButtonProps extends Omit<PressableProps, "style" | "children"> 
   size?: ButtonSize;
   loading?: boolean;
   icon?: LucideIcon;
+  /** After the label ("Continue →", E 01). */
+  trailingIcon?: LucideIcon;
   fullWidth?: boolean;
   style?: ViewStyle;
 }
@@ -61,6 +63,7 @@ export function Button({
   size = "md",
   loading = false,
   icon: Icon,
+  trailingIcon: Trailing,
   fullWidth = false,
   disabled,
   style,
@@ -97,6 +100,7 @@ export function Button({
           <Text variant={s.variant} color={fg} numberOfLines={1}>
             {title}
           </Text>
+          {Trailing ? <Trailing size={s.icon} color={colors[fg]} /> : null}
         </View>
       )}
     </Pressable>

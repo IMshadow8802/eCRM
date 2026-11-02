@@ -13,6 +13,8 @@ export interface DynamicFieldProps {
   value: string | boolean;
   onChange: (value: string | boolean) => void;
   error?: string | null;
+  /** An xs chip after the label ("Custom", T4: the custom field paired with Owner). */
+  tag?: string;
 }
 
 /**
@@ -48,7 +50,7 @@ function parseOptions(options: string | null): { value: string; label: string }[
  * `onChange` always receives the raw value, never a component's event or
  * option object, so callers can serialise a draft without unwrapping anything.
  */
-export function DynamicField({ field, value, onChange, error }: DynamicFieldProps) {
+export function DynamicField({ field, value, onChange, error, tag }: DynamicFieldProps) {
   const { Label, Type, Options, IsRequired } = field;
 
   if (Type === "dropdown") {
@@ -56,6 +58,7 @@ export function DynamicField({ field, value, onChange, error }: DynamicFieldProp
       <Select
         label={Label}
         required={IsRequired}
+        labelTag={tag}
         error={error}
         value={typeof value === "string" && value ? value : null}
         options={parseOptions(Options)}
@@ -69,6 +72,7 @@ export function DynamicField({ field, value, onChange, error }: DynamicFieldProp
       <DateField
         label={Label}
         required={IsRequired}
+        labelTag={tag}
         error={error}
         value={typeof value === "string" && value ? value : null}
         onChange={(next) => onChange(next ?? "")}
@@ -114,6 +118,7 @@ export function DynamicField({ field, value, onChange, error }: DynamicFieldProp
     <Input
       label={Label}
       required={IsRequired}
+      labelTag={tag}
       error={error}
       value={typeof value === "string" ? value : ""}
       onChangeText={onChange}

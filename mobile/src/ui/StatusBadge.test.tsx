@@ -10,7 +10,7 @@ const flat = (id: string) => StyleSheet.flatten(screen.getByTestId(id).props.sty
 
 describe("StatusBadge (E §3.6)", () => {
   it.each<[StatusBadgeSize, number, number]>([
-    [28, 9, 14], [32, 10, 16], [36, 12, 18], [40, 12, 20], [48, 14, 22], [52, 16, 22], [72, 22, 32],
+    [28, 9, 14], [32, 10, 16], [36, 12, 18], [40, 12, 20], [48, 14, 22], [52, 16, 22], [56, 14, 28], [72, 22, 32],
   ])("size %i: radius %i, icon %i", async (size, r, icon) => {
     await render(<StatusBadge testID="b" tone="peach" icon={Headset} size={size} />);
     expect(flat("b")).toMatchObject({ width: size, height: size, borderRadius: r, backgroundColor: badgeTones.peach.fill });

@@ -22,6 +22,21 @@ export function ListGroup({ children, style, testID }: { children: ReactNode; st
   );
 }
 
+/**
+ * One cell of a ListGroup inside a FlatList (E `.lg`, virtualised): the first
+ * cell rounds the top, the last the bottom. Shadow outside, clip inside — the
+ * clip keeps a SwipeRow's revealed blocks inside the rounded corners without
+ * flattening the whisper (the Card rule).
+ */
+export function ListGroupCell({ first, last, children }: { first: boolean; last: boolean; children: ReactNode }) {
+  const corners = [first && styles.cellFirst, last && styles.cellLast];
+  return (
+    <View testID="list-cell" style={[styles.cell, elevation.whisper, ...corners]}>
+      <View style={[styles.cellClip, ...corners]}>{children}</View>
+    </View>
+  );
+}
+
 // ------------------------------------------------------------------- ListRow
 
 export type RowRight =
@@ -32,6 +47,8 @@ export interface ListRowProps {
   /** A StatusBadge spec (40 by default) or any node. */
   badge?: StatusBadgeProps | ReactNode;
   title: string;
+  /** Rich title: this verb bold, then `title` regular ("**Escalated** to Neha", E 11 / T2). */
+  titleVerb?: string;
   titleTone?: "default" | "muted" | "danger";
   /** `read` = an Inbox row already read (500). */
   titleWeight?: "strong" | "read";
@@ -47,6 +64,10 @@ export interface ListRowProps {
   chevron?: boolean;
   selected?: boolean;
   unread?: boolean;
+  /** The indigo unread dot at the end of line 2 (E 18). */
+  unreadDot?: boolean;
+  /** E 19 menu rows: a 15/600 title, padding 12 14. */
+  menu?: boolean;
   /** Separator left inset: 66 after a 40 badge, 48 after a checkbox, 14 with none. Defaults from the badge. */
   separatorInset?: 66 | 48 | 14;
   /** The first row in a group has no separator; set this on it. */
@@ -73,7 +94,7 @@ const isBadgeSpec = (b: unknown): b is StatusBadgeProps =>
  * optional third line. Every list in E is these inside a ListGroup.
  */
 export function ListRow({
-  badge, title, titleTone = "default", titleWeight = "strong", right, number, meta, chips, line3,
+  badge, title, titleVerb, titleTone = "default", titleWeight = "strong", unreadDot = false, menu = false, right, number, meta, chips, line3,
   align = "center", trailing, chevron = false, selected = false, unread = false, separatorInset,
   noSeparator = false, onPress, onLongPress, testID, accessibilityLabel,
 }: ListRowProps) {
@@ -87,14 +108,21 @@ export function ListRow({
       {isBadgeSpec(badge) ? <StatusBadge {...badge} /> : badge}
       <View style={styles.content}>
         <View style={styles.line}>
-          <Text
-            variant={titleWeight === "read" ? "rowTitleRead" : "rowTitle"}
-            color={titleColor}
-            numberOfLines={1}
-            style={styles.flex}
-          >
-            {title}
-          </Text>
+          {titleVerb ? (
+            <Text variant="text" color={titleColor} numberOfLines={1} style={styles.flex}>
+              <Text variant="rowTitle" color={titleColor}>{titleVerb}</Text>
+              {` ${title}`}
+            </Text>
+          ) : (
+            <Text
+              variant={menu ? "bodyStrong" : titleWeight === "read" ? "rowTitleRead" : "rowTitle"}
+              color={titleColor}
+              numberOfLines={1}
+              style={styles.flex}
+            >
+              {title}
+            </Text>
+          )}
           {right ? (
             "amount" in right ? (
               <Text variant="amount" color={right.muted ? "textSecondary" : "text"}>{right.amount}</Text>
@@ -103,13 +131,14 @@ export function ListRow({
             )
           ) : null}
         </View>
-        {meta || number || chips?.length ? (
+        {meta || number || chips?.length || unreadDot ? (
           <View style={[styles.line, styles.lineGap]}>
             <Text variant="meta" numberOfLines={1} style={styles.flex}>
               {number ? <Text variant="label" tabular color="textMuted">{`${number}${meta ? " · " : ""}`}</Text> : null}
               {meta}
             </Text>
             {chips?.map((c, i) => <Chip key={`${c.label ?? c.accessibilityLabel ?? ""}-${i}`} {...c} />)}
+            {unreadDot ? <View testID="unread-dot" accessibilityLabel="Unread" style={styles.dot} /> : null}
           </View>
         ) : null}
         {line3 ? <View style={[styles.line, styles.lineGap]}>{line3}</View> : null}
@@ -119,7 +148,7 @@ export function ListRow({
     </>
   );
 
-  const rowStyle = [styles.row, align === "top" && styles.top, { backgroundColor: fill }];
+  const rowStyle = [styles.row, menu && styles.menu, align === "top" && styles.top, { backgroundColor: fill }];
   if (!onPress && !onLongPress) {
     return <View testID={testID} accessibilityLabel={accessibilityLabel} style={rowStyle}>{body}</View>;
   }
@@ -191,6 +220,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: metrics.rowPadH,
   },
   top: { alignItems: "flex-start", paddingVertical: 12, paddingHorizontal: 12 },
+  menu: { paddingVertical: 12 },
+  dot: { width: metrics.dot, height: metrics.dot, borderRadius: metrics.dot / 2, backgroundColor: colors.primary },
+  cell: { backgroundColor: colors.surface },
+  cellClip: { overflow: "hidden" },
+  cellFirst: { borderTopLeftRadius: radius.card, borderTopRightRadius: radius.card },
+  cellLast: { borderBottomLeftRadius: radius.card, borderBottomRightRadius: radius.card },
   pressed: { backgroundColor: colors.fieldTint },
   separator: { position: "absolute", top: 0, right: 0, height: 1, backgroundColor: colors.divider },
   content: { flex: 1, minWidth: 0 },

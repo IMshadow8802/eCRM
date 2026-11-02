@@ -1,14 +1,20 @@
-import { forwardRef, useState } from "react";
+import { forwardRef, useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, TextInput, View, type TextInputProps, type ViewStyle } from "react-native";
+import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { Eye, EyeOff, type LucideIcon } from "lucide-react-native";
 
 import { colors, fontScaleCap, spacing } from "../theme";
 import { FieldHelp, FieldLabel, FieldPrefix, fieldBox } from "./Field";
+import { useInSheet } from "./sheetContext";
 import { Text } from "./Text";
 
 export interface InputProps extends Omit<TextInputProps, "style"> {
   label?: string;
   error?: string | null;
+  /** The danger ring and a red leading icon with no help line (E 03: the box above says why). */
+  invalid?: boolean;
+  /** After the text, inside the field: a clear X, a spinner (E 12 customer search). */
+  right?: ReactNode;
   hint?: string;
   required?: boolean;
   /** An xs chip after the label ("Custom", T4). */
@@ -36,7 +42,7 @@ export interface InputProps extends Omit<TextInputProps, "style"> {
  */
 export const Input = forwardRef<TextInput, InputProps>(function Input(
   {
-    label, error, hint, required, labelTag, leftIcon: LeftIcon, prefix, tabular = false, password = false, tone = "default",
+    label, error, invalid = false, right, hint, required, labelTag, leftIcon: LeftIcon, prefix, tabular = false, password = false, tone = "default",
     bare = false, containerStyle, editable = true, multiline,
     // Pulled out of `rest`: spread after the wrappers, a caller's onFocus would switch the ring off.
     onFocus, onBlur,
@@ -47,6 +53,10 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
   const [focused, setFocused] = useState(false);
   const [reveal, setReveal] = useState(false);
   const onBrand = tone === "onBrand";
+  const bad = !!error || invalid;
+  // Inside a Sheet the field must be gorhom's, or it drops focus (sheetContext).
+  // gorhom's is a TextInput (same props, same instance); only its ref type is wider.
+  const Field = (useInSheet() ? BottomSheetTextInput : TextInput) as typeof TextInput;
 
   return (
     <View style={containerStyle}>
@@ -66,14 +76,14 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
           fieldBox.box,
           multiline && fieldBox.multiline,
           focused && fieldBox.focused,
-          !!error && fieldBox.error,
+          bad && fieldBox.error,
           !editable && fieldBox.disabled,
           bare && styles.bare,
         ]}
       >
-        {LeftIcon ? <LeftIcon size={18} color={error ? colors.danger : colors.textMuted} /> : null}
+        {LeftIcon ? <LeftIcon size={18} color={bad ? colors.danger : colors.textMuted} /> : null}
         {prefix ? <FieldPrefix text={prefix} /> : null}
-        <TextInput
+        <Field
           ref={ref}
           style={[fieldBox.input, multiline && fieldBox.inputMultiline, tabular && styles.tabular]}
           placeholderTextColor={colors.textMuted}
@@ -91,6 +101,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
           }}
           {...rest}
         />
+        {right}
         {password ? (
           <Pressable
             onPress={() => setReveal((v) => !v)}

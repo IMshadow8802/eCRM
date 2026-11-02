@@ -39,6 +39,13 @@ export interface BandProps {
   children?: ReactNode;
   /** Set when the band does not touch the top of the screen (tablet pane under the status bar is still the band). */
   noInset?: boolean;
+  /**
+   * Leads the row after any back button (Home 04: avatar + date/greeting).
+   * With no title or subtitle it replaces the title block, so it must flex itself.
+   */
+  leading?: ReactNode;
+  /** Horizontal padding when it is not the window gutter (tablet panes, `metrics.pane`). */
+  gutter?: number;
 }
 
 /**
@@ -47,7 +54,7 @@ export interface BandProps {
  */
 export function Band({
   title, titleVariant = "h1", subtitle, count, onBack, backIcon = "back", actions, search, tabs,
-  variant = "tabs", tone = "band", align = "start", children, noInset = false,
+  variant = "tabs", tone = "band", align = "start", children, noInset = false, leading, gutter,
 }: BandProps) {
   const insets = useSafeAreaInsets();
   const layout = useLayout();
@@ -56,8 +63,10 @@ export function Band({
   const rowHeight = tablet ? metrics.bandRowTablet : variant === "home" ? metrics.bandRowHome : metrics.bandRow;
   const bg = tone === "raised" ? colors.bandRaised : colors.band;
 
+  // A centred profile band with nothing in the row draws no row (E 19: the avatar sits 16 under the status bar).
+  const showRow = align !== "center" || !!(title || subtitle || onBack || actions || leading);
   const titleBlock =
-    title && titleVariant === "h2" ? (
+    leading && !title && !subtitle ? null : title && titleVariant === "h2" ? (
       <View style={styles.flex}>
         <Text variant="h2" color="textOnBrand" numberOfLines={1} accessibilityRole="header">{title}</Text>
         {subtitle ? <Text variant="meta" color="onBandMuted" numberOfLines={1}>{subtitle}</Text> : null}
@@ -78,13 +87,14 @@ export function Band({
         {
           backgroundColor: bg,
           paddingTop: topInset,
-          paddingHorizontal: layout.gutter,
+          paddingHorizontal: gutter ?? layout.gutter,
           paddingBottom: metrics.bandPadBottom[variant],
         },
         align === "center" && styles.center,
       ]}
     >
       <StatusBar style="light" />
+      {showRow ? (
       <View style={[styles.row, { height: rowHeight }, align === "center" && styles.rowCenter]}>
         {onBack ? (
           <IconButton
@@ -94,9 +104,11 @@ export function Band({
             onPress={onBack}
           />
         ) : null}
+        {leading}
         {align === "center" && !title ? <View style={styles.flex} /> : titleBlock}
         {actions}
       </View>
+      ) : null}
       {search ? <SearchField {...search} /> : null}
       {tabs ? (
         <View style={styles.tabs}>
@@ -121,6 +133,8 @@ export interface BandSheetProps {
   center?: boolean;
   /** Bottom room inside a scroll (a fixed footer or the keyboard). */
   contentBottom?: number;
+  /** Side padding when it is not the window gutter (tablet panes, `metrics.pane`). */
+  gutter?: number;
   style?: ViewStyle;
 }
 
@@ -129,17 +143,18 @@ export interface BandSheetProps {
  * pulled up 16 so the band shows behind its corners. It does not clip.
  */
 export function BandSheet({
-  children, scroll = false, refresh, padded = true, bleedRight = false, center = false, contentBottom = 0, style,
+  children, scroll = false, refresh, padded = true, bleedRight = false, center = false, contentBottom = 0, gutter, style,
 }: BandSheetProps) {
   const layout = useLayout();
   const tablet = isTabletLayout(layout);
+  const side = gutter ?? layout.gutter;
   const shell = [
     styles.sheet,
     tablet && styles.sheetTablet,
   ];
   const pad = [
-    padded && { paddingTop: metrics.sheetPadTop, paddingHorizontal: layout.gutter },
-    bleedRight && { paddingTop: metrics.sheetPadTop, paddingLeft: layout.gutter, paddingRight: 0 },
+    padded && { paddingTop: metrics.sheetPadTop, paddingHorizontal: side },
+    bleedRight && { paddingTop: metrics.sheetPadTop, paddingLeft: side, paddingRight: 0 },
     center && styles.center,
     center && styles.centerTop,
   ];

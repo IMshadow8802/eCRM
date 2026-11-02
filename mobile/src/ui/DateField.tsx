@@ -18,6 +18,8 @@ export interface DateFieldProps {
   onChange: (value: string | null) => void;
   placeholder?: string;
   required?: boolean;
+  /** An xs chip after the label ("Custom", T4). */
+  labelTag?: string;
   error?: string | null;
   disabled?: boolean;
   minimumDate?: Date;
@@ -60,6 +62,7 @@ export function DateField({
   mode = "date",
   placeholder = mode === "time" ? "Select a time" : "Select a date",
   required,
+  labelTag,
   error,
   disabled,
   minimumDate,
@@ -77,7 +80,7 @@ export function DateField({
 
   return (
     <View>
-      {label ? <FieldLabel label={label} required={required} /> : null}
+      {label ? <FieldLabel label={label} required={required} tag={labelTag} /> : null}
 
       <Pressable
         onPress={() => !disabled && setOpen(true)}

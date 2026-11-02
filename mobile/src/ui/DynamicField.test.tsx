@@ -26,6 +26,18 @@ async function renderField(field: CustomFieldDef, value: string | boolean = "", 
   return onChange;
 }
 
+it.each([["text"], ["dropdown"], ["date"]] as const)("%s: tag puts an xs chip after the label (T4 Custom)", async (type) => {
+  await renderWithProviders(<DynamicField field={def(type, { Label: "Roof type" })} value="" onChange={jest.fn()} tag="Custom" />);
+  expect(screen.getByText("Custom")).toBeOnTheScreen();
+  // The chip sits in the label's row, after it.
+  expect(screen.getAllByText("Roof type")[0]!.parent).toHaveTextContent(/^Roof type\s*Custom$/);
+});
+
+it("no tag, no chip", async () => {
+  await renderField(def("text"));
+  expect(screen.queryByText("Custom")).toBeNull();
+});
+
 it("text: types the raw string", async () => {
   const onChange = await renderField(def("text", { IsRequired: true }), "old");
   expect(screen.getByText(" *")).toBeOnTheScreen();

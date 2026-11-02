@@ -75,6 +75,35 @@ describe("Band (E .hd)", () => {
     expect(screen.getByText("Ayush")).toBeOnTheScreen();
   });
 
+  it("a centred profile with nothing in the row draws no row (E 19)", async () => {
+    await renderWithProviders(<Band align="center" variant="profile"><RNText>Ayush</RNText></Band>);
+    // The child is the band's first content: no 52 row above it.
+    const band = bandOf("Ayush");
+    expect(band.children.some((c) => typeof c !== "string" && flat(c).height === 52)).toBe(false);
+    expect(screen.getByText("Ayush").parent).toBe(band);
+  });
+
+  it("a leading slot heads the row after back; with no title it replaces the title block (E 04)", async () => {
+    await renderWithProviders(
+      <Band
+        variant="home"
+        leading={<RNText>lead</RNText>}
+        actions={<IconButton icon={Search} accessibilityLabel="Search" onPress={jest.fn()} />}
+      />,
+    );
+    const row = screen.getByText("lead").parent!;
+    expect(flat(row)).toMatchObject({ height: 56, gap: 10 });
+    // lead, then the action — no empty subtitle spacer between them.
+    expect(row.children.length).toBe(2);
+  });
+
+  it("gutter overrides the side padding on the band and the sheet (T2 panes)", async () => {
+    setWindow(...TABLET);
+    await renderWithProviders(<><Band title="Pane" gutter={20} /><BandSheet gutter={16}><RNText>pane body</RNText></BandSheet></>);
+    expect(flat(bandOf("Pane")).paddingHorizontal).toBe(20);
+    expect(flat(screen.getByText("pane body").parent!).paddingHorizontal).toBe(16);
+  });
+
   it("noInset skips the status bar padding", async () => {
     await renderWithProviders(<Band title="Pane" noInset />);
     expect(flat(bandOf("Pane")).paddingTop).toBe(0);

@@ -190,3 +190,16 @@ it("every field carries a testID from its key", async () => {
   expect(screen.getByTestId("compose-hours")).toBe(screen.getByPlaceholderText("Hours"));
   expect(screen.getByTestId("compose-note")).toBe(screen.getByPlaceholderText("What did you do?"));
 });
+
+it("a secure field is masked with the show/hide eye (Change password)", async () => {
+  const { onSubmit } = await renderSheet({
+    choices: [],
+    fields: [{ key: "pw", placeholder: "Current password", label: "Current password", secure: true, required: true }],
+  });
+  expect(screen.getByPlaceholderText("Current password").props.secureTextEntry).toBe(true);
+  await fireEvent.press(screen.getByLabelText("Show password"));
+  expect(screen.getByPlaceholderText("Current password").props.secureTextEntry).toBe(false);
+  await fireEvent.changeText(screen.getByPlaceholderText("Current password"), "fixture-1");
+  await fireEvent.press(submitButton());
+  expect(onSubmit).toHaveBeenCalledWith({ pw: "fixture-1" }, {});
+});

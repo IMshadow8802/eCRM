@@ -28,7 +28,7 @@ export { FieldHelp, FieldLabel, FieldPrefix, FieldRow } from "./Field";
 export { FigureBox, HeroCard, ModuleTile, SplitBar, StatGrid } from "./HeroCard";
 export { CircleAction, HeaderButton, IconButton } from "./IconButton";
 export { default as Input } from "./Input";
-export { GroupHeader, ListGroup, ListRow } from "./List";
+export { GroupHeader, ListGroup, ListGroupCell, ListRow } from "./List";
 export { default as LogCallSheet } from "./LogCallSheet";
 export { default as MobileInput } from "./MobileInput";
 export { Footnote, InfoNote, PageDots } from "./Notes";

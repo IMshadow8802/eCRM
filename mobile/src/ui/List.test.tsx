@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react-native";
 import { Flag, Headset } from "lucide-react-native";
 
 import { chipTones, colors } from "../theme";
-import { GroupHeader, ListGroup, ListRow } from "./List";
+import { GroupHeader, ListGroup, ListGroupCell, ListRow } from "./List";
 
 import { flat } from "../test/style";
 
@@ -25,6 +25,56 @@ describe("ListGroup", () => {
     expect(flat(outer)).toMatchObject({ backgroundColor: colors.surface, borderRadius: 16, boxShadow: "0 1px 2px #DCE0EC" });
     expect(flat(outer).overflow).toBeUndefined();
     expect(flat(screen.getByText("row").parent!)).toMatchObject({ overflow: "hidden", borderRadius: 16 });
+  });
+});
+
+describe("ListGroupCell (a ListGroup per FlatList cell)", () => {
+  it("first rounds the top, last the bottom, middle is square; whisper outside, clip inside", async () => {
+    await render(
+      <>
+        <ListGroupCell first last={false}><RNText>a</RNText></ListGroupCell>
+        <ListGroupCell first={false} last={false}><RNText>b</RNText></ListGroupCell>
+        <ListGroupCell first={false} last><RNText>c</RNText></ListGroupCell>
+      </>,
+    );
+    const [a, b, c] = screen.getAllByTestId("list-cell");
+    expect(flat(a!)).toMatchObject({ backgroundColor: colors.surface, boxShadow: "0 1px 2px #DCE0EC", borderTopLeftRadius: 16, borderTopRightRadius: 16 });
+    expect(flat(a!).overflow).toBeUndefined();
+    expect(flat(a!).borderBottomLeftRadius).toBeUndefined();
+    expect(flat(b!).borderTopLeftRadius).toBeUndefined();
+    expect(flat(b!).borderRadius).toBeUndefined();
+    expect(flat(c!)).toMatchObject({ borderBottomLeftRadius: 16, borderBottomRightRadius: 16 });
+    expect(flat(screen.getByText("c").parent!)).toMatchObject({ overflow: "hidden", borderBottomLeftRadius: 16 });
+  });
+});
+
+describe("ListRow gaps closed in Task 37b", () => {
+  it("unreadDot: an 8 indigo dot at the end of line 2 (E 18)", async () => {
+    await render(<ListRow title="Assigned" meta="AC not cooling" unreadDot />);
+    const dot = screen.getByTestId("unread-dot");
+    expect(flat(dot)).toMatchObject({ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary });
+    const line2 = screen.getByText("AC not cooling").parent!;
+    expect(line2.children[line2.children.length - 1]).toBe(dot);
+  });
+
+  it("unreadDot alone still draws line 2", async () => {
+    await render(<ListRow title="Ping" unreadDot />);
+    expect(screen.getByTestId("unread-dot")).toBeOnTheScreen();
+  });
+
+  it("menu: a 15/600 title and padding 12 14 (E 19)", async () => {
+    await render(<ListRow title="Inbox" menu />);
+    expect(flat(screen.getByText("Inbox"))).toMatchObject({ fontSize: 15, fontFamily: "Inter_600SemiBold" });
+    expect(flat(rowOf("Inbox"))).toMatchObject({ paddingVertical: 12, paddingHorizontal: 14 });
+  });
+
+  it("titleVerb: the verb bold, the rest regular 14 (E 11 / T2)", async () => {
+    await render(<ListRow title="to Neha Kapoor" titleVerb="Escalated" />);
+    expect(screen.getByText("Escalated")).toBeOnTheScreen();
+    expect(flat(screen.getByText("Escalated"))).toMatchObject({ fontFamily: "Inter_600SemiBold" });
+    const line = screen.getByText(/to Neha Kapoor/);
+    expect(line).toHaveTextContent("Escalated to Neha Kapoor");
+    expect(flat(line)).toMatchObject({ fontSize: 14, fontFamily: "Inter_400Regular" });
   });
 });
 

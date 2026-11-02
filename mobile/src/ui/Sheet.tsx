@@ -12,6 +12,7 @@ import {
 import { X } from "lucide-react-native";
 
 import { colors, metrics, radius, spacing } from "../theme";
+import { InSheetContext } from "./sheetContext";
 import { StatusBadge, type StatusBadgeProps } from "./StatusBadge";
 import { Text } from "./Text";
 
@@ -118,7 +119,7 @@ export const Sheet = forwardRef<SheetRef, SheetProps>(function Sheet(
             />
           </View>
         ) : null}
-        {children}
+        <InSheetContext.Provider value>{children}</InSheetContext.Provider>
       </BottomSheetView>
     </BottomSheetModal>
   );

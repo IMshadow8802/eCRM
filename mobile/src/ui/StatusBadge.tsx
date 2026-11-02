@@ -3,7 +3,7 @@ import { ChevronsUp, type LucideIcon } from "lucide-react-native";
 
 import { badgeTones, colors, metrics, radius, type BadgeTone, type ColorKey } from "../theme";
 
-export type StatusBadgeSize = 28 | 32 | 36 | 40 | 44 | 48 | 52 | 72;
+export type StatusBadgeSize = 28 | 32 | 36 | 40 | 44 | 48 | 52 | 56 | 72;
 
 export interface StatusBadgeProps {
   tone: BadgeTone;
@@ -31,6 +31,8 @@ export const BADGE_GEOMETRY: Record<StatusBadgeSize, [number, number]> = {
   44: [radius.badge, 18],
   48: [radius.badgeLg, 22],
   52: [radius.card, 22],
+  // The tenant placeholder on sign-in (E 02).
+  56: [radius.badgeLg, 28],
   72: [radius.errorBadge, 32],
 };
 
