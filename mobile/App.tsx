@@ -16,7 +16,7 @@ import { useAccessRefresh } from "./src/features/auth/useAccess";
 import useAuthStore from "./src/stores/useAuthStore";
 import RootNavigator from "./src/navigation/RootNavigator";
 import { useAppFonts } from "./src/theme";
-import { ToastProvider } from "./src/ui";
+import { SheetBackHandler, ToastProvider } from "./src/ui";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -86,6 +86,9 @@ export default function App() {
                   raised it — a refused delete often closes its own sheet. */}
               <ToastProvider>
                 <RootNavigator />
+                {/* After the navigator: the newest Back listener runs first, so
+                    Back closes an open sheet before it can pop the screen. */}
+                <SheetBackHandler />
                 <PresenceNoticeDialog />
                 {/* Above the navigator: a closed session is answered in place, the screen kept. */}
                 <ReauthDialog />

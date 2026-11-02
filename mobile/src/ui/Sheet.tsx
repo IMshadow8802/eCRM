@@ -1,5 +1,5 @@
-import { forwardRef, useCallback, useMemo, type ReactNode } from "react";
-import { StyleSheet, View } from "react-native";
+import { forwardRef, useCallback, useEffect, useMemo, type ReactNode } from "react";
+import { BackHandler, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   BottomSheetModal,
@@ -7,6 +7,7 @@ import {
   BottomSheetView,
   type BottomSheetBackdropProps,
   type BottomSheetModal as BottomSheetModalType,
+  useBottomSheetModal,
 } from "@gorhom/bottom-sheet";
 
 import { colors, radius, spacing } from "../theme";
@@ -84,6 +85,21 @@ export const Sheet = forwardRef<SheetRef, SheetProps>(function Sheet(
     </BottomSheetModal>
   );
 });
+
+/**
+ * Android Back closes the top open sheet instead of leaving the screen behind
+ * it. gorhom does not do this itself; one listener here covers every sheet.
+ * Mount it once inside BottomSheetModalProvider, AFTER the navigator: the last
+ * listener added runs first, so it gets Back before navigation does.
+ */
+export function SheetBackHandler() {
+  const { dismiss } = useBottomSheetModal();
+  useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => dismiss());
+    return () => sub.remove();
+  }, [dismiss]);
+  return null;
+}
 
 const styles = StyleSheet.create({
   background: {
