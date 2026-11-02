@@ -53,4 +53,9 @@ module.exports = [
       "no-restricted-imports": "off",
     },
   },
+  {
+    // jest.mock factories must require() lazily.
+    files: ["jest.setup.ts", "src/**/*.test.{ts,tsx}", "src/test/**"],
+    rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
 ];

@@ -26,8 +26,8 @@ the user in that message.**
 Always `pnpm`, never `npm`. npm corrupts the lockfile. Applies to `web/`, `backend/`, `mobile/`.
 
 ### 0.4 Test-first — every code change ships with tests
-- No change in `backend/src/` or `web/src/` ships without tests proving the changed behaviour (features, bug fixes, refactors).
-- **`mobile/` is exempt** (decided 2026-08-02) — no test suite there. Its gate is `pnpm typecheck` + `pnpm lint`, both of which must be clean. See §9.6.
+- No change in `backend/src/`, `web/src/` or `mobile/src/` ships without tests proving the changed behaviour (features, bug fixes, refactors).
+- **`mobile/` is no longer exempt** (2026-11-02; the 2026-08-02 exemption is over). Same rule, run with `pnpm test`; its gate is `pnpm test` + `pnpm typecheck` + `pnpm lint`, all clean. Harness in §9.7.
 - New behaviour → happy path + ≥1 failure/edge. Bug fix → a regression test that would have failed before the fix (flag it when reporting).
 - Files you modify must reach **≥80% line/branch coverage**. Global floor 60%.
 - Never silence tests (`.only`, `.skip`, `xit`, exclude patterns). Fix the code or the test.
@@ -109,13 +109,16 @@ the live DB (`mcp__sqlserver-ecrm__read_query` on `sys.sql_modules`).
 pnpm start                    # Expo dev server (dev-client)
 pnpm typecheck                # tsc --noEmit — must be clean before any commit
 pnpm lint                     # eslint — enforces the design-system rules (§9.3, §9.4)
+pnpm test                     # jest (jest-expo + RNTL), once
+pnpm exec jest <file>         # a single test file
+pnpm test:coverage --collectCoverageFrom='src/features/<f>.tsx'   # coverage for one file
 pnpm exec expo prebuild --clean   # regenerate android/ + ios/ from app.config.ts
 pnpm ios --device             # run on a connected iPhone
 pnpm android                  # run on a connected Android device/emulator
 pnpm apk                      # cd android && ./gradlew assembleRelease
 ```
-Mobile is **TypeScript**, has **no test suite** (see §0.4), and does **not use
-EAS**. Full detail in §9.
+Mobile is **TypeScript**, is test-first like the rest (§0.4, harness §9.7), and
+does **not use EAS**. Full detail in §9.
 
 ---
 
@@ -527,10 +530,23 @@ There is no `@dnd-kit` on React Native; gestures go through
 
 ### 9.7 Standing constraints
 
-- **No test suite on mobile** (decided 2026-08-02). §0.4 binds `backend/src`
-  and `web/src` only. `pnpm typecheck` + `pnpm lint` are the gate instead.
-  Reactotron (dev-only, stripped from release bundles) shows every API call
-  live — that is how payload drift is caught.
+- **Tests: jest-expo + React Native Testing Library 14** (2026-11-02). Gate is
+  `pnpm test` + `pnpm typecheck` + `pnpm lint`; touched files ≥80% (§0.4).
+  Tests sit beside the code (`Foo.test.tsx`). RNTL 14 is **async**: `await
+  render(...)`, `await fireEvent.press(...)`; matchers like `toBeOnTheScreen`
+  are built in. `src/test/renderWithProviders.tsx` mounts a screen in App's
+  providers (fresh `QueryClient` with no retry/cache, safe area, gesture root,
+  `BottomSheetModalProvider`, `ToastProvider`, `NavigationContainer`) and
+  exports `makeNavigation<"Route">()` (jest-fn `navigate/goBack/replace/push`),
+  `makeRoute(name, params)` and `seedAuth({ UserId, user, permissions })`
+  (resets `useAuthStore`, then signs in). A test `jest.mock`s every
+  `src/api/*` module it reaches — no network, ever. `jest.setup.ts` mocks
+  reanimated, bottom-sheet, gesture-handler, AsyncStorage, WebView, the
+  date picker (a plain `View`: fire its `change` event) and the image /
+  document pickers (default: the user cancels; override per test).
+  `lucide-react-native` is mapped to its CJS build in `jest.config.js`.
+  Reactotron (dev-only, stripped from release bundles) still shows every API
+  call live on a device.
 - **No realtime, no push, no offline** in Phase A. Freshness comes from
   refetch-on-app-focus, wired via `AppState` → React Query's `focusManager`
   (its default is browser-only and does nothing on native).
