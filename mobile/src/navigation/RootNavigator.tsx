@@ -43,6 +43,12 @@ export type RootStackParamList = {
   ComplaintDetail: { ticketId: number };
   /** Omit `ticketId` to log a new one. */
   ComplaintForm: { ticketId?: number };
+  /** Sales leads — Phase C. */
+  Leads: undefined;
+  LeadDetail: { leadId: number };
+  /** Omit `leadId` to add a new one. */
+  LeadForm: { leadId?: number };
+  FollowUps: undefined;
   ComingSoon: { title: string; blurb: string };
 };
 
