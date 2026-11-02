@@ -7,11 +7,10 @@ import type { ChipTone } from "../../ui";
 
 /**
  * open | qualified are still being worked; converted (Won) | lost | junk are closed.
- * A row with no Code (a legacy status nobody mapped) counts as active: it can
- * still be worked, and hiding its actions would strand the lead.
+ * A row with no Code is NOT active — same as the web's isActiveCode and the
+ * server's overdue rule (Code IN ('open','qualified')), so both clients agree.
  */
-export const isActiveLead = (code: string | null | undefined): boolean =>
-  code === "open" || code === "qualified" || code == null;
+export const isActiveLead = (code: string | null | undefined): boolean => code === "open" || code === "qualified";
 
 const TONES: Record<string, ChipTone> = {
   qualified: "info",
@@ -40,11 +39,15 @@ export const LEAD_QUEUES: { value: LeadQueue; label: string }[] = [
 /** "all" = no status filter; a number = one lead_status id. */
 export type LeadStatusFilter = "all" | number;
 
-/** Same meanings as the web's presets (pages/Sales/leadStatus.js). Paging is the caller's. */
+/**
+ * Same meanings as the web's presets (pages/Sales/leadStatus.js). Paging is the caller's.
+ * `userId` is required: a null OwnerId would turn "Mine" into the whole reach, so
+ * screens must not build a queue before auth has loaded.
+ */
 export const leadQueueParams = (
   queue: LeadQueue,
   status: LeadStatusFilter,
-  userId: number | null,
+  userId: number,
   term: string,
 ): FetchLeadsParams => ({
   PageSize: 100,

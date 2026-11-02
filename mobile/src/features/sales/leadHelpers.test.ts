@@ -20,12 +20,19 @@ import {
 // 23:30 IST is already 18:00 UTC — still 2 Nov either way, but 3 Nov's "tomorrow"
 // must come from local getters too.
 const now = new Date(2026, 10, 2, 23, 30);
+/** Defaults read the clock; bracket the call so a run across midnight cannot flake. */
+function expectToday(read: () => string | null | undefined) {
+  const before = localDay(new Date());
+  const value = read();
+  const after = localDay(new Date());
+  expect([before, after]).toContain(value);
+}
 const status = (Id: number, Code: string | null) => ({ Id, Code }) as Lookup;
 
 describe("lifecycle", () => {
-  it("open, qualified and a code-less legacy row are still being worked; the closed three are not", () => {
-    expect(["open", "qualified", null, undefined].map(isActiveLead)).toEqual([true, true, true, true]);
-    expect(["converted", "lost", "junk"].map(isActiveLead)).toEqual([false, false, false]);
+  it("only open and qualified are being worked — a code-less row is not, as on the web and the server", () => {
+    expect(["open", "qualified"].map(isActiveLead)).toEqual([true, true]);
+    expect(["converted", "lost", "junk", null, undefined].map(isActiveLead)).toEqual([false, false, false, false, false]);
   });
 
   it("gives every code its tone, primary when there is none", () => {
@@ -62,6 +69,12 @@ describe("leadQueueParams", () => {
     });
   });
 
+  it("mine needs a signed-in user id — null is a type error, not a silent widen to the whole reach", () => {
+    // @ts-expect-error screens must not build a queue before auth has loaded
+    leadQueueParams("mine", "all", null, "");
+    expect(leadQueueParams("mine", "all", 0, "").OwnerId).toBe(0);
+  });
+
   it("all/overdue/unassigned never filter by owner; 'all' status sends none", () => {
     expect(leadQueueParams("all", "all", 42, "acme")).toEqual({
       OwnerId: null,
@@ -93,7 +106,7 @@ describe("followUpViewParams", () => {
   });
 
   it("defaults to the current day", () => {
-    expect(followUpViewParams("today").DueFrom).toBe(localDay(new Date()));
+    expectToday(() => followUpViewParams("today").DueFrom);
   });
 });
 
@@ -114,7 +127,7 @@ describe("follow-ups", () => {
     ]);
     expect(dueFromChoice("week", now)).toBe("2026-11-09");
     expect(dueFromChoice("tomorrow", new Date(2026, 11, 31))).toBe("2027-01-01");
-    expect(dueFromChoice("today")).toBe(localDay(new Date()));
+    expectToday(() => dueFromChoice("today"));
   });
 
   it("finds the first open follow-up", () => {
@@ -138,7 +151,11 @@ describe("dates and money", () => {
     expect(dayLabel(new Date(2025, 10, 12, 9).toISOString(), now)).toBe("12 Nov 2025");
     expect(dayLabel(null, now)).toBeNull();
     expect(dayLabel("not a date", now)).toBeNull();
-    expect(dayLabel(new Date().toISOString())).toBe("Today");
+    const taken = new Date();
+    const label = dayLabel(taken.toISOString());
+    // Across midnight the instant becomes "Yesterday" by the time dayLabel reads the clock.
+    expect(["Today", "Yesterday"]).toContain(label);
+    expect(dayLabel(taken.toISOString(), taken)).toBe("Today");
   });
 
   it("writes rupees with Indian grouping and no paise", () => {
