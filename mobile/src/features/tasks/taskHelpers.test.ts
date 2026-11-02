@@ -248,6 +248,15 @@ describe("threadComments", () => {
     expect(ids(rows)).toEqual([[1, false], [3, true], [4, true], [2, false]]);
   });
 
+  it("a pinned reply stays at the top where the server put it, still indented (as the web)", () => {
+    const rows = threadComments([
+      makeComment({ Id: 3, ParentCommentId: 1, IsPinned: true }),
+      makeComment({ Id: 1 }),
+      makeComment({ Id: 2, ParentCommentId: 1 }),
+    ]);
+    expect(ids(rows)).toEqual([[3, true], [1, false], [2, true]]);
+  });
+
   it("a reply whose parent is not in the list stands on its own", () => {
     expect(ids(threadComments([makeComment({ Id: 5, ParentCommentId: 99 })]))).toEqual([[5, false]]);
   });

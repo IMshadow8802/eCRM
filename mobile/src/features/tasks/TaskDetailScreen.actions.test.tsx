@@ -535,4 +535,59 @@ describe("comment thread", () => {
     await fireEvent.press(screen.getByText("Pin comment"));
     expect(await screen.findByText("Only owners and managers can pin")).toBeOnTheScreen();
   });
+
+  // A pending request the test releases, so a second tap lands mid-flight.
+  const held = () => {
+    let release = () => {};
+    const promise = new Promise<ReturnType<typeof envelope<null>>>((resolve) => {
+      release = () => resolve(envelope(null));
+    });
+    return { promise, release: () => release() };
+  };
+
+  it("a second tap on Delete while the first is in flight sends nothing", async () => {
+    await openThread();
+    const first = held();
+    jest.mocked(deleteTaskComment).mockReturnValueOnce(first.promise);
+    await longPress("Mine, first");
+    await fireEvent.press(screen.getByText("Delete comment"));
+    await fireEvent.press(screen.getByText("Delete comment"));
+    expect(deleteTaskComment).toHaveBeenCalledTimes(1);
+    first.release();
+    // Once it settles the comment can be acted on again.
+    await waitFor(() => expect(getTaskComments).toHaveBeenCalledTimes(2));
+    await fireEvent.press(screen.getByText("Delete comment"));
+    expect(deleteTaskComment).toHaveBeenCalledTimes(2);
+  });
+
+  it("a second tap on Pin while the first is in flight sends nothing", async () => {
+    await openThread("owner");
+    const first = held();
+    jest.mocked(pinTaskComment).mockReturnValueOnce(first.promise);
+    await longPress("Later root");
+    await fireEvent.press(screen.getByText("Pin comment"));
+    await fireEvent.press(screen.getByText("Pin comment"));
+    expect(pinTaskComment).toHaveBeenCalledTimes(1);
+    first.release();
+    await waitFor(() => expect(getTaskComments).toHaveBeenCalledTimes(2));
+  });
+
+  it("a draft does not follow the sheet from comment to reply to edit", async () => {
+    await openThread();
+    const input = () => screen.getByPlaceholderText("Share an update…");
+    await fireEvent.press(screen.getByLabelText("Write a comment"));
+    await fireEvent.changeText(input(), "Half a comment");
+
+    await longPress("Later root");
+    await fireEvent.press(screen.getByText("Reply"));
+    expect(input()).toHaveDisplayValue("");
+    await fireEvent.changeText(input(), "Half a reply");
+
+    await longPress("Mine, first");
+    await fireEvent.press(screen.getByText("Edit comment"));
+    expect(input()).toHaveDisplayValue("Mine, first");
+
+    await fireEvent.press(screen.getByLabelText("Write a comment"));
+    expect(input()).toHaveDisplayValue("");
+  });
 });

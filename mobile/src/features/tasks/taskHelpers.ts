@@ -266,7 +266,9 @@ export function abilitiesFor(
  * The comment list as a thread: each top-level comment (in the server's order,
  * pinned first) followed by every reply under it, a reply to a reply included.
  * One level of indent, like the web; deeper nesting does not fit a phone.
- * A reply whose parent is not in the list stands as a top-level comment.
+ * A reply whose parent is not in the list stands as a top-level comment. A
+ * pinned reply stays at the top where the server put it, still indented —
+ * the web does the same, and a pin that hid it inside a thread would be no pin.
  */
 export function threadComments(
   comments: TaskComment[],
@@ -282,15 +284,16 @@ export function threadComments(
     }
     return at.Id;
   };
-  const roots: TaskComment[] = [];
+  const top: { comment: TaskComment; reply: boolean }[] = [];
   const replies = new Map<number, TaskComment[]>();
   for (const c of comments) {
     const root = rootOf(c);
-    if (root === c.Id) roots.push(c);
+    if (root === c.Id) top.push({ comment: c, reply: false });
+    else if (c.IsPinned) top.push({ comment: c, reply: true });
     else replies.set(root, [...(replies.get(root) ?? []), c]);
   }
-  return roots.flatMap((root) => [
-    { comment: root, reply: false },
-    ...(replies.get(root.Id) ?? []).map((comment) => ({ comment, reply: true })),
+  return top.flatMap((row) => [
+    row,
+    ...(row.reply ? [] : replies.get(row.comment.Id) ?? []).map((comment) => ({ comment, reply: true })),
   ]);
 }

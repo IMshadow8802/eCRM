@@ -151,8 +151,17 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   const commentMenuRef = useRef<SheetRef>(null);
   // The comment a long-press picked: its actions, then the reply/edit target.
   const [picked, setPicked] = useState<TaskComment | null>(null);
-  // A new object per edit, so the compose sheet reseeds (see ComposeSheet).
-  const [editSeed, setEditSeed] = useState<Record<string, string>>();
+  // A new object per open, so the compose sheet reseeds (see ComposeSheet):
+  // a half-typed comment must not turn up in a reply, or in an edit.
+  const [composeSeed, setComposeSeed] = useState<Record<string, string>>({});
+  // Comment deletes/pins in flight, keyed per comment. A ref, not state: a
+  // double-tap lands before any re-render could show the first was pending.
+  const inFlight = useRef(new Set<string>());
+  const once = (key: string, run: (settled: () => void) => void) => {
+    if (inFlight.current.has(key)) return;
+    inFlight.current.add(key);
+    run(() => inFlight.current.delete(key));
+  };
   // One picker for both directions: "blocker" = a task this one waits on,
   // "dependent" = a task that waits on this one.
   const [linkDirection, setLinkDirection] = useState<"blocker" | "dependent">("blocker");
@@ -360,7 +369,8 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   const showFab =
     (tab === "checklist" && can.manageArtifacts) || (tab === "chat" && can.comment);
 
-  const openCompose = (kind: Compose) => {
+  const openCompose = (kind: Compose, seed: Record<string, string> = {}) => {
+    setComposeSeed(seed);
     setCompose(kind);
     setComposeError(null);
     composeRef.current?.present();
@@ -533,10 +543,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
                 key: "edit",
                 label: "Edit comment",
                 icon: Pencil,
-                onPress: () => {
-                  setEditSeed({ text: picked.Comment });
-                  openCompose("edit");
-                },
+                onPress: () => openCompose("edit", { text: picked.Comment }),
               } satisfies SheetAction,
               {
                 key: "delete",
@@ -544,11 +551,12 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
                 icon: Trash2,
                 tone: "danger",
                 onPress: () =>
-                  removeComment.mutate({
-                    Id: picked.Id,
-                    TaskId: taskId,
-                    WorkspaceId: task.WorkspaceId,
-                  }),
+                  once(`delete-${picked.Id}`, (settled) =>
+                    removeComment.mutate(
+                      { Id: picked.Id, TaskId: taskId, WorkspaceId: task.WorkspaceId },
+                      { onSettled: settled },
+                    ),
+                  ),
               } satisfies SheetAction,
             ]
           : []),
@@ -559,12 +567,17 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
                 label: picked.IsPinned ? "Unpin comment" : "Pin comment",
                 icon: picked.IsPinned ? PinOff : Pin,
                 onPress: () =>
-                  pinComment.mutate({
-                    CommentId: picked.Id,
-                    IsPinned: !picked.IsPinned,
-                    TaskId: taskId,
-                    WorkspaceId: task.WorkspaceId,
-                  }),
+                  once(`pin-${picked.Id}`, (settled) =>
+                    pinComment.mutate(
+                      {
+                        CommentId: picked.Id,
+                        IsPinned: !picked.IsPinned,
+                        TaskId: taskId,
+                        WorkspaceId: task.WorkspaceId,
+                      },
+                      { onSettled: settled },
+                    ),
+                  ),
               } satisfies SheetAction,
             ]
           : []),
@@ -819,7 +832,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
         }
         submitLabel={COMPOSE_FORM[compose].submitLabel}
         fields={COMPOSE_FORM[compose].fields}
-        initialValues={compose === "edit" ? editSeed : undefined}
+        initialValues={composeSeed}
         busy={addItem.isPending || addComment.isPending || logTime.isPending}
         error={composeError}
         onSubmit={submit}
