@@ -9,7 +9,8 @@ appId: com.shadowider.eCRM
 - tapOn: "Connected"
 - tapOn: "What was said"
 - inputText: "MAESTRO lead call ${output.stamp}"
-- tapOn: "0"
+- tapOn:
+    id: "compose-minutes"
 - inputText: "3"
 - tapOn: "Log call"
 - assertNotVisible: "Log call"

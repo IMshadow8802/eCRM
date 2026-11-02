@@ -1,6 +1,7 @@
 import { KeyboardAvoidingView, StyleSheet } from "react-native";
 import { fireEvent, render, screen } from "@testing-library/react-native";
 
+import { colors } from "../theme";
 import { Dialog } from "./Dialog";
 import { Text } from "./Text";
 
@@ -82,6 +83,16 @@ describe("room for its content", () => {
     await render(<Dialog visible title="Delete task?" confirmLabel="Delete" {...handlers()} />);
     const row = screen.getByText("Cancel").parent?.parent?.parent;
     expect(StyleSheet.flatten(row?.props.style).flexDirection).toBe("row");
+  });
+
+  it("dims the keyboard's padding too: the scrim is on the outer layer", async () => {
+    // KeyboardAvoidingView pads itself above the keyboard; with the scrim on
+    // the inner backdrop that strip showed the screen undimmed (iOS floating keyboard).
+    await render(<Dialog visible title="Sign in again" {...handlers()} />);
+    const backdrop = screen.getByText("Sign in again").parent?.parent;
+    const outer = backdrop?.parent;
+    expect(StyleSheet.flatten(backdrop?.props.style).backgroundColor).toBeUndefined();
+    expect(StyleSheet.flatten(outer?.props.style).backgroundColor).toBe(colors.overlay);
   });
 
   it("moves out of the keyboard's way itself", async () => {

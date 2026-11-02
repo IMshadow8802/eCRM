@@ -164,6 +164,7 @@ export const ComposeSheet = forwardRef<SheetRef, ComposeSheetProps>(
                 </Text>
               ) : null}
               <BottomSheetTextInput
+                testID={`compose-${field.key}`}
                 value={values[field.key] ?? ""}
                 onChangeText={(text) => set(field.key, text)}
                 placeholder={field.placeholder}

@@ -90,7 +90,6 @@ export function Dialog({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: colors.overlay,
     alignItems: "center",
     justifyContent: "center",
     padding: spacing[6],
@@ -107,7 +106,9 @@ const styles = StyleSheet.create({
   // Primary on top when stacked, the way a phone dialog reads.
   actionsStacked: { flexDirection: "column-reverse" },
   action: { flex: 1 },
-  fill: { flex: 1 },
+  // The scrim lives here, not on the backdrop: the padding this layer adds
+  // above the keyboard is dimmed too (an iOS floating keyboard leaves it visible).
+  fill: { flex: 1, backgroundColor: colors.overlay },
 });
 
 export default Dialog;

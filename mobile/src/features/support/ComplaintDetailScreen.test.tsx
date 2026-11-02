@@ -74,7 +74,6 @@ const loaded = async () => {
   await screen.findAllByText("Priya Shah");
 };
 
-
 // Found on the emulator (Task 30): a right-aligned one-line value inside a
 // column that shrink-wraps its children is laid out at full text width, and
 // Android cuts the START off ("VIAESTRO Cust..."). The value has to fill the

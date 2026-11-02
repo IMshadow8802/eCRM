@@ -1,7 +1,8 @@
+# Adds its own lead, so it passes on a clean company too.
 appId: com.shadowider.eCRM
 ---
-- runFlow: common/open-work.yaml
-- tapOn: "Leads"
+- runFlow: common/new-lead.yaml
+- back
 - assertVisible: "\\d+ yours"
 - tapOn: "All"
 - assertVisible: "\\d+ you can see"
@@ -22,7 +23,8 @@ appId: com.shadowider.eCRM
 - eraseText: 20
 - hideKeyboard
 - tapOn: "Name, company or mobile"
-- inputText: "MAESTRO Lead"
+- inputText: "${output.stamp}"
 - hideKeyboard
-- assertVisible: "MAESTRO Lead \\d+"
+- assertVisible: "MAESTRO Lead ${output.stamp}"
+- assertVisible: "1 yours"
 - takeScreenshot: leads-list

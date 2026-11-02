@@ -1,6 +1,9 @@
-# The queue across every visible lead: views, search, and a row opens its lead.
+# The queue across every visible lead: views, search, and a row opens its
+# lead. Adds its own lead (which books a Tomorrow call), so it passes on a
+# clean company too.
 appId: com.shadowider.eCRM
 ---
+- runFlow: common/new-lead.yaml
 - runFlow: common/open-work.yaml
 - tapOn: "Follow-ups"
 - assertVisible: "\\d+ follow-ups"
@@ -8,15 +11,12 @@ appId: com.shadowider.eCRM
 - assertVisible: "\\d+ follow-ups"
 - tapOn: "Upcoming"
 - tapOn: "Lead name, company or mobile"
-- inputText: "MAESTRO Lead"
+- inputText: "${output.stamp}"
 - hideKeyboard
-- assertVisible:
-    text: "MAESTRO Lead \\d+"
-    index: 0
+- assertVisible: "MAESTRO Lead ${output.stamp}"
+- assertVisible: "Call · Tomorrow"
 - takeScreenshot: followups-upcoming
-- tapOn:
-    text: "MAESTRO Lead \\d+"
-    index: 0
+- tapOn: "MAESTRO Lead ${output.stamp}"
 - assertVisible: "Lead actions"
 - assertVisible: "Log follow-up"
 - back

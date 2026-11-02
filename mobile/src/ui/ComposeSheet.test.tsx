@@ -183,3 +183,10 @@ it("marks a required text field like a required choice", async () => {
   expect(screen.getByText("Note")).toHaveTextContent(/^Note$/);
   expect(screen.getByText("Reference")).toHaveTextContent(/^Reference$/);
 });
+
+// Maestro needs a stable handle on a field whose placeholder is just "0".
+it("every field carries a testID from its key", async () => {
+  await renderSheet();
+  expect(screen.getByTestId("compose-hours")).toBe(screen.getByPlaceholderText("Hours"));
+  expect(screen.getByTestId("compose-note")).toBe(screen.getByPlaceholderText("What did you do?"));
+});
