@@ -40,9 +40,11 @@ const SPECIFIER =
   /\bimport\s+(?:[^"'`;]*?\s+from\s+)?["']([^"']+)["']|\bexport\s+[^"'`;]*?\s+from\s+["']([^"']+)["']|\brequire\s*\(\s*["']([^"']+)["']\s*\)/g;
 const ICONISH = /icon|symbol|svg|fontawesome|phosphor/i;
 
-function badIconImport(code: string, inUi: boolean): boolean {
-  return [...code.matchAll(SPECIFIER)]
-    .map((m) => m[1] ?? m[2] ?? m[3]!)
+const specifiers = (code: string) => [...code.matchAll(SPECIFIER)].map((m) => m[1] ?? m[2] ?? m[3]!);
+
+function badIconImport(code: string, file: string): boolean {
+  const inUi = file.startsWith("ui/");
+  return specifiers(code)
     .some(
       (spec) =>
         ICONISH.test(spec) &&
@@ -52,7 +54,8 @@ function badIconImport(code: string, inUi: boolean): boolean {
     );
 }
 
-const RULES: { name: string; test: (code: string, inUi: boolean) => boolean }[] = [
+/** Each rule sees the comment-free code and the file's path under src/ ("ui/Chip.tsx"). */
+const RULES: { name: string; test: (code: string, file: string) => boolean }[] = [
   { name: "rgba() — translucent colour", test: (c) => /rgba\s*\(/.test(c) },
   {
     // `opacity: x`, `"opacity": x` and the `{ opacity }` shorthand. shadowOpacity
@@ -66,11 +69,20 @@ const RULES: { name: string; test: (code: string, inUi: boolean) => boolean }[] 
   },
   { name: "icon import other than lucide-react-native", test: badIconImport },
   { name: "hex colour literal — read a token", test: (c) => /["'`]#[0-9a-fA-F]{3,8}\b/.test(c) },
+  // E §5.3 (Task 33). A coloured edge rail was the old card accent; E carries
+  // status in a badge and a pill. (theme/ is not scanned at all.)
+  { name: "edge rail — use a badge", test: (c) => /border(Left|Right|Start|End)(Width|Color)\s*:/.test(c) },
+  // The weight is the Inter family; fontWeight renders regular on Android.
+  { name: "fontWeight — pick a variant", test: (c) => /fontWeight\s*:/.test(c) },
+  {
+    name: "gradient outside auth",
+    test: (c, file) => !file.startsWith("features/auth/") && specifiers(c).includes("expo-linear-gradient"),
+  },
 ];
 
-function violations(code: string, inUi = false): string[] {
+function violations(code: string, file = "features/x.tsx"): string[] {
   const clean = stripComments(code);
-  return RULES.filter((r) => r.test(clean, inUi)).map((r) => r.name);
+  return RULES.filter((r) => r.test(clean, file)).map((r) => r.name);
 }
 
 function sources(dir: string): string[] {
@@ -88,7 +100,7 @@ it("every source file under src/ follows the design rules", () => {
   expect(files).toContain("ui/Chip.tsx");
 
   const found = files.flatMap((file) =>
-    violations(readFileSync(join(SRC, file), "utf8"), file.startsWith("ui/")).map((rule) => `${file}: ${rule}`),
+    violations(readFileSync(join(SRC, file), "utf8"), file).map((rule) => `${file}: ${rule}`),
   );
   expect(found).toEqual([]);
 });
@@ -111,6 +123,10 @@ it.each([
   ["hand-drawn svg in a screen", `import Svg, { Path } from "react-native-svg";`],
   ["hex", `const c = "#3F4FAF";`],
   ["hex after a // inside a string", `const u = "a // b"; const c = "#3F4FAF";`],
+  ["left edge rail", `const s = { borderLeftWidth: 3 };`],
+  ["end edge colour", `const s = { borderEndColor: colors.primary };`],
+  ["fontWeight", `const s = { fontWeight: "600" };`],
+  ["gradient in a screen", `import { LinearGradient } from "expo-linear-gradient";`],
 ])("catches a planted %s", (_, code) => {
   expect(violations(code)).toHaveLength(1);
 });
@@ -129,5 +145,9 @@ it("lets the allowed forms through", () => {
     ),
   ).toEqual([]);
   // The design system itself may draw with react-native-svg.
-  expect(violations(`import Svg from "react-native-svg";`, true)).toEqual([]);
+  expect(violations(`import Svg from "react-native-svg";`, "ui/Svg.tsx")).toEqual([]);
+  // The auth backdrop is the one gradient.
+  expect(violations(`import { LinearGradient } from "expo-linear-gradient";`, "features/auth/Login.tsx")).toEqual([]);
+  // A full border is not an edge rail.
+  expect(violations(`const s = { borderWidth: 1, borderColor: colors.border, borderTopLeftRadius: 4 };`)).toEqual([]);
 });

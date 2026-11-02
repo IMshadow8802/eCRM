@@ -1,32 +1,14 @@
 // src/theme/typography.ts
 //
-// Every piece of text in the app picks a VARIANT, never a size and weight.
-// `<Text variant="h2">` not `fontSize: 20, fontWeight: "600"`. That way the
-// type scale stays consistent and retuning it is one file.
-//
-// React Native cannot synthesise weights for custom fonts — `fontWeight: 600`
-// on Inter silently renders regular on Android. The weight IS the family,
-// which is why each variant names a concrete Inter file.
-//
-// Inter, not Poppins (changed 2026-08-02). Poppins is a geometric display face:
-// circular bowls, a small x-height, and wide letterforms that read as friendly
-// rather than businesslike. Inter was drawn for UI at small sizes — a tall
-// x-height, open apertures, and tabular-width digits, which matters on a screen
-// full of counts, hours and dates.
-//
-// That x-height difference is why the sizes below dropped a step: Inter at 15px
-// looks roughly the size Poppins did at 17. Heading line heights came down with
-// them so the ratio holds; body line heights did not, which buys running text a
-// little more air at the smaller size.
+// Every piece of text picks a VARIANT, never a size and weight (E §1.7).
+// React Native cannot synthesise weights for a custom font — `fontWeight: 600`
+// on Inter silently renders regular on Android — so the weight IS the family,
+// and each variant names a concrete Inter file. `fontWeight` is never written
+// (guarded in designRules.test.ts).
 
-import { colors } from "./tokens";
+import { colors, type FontScaleGroup } from "./tokens";
 
 export const fontFamily = {
-  /**
-   * Inter Regular (400) is loaded but no variant uses it — the app's baseline
-   * weight is Medium (500). Kept available for anything that genuinely needs to
-   * recede further than `secondary` does.
-   */
   regular: "Inter_400Regular",
   medium: "Inter_500Medium",
   semibold: "Inter_600SemiBold",
@@ -36,21 +18,8 @@ export const fontFamily = {
 
 export type FontWeightName = keyof typeof fontFamily;
 
-/**
- * Tuned for Inter's x-height — a step smaller than the Poppins scale above
- * 13px, unchanged below it. Small text needs every pixel of legibility, and at
- * 11–13px the two faces read at about the same size anyway.
- */
-export const fontSize = {
-  xs: 11,
-  sm: 13,
-  base: 14,
-  md: 15,
-  lg: 17,
-  xl: 19,
-  "2xl": 22,
-  "3xl": 28,
-} as const;
+/** retired (Task 40): the pre-E size steps, still read by a few screens. */
+export const fontSize = { xs: 11, sm: 13, base: 14, md: 15, lg: 17, xl: 19, "2xl": 22, "3xl": 28 } as const;
 
 export interface TextStyleToken {
   fontSize: number;
@@ -59,103 +28,70 @@ export interface TextStyleToken {
   color: string;
   letterSpacing?: number;
   textTransform?: "uppercase" | "none";
+  fontVariant?: "tabular-nums"[];
 }
 
+const TAB = ["tabular-nums"] as "tabular-nums"[];
+const v = (
+  size: number, line: number, family: string, color: string = colors.text,
+  extra: Partial<TextStyleToken> = {},
+): TextStyleToken => ({ fontSize: size, lineHeight: line, fontFamily: family, color, ...extra });
+const { regular: R, medium: M, semibold: S, bold: B } = fontFamily;
+
 /**
- * The full type scale. Add a variant here rather than one-off styles in a
- * screen — if two screens need the same treatment, it belongs in this file.
+ * The ramp, in E's order. `body`/`bodyStrong` are E's 15/20 (input text,
+ * button labels); a pre-E screen that used them for 14 px running text now
+ * reads one step larger until Phase 2 moves it to `text` / `rowTitle`.
  */
 export const typography = {
-  /**
-   * Screen titles. One per screen, at most.
-   *
-   * The negative tracking on the three headings is Inter's own guidance: it is
-   * spaced for body copy, so at display sizes the default gaps read loose.
-   */
-  h1: {
-    fontSize: fontSize["2xl"],
-    fontFamily: fontFamily.bold,
-    lineHeight: 30,
-    color: colors.text,
-    letterSpacing: -0.4,
-  },
-  /** Section headers, modal titles. */
-  h2: {
-    fontSize: fontSize.xl,
-    fontFamily: fontFamily.semibold,
-    lineHeight: 26,
-    color: colors.text,
-    letterSpacing: -0.3,
-  },
-  /** Card titles, list-row primary text. */
-  h3: {
-    fontSize: fontSize.md,
-    fontFamily: fontFamily.semibold,
-    lineHeight: 21,
-    color: colors.text,
-    letterSpacing: -0.15,
-  },
-  /** Default running text. Medium (500) is the app-wide baseline weight. */
-  body: {
-    fontSize: fontSize.base,
-    fontFamily: fontFamily.medium,
-    lineHeight: 22,
-    color: colors.text,
-  },
-  /**
-   * Body text that needs emphasis without being a heading. Semibold, because
-   * body is already Medium — Medium-on-Medium would read as no emphasis.
-   */
-  bodyStrong: {
-    fontSize: fontSize.base,
-    fontFamily: fontFamily.semibold,
-    lineHeight: 22,
-    color: colors.text,
-  },
-  /**
-   * Supporting text under a title — metadata, timestamps, counts.
-   *
-   * Semibold, not Medium. Small type needs MORE weight than large type, not
-   * less: at 13px a Medium stroke on white is thin enough to grey out, and the
-   * headings above it end up carrying the whole page. The small variants below
-   * are all semibold for the same reason.
-   */
-  secondary: {
-    fontSize: fontSize.sm,
-    fontFamily: fontFamily.semibold,
-    lineHeight: 18,
-    color: colors.textSecondary,
-  },
-  /** Form labels, tab labels. */
-  label: {
-    fontSize: fontSize.sm,
-    fontFamily: fontFamily.semibold,
-    lineHeight: 18,
-    color: colors.textSecondary,
-  },
-  /** Button text. */
-  button: {
-    fontSize: fontSize.base,
-    fontFamily: fontFamily.semibold,
-    lineHeight: 20,
-    color: colors.textOnBrand,
-  },
-  /** Chips, badges, counters. The smallest type, so the heaviest of the body weights. */
-  caption: {
-    fontSize: fontSize.xs,
-    fontFamily: fontFamily.semibold,
-    lineHeight: 16,
-    color: colors.textSecondary,
-  },
-  /** Group headers in lists — OVERDUE, TODAY. */
-  overline: {
-    fontSize: fontSize.xs,
-    fontFamily: fontFamily.semibold,
-    lineHeight: 16,
-    color: colors.textSecondary,
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
-  },
+  display: v(28, 34, B, colors.text, { letterSpacing: -0.3 }),
+  statLg: v(40, 46, B, colors.text, { letterSpacing: -0.5, fontVariant: TAB }),
+  stat: v(32, 38, B, colors.text, { letterSpacing: -0.5, fontVariant: TAB }),
+  tileValue: v(28, 32, B, colors.text, { fontVariant: TAB }),
+  statValue: v(28, 34, B, colors.text, { fontVariant: TAB }),
+  titleXl: v(26, 32, B),
+  figure: v(24, 30, B, colors.text, { fontVariant: TAB }),
+  titleLg: v(24, 30, B),
+  h1: v(22, 28, B, colors.text, { letterSpacing: -0.2 }),
+  recordTitle: v(20, 26, B),
+  sheetTitle: v(18, 24, B),
+  h2: v(17, 22, S),
+  cardTitle: v(16, 22, S),
+  groupTitle: v(16, 22, B),
+  stepper: v(16, 22, B, colors.text, { fontVariant: TAB }),
+  bodyLg: v(15, 22, R),
+  body: v(15, 20, R),
+  bodyStrong: v(15, 20, S),
+  rowTitle: v(14, 20, S),
+  rowTitleRead: v(14, 20, M),
+  rowTitleBold: v(14, 20, B),
+  text: v(14, 20, R),
+  amount: v(14, 20, B, colors.text, { fontVariant: TAB }),
+  meta: v(13, 18, R, colors.textSecondary),
+  metaMedium: v(13, 18, M, colors.textSecondary),
+  metaStrong: v(13, 18, S, colors.textSecondary),
+  tab: v(14, 20, S, colors.onBandMuted),
+  label: v(12, 16, S, colors.textSecondary),
+  small: v(12, 16, R, colors.textMuted),
+  smallMedium: v(12, 16, M, colors.textSecondary),
+  overline: v(12, 16, S, colors.textMuted, { letterSpacing: 0.6, textTransform: "uppercase" }),
+  navLabel: v(11, 14, M, colors.onBandMuted),
+  navLabelActive: v(11, 14, S, colors.textOnBrand),
+  count: v(11, 18, B, colors.onBandSoft, { fontVariant: TAB }),
+  badge: v(10, 14, B, colors.textOnBrand, { fontVariant: TAB }),
+  avatar: v(11, 14, B),
+
+  // ---- retired (Task 40): pre-E names, mapped per spec §1.7
+  h3: v(14, 20, S),
+  secondary: v(13, 18, R, colors.textSecondary),
+  button: v(15, 20, S, colors.textOnBrand),
+  caption: v(12, 16, S, colors.textSecondary),
 } as const satisfies Record<string, TextStyleToken>;
 
 export type TypographyVariant = keyof typeof typography;
+
+/** Which `fontScaleCap` a variant falls under; anything unlisted is `body`. */
+export const variantScaleGroup: Partial<Record<TypographyVariant, FontScaleGroup>> = {
+  navLabel: "chrome", navLabelActive: "chrome", count: "chrome", badge: "chrome", tab: "chrome",
+  stat: "figure", statLg: "figure", tileValue: "figure", statValue: "figure", figure: "figure",
+};

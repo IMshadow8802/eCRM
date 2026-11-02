@@ -184,12 +184,12 @@ describe("summary", () => {
     expect(screen.getByText("AR")).toBeOnTheScreen();
   });
 
-  it("urgent wears its own tone, distinct from high", async () => {
+  // E §1.4: urgent has no tone of its own; it wears high's red, with its own label.
+  it("urgent wears the red tone, labelled urgent", async () => {
     serve({ task: { ...TASK, Priority: "urgent" } });
     await mount();
     await loaded();
-    expect(chipTones.urgent.text).not.toBe(chipTones.danger.text);
-    expect(screen.getByText("urgent")).toHaveStyle({ color: chipTones.urgent.text });
+    expect(screen.getByText("urgent")).toHaveStyle({ color: chipTones.red.text });
   });
 
   it("a lone blocker, logged time with no estimate, and nobody on it", async () => {

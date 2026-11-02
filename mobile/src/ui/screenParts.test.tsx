@@ -120,7 +120,8 @@ describe("Card", () => {
     expect(style.backgroundColor).toBe(colors.surface);
     expect(style.borderWidth).toBeUndefined();
     expect(style.overflow).not.toBe("hidden");
-    expect(style.shadowOpacity).toBeGreaterThan(0);
+    // E's whisper: a solid-colour shadow, never an opacity.
+    expect(style.boxShadow).toBe("0 1px 2px #DCE0EC");
   });
 
   it("drops the shadow inside a board column", async () => {
@@ -129,7 +130,7 @@ describe("Card", () => {
         <Card padded={false}><Text>On board</Text></Card>
       </BoardSurfaceContext.Provider>,
     );
-    expect(shell("On board").shadowOpacity).toBeUndefined();
+    expect(shell("On board").boxShadow).toBeUndefined();
   });
 
   it("a pressable card reports press and long press", async () => {
