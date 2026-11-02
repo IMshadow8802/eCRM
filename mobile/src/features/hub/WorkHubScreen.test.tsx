@@ -16,8 +16,6 @@ jest.mock("@react-navigation/native", () => ({
   useNavigation: () => mockNav,
 }));
 
-// parity: HUB-01 — the complaints count is fetched even for users without complaints; not pinned.
-// parity: HUB-02 — "/support/customers" also unlocks the Complaints row; not pinned.
 
 const row = (route: string, canView = true): MenuItem => ({
   menuid: 1,
@@ -32,7 +30,13 @@ const row = (route: string, canView = true): MenuItem => ({
   groupName: null,
 });
 
-const signInWith = (routes: MenuItem[]) => seedAuth({ permissions: { rawPermissions: routes } });
+const COMPLAINTS = { view: true, add: false, edit: false, delete: false, reach: "Own" as const };
+// Menu rights draw the rows; module access gates the count request (HUB-01).
+const signInWith = (routes: MenuItem[], complaints = true) =>
+  seedAuth({
+    permissions: { rawPermissions: routes },
+    access: { modules: complaints ? { complaints: COMPLAINTS } : {} },
+  });
 
 const ws = (Id: number, patch: Partial<Workspace> = {}) => makeWorkspace({ Id, ...patch });
 
@@ -70,7 +74,7 @@ it("a role with no modules gets the empty state", async () => {
 });
 
 it("falls back to a description when there is nothing to count", async () => {
-  signInWith([row("/tasks"), row("/support")]);
+  signInWith([row("/tasks"), row("/support/tickets")]);
   jest.mocked(fetchWorkspaces).mockResolvedValue([]);
   jest.mocked(fetchTickets).mockResolvedValue(envelope({ tickets: [], pagination: pagination(0) }));
   await renderWithProviders(<WorkHubScreen />);
@@ -125,4 +129,20 @@ describe("the Boards row's invites and count (WS-14)", () => {
     await renderWithProviders(<WorkHubScreen />);
     expect(await screen.findByText("1 board")).toBeOnTheScreen();
   });
+});
+
+// parity: HUB-01 — a role without complaints must not fire a request that 403s.
+it("does not ask for the complaint count without complaints access", async () => {
+  signInWith([row("/tasks"), row("/support/tickets")], false);
+  await renderWithProviders(<WorkHubScreen />);
+  expect(await screen.findByText("3 boards · 1 invite")).toBeOnTheScreen();
+  expect(fetchTickets).not.toHaveBeenCalled();
+});
+
+// parity: HUB-02 — /support/customers is the customers module (096); it does not open complaints.
+it("a customers-only role gets no Complaints row", async () => {
+  signInWith([row("/tasks"), row("/support"), row("/support/customers")], false);
+  await renderWithProviders(<WorkHubScreen />);
+  expect(await screen.findByText("3 boards · 1 invite")).toBeOnTheScreen();
+  expect(screen.queryByText("Complaints")).toBeNull();
 });

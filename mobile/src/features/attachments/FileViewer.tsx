@@ -21,7 +21,7 @@ import * as Sharing from "expo-sharing";
 import { File, Paths } from "expo-file-system";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { apiClient } from "../../api/client";
+import { fetchAttachmentBytes } from "../../api/attachmentQueries";
 import type { Attachment } from "../../types/api";
 import { colors, spacing } from "../../theme";
 import { Button, Text } from "../../ui";
@@ -76,16 +76,12 @@ export default function FileViewer({ attachment, onClose }: FileViewerProps) {
       try {
         // The download endpoint is POST, so expo-file-system's GET-only task
         // cannot be used — bytes come through axios and land in cache.
-        const res = await apiClient.post(
-          "/api/attachments/download",
-          { Id: attachment.Id },
-          { responseType: "arraybuffer", timeout: 0 },
-        );
+        const bytes = await fetchAttachmentBytes({ Id: attachment.Id });
         if (cancelled) return;
         const file = new File(Paths.cache, attachment.FileName);
         if (file.exists) file.delete();
         file.create();
-        file.write(new Uint8Array(res.data as ArrayBuffer));
+        file.write(new Uint8Array(bytes));
         setUri(file.uri);
       } catch {
         if (!cancelled) setFailed(true);

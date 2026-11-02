@@ -1,9 +1,11 @@
 import { FileArchive, FileText, Film, File as FileIcon, Image as ImageIcon, Smartphone, Table } from "lucide-react-native";
 
-import { fileMeta, humanSize, MAX_UPLOAD_BYTES } from "./attachmentHelpers";
+import { fileMeta, humanSize, MAX_UPLOAD_BYTES, refusedType, uploadName } from "./attachmentHelpers";
 
-// parity: ATT-01 — csv/rar/7z are listed here though the backend refuses them; not pinned.
+// csv/rar/7z are not listed: the backend refuses them, so no row ever carries one.
 it.each([
+  ["data.csv", null, FileIcon, "textSecondary"],
+  ["old.rar", null, FileIcon, "textSecondary"],
   ["photo.HEIC", "image/jpeg", ImageIcon, "info"],
   ["clip.mov", "video/quicktime", Film, "neutralIcon"],
   ["quote.pdf", null, FileText, "danger"],
@@ -34,4 +36,27 @@ it.each([
 
 it("the upload cap mirrors the backend's 200MB", () => {
   expect(MAX_UPLOAD_BYTES).toBe(209_715_200);
+});
+
+// parity: ATT-01 — the extension allow-list is web's TYPES (Attachments.jsx), which is upload.js's.
+it.each([
+  ...["a.png", "a.JPG", "a.jpeg", "a.gif", "a.webp", "a.mp4", "a.webm", "a.mov", "a.pdf", "a.xls", "a.xlsx", "a.doc", "a.docx", "a.apk", "a.aab", "a.zip"]
+    .map((n) => [n, true] as const),
+  ...["a.csv", "a.txt", "a.heic", "a.rar", "a.7z", "README", "a."].map((n) => [n, false] as const),
+])("refusedType(%s) lets it through: %s", (name, ok) => {
+  expect(refusedType(name)).toBe(ok ? null : `"${name}" — file type .${name.includes(".") ? name.split(".").pop()!.toLowerCase() : ""} is not allowed`);
+});
+
+// parity: ATT-02 — iOS can hand over JPEG bytes under a .HEIC name; upload.js wants mime and extension to agree.
+it.each([
+  ["IMG_1.HEIC", "image/jpeg", "IMG_1.jpg"],
+  ["IMG_1.heic", "image/jpeg", "IMG_1.jpg"],
+  ["shot", "image/jpeg", "shot.jpg"],
+  ["a.jpeg", "image/jpeg", "a.jpeg"],
+  ["a.JPG", "image/jpeg", "a.JPG"],
+  ["a.png", "image/png", "a.png"],
+  ["IMG_1.HEIC", "image/heic", "IMG_1.HEIC"],
+  ["doc.pdf", null, "doc.pdf"],
+])("uploadName(%s, %s) is %s", (name, mime, expected) => {
+  expect(uploadName(name, mime)).toBe(expected);
 });

@@ -39,19 +39,16 @@ export const fetchAssignableUsers = (
 export const fetchBranches = (): Promise<Branch[]> =>
   postData<Branch>(USER_ENDPOINTS.fetchBranches, {}, "branches");
 
-/** userController.updateMyProfile reads only these four; anything else is dropped. */
+/**
+ * userController.updateMyProfile reads only these four. All four are required:
+ * sp_UpdateOwnProfile (058) writes every column, so a missing one is blanked.
+ */
 export const updateMyProfile = (params: {
   FullName: string;
-  Email?: string | null;
-  Mobile?: string | null;
-  Avatar?: string | null;
-}): Promise<ApiEnvelope<unknown>> =>
-  post(USER_ENDPOINTS.updateProfile, {
-    Email: null,
-    Mobile: null,
-    Avatar: null,
-    ...params,
-  });
+  Email: string | null;
+  Mobile: string | null;
+  Avatar: string | null;
+}): Promise<ApiEnvelope<unknown>> => post(USER_ENDPOINTS.updateProfile, params);
 
 export const changeMyPassword = (params: {
   CurrentPassword: string;

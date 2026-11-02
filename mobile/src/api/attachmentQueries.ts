@@ -65,11 +65,15 @@ export const uploadAttachment = ({
   });
 };
 
-/** Raw bytes, for preview. Caller owns the returned blob. */
-export const fetchAttachmentBlob = ({ Id }: { Id: number }): Promise<Blob> =>
+/**
+ * Raw bytes, for the in-app preview (the caller writes them to cache). An
+ * ArrayBuffer, not a Blob: React Native's XHR Blob cannot be written to a file.
+ * No timeout — a large file on a phone connection outlasts the 30s default.
+ */
+export const fetchAttachmentBytes = ({ Id }: { Id: number }): Promise<ArrayBuffer> =>
   apiClient
-    .post(ATTACHMENT_ENDPOINTS.download, { Id }, { responseType: "blob" })
-    .then((res) => res.data as Blob);
+    .post<ArrayBuffer>(ATTACHMENT_ENDPOINTS.download, { Id }, { responseType: "arraybuffer", timeout: 0 })
+    .then((res) => res.data);
 
 /**
  * Absolute URL + headers for streaming an attachment straight to disk.

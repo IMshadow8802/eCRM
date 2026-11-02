@@ -1,10 +1,15 @@
 import { StyleSheet } from "react-native";
-import { act, fireEvent, render, screen } from "@testing-library/react-native";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { fetchNotifications } from "../api/notificationQueries";
 import useAuthStore from "../stores/useAuthStore";
+import { envelope, pagination } from "../test/fixtures";
 import { seedAuth } from "../test/renderWithProviders";
+
+jest.mock("../api/notificationQueries");
 
 // @react-navigation/stack warns once, at import, that RN deprecated
 // InteractionManager — library noise, not ours. Swallow exactly that line.
@@ -48,7 +53,12 @@ jest.mock("../features/hub/ComingSoonScreen", () => mockStub("ComingSoon"));
 // The stack animates a screen in and sets state when that finishes. Fake
 // timers let each test run the animation to its end inside act(), instead of
 // it landing after the test on a slow machine.
-beforeEach(() => jest.useFakeTimers());
+beforeEach(() => {
+  jest.useFakeTimers();
+  jest.mocked(fetchNotifications).mockResolvedValue(
+    envelope({ notifications: [], unreadCount: 0, pagination: pagination(0) }),
+  );
+});
 afterEach(async () => {
   await act(async () => { jest.runOnlyPendingTimers(); });
   jest.useRealTimers();
@@ -57,11 +67,13 @@ afterEach(async () => {
 const METRICS ={ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } };
 const mountApp = () =>
   render(
-    <SafeAreaProvider initialMetrics={METRICS}>
-      <GestureHandlerRootView style={StyleSheet.absoluteFill}>
-        <RootNavigator />
-      </GestureHandlerRootView>
-    </SafeAreaProvider>,
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <SafeAreaProvider initialMetrics={METRICS}>
+        <GestureHandlerRootView style={StyleSheet.absoluteFill}>
+          <RootNavigator />
+        </GestureHandlerRootView>
+      </SafeAreaProvider>
+    </QueryClientProvider>,
   );
 
 it("signed out, only the login screen mounts", async () => {
@@ -97,4 +109,25 @@ it("logging out swaps the whole tree back to login", async () => {
   await act(async () => useAuthStore.getState().logout());
   expect(await screen.findByText("Login screen")).toBeOnTheScreen();
   expect(screen.queryByRole("tab")).toBeNull();
+});
+
+// parity: NOTIF-01 — the Inbox tab shows the unread count and keeps it fresh every 60 s.
+it("the Inbox tab shows the unread count and re-reads it each minute", async () => {
+  const unread = (n: number) => envelope({ notifications: [], unreadCount: n, pagination: pagination(n) });
+  jest.mocked(fetchNotifications).mockResolvedValueOnce(unread(4)).mockResolvedValue(unread(5));
+  seedAuth();
+  await mountApp();
+  const inbox = () => screen.getByRole("tab", { name: "Inbox" });
+  await waitFor(() => expect(inbox()).toHaveTextContent(/4/));
+  expect(fetchNotifications).toHaveBeenCalledWith({ PageSize: 1 });
+  await act(async () => { jest.advanceTimersByTime(60_000); });
+  await waitFor(() => expect(inbox()).toHaveTextContent(/5/));
+});
+
+it("no unread, no badge", async () => {
+  seedAuth();
+  await mountApp();
+  await screen.findByText("My Work screen");
+  await waitFor(() => expect(fetchNotifications).toHaveBeenCalled());
+  expect(screen.getByRole("tab", { name: "Inbox" })).not.toHaveTextContent(/\d/);
 });

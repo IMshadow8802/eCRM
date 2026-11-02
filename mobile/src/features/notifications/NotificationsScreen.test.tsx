@@ -109,7 +109,7 @@ it("shows an error state when the inbox cannot load", async () => {
   expect(screen.getByText("Pull down to try again.")).toBeOnTheScreen();
 });
 
-// parity: NOTIF-03 — every tap sends mark-read even when IsRead; only unread rows are tapped here.
+// Unread rows: each tap sends the read receipt (read rows: see NOTIF-03 below).
 it.each([
   ["a task", { EntityType: "task", EntityId: 10 }, ["TaskDetail", { taskId: 10, workspaceId: null }]],
   ["a TAT warning, whatever its EntityType", { Type: "tat_warn", EntityType: "ticket", EntityId: 11 }, ["TaskDetail", { taskId: 11, workspaceId: null }]],
@@ -127,8 +127,25 @@ it.each([
   await waitFor(() => expect(fetchNotifications).toHaveBeenCalledTimes(2));
 });
 
-// parity: NOTIF-03 — a `user` notification should open the team's Today; today it does nothing.
-// parity: NOTIF-02 — a null EntityType throws on tap; not pinned until the fix lands.
+// parity: NOTIF-03 — a `user` notification (not signed in yet) opens My Work; the
+// phone has no Today screen, so this is the nearest place to act on it.
+it("tapping a presence notification opens My Work", async () => {
+  jest.mocked(fetchNotifications).mockResolvedValue(
+    reply([note({ Type: "presence_not_signed_in", EntityType: "user", EntityId: 4, Title: "Ravi has not signed in" })]),
+  );
+  await mountInbox();
+  await fireEvent.press(await screen.findByText("Ravi has not signed in"));
+  expect(mockNav.navigate).toHaveBeenCalledWith("Tabs", { screen: "MyWork" });
+});
+
+// parity: NOTIF-03 — a read row is not marked read again (NotificationBell.jsx:58-61).
+it("tapping a read notification opens it without a read receipt", async () => {
+  jest.mocked(fetchNotifications).mockResolvedValue(reply([note({ Title: "Seen it", IsRead: true })]));
+  await mountInbox();
+  await fireEvent.press(await screen.findByText("Seen it"));
+  expect(mockNav.navigate).toHaveBeenCalledWith("TaskDetail", { taskId: 10, workspaceId: null });
+  expect(markNotificationRead).not.toHaveBeenCalled();
+});
 
 it("opening a notification does not wait on, or fail with, the read receipt", async () => {
   jest.mocked(markNotificationRead).mockRejectedValue(new Error("offline"));

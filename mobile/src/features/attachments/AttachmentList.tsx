@@ -40,7 +40,7 @@ import {
   type SheetRef,
 } from "../../ui";
 import FileViewer from "./FileViewer";
-import { fileMeta, humanSize, MAX_UPLOAD_BYTES } from "./attachmentHelpers";
+import { fileMeta, humanSize, MAX_UPLOAD_BYTES, PICKER_TYPES, refusedType, uploadName } from "./attachmentHelpers";
 import { useDownloadAttachment } from "./useDownloadAttachment";
 
 interface AttachmentListProps {
@@ -86,13 +86,22 @@ export default function AttachmentList({
 
   const attachments = data ?? [];
 
-  const send = (file: PickedFile, size?: number) => {
-    setError(null);
-    if (size != null && size > MAX_UPLOAD_BYTES) {
-      setError(`"${file.name}" is larger than the 200MB limit.`);
-      return;
+  /** Checks every picked file first (type, then size), uploads the ones that pass, names the rest. */
+  const send = (picked: { file: PickedFile; size?: number | null }[]) => {
+    const refused: string[] = [];
+    for (const { file, size } of picked) {
+      const reason =
+        refusedType(file.name) ??
+        (size != null && size > MAX_UPLOAD_BYTES ? `"${file.name}" is larger than the 200MB limit.` : null);
+      if (reason) refused.push(reason);
+      else upload.mutate({ Entity: entity, EntityId: entityId, file });
     }
-    upload.mutate({ Entity: entity, EntityId: entityId, file });
+    setError(refused.length ? refused.join("\n") : null);
+  };
+
+  const image = (asset: ImagePicker.ImagePickerAsset, fallbackName: string) => {
+    const type = asset.mimeType ?? "image/jpeg";
+    return { file: { uri: asset.uri, name: uploadName(asset.fileName ?? fallbackName, type), type }, size: asset.fileSize };
   };
 
   const takePhoto = async () => {
@@ -105,14 +114,7 @@ export default function AttachmentList({
     const shot = await ImagePicker.launchCameraAsync({ quality: 0.7 });
     const asset = shot.assets?.[0];
     if (shot.canceled || !asset) return;
-    send(
-      {
-        uri: asset.uri,
-        name: asset.fileName ?? `photo-${asset.assetId ?? "capture"}.jpg`,
-        type: asset.mimeType ?? "image/jpeg",
-      },
-      asset.fileSize,
-    );
+    send([image(asset, `photo-${asset.assetId ?? "capture"}.jpg`)]);
   };
 
   const pickImage = async () => {
@@ -122,17 +124,9 @@ export default function AttachmentList({
       setError("Photo access is off. Enable it in Settings to attach an image.");
       return;
     }
-    const picked = await ImagePicker.launchImageLibraryAsync({ quality: 0.7 });
-    const asset = picked.assets?.[0];
-    if (picked.canceled || !asset) return;
-    send(
-      {
-        uri: asset.uri,
-        name: asset.fileName ?? "image.jpg",
-        type: asset.mimeType ?? "image/jpeg",
-      },
-      asset.fileSize,
-    );
+    const picked = await ImagePicker.launchImageLibraryAsync({ quality: 0.7, allowsMultipleSelection: true });
+    if (picked.canceled || !picked.assets?.length) return;
+    send(picked.assets.map((asset) => image(asset, "image.jpg")));
   };
 
   const pickDocument = async () => {
@@ -141,16 +135,15 @@ export default function AttachmentList({
       // Copy into the app's cache: the original may live behind a provider URI
       // that the upload cannot read.
       copyToCacheDirectory: true,
+      multiple: true,
+      type: PICKER_TYPES,
     });
-    const asset = picked.assets?.[0];
-    if (picked.canceled || !asset) return;
+    if (picked.canceled || !picked.assets?.length) return;
     send(
-      {
-        uri: asset.uri,
-        name: asset.name,
-        type: asset.mimeType ?? "application/octet-stream",
-      },
-      asset.size ?? undefined,
+      picked.assets.map((asset) => ({
+        file: { uri: asset.uri, name: asset.name, type: asset.mimeType ?? "application/octet-stream" },
+        size: asset.size,
+      })),
     );
   };
 

@@ -55,3 +55,17 @@ it("a screen that cancels the tab press keeps the user where they are", async ()
   await fireEvent.press(screen.getByRole("tab", { name: "Profile" }));
   expect(navigation.navigate).not.toHaveBeenCalled();
 });
+
+// parity: NOTIF-01 — the Inbox tab carries the unread count.
+it("draws a tab's badge, and none when it has no badge", async () => {
+  const navigation = { emit: jest.fn(() => ({ defaultPrevented: false })), navigate: jest.fn() };
+  const descriptors = Object.fromEntries(
+    routes.map((r) => [r.key, { options: { title: titles[r.name], tabBarBadge: r.name === "Inbox" ? 3 : undefined } }]),
+  );
+  await renderWithProviders(
+    <FloatingTabBar {...({ state: { index: 0, routes }, descriptors, navigation } as unknown as BottomTabBarProps)} />,
+  );
+  expect(screen.getByRole("tab", { name: "Inbox" })).toHaveTextContent(/3/);
+  expect(screen.getByRole("tab", { name: "Inbox" }).props.accessibilityValue).toEqual({ text: "3 unread" });
+  expect(screen.getByRole("tab", { name: "Work" })).not.toHaveTextContent(/\d/);
+});

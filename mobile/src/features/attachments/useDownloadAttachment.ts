@@ -3,6 +3,7 @@ import { Directory, File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 
 import { attachmentDownloadRequest } from "../../api/attachmentQueries";
+import { fetchMyAccess } from "../../api/authQueries";
 import type { Attachment } from "../../types/api";
 
 /**
@@ -31,7 +32,7 @@ import type { Attachment } from "../../types/api";
 export function useDownloadAttachment(onError: (message: string) => void) {
   const [busyId, setBusyId] = useState<number | null>(null);
 
-  const download = async (attachment: Attachment) => {
+  const download = async (attachment: Attachment, retried = false): Promise<void> => {
     const request = attachmentDownloadRequest(attachment.Id);
     if (!request) {
       onError("You are signed out. Sign in and try again.");
@@ -61,6 +62,16 @@ export function useDownloadAttachment(onError: (message: string) => void) {
         onError("This device has no way to open or save the file.");
       }
     } catch (err) {
+      // This request bypasses axios, so a 401 never reached the session
+      // handling. One authenticated call does: its 401 opens the re-sign-in
+      // dialog (or signs out). Signed back in → try once more; signed out →
+      // that is the message, not "Download failed".
+      if (!retried && err instanceof Error && /\b401\b/.test(err.message)) {
+        const signedIn = await fetchMyAccess().then(() => true, () => false);
+        setBusyId(null);
+        if (signedIn) await download(attachment, true);
+        return;
+      }
       onError(
         err instanceof Error && err.message
           ? `Download failed: ${err.message}`

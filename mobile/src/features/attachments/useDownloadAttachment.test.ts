@@ -2,9 +2,13 @@ import { act, renderHook } from "@testing-library/react-native";
 import { File } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 
+import { fetchMyAccess } from "../../api/authQueries";
 import { setApiBaseUrl, setAuthToken } from "../../api/client";
 import type { Attachment } from "../../types/api";
+import { access, envelope } from "../../test/fixtures";
 import { useDownloadAttachment } from "./useDownloadAttachment";
+
+jest.mock("../../api/authQueries");
 
 // Native modules with no jest build: a minimal stand-in that records where
 // the bytes were asked to go.
@@ -87,7 +91,48 @@ it("says so when the device cannot share", async () => {
   expect(Sharing.shareAsync).not.toHaveBeenCalled();
 });
 
-// parity: ATT-04 — a dead-session 401 is reported as "Download failed"; not pinned.
+// parity: ATT-04 — the download runs outside axios, so its 401 never reached the
+// session handling. A 401 now makes one authenticated call, whose 401 runs the
+// normal path (re-sign-in dialog or sign-out), then retries once.
+describe("a 401 from the download", () => {
+  // iOS and Android word it differently (expo-file-system FileSystemDownload.*).
+  const ACCESS_REPLY = envelope({ access: access(), permissions: { menuItems: [], rawPermissions: [], totalMenuItems: 0 } });
+  const unauthorized = [new Error("response has status 401"), new Error("response has status: 401")];
+
+  it.each(unauthorized)("runs the session path, then retries (%s)", async (err) => {
+    download.mockRejectedValueOnce(err);
+    jest.mocked(fetchMyAccess).mockResolvedValue(ACCESS_REPLY);
+    const onError = jest.fn();
+    const { result } = await renderHook(() => useDownloadAttachment(onError));
+    await act(() => result.current.download(file));
+    expect(fetchMyAccess).toHaveBeenCalledTimes(1);
+    expect(download).toHaveBeenCalledTimes(2);
+    expect(Sharing.shareAsync).toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+    expect(result.current.busyId).toBeNull();
+  });
+
+  it("stays quiet when the session is gone: the sign-out is the message", async () => {
+    download.mockRejectedValue(unauthorized[0]);
+    jest.mocked(fetchMyAccess).mockRejectedValue(new Error("Request failed with status code 401"));
+    const onError = jest.fn();
+    const { result } = await renderHook(() => useDownloadAttachment(onError));
+    await act(() => result.current.download(file));
+    expect(download).toHaveBeenCalledTimes(1);
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("retries only once", async () => {
+    download.mockRejectedValue(unauthorized[0]);
+    jest.mocked(fetchMyAccess).mockResolvedValue(ACCESS_REPLY);
+    const onError = jest.fn();
+    const { result } = await renderHook(() => useDownloadAttachment(onError));
+    await act(() => result.current.download(file));
+    expect(download).toHaveBeenCalledTimes(2);
+    expect(onError).toHaveBeenCalledWith("Download failed: response has status 401");
+  });
+});
+
 it.each([
   [new Error("HTTP 500"), "Download failed: HTTP 500"],
   ["weird", "Download failed. Check your connection and try again."],

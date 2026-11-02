@@ -1,20 +1,25 @@
-import { useMemo } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { useMemo, useState } from "react";
+import { Platform, ScrollView, StyleSheet, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
+import Constants from "expo-constants";
 import {
   Briefcase,
   Building2,
   CircleCheckBig,
   ClipboardList,
   Contact,
+  KeyRound,
   LayoutDashboard,
   LogOut,
   Mail,
+  Pencil,
   ShieldCheck,
   Smartphone,
   type LucideIcon,
 } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { ChangePasswordForm, EditProfileForm } from "./AccountForms";
 
 import { fetchTasks } from "../../api/taskQueries";
 import { fetchWorkspaces } from "../../api/workspaceQueries";
@@ -38,6 +43,7 @@ export default function MeScreen() {
   const isAdmin = useAuthStore((s) => s.isAdmin());
   const insets = useSafeAreaInsets();
   const signOut = useSignOut();
+  const [editing, setEditing] = useState<"profile" | "password" | null>(null);
 
   // Both already cached by My Work and Boards, so opening this tab is free.
   const { data: taskData } = useQuery({
@@ -55,8 +61,12 @@ export default function MeScreen() {
     return {
       assigned: mine.length,
       done: mine.filter((t) => t.IsCompleted).length,
+      // Same rule as Boards' "Your boards": admin-bypass boards are not yours.
       boards: (workspaces ?? []).filter(
-        (w) => w.MyInviteStatus !== "pending" && !w.IsArchived,
+        (w) =>
+          w.MyInviteStatus !== "pending" &&
+          !w.IsArchived &&
+          (w.MyRole != null || w.MyInviteStatus != null),
       ).length,
     };
   }, [taskData, workspaces, userId]);
@@ -96,8 +106,13 @@ export default function MeScreen() {
 
         <View style={styles.group}>
           <Text variant="overline" color="textMuted" style={styles.groupTitle}>
-            Account
+            {editing === "password" ? "Change password" : "Account"}
           </Text>
+          {editing === "profile" ? (
+            <EditProfileForm onDone={() => setEditing(null)} />
+          ) : editing === "password" ? (
+            <ChangePasswordForm onDone={() => setEditing(null)} />
+          ) : (
           <Card padded={false} gap={0}>
             {user?.Email ? (
               <Row Icon={Mail} tint="info" label="Email" value={user.Email} />
@@ -112,6 +127,13 @@ export default function MeScreen() {
               <Row Icon={Building2} tint="neutralIcon" label="Company" value={company.CompName} last />
             ) : null}
           </Card>
+          )}
+          {editing ? null : (
+            <View style={styles.actions}>
+              <Button title="Edit profile" variant="secondary" icon={Pencil} onPress={() => setEditing("profile")} fullWidth />
+              <Button title="Change password" variant="secondary" icon={KeyRound} onPress={() => setEditing("password")} fullWidth />
+            </View>
+          )}
         </View>
 
         <Button
@@ -125,7 +147,7 @@ export default function MeScreen() {
         <View style={styles.footer}>
           <Text variant="caption" align="center">PRD Infotech Pvt Ltd</Text>
           <Text variant="caption" color="textMuted" align="center">
-            Nexus CRM · v1.0.0
+            {appVersion()}
           </Text>
         </View>
       </ScrollView>
@@ -142,6 +164,14 @@ export default function MeScreen() {
       />
     </Screen>
   );
+}
+
+/** From app.config.ts as built (version + the date-stamped build number), never a literal. */
+function appVersion(): string {
+  const config = Constants.expoConfig;
+  if (!config?.version) return "Nexus CRM";
+  const build = Platform.OS === "android" ? config.android?.versionCode : config.ios?.buildNumber;
+  return `Nexus CRM · v${config.version}${build ? ` (${build})` : ""}`;
 }
 
 function StatTile({
@@ -247,4 +277,5 @@ const styles = StyleSheet.create({
   },
   rowText: { flex: 1 },
   footer: { gap: spacing[1] },
+  actions: { gap: spacing[2] },
 });

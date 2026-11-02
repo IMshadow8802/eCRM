@@ -64,7 +64,8 @@ export default function NotificationsScreen() {
 
   const open = (n: AppNotification) => {
     // Fire-and-forget: opening the thing must not wait on the read receipt.
-    markNotificationRead(n.Id).then(refresh, () => {});
+    // A read row needs no receipt (as NotificationBell.jsx).
+    if (!n.IsRead) markNotificationRead(n.Id).then(refresh, () => {});
     // TAT warnings, breaches and holds are about a task whatever EntityType says.
     const entity = n.Type?.startsWith("tat_") ? "task" : n.EntityType.toLowerCase();
     switch (entity) {
@@ -81,6 +82,11 @@ export default function NotificationsScreen() {
         break;
       case "workspace":
         navigation.navigate("Boards");
+        break;
+      // "Not signed in yet" is about a person. The web opens Today's team tab;
+      // the phone has no Today, so My Work is the nearest place to act.
+      case "user":
+        navigation.navigate("Tabs", { screen: "MyWork" });
         break;
     }
   };

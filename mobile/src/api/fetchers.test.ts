@@ -46,7 +46,10 @@ const CASES: [string, Case][] = [
   ["fetchUserDirectory", { call: users.fetchUserDirectory, url: "/api/users/directory", key: "users", body: {} }],
   ["fetchAssignableUsers default", { call: users.fetchAssignableUsers, url: "/api/users/fetchAssignableUsers", key: "users", body: { BranchId: null, Module: "leads" } }],
   ["fetchAssignableUsers complaints", { call: () => users.fetchAssignableUsers({ Module: "complaints" }), url: "/api/users/fetchAssignableUsers", key: "users", body: { BranchId: null, Module: "complaints" } }],
-  ["updateMyProfile", { call: () => users.updateMyProfile({ FullName: "Asha" }), url: "/api/users/me/updateProfile", body: { FullName: "Asha", Email: null, Mobile: null, Avatar: null } }],
+  // ME-02: sp_UpdateOwnProfile (058) writes all four columns, so the body is exactly what the caller sent.
+  ["updateMyProfile", { call: () => users.updateMyProfile({ FullName: "Asha", Email: "a@b.in", Mobile: "9825012345", Avatar: "icon:rocket|blue" }), url: "/api/users/me/updateProfile", body: { FullName: "Asha", Email: "a@b.in", Mobile: "9825012345", Avatar: "icon:rocket|blue" } }],
+  // @ts-expect-error ME-02: a partial profile would blank Email/Mobile/Avatar server-side — it must not compile.
+  ["updateMyProfile partial", { call: () => users.updateMyProfile({ FullName: "Asha" }), url: "/api/users/me/updateProfile", body: { FullName: "Asha" } }],
   ["changeMyPassword", { call: () => users.changeMyPassword({ CurrentPassword: "old-fixture", NewPassword: "new-fixture" }), url: "/api/users/me/changePassword", body: { CurrentPassword: "old-fixture", NewPassword: "new-fixture" } }],
 
   // ------------------------------------------------------------- notifications
@@ -245,11 +248,13 @@ describe("attachments", () => {
     append.mockRestore();
   });
 
-  it("fetchAttachmentBlob asks for a blob and returns the bytes", async () => {
-    respond("BYTES");
-    await expect(attachments.fetchAttachmentBlob({ Id: 8 })).resolves.toBe("BYTES");
+  // RN's XHR has no usable Blob for this; the viewer writes an ArrayBuffer to cache.
+  it("fetchAttachmentBytes asks for raw bytes with no timeout and returns them", async () => {
+    const bytes = new Uint8Array([1, 2]).buffer;
+    respond(bytes);
+    await expect(attachments.fetchAttachmentBytes({ Id: 8 })).resolves.toBe(bytes);
     expect(lastRequest()).toMatchObject({ url: "/api/attachments/download", body: { Id: 8 } });
-    expect(lastRequest().config.responseType).toBe("blob");
+    expect(lastRequest().config).toMatchObject({ responseType: "arraybuffer", timeout: 0 });
   });
 
   it("attachmentDownloadRequest builds the GET url with the bearer token", () => {

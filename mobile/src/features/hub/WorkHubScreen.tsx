@@ -17,6 +17,7 @@ import { fetchTickets } from "../../api/ticketQueries";
 import { fetchWorkspaces } from "../../api/workspaceQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
+import { useAccess } from "../auth/useAccess";
 import { canSeeAny, visibleRoutes } from "../../utils/menuAccess";
 import { colors, spacing, SCREEN_PADDING, TAB_BAR_CLEARANCE } from "../../theme";
 import {
@@ -76,9 +77,12 @@ export default function WorkHubScreen() {
   // parameters too, and the two disagreed once (hub 100 rows, screen 200;
   // whichever mounted first won). "active" = open + onhold, company-scoped by
   // the SP exactly as the list is.
+  const canSeeComplaints = useAccess("complaints").view;
   const { data: activeTickets } = useQuery({
     queryKey: ["tickets", "active-count"],
     queryFn: () => fetchTickets({ StatusCode: "active", PageSize: 1 }),
+    // ticketRoutes requires complaints:view — without it the call only 403s.
+    enabled: canSeeComplaints,
   });
   const openComplaints = activeTickets?.data?.pagination.totalRecords ?? 0;
 
@@ -122,7 +126,9 @@ export default function WorkHubScreen() {
           detail: openComplaints
             ? `${openComplaints} open`
             : "Log and track customer issues",
-          routes: ["/support", "/support/tickets", "/support/customers"],
+          // Only the complaints menu: "/support" is a parent and "/support/customers"
+          // is the customers module (096), so either alone opens a screen that 403s.
+          routes: ["/support/tickets"],
           ready: true,
           go: (nav) => nav.navigate("Complaints"),
         },

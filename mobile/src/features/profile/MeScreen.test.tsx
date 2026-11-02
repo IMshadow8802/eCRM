@@ -1,21 +1,37 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react-native";
+import Constants from "expo-constants";
 
 import { logout } from "../../api/authQueries";
 import { fetchTasks } from "../../api/taskQueries";
+import { changeMyPassword, updateMyProfile } from "../../api/userQueries";
 import { fetchWorkspaces } from "../../api/workspaceQueries";
 import useAuthStore from "../../stores/useAuthStore";
 import type { Company } from "../../types/api";
-import { assigneesJson, envelope, makeTask, makeWorkspace, pagination } from "../../test/fixtures";
+import { assigneesJson, envelope, makeTask, makeWorkspace, pagination, serverError } from "../../test/fixtures";
 import { renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import MeScreen from "./MeScreen";
 
 jest.mock("../../api/authQueries");
 jest.mock("../../api/taskQueries");
+jest.mock("../../api/userQueries");
 jest.mock("../../api/workspaceQueries");
-
-// parity: ME-01 — no edit-profile / change-password UI yet; only display + sign out are tested.
-// parity: ME-03 — the "v1.0.0" footer is hardcoded; not asserted.
-
+// The build's version: in jest there is no native manifest, so pin one. Only
+// `expoConfig` is replaced (its getter is not configurable, so no spyOn);
+// expo-asset reads the rest of Constants at import.
+const mockExpo: { config: Partial<NonNullable<typeof Constants.expoConfig>> | null } = { config: null };
+jest.mock("expo-constants", () => {
+  const actual = jest.requireActual("expo-constants");
+  return {
+    ...actual,
+    __esModule: true,
+    default: new Proxy(actual.default, {
+      get: (target, key) => (key === "expoConfig" ? mockExpo.config : Reflect.get(target, key)),
+    }),
+  };
+});
+beforeEach(() => {
+  mockExpo.config = { version: "1.0.1", ios: { buildNumber: "20261102" } };
+});
 
 beforeEach(() => {
   jest.mocked(logout).mockResolvedValue(envelope({}));
@@ -113,4 +129,156 @@ it("shows a dash when no user is loaded", async () => {
   await renderWithProviders(<MeScreen />);
   expect(screen.getByText("—")).toBeOnTheScreen();
   await waitFor(() => expect(fetchWorkspaces).toHaveBeenCalled());
+});
+
+// Same rule as Boards' "Your boards": a board seen only through the admin bypass is not yours.
+it("does not count boards an admin sees only through the bypass", async () => {
+  seedAuth({ user: { Id: 7, FullName: "Asha" } });
+  jest.mocked(fetchWorkspaces).mockResolvedValue([
+    makeWorkspace({ Id: 1 }),
+    makeWorkspace({ Id: 2, MyRole: null, MyInviteStatus: null }),
+  ]);
+  await renderWithProviders(<MeScreen />);
+  await waitFor(() => expect(statTile("Boards")).toHaveTextContent(/^1\s*Boards$/));
+});
+
+// parity: ME-03 — the footer reads the build's version, not a hardcoded "v1.0.0".
+it("shows the app version and build from the build's config", async () => {
+  seedAuth({ user: { Id: 7, FullName: "Asha" } });
+  await renderWithProviders(<MeScreen />);
+  expect(screen.getByText("Nexus CRM · v1.0.1 (20261102)")).toBeOnTheScreen();
+  await waitFor(() => expect(fetchWorkspaces).toHaveBeenCalled());
+});
+
+it("without a build config the footer names the app only", async () => {
+  mockExpo.config = null;
+  seedAuth({ user: { Id: 7, FullName: "Asha" } });
+  await renderWithProviders(<MeScreen />);
+  expect(screen.getByText("Nexus CRM")).toBeOnTheScreen();
+  await waitFor(() => expect(fetchWorkspaces).toHaveBeenCalled());
+});
+
+// parity: ME-01 — edit own profile, as the web's AccountModal.
+describe("Edit profile", () => {
+  const asha = { Id: 7, FullName: "Asha Patel", Email: "asha@x.in", Mobile: "9825012345", Avatar: "color:violet", Username: "asha" };
+
+  it("sends all four fields, cleaned, and updates who is signed in", async () => {
+    jest.mocked(updateMyProfile).mockResolvedValue(envelope({}));
+    seedAuth({ user: asha });
+    await renderWithProviders(<MeScreen />);
+    await fireEvent.press(screen.getByText("Edit profile"));
+
+    expect(screen.getByLabelText("Display name")).toHaveDisplayValue("Asha Patel");
+    await fireEvent.changeText(screen.getByLabelText("Display name"), "  Asha P  ");
+    await fireEvent.changeText(screen.getByLabelText("Mobile"), "+91 98250 99999");
+    await fireEvent.press(screen.getByLabelText("Icon rocket"));
+    await fireEvent.press(screen.getByLabelText("Colour blue"));
+    await fireEvent.press(screen.getByText("Save profile"));
+
+    const sent = { FullName: "Asha P", Email: "asha@x.in", Mobile: "9825099999", Avatar: "icon:rocket|blue" };
+    await waitFor(() => expect(updateMyProfile).toHaveBeenCalledWith(sent));
+    expect(await screen.findByText("Profile updated")).toBeOnTheScreen();
+    expect(useAuthStore.getState().user).toMatchObject(sent);
+    // Back to the read-only view, showing the new values.
+    expect(screen.queryByText("Save profile")).toBeNull();
+    expect(screen.getByText("9825099999")).toBeOnTheScreen();
+  });
+
+  it("blank email and mobile go as null; a colour alone gives coloured initials", async () => {
+    jest.mocked(updateMyProfile).mockResolvedValue(envelope({}));
+    seedAuth({ user: { ...asha, Avatar: null } });
+    await renderWithProviders(<MeScreen />);
+    await fireEvent.press(screen.getByText("Edit profile"));
+    await fireEvent.changeText(screen.getByLabelText("Email"), "  ");
+    await fireEvent.changeText(screen.getByLabelText("Mobile"), "");
+    await fireEvent.press(screen.getByLabelText("Colour green"));
+    await fireEvent.press(screen.getByText("Save profile"));
+    await waitFor(() =>
+      expect(updateMyProfile).toHaveBeenCalledWith({ FullName: "Asha Patel", Email: null, Mobile: null, Avatar: "color:green" }),
+    );
+  });
+
+  it("refuses a blank name or a mobile that is not ten digits, without a request", async () => {
+    seedAuth({ user: asha });
+    await renderWithProviders(<MeScreen />);
+    await fireEvent.press(screen.getByText("Edit profile"));
+    await fireEvent.changeText(screen.getByLabelText("Mobile"), "12345");
+    await fireEvent.press(screen.getByText("Save profile"));
+    expect(await screen.findByText("A mobile number is ten digits.")).toBeOnTheScreen();
+    await fireEvent.changeText(screen.getByLabelText("Mobile"), "9825012345");
+    await fireEvent.changeText(screen.getByLabelText("Display name"), " ");
+    await fireEvent.press(screen.getByText("Save profile"));
+    expect(await screen.findByText("Your name cannot be blank.")).toBeOnTheScreen();
+    expect(updateMyProfile).not.toHaveBeenCalled();
+  });
+
+  it("shows the server's reason and keeps the form open", async () => {
+    jest.mocked(updateMyProfile).mockRejectedValue(serverError(409, "Mobile already in use"));
+    seedAuth({ user: asha });
+    await renderWithProviders(<MeScreen />);
+    await fireEvent.press(screen.getByText("Edit profile"));
+    await fireEvent.press(screen.getByText("Save profile"));
+    expect(await screen.findByText("Mobile already in use")).toBeOnTheScreen();
+    expect(screen.getByText("Save profile")).toBeOnTheScreen();
+    expect(useAuthStore.getState().user?.FullName).toBe("Asha Patel");
+  });
+
+  it("cancel leaves the profile as it was", async () => {
+    seedAuth({ user: asha });
+    await renderWithProviders(<MeScreen />);
+    await fireEvent.press(screen.getByText("Edit profile"));
+    await fireEvent.changeText(screen.getByLabelText("Display name"), "Someone else");
+    await fireEvent.press(screen.getByText("Cancel"));
+    expect(screen.getByText("Asha Patel")).toBeOnTheScreen();
+    expect(updateMyProfile).not.toHaveBeenCalled();
+  });
+});
+
+// parity: ME-01 — change own password: at least 6 characters (userController.js:434), typed twice.
+describe("Change password", () => {
+  const fill = async (current: string, next: string, confirm: string) => {
+    await fireEvent.changeText(screen.getByLabelText("Current password"), current);
+    await fireEvent.changeText(screen.getByLabelText("New password"), next);
+    await fireEvent.changeText(screen.getByLabelText("Confirm new password"), confirm);
+    await fireEvent.press(screen.getByText("Save password"));
+  };
+
+  it("checks length and the confirm before asking the server, then changes it", async () => {
+    jest.mocked(changeMyPassword).mockResolvedValue(envelope({}));
+    seedAuth({ user: { Id: 7, FullName: "Asha" } });
+    await renderWithProviders(<MeScreen />);
+    await fireEvent.press(screen.getByText("Change password"));
+
+    await fill("old-fixture", "short", "short");
+    expect(await screen.findByText("At least 6 characters.")).toBeOnTheScreen();
+    await fill("old-fixture", "new-fixture", "new-fixturX");
+    expect(await screen.findByText("The two new passwords do not match.")).toBeOnTheScreen();
+    expect(changeMyPassword).not.toHaveBeenCalled();
+
+    await fill("old-fixture", "new-fixture", "new-fixture");
+    await waitFor(() =>
+      expect(changeMyPassword).toHaveBeenCalledWith({ CurrentPassword: "old-fixture", NewPassword: "new-fixture" }),
+    );
+    expect(await screen.findByText("Password changed")).toBeOnTheScreen();
+    expect(screen.queryByText("Save password")).toBeNull();
+  });
+
+  it("needs the current password", async () => {
+    seedAuth({ user: { Id: 7, FullName: "Asha" } });
+    await renderWithProviders(<MeScreen />);
+    await fireEvent.press(screen.getByText("Change password"));
+    await fill("", "new-fixture", "new-fixture");
+    expect(await screen.findByText("Enter your current password.")).toBeOnTheScreen();
+    expect(changeMyPassword).not.toHaveBeenCalled();
+  });
+
+  it("shows the server's reason when the current password is wrong", async () => {
+    jest.mocked(changeMyPassword).mockRejectedValue(serverError(401, "Current password is incorrect"));
+    seedAuth({ user: { Id: 7, FullName: "Asha" } });
+    await renderWithProviders(<MeScreen />);
+    await fireEvent.press(screen.getByText("Change password"));
+    await fill("wrong-fixture", "new-fixture", "new-fixture");
+    expect(await screen.findByText("Current password is incorrect")).toBeOnTheScreen();
+    expect(screen.getByText("Save password")).toBeOnTheScreen();
+  });
 });

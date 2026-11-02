@@ -23,13 +23,13 @@ export function fileMeta(
   if (mime.startsWith("video/")) return { Icon: Film, tint: "neutralIcon" };
   if (mime === "application/pdf" || ext === "pdf")
     return { Icon: FileText, tint: "danger" };
-  if (["xls", "xlsx", "csv"].includes(ext))
+  if (["xls", "xlsx"].includes(ext))
     return { Icon: Table, tint: "success" };
   if (["doc", "docx"].includes(ext))
     return { Icon: FileText, tint: "primary" };
   if (["apk", "aab"].includes(ext))
     return { Icon: Smartphone, tint: "success" };
-  if (["zip", "rar", "7z"].includes(ext))
+  if (ext === "zip")
     return { Icon: FileArchive, tint: "priorityMedium" };
   return { Icon: FileIcon, tint: "textSecondary" };
 }
@@ -50,3 +50,48 @@ export function humanSize(bytes: number | null | undefined): string {
 
 /** The backend cap — mirrors MAX_SIZE in backend/src/middleware/upload.js. */
 export const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
+
+/**
+ * What upload.js accepts, by extension — web's TYPES (components/Attachments.jsx).
+ * Checked before sending, so a refused type does not upload in full first.
+ */
+const ALLOWED_EXTENSIONS = new Set([
+  "png", "jpg", "jpeg", "gif", "webp",
+  "mp4", "webm", "mov",
+  "pdf", "xls", "xlsx", "doc", "docx",
+  "apk", "aab", "zip",
+]);
+
+const extOf = (name: string) => (name.includes(".") ? name.split(".").pop()!.toLowerCase() : "");
+
+/** Why the server would refuse this file's type, in web's words — or null when it is allowed. */
+export function refusedType(name: string): string | null {
+  const ext = extOf(name);
+  return ALLOWED_EXTENSIONS.has(ext) ? null : `"${name}" — file type .${ext} is not allowed`;
+}
+
+/**
+ * The name to upload under. iOS hands over JPEG bytes (mime image/jpeg) still
+ * named IMG_x.HEIC; upload.js needs mime and extension to agree, so such a file
+ * is renamed `.jpg`. Every other name goes as picked.
+ */
+export function uploadName(name: string, mimeType: string | null | undefined): string {
+  const ext = extOf(name);
+  if (mimeType !== "image/jpeg" || ext === "jpg" || ext === "jpeg") return name;
+  return `${ext ? name.slice(0, -(ext.length + 1)) : name}.jpg`;
+}
+
+/** DocumentPicker's filter: upload.js's mimes, plus the build types a picker labels generically. */
+export const PICKER_TYPES = [
+  "image/png", "image/jpeg", "image/gif", "image/webp",
+  "video/mp4", "video/webm", "video/quicktime",
+  "application/pdf",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.android.package-archive",
+  "application/zip",
+  // .aab (and an .apk from some providers) has no mime of its own.
+  "application/octet-stream",
+];

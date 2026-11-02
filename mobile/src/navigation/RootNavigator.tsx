@@ -1,6 +1,9 @@
 import { NavigationContainer, type NavigatorScreenParams } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createStackNavigator } from "@react-navigation/stack";
+import { useQuery } from "@tanstack/react-query";
+
+import { fetchNotifications } from "../api/notificationQueries";
 
 import LoginScreen from "../features/auth/LoginScreen";
 import MyWorkScreen from "../features/tasks/MyWorkScreen";
@@ -68,6 +71,16 @@ const Tab = createBottomTabNavigator<TabParamList>();
 
 
 function Tabs() {
+  // The web bell's badge (NotificationBell.jsx). A count, not a list: PageSize 1.
+  // Refetches on app focus (focusManager, App.tsx) and every minute while the
+  // app is in front; the Inbox's own refresh invalidates ["notifications"] too.
+  const { data: unread = 0 } = useQuery({
+    queryKey: ["notifications", "unread-count"],
+    queryFn: () => fetchNotifications({ PageSize: 1 }),
+    select: (r) => r.data?.unreadCount ?? 0,
+    refetchInterval: 60_000,
+  });
+
   return (
     <Tab.Navigator
       // The bar itself lives in FloatingTabBar — the default item layout does
@@ -87,7 +100,7 @@ function Tabs() {
       <Tab.Screen
         name="Inbox"
         component={NotificationsScreen}
-        options={{ title: "Inbox" }}
+        options={{ title: "Inbox", tabBarBadge: unread > 0 ? unread : undefined }}
       />
       <Tab.Screen
         name="Work"

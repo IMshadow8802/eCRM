@@ -13,19 +13,12 @@ import type { Attachment } from "../../types/api";
 import { envelope } from "../../test/fixtures";
 import { renderWithProviders } from "../../test/renderWithProviders";
 import AttachmentList from "./AttachmentList";
+import { PICKER_TYPES } from "./attachmentHelpers";
 
 jest.mock("../../api/attachmentQueries");
 // FileViewer's and the download hook's native modules; the viewer is covered by its own test.
 jest.mock("expo-file-system", () => ({ Paths: { cache: { uri: "file:///cache" } }, File: jest.fn(), Directory: jest.fn() }));
 jest.mock("expo-sharing", () => ({ isAvailableAsync: jest.fn(), shareAsync: jest.fn() }));
-jest.mock("../../api/client", () => ({
-  ...jest.requireActual("../../api/client"),
-  apiClient: { post: jest.fn(() => new Promise(() => {})) },
-}));
-
-// parity: ATT-01 — no extension allow-list before upload; not pinned.
-// parity: ATT-02 — an iOS HEIC-named JPEG is sent with its picker name; not pinned.
-// parity: ATT-03 — one file per pick; not pinned.
 
 const MB = 1024 * 1024;
 const file = (patch: Partial<Attachment>): Attachment => ({
@@ -196,7 +189,71 @@ it("a document is copied to cache and uploaded with its type", async () => {
       expect.anything(),
     ),
   );
-  expect(DocumentPicker.getDocumentAsync).toHaveBeenCalledWith({ copyToCacheDirectory: true });
+  // ATT-01 + ATT-03: the picker offers only types the server takes, several at once.
+  expect(DocumentPicker.getDocumentAsync).toHaveBeenCalledWith({ copyToCacheDirectory: true, multiple: true, type: PICKER_TYPES });
+});
+
+// parity: ATT-01 — a type upload.js refuses is stopped before it uploads in full.
+it("a file type the server refuses is stopped before any upload", async () => {
+  jest.mocked(DocumentPicker.getDocumentAsync).mockResolvedValue({
+    canceled: false,
+    assets: [{ uri: "file:///n.txt", name: "notes.txt", mimeType: "text/plain", size: 10, lastModified: 0 }],
+  });
+  await mount();
+  await screen.findByText("invoice.pdf");
+  await fireEvent.press(screen.getByText("Choose a file"));
+  expect(await screen.findByText('"notes.txt" — file type .txt is not allowed')).toBeOnTheScreen();
+  expect(uploadAttachment).not.toHaveBeenCalled();
+});
+
+// parity: ATT-02 — JPEG bytes under an iOS .HEIC name go up as .jpg, or upload.js refuses them.
+it("a JPEG the library names .HEIC is uploaded as .jpg", async () => {
+  jest.mocked(ImagePicker.launchImageLibraryAsync).mockResolvedValue(
+    photo({ uri: "file:///lib/IMG_2.jpg", fileName: "IMG_2.HEIC", mimeType: "image/jpeg" }),
+  );
+  await mount();
+  await screen.findByText("invoice.pdf");
+  await fireEvent.press(screen.getByText("Choose from library"));
+  await waitFor(() =>
+    expect(uploadAttachment).toHaveBeenCalledWith(
+      expect.objectContaining({ file: { uri: "file:///lib/IMG_2.jpg", name: "IMG_2.jpg", type: "image/jpeg" } }),
+      expect.anything(),
+    ),
+  );
+});
+
+// parity: ATT-03 — several files in one pick, each uploaded; a refused one does not stop the rest.
+it("several library images are each uploaded", async () => {
+  jest.mocked(ImagePicker.launchImageLibraryAsync).mockResolvedValue({
+    canceled: false,
+    assets: [
+      { uri: "file:///1.jpg", width: 1, height: 1, fileName: "1.jpg", mimeType: "image/jpeg" },
+      { uri: "file:///2.png", width: 1, height: 1, fileName: "2.png", mimeType: "image/png" },
+    ],
+  });
+  await mount();
+  await screen.findByText("invoice.pdf");
+  await fireEvent.press(screen.getByText("Choose from library"));
+  await waitFor(() => expect(uploadAttachment).toHaveBeenCalledTimes(2));
+  expect(ImagePicker.launchImageLibraryAsync).toHaveBeenCalledWith({ quality: 0.7, allowsMultipleSelection: true });
+  expect(jest.mocked(uploadAttachment).mock.calls.map(([v]) => v.file.name)).toEqual(["1.jpg", "2.png"]);
+});
+
+it("several documents: the allowed ones upload, the refused one is named", async () => {
+  jest.mocked(DocumentPicker.getDocumentAsync).mockResolvedValue({
+    canceled: false,
+    assets: [
+      { uri: "file:///a.pdf", name: "a.pdf", mimeType: "application/pdf", size: 10, lastModified: 0 },
+      { uri: "file:///b.csv", name: "b.csv", mimeType: "text/csv", size: 10, lastModified: 0 },
+      { uri: "file:///c.docx", name: "c.docx", size: 10, lastModified: 0 },
+    ],
+  });
+  await mount();
+  await screen.findByText("invoice.pdf");
+  await fireEvent.press(screen.getByText("Choose a file"));
+  expect(await screen.findByText('"b.csv" — file type .csv is not allowed')).toBeOnTheScreen();
+  await waitFor(() => expect(uploadAttachment).toHaveBeenCalledTimes(2));
+  expect(jest.mocked(uploadAttachment).mock.calls.map(([v]) => v.file.name)).toEqual(["a.pdf", "c.docx"]);
 });
 
 it("a document with no type or size is sent as a generic binary", async () => {
