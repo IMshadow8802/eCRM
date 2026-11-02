@@ -36,7 +36,21 @@ function mockStub(label: string) {
 jest.mock("../features/auth/LoginScreen", () => mockStub("Login screen"));
 jest.mock("../features/tasks/MyWorkScreen", () => mockStub("My Work screen"));
 jest.mock("../features/notifications/NotificationsScreen", () => mockStub("Inbox screen"));
-jest.mock("../features/hub/WorkHubScreen", () => mockStub("Work hub screen"));
+// The hub stub can open the Sales screens, proving they are registered.
+jest.mock("../features/hub/WorkHubScreen", () => {
+  const { createElement } = require("react");
+  const { Pressable, Text, View } = require("react-native");
+  const { useNavigation } = require("@react-navigation/native");
+  const Hub = () => {
+    const nav = useNavigation();
+    return createElement(View, null,
+      createElement(Text, null, "Work hub screen"),
+      ...[["Leads"], ["FollowUps"], ["LeadDetail", { leadId: 1 }], ["LeadForm", {}]].map(([name, params]) =>
+        createElement(Pressable, { key: name, onPress: () => nav.navigate(name, params) },
+          createElement(Text, null, `open ${name}`))));
+  };
+  return { __esModule: true, default: Hub };
+});
 jest.mock("../features/profile/MeScreen", () => mockStub("Profile screen"));
 jest.mock("../features/tasks/TaskDetailScreen", () => mockStub("TaskDetail"));
 jest.mock("../features/tasks/TaskFormScreen", () => mockStub("TaskForm"));
@@ -48,7 +62,10 @@ jest.mock("../features/workspaces/WorkspaceSettingsScreen", () => mockStub("Work
 jest.mock("../features/support/ComplaintsScreen", () => mockStub("Complaints"));
 jest.mock("../features/support/ComplaintDetailScreen", () => mockStub("ComplaintDetail"));
 jest.mock("../features/support/ComplaintFormScreen", () => mockStub("ComplaintForm"));
-jest.mock("../features/hub/ComingSoonScreen", () => mockStub("ComingSoon"));
+jest.mock("../features/sales/LeadsScreen", () => mockStub("Leads"));
+jest.mock("../features/sales/LeadDetailScreen", () => mockStub("LeadDetail"));
+jest.mock("../features/sales/LeadFormScreen", () => mockStub("LeadForm"));
+jest.mock("../features/sales/FollowUpsScreen", () => mockStub("FollowUps"));
 
 // The stack animates a screen in and sets state when that finishes. Fake
 // timers let each test run the animation to its end inside act(), instead of
@@ -130,4 +147,14 @@ it("no unread, no badge", async () => {
   await screen.findByText("My Work screen");
   await waitFor(() => expect(fetchNotifications).toHaveBeenCalled());
   expect(screen.getByRole("tab", { name: "Inbox" })).not.toHaveTextContent(/\d/);
+});
+
+it.each(["Leads", "FollowUps", "LeadDetail", "LeadForm"])("the %s screen is registered on the stack", async (name) => {
+  seedAuth();
+  await mountApp();
+  await screen.findByText("My Work screen");
+  await fireEvent.press(screen.getByRole("tab", { name: "Work" }));
+  await fireEvent.press(await screen.findByText(`open ${name}`));
+  await act(async () => { jest.runOnlyPendingTimers(); });
+  expect(await screen.findByText(name)).toBeOnTheScreen();
 });

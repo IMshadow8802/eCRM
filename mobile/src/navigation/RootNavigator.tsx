@@ -17,7 +17,10 @@ import ComplaintsScreen from "../features/support/ComplaintsScreen";
 import ComplaintDetailScreen from "../features/support/ComplaintDetailScreen";
 import ComplaintFormScreen from "../features/support/ComplaintFormScreen";
 import WorkHubScreen from "../features/hub/WorkHubScreen";
-import ComingSoonScreen from "../features/hub/ComingSoonScreen";
+import LeadsScreen from "../features/sales/LeadsScreen";
+import LeadDetailScreen from "../features/sales/LeadDetailScreen";
+import LeadFormScreen from "../features/sales/LeadFormScreen";
+import FollowUpsScreen from "../features/sales/FollowUpsScreen";
 import NotificationsScreen from "../features/notifications/NotificationsScreen";
 import MeScreen from "../features/profile/MeScreen";
 import TaskDetailScreen from "../features/tasks/TaskDetailScreen";
@@ -56,7 +59,6 @@ export type RootStackParamList = {
   /** Omit `leadId` to add a new one. */
   LeadForm: { leadId?: number };
   FollowUps: undefined;
-  ComingSoon: { title: string; blurb: string };
 };
 
 export type TabParamList = {
@@ -145,7 +147,10 @@ export default function RootNavigator() {
               component={ComplaintDetailScreen}
             />
             <Stack.Screen name="ComplaintForm" component={ComplaintFormScreen} />
-            <Stack.Screen name="ComingSoon" component={ComingSoonScreen} />
+            <Stack.Screen name="Leads" component={LeadsScreen} />
+            <Stack.Screen name="LeadDetail" component={LeadDetailScreen} />
+            <Stack.Screen name="LeadForm" component={LeadFormScreen} />
+            <Stack.Screen name="FollowUps" component={FollowUpsScreen} />
           </>
         ) : (
           <Stack.Screen name="Login" component={LoginScreen} />

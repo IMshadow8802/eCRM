@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import {
+  CalendarClock,
   ChevronRight,
   Headset,
   LayoutDashboard,
@@ -13,16 +14,18 @@ import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { StackNavigationProp } from "@react-navigation/stack";
 
+import { fetchFollowUps } from "../../api/followupQueries";
+import { fetchLeads } from "../../api/leadQueries";
 import { fetchTickets } from "../../api/ticketQueries";
 import { fetchWorkspaces } from "../../api/workspaceQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
 import { useAccess } from "../auth/useAccess";
+import { followUpViewParams } from "../sales/leadHelpers";
 import { canSeeAny, visibleRoutes } from "../../utils/menuAccess";
 import { colors, spacing, SCREEN_PADDING, TAB_BAR_CLEARANCE } from "../../theme";
 import {
   Card,
-  Chip,
   EmptyState,
   Glyph,
   Screen,
@@ -39,9 +42,10 @@ interface HubEntry {
   detail: string;
   /** Any one of these menu routes grants access to the row. */
   routes: string[];
-  ready: boolean;
   go: (nav: Nav) => void;
 }
+
+const SALES_ROUTES = ["/sales", "/sales/leads", "/sales/pipeline"];
 
 interface HubSection {
   title: string;
@@ -64,6 +68,7 @@ export default function WorkHubScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const permissions = useAuthStore((s) => s.permissions);
+  const userId = useAuthStore((s) => s.UserId);
 
   const routes = useMemo(() => visibleRoutes(permissions), [permissions]);
 
@@ -85,6 +90,25 @@ export default function WorkHubScreen() {
     enabled: canSeeComplaints,
   });
   const openComplaints = activeTickets?.data?.pagination.totalRecords ?? 0;
+
+  // Leads and the follow-up queue both sit behind leads:view (leadRoutes,
+  // followupRoutes). Same counting trick: PageSize 1, read the total.
+  const canSeeLeads = useAccess("leads").view;
+  const { data: myLeads } = useQuery({
+    queryKey: ["leads", "mine-count", userId],
+    queryFn: () => fetchLeads({ OwnerId: userId, PageSize: 1 }),
+    // A null OwnerId would count the whole reach, not "yours".
+    enabled: canSeeLeads && userId != null,
+  });
+  const leadCount = myLeads?.data?.pagination.totalRecords ?? 0;
+  // The Follow-ups screen's own "Today" view, so the two numbers agree.
+  const todayParams = followUpViewParams("today");
+  const { data: dueToday } = useQuery({
+    queryKey: ["followups", "today-count", todayParams],
+    queryFn: () => fetchFollowUps({ ...todayParams, PageSize: 1 }),
+    enabled: canSeeLeads,
+  });
+  const dueTodayCount = dueToday?.data?.pagination.totalRecords ?? 0;
 
   const boardCount = (workspaces ?? []).filter(
     // Same rule as Boards' "Your boards": admin-bypass boards are not yours.
@@ -110,7 +134,6 @@ export default function WorkHubScreen() {
               : "Your task workspaces") +
             (inviteCount ? ` · ${inviteCount} invite${inviteCount === 1 ? "" : "s"}` : ""),
           routes: ["/tasks"],
-          ready: true,
           go: (nav) => nav.navigate("Boards"),
         },
       ],
@@ -129,7 +152,6 @@ export default function WorkHubScreen() {
           // Only the complaints menu: "/support" is a parent and "/support/customers"
           // is the customers module (096), so either alone opens a screen that 403s.
           routes: ["/support/tickets"],
-          ready: true,
           go: (nav) => nav.navigate("Complaints"),
         },
       ],
@@ -142,15 +164,18 @@ export default function WorkHubScreen() {
           Icon: TrendingUp,
           tint: "success",
           label: "Leads",
-          detail: "Pipeline, calls and follow-ups",
-          routes: ["/sales", "/sales/leads", "/sales/pipeline"],
-          ready: false,
-          go: (nav) =>
-            nav.navigate("ComingSoon", {
-              title: "Leads",
-              blurb:
-                "Your leads, log a call the moment it ends, and follow-ups due today.",
-            }),
+          detail: leadCount ? `${leadCount} yours` : "Your leads and calls",
+          routes: SALES_ROUTES,
+          go: (nav) => nav.navigate("Leads"),
+        },
+        {
+          key: "followups",
+          Icon: CalendarClock,
+          tint: "warning",
+          label: "Follow-ups",
+          detail: dueTodayCount ? `${dueTodayCount} due today` : "Nothing due today",
+          routes: SALES_ROUTES,
+          go: (nav) => nav.navigate("FollowUps"),
         },
       ],
     },
@@ -197,10 +222,7 @@ export default function WorkHubScreen() {
                   <Glyph icon={entry.Icon} tint={colors[entry.tint]} size="md" />
 
                   <View style={styles.rowText}>
-                    <View style={styles.labelRow}>
-                      <Text variant="h3">{entry.label}</Text>
-                      {!entry.ready ? <Chip label="Coming soon" /> : null}
-                    </View>
+                    <Text variant="h3">{entry.label}</Text>
                     <Text variant="caption" color="textMuted" numberOfLines={1}>
                       {entry.detail}
                     </Text>
@@ -255,5 +277,4 @@ const styles = StyleSheet.create({
   },
   rowPressed: { backgroundColor: colors.surfacePressed },
   rowText: { flex: 1, gap: spacing[1] },
-  labelRow: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
 });

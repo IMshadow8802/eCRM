@@ -1,12 +1,17 @@
-import { fireEvent, screen } from "@testing-library/react-native";
+import { fireEvent, screen, waitFor } from "@testing-library/react-native";
 
+import { fetchFollowUps } from "../../api/followupQueries";
+import { fetchLeads } from "../../api/leadQueries";
 import { fetchTickets } from "../../api/ticketQueries";
 import { fetchWorkspaces } from "../../api/workspaceQueries";
 import type { MenuItem, Workspace } from "../../types/api";
 import { envelope, makeWorkspace, pagination } from "../../test/fixtures";
 import { makeNavigation, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
+import { followUpViewParams } from "../sales/leadHelpers";
 import WorkHubScreen from "./WorkHubScreen";
 
+jest.mock("../../api/followupQueries");
+jest.mock("../../api/leadQueries");
 jest.mock("../../api/ticketQueries");
 jest.mock("../../api/workspaceQueries");
 
@@ -30,12 +35,13 @@ const row = (route: string, canView = true): MenuItem => ({
   groupName: null,
 });
 
-const COMPLAINTS = { view: true, add: false, edit: false, delete: false, reach: "Own" as const };
-// Menu rights draw the rows; module access gates the count request (HUB-01).
-const signInWith = (routes: MenuItem[], complaints = true) =>
+const VIEW = { view: true, add: false, edit: false, delete: false, reach: "Own" as const };
+// Menu rights draw the rows; module access gates the count requests (HUB-01).
+const signInWith = (routes: MenuItem[], complaints = true, leads = true) =>
   seedAuth({
+    UserId: 7,
     permissions: { rawPermissions: routes },
-    access: { modules: complaints ? { complaints: COMPLAINTS } : {} },
+    access: { modules: { ...(complaints ? { complaints: VIEW } : {}), ...(leads ? { leads: VIEW } : {}) } },
   });
 
 const ws = (Id: number, patch: Partial<Workspace> = {}) => makeWorkspace({ Id, ...patch });
@@ -45,6 +51,8 @@ beforeEach(() => {
     ws(1), ws(2), ws(3), ws(4, { IsArchived: true }), ws(5, { MyInviteStatus: "pending" }),
   ]);
   jest.mocked(fetchTickets).mockResolvedValue(envelope({ tickets: [], pagination: pagination(5) }));
+  jest.mocked(fetchLeads).mockResolvedValue(envelope({ leads: [], pagination: pagination(12) }));
+  jest.mocked(fetchFollowUps).mockResolvedValue(envelope({ followups: [], pagination: pagination(4) }));
 });
 
 it("a role with all three menus sees every module with its live count", async () => {
@@ -53,8 +61,29 @@ it("a role with all three menus sees every module with its live count", async ()
   expect(await screen.findByText("3 boards · 1 invite")).toBeOnTheScreen();
   expect(await screen.findByText("5 open")).toBeOnTheScreen();
   expect(screen.getByText("Leads")).toBeOnTheScreen();
-  expect(screen.getByText("Coming soon")).toBeOnTheScreen();
+  expect(screen.getByText("Follow-ups")).toBeOnTheScreen();
+  expect(await screen.findByText("12 yours")).toBeOnTheScreen();
+  expect(await screen.findByText("4 due today")).toBeOnTheScreen();
+  expect(screen.queryByText("Coming soon")).toBeNull();
   expect(fetchTickets).toHaveBeenCalledWith({ StatusCode: "active", PageSize: 1 });
+  expect(fetchLeads).toHaveBeenCalledWith({ OwnerId: 7, PageSize: 1 });
+  expect(fetchFollowUps).toHaveBeenCalledWith({ ...followUpViewParams("today"), PageSize: 1 });
+});
+
+it("a /sales menu right alone opens both Sales rows", async () => {
+  signInWith([row("/sales")]);
+  await renderWithProviders(<WorkHubScreen />);
+  expect(await screen.findByText("12 yours")).toBeOnTheScreen();
+  expect(screen.getByText("Follow-ups")).toBeOnTheScreen();
+});
+
+it("does not ask for the sales counts without leads access", async () => {
+  signInWith([row("/tasks"), row("/sales/leads")], true, false);
+  await renderWithProviders(<WorkHubScreen />);
+  expect(await screen.findByText("3 boards · 1 invite")).toBeOnTheScreen();
+  expect(screen.getByText("Leads")).toBeOnTheScreen();
+  expect(fetchLeads).not.toHaveBeenCalled();
+  expect(fetchFollowUps).not.toHaveBeenCalled();
 });
 
 it("a task-only role sees only Boards", async () => {
@@ -63,6 +92,8 @@ it("a task-only role sees only Boards", async () => {
   expect(await screen.findByText("3 boards · 1 invite")).toBeOnTheScreen();
   expect(screen.queryByText("Complaints")).toBeNull();
   expect(screen.queryByText("Leads")).toBeNull();
+  expect(screen.queryByText("Follow-ups")).toBeNull();
+  expect(screen.queryByText("Sales")).toBeNull();
   expect(screen.queryByText("Support")).toBeNull();
 });
 
@@ -74,12 +105,17 @@ it("a role with no modules gets the empty state", async () => {
 });
 
 it("falls back to a description when there is nothing to count", async () => {
-  signInWith([row("/tasks"), row("/support/tickets")]);
+  signInWith([row("/tasks"), row("/support/tickets"), row("/sales")]);
   jest.mocked(fetchWorkspaces).mockResolvedValue([]);
   jest.mocked(fetchTickets).mockResolvedValue(envelope({ tickets: [], pagination: pagination(0) }));
+  jest.mocked(fetchLeads).mockResolvedValue(envelope({ leads: [], pagination: pagination(0) }));
+  jest.mocked(fetchFollowUps).mockResolvedValue(envelope({ followups: [], pagination: pagination(0) }));
   await renderWithProviders(<WorkHubScreen />);
   expect(await screen.findByText("Your task workspaces")).toBeOnTheScreen();
   expect(screen.getByText("Log and track customer issues")).toBeOnTheScreen();
+  await waitFor(() => expect(fetchFollowUps).toHaveBeenCalled());
+  expect(screen.getByText("Your leads and calls")).toBeOnTheScreen();
+  expect(screen.getByText("Nothing due today")).toBeOnTheScreen();
 });
 
 it("one board reads singular", async () => {
@@ -98,10 +134,9 @@ it("each row opens its module", async () => {
   await fireEvent.press(screen.getByText("Complaints"));
   expect(mockNav.navigate).toHaveBeenLastCalledWith("Complaints");
   await fireEvent.press(screen.getByText("Leads"));
-  expect(mockNav.navigate).toHaveBeenLastCalledWith(
-    "ComingSoon",
-    expect.objectContaining({ title: "Leads" }),
-  );
+  expect(mockNav.navigate).toHaveBeenLastCalledWith("Leads");
+  await fireEvent.press(screen.getByText("Follow-ups"));
+  expect(mockNav.navigate).toHaveBeenLastCalledWith("FollowUps");
 });
 
 describe("the Boards row's invites and count (WS-14)", () => {
