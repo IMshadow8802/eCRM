@@ -84,6 +84,28 @@ it("does not ask for the sales counts without leads access", async () => {
   expect(screen.getByText("Leads")).toBeOnTheScreen();
   expect(fetchLeads).not.toHaveBeenCalled();
   expect(fetchFollowUps).not.toHaveBeenCalled();
+  // No count was asked for, so the row must not claim there is nothing due.
+  expect(screen.getByText("Calls and visits to make")).toBeOnTheScreen();
+  expect(screen.queryByText("Nothing due today")).toBeNull();
+});
+
+it("while the follow-up count is loading the row stays neutral", async () => {
+  signInWith([row("/sales")]);
+  jest.mocked(fetchFollowUps).mockReturnValue(new Promise(() => {}));
+  await renderWithProviders(<WorkHubScreen />);
+  expect(await screen.findByText("12 yours")).toBeOnTheScreen();
+  expect(screen.getByText("Calls and visits to make")).toBeOnTheScreen();
+  expect(screen.queryByText("Nothing due today")).toBeNull();
+});
+
+it("a failed follow-up count stays neutral", async () => {
+  signInWith([row("/sales")]);
+  jest.mocked(fetchFollowUps).mockRejectedValue(new Error("boom"));
+  await renderWithProviders(<WorkHubScreen />);
+  expect(await screen.findByText("12 yours")).toBeOnTheScreen();
+  await waitFor(() => expect(fetchFollowUps).toHaveBeenCalled());
+  expect(screen.getByText("Calls and visits to make")).toBeOnTheScreen();
+  expect(screen.queryByText("Nothing due today")).toBeNull();
 });
 
 it("a task-only role sees only Boards", async () => {
@@ -113,9 +135,9 @@ it("falls back to a description when there is nothing to count", async () => {
   await renderWithProviders(<WorkHubScreen />);
   expect(await screen.findByText("Your task workspaces")).toBeOnTheScreen();
   expect(screen.getByText("Log and track customer issues")).toBeOnTheScreen();
-  await waitFor(() => expect(fetchFollowUps).toHaveBeenCalled());
+  // Only a settled 0 reply may say "Nothing due today".
+  expect(await screen.findByText("Nothing due today")).toBeOnTheScreen();
   expect(screen.getByText("Your leads and calls")).toBeOnTheScreen();
-  expect(screen.getByText("Nothing due today")).toBeOnTheScreen();
 });
 
 it("one board reads singular", async () => {

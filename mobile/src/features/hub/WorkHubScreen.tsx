@@ -108,7 +108,8 @@ export default function WorkHubScreen() {
     queryFn: () => fetchFollowUps({ ...todayParams, PageSize: 1 }),
     enabled: canSeeLeads,
   });
-  const dueTodayCount = dueToday?.data?.pagination.totalRecords ?? 0;
+  // undefined = loading, failed or not asked: only a real reply may say "nothing".
+  const dueTodayCount = dueToday?.data?.pagination.totalRecords;
 
   const boardCount = (workspaces ?? []).filter(
     // Same rule as Boards' "Your boards": admin-bypass boards are not yours.
@@ -173,7 +174,12 @@ export default function WorkHubScreen() {
           Icon: CalendarClock,
           tint: "warning",
           label: "Follow-ups",
-          detail: dueTodayCount ? `${dueTodayCount} due today` : "Nothing due today",
+          detail:
+            dueTodayCount == null
+              ? "Calls and visits to make"
+              : dueTodayCount
+                ? `${dueTodayCount} due today`
+                : "Nothing due today",
           routes: SALES_ROUTES,
           go: (nav) => nav.navigate("FollowUps"),
         },
