@@ -58,6 +58,13 @@ export interface FetchTicketsParams {
   /** Window on CreatedAt; `ToDate` inclusive. Local Y-M-D strings. */
   FromDate?: string | null;
   ToDate?: string | null;
+  /**
+   * 118: a ResolvedAt bracket — From inclusive, To an EXCLUSIVE instant (send
+   * tomorrow for "through today"). Sent only when set: an sp_FetchTickets
+   * from before 118 has no such params and would error on them.
+   */
+  ResolvedFrom?: string | null;
+  ResolvedTo?: string | null;
 }
 
 export interface TicketsPayload {
@@ -89,6 +96,8 @@ export const fetchTickets = ({
   Unassigned = false,
   FromDate = null,
   ToDate = null,
+  ResolvedFrom = null,
+  ResolvedTo = null,
 }: FetchTicketsParams = {}): Promise<ApiEnvelope<TicketsPayload>> =>
   post<TicketsPayload>(TICKET_ENDPOINTS.fetchTickets, {
     BranchId,
@@ -109,6 +118,8 @@ export const fetchTickets = ({
     Unassigned: Unassigned ? 1 : 0,
     FromDate,
     ToDate,
+    ...(ResolvedFrom ? { ResolvedFrom } : null),
+    ...(ResolvedTo ? { ResolvedTo } : null),
   });
 
 /**

@@ -1,287 +1,498 @@
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import type { ReactNode } from "react";
+import { StyleSheet, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
-import {
-  AlarmClock,
-  Bell,
-  CalendarClock,
-  ClipboardCheck,
-  Flame,
-  Headset,
-  Lock,
-  TrendingUp,
-} from "lucide-react-native";
 import { useNavigation } from "@react-navigation/native";
 import type { StackNavigationProp } from "@react-navigation/stack";
+import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Bell, Clock, Hand, Headset, ListChecks, Lock, Plus, Search, Target, Timer } from "lucide-react-native";
 
+import { fetchLookups, LOOKUP_KIND } from "../../api/configQueries";
 import { fetchFollowUps } from "../../api/followupQueries";
 import { fetchLeads } from "../../api/leadQueries";
+import { fetchNotifications } from "../../api/notificationQueries";
 import { fetchTickets } from "../../api/ticketQueries";
+import { overdueFollowUpsCountQuery, overdueTicketsCountQuery } from "../../navigation/badges";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
+import { useCreate } from "../../navigation/Shell";
 import useAuthStore from "../../stores/useAuthStore";
-import { colors, fontFamily, radius, spacing, SCREEN_PADDING, TAB_BAR_CLEARANCE } from "../../theme";
-import { EmptyState, MenuList, Refresher, Screen, Text, type MenuListRow } from "../../ui";
+import {
+  colors, complaintBadge, followUpBadge, metrics, notificationBadge, priorityChip, spacing, type UiModule,
+} from "../../theme";
+import type { DayTask, FollowUp, Ticket } from "../../types/api";
+import {
+  Avatar, BandSheet, EmptyState, GroupHeader, HeaderButton, HeroCard, IconButton, ListGroup,
+  ListRow, ModuleTile, Screen, SearchField, Text, useLayout, type HeroStat, type ListRowProps,
+} from "../../ui";
 import { useAccess } from "../auth/useAccess";
 import { useUnreadCount } from "../notifications/useUnreadCount";
-import { followUpViewParams, leadQueueParams } from "../sales/leadHelpers";
+import { followUpTypeLabel, followUpViewParams, leadQueueParams, rupees } from "../sales/leadHelpers";
 import { complaintQueueParams } from "../support/ticketHelpers";
-import { longDate } from "../tasks/greeting";
-import { MY_DAY_QUERY, myTasksQuery, needsYou } from "../tasks/taskHelpers";
+import { greetingFor, longDate } from "../tasks/greeting";
+import { parseIst } from "../tasks/tatChip";
+import { doneThisWeek, dueBucket, MY_DAY_QUERY, myDoneQuery, myTasksQuery, needsYou, shortSpan } from "../tasks/taskHelpers";
 
 type Nav = StackNavigationProp<RootStackParamList>;
 
-interface Row extends Omit<MenuListRow, "detail"> {
-  /** undefined = loading, failed or not asked: only a real reply may say "nothing". */
-  value: number | undefined;
-  some: (n: number) => string;
-  none: string;
-  neutral: string;
-}
-
-const detail = (r: Row) => (r.value == null ? r.neutral : r.value ? r.some(r.value) : r.none);
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
-
-/** A count, not a list: page size 1, read the total. */
+/** A count, not a list: read the total. undefined = loading or failed — never a 0. */
 const total = (r: { data?: { pagination: { totalRecords: number } } | null } | undefined) =>
   r?.data?.pagination.totalRecords;
 
+/** G3 and G12 read a 200-row page; past it the sum or count would be a guess. */
+const PAGE = 200;
+
+/** "6:30 pm" in the phone's zone (IST for every user). */
+const clock = (v: string | null | undefined) => {
+  const d = parseIst(v);
+  return d ? d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" }).toLowerCase() : null;
+};
+
+/** ResolvedFrom = 7 days ago, ResolvedTo = tomorrow 00:00 (exclusive), local Y-M-D (§7.6). */
+const ymd = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+export function resolvedWindow(now = new Date()) {
+  const day = (n: number) => ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() + n));
+  return { ResolvedFrom: day(-7), ResolvedTo: day(1) };
+}
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+interface Tile {
+  module: UiModule;
+  title: string;
+  subtitle?: string;
+  value: number | undefined;
+  unit: string;
+  onPress: () => void;
+}
+
 /**
- * Home — "Today" across whatever the person works on. Every number is the
- * first page of a list's own filter (the same params builder the list uses),
- * and tapping it opens that list on that filter, so the two always agree.
- * A module the role cannot view is neither shown nor asked for — its
- * endpoint would only 403.
+ * Home "Today" (E 04, 27, T1). Every number is the first page of a list's own
+ * filter and opens that list on that filter, so the two always agree; a figure
+ * no list can show (Escalated, Resolved, New, Won, Done this week) is not
+ * tappable. A module the role cannot view is neither shown nor asked for.
  */
 export default function HomeScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
+  const layout = useLayout();
+  const tablet = layout.nav === "rail";
+  const create = useCreate();
   const userId = useAuthStore((s) => s.UserId);
+  const user = useAuthStore((s) => s.user);
   const unread = useUnreadCount();
 
   const canTasks = useAccess("tasks").view;
   const canComplaints = useAccess("complaints").view;
   const canLeads = useAccess("leads").view;
   // Without a user id a "mine" filter is null — the whole reach, not yours.
-  const signedIn = userId != null;
+  const me = userId != null;
+  const hero: "complaints" | "leads" | "tasks" | null = canComplaints ? "complaints" : canLeads ? "leads" : canTasks ? "tasks" : null;
 
-  // The exact queries My Work runs, so they share a cache entry with it.
-  const myTasks = useQuery({ ...myTasksQuery(userId), enabled: canTasks && signedIn });
-  const myDay = useQuery({ ...MY_DAY_QUERY, enabled: canTasks });
+  // ------------------------------------------------------------ tasks
+  const myTasks = useQuery({ ...myTasksQuery(userId), enabled: canTasks && me });
+  const myDone = useQuery({ ...myDoneQuery(userId), enabled: hero === "tasks" && me });
+  // /api/today/mine is open to everyone: the shift row (G21) reads it too.
+  const myDay = useQuery(MY_DAY_QUERY);
+  const needs = canTasks ? needsYou(myDay.data?.data) : [];
 
-  const mineTickets = complaintQueueParams("mine", "active", userId, "");
-  const overdueTickets = complaintQueueParams("overdue", "active", userId, "");
+  // ------------------------------------------------------- complaints
+  const mineTicketParams = { ...complaintQueueParams("mine", "active", userId, ""), PageSize: PAGE };
   const ticketsMine = useQuery({
-    queryKey: ["tickets", "count", mineTickets],
-    queryFn: () => fetchTickets({ ...mineTickets, PageSize: 1 }),
-    enabled: canComplaints && signedIn,
+    queryKey: ["tickets", "home", mineTicketParams],
+    queryFn: () => fetchTickets(mineTicketParams),
+    enabled: canComplaints && me,
   });
-  const ticketsOverdue = useQuery({
-    queryKey: ["tickets", "count", overdueTickets],
-    queryFn: () => fetchTickets({ ...overdueTickets, PageSize: 1 }),
-    enabled: canComplaints,
+  const ticketsOverdue = useQuery({ ...overdueTicketsCountQuery(userId), enabled: canComplaints });
+  const resolvedParams = { AssignedTo: userId, ...resolvedWindow(), PageSize: 1 };
+  // Until SQL 118 is applied the SP rejects the params: the figure stays "—" (§7.6).
+  const ticketsResolved = useQuery({
+    queryKey: ["tickets", "count", resolvedParams],
+    queryFn: () => fetchTickets(resolvedParams),
+    enabled: canComplaints && me,
+    retry: false,
   });
+  const mineTickets = ticketsMine.data?.data;
+  // G12: my non-terminal complaints with EscalatedTo set — counted off the
+  // "mine, active" page; past 200 rows it would undercount, so "—".
+  const escalated = mineTickets && mineTickets.pagination.totalRecords <= PAGE
+    ? mineTickets.tickets.filter((t) => t.EscalatedTo != null).length
+    : undefined;
+  const myOverdueTickets = (mineTickets?.tickets ?? []).filter((t) => t.IsOverdue);
 
-  const mineLeads = leadQueueParams("mine", "all", userId ?? 0, "");
+  // ------------------------------------------------------------ leads
+  const mineLeadParams = { ...leadQueueParams("mine", "all", userId ?? 0, ""), PageSize: PAGE };
   const leadsMine = useQuery({
-    queryKey: ["leads", "count", mineLeads],
-    queryFn: () => fetchLeads({ ...mineLeads, PageSize: 1 }),
-    enabled: canLeads && signedIn,
+    queryKey: ["leads", "home", mineLeadParams],
+    queryFn: () => fetchLeads(mineLeadParams),
+    enabled: canLeads && me,
   });
-  const today = followUpViewParams("today");
+  const overdueLeadParams = { ...leadQueueParams("overdue", "all", userId ?? 0, ""), PageSize: 1 };
+  const leadsOverdue = useQuery({
+    queryKey: ["leads", "count", overdueLeadParams],
+    queryFn: () => fetchLeads(overdueLeadParams),
+    enabled: hero === "leads",
+  });
+  const statuses = useQuery({
+    queryKey: ["lookups", LOOKUP_KIND.leadStatus],
+    queryFn: () => fetchLookups({ Kind: LOOKUP_KIND.leadStatus }),
+    enabled: hero === "leads",
+  });
+  // G1: "New" is the first open-coded status by SortOrder.
+  const newStatusId = statuses.data?.find((s) => s.Code === "open")?.Id;
+  const newParams = { OwnerId: userId, StatusId: newStatusId ?? null, PageSize: 1 };
+  const leadsNew = useQuery({
+    queryKey: ["leads", "count", newParams],
+    queryFn: () => fetchLeads(newParams),
+    enabled: hero === "leads" && me && newStatusId != null,
+  });
+  const wonParams = { OwnerId: userId, StatusCode: "converted" as const, PageSize: 1 };
+  const leadsWon = useQuery({
+    queryKey: ["leads", "count", wonParams],
+    queryFn: () => fetchLeads(wonParams),
+    enabled: hero === "leads" && me,
+  });
+  const leadsPage = leadsMine.data?.data;
+  // G3: open + qualified value over Mine, hidden past one 200-row page.
+  const openValue = leadsPage && leadsPage.pagination.totalRecords <= PAGE
+    ? rupees(leadsPage.leads
+      .filter((l) => l.StatusCode === "open" || l.StatusCode === "qualified")
+      .reduce((sum, l) => sum + (l.EstValue ?? 0), 0))
+    : null;
+
+  const todayParams = { ...followUpViewParams("today"), PageSize: 3 };
   const dueToday = useQuery({
-    queryKey: ["followups", "count", today],
-    queryFn: () => fetchFollowUps({ ...today, PageSize: 1 }),
+    queryKey: ["followups", "home", todayParams],
+    queryFn: () => fetchFollowUps(todayParams),
     enabled: canLeads,
   });
+  const fuOverdue = useQuery({ ...overdueFollowUpsCountQuery(), enabled: canLeads });
+  const overdueRowParams = { ...followUpViewParams("overdue"), PageSize: 3 };
+  const fuOverdueRows = useQuery({
+    queryKey: ["followups", "home", overdueRowParams],
+    queryFn: () => fetchFollowUps(overdueRowParams),
+    enabled: canLeads,
+  });
+  const nextAt = clock(dueToday.data?.data?.followups[0]?.DueAt);
+  const fuOverdueCount = total(fuOverdue.data);
 
-  // Every count the role may see; a disabled query (no access) is skipped.
-  const counts = [myTasks, myDay, ticketsMine, ticketsOverdue, leadsMine, dueToday];
-  const refreshing = counts.some((q) => q.isRefetching && !q.isLoading);
-  const refresh = () => {
-    for (const [q, on] of [
-      [myTasks, canTasks && signedIn],
-      [myDay, canTasks],
-      [ticketsMine, canComplaints && signedIn],
-      [ticketsOverdue, canComplaints],
-      [leadsMine, canLeads && signedIn],
-      [dueToday, canLeads],
-    ] as const) {
-      if (on) void q.refetch();
+  // ------------------------------------------------------------ inbox (G27)
+  const inbox = useQuery({ queryKey: ["notifications"], queryFn: () => fetchNotifications() });
+  const escalations = (inbox.data?.data?.notifications ?? [])
+    .filter((n) => !n.IsRead && notificationBadge(n.Type).tone === "lilac").length;
+
+  // ------------------------------------------------------------ navigation
+  const toTasks = () => navigation.navigate("Tabs", { screen: "Tasks", params: { filter: "mine" } });
+  const toComplaints = (queue: "mine" | "overdue") => navigation.navigate("Complaints", { queue });
+  const toLeads = (queue: "mine" | "overdue") => navigation.navigate("Leads", { queue });
+  // A tab, or pushed when the bar has no room — the navigator that has the route answers.
+  const toFollowUps = () => navigation.navigate("FollowUps", { view: "today" });
+
+  // ------------------------------------------------------------ hero
+  const now = new Date();
+  let heroCard: ReactNode = null;
+  if (hero === "complaints") {
+    const overdue = total(ticketsOverdue.data);
+    heroCard = (
+      <HeroCard
+        icon={Headset}
+        title="My complaints"
+        subtitle={overdue != null ? `This week · ${overdue} past their TAT` : "This week"}
+        onOpen={() => toComplaints("mine")}
+        size={tablet ? "tablet" : "phone"}
+        stats={[
+          { label: "Open", value: total(ticketsMine.data), onPress: () => toComplaints("mine") },
+          { label: "Overdue", value: overdue, warn: true, onPress: () => toComplaints("overdue") },
+          { label: "Escalated", value: escalated },
+          { label: "Resolved", value: ticketsResolved.isError ? undefined : total(ticketsResolved.data) },
+        ]}
+      />
+    );
+  } else if (hero === "leads") {
+    heroCard = (
+      <HeroCard
+        icon={Target}
+        title="My leads"
+        subtitle={openValue ? `${openValue} open value` : undefined}
+        onOpen={() => toLeads("mine")}
+        size={tablet ? "tablet" : "phone"}
+        stats={[
+          { label: "Open", value: total(leadsMine.data), onPress: () => toLeads("mine") },
+          { label: "Overdue", value: total(leadsOverdue.data), warn: true, onPress: () => toLeads("overdue") },
+          { label: "New", value: total(leadsNew.data) },
+          { label: "Won", value: total(leadsWon.data) },
+        ]}
+      />
+    );
+  } else if (hero === "tasks") {
+    const open = myTasks.data?.data?.tasks;
+    const stats: HeroStat[] = [
+      { label: "Assigned", value: total(myTasks.data), onPress: toTasks },
+      { label: "Needs you", value: myDay.data ? needs.length : undefined, onPress: toTasks },
+      { label: "Overdue", value: open?.filter((t) => dueBucket(t.DueDate) === "overdue").length, warn: true },
+      { label: "Done", value: myDone.data ? doneThisWeek(myDone.data.data?.tasks ?? []).length : undefined },
+    ];
+    heroCard = (
+      <HeroCard
+        icon={ListChecks}
+        title="My tasks"
+        subtitle={myDay.data ? `${plural(needs.length, "needs you", "need you")}` : undefined}
+        onOpen={toTasks}
+        size={tablet ? "tablet" : "phone"}
+        stats={stats}
+      />
+    );
+  }
+
+  // ------------------------------------------------------------ tiles
+  const tasksTile: Tile = {
+    module: "tasks", title: "Tasks", subtitle: myDay.data ? plural(needs.length, "needs you", "need you") : undefined,
+    value: total(myTasks.data), unit: "assigned to you", onPress: toTasks,
+  };
+  const fuTile: Tile = {
+    module: "followups", title: "Follow-ups",
+    subtitle: [nextAt ? `Next at ${nextAt}` : null, tablet && fuOverdueCount ? `${fuOverdueCount} overdue` : null]
+      .filter(Boolean).join(" · ") || undefined,
+    value: total(dueToday.data), unit: "due today", onPress: toFollowUps,
+  };
+  const leadsTile: Tile = {
+    module: "leads", title: "Leads",
+    subtitle: hero === "leads"
+      ? (fuOverdueCount != null ? `${plural(fuOverdueCount, "overdue call")}` : undefined)
+      : openValue ? `${openValue} in play` : undefined,
+    value: total(leadsMine.data), unit: "yours", onPress: () => toLeads("mine"),
+  };
+  const inboxTile: Tile = {
+    module: "inbox", title: "Inbox", subtitle: escalations ? plural(escalations, "escalation") : undefined,
+    value: unread, unit: "unread", onPress: () => navigation.navigate("Inbox"),
+  };
+  const modules = [canTasks, canComplaints, canLeads].filter(Boolean).length;
+  let tiles: Tile[];
+  if (modules > 1) {
+    tiles = [...(canTasks ? [tasksTile] : []), ...(canLeads ? [fuTile, leadsTile] : []), inboxTile];
+    // Two columns: an odd count past two leaves a hole; Inbox gives way (the bell carries it).
+    if (!tablet && tiles.length > 2 && tiles.length % 2 === 1) tiles = tiles.slice(0, -1);
+  } else if (canLeads) tiles = [leadsTile, fuTile];
+  else if (canTasks) tiles = [tasksTile, inboxTile];
+  else if (canComplaints) tiles = [inboxTile];
+  else tiles = [];
+
+  // ------------------------------------------------------------ needs you
+  const ticketRow = (t: Ticket): ListRowProps & { key: string } => {
+    const due = parseIst(t.DueAt);
+    const b = complaintBadge(t.StatusCode);
+    return {
+      key: `t${t.Id}`,
+      badge: { tone: "peach", icon: Headset, escalated: t.EscalatedTo != null },
+      title: t.Subject,
+      right: { text: due ? `Overdue ${shortSpan(now.getTime() - due.getTime())}` : "Overdue", tone: "danger" },
+      number: t.TicketNo,
+      meta: t.CustomerName ?? undefined,
+      chips: tablet
+        ? [
+          { label: t.StatusName ?? "Open", tone: b.chip ?? "sky" },
+          ...(t.PriorityName ? [{ label: t.PriorityName, ...priorityChip(t.PriorityName) }] : []),
+        ]
+        : undefined,
+      onPress: () => navigation.navigate("ComplaintDetail", { ticketId: t.Id }),
+    };
+  };
+  const taskRow = (t: DayTask): ListRowProps & { key: string } => ({
+    key: `k${t.TaskId}`,
+    badge: { tone: "lilac", icon: ListChecks },
+    title: t.Title,
+    right: t.flags.reasonOwed ? { text: tablet ? "Explain delay" : "Explain", tone: "brand" } : undefined,
+    meta: [t.WorkspaceName, t.StepsTotal ? `${t.StepsDone} of ${t.StepsTotal} steps` : null].filter(Boolean).join(" · ") || undefined,
+    chips: t.flags.overdue || t.flags.reasonOwed
+      ? [{ label: tablet ? "Missed deadline" : "Missed", tone: "red", icon: Timer }]
+      : [{ label: "At risk", tone: "butter", icon: Timer }],
+    onPress: () =>
+      navigation.navigate("TaskDetail", {
+        taskId: t.TaskId,
+        workspaceId: t.WorkspaceId,
+        tab: "tat",
+        ...(t.flags.reasonOwed && t.TatId ? { explainTatId: t.TatId } : {}),
+      }),
+  });
+  /** `compact` = T1's "Follow-ups today" column: 36 badges, no meta. */
+  const followUpRow = (f: FollowUp, overdue: boolean, compact = false): ListRowProps & { key: string } => {
+    const b = followUpBadge(f.Type, overdue ? "overdue" : "open");
+    const due = parseIst(f.DueAt);
+    if (compact) {
+      return {
+        key: `c${f.Id}`, badge: { tone: b.tone, icon: b.icon, size: 36 }, title: f.LeadName ?? "Follow-up",
+        right: { text: clock(f.DueAt) ?? "" }, onPress: () => navigation.navigate("LeadDetail", { leadId: f.LeadId }),
+      };
     }
+    return {
+      key: `f${f.Id}`,
+      badge: { tone: b.tone, icon: b.icon },
+      title: f.LeadName ?? "Follow-up",
+      right: overdue
+        ? { text: `Overdue ${due ? shortSpan(now.getTime() - due.getTime()) : ""}`.trim(), tone: "danger" }
+        : { text: clock(f.DueAt) ?? "" },
+      meta: [followUpTypeLabel(f.Type), f.LeadCompany].filter(Boolean).join(" · "),
+      onPress: () => navigation.navigate("LeadDetail", { leadId: f.LeadId }),
+    };
+  };
+  const needRows = [
+    ...myOverdueTickets.map(ticketRow),
+    ...needs.map(taskRow),
+    ...(canLeads ? (fuOverdueRows.data?.data?.followups ?? []).map((f) => followUpRow(f, true)) : []),
+    ...(hero === "leads" ? (dueToday.data?.data?.followups ?? []).map((f) => followUpRow(f, false)) : []),
+  ];
+  const needCount =
+    myOverdueTickets.length + needs.length + (canLeads ? (fuOverdueCount ?? 0) : 0)
+    + (hero === "leads" ? (total(dueToday.data) ?? 0) : 0);
+  const seeAll = canTasks ? toTasks : canComplaints ? () => toComplaints("overdue") : toFollowUps;
+
+  const needsBlock = needRows.length ? (
+    <View>
+      <GroupHeader title="Needs you" count={needCount} link={{ label: "See all", onPress: seeAll }} />
+      <ListGroup testID="needs-you">
+        {needRows.slice(0, 3).map(({ key, ...r }, i) => <ListRow key={key} {...r} noSeparator={i === 0} />)}
+      </ListGroup>
+    </View>
+  ) : null;
+
+  // ------------------------------------------------------------ refresh
+  const refreshable = [myTasks, myDone, myDay, ticketsMine, ticketsOverdue, ticketsResolved, leadsMine, leadsOverdue,
+    leadsNew, leadsWon, dueToday, fuOverdue, fuOverdueRows, inbox];
+  const refreshing = refreshable.some((q) => q.isRefetching && !q.isLoading);
+  const refresh = () => {
+    for (const q of refreshable) if (q.isFetched || q.isError) void q.refetch();
   };
 
-  // Both task rows open "Mine": My Work shows "Needs you" only there.
-  const toTasks = () => navigation.navigate("Tabs", { screen: "Tasks", params: { filter: "mine" } });
+  // ------------------------------------------------------------ band
+  const first = (user?.FullName ?? "").split(" ")[0] || "there";
+  const shiftEnd = clock(myDay.data?.data?.me?.ShiftEnd);
+  const greeting = (
+    <View style={styles.greetLine}>
+      <Text variant={tablet ? "h1" : "h2"} color="textOnBrand" numberOfLines={1} accessibilityRole="header" style={styles.shrink}>
+        {`${greetingFor()}, ${first}`}
+      </Text>
+      <Hand size={tablet ? 22 : 18} color={colors.greetIcon} />
+    </View>
+  );
+  const newButton = <HeaderButton label={create.label} icon={Plus} onPress={create.open} accessibilityLabel={`New ${create.label.toLowerCase()}`} />;
+  const bell = (
+    <IconButton icon={Bell} accessibilityLabel={unread ? `Notifications, ${unread} unread` : "Notifications"} badge={unread} onPress={() => navigation.navigate("Inbox")} />
+  );
 
-  const groups = ([
-    canTasks
-      ? [
-          {
-            key: "tasks",
-            icon: ClipboardCheck,
-            tint: "primary",
-            label: "My tasks",
-            // The total, not the page: the list is capped at 200 rows.
-            value: total(myTasks.data),
-            some: (n) => `${plural(n, "task")} assigned to you`,
-            none: "Nothing assigned to you",
-            neutral: "Tasks assigned to you",
-            onPress: toTasks,
-          },
-          {
-            key: "needs",
-            icon: Flame,
-            tint: "danger",
-            label: "Needs you",
-            value: myDay.data ? needsYou(myDay.data.data).length : undefined,
-            some: (n) => `${plural(n, "task")} past or near a deadline`,
-            none: "Nothing needs you",
-            neutral: "Deadlines and reasons owed",
-            onPress: toTasks,
-          },
-        ]
-      : [],
-    canComplaints
-      ? [
-          {
-            key: "complaints-mine",
-            icon: Headset,
-            tint: "danger",
-            label: "My complaints",
-            value: total(ticketsMine.data),
-            some: (n) => `${n} open`,
-            none: "Nothing open on you",
-            neutral: "Complaints assigned to you",
-            onPress: () => navigation.navigate("Complaints", { queue: "mine" }),
-          },
-          {
-            key: "complaints-overdue",
-            icon: AlarmClock,
-            tint: "warning",
-            label: "Overdue complaints",
-            value: total(ticketsOverdue.data),
-            some: (n) => `${n} overdue`,
-            none: "Nothing overdue",
-            neutral: "Past their due time",
-            onPress: () => navigation.navigate("Complaints", { queue: "overdue" }),
-          },
-        ]
-      : [],
-    canLeads
-      ? [
-          {
-            key: "leads-mine",
-            icon: TrendingUp,
-            tint: "success",
-            label: "My leads",
-            value: total(leadsMine.data),
-            some: (n) => `${n} yours`,
-            none: "No leads yet",
-            neutral: "Leads you own",
-            onPress: () => navigation.navigate("Leads", { queue: "mine" }),
-          },
-          {
-            key: "followups-today",
-            icon: CalendarClock,
-            tint: "warning",
-            label: "Follow-ups due today",
-            value: total(dueToday.data),
-            some: (n) => `${n} due today`,
-            none: "Nothing due today",
-            neutral: "Calls and visits to make",
-            // A tab, or pushed from the stack when the bar has no room — the
-            // navigator that has the route answers.
-            onPress: () => navigation.navigate("FollowUps", { view: "today" }),
-          },
-        ]
-      : [],
-  ] satisfies Row[][]).filter((g) => g.length > 0);
+  const band = (
+    <View
+      testID="home-band"
+      style={[styles.band, { paddingTop: insets.top, paddingHorizontal: layout.gutter }]}
+    >
+      <StatusBar style="light" />
+      <View style={[styles.bandRow, { height: tablet ? metrics.bandRowTablet : metrics.bandRowHome }]}>
+        <Avatar name={user?.FullName} uri={user?.Avatar} userId={userId} size={tablet ? 44 : 40} ring={null} />
+        <View style={styles.flex}>
+          <Text variant="small" color="onBandMuted" numberOfLines={1}>
+            {tablet && shiftEnd ? `${longDate()} · On shift until ${shiftEnd}` : longDate()}
+          </Text>
+          {greeting}
+        </View>
+        {tablet ? (
+          <SearchField placeholder="Search complaints, leads, tasks" width={340} onPress={() => navigation.navigate("Search")} />
+        ) : (
+          <IconButton icon={Search} accessibilityLabel="Search" onPress={() => navigation.navigate("Search")} />
+        )}
+        {bell}
+        {tablet ? newButton : null}
+      </View>
+      {tablet ? null : (
+        <View style={styles.shiftRow}>
+          {shiftEnd ? (
+            <>
+              <Clock size={16} color={colors.onBandMuted} />
+              <Text variant="meta" color="onBandMuted" tabular style={styles.flex}>{`On shift until ${shiftEnd}`}</Text>
+            </>
+          ) : <View style={styles.flex} />}
+          {newButton}
+        </View>
+      )}
+    </View>
+  );
+
+  // ------------------------------------------------------------ layout
+  const tileNode = (t: Tile) => (
+    <View key={t.module} style={styles.flex}>
+      <ModuleTile {...t} size={tablet ? "tablet" : "phone"} />
+    </View>
+  );
+  const gap = tablet ? metrics.bentoGapTablet : metrics.bentoGap;
+  const rows = (list: Tile[], per: number) =>
+    Array.from({ length: Math.ceil(list.length / per) }, (_, i) => (
+      <View key={i} style={[styles.row, { gap }]}>{list.slice(i * per, i * per + per).map(tileNode)}</View>
+    ));
+
+  let body: ReactNode;
+  if (!hero) {
+    body = (
+      <EmptyState
+        module="home"
+        icon={Lock}
+        title="Nothing here yet"
+        message="You do not have access to any modules. Ask an administrator to grant you one."
+      />
+    );
+  } else if (tablet) {
+    const todayRows = (dueToday.data?.data?.followups ?? []).map((f) => followUpRow(f, false, true));
+    body = (
+      <View style={{ gap }}>
+        <View style={[styles.row, { gap }]}>
+          <View style={styles.flex2}>{heroCard}</View>
+          {tiles[0] ? tileNode(tiles[0]) : <View style={styles.flex} />}
+        </View>
+        {rows(tiles.slice(1), 3)}
+        <View style={[styles.row, styles.top, { gap }]}>
+          <View style={styles.flex2}>{needsBlock}</View>
+          <View style={styles.flex}>
+            {canLeads ? (
+              <>
+                <GroupHeader title="Follow-ups today" link={{ label: "Queue", onPress: toFollowUps }} />
+                {todayRows.length ? (
+                  <ListGroup>
+                    {todayRows.map(({ key, ...r }, i) => <ListRow key={key} {...r} noSeparator={i === 0} />)}
+                  </ListGroup>
+                ) : (
+                  <Text variant="meta">Nothing due today.</Text>
+                )}
+              </>
+            ) : null}
+          </View>
+        </View>
+      </View>
+    );
+  } else {
+    body = (
+      <View style={{ gap }}>
+        {heroCard}
+        {rows(tiles, 2)}
+        {needsBlock}
+      </View>
+    );
+  }
 
   return (
-    <Screen>
-      <View style={[styles.header, { paddingTop: insets.top + spacing[3] }]}>
-        <View style={styles.titleBlock}>
-          <Text variant="h1">Today</Text>
-          <Text variant="caption" color="textMuted">
-            {longDate()}
-          </Text>
-        </View>
-        <Pressable
-          onPress={() => navigation.navigate("Inbox")}
-          accessibilityRole="button"
-          accessibilityLabel="Inbox"
-          accessibilityValue={unread > 0 ? { text: `${unread} unread` } : undefined}
-          hitSlop={spacing[2]}
-          style={({ pressed }) => [styles.bell, pressed && styles.bellPressed]}
-        >
-          <Bell size={20} color={colors.text} />
-          {unread > 0 ? (
-            <View style={styles.badge}>
-              <Text variant="caption" color="textOnBrand" style={styles.badgeText}>
-                {unread > 99 ? "99+" : String(unread)}
-              </Text>
-            </View>
-          ) : null}
-        </Pressable>
-      </View>
-
-      <ScrollView
-        testID="home-list"
-        contentContainerStyle={[styles.content, !groups.length && styles.contentEmpty]}
-        showsVerticalScrollIndicator={false}
-        refreshControl={<Refresher refreshing={refreshing} onRefresh={refresh} />}
-      >
-        {groups.map((rows) => (
-          <MenuList key={rows[0]!.key} rows={rows.map((r) => ({ ...r, detail: detail(r) }))} />
-        ))}
-
-        {!groups.length ? (
-          <EmptyState
-            icon={Lock}
-            title="Nothing here yet"
-            message="You do not have access to any modules. Ask an administrator to grant you one."
-          />
-        ) : null}
-      </ScrollView>
+    <Screen band>
+      {band}
+      <BandSheet scroll center={!hero} refresh={{ refreshing, onRefresh: refresh }}>
+        <View testID="home-list">{body}</View>
+      </BandSheet>
     </Screen>
   );
 }
 
-const BELL = 42;
-
 const styles = StyleSheet.create({
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[3],
-    paddingHorizontal: SCREEN_PADDING,
-    paddingBottom: spacing[3],
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.divider,
-  },
-  titleBlock: { flex: 1, gap: spacing[1] },
-  bell: {
-    width: BELL,
-    height: BELL,
-    borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  bellPressed: { backgroundColor: colors.surfacePressed },
-  badge: {
-    position: "absolute",
-    top: -spacing[1],
-    right: -spacing[1],
-    minWidth: spacing[5],
-    paddingHorizontal: spacing[1],
-    borderRadius: radius.full,
-    backgroundColor: colors.danger,
-    alignItems: "center",
-  },
-  badgeText: { fontFamily: fontFamily.semibold },
-  content: { padding: SCREEN_PADDING, gap: spacing[5], paddingBottom: TAB_BAR_CLEARANCE },
-  contentEmpty: { flexGrow: 1 },
+  band: { backgroundColor: colors.band, paddingBottom: metrics.bandPadBottom.home },
+  bandRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  greetLine: { flexDirection: "row", alignItems: "center", gap: spacing[1] + 2 },
+  shiftRow: { flexDirection: "row", alignItems: "center", gap: spacing[2], height: 40, marginTop: 2 },
+  shrink: { flexShrink: 1 },
+  flex: { flex: 1, minWidth: 0 },
+  flex2: { flex: 2, minWidth: 0 },
+  row: { flexDirection: "row" },
+  top: { alignItems: "flex-start" },
 });

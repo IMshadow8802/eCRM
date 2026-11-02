@@ -1,3 +1,5 @@
+import { Calendar, CirclePause, Lock, Timer, type LucideIcon } from "lucide-react-native";
+
 import { fetchTasks } from "../../api/taskQueries";
 import { fetchMyDay } from "../../api/todayQueries";
 import type { ChipTone } from "../../theme";
@@ -11,6 +13,7 @@ import type {
   WorkspaceRole,
   WorkspaceType,
 } from "../../types/api";
+import { parseIst } from "./tatChip";
 
 /**
  * One workspace's tasks, as the board shows them. Board, Columns and
@@ -36,6 +39,75 @@ export function myTasksQuery(userId: number | null) {
       fetchTasks({ WorkspaceId: null, AssigneeUserId: userId, OnlyOpen: true, PageSize: 200 }),
     enabled: userId != null,
   };
+}
+
+/**
+ * G10: my tasks finished or not — the Done pill and "Completed this week"
+ * (My Work) and Home's "Done this week" read the same entry.
+ */
+export function myDoneQuery(userId: number | null) {
+  return {
+    queryKey: ["tasks", "mine", "with-done", userId],
+    queryFn: () =>
+      fetchTasks({ WorkspaceId: null, AssigneeUserId: userId, OnlyOpen: false, PageSize: 200 }),
+    enabled: userId != null,
+  };
+}
+
+/** Monday 00:00, local. */
+export function weekStart(now = new Date()): Date {
+  const back = (now.getDay() + 6) % 7;
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() - back);
+}
+
+/** Completed on or after this Monday (G10). */
+export const doneThisWeek = (tasks: Task[], now = new Date()): Task[] => {
+  const from = weekStart(now).getTime();
+  return tasks.filter((t) => t.IsCompleted && t.CompletedDate != null && new Date(t.CompletedDate).getTime() >= from);
+};
+
+/** "42 m" · "3 h" · "2 d" — E's short spans ("Due in 3 h", "Overdue 21 h"). */
+export function shortSpan(ms: number): string {
+  const mins = Math.max(1, Math.floor(ms / 60_000));
+  if (mins < 60) return `${mins} m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 48) return `${hrs} h`;
+  return `${Math.floor(hrs / 24)} d`;
+}
+
+/** "Fri, 6 Nov" from a SQL date (local calendar day, never UTC). */
+export function shortDay(date: string | null | undefined): string {
+  const [y, m, d] = (date ?? "").slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return "";
+  const day = new Date(y, m - 1, d);
+  const wd = day.toLocaleDateString("en-IN", { weekday: "short" });
+  const dm = day.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+  return `${wd}, ${dm}`;
+}
+
+export interface DueChip {
+  label: string;
+  tone: ChipTone;
+  icon: LucideIcon;
+}
+
+/**
+ * The third line of a task row (E 05): slate lock "Personal" (G9), butter
+ * timer "Due in 3 h" / red "Missed" on an open clock, "On hold" on a held one,
+ * else the due date (red once past). Nothing for a finished task.
+ */
+export function taskDueChip(task: Task, personal: boolean, now = new Date()): DueChip | null {
+  if (personal) return { label: "Personal", tone: "slate", icon: Lock };
+  if (task.IsCompleted) return null;
+  if (task.TatHeldSince) return { label: "On hold", tone: "slate", icon: CirclePause };
+  const due = parseIst(task.TatDueAt);
+  if (due) {
+    return due < now
+      ? { label: "Missed", tone: "red", icon: Timer }
+      : { label: `Due in ${shortSpan(due.getTime() - now.getTime())}`, tone: "butter", icon: Timer };
+  }
+  if (!task.DueDate) return null;
+  return { label: shortDay(task.DueDate), tone: dueBucket(task.DueDate, now) === "overdue" ? "red" : "slate", icon: Calendar };
 }
 
 /** TAT-06: the server's Today flags. ["tasks"] prefix so task writes refresh it. */
