@@ -10,6 +10,7 @@ import {
   addTaskDependency,
   claimTask,
   deleteTask,
+  deleteTaskComment,
   fetchTaskById,
   fetchTaskDependencies,
   fetchTasks,
@@ -19,12 +20,14 @@ import {
   getTaskTimeEntries,
   logTaskTime,
   moveTaskColumn,
+  pinTaskComment,
 } from "../../api/taskQueries";
 import { fetchWorkspaces } from "../../api/workspaceQueries";
 import type { KanbanColumn, Task, TaskDependency, Workspace } from "../../types/api";
-import { assigneesJson, envelope, makeTask, makeWorkspace, pagination, serverError } from "../../test/fixtures";
+import { assigneesJson, envelope, makeComment, makeTask, makeWorkspace, pagination, serverError } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import { spySheets } from "../../test/sheets";
+import { colors } from "../../theme";
 import TaskDetailScreen from "./TaskDetailScreen";
 
 jest.mock("../../api/taskQueries");
@@ -76,7 +79,7 @@ function serve({ task = TASK, ws = makeWorkspace({ Id: 10 }), siblings = [TASK, 
   jest.mocked(getTaskTimeEntries).mockResolvedValue([]);
   jest.mocked(getTaskActivity).mockResolvedValue([]);
   jest.mocked(fetchTaskTat).mockResolvedValue({ clocks: [], holds: [], events: [] });
-  for (const fn of [addTaskComment, addTaskDependency, claimTask, deleteTask, logTaskTime, moveTaskColumn]) {
+  for (const fn of [addTaskComment, addTaskDependency, claimTask, deleteTask, deleteTaskComment, logTaskTime, moveTaskColumn, pinTaskComment]) {
     jest.mocked(fn).mockResolvedValue(envelope(null));
   }
 }
@@ -390,5 +393,146 @@ describe("comments", () => {
     await mount();
     await fireEvent.press(screen.getByText("Comments"));
     expect(screen.getByLabelText("Write a comment")).toBeOnTheScreen();
+  });
+});
+
+// parity: TASK-04 — reply (indented under its parent), edit/delete own, pin
+// with can.pinComment, edited marker, deleted placeholder. Web:
+// useTaskComments.js + CommentBubble.jsx.
+describe("comment thread", () => {
+  // sp_FetchTaskComment order: pinned first, then oldest first.
+  const THREAD = [
+    makeComment({ Id: 3, Comment: "Pinned note", IsPinned: true, CreatedDate: "2026-10-01T08:00:00" }),
+    makeComment({ Id: 1, Comment: "Mine, first", UserId: ME, UserName: "Me", IsEdited: true }),
+    makeComment({ Id: 2, Comment: "Later root", CreatedDate: "2026-10-01T11:00:00" }),
+    makeComment({ Id: 4, Comment: "A reply", ParentCommentId: 1, CreatedDate: "2026-10-01T12:00:00" }),
+    makeComment({ Id: 5, Comment: "Reply to the reply", ParentCommentId: 4, CreatedDate: "2026-10-01T13:00:00" }),
+    makeComment({ Id: 6, Comment: "[deleted]", UserId: ME, IsDeleted: true, CreatedDate: "2026-10-01T14:00:00" }),
+  ];
+
+  const openThread = async (role: Workspace["MyRole"] = "member") => {
+    serve({ ws: makeWorkspace({ Id: 10, MyRole: role }) });
+    jest.mocked(getTaskComments).mockResolvedValue(THREAD);
+    await mount();
+    await fireEvent.press(screen.getByText("Comments"));
+    await screen.findByText("Pinned note");
+  };
+  const longPress = (text: string) => fireEvent(screen.getByText(text), "longPress");
+
+  it("puts every reply under its thread, indented, and marks edited, deleted and pinned", async () => {
+    await openThread();
+    expect(screen.getAllByTestId(/^comment-/).map((n) => n.props.testID)).toEqual([
+      "comment-3", "comment-1", "comment-4", "comment-5", "comment-2", "comment-6",
+    ]);
+    expect(screen.getByTestId("comment-4")).toHaveStyle({ marginLeft: 36 });
+    expect(screen.getByTestId("comment-5")).toHaveStyle({ marginLeft: 36 });
+    expect(screen.getByTestId("comment-1")).not.toHaveStyle({ marginLeft: 36 });
+    expect(screen.getByText(/^Me · .* · edited$/)).toBeOnTheScreen();
+    expect(screen.getByText(/· pinned$/)).toBeOnTheScreen();
+    expect(screen.getByText("[deleted]")).toHaveStyle({ fontStyle: "italic", color: colors.textMuted });
+  });
+
+  it("offers Reply on anyone's comment, Edit and Delete only on your own, and no Pin to a member", async () => {
+    await openThread();
+    // Nothing is selected yet, so the comment sheet has no rows.
+    expect(screen.queryByText("Reply")).toBeNull();
+
+    await longPress("Later root");
+    expect(screen.getByText("Reply")).toBeOnTheScreen();
+    expect(screen.queryByText("Edit comment")).toBeNull();
+    expect(screen.queryByText("Delete comment")).toBeNull();
+    expect(screen.queryByText("Pin comment")).toBeNull();
+
+    await longPress("Mine, first");
+    expect(screen.getByText("Edit comment")).toBeOnTheScreen();
+    expect(screen.getByText("Delete comment")).toBeOnTheScreen();
+    expect(screen.queryByText("Pin comment")).toBeNull();
+  });
+
+  it("a deleted comment has no actions", async () => {
+    const { present } = spySheets();
+    await openThread("owner");
+    await longPress("[deleted]");
+    expect(present).not.toHaveBeenCalled();
+  });
+
+  it("replies to the comment pressed, and closes the sheet once it is posted", async () => {
+    await openThread();
+    const { present, dismiss } = spySheets();
+    await longPress("A reply");
+    await fireEvent.press(screen.getByText("Reply"));
+    expect(present).toHaveBeenCalledTimes(2); // the action sheet, then the compose sheet
+    expect(screen.getByText("Reply to Asha Rao")).toBeOnTheScreen();
+    await fireEvent.changeText(screen.getByPlaceholderText("Share an update…"), "Agreed");
+    await fireEvent.press(screen.getByText("Post reply"));
+    await waitFor(() => expect(addTaskComment).toHaveBeenCalled());
+    expect(body(addTaskComment)).toEqual({ TaskId: 1, Comment: "Agreed", ParentCommentId: 4, WorkspaceId: 10 });
+    await waitFor(() => expect(dismiss).toHaveBeenCalled());
+  });
+
+  it("edits your own comment from a prefilled sheet", async () => {
+    await openThread();
+    await longPress("Mine, first");
+    await fireEvent.press(screen.getByText("Edit comment"));
+    const input = screen.getByDisplayValue("Mine, first");
+    await fireEvent.changeText(input, "Mine, fixed");
+    await fireEvent.press(screen.getByText("Save comment"));
+    await waitFor(() => expect(addTaskComment).toHaveBeenCalled());
+    expect(body(addTaskComment)).toEqual({ Id: 1, TaskId: 1, Comment: "Mine, fixed", WorkspaceId: 10 });
+  });
+
+  it("a refused edit keeps the text and shows why", async () => {
+    await openThread();
+    // serve() re-arms every mutation, so the refusal goes in after it.
+    jest.mocked(addTaskComment).mockRejectedValue(serverError(403, "You can only edit your own comments"));
+    const { dismiss } = spySheets();
+    await longPress("Mine, first");
+    await fireEvent.press(screen.getByText("Edit comment"));
+    await fireEvent.changeText(screen.getByDisplayValue("Mine, first"), "Mine, fixed");
+    await fireEvent.press(screen.getByText("Save comment"));
+    expect(await screen.findByText("You can only edit your own comments")).toBeOnTheScreen();
+    expect(screen.getByDisplayValue("Mine, fixed")).toBeOnTheScreen();
+    // Only the action sheet closed (it dismisses itself before its handler).
+    expect(dismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("deletes your own comment and reloads the thread", async () => {
+    await openThread();
+    await longPress("Mine, first");
+    await fireEvent.press(screen.getByText("Delete comment"));
+    await waitFor(() => expect(deleteTaskComment).toHaveBeenCalled());
+    expect(body(deleteTaskComment)).toEqual({ Id: 1, TaskId: 1, WorkspaceId: 10 });
+    await waitFor(() => expect(getTaskComments).toHaveBeenCalledTimes(2));
+  });
+
+  it("a refused delete says why", async () => {
+    await openThread();
+    // serve() re-arms every mutation, so the refusal goes in after it.
+    jest.mocked(deleteTaskComment).mockRejectedValue(serverError(403, "Not your comment"));
+    await longPress("Mine, first");
+    await fireEvent.press(screen.getByText("Delete comment"));
+    expect(await screen.findByText("Not your comment")).toBeOnTheScreen();
+  });
+
+  it("an owner pins and unpins", async () => {
+    await openThread("owner");
+    await longPress("Later root");
+    await fireEvent.press(screen.getByText("Pin comment"));
+    await waitFor(() => expect(pinTaskComment).toHaveBeenCalled());
+    expect(body(pinTaskComment)).toEqual({ CommentId: 2, IsPinned: true, TaskId: 1, WorkspaceId: 10 });
+
+    await longPress("Pinned note");
+    await fireEvent.press(screen.getByText("Unpin comment"));
+    await waitFor(() => expect(pinTaskComment).toHaveBeenCalledTimes(2));
+    expect(body(pinTaskComment)).toEqual({ CommentId: 3, IsPinned: false, TaskId: 1, WorkspaceId: 10 });
+  });
+
+  it("a refused pin says why", async () => {
+    await openThread("owner");
+    // serve() re-arms every mutation, so the refusal goes in after it.
+    jest.mocked(pinTaskComment).mockRejectedValue(serverError(403, "Only owners and managers can pin"));
+    await longPress("Later root");
+    await fireEvent.press(screen.getByText("Pin comment"));
+    expect(await screen.findByText("Only owners and managers can pin")).toBeOnTheScreen();
   });
 });

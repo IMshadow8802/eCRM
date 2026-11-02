@@ -1,6 +1,7 @@
 import type {
   Task,
   TaskAssignee,
+  TaskComment,
   TaskPriority,
   WorkspaceRole,
   WorkspaceType,
@@ -259,4 +260,37 @@ export function abilitiesFor(
     // the server also refuses when someone else has commented - it has the last word
     deleteTask: task != null && (ws.full || (ws.member && creator && !others)),
   };
+}
+
+/**
+ * The comment list as a thread: each top-level comment (in the server's order,
+ * pinned first) followed by every reply under it, a reply to a reply included.
+ * One level of indent, like the web; deeper nesting does not fit a phone.
+ * A reply whose parent is not in the list stands as a top-level comment.
+ */
+export function threadComments(
+  comments: TaskComment[],
+): { comment: TaskComment; reply: boolean }[] {
+  const byId = new Map(comments.map((c) => [c.Id, c]));
+  const rootOf = (c: TaskComment) => {
+    let at = c;
+    const seen = new Set<number>();
+    // `seen` stops a parent loop in bad data from spinning forever.
+    while (at.ParentCommentId != null && byId.has(at.ParentCommentId) && !seen.has(at.Id)) {
+      seen.add(at.Id);
+      at = byId.get(at.ParentCommentId)!;
+    }
+    return at.Id;
+  };
+  const roots: TaskComment[] = [];
+  const replies = new Map<number, TaskComment[]>();
+  for (const c of comments) {
+    const root = rootOf(c);
+    if (root === c.Id) roots.push(c);
+    else replies.set(root, [...(replies.get(root) ?? []), c]);
+  }
+  return roots.flatMap((root) => [
+    { comment: root, reply: false },
+    ...(replies.get(root.Id) ?? []).map((comment) => ({ comment, reply: true })),
+  ]);
 }

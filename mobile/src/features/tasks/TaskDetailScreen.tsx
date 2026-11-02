@@ -14,7 +14,10 @@ import {
   MessageCircle,
   MoreVertical,
   Pencil,
+  Pin,
+  PinOff,
   Plus,
+  Reply,
   Timer,
   Trash2,
   UserCheck,
@@ -29,6 +32,7 @@ import {
   addTaskDependency,
   deleteTask,
   deleteTaskChecklist,
+  deleteTaskComment,
   fetchTaskById,
   fetchTaskDependencies,
   fetchTasks,
@@ -36,6 +40,7 @@ import {
   getTaskComments,
   logTaskTime,
   moveTaskColumn,
+  pinTaskComment,
   saveTaskChecklist,
   claimTask,
 } from "../../api/taskQueries";
@@ -44,6 +49,7 @@ import { fetchAttachments } from "../../api/attachmentQueries";
 import { fetchKanbanColumns } from "../../api/kanbanQueries";
 import { fetchWorkspaces } from "../../api/workspaceQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
+import type { TaskComment } from "../../types/api";
 import useAuthStore from "../../stores/useAuthStore";
 import { colors, radius, shadows, spacing, SCREEN_PADDING } from "../../theme";
 import {
@@ -79,12 +85,17 @@ import {
   dueLabel,
   formatHours,
   relativeTime,
+  threadComments,
 } from "./taskHelpers";
 
 type Props = StackScreenProps<RootStackParamList, "TaskDetail">;
 type Tab = "checklist" | "files" | "chat" | "tat" | "activity";
 /** Which form the one compose sheet is currently showing. */
-type Compose = "checklist" | "comment" | "time";
+type Compose = "checklist" | "comment" | "reply" | "edit" | "time";
+
+const COMMENT_FIELDS: ComposeField[] = [
+  { key: "text", placeholder: "Share an update…", multiline: true, required: true },
+];
 
 const COMPOSE_FORM: Record<
   Compose,
@@ -95,13 +106,10 @@ const COMPOSE_FORM: Record<
     submitLabel: "Add item",
     fields: [{ key: "text", placeholder: "What needs doing?", required: true }],
   },
-  comment: {
-    title: "Write a comment",
-    submitLabel: "Post comment",
-    fields: [
-      { key: "text", placeholder: "Share an update…", multiline: true, required: true },
-    ],
-  },
+  comment: { title: "Write a comment", submitLabel: "Post comment", fields: COMMENT_FIELDS },
+  // The reply title names who is being answered; see the ComposeSheet below.
+  reply: { title: "Reply", submitLabel: "Post reply", fields: COMMENT_FIELDS },
+  edit: { title: "Edit comment", submitLabel: "Save comment", fields: COMMENT_FIELDS },
   time: {
     title: "Log time",
     submitLabel: "Log time",
@@ -140,6 +148,11 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   const blockerRef = useRef<SheetRef>(null);
   const timeRef = useRef<SheetRef>(null);
   const dependencyRef = useRef<SheetRef>(null);
+  const commentMenuRef = useRef<SheetRef>(null);
+  // The comment a long-press picked: its actions, then the reply/edit target.
+  const [picked, setPicked] = useState<TaskComment | null>(null);
+  // A new object per edit, so the compose sheet reseeds (see ComposeSheet).
+  const [editSeed, setEditSeed] = useState<Record<string, string>>();
   // One picker for both directions: "blocker" = a task this one waits on,
   // "dependent" = a task that waits on this one.
   const [linkDirection, setLinkDirection] = useState<"blocker" | "dependent">("blocker");
@@ -240,6 +253,18 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
       composeRef.current?.dismiss();
       queryClient.invalidateQueries({ queryKey: ["task", taskId, "comments"] });
     },
+  });
+  const refreshComments = () =>
+    queryClient.invalidateQueries({ queryKey: ["task", taskId, "comments"] });
+  const removeComment = useMutation({
+    mutationFn: deleteTaskComment,
+    onError: (err) => toast.error(apiErrorMessage(err, "Could not delete that comment.")),
+    onSuccess: refreshComments,
+  });
+  const pinComment = useMutation({
+    mutationFn: pinTaskComment,
+    onError: (err) => toast.error(apiErrorMessage(err, "Could not pin that comment.")),
+    onSuccess: refreshComments,
   });
   const logTime = useMutation({
     mutationFn: logTaskTime,
@@ -351,10 +376,14 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
       });
       return;
     }
-    if (compose === "comment") {
+    if (compose === "comment" || compose === "reply" || compose === "edit") {
       addComment.mutate({
+        // Id > 0 edits (sp_SaveTaskComment); a reply names what it answers,
+        // like the web, so its author is the one notified.
+        ...(compose === "edit" && picked ? { Id: picked.Id } : {}),
         TaskId: taskId,
         Comment: values.text ?? "",
+        ...(compose === "reply" && picked ? { ParentCommentId: picked.Id } : {}),
         WorkspaceId: task.WorkspaceId,
       });
       return;
@@ -473,6 +502,74 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
         ]
       : []),
   ];
+
+  // What the long-pressed comment allows. The server guards each of these too
+  // (edit_own_comment, pin) — hiding a row is a courtesy.
+  const commentAllows = (c: TaskComment) => {
+    const live = !c.IsDeleted;
+    const mine = userId != null && Number(c.UserId) === Number(userId);
+    return {
+      reply: live && can.comment,
+      own: live && mine,
+      pin: live && can.pinComment,
+    };
+  };
+  const pickedAllows = picked ? commentAllows(picked) : null;
+  const commentActions: SheetAction[] = picked && pickedAllows
+    ? [
+        ...(pickedAllows.reply
+          ? [
+              {
+                key: "reply",
+                label: "Reply",
+                icon: Reply,
+                onPress: () => openCompose("reply"),
+              } satisfies SheetAction,
+            ]
+          : []),
+        ...(pickedAllows.own
+          ? [
+              {
+                key: "edit",
+                label: "Edit comment",
+                icon: Pencil,
+                onPress: () => {
+                  setEditSeed({ text: picked.Comment });
+                  openCompose("edit");
+                },
+              } satisfies SheetAction,
+              {
+                key: "delete",
+                label: "Delete comment",
+                icon: Trash2,
+                tone: "danger",
+                onPress: () =>
+                  removeComment.mutate({
+                    Id: picked.Id,
+                    TaskId: taskId,
+                    WorkspaceId: task.WorkspaceId,
+                  }),
+              } satisfies SheetAction,
+            ]
+          : []),
+        ...(pickedAllows.pin
+          ? [
+              {
+                key: "pin",
+                label: picked.IsPinned ? "Unpin comment" : "Pin comment",
+                icon: picked.IsPinned ? PinOff : Pin,
+                onPress: () =>
+                  pinComment.mutate({
+                    CommentId: picked.Id,
+                    IsPinned: !picked.IsPinned,
+                    TaskId: taskId,
+                    WorkspaceId: task.WorkspaceId,
+                  }),
+              } satisfies SheetAction,
+            ]
+          : []),
+      ]
+    : [];
 
   const moveActions: SheetAction[] = columns.map((column) => ({
     key: String(column.Id),
@@ -651,12 +748,30 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
         >
           {comments.length ? (
             <Timeline
-              entries={comments.map((c) => ({
-                key: String(c.Id),
-                title: c.Comment,
-                meta: `${c.UserName ?? "Someone"} · ${relativeTime(c.CreatedDate)}`,
-                node: <Avatar name={c.UserName} uri={c.Avatar} size={24} />,
-              }))}
+              entries={threadComments(comments).map(({ comment: c, reply }) => {
+                const allows = commentAllows(c);
+                return {
+                  key: String(c.Id),
+                  testID: `comment-${c.Id}`,
+                  title: c.Comment,
+                  meta: [
+                    c.UserName ?? "Someone",
+                    relativeTime(c.CreatedDate),
+                    ...(c.IsEdited && !c.IsDeleted ? ["edited"] : []),
+                    ...(c.IsPinned ? ["pinned"] : []),
+                  ].join(" · "),
+                  node: <Avatar name={c.UserName} uri={c.Avatar} size={24} />,
+                  indent: reply,
+                  muted: Boolean(c.IsDeleted),
+                  onLongPress:
+                    allows.reply || allows.own || allows.pin
+                      ? () => {
+                          setPicked(c);
+                          commentMenuRef.current?.present();
+                        }
+                      : undefined,
+                };
+              })}
             />
           ) : (
             <Text variant="secondary">No comments yet.</Text>
@@ -697,15 +812,21 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
 
       <ComposeSheet
         ref={composeRef}
-        title={COMPOSE_FORM[compose].title}
+        title={
+          compose === "reply" && picked
+            ? `Reply to ${picked.UserName ?? "comment"}`
+            : COMPOSE_FORM[compose].title
+        }
         submitLabel={COMPOSE_FORM[compose].submitLabel}
         fields={COMPOSE_FORM[compose].fields}
+        initialValues={compose === "edit" ? editSeed : undefined}
         busy={addItem.isPending || addComment.isPending || logTime.isPending}
         error={composeError}
         onSubmit={submit}
       />
 
       <ActionSheet ref={menuRef} title="Task actions" actions={menuActions} />
+      <ActionSheet ref={commentMenuRef} title="Comment" actions={commentActions} />
       <ActionSheet ref={moveRef} title="Move to column" actions={moveActions} />
       <ActionSheet
         ref={blockerRef}

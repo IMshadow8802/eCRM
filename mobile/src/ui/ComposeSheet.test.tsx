@@ -3,6 +3,7 @@ import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { act, fireEvent, screen } from "@testing-library/react-native";
 
 import { renderWithProviders } from "../test/renderWithProviders";
+import { Button } from "./Button";
 import { ComposeSheet, type ComposeSheetProps } from "./ComposeSheet";
 import type { SheetRef } from "./Sheet";
 
@@ -98,4 +99,34 @@ it("a single one-line field submits from the keyboard", async () => {
   await fireEvent.changeText(input, "Call back");
   await fireEvent(input, "submitEditing");
   expect(onSubmit).toHaveBeenCalledWith({ text: "Call back" }, {});
+});
+
+// Editing a comment: the sheet opens holding the comment's text.
+function Seeded() {
+  const [seed, setSeed] = useState<Record<string, string> | undefined>({ hours: "2" });
+  const [, bump] = useState(0);
+  return (
+    <>
+      <Button title="Rerender" onPress={() => bump((n) => n + 1)} />
+      <Button title="New seed" onPress={() => setSeed({ hours: "5" })} />
+      <Button title="No seed" onPress={() => setSeed(undefined)} />
+      <ComposeSheet title="Edit" submitLabel="Save" fields={FIELDS} initialValues={seed} onSubmit={jest.fn()} />
+    </>
+  );
+}
+
+it("a new prefill reseeds the fields; a re-render with the same one keeps what was typed", async () => {
+  await renderWithProviders(<Seeded />);
+  const hours = () => screen.getByPlaceholderText("Hours");
+  expect(hours()).toHaveDisplayValue("2");
+
+  await fireEvent.changeText(hours(), "3");
+  await fireEvent.press(screen.getByText("Rerender"));
+  expect(hours()).toHaveDisplayValue("3");
+
+  await fireEvent.press(screen.getByText("New seed"));
+  expect(hours()).toHaveDisplayValue("5");
+
+  await fireEvent.press(screen.getByText("No seed"));
+  expect(hours()).toHaveDisplayValue("");
 });

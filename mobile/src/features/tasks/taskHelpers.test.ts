@@ -1,4 +1,4 @@
-import { assigneesJson, makeTask } from "../../test/fixtures";
+import { assigneesJson, makeComment, makeTask } from "../../test/fixtures";
 import type { WorkspaceRole, WorkspaceType } from "../../types/api";
 import {
   abilitiesFor,
@@ -11,6 +11,7 @@ import {
   isAssignee,
   isUnassigned,
   relativeTime,
+  threadComments,
   workspaceAbilities,
 } from "./taskHelpers";
 
@@ -230,5 +231,32 @@ describe("abilitiesFor", () => {
       deleteTask: false,
       editFields: true,
     });
+  });
+});
+
+// parity: TASK-04 — replies sit under their thread, not where their date puts them.
+describe("threadComments", () => {
+  const ids = (rows: ReturnType<typeof threadComments>) => rows.map((r) => [r.comment.Id, r.reply]);
+
+  it("puts replies (and replies to replies) under the comment that started the thread", () => {
+    const rows = threadComments([
+      makeComment({ Id: 1 }),
+      makeComment({ Id: 2 }),
+      makeComment({ Id: 3, ParentCommentId: 1 }),
+      makeComment({ Id: 4, ParentCommentId: 3 }),
+    ]);
+    expect(ids(rows)).toEqual([[1, false], [3, true], [4, true], [2, false]]);
+  });
+
+  it("a reply whose parent is not in the list stands on its own", () => {
+    expect(ids(threadComments([makeComment({ Id: 5, ParentCommentId: 99 })]))).toEqual([[5, false]]);
+  });
+
+  it("a parent loop cannot hang it", () => {
+    const rows = threadComments([
+      makeComment({ Id: 1, ParentCommentId: 2 }),
+      makeComment({ Id: 2, ParentCommentId: 1 }),
+    ]);
+    expect(rows).toHaveLength(2);
   });
 });

@@ -11,6 +11,7 @@ import type {
   LoginData,
   Pagination,
   Task,
+  TaskComment,
   Ticket,
   Workspace,
 } from "../types/api";
@@ -99,6 +100,22 @@ export const makeWorkspace = (patch: Partial<Workspace> = {}): Workspace => ({
   MyRole: "owner",
   MyInviteStatus: "active",
   MemberCount: 2,
+  ...patch,
+});
+
+export const makeComment = (patch: Partial<TaskComment> = {}): TaskComment => ({
+  Id: 1,
+  TaskId: 1,
+  Comment: "A comment",
+  UserId: 7,
+  UserName: "Asha Rao",
+  Avatar: null,
+  ParentCommentId: null,
+  IsPinned: false,
+  IsDeleted: false,
+  IsEdited: false,
+  CreatedDate: "2026-10-01T10:00:00",
+  UpdatedDate: null,
   ...patch,
 });
 

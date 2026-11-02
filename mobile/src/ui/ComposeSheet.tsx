@@ -44,6 +44,12 @@ export interface ComposeSheetProps {
    * sheet does not clear itself on submit — see `submit` below.
    */
   error?: string | null;
+  /**
+   * Prefill — editing an existing comment. Pass a NEW object each time the
+   * sheet should be reseeded; the same object is ignored, so a re-render does
+   * not wipe what the user has typed since.
+   */
+  initialValues?: Record<string, string>;
   onSubmit: (
     values: Record<string, string>,
     choices: Record<string, string | number>,
@@ -62,17 +68,24 @@ export interface ComposeSheetProps {
  */
 export const ComposeSheet = forwardRef<SheetRef, ComposeSheetProps>(
   function ComposeSheet(
-    { title, submitLabel, fields, choices = [], busy = false, error, onSubmit },
+    { title, submitLabel, fields, choices = [], busy = false, error, initialValues, onSubmit },
     ref,
   ) {
-    const [values, setValues] = useState<Record<string, string>>({});
+    const [values, setValues] = useState<Record<string, string>>(initialValues ?? {});
+    // Reseed during render when the caller hands over a new prefill (React's
+    // "adjusting state when a prop changes" pattern — no effect, no flash).
+    const [seed, setSeed] = useState(initialValues);
+    if (seed !== initialValues) {
+      setSeed(initialValues);
+      setValues(initialValues ?? {});
+    }
     const [picked, setPicked] = useState<Record<string, string | number>>({});
 
     const set = (key: string, value: string) =>
       setValues((prev) => ({ ...prev, [key]: value }));
 
     const reset = () => {
-      setValues({});
+      setValues(initialValues ?? {});
       setPicked({});
     };
 

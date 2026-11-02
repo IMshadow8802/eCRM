@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import type { LucideIcon } from "lucide-react-native";
 
 import { colors, radius, spacing } from "../theme";
@@ -19,6 +19,13 @@ export interface TimelineEntry {
    * NODE px and round, since it sits on the rail where the dot would be.
    */
   node?: ReactNode;
+  testID?: string;
+  /** A reply: sits one step in, under the entry it answers. */
+  indent?: boolean;
+  /** Something that is gone (a deleted comment): muted and italic. */
+  muted?: boolean;
+  /** Long-press opens the entry's actions. Omit it when there are none. */
+  onLongPress?: () => void;
 }
 
 export interface TimelineProps {
@@ -50,7 +57,11 @@ export function Timeline({ entries }: TimelineProps) {
         const last = i === entries.length - 1;
 
         return (
-          <View key={entry.key} style={styles.row}>
+          <View
+            key={entry.key}
+            testID={entry.testID}
+            style={[styles.row, entry.indent && styles.indent]}
+          >
             <View style={styles.rail}>
               <View style={[styles.segment, styles.head, first && styles.hidden]} />
               {entry.node ?? (
@@ -65,14 +76,26 @@ export function Timeline({ entries }: TimelineProps) {
               <View style={[styles.segment, styles.tail, last && styles.hidden]} />
             </View>
 
-            <View style={styles.body}>
-              <Text variant="body">{entry.title}</Text>
+            <Pressable
+              style={styles.body}
+              disabled={!entry.onLongPress}
+              onLongPress={entry.onLongPress}
+            >
+              {/* ponytail: no Inter italic is loaded, so iOS may draw it
+                  upright; the muted colour is what reliably reads as "gone". */}
+              <Text
+                variant="body"
+                color={entry.muted ? "textMuted" : undefined}
+                style={entry.muted ? styles.muted : undefined}
+              >
+                {entry.title}
+              </Text>
               {entry.meta ? (
                 <Text variant="caption" color="textMuted">
                   {entry.meta}
                 </Text>
               ) : null}
-            </View>
+            </Pressable>
           </View>
         );
       })}
@@ -82,6 +105,9 @@ export function Timeline({ entries }: TimelineProps) {
 
 const styles = StyleSheet.create({
   row: { flexDirection: "row", gap: spacing[3] },
+  // One node plus the gap: a reply's node lines up under its parent's text.
+  indent: { marginLeft: NODE + spacing[3] },
+  muted: { fontStyle: "italic" },
   rail: { width: NODE, alignItems: "center" },
   segment: { width: RAIL, backgroundColor: colors.border },
   // Reaches from the top of the row up to the node.

@@ -290,6 +290,9 @@ export interface TaskComment {
   Avatar: string | null;
   ParentCommentId: number | null;
   IsPinned: boolean | null;
+  /** sp_FetchTaskComment sends deleted rows too, with Comment = "[deleted]". */
+  IsDeleted: boolean | null;
+  IsEdited: boolean | null;
   CreatedDate: string;
   UpdatedDate: string | null;
 }

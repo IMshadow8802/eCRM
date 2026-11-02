@@ -406,6 +406,8 @@ describe("tabs", () => {
         Avatar: null,
         ParentCommentId: null,
         IsPinned: null,
+        IsDeleted: null,
+        IsEdited: null,
         CreatedDate: new Date().toISOString(),
         UpdatedDate: null,
       },
