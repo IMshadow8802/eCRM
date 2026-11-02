@@ -31,6 +31,7 @@ export const LOOKUP_KIND = {
   callOutcome: "call_outcome",
   transferReason: "transfer_reason",
   leadSource: "lead_source",
+  leadStatus: "lead_status",
   lostReason: "lost_reason",
   taskHoldReason: "task_hold_reason",
   taskBreachReason: "task_breach_reason",

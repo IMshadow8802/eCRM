@@ -596,6 +596,122 @@ export interface TicketDetail {
   linkedLead: LinkedLead | null;
 }
 
+// ------------------------------------------------------------------- lead
+
+/**
+ * tblLookup Kind='lead_status' codes. Active = open | qualified. `converted`
+ * (Won) is written only by sp_ConvertLead; sp_SetLeadStatus refuses it.
+ */
+export type LeadStatusCode = "open" | "qualified" | "converted" | "lost" | "junk";
+
+/** A row of sp_FetchLeads (and RS1 of sp_FetchLeadDetail) — names joined. */
+export interface Lead {
+  Id: number;
+  BranchId: number | null;
+  BranchName: string | null;
+  Name: string;
+  Company: string | null;
+  MobileNo: string | null;
+  AltMobile: string | null;
+  Email: string | null;
+  Address: string | null;
+  City: string | null;
+  State: string | null;
+  Pincode: string | null;
+  SourceId: number | null;
+  SourceName: string | null;
+  PartnerId: number | null;
+  PartnerName: string | null;
+  ProductId: number | null;
+  ProductName: string | null;
+  StatusId: number;
+  StatusName: string | null;
+  StatusCode: LeadStatusCode | null;
+  OwnerId: number | null;
+  OwnerName: string | null;
+  OwnerAvatar: string | null;
+  EstValue: number | null;
+  Remarks: string | null;
+  NextFollowupDate: string | null;
+  /** Computed by the SP: next follow-up before today on an active lead. */
+  IsOverdue: boolean;
+  LostReasonId: number | null;
+  /** Detail only. */
+  LostReason?: string | null;
+  WonAt: string | null;
+  WonValue: number | null;
+  CustomerId: number | null;
+  /** Detail only. */
+  CustomerName?: string | null;
+  LostAt: string | null;
+  AssignedAt: string | null;
+  CreatedBy: number | null;
+  CreatedAt: string;
+  UpdatedAt: string | null;
+}
+
+/** A row of tblLeadActivity (sp_FetchLeadDetail RS3), author joined. */
+export interface LeadActivityEntry {
+  Id: number;
+  LeadId: number;
+  UserId: number | null;
+  UserName: string | null;
+  Type: string;
+  Summary: string | null;
+  CreatedAt: string;
+}
+
+/** A row of tblLeadAssignment (RS5) — same shape as a ticket transfer. */
+export type LeadAssignment = TicketAssignment;
+
+export type FollowUpType = "call" | "visit" | "meeting" | "other";
+export type FollowUpStatus = "open" | "done" | "skipped";
+
+/**
+ * A row of tblFollowUp. The queue (sp_FetchFollowUps without a LeadId) adds
+ * the lead's name, company, mobile and status; the per-lead list does not.
+ */
+export interface FollowUp {
+  Id: number;
+  LeadId: number;
+  Type: FollowUpType;
+  DueAt: string;
+  Status: FollowUpStatus;
+  AssignedTo: number | null;
+  AssignedToName: string | null;
+  DoneAt: string | null;
+  DoneBy: number | null;
+  DoneByName: string | null;
+  OutcomeId: number | null;
+  Outcome: string | null;
+  Remarks: string | null;
+  Direction: "in" | "out" | null;
+  /** Minutes. */
+  Duration: number | null;
+  /** Computed by the SP: open and due before today. */
+  IsOverdue: boolean;
+  CreatedBy: number | null;
+  CreatedAt: string;
+  LeadName?: string | null;
+  LeadCompany?: string | null;
+  LeadMobile?: string | null;
+  OwnerName?: string | null;
+  LeadStatus?: string | null;
+  LeadStatusCode?: LeadStatusCode | null;
+}
+
+/**
+ * sp_FetchLeadDetail's result sets, named by the controller. `commissions`
+ * is web-only (partners) and dropped.
+ */
+export interface LeadDetail {
+  lead: Lead | null;
+  fields: CustomFieldValue[];
+  activity: LeadActivityEntry[];
+  followups: FollowUp[];
+  assignments: LeadAssignment[];
+}
+
 /** A row of sp_FetchCustomers RS1 — tblCustomer plus branch name and counts. */
 export interface Customer {
   Id: number;

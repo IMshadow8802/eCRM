@@ -41,6 +41,7 @@ const CASES: [string, Case][] = [
   // ------------------------------------------------------------- reference data
   ["fetchProducts", { call: products.fetchProducts, url: "/api/products/fetchProducts", key: "products", body: { PageNumber: 1, PageSize: 200, SearchTerm: null, CategoryId: null, IsActive: true } }],
   ["fetchLookups", { call: () => config.fetchLookups({ Kind: config.LOOKUP_KIND.priority }), url: "/api/config/fetchLookups", key: "lookups", body: { Kind: "priority" } }],
+  ["fetchLookups lead_status", { call: () => config.fetchLookups({ Kind: config.LOOKUP_KIND.leadStatus }), url: "/api/config/fetchLookups", key: "lookups", body: { Kind: "lead_status" } }],
   ["fetchCustomFields", { call: () => config.fetchCustomFields({ Entity: "ticket" }), url: "/api/config/fetchCustomFields", key: "customFields", body: { Entity: "ticket" } }],
   ["fetchUserDirectory", { call: users.fetchUserDirectory, url: "/api/users/directory", key: "users", body: {} }],
   ["fetchAssignableUsers default", { call: users.fetchAssignableUsers, url: "/api/users/fetchAssignableUsers", key: "users", body: { BranchId: null, Module: "leads" } }],
