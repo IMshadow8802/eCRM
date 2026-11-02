@@ -161,10 +161,12 @@ export default function ComplaintsScreen({ navigation }: Props) {
     [ticketsQuery.data],
   );
   const total = ticketsQuery.data?.pages[0]?.data?.pagination.totalRecords ?? tickets.length;
-  const { hasNextPage, isFetchingNextPage, fetchNextPage } = ticketsQuery;
+  const { hasNextPage, isFetchingNextPage, fetchNextPage, isPlaceholderData } = ticketsQuery;
+  // The old rows under a new search are placeholders: their end is not this
+  // query's end, so it asks for nothing more until the new page 1 lands.
   const loadMore = useCallback(() => {
-    if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+    if (hasNextPage && !isFetchingNextPage && !isPlaceholderData) void fetchNextPage();
+  }, [hasNextPage, isFetchingNextPage, isPlaceholderData, fetchNextPage]);
   const narrowed = status !== "active" || term.length > 0;
 
   const openTicket = useCallback(
@@ -211,7 +213,9 @@ export default function ComplaintsScreen({ navigation }: Props) {
         keyboardShouldPersistTaps="handled"
         refreshControl={
           <Refresher
-            refreshing={ticketsQuery.isRefetching && !ticketsQuery.isLoading}
+            // A new search/queue also counts as refetching under
+            // keepPreviousData; only a real pull shows the spinner.
+            refreshing={ticketsQuery.isRefetching && !isPlaceholderData}
             onRefresh={ticketsQuery.refetch}
           />
         }

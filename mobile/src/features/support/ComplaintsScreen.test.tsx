@@ -132,5 +132,23 @@ describe("search", () => {
     await act(async () => { jest.advanceTimersByTime(300); });
     await waitFor(() => expect(fetchTickets).toHaveBeenLastCalledWith(expect.objectContaining({ SearchTerm: "sharma" })));
     expect(screen.getByText("Inverter keeps tripping")).toBeOnTheScreen();
+    // A new search is not a pull-to-refresh: no spinner over the old rows.
+    expect(screen.getByTestId("complaints-list").props.refreshControl.props.refreshing).toBe(false);
+  });
+
+  it("reaching the end of the old list during a new search asks for no next page", async () => {
+    jest.mocked(fetchTickets).mockResolvedValue(
+      envelope({ tickets: [row], pagination: pagination(120, { totalPages: 3 }) }),
+    );
+    await mount();
+    await screen.findByText("Inverter keeps tripping");
+    jest.mocked(fetchTickets).mockReturnValue(new Promise(() => {}));
+    await fireEvent.changeText(box(), "sharma");
+    await act(async () => { jest.advanceTimersByTime(300); });
+    await waitFor(() => expect(fetchTickets).toHaveBeenLastCalledWith(expect.objectContaining({ SearchTerm: "sharma" })));
+    const calls = jest.mocked(fetchTickets).mock.calls.length;
+    await fireEvent(screen.getByTestId("complaints-list"), "onEndReached");
+    await act(async () => { jest.advanceTimersByTime(50); });
+    expect(fetchTickets).toHaveBeenCalledTimes(calls);
   });
 });
