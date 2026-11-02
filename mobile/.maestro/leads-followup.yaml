@@ -1,7 +1,19 @@
-# Schedule a follow-up for Tomorrow, log one with the next In 3 days, skip one.
+# Log follow-up (action bar) finishes the booked call and books the next In 3
+# days; Schedule a visit for Tomorrow from the menu; skip it from its row.
 appId: com.shadowider.eCRM
 ---
 - runFlow: common/new-lead.yaml
+- tapOn: "Log follow-up"
+- assertVisible: "Log the call"
+- tapOn: "In 3 days"
+- tapOn: "What was discussed — the next person reads this"
+- inputText: "MAESTRO call done ${output.stamp}"
+- hideKeyboard
+- takeScreenshot: followup-log-sheet
+- tapOn: "Mark done"
+- waitForAnimationToEnd
+- assertNotVisible: "Log the call"
+
 - tapOn: "Lead actions"
 - tapOn: "Schedule follow-up"
 - assertVisible: "Schedule follow-up"
@@ -9,31 +21,18 @@ appId: com.shadowider.eCRM
 - tapOn: "Tomorrow"
 - tapOn: "Add follow-up"
 - waitForAnimationToEnd
-- tapOn: "Follow-ups.*"
-- assertVisible: "Visit"
-- tapOn:
-    text: "Log"
-    index: 0
-- assertVisible: "Log the visit"
-- tapOn: "In 3 days"
-- tapOn: "Connected"
-- tapOn: "What was discussed — the next person reads this"
-- inputText: "MAESTRO visit ${output.stamp}"
-- tapOn: "Mark done"
-- waitForAnimationToEnd
-# The visit is done and a new one is booked in 3 days.
-- assertVisible: "Done"
-- assertVisible: ".*visit ${output.stamp}.*"
-- assertVisible: "Due .*"
-- takeScreenshot: followup-logged
+- assertNotVisible: "Add follow-up"
 
-- tapOn:
-    text: "Skip"
-    index: 0
+- tapOn: "Follow-ups, \\d+"
+- assertVisible: ".*MAESTRO call done ${output.stamp}.*"
+- takeScreenshot: followup-logged
+- tapOn: ".*Visit.*"
+- tapOn: "Skip"
 - assertVisible: "Skip this follow-up"
 - tapOn: "Why it is not happening"
 - inputText: "MAESTRO skip ${output.stamp}"
+- hideKeyboard
 - tapOn: "Skip follow-up"
 - waitForAnimationToEnd
-- assertVisible: "Skipped"
+- assertVisible: ".*Skipped.*"
 - takeScreenshot: followup-skipped

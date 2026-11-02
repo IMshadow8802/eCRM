@@ -2,34 +2,43 @@
 appId: com.shadowider.eCRM
 ---
 - runFlow: common/new-complaint.yaml
-- tapOn: "Complaint actions"
 - tapOn: "Transfer"
-- assertVisible: "Transfer to…"
+- assertVisible: "Transfer complaint"
+- tapOn:
+    id: "transfer-search"
+- inputText: "Amit Singh"
+- hideKeyboard
 - tapOn: "Amit Singh \\(Exec HO, under Neha\\)"
-- assertVisible: "Transfer to Amit Singh.*"
-- assertVisible: "Remarks \\*"
 - tapOn: "Overloaded"
-- tapOn: "Anything the next person should know"
+- tapOn:
+    id: "transfer-remarks"
 - inputText: "MAESTRO transfer ${output.stamp}"
-- tapOn: "Transfer"
+- hideKeyboard
+- takeScreenshot: transfer-sheet
+- tapOn: "Transfer to Amit Singh \\(Exec HO, under Neha\\)"
+- waitForAnimationToEnd
+- assertNotVisible: "Transfer complaint"
 - assertVisible: "Amit Singh \\(Exec HO, under Neha\\)"
 - assertNotVisible: "Unassigned"
-- waitForAnimationToEnd
 
-- tapOn: "Complaint actions"
-- assertVisible: "Now with Amit Singh.*"
+# Escalate is on the action bar once someone is working it.
 - tapOn: "Escalate"
-- assertVisible: "Escalate to…"
+- assertVisible: "Escalate complaint"
+- assertVisible: "TKT-\\d+ · it stays with Amit Singh.*"
 - tapOn: "Neha Gupta \\(TL Head Office\\)"
-- assertVisible: "Escalate to Neha Gupta.*"
-- tapOn: "What they need to know — they get a notification"
+- tapOn:
+    id: "escalate-remarks"
 - inputText: "MAESTRO escalate ${output.stamp}"
-- tapOn: "Escalate"
+- hideKeyboard
+- takeScreenshot: escalate-sheet
+- tapOn:
+    text: "Escalate.*"
+    below:
+      id: "escalate-remarks"
 - waitForAnimationToEnd
-- scrollUntilVisible:
-    element: "Escalated to"
-- assertVisible: "Neha Gupta \\(TL Head Office\\)"
-- tapOn: "History.*"
-- assertVisible: ".*transfer ${output.stamp}.*"
-- assertVisible: ".*escalate ${output.stamp}.*"
+- assertNotVisible: "Escalate complaint"
+- assertVisible: "Escalated to Neha Gupta.*"
+# The activity names both moves (the transfer line carries its reason).
+- assertVisible: "Transferred to Amit Singh .* — Overloaded"
+- assertVisible: "Escalated to Neha Gupta .* — MAESTRO escalate ${output.stamp}"
 - takeScreenshot: transfer-escalate-history

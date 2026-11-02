@@ -1,35 +1,48 @@
-# Qualified in one tap; Lost cannot be saved without a reason; Won for
-# 50000 shows the won banner.
+# Qualified via the status sheet; Lost cannot be saved without a reason (the
+# reason picker opens over the sheet); Won for 50000 shows the won banner.
 appId: com.shadowider.eCRM
 ---
 - runFlow: common/new-lead.yaml
-- tapOn: "Lead actions"
-- tapOn: "Change status"
+- tapOn: "Status"
+- assertVisible: "MAESTRO Lead ${output.stamp} · now New"
 - tapOn: "Qualified"
-- assertVisible: "MAESTRO Co ${output.stamp} · Qualified"
+- tapOn: "Save · mark qualified"
 - waitForAnimationToEnd
+- assertNotVisible: "Change status.*now.*"
+- assertVisible: "Qualified"
 
-- tapOn: "Lead actions"
-- tapOn: "Change status"
+- tapOn: "Status"
+- assertVisible: ".* · now Qualified"
 - tapOn: "Lost"
-- assertVisible: "Mark as Lost"
 - assertVisible: "Why was it lost\\? \\*"
 - assertVisible:
-    text: "Mark lost"
+    text: "Save · mark lost"
     enabled: false
 - takeScreenshot: status-lost-blocked
-- back
+# The reason picker is a sheet over the status sheet (both stay); a reason
+# enables Save. Close without saving — the lead stays Qualified.
+- tapOn: "Why was it lost\\?: .*"
 - waitForAnimationToEnd
-- assertVisible: "MAESTRO Co ${output.stamp} · Qualified"
+- tapOn: "No Budget"
+- assertVisible: "Why was it lost\\?: No Budget"
+- assertVisible:
+    text: "Save · mark lost"
+    enabled: true
+- tapOn:
+    text: "Close"
+    rightOf:
+      text: "Change status"
+- waitForAnimationToEnd
+- assertVisible: "Qualified"
 
-- tapOn: "Lead actions"
-- tapOn: "Change status"
+- tapOn: "Status"
 - tapOn: "Won"
-- assertVisible: "Mark as Won"
-- tapOn: "e.g. 50,000"
+- tapOn: "Amount in rupees"
 - inputText: "50000"
-- tapOn: "Mark won"
+- hideKeyboard
+- tapOn: "Save · mark won"
 - waitForAnimationToEnd
+# The won card leads the Details tab.
+- tapOn: "Details"
 - assertVisible: "Won for ₹50,000"
-- assertVisible: "MAESTRO Co ${output.stamp} · Won"
 - takeScreenshot: status-won

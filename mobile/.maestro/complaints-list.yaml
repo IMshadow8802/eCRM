@@ -1,26 +1,34 @@
+# The queue (E 10): five presets with counts, the status pills led by
+# "Active n" (equal to the preset), search, and the empty state.
 appId: com.shadowider.eCRM
 ---
 - runFlow: common/open-work.yaml
-- tapOn: "My complaints"
-- assertVisible: "Log and track|\\d+ assigned to you"
-- tapOn: "Team"
-- assertVisible: ".*in your team"
-- tapOn: "Overdue"
-- assertVisible: ".*overdue"
-# Five presets: the strip scrolls sideways past the fourth.
-- swipe:
-    from: "Overdue"
-    direction: LEFT
-- tapOn: "Escalated"
-- assertVisible: ".*escalated"
-- swipe:
-    from: "Escalated"
-    direction: RIGHT
-- tapOn: "Mine"
-- tapOn: "Ticket no., subject, customer or mobile"
-- inputText: "zzzz-no-match"
-- assertVisible: "Nothing matches"
-- eraseText: 20
-- hideKeyboard
+- tapOn: "Open My complaints"
+- assertVisible: "Complaints"
+- assertVisible:
+    id: "complaint-presets"
+- assertVisible: "Mine, \\d+"
+- tapOn: "Team, \\d+"
+- assertVisible: "Active, \\d+"
+- assertVisible:
+    id: "complaints-list"
+- tapOn: "Unassigned, \\d+"
+- assertVisible: "Active, \\d+"
+- tapOn: "Overdue, \\d+"
+- assertVisible: "Active, \\d+"
+- assertVisible: "Overdue \\d+ d"
 - takeScreenshot: complaints-list
-- back
+- tapOn: "Escalated, \\d+"
+- assertVisible: "Active, \\d+"
+# A status pill narrows within the preset.
+- tapOn: "Team, \\d+"
+- tapOn: "New, \\d+"
+- waitForAnimationToEnd
+- tapOn: "Active, \\d+"
+- tapOn: "Search number, customer, mobile"
+- inputText: "zzzz-no-match"
+- hideKeyboard
+- assertVisible: "Nothing matches"
+- tapOn: "Clear search"
+- assertVisible:
+    id: "complaints-list"

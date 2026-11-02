@@ -1,30 +1,27 @@
-# Adds its own lead, so it passes on a clean company too.
+# Leads (E 14): presets with counts (Mine · All · Overdue · New · Unassigned),
+# the status pills, search. Adds its own lead, so it passes on a clean company.
 appId: com.shadowider.eCRM
 ---
 - runFlow: common/new-lead.yaml
 - back
 - assertVisible: "\\d+ yours"
-- tapOn: "All"
-- assertVisible: "\\d+ you can see"
-- tapOn: "Overdue"
-- assertVisible: "\\d+ overdue"
-- swipe:
-    from: "Overdue"
-    direction: LEFT
-- tapOn: "Unassigned"
-- assertVisible: "\\d+ unassigned"
-- swipe:
-    from: "Unassigned"
-    direction: RIGHT
-- tapOn: "Mine"
-- tapOn: "Name, company or mobile"
+- tapOn: "All, \\d+"
+- assertVisible: "All, \\d+"
+- tapOn: "Overdue, \\d+"
+- assertVisible:
+    id: "leads-list"
+- tapOn: "New, \\d+"
+- tapOn: "Unassigned, \\d+"
+- tapOn: "Mine, \\d+"
+- tapOn: "Search name, company, mobile"
 - inputText: "zzzz-no-match"
-- assertVisible: "Nothing matches"
-- eraseText: 20
 - hideKeyboard
-- tapOn: "Name, company or mobile"
+- assertVisible: "Nothing matches"
+- tapOn: "Clear search"
+- tapOn: "Search name, company, mobile"
 - inputText: "${output.stamp}"
 - hideKeyboard
-- assertVisible: "MAESTRO Lead ${output.stamp}"
+- assertVisible: "MAESTRO Lead ${output.stamp}.*"
 - assertVisible: "1 yours"
 - takeScreenshot: leads-list
+- tapOn: "Clear search"

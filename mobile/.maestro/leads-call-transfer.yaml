@@ -4,19 +4,17 @@ appId: com.shadowider.eCRM
 - runFlow: common/new-lead.yaml
 - tapOn: "Lead actions"
 - tapOn: "Log a call"
-- assertVisible: "Log a call"
+- assertVisible: "Direction"
 - tapOn: "Outgoing"
-- tapOn: "Connected"
-- tapOn: "What was said"
-- inputText: "MAESTRO lead call ${output.stamp}"
+- tapOn: "5"
 - tapOn:
-    id: "compose-minutes"
-- inputText: "3"
-- tapOn: "Log call"
-- assertNotVisible: "Log call"
+    id: "logcall-notes"
+- inputText: "MAESTRO lead call ${output.stamp}"
+- hideKeyboard
+- tapOn: "Save call"
+- assertNotVisible: "Save call"
 - waitForAnimationToEnd
 
-- tapOn: "Lead actions"
 - tapOn: "Transfer"
 - assertVisible: "Transfer to…"
 - takeScreenshot: lead-transfer-picker
@@ -25,10 +23,14 @@ appId: com.shadowider.eCRM
 - tapOn: "Overloaded"
 - tapOn: "Anything the next person should know"
 - inputText: "MAESTRO lead transfer ${output.stamp}"
-- tapOn: "Transfer"
+- hideKeyboard
+- tapOn:
+    text: "Transfer"
+    below:
+      text: "Anything the next person should know|MAESTRO lead transfer.*"
 - waitForAnimationToEnd
 - assertVisible: "Amit Singh \\(Exec HO, under Neha\\)"
-- tapOn: "History"
-- assertVisible: ".*lead call ${output.stamp}.*"
-- assertVisible: ".*lead transfer ${output.stamp}.*"
+- tapOn: "Activity"
+- assertVisible: ".*MAESTRO lead call ${output.stamp}.*"
+- assertVisible: ".*Amit Singh.*"
 - takeScreenshot: lead-call-transfer-history

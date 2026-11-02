@@ -5,8 +5,13 @@ appId: com.shadowider.eCRM
     file: common/new-lead.yaml
     env:
       MOBILE: "+91 98250 12345"
-- assertVisible: "9825012345"
-- assertVisible: "MAESTRO Co ${output.stamp}"
-- assertVisible: "₹1,20,000"
-- assertVisible: "Ayush Mishra"
+- assertVisible: "98250 12345"
+- assertVisible: ".*MAESTRO Co ${output.stamp}.*"
+- assertVisible: ".*1,20,000.*"
+- assertVisible: ".*Ayush Mishra.*"
+# The action bar (E 15): Call · Message · Log follow-up (main) · Status · Transfer.
+- assertVisible:
+    id: "action-bar"
+- assertVisible: "Log follow-up"
+- assertVisible: "Status"
 - takeScreenshot: lead-created-detail

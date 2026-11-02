@@ -1,54 +1,68 @@
 # Log a call, then On Hold -> In Progress -> Resolved (resolution + remarks);
-# the history shows every step.
+# the activity shows every step.
 appId: com.shadowider.eCRM
 ---
 - runFlow: common/new-complaint.yaml
-- tapOn: "Complaint actions"
-- tapOn: "Log a call"
-- tapOn: "Outgoing"
-- tapOn: "Connected"
-- tapOn: "What was said"
-- inputText: "MAESTRO call ${output.stamp}"
-- tapOn:
-    id: "compose-minutes"
-- inputText: "5"
-- takeScreenshot: lifecycle-call
 - tapOn: "Log call"
+- assertVisible: "Direction"
+- tapOn: "Outgoing"
+- tapOn: "5"
+- tapOn:
+    id: "logcall-notes"
+- inputText: "MAESTRO call ${output.stamp}"
+- hideKeyboard
+- tapOn: "Keep open"
+- takeScreenshot: lifecycle-call
+- tapOn: "Save call"
 # The sheet closes once the call is saved.
-- assertNotVisible: "Log call"
+- assertNotVisible: "Save call"
 - waitForAnimationToEnd
 
-- tapOn: "Complaint actions"
-- tapOn: "Change status"
-# A move that needs no remarks applies in one tap.
-- tapOn: "On Hold"
-- assertVisible: "TKT-\\d+ · On Hold"
+# On hold from the action bar: a sheet with optional remarks.
+- tapOn: "On hold"
+- assertVisible: "TKT-\\d+ · MAESTRO complaint ${output.stamp}"
+- tapOn:
+    id: "compose-remarks"
+- inputText: "MAESTRO hold ${output.stamp}"
+- hideKeyboard
+- tapOn:
+    text: "Put on hold"
+    below:
+      id: "compose-remarks"
+- assertNotVisible: "Optional note for the history"
+- assertVisible: "On Hold"
 # The closing sheet's backdrop eats a tap made mid-animation.
 - waitForAnimationToEnd
 
 - tapOn: "Complaint actions"
 - tapOn: "Change status"
-- tapOn: "In Progress"
-- assertVisible: "TKT-\\d+ · In Progress"
+- tapOn: "Move to In Progress"
+- assertVisible: "In Progress"
 - waitForAnimationToEnd
 
-- tapOn: "Complaint actions"
 - tapOn: "Resolve"
-- assertVisible: "Mark as Resolved"
+- assertVisible: "Resolve complaint"
 - assertVisible: "Remarks \\*"
-- tapOn: "Fixed"
-- tapOn: "Why — this goes on the history"
-- inputText: "MAESTRO resolved ${output.stamp}"
-- takeScreenshot: lifecycle-resolve-sheet
-- tapOn: "Update status"
-- assertVisible: "TKT-\\d+ · Resolved"
-- assertVisible: "Fixed"
+- tapOn: "Resolution: How was it fixed\\?"
+# The picker stacks over the Resolve sheet; tap once it has settled.
 - waitForAnimationToEnd
-
-# History: the call and every move are on it.
-- tapOn: "History.*"
-- assertVisible: ".*call ${output.stamp}.*"
-- assertVisible: ".*resolved ${output.stamp}.*"
-- scrollUntilVisible:
-    element: ".*On Hold.*"
+- tapOn: "Fixed"
+- assertVisible: "Resolution: Fixed"
+- tapOn:
+    id: "resolve-remarks"
+- inputText: "MAESTRO resolved ${output.stamp}"
+- hideKeyboard
+- takeScreenshot: lifecycle-resolve-sheet
+- tapOn: "Save · mark resolved"
+- waitForAnimationToEnd
+- assertVisible: "Resolved"
+# Activity: the call and every move are on it, newest first.
+- assertVisible: ".*In Progress → Resolved — MAESTRO resolved ${output.stamp}"
+- assertVisible: ".*On Hold → In Progress"
+- assertVisible: ".*New → On Hold — MAESTRO hold ${output.stamp}"
+- assertVisible: "MAESTRO call ${output.stamp}"
 - takeScreenshot: lifecycle-history
+# The resolution is on the Details card.
+- scrollUntilVisible:
+    element: "Fixed"
+- assertVisible: "Resolution"

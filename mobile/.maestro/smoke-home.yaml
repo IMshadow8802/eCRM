@@ -1,21 +1,40 @@
+# Today (E 04): hero (mine) → My team → tiles → Needs you; the five tabs; the
+# Create sheet from "+ New" (04b); More (19) with sign-out moved there.
 appId: com.shadowider.eCRM
 ---
-# The test user has every module: Home · Tasks · Complaints · Leads · More,
-# with Follow-ups under More.
 - runFlow: common/open-work.yaml
-- assertVisible: "My tasks"
 - assertVisible: "My complaints"
-- assertVisible: "My leads"
-- assertVisible: "Follow-ups due today"
-- assertVisible: "Tasks"
-- assertVisible: "Complaints"
-- assertVisible: "Leads"
+- assertVisible: "Open My complaints"
+# §7.9: the user's reach is wider than Own, so the team card shows.
+- assertVisible:
+    id: "team-card"
+- assertVisible: "Tasks, \\d+ assigned to you"
+- assertVisible: "Follow-ups, \\d+ due today"
+- assertVisible: "Leads, \\d+ yours"
+- assertVisible:
+    id: "bottom-bar"
+- assertVisible:
+    id: "pill-Tasks"
+- assertVisible:
+    id: "pill-Complaints"
+- assertVisible:
+    id: "pill-Leads"
+- assertVisible:
+    id: "pill-More"
 - takeScreenshot: smoke-home
+- tapOn: "New new"
+- assertVisible: "What do you want to start\\?"
+- assertVisible: "New task"
+- assertVisible: "New complaint"
+- assertVisible: "New lead"
+- takeScreenshot: smoke-create
+- back
+- waitForAnimationToEnd
 - tapOn:
-    text: "More"
-    index: 0
-- assertVisible: "Inbox"
-- assertVisible: "Workspaces"
-- assertVisible: "Follow-ups"
+    id: "pill-More"
+- assertVisible: "Inbox.*"
+- assertVisible: "Workspaces.*"
+- assertVisible: "Follow-ups.*"
 - assertVisible: "Profile"
+- assertVisible: "Sign out"
 - takeScreenshot: smoke-more

@@ -16,11 +16,14 @@ appId: com.shadowider.eCRM
       - launchApp:
           stopApp: false
       - waitForAnimationToEnd
-# Lands on Home. Open a list through Home's rows ("My complaints", "My leads",
-# "Follow-ups due today"), not its tab: the tabs stay mounted between flows and
-# keep whatever queue, chip or search the last flow left, while Home's rows
-# navigate with a filter that resets all three.
+# Lands on Today. Open a list through Home's figures ("Open My complaints",
+# the Leads and Follow-ups tiles), not its tab: the tabs stay mounted between
+# flows and keep whatever preset, pill or search the last flow left, while
+# Home navigates with a filter that resets all three.
+# The bar's Today tab by id: a pushed Follow-ups screen has a "Today" view too.
 - tapOn:
-    text: "Home"
-    index: 0
-- assertVisible: "Today"
+    id: "pill-Home"
+- extendedWaitUntil:
+    visible:
+      id: "home-list"
+    timeout: 15000

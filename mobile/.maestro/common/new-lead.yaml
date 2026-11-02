@@ -4,10 +4,10 @@
 appId: com.shadowider.eCRM
 ---
 - runFlow: open-work.yaml
-- tapOn: "My leads"
+- tapOn: "Leads, \\d+ yours"
 - assertVisible: "Leads"
-- tapOn: "Add a lead"
-- assertVisible: "Add a lead"
+- tapOn: "New lead"
+- assertVisible: "Name \\*"
 - evalScript: ${output.stamp = String(Date.now()).slice(-8)}
 - tapOn: "Who is it"
 - inputText: "MAESTRO Lead ${output.stamp}"
@@ -20,16 +20,14 @@ appId: com.shadowider.eCRM
       text: "Company"
 - inputText: "MAESTRO Co ${output.stamp}"
 - hideKeyboard
-- scrollUntilVisible:
-    element: "Amount in rupees"
-    centerElement: true
 - tapOn: "Amount in rupees"
 - inputText: "120000"
 - hideKeyboard
 # Defaults: status New, owner = me, first follow-up Tomorrow.
-- assertVisible: "Tomorrow"
-- scrollUntilVisible:
-    element: "Add lead"
-- tapOn: "Add lead"
+- assertVisible: "Status: New"
+- assertVisible: "Owner: Ayush Mishra \\(you\\)"
+- assertVisible: "Call on .*"
+# Save sits in the band (E 16).
+- tapOn: "Save"
 - assertVisible: "MAESTRO Lead ${output.stamp}"
 - assertVisible: "Lead actions"
