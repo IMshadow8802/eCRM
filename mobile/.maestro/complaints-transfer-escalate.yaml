@@ -4,10 +4,9 @@ appId: com.shadowider.eCRM
 - runFlow: common/new-complaint.yaml
 - tapOn: "Transfer"
 - assertVisible: "Transfer complaint"
-- tapOn:
-    id: "transfer-search"
-- inputText: "Amit Singh"
-- hideKeyboard
+# Picked from the list, not typed: adb input into a sheet that is still
+# settling drops a character now and then ("Ait Singh", run 3).
+- waitForAnimationToEnd
 - tapOn: "Amit Singh \\(Exec HO, under Neha\\)"
 - tapOn: "Overloaded"
 - tapOn:
