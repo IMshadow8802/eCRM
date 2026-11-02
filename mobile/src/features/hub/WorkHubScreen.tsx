@@ -83,7 +83,11 @@ export default function WorkHubScreen() {
   const openComplaints = activeTickets?.data?.pagination.totalRecords ?? 0;
 
   const boardCount = (workspaces ?? []).filter(
-    (w) => w.MyInviteStatus !== "pending" && !w.IsArchived,
+    // Same rule as Boards' "Your boards": admin-bypass boards are not yours.
+    (w) =>
+      w.MyInviteStatus !== "pending" &&
+      !w.IsArchived &&
+      (w.MyRole != null || w.MyInviteStatus != null),
   ).length;
   const inviteCount = (workspaces ?? []).filter((w) => w.MyInviteStatus === "pending").length;
 

@@ -13,7 +13,7 @@ import {
   transferWorkspaceOwnership,
 } from "../../api/workspaceQueries";
 import type { DirectoryUser, Workspace, WorkspaceMember, WorkspaceRole } from "../../types/api";
-import { envelope } from "../../test/fixtures";
+import { access, envelope } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import WorkspaceSettingsScreen from "./WorkspaceSettingsScreen";
 
@@ -33,6 +33,7 @@ const me = member(ME, "Me Myself", "owner");
 const asha = member(5, "Asha Rao", "member");
 const pending = member(6, "Pending Pat", "member", { InviteStatus: "pending" });
 const gone = member(8, "Gone Gita", "viewer", { InviteStatus: "declined" });
+const removed = member(11, "Left Lalit", "member", { InviteStatus: "removed" });
 
 const ravi = { Id: 7, FullName: "Ravi Shah", Username: "ravi", Avatar: null, JobTitle: "Driver" } as DirectoryUser;
 
@@ -46,7 +47,7 @@ const ok = envelope(null);
 beforeEach(() => {
   seedAuth({ UserId: ME });
   jest.mocked(fetchWorkspaces).mockResolvedValue([board("owner")]);
-  jest.mocked(fetchWorkspaceMembers).mockResolvedValue([me, asha, pending, gone]);
+  jest.mocked(fetchWorkspaceMembers).mockResolvedValue([me, asha, pending, gone, removed]);
   jest.mocked(fetchUserDirectory).mockResolvedValue([
     { Id: ME, FullName: "Me Myself" } as DirectoryUser,
     { Id: 5, FullName: "Asha Rao" } as DirectoryUser,
@@ -69,6 +70,9 @@ it("lists the roster, marking you, pending invites and declined ones (WS-10)", a
   expect(screen.getByText("Waiting for reply")).toBeOnTheScreen();
   expect(screen.getByText("Gone Gita")).toBeOnTheScreen();
   expect(screen.getByText("Declined")).toBeOnTheScreen();
+  // Left, removed or dropped by a team sync is not a decline.
+  expect(screen.getByText("Left Lalit")).toBeOnTheScreen();
+  expect(screen.getByText("Removed")).toBeOnTheScreen();
   expect(screen.getByText("Site works")).toBeOnTheScreen();
   expect(fetchWorkspaceMembers).toHaveBeenCalledWith({ WorkspaceId: WS });
 });
@@ -126,10 +130,10 @@ it("an owner hands ownership to an active member", async () => {
   expect(jest.mocked(transferWorkspaceOwnership).mock.calls[0]![0]).toEqual({ WorkspaceId: WS, NewOwnerUserId: 5 });
 });
 
-it("ownership is never offered for a pending invite", async () => {
+it("a pending invite only waits for a reply — no role change, no ownership (as on the web)", async () => {
   await mount();
   await fireEvent.press(await screen.findByText("Pending Pat"));
-  expect(screen.getByText("Change role")).toBeOnTheScreen();
+  expect(screen.queryByText("Change role")).toBeNull();
   expect(screen.queryByText("Make owner")).toBeNull();
 });
 
@@ -231,7 +235,7 @@ it("the owner cannot leave their own board", async () => {
 
 describe("an admin who is not on the board (WS-07)", () => {
   beforeEach(() => {
-    seedAuth({ UserId: ME, access: { isAdmin: true } });
+    seedAuth({ UserId: ME, access: access({ isAdmin: true }) });
     jest.mocked(fetchWorkspaces).mockResolvedValue([board(null, { MyInviteStatus: null })]);
   });
 

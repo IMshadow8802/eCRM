@@ -46,7 +46,7 @@ beforeEach(() => {
 it("a role with all three menus sees every module with its live count", async () => {
   signInWith([row("/tasks"), row("/support/tickets"), row("/sales/leads")]);
   await renderWithProviders(<WorkHubScreen />);
-  expect(await screen.findByText("3 boards")).toBeOnTheScreen();
+  expect(await screen.findByText("3 boards · 1 invite")).toBeOnTheScreen();
   expect(await screen.findByText("5 open")).toBeOnTheScreen();
   expect(screen.getByText("Leads")).toBeOnTheScreen();
   expect(screen.getByText("Coming soon")).toBeOnTheScreen();
@@ -56,7 +56,7 @@ it("a role with all three menus sees every module with its live count", async ()
 it("a task-only role sees only Boards", async () => {
   signInWith([row("/tasks"), row("/sales/leads", false)]);
   await renderWithProviders(<WorkHubScreen />);
-  expect(await screen.findByText("3 boards")).toBeOnTheScreen();
+  expect(await screen.findByText("3 boards · 1 invite")).toBeOnTheScreen();
   expect(screen.queryByText("Complaints")).toBeNull();
   expect(screen.queryByText("Leads")).toBeNull();
   expect(screen.queryByText("Support")).toBeNull();
@@ -88,7 +88,7 @@ it("one board reads singular", async () => {
 it("each row opens its module", async () => {
   signInWith([row("/tasks"), row("/support/tickets"), row("/sales")]);
   await renderWithProviders(<WorkHubScreen />);
-  await screen.findByText("3 boards");
+  await screen.findByText("3 boards · 1 invite");
   await fireEvent.press(screen.getByText("Boards"));
   expect(mockNav.navigate).toHaveBeenLastCalledWith("Boards");
   await fireEvent.press(screen.getByText("Complaints"));
@@ -98,4 +98,31 @@ it("each row opens its module", async () => {
     "ComingSoon",
     expect.objectContaining({ title: "Leads" }),
   );
+});
+
+describe("the Boards row's invites and count (WS-14)", () => {
+  it("counts pending invites next to boards", async () => {
+    signInWith([row("/tasks")]);
+    jest.mocked(fetchWorkspaces).mockResolvedValue([
+      ws(1),
+      ws(2, { MyRole: null, MyInviteStatus: "pending" }),
+      ws(3, { MyRole: null, MyInviteStatus: "pending" }),
+    ]);
+    await renderWithProviders(<WorkHubScreen />);
+    expect(await screen.findByText("1 board · 2 invites")).toBeOnTheScreen();
+  });
+
+  it("one invite and no boards yet still shows the invite", async () => {
+    signInWith([row("/tasks")]);
+    jest.mocked(fetchWorkspaces).mockResolvedValue([ws(2, { MyRole: null, MyInviteStatus: "pending" })]);
+    await renderWithProviders(<WorkHubScreen />);
+    expect(await screen.findByText("Your task workspaces · 1 invite")).toBeOnTheScreen();
+  });
+
+  it("boards an admin sees only through the bypass are not counted, as on Boards", async () => {
+    signInWith([row("/tasks")]);
+    jest.mocked(fetchWorkspaces).mockResolvedValue([ws(1), ws(2, { MyRole: null, MyInviteStatus: null })]);
+    await renderWithProviders(<WorkHubScreen />);
+    expect(await screen.findByText("1 board")).toBeOnTheScreen();
+  });
 });

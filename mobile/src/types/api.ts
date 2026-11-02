@@ -43,7 +43,7 @@ export type WorkspaceType = "personal" | "shared" | "project";
 export type WorkspaceRole = "owner" | "manager" | "member" | "viewer";
 
 /** Pending and declined are NOT members. Filter before offering as assignee. */
-export type InviteStatus = "active" | "pending" | "declined";
+export type InviteStatus = "active" | "pending" | "declined" | "removed";
 
 export type TaskPriority = "low" | "medium" | "high" | "urgent";
 

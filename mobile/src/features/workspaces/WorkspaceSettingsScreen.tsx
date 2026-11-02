@@ -366,7 +366,7 @@ export default function WorkspaceSettingsScreen({ route, navigation }: Props) {
                 return (
                   <Pressable
                     key={member.UserId}
-                    disabled={!manageMembers}
+                    disabled={!manageMembers || member.InviteStatus === "pending"}
                     onPress={() => openMember(member)}
                     style={({ pressed }) => [
                       styles.row,
@@ -392,7 +392,7 @@ export default function WorkspaceSettingsScreen({ route, navigation }: Props) {
                         {member.InviteStatus === "pending"
                           ? "Waiting for reply"
                           : gone
-                            ? "Declined"
+                            ? member.InviteStatus === "declined" ? "Declined" : "Removed"
                             : meta.blurb}
                       </Text>
                     </View>
