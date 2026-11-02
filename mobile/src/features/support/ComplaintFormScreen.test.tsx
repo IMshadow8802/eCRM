@@ -430,6 +430,20 @@ describe("customers belong to an office (CUST-02)", () => {
     expect(fetchBranches).not.toHaveBeenCalled();
   });
 
+  it.each(["Office", "OfficeTree"] as const)(
+    "a %s reach gets no office choice — the list is every office, the server would refuse most",
+    async (reach) => {
+      seedAuth({ UserId: 42, access: { modules: { customers: { ...wide.modules.customers, reach } } } });
+      await newCustomer();
+      await fireEvent.press(screen.getByText("Log complaint"));
+      await waitFor(() =>
+        expect(saveCustomer).toHaveBeenCalledWith(expect.objectContaining({ BranchId: null }), expect.anything()),
+      );
+      expect(screen.queryByText("Office")).toBeNull();
+      expect(fetchBranches).not.toHaveBeenCalled();
+    },
+  );
+
   it("a company with one office shows no choice", async () => {
     seedAuth({ UserId: 42, access: wide });
     jest.mocked(fetchBranches).mockResolvedValue([{ Id: 1, BranchName: "Head Office", IsActive: true }]);
@@ -497,6 +511,19 @@ describe("files picked on create (CMP-08)", () => {
     expect(saveTicket).toHaveBeenCalledTimes(1);
   });
 
+  it("a save that answers no Id says the staged files did not go", async () => {
+    jest.mocked(saveTicket).mockResolvedValue(envelope({ Id: 0 }));
+    const navigation = makeNavigation<"ComplaintForm">();
+    await mount(undefined, navigation);
+    await screen.findByText("Wiring");
+    await fillValidComplaint();
+    await pickFiles("meter.jpg", "bill.jpg");
+    await fireEvent.press(screen.getByText("Log complaint"));
+    expect(await screen.findByText("2 file(s) failed to upload — add them from the complaint")).toBeOnTheScreen();
+    expect(uploadAttachment).not.toHaveBeenCalled();
+    expect(navigation.goBack).toHaveBeenCalled();
+  });
+
   it("a file over the size limit is refused at the pick", async () => {
     jest.mocked(DocumentPicker.getDocumentAsync).mockResolvedValueOnce({
       canceled: false, assets: [{ ...doc("huge.mov"), size: 300 * 1024 * 1024 }],
@@ -504,7 +531,7 @@ describe("files picked on create (CMP-08)", () => {
     await mount();
     await screen.findByText("Wiring");
     await fireEvent.press(screen.getByText("Attach files"));
-    expect(await screen.findByText('"huge.mov" is larger than the 200MB limit.')).toBeOnTheScreen();
+    expect(await screen.findByText('"huge.mov" is larger than the 200 MB limit.')).toBeOnTheScreen();
   });
 
   it("editing a complaint offers no staging — files go on the record", async () => {

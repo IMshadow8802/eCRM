@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react-native";
 
 import { fetchLookups } from "../../api/configQueries";
 import { fetchTickets } from "../../api/ticketQueries";
@@ -104,5 +104,33 @@ describe("paging (CMP-05)", () => {
     await screen.findByText("Complaint 1");
     await fireEvent(screen.getByTestId("complaints-list"), "onEndReached");
     expect(fetchTickets).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("search", () => {
+  const box = () => screen.getByPlaceholderText("Ticket no., subject, customer or mobile");
+
+  it("fast typing sends one request, for the final term", async () => {
+    await mount();
+    await screen.findByText("Inverter keeps tripping");
+    jest.mocked(fetchTickets).mockClear();
+    await fireEvent.changeText(box(), "s");
+    await fireEvent.changeText(box(), "sh");
+    await fireEvent.changeText(box(), "sha");
+    await act(async () => { jest.advanceTimersByTime(299); });
+    expect(fetchTickets).not.toHaveBeenCalled();
+    await act(async () => { jest.advanceTimersByTime(1); });
+    await waitFor(() => expect(fetchTickets).toHaveBeenCalledTimes(1));
+    expect(fetchTickets).toHaveBeenCalledWith(expect.objectContaining({ SearchTerm: "sha", PageNumber: 1 }));
+  });
+
+  it("keeps the previous rows on screen while the new search loads", async () => {
+    await mount();
+    await screen.findByText("Inverter keeps tripping");
+    jest.mocked(fetchTickets).mockReturnValue(new Promise(() => {}));
+    await fireEvent.changeText(box(), "sharma");
+    await act(async () => { jest.advanceTimersByTime(300); });
+    await waitFor(() => expect(fetchTickets).toHaveBeenLastCalledWith(expect.objectContaining({ SearchTerm: "sharma" })));
+    expect(screen.getByText("Inverter keeps tripping")).toBeOnTheScreen();
   });
 });

@@ -1,6 +1,6 @@
-import { useCallback, useDeferredValue, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { FlatList, StyleSheet, View } from "react-native";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { CloudOff, Headset, Plus, Search } from "lucide-react-native";
 import type { StackScreenProps } from "@react-navigation/stack";
 
@@ -82,6 +82,8 @@ type StatusFilter = "active" | number;
  * A status chip other than "Active" replaces StatusCode with StatusId: sending
  * both would AND them, and "Resolved" within "active" is the empty set.
  */
+const SEARCH_DEBOUNCE_MS = 300;
+
 /** Rows per page. The controller caps PageSize at 200 (controllerKit.js). */
 const PAGE_SIZE = 50;
 
@@ -119,10 +121,14 @@ export default function ComplaintsScreen({ navigation }: Props) {
   const [status, setStatus] = useState<StatusFilter>("active");
   const [search, setSearch] = useState("");
 
-  // Deferred rather than debounced with a timer: React keeps the old list on
-  // screen while the new query resolves, so typing never blanks it and there
-  // is no timeout to clean up.
-  const term = useDeferredValue(search.trim());
+  // Debounced: one request once typing pauses, not one per keystroke (each
+  // would also restart paging). keepPreviousData below holds the old rows on
+  // screen while the new search loads.
+  const [term, setTerm] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setTerm(search.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   const params = useMemo(
     () => queueParams(queue, status, userId, term),
@@ -133,6 +139,8 @@ export default function ComplaintsScreen({ navigation }: Props) {
     queryKey: ["tickets", params],
     queryFn: ({ pageParam }) => fetchTickets({ ...params, PageNumber: pageParam }),
     initialPageParam: 1,
+    // A new search keeps the old rows up until its first page lands.
+    placeholderData: keepPreviousData,
     getNextPageParam: (last, _all, page) =>
       page < (last.data?.pagination.totalPages ?? 1) ? page + 1 : undefined,
   });

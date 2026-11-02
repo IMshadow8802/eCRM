@@ -16,7 +16,7 @@ import { fetchTicketDetail, saveTicket } from "../../api/ticketQueries";
 import { fetchBranches } from "../../api/userQueries";
 import { apiErrorMessage } from "../../api/errors";
 import { useAccess } from "../auth/useAccess";
-import { MAX_UPLOAD_BYTES } from "../attachments/attachmentHelpers";
+import { humanSize, MAX_UPLOAD_BYTES } from "../attachments/attachmentHelpers";
 import useAuthStore from "../../stores/useAuthStore";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import type {
@@ -68,8 +68,6 @@ type PickedCustomer = Pick<
 /** A mobile number as typed: digits, a leading +, and the separators people use. */
 const LOOKS_LIKE_A_NUMBER = /^[0-9+\s-]+$/;
 
-/** Reaches that span more than one office — only they get an office choice (web: useAccess.wide). */
-const WIDE_REACH = new Set(["Office", "OfficeTree", "Company"]);
 
 /** The web's check (CustomerFormModal): something@something.tld, no spaces. */
 const LOOKS_LIKE_AN_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -164,11 +162,11 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
     City: "",
   });
 
-  // A new customer's office. Only a reach wider than one office gets a choice
-  // (web: CustomerFormModal); everyone else sends null and the server files
-  // the customer under the caller's home office.
-  const customersAccess = useAccess("customers");
-  const wideCustomers = WIDE_REACH.has(customersAccess.reach ?? "");
+  // A new customer's office. Only Company reach (admins included) gets a
+  // choice: fetchBranches lists every office with no reach filter, so an
+  // Office/OfficeTree reach would be offered offices the server 403s.
+  // Everyone else sends null and the server files it under the home office.
+  const wideCustomers = useAccess("customers").reach === "Company";
   const homeOffice = useAuthStore((s) => s.BranchId);
   const [office, setOffice] = useState<number | null>(homeOffice);
   const { data: branchRows } = useQuery({
@@ -362,7 +360,10 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
         return;
       }
       const newId = response.data?.Id;
-      if (!ticket && newId && files.length) await uploadStaged(newId);
+      if (!ticket && files.length) {
+        if (newId) await uploadStaged(newId);
+        else toast.error(`${files.length} file(s) failed to upload — add them from the complaint`);
+      }
       queryClient.invalidateQueries({ queryKey: ["tickets"] });
       if (ticket) queryClient.invalidateQueries({ queryKey: ["ticket", ticket.Id] });
       navigation.goBack();
@@ -422,7 +423,7 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
     });
     if (picked.canceled || !picked.assets) return;
     const tooBig = picked.assets.find((a) => (a.size ?? 0) > MAX_UPLOAD_BYTES);
-    if (tooBig) setError(`"${tooBig.name}" is larger than the 200MB limit.`);
+    if (tooBig) setError(`"${tooBig.name}" is larger than the ${humanSize(MAX_UPLOAD_BYTES)} limit.`);
     const ok = picked.assets
       .filter((a) => (a.size ?? 0) <= MAX_UPLOAD_BYTES)
       .map((a) => ({ uri: a.uri, name: a.name, type: a.mimeType ?? "application/octet-stream" }));
