@@ -1,0 +1,12 @@
+# E 09 on a task with a breached clock (TestCRM demo task, admin view).
+appId: com.shadowider.eCRM
+---
+- runFlow: ../common/open-work.yaml
+- tapOn: "Search"
+- inputText: "Compile Noida"
+- hideKeyboard
+- tapOn: "Compile Noida weekly sales numbers"
+- waitForAnimationToEnd
+- tapOn: "Deadline.*"
+- waitForAnimationToEnd
+- takeScreenshot: e2e-shots/app/09

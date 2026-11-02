@@ -1,0 +1,28 @@
+# E 14, 15, 25, 16, 17.
+appId: com.shadowider.eCRM
+---
+- runFlow: ../common/open-work.yaml
+- tapOn: "Leads, \\d+ yours"
+- waitForAnimationToEnd
+- takeScreenshot: e2e-shots/app/14
+- tapOn:
+    id: "lead-row-.*"
+    index: 0
+- waitForAnimationToEnd
+- tapOn: "Follow-ups, \\d+"
+- waitForAnimationToEnd
+- takeScreenshot: e2e-shots/app/15
+- tapOn: "Status"
+- waitForAnimationToEnd
+- takeScreenshot: e2e-shots/app/25
+- back
+- waitForAnimationToEnd
+- back
+- tapOn: "New lead"
+- waitForAnimationToEnd
+- takeScreenshot: e2e-shots/app/16
+- back
+- runFlow: ../common/open-work.yaml
+- tapOn: "Follow-ups, \\d+ due today"
+- waitForAnimationToEnd
+- takeScreenshot: e2e-shots/app/17

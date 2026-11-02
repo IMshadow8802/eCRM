@@ -1,0 +1,15 @@
+# E 18 Inbox and 19 More.
+appId: com.shadowider.eCRM
+---
+- runFlow: ../common/open-work.yaml
+- tapOn:
+    id: "pill-More"
+- waitForAnimationToEnd
+- takeScreenshot: e2e-shots/app/19
+- tapOn: "Inbox.*"
+- extendedWaitUntil:
+    visible: "Mark all read"
+    timeout: 10000
+- waitForAnimationToEnd
+- takeScreenshot: e2e-shots/app/18
+- back

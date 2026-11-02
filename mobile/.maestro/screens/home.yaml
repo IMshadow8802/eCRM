@@ -1,0 +1,10 @@
+# E 04 and 04b. Run from mobile/: maestro test .maestro/screens/home.yaml
+appId: com.shadowider.eCRM
+---
+- runFlow: ../common/open-work.yaml
+- waitForAnimationToEnd
+- takeScreenshot: e2e-shots/app/04
+- tapOn: "New new"
+- waitForAnimationToEnd
+- takeScreenshot: e2e-shots/app/04b
+- back

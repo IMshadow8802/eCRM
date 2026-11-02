@@ -1,0 +1,37 @@
+# T1–T4 at 1194 × 834 dp (adb shell wm size 2388x1668; wm density 320).
+appId: com.shadowider.eCRM
+---
+- launchApp:
+    stopApp: false
+- waitForAnimationToEnd
+- tapOn:
+    id: "rail"
+    index: 0
+    optional: true
+- tapOn: "Today"
+- extendedWaitUntil:
+    visible:
+      id: "home-list"
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: e2e-shots/app/T1
+- tapOn: "Complaints"
+- waitForAnimationToEnd
+- tapOn: "Team, \\d+"
+- waitForAnimationToEnd
+- tapOn:
+    id: "complaint-\\d+"
+    index: 0
+- waitForAnimationToEnd
+- takeScreenshot: e2e-shots/app/T2
+- tapOn: "Leads"
+- waitForAnimationToEnd
+- tapOn:
+    id: "lead-row-.*"
+    index: 0
+- waitForAnimationToEnd
+- takeScreenshot: e2e-shots/app/T3
+- tapOn: "New lead"
+- waitForAnimationToEnd
+- takeScreenshot: e2e-shots/app/T4
+- back

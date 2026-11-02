@@ -1,0 +1,27 @@
+# E 21: the delete-comment dialog. Posts a MAESTRO comment on the first open
+# task, opens its dialog, shoots it, then deletes it (leaves nothing behind).
+appId: com.shadowider.eCRM
+---
+- runFlow: ../common/open-work.yaml
+- tapOn:
+    id: "pill-Tasks"
+- tapOn:
+    id: "stage-.*"
+    index: 2
+- tapOn: "Comments.*"
+- tapOn: "Write a comment"
+- tapOn: "Share an update…"
+- inputText: "MAESTRO comment for the dialog shot"
+- hideKeyboard
+- tapOn: "Post comment"
+- waitForAnimationToEnd
+- longPressOn: "MAESTRO comment for the dialog shot"
+- tapOn: "Delete comment"
+- waitForAnimationToEnd
+- takeScreenshot: e2e-shots/app/21
+- tapOn:
+    text: "Delete"
+    rightOf:
+      text: "Cancel"
+- waitForAnimationToEnd
+- assertNotVisible: "MAESTRO comment for the dialog shot"

@@ -1,0 +1,26 @@
+# E 05, 06, 07, 08, 09, 21.
+appId: com.shadowider.eCRM
+---
+- runFlow: ../common/open-work.yaml
+- tapOn:
+    id: "pill-Tasks"
+- waitForAnimationToEnd
+- takeScreenshot: e2e-shots/app/05
+# The last open row (BITME on TestCRM: most steps, a deadline clock).
+- tapOn:
+    id: "stage-.*"
+    index: 2
+- waitForAnimationToEnd
+- tapOn: "Checklist.*"
+- waitForAnimationToEnd
+- takeScreenshot: e2e-shots/app/08
+- tapOn: "Deadline.*"
+- waitForAnimationToEnd
+- takeScreenshot: e2e-shots/app/09
+- back
+- tapOn: "Open a board"
+- waitForAnimationToEnd
+- takeScreenshot: e2e-shots/app/06
+- tapOn: "Ayush's Tasks"
+- waitForAnimationToEnd
+- takeScreenshot: e2e-shots/app/07

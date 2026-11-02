@@ -1,0 +1,48 @@
+# E 10, 20a, 22, 11, 13, 23, 24, 12.
+appId: com.shadowider.eCRM
+---
+- runFlow: ../common/open-work.yaml
+- tapOn: "Open My complaints"
+- tapOn: "Team, \\d+"
+- waitForAnimationToEnd
+- takeScreenshot: e2e-shots/app/10
+# 22: a row mid-swipe (left reveals Call · On hold · Resolve).
+- swipe:
+    start: 80%, 32%
+    end: 35%, 32%
+    duration: 900
+- takeScreenshot: e2e-shots/app/22
+- tapOn: "Team, \\d+"
+# 20a: Mine is empty for this user (E draws Escalated's empty state; same component).
+- tapOn: "Mine, \\d+"
+- waitForAnimationToEnd
+- takeScreenshot: e2e-shots/app/20a
+- tapOn: "Team, \\d+"
+- waitForAnimationToEnd
+- tapOn:
+    id: "complaint-\\d+"
+    index: 0
+- waitForAnimationToEnd
+- takeScreenshot: e2e-shots/app/11
+- tapOn: "Resolve"
+- waitForAnimationToEnd
+- takeScreenshot: e2e-shots/app/13
+- back
+- waitForAnimationToEnd
+- back
+- waitForAnimationToEnd
+- tapOn: "Transfer"
+- waitForAnimationToEnd
+- takeScreenshot: e2e-shots/app/23
+- back
+- waitForAnimationToEnd
+- tapOn: "Log call"
+- waitForAnimationToEnd
+- takeScreenshot: e2e-shots/app/24
+- back
+- waitForAnimationToEnd
+- back
+- tapOn: "New complaint"
+- waitForAnimationToEnd
+- takeScreenshot: e2e-shots/app/12
+- back
