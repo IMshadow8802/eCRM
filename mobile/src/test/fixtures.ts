@@ -3,7 +3,7 @@
 // real return type fails `pnpm typecheck`.
 import { AxiosError, type AxiosResponse } from "axios";
 
-import type { ApiEnvelope, Pagination, Task, Workspace } from "../types/api";
+import type { Access, ApiEnvelope, LoginData, Pagination, Task, Workspace } from "../types/api";
 
 export function envelope<T>(data: T, extra: Partial<ApiEnvelope<T>> = {}): ApiEnvelope<T> {
   return {
@@ -107,3 +107,45 @@ export const serverError = (status: number, message: string) =>
     // ponytail: only `status` and `data` are real; headers/config/request are
     // absent. Add them if code under test ever reads them.
   } as AxiosResponse);
+
+/** A non-admin role with no module grants; `patch` overrides any part. */
+export const access = (patch: Partial<Access> = {}): Access => ({
+  isAdmin: false,
+  canSeeSensitive: false,
+  primaryBranchId: 4,
+  modules: {},
+  ...patch,
+});
+
+/** What /api/auth/loginUser answers for Asha (user 9, company 3, branch 4). */
+export const loginData = (patch: Partial<LoginData> = {}): LoginData => ({
+  token: "tok-1",
+  user: {
+    Id: 9,
+    Username: "asha",
+    FullName: "Asha",
+    Email: null,
+    Mobile: null,
+    Avatar: null,
+    JobTitle: null,
+    HourlyRate: null,
+    BranchId: 4,
+    CompId: 3,
+    IsAdmin: false,
+    IsActive: true,
+  },
+  company: {
+    CompId: 3,
+    CompName: "Test CRM",
+    CompAddress: null,
+    CompPhone: null,
+    CompState: null,
+    CompStateCode: null,
+    CompEmail: null,
+    CompWebSite: null,
+    CompGSTIN: null,
+  },
+  permissions: { menuItems: [], rawPermissions: [], totalMenuItems: 0, hasAdminAccess: false },
+  access: access(),
+  ...patch,
+});

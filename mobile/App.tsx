@@ -11,6 +11,7 @@ import { LucideProvider } from "lucide-react-native";
 import { queryClient } from "./src/api/queryClient";
 import { heartbeat } from "./src/api/presenceQueries";
 import PresenceNoticeDialog from "./src/features/auth/PresenceNoticeDialog";
+import { useAccessRefresh } from "./src/features/auth/useAccess";
 import useAuthStore from "./src/stores/useAuthStore";
 import RootNavigator from "./src/navigation/RootNavigator";
 import { useAppFonts } from "./src/theme";
@@ -20,6 +21,7 @@ SplashScreen.preventAutoHideAsync();
 
 export default function App() {
   const fontsLoaded = useAppFonts();
+  useAccessRefresh();
 
   // No sockets in Phase A (spec §5.2). Freshness comes from refetching when
   // the app returns to the foreground — React Query's focusManager is built for

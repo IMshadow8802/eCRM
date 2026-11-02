@@ -7,8 +7,8 @@ import type { MenuItem, Permissions } from "../types/api";
  * same grants on every route (spec 2026-10-07), so this only hides what the
  * server would refuse.
  *
- * Mobile loads rights at login and does not refresh them, so a role change
- * needs a re-login here (the web refreshes on focus).
+ * Rights load at login and are re-read on foreground at most once a minute
+ * (useAuthStore.refreshAccess), as on the web.
  */
 export function visibleRoutes(permissions: Permissions | null): Set<string> {
   const rows: MenuItem[] = permissions?.rawPermissions ?? [];

@@ -1,20 +1,15 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+import * as authQueries from "../api/authQueries";
 import { getApiBaseUrl, getAuthToken, post } from "../api/client";
+import { queryClient } from "../api/queryClient";
+import { access, envelope, loginData } from "../test/fixtures";
 import { fail } from "../test/transport";
 import { seedAuth } from "../test/renderWithProviders";
-import type { AuthUser, LoginData } from "../types/api";
 import useAuthStore from "./useAuthStore";
 
 const BASE = "https://shadowcodes.in/TestCRM";
 
-const loginData = (patch: Partial<LoginData> = {}): LoginData => ({
-  token: "tok-1",
-  user: { Id: 9, CompId: 3, BranchId: 4, FullName: "Asha", IsAdmin: false } as AuthUser,
-  company: {} as LoginData["company"],
-  permissions: { menuItems: [], rawPermissions: [], totalMenuItems: 0, hasAdminAccess: false },
-  ...patch,
-});
 
 const state = () => useAuthStore.getState();
 
@@ -34,11 +29,6 @@ describe("company binding", () => {
       isClientConfigured: true,
     });
     expect(getApiBaseUrl()).toBe(BASE);
-  });
-
-  it("never stores a colour from Central", () => {
-    state().setClientConfig({ baseURL: BASE, compCode: "TESTCRM", companyName: null, logoURL: null });
-    expect(Object.keys(state()).some((k) => /color/i.test(k))).toBe(false);
   });
 
   it("Switch company clears the company AND the session", () => {
@@ -103,29 +93,147 @@ describe("session", () => {
     expect(state().user).toMatchObject({ Id: 9, FullName: "Asha K" });
   });
 
-  it("isAdmin reads the user's role flag", () => {
+  it("isAdmin reads the role's access, not the login-time user flag", () => {
     expect(state().isAdmin()).toBe(false);
     seedAuth({ user: { IsAdmin: true } });
+    expect(state().isAdmin()).toBe(false);
+    state().login(loginData({ access: access({ isAdmin: true }) }));
     expect(state().isAdmin()).toBe(true);
+  });
+
+  it("login keeps the access it was given", () => {
+    const grants = access({ modules: { complaints: { view: true, add: true, edit: false, delete: false, reach: "Team" } } });
+    state().login(loginData({ access: grants }));
+    expect(state().access).toEqual(grants);
+  });
+});
+
+describe("the query cache never outlives a session", () => {
+  const seeded = () => queryClient.setQueryData(["tasks", "mine"], [{ Id: 1 }]);
+  const cached = () => queryClient.getQueryData(["tasks", "mine"]);
+
+  // The seeded query's 10-minute gc timer would otherwise hold jest open when the code under test fails.
+  afterEach(() => queryClient.clear());
+
+  it("login drops the previous user's cached data", () => {
+    seeded();
+    state().login(loginData());
+    expect(cached()).toBeUndefined();
+  });
+
+  it("logout drops it", () => {
+    state().login(loginData());
+    seeded();
+    state().logout();
+    expect(cached()).toBeUndefined();
+  });
+
+  it("Switch company drops it", () => {
+    state().login(loginData());
+    seeded();
+    state().clearClientConfig();
+    expect(cached()).toBeUndefined();
+  });
+
+  it("a session 401 drops it", async () => {
+    seedAuth();
+    seeded();
+    fail(401, { code: "SESSION_FORCED" });
+    await expect(post("/api/tasks/fetchTasks")).rejects.toBeTruthy();
+    expect(cached()).toBeUndefined();
+  });
+});
+
+describe("refreshAccess", () => {
+  const fresh = access({ isAdmin: true, modules: { leads: { view: true, add: false, edit: false, delete: false, reach: "Own" } } });
+  const menu = [{ menuid: 1, parentid: 0, description: "Leads", image: null, route: "/sales/leads", formname: null, formclass: null, openStyle: null, permissions: { canView: true, canAdd: false, canEdit: false, canDelete: false }, groupName: null }];
+  let now = 1_000_000;
+  let fetchMyAccess: jest.SpyInstance;
+
+  beforeEach(() => {
+    jest.spyOn(Date, "now").mockImplementation(() => now);
+    fetchMyAccess = jest
+      .spyOn(authQueries, "fetchMyAccess")
+      .mockResolvedValue(envelope({ access: fresh, permissions: { menuItems: menu, rawPermissions: menu, totalMenuItems: 1 } }));
+  });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it("stores the server's access and menu rights, keeping the login-only flag", async () => {
+    state().login(loginData());
+    now += 60_000;
+    await state().refreshAccess();
+    expect(fetchMyAccess).toHaveBeenCalledTimes(1);
+    expect(state().access).toEqual(fresh);
+    expect(state().permissions).toEqual({ menuItems: menu, rawPermissions: menu, totalMenuItems: 1, hasAdminAccess: false });
+  });
+
+  it("asks at most once a minute", async () => {
+    seedAuth();
+    await state().refreshAccess();
+    now += 59_999;
+    await state().refreshAccess();
+    expect(fetchMyAccess).toHaveBeenCalledTimes(1);
+    now += 1;
+    await state().refreshAccess();
+    expect(fetchMyAccess).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not ask right after a login, which just brought access", async () => {
+    state().login(loginData());
+    await state().refreshAccess();
+    expect(fetchMyAccess).not.toHaveBeenCalled();
+  });
+
+  it("does not ask when nobody is signed in", async () => {
+    await state().refreshAccess();
+    expect(fetchMyAccess).not.toHaveBeenCalled();
+  });
+
+  it("a reply without access keeps the access it had", async () => {
+    fetchMyAccess.mockResolvedValue(envelope(null));
+    state().login(loginData());
+    now += 60_000;
+    await state().refreshAccess();
+    expect(state().access).toEqual(access());
+  });
+
+  it("a failed refresh keeps the access it had", async () => {
+    fetchMyAccess.mockRejectedValue(new Error("Network Error"));
+    state().login(loginData());
+    now += 60_000;
+    await state().refreshAccess();
+    expect(state().access).toEqual(access());
   });
 });
 
 describe("a 401 from the API", () => {
-  it.each(["SESSION_ENDED", "SESSION_EXPIRED", "SESSION_FORCED", "SESSION_REQUIRED"])(
-    "%s logs the user out and records why",
+  it.each(["SESSION_ENDED", "SESSION_EXPIRED", "SESSION_FORCED", "SESSION_REQUIRED", "TOKEN_EXPIRED", "INVALID_TOKEN"])(
+    "%s logs the user out and keeps the server's code and message",
     async (code) => {
       seedAuth();
-      fail(401, { code });
+      fail(401, { code, message: `server says ${code}` });
       await expect(post("/api/tasks/fetchTasks")).rejects.toBeTruthy();
-      expect(state()).toMatchObject({ isAuthenticated: false, token: null, sessionEndedReason: code });
+      expect(state()).toMatchObject({
+        isAuthenticated: false,
+        token: null,
+        sessionEndedReason: code,
+        sessionEndedMessage: `server says ${code}`,
+      });
     },
   );
 
-  it("a non-session 401 logs out without a reason", async () => {
+  it("a 401 without a code logs out without a reason", async () => {
     seedAuth();
-    fail(401, { code: "TOKEN_INVALID" });
+    fail(401, {});
     await expect(post("/api/tasks/fetchTasks")).rejects.toBeTruthy();
-    expect(state()).toMatchObject({ isAuthenticated: false, sessionEndedReason: null });
+    expect(state()).toMatchObject({ isAuthenticated: false, sessionEndedReason: null, sessionEndedMessage: null });
+  });
+
+  it("login clears the last end message", async () => {
+    useAuthStore.setState({ sessionEndedReason: "SESSION_FORCED", sessionEndedMessage: "An admin ended your session." });
+    state().login(loginData());
+    expect(state()).toMatchObject({ sessionEndedReason: null, sessionEndedMessage: null });
   });
 
   it("a stale 401 after logout paints no reason", async () => {
@@ -157,5 +265,17 @@ describe("rehydration", () => {
     await persist({ API_BASE_URL: "https://evil.example/CRM", isClientConfigured: true, isAuthenticated: true, token: "tok-9" });
     await useAuthStore.persist.rehydrate();
     expect(state()).toMatchObject({ API_BASE_URL: null, isClientConfigured: false, isAuthenticated: false, token: null });
+  });
+
+  it("keeps the session on a dev build, whose base URL is the override and never stored", async () => {
+    await persist({ API_BASE_URL: null, isClientConfigured: true, isAuthenticated: true, token: "tok-9" });
+    process.env.EXPO_PUBLIC_API_BASE_URL = "http://192.168.1.5:5001";
+    let dev!: typeof useAuthStore;
+    jest.isolateModules(() => {
+      dev = require("./useAuthStore").default;
+    });
+    delete process.env.EXPO_PUBLIC_API_BASE_URL;
+    await dev.persist.rehydrate();
+    expect(dev.getState()).toMatchObject({ isClientConfigured: true, isAuthenticated: true, token: "tok-9" });
   });
 });

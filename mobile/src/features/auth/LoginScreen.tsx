@@ -21,6 +21,7 @@ import { colors, gradients, radius, spacing } from "../../theme";
 import { Button, Input, Text } from "../../ui";
 import FloatingShapes from "./FloatingShapes";
 
+// Fallback only: the 401 normally carries its own message (sessionEndedMessage).
 const REASONS: Record<string, string> = {
   SESSION_EXPIRED: "Your session ended at the end of your shift. Sign in again.",
   SESSION_FORCED: "An admin ended your session.",
@@ -39,6 +40,7 @@ export default function LoginScreen() {
   const setClientConfig = useAuthStore((s) => s.setClientConfig);
   const clearClientConfig = useAuthStore((s) => s.clearClientConfig);
   const sessionEndedReason = useAuthStore((s) => s.sessionEndedReason);
+  const sessionEndedMessage = useAuthStore((s) => s.sessionEndedMessage);
   const insets = useSafeAreaInsets();
 
   // Step 1 — which backend. Typed once per install; the store persists it.
@@ -218,7 +220,7 @@ export default function LoginScreen() {
           >
             {sessionEndedReason ? (
               <Text variant="caption" color="textOnBrandMuted">
-                {REASONS[sessionEndedReason] ?? "Please sign in again."}
+                {sessionEndedMessage || (REASONS[sessionEndedReason] ?? "Please sign in again.")}
               </Text>
             ) : null}
 

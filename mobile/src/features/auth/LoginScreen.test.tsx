@@ -4,10 +4,10 @@ import { act, fireEvent, screen } from "@testing-library/react-native";
 import { login } from "../../api/authQueries";
 import { fetchClientConfig } from "../../api/centralQueries";
 import { getApiBaseUrl } from "../../api/client";
-import { envelope } from "../../test/fixtures";
+import { envelope, loginData } from "../../test/fixtures";
 import { renderWithProviders } from "../../test/renderWithProviders";
 import useAuthStore from "../../stores/useAuthStore";
-import type { AuthUser, ClientConfig, LoginData } from "../../types/api";
+import type { ClientConfig } from "../../types/api";
 import LoginScreen from "./LoginScreen";
 
 jest.mock("../../api/authQueries");
@@ -20,13 +20,6 @@ const CONFIG: ClientConfig = {
   logoURL: "https://shadowcodes.in/logo.png",
 };
 
-const LOGIN: LoginData = {
-  token: "tok-1",
-  user: { Id: 9, CompId: 3, BranchId: 4, FullName: "Asha", IsAdmin: false } as AuthUser,
-  company: {} as LoginData["company"],
-  permissions: { menuItems: [], rawPermissions: [], totalMenuItems: 0, hasAdminAccess: false },
-  presenceNotice: true,
-};
 
 // What apiClient rejects with when the backend answers 401 INVALID_CREDENTIALS.
 const invalidCredentials = () => {
@@ -96,7 +89,7 @@ describe("step 1 — company code", () => {
 describe("step 2 — credentials", () => {
   it("posts the identifier and password and opens the session", async () => {
     configured();
-    jest.mocked(login).mockResolvedValue(envelope(LOGIN));
+    jest.mocked(login).mockResolvedValue(envelope(loginData({ presenceNotice: true })));
     await renderWithProviders(<LoginScreen />);
     await signIn("  asha  ");
     expect(login).toHaveBeenCalledWith({ identifier: "asha", password: "fixture" });
@@ -123,8 +116,8 @@ describe("step 2 — credentials", () => {
 
   it("an unsuccessful envelope shows its message, or a default", async () => {
     configured();
-    jest.mocked(login).mockResolvedValueOnce(envelope(LOGIN, { success: false, message: "Account disabled" }));
-    jest.mocked(login).mockResolvedValueOnce(envelope(LOGIN, { success: false, message: "" }));
+    jest.mocked(login).mockResolvedValueOnce(envelope(loginData(), { success: false, message: "Account disabled" }));
+    jest.mocked(login).mockResolvedValueOnce(envelope(loginData(), { success: false, message: "" }));
     await renderWithProviders(<LoginScreen />);
     await signIn();
     expect(await screen.findByText("Account disabled")).toBeOnTheScreen();
@@ -181,11 +174,26 @@ describe("why the last session ended", () => {
     ["SESSION_FORCED", "An admin ended your session."],
     ["SESSION_ENDED", "Please sign in again."],
     ["SESSION_REQUIRED", "Please sign in again."],
-  ])("%s reads: %s", async (code, wording) => {
+  ])("%s without a server message falls back to: %s", async (code, wording) => {
     configured();
     useAuthStore.setState({ sessionEndedReason: code });
     await renderWithProviders(<LoginScreen />);
     expect(screen.getByText(wording)).toBeOnTheScreen();
+  });
+
+  // The wording backend/src/utils/responseHelper.js sends with each 401 code.
+  it.each([
+    ["SESSION_REQUIRED", "Please sign in again"],
+    ["SESSION_EXPIRED", "Your session ended at the end of your shift. Sign in again to continue."],
+    ["SESSION_FORCED", "An admin ended your session. Sign in again to continue."],
+    ["SESSION_ENDED", "You signed out. Sign in again to continue."],
+    ["TOKEN_EXPIRED", "Token has expired - please login again"],
+    ["INVALID_TOKEN", "Invalid token - please login again"],
+  ])("%s shows the server's message", async (code, message) => {
+    configured();
+    useAuthStore.setState({ sessionEndedReason: code, sessionEndedMessage: message });
+    await renderWithProviders(<LoginScreen />);
+    expect(screen.getByText(message)).toBeOnTheScreen();
   });
 
   it("says nothing on a normal sign-in", async () => {

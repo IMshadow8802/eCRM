@@ -10,7 +10,8 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import type { RootStackParamList } from "../navigation/RootNavigator";
 import useAuthStore from "../stores/useAuthStore";
-import type { AuthUser, Permissions } from "../types/api";
+import type { Access, AuthUser, Permissions } from "../types/api";
+import { access } from "./fixtures";
 import { ToastProvider } from "../ui";
 
 const METRICS = {
@@ -82,6 +83,8 @@ export function seedAuth(
     BranchId: number;
     user: Partial<AuthUser>;
     permissions: Partial<Permissions>;
+    /** Role grants (built on the fixture default); omitted = not yet known (null). */
+    access: Partial<Access>;
   }> = {},
 ) {
   const UserId = patch.UserId ?? patch.user?.Id ?? 1;
@@ -95,6 +98,7 @@ export function seedAuth(
       CompId: patch.CompId ?? 1,
       BranchId: patch.BranchId ?? 1,
       user: { Id: UserId, FullName: "Test User", IsAdmin: false, ...patch.user } as AuthUser,
+      access: patch.access ? access(patch.access) : null,
       permissions: {
         menuItems: [],
         rawPermissions: [],

@@ -1,4 +1,4 @@
-import { fireEvent, screen } from "@testing-library/react-native";
+import { act, fireEvent, screen } from "@testing-library/react-native";
 
 import { ackNotice } from "../../api/presenceQueries";
 import { envelope } from "../../test/fixtures";
@@ -37,7 +37,7 @@ it("stays hidden when the notice was already acknowledged or nobody is signed in
   seedAuth();
   await renderWithProviders(<PresenceNoticeDialog />);
   expect(screen.queryByText(TITLE)).toBeNull();
-  useAuthStore.setState({ isAuthenticated: false, presenceNotice: true });
+  await act(async () => useAuthStore.setState({ isAuthenticated: false, presenceNotice: true }));
   expect(screen.queryByText(TITLE)).toBeNull();
   expect(ackNotice).not.toHaveBeenCalled();
 });

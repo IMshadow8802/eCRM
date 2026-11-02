@@ -52,10 +52,10 @@ describe("request interceptor", () => {
 });
 
 describe("401 handling", () => {
-  it("calls the unauthorized handler with the server's code", async () => {
-    fail(401, { code: "SESSION_EXPIRED" });
+  it("calls the unauthorized handler with the server's code and message", async () => {
+    fail(401, { code: "SESSION_EXPIRED", message: "Your session ended" });
     await expect(post("/api/tasks/fetchTasks")).rejects.toMatchObject({ response: { status: 401 } });
-    expect(onUnauthorized).toHaveBeenCalledWith("SESSION_EXPIRED");
+    expect(onUnauthorized).toHaveBeenCalledWith("SESSION_EXPIRED", "Your session ended");
   });
 
   it.each(["/api/auth/loginUser", "/api/auth/logoutUser"])("does not fire for %s", async (url) => {

@@ -1,10 +1,11 @@
 // src/api/authQueries.ts
 import { post } from "./client";
-import type { ApiEnvelope, LoginData } from "../types/api";
+import type { Access, ApiEnvelope, LoginData, Permissions } from "../types/api";
 
 export const AUTH_ENDPOINTS = {
   login: "/api/auth/loginUser",
   logout: "/api/auth/logoutUser",
+  fetchMyAccess: "/api/auth/fetchMyAccess",
 } as const;
 
 /**
@@ -22,3 +23,12 @@ export const login = (params: {
 
 export const logout = (): Promise<ApiEnvelope<unknown>> =>
   post(AUTH_ENDPOINTS.logout, {});
+
+/**
+ * The caller's role grants and menu rights, re-read so a role change reaches a
+ * signed-in phone without a re-login (authController.fetchMyAccess). Same
+ * shapes as login, except the menu payload has no `hasAdminAccess`.
+ */
+export const fetchMyAccess = (): Promise<
+  ApiEnvelope<{ access: Access; permissions: Omit<Permissions, "hasAdminAccess"> }>
+> => post(AUTH_ENDPOINTS.fetchMyAccess, {});

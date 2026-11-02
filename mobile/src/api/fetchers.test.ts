@@ -34,6 +34,7 @@ const CASES: [string, Case][] = [
   // ------------------------------------------------------------- auth / presence
   ["login", { call: () => auth.login({ identifier: "a@b.in", password: "fixture" }), url: "/api/auth/loginUser", body: { identifier: "a@b.in", password: "fixture", Device: "mobile" } }],
   ["logout", { call: auth.logout, url: "/api/auth/logoutUser", body: {} }],
+  ["fetchMyAccess", { call: auth.fetchMyAccess, url: "/api/auth/fetchMyAccess", body: {} }],
   ["heartbeat", { call: presence.heartbeat, url: "/api/presence/heartbeat", body: {} }],
   ["ackNotice", { call: presence.ackNotice, url: "/api/presence/ackNotice", body: {} }],
 

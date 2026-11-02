@@ -113,7 +113,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   const queryClient = useQueryClient();
   const toast = useToast();
   const userId = useAuthStore((s) => s.UserId);
-  const isAdmin = useAuthStore((s) => Boolean(s.user?.IsAdmin));
+  const isAdmin = useAuthStore((s) => Boolean(s.access?.isAdmin));
 
   const [tab, setTab] = useState<Tab>("checklist");
   const [compose, setCompose] = useState<Compose>("checklist");

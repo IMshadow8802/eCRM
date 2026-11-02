@@ -10,9 +10,14 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
+import { fetchMyAccess } from "../api/authQueries";
 import { setApiBaseUrl, setAuthToken, setUnauthorizedHandler } from "../api/client";
+import { queryClient } from "../api/queryClient";
 import { DEV_API_BASE_URL, isTrustedApiUrl } from "../config/env";
-import type { AuthUser, ClientConfig, Company, LoginData, Permissions } from "../types/api";
+import type { Access, AuthUser, ClientConfig, Company, LoginData, Permissions } from "../types/api";
+
+/** Access is re-read at most this often (web/src/utils/refreshAccess.js). */
+const ACCESS_REFRESH_MS = 60_000;
 
 interface AuthState {
   // Which backend this install talks to — the company-code step fills it from
@@ -31,12 +36,20 @@ interface AuthState {
   user: AuthUser | null;
   company: Company | null;
   permissions: Permissions | null;
+  /** Role grants from the server; `isAdmin` lives here, never on `user`. Null until known. */
+  access: Access | null;
+  /** When access was last asked for (login counts), for the once-a-minute throttle. */
+  accessCheckedAt: number | null;
+  /** Re-reads access + menu rights; skipped when signed out or asked within the last minute. */
+  refreshAccess: () => Promise<void>;
   UserId: number | null;
   CompId: number | null;
   BranchId: number | null;
   loginTimestamp: number | null;
   /** Why the last session ended server-side (a 401 `code`); shown on the login screen. */
   sessionEndedReason: string | null;
+  /** The server's own wording for that 401, shown before any local fallback. */
+  sessionEndedMessage: string | null;
   /** Login said the one-time presence notice has not been acknowledged. */
   presenceNotice: boolean;
   ackPresenceNotice: () => void;
@@ -61,6 +74,8 @@ const EMPTY = {
   user: null,
   company: null,
   permissions: null,
+  access: null,
+  accessCheckedAt: null,
   UserId: null,
   CompId: null,
   BranchId: null,
@@ -74,6 +89,7 @@ const useAuthStore = create<AuthState>()(
       ...CLIENT_EMPTY,
       ...EMPTY,
       sessionEndedReason: null,
+      sessionEndedMessage: null,
 
       setClientConfig: (cfg) => {
         setApiBaseUrl(cfg.baseURL);
@@ -89,22 +105,28 @@ const useAuthStore = create<AuthState>()(
       clearClientConfig: () => {
         setAuthToken(null);
         setApiBaseUrl(null);
+        queryClient.clear();
         set({ ...EMPTY, ...CLIENT_EMPTY });
       },
 
-      login: ({ token, user, company, permissions, presenceNotice }) => {
+      login: ({ token, user, company, permissions, access, presenceNotice }) => {
         setAuthToken(token);
+        // The previous user's (or company's) cached tasks, complaints and inbox must not show.
+        queryClient.clear();
         set({
           isAuthenticated: true,
           token,
           user,
           company,
           permissions,
+          access: access ?? null,
+          accessCheckedAt: access ? Date.now() : null,
           UserId: user?.Id ?? null,
           CompId: user?.CompId ?? null,
           BranchId: user?.BranchId ?? null,
           loginTimestamp: Date.now(),
           sessionEndedReason: null,
+          sessionEndedMessage: null,
           presenceNotice: Boolean(presenceNotice),
         });
       },
@@ -113,7 +135,26 @@ const useAuthStore = create<AuthState>()(
 
       logout: () => {
         setAuthToken(null);
+        queryClient.clear();
         set({ ...EMPTY });
+      },
+
+      refreshAccess: async () => {
+        const { isAuthenticated, accessCheckedAt } = get();
+        if (!isAuthenticated) return;
+        if (accessCheckedAt != null && Date.now() - accessCheckedAt < ACCESS_REFRESH_MS) return;
+        // Stamped before the call so a second foreground mid-request does not ask again.
+        set({ accessCheckedAt: Date.now() });
+        try {
+          const { data } = await fetchMyAccess();
+          if (!data?.access) return;
+          set({
+            access: data.access,
+            permissions: { hasAdminAccess: false, ...get().permissions, ...data.permissions },
+          });
+        } catch {
+          // Keep what we had; a dead session is the 401 handler's job.
+        }
       },
 
       updateUser: (patch) => {
@@ -121,7 +162,7 @@ const useAuthStore = create<AuthState>()(
         if (current) set({ user: { ...current, ...patch } });
       },
 
-      isAdmin: () => Boolean(get().user?.IsAdmin),
+      isAdmin: () => Boolean(get().access?.isAdmin),
     }),
     {
       name: "nexus-crm-auth",
@@ -131,7 +172,8 @@ const useAuthStore = create<AuthState>()(
       // session, since the token would otherwise be sent to that host.
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<AuthState>;
-        const trusted = isTrustedApiUrl(p.API_BASE_URL);
+        // A dev build never stores a base URL (the override is used instead), so it is trusted as is.
+        const trusted = DEV_API_BASE_URL != null || isTrustedApiUrl(p.API_BASE_URL);
         return {
           ...current,
           ...p,
@@ -151,12 +193,12 @@ const useAuthStore = create<AuthState>()(
 
 // A 401 on any non-auth endpoint means the token is dead — drop the session so
 // the navigator falls back to login. Registered once at module load.
-setUnauthorizedHandler((code) => {
+setUnauthorizedHandler((code, message) => {
   const { isAuthenticated, logout } = useAuthStore.getState();
   // Only a live session has a reason to report; a stale 401 after logout must
   // not paint one on the login screen.
-  if (isAuthenticated && code?.startsWith("SESSION_")) {
-    useAuthStore.setState({ sessionEndedReason: code });
+  if (isAuthenticated && code) {
+    useAuthStore.setState({ sessionEndedReason: code, sessionEndedMessage: message || null });
   }
   logout();
 });
