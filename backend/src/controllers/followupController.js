@@ -100,7 +100,8 @@ class FollowupController {
       const LeadId = positiveInt(req.body.LeadId) ?? 0;
       const { AssignedTo = null, Status = null, DueFrom = null, DueTo = null, Overdue = false, SearchTerm = null } = req.body;
       const { PageNumber, PageSize } = pageParams(req.body, 25);
-      // "Done today" (118): a DoneAt bracket, from inclusive, to exclusive.
+      // "Done today" (118): a DoneAt bracket — DoneFrom inclusive, DoneTo an EXCLUSIVE instant
+      // (send tomorrow for "through today"). DueTo next to it is an INCLUSIVE day; not the same.
       const DoneFrom = optionalDateTime(req.body.DoneFrom);
       const DoneTo = optionalDateTime(req.body.DoneTo);
       if (DoneFrom === undefined || DoneTo === undefined) return validationError(res, "DoneFrom / DoneTo is not a valid date");
@@ -111,7 +112,10 @@ class FollowupController {
 
       const result = await database.executeStoredProcedure("sp_FetchFollowUps", {
         CompId: req.user.CompId, LeadId,
-        AssignedTo: positiveInt(AssignedTo), Status, DueFrom, DueTo, DoneFrom, DoneTo,
+        AssignedTo: positiveInt(AssignedTo), Status, DueFrom, DueTo,
+        // Only when set: every key is bound, and a DB without 118 would reject the parameter.
+        ...(DoneFrom && { DoneFrom }),
+        ...(DoneTo && { DoneTo }),
         Overdue: Overdue === true || Overdue === 1 || Overdue === "true",
         SearchTerm, PageNumber, PageSize,
         ...scopeParams(req),

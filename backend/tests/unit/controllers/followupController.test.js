@@ -292,10 +292,21 @@ describe("fetch", () => {
     expect(res.json.mock.calls[0][0].data.pagination.totalRecords).toBe(3);
   });
 
-  it("sends DoneFrom / DoneTo as null when absent (old callers)", async () => {
+  // Left out, not null: a DB without 118 would reject the unknown parameter.
+  it("omits DoneFrom / DoneTo when absent, so a DB without 118 still answers", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[], []] });
     await followupController.fetch(baseReq({ body: { DoneFrom: "" } }), mockRes());
-    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({ DoneFrom: null, DoneTo: null });
+    const params = database.executeStoredProcedure.mock.calls[0][1];
+    expect(params).not.toHaveProperty("DoneFrom");
+    expect(params).not.toHaveProperty("DoneTo");
+  });
+
+  it("sends only the bound that is set", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[], []] });
+    await followupController.fetch(baseReq({ body: { DoneTo: "2026-11-03" } }), mockRes());
+    const params = database.executeStoredProcedure.mock.calls[0][1];
+    expect(params.DoneTo).toBe("2026-11-03");
+    expect(params).not.toHaveProperty("DoneFrom");
   });
 
   it.each([["DoneFrom", "yesterday"], ["DoneTo", "2026-02-30"], ["DoneFrom", 20261102]])(

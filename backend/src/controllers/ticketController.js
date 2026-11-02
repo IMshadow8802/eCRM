@@ -164,7 +164,8 @@ const ticketController = {
       // Clamped, not taken raw: PageSize goes straight to the SP, which has no
       // ceiling of its own. Default 25 matches the SP's own default.
       const { PageNumber, PageSize } = pageParams(b, 25);
-      // 118: a ResolvedAt bracket, from inclusive, to exclusive.
+      // 118: a ResolvedAt bracket — From inclusive, To an EXCLUSIVE instant (send tomorrow's
+      // date for "through today"), unlike FromDate/ToDate, which are whole days on CreatedAt.
       const ResolvedFrom = optionalDateTime(b.ResolvedFrom);
       const ResolvedTo = optionalDateTime(b.ResolvedTo);
       if (ResolvedFrom === undefined || ResolvedTo === undefined) {
@@ -195,8 +196,9 @@ const ticketController = {
         Unassigned: bit(b.Unassigned),
         FromDate: isoDay(b.FromDate),
         ToDate: isoDay(b.ToDate),
-        ResolvedFrom,
-        ResolvedTo,
+        // Only when set: every key is bound, and a DB without 118 would reject the parameter.
+        ...(ResolvedFrom && { ResolvedFrom }),
+        ...(ResolvedTo && { ResolvedTo }),
         ...scopeParams(req),
         // Escalated = escalated to me OR overdue in my ReportsTo subtree (incl. self), not overdue anywhere in reach.
         EscalatedSubtreeJson: bit(b.Escalated)

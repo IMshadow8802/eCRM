@@ -1,4 +1,6 @@
 const {
+  istDateTime,
+  optionalDateTime,
   asyncRoute,
   firstRow,
   spStatus,
@@ -242,5 +244,40 @@ describe("positiveInt", () => {
     ["object", {}],
   ])("returns null for %s", (_label, value) => {
     expect(positiveInt(value)).toBeNull();
+  });
+});
+
+describe("istDateTime", () => {
+  it("passes a day and an IST wall-clock time through as sent", () => {
+    expect(istDateTime("2026-11-02")).toBe("2026-11-02");
+    expect(istDateTime("2026-11-02T10:15")).toBe("2026-11-02T10:15");
+    expect(istDateTime(" 2026-11-02 10:15:30 ")).toBe("2026-11-02 10:15:30");
+  });
+
+  it("turns an instant with a zone into its IST wall clock", () => {
+    expect(istDateTime("2026-11-02T18:30:00Z")).toBe("2026-11-03 00:00:00");
+    expect(istDateTime("2026-11-02T10:00:00+05:30")).toBe("2026-11-02 10:00:00");
+  });
+
+  it.each(["", "yesterday", "02/11/2026", "2026-02-30", "2026-13-01", "2026-11-02T24:00", "2026-11-02T10:60", 20261102, null, {}])(
+    "rejects %p",
+    (v) => expect(istDateTime(v)).toBeNull(),
+  );
+});
+
+describe("optionalDateTime", () => {
+  it("is null when absent or blank", () => {
+    expect(optionalDateTime(undefined)).toBeNull();
+    expect(optionalDateTime(null)).toBeNull();
+    expect(optionalDateTime("")).toBeNull();
+  });
+
+  it("is undefined (caller 400s) when present but invalid — never null, which would widen", () => {
+    expect(optionalDateTime("last week")).toBeUndefined();
+    expect(optionalDateTime(0)).toBeUndefined();
+  });
+
+  it("is the SP value when valid", () => {
+    expect(optionalDateTime("2026-11-02")).toBe("2026-11-02");
   });
 });

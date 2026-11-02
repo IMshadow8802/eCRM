@@ -258,7 +258,7 @@ describe("ticketController.fetch", () => {
     expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_FetchTickets", {
       CompId: 5, BranchId: null, PageNumber: 1, PageSize: 25, SearchTerm: null,
       StatusId: null, StatusCode: null, Priority: null, CategoryId: null, ChannelId: null, ProductId: null,
-      CustomerId: null, AssignedTo: null, Overdue: 0, Escalated: 0, Unassigned: 0, FromDate: null, ToDate: null, ResolvedFrom: null, ResolvedTo: null,
+      CustomerId: null, AssignedTo: null, Overdue: 0, Escalated: 0, Unassigned: 0, FromDate: null, ToDate: null,
       UserId: 7, AccessibleBranchIdsJson: "[1,2,3,4,5]", OwnerIdsJson: null, EscalatedSubtreeJson: null,
     });
   });
@@ -362,10 +362,22 @@ describe("ticketController.fetch", () => {
     expect(res.json.mock.calls[0][0].data.pagination.totalRecords).toBe(4);
   });
 
-  it("sends ResolvedFrom / ResolvedTo as null when absent (old callers)", async () => {
+  // The keys are left out, not sent as null: executeStoredProcedure binds every key, and a DB
+  // without 118 (src is shared by every client) would reject an unknown parameter.
+  it("omits ResolvedFrom / ResolvedTo when absent, so a DB without 118 still answers", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[], []] });
-    await ticketController.fetch(baseReq({ body: { ResolvedTo: null } }), mockRes());
-    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({ ResolvedFrom: null, ResolvedTo: null });
+    await ticketController.fetch(baseReq({ body: { ResolvedFrom: "", ResolvedTo: null } }), mockRes());
+    const params = database.executeStoredProcedure.mock.calls[0][1];
+    expect(params).not.toHaveProperty("ResolvedFrom");
+    expect(params).not.toHaveProperty("ResolvedTo");
+  });
+
+  it("sends only the bound that is set", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[], []] });
+    await ticketController.fetch(baseReq({ body: { ResolvedFrom: "2026-10-27" } }), mockRes());
+    const params = database.executeStoredProcedure.mock.calls[0][1];
+    expect(params.ResolvedFrom).toBe("2026-10-27");
+    expect(params).not.toHaveProperty("ResolvedTo");
   });
 
   it.each([["ResolvedFrom", "last week"], ["ResolvedTo", "2026-13-01"], ["ResolvedFrom", {}]])(
