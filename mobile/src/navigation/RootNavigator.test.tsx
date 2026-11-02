@@ -1,22 +1,34 @@
 import { StyleSheet } from "react-native";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, within } from "@testing-library/react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 
 import useAuthStore from "../stores/useAuthStore";
-import type { ModuleKey } from "../types/api";
+import type { DayTask, DayTaskFlags, ModuleKey } from "../types/api";
 import { seedAuth } from "../test/renderWithProviders";
+import { PHONE, TABLET, setWindow } from "../test/window";
+import { ToastProvider } from "../ui";
+import { envelope, makeWorkspace, pagination, serverError } from "../test/fixtures";
+import { heartbeat } from "../api/presenceQueries";
+import { fetchMyDay } from "../api/todayQueries";
+import { fetchTickets } from "../api/ticketQueries";
+import { fetchFollowUps } from "../api/followupQueries";
+import { fetchNotifications } from "../api/notificationQueries";
+import { ensurePersonalWorkspace, fetchWorkspaces } from "../api/workspaceQueries";
 
 // @react-navigation/stack warns once, at import, that RN deprecated
 // InteractionManager — library noise, not ours. Swallow exactly that line.
 let RootNavigator: typeof import("./RootNavigator").default;
+let focusedRoute: typeof import("./RootNavigator").focusedRoute;
+let shellNavigator: typeof import("./RootNavigator").shellNavigator;
 beforeAll(() => {
   const original = console.warn;
   const warn = jest.spyOn(console, "warn").mockImplementation((msg: unknown, ...rest: unknown[]) => {
     if (!String(msg).startsWith("InteractionManager has been deprecated")) original(msg, ...rest);
   });
-  RootNavigator = require("./RootNavigator").default;
+  ({ default: RootNavigator, focusedRoute, shellNavigator } = require("./RootNavigator"));
   warn.mockRestore();
 });
 
@@ -40,11 +52,14 @@ jest.mock("../features/home/HomeScreen", () => {
   const targets: [string, object?][] = [
     ["Inbox"], ["Me"], ["Boards"], ["FollowUps", { view: "today" }],
     ["Complaints", { queue: "overdue" }], ["LeadDetail", { leadId: 1 }], ["LeadForm", {}],
+    ["ComplaintDetail", { ticketId: 1 }], ["Search"],
   ];
   const Home = () => {
     const nav = useNavigation();
+    const create = require("./Shell").useCreate();
     return createElement(View, null,
       createElement(Text, null, "Home screen"),
+      createElement(Pressable, { onPress: create.open }, createElement(Text, null, `+ ${create.label}`)),
       ...targets.map(([name, params]) =>
         createElement(Pressable, { key: name, onPress: () => nav.navigate(name, params) },
           createElement(Text, null, `open ${name}`))));
@@ -72,7 +87,30 @@ function mockList(label: string) {
   return { __esModule: true, default: List };
 }
 jest.mock("../features/support/ComplaintsScreen", () => mockList("Complaints"));
-jest.mock("../features/support/ComplaintDetailScreen", () => mockStub("ComplaintDetail"));
+// The detail stub publishes an action bar, as the real record screens will.
+jest.mock("../features/support/ComplaintDetailScreen", () => {
+  const { createElement } = require("react");
+  const { Text } = require("react-native");
+  const { CircleCheck, PhoneCall } = require("lucide-react-native");
+  const Detail = () => {
+    require("./Shell").useActionBar([
+      { key: "call", label: "Log call", icon: PhoneCall, onPress: mockResolve },
+      { key: "resolve", label: "Resolve", icon: CircleCheck, main: true, onPress: mockResolve },
+    ]);
+    return createElement(Text, null, "ComplaintDetail");
+  };
+  return { __esModule: true, default: Detail };
+});
+const mockResolve = jest.fn();
+jest.mock("../features/search/SearchScreen", () => mockStub("Search screen"));
+jest.mock("../api/presenceQueries", () => ({ heartbeat: jest.fn(), ackNotice: jest.fn() }));
+jest.mock("../api/todayQueries", () => ({ fetchMyDay: jest.fn() }));
+jest.mock("../api/ticketQueries", () => ({ ...jest.requireActual("../api/ticketQueries"), fetchTickets: jest.fn() }));
+jest.mock("../api/followupQueries", () => ({ ...jest.requireActual("../api/followupQueries"), fetchFollowUps: jest.fn() }));
+jest.mock("../api/notificationQueries", () => ({ ...jest.requireActual("../api/notificationQueries"), fetchNotifications: jest.fn() }));
+jest.mock("../api/workspaceQueries", () => ({
+  ...jest.requireActual("../api/workspaceQueries"), fetchWorkspaces: jest.fn(), ensurePersonalWorkspace: jest.fn(),
+}));
 jest.mock("../features/support/ComplaintFormScreen", () => mockStub("ComplaintForm"));
 jest.mock("../features/sales/LeadsScreen", () => mockList("Leads"));
 jest.mock("../features/sales/LeadDetailScreen", () => mockStub("LeadDetail"));
@@ -82,7 +120,33 @@ jest.mock("../features/sales/FollowUpsScreen", () => mockList("FollowUps"));
 // The stack animates a screen in and sets state when that finishes. Fake
 // timers let each test run the animation to its end inside act(), instead of
 // it landing after the test on a slow machine.
-beforeEach(() => jest.useFakeTimers());
+const NO_FLAGS: DayTaskFlags = {
+  given: false, done: false, doneLate: false, open: true, working: false, notStarted: true, dueToday: false,
+  overdue: false, atRisk: false, onHold: false, reasonOwed: false, toRule: false,
+};
+const dayTask = (TaskId: number, flags: Partial<DayTaskFlags>): DayTask => ({
+  TaskId, TatId: TaskId, Title: "t", WorkspaceId: 1, WorkspaceName: "Ops", AssignedByName: null, Priority: null,
+  StepsTotal: 0, StepsDone: 0, HoldReason: null, CompletedDate: null, BreachedAt: null, due: null, timer: "clock",
+  timeLeftMin: null, flags: { ...NO_FLAGS, ...flags },
+});
+/** Badge sources: 2 tasks need you, 3 complaints overdue, 4 follow-ups overdue, 63 unread. */
+const serveCounts = () => {
+  jest.mocked(fetchMyDay).mockResolvedValue(envelope({
+    day: { key: "2026-11-02", live: true },
+    me: { UserId: 1, FullName: "Test User", tasks: [dayTask(1, { overdue: true }), dayTask(2, { reasonOwed: true }), dayTask(3, {})] },
+  }));
+  jest.mocked(fetchTickets).mockResolvedValue(envelope({ tickets: [], pagination: pagination(3) }));
+  jest.mocked(fetchFollowUps).mockResolvedValue(envelope({ followups: [], pagination: pagination(4) }));
+  jest.mocked(fetchNotifications).mockResolvedValue(envelope({ notifications: [], unreadCount: 63, pagination: pagination(0) }));
+};
+
+beforeEach(() => {
+  jest.useFakeTimers();
+  setWindow(...PHONE);
+  serveCounts();
+  jest.mocked(heartbeat).mockResolvedValue(envelope({ expiresAt: "2026-11-02T19:00:00.000Z" }));
+  jest.mocked(fetchWorkspaces).mockResolvedValue([]);
+});
 afterEach(async () => {
   await act(async () => { jest.runOnlyPendingTimers(); });
   jest.useRealTimers();
@@ -94,7 +158,11 @@ const mountApp = () =>
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <SafeAreaProvider initialMetrics={METRICS}>
         <GestureHandlerRootView style={StyleSheet.absoluteFill}>
-          <RootNavigator />
+          <BottomSheetModalProvider>
+            <ToastProvider>
+              <RootNavigator />
+            </ToastProvider>
+          </BottomSheetModalProvider>
         </GestureHandlerRootView>
       </SafeAreaProvider>
     </QueryClientProvider>,
@@ -114,17 +182,17 @@ it("signed out, only the login screen mounts", async () => {
 
 describe("the tab bar is the role's modules, in a fixed order, never more than five", () => {
   it.each([
-    ["complaints-only", () => signInWith("complaints"), ["Home", "Complaints", "More"]],
-    ["leads-only", () => signInWith("leads"), ["Home", "Leads", "Follow-ups", "More"]],
-    ["tasks-only", () => signInWith("tasks"), ["Home", "Tasks", "More"]],
-    ["tasks and leads", () => signInWith("tasks", "leads"), ["Home", "Tasks", "Leads", "Follow-ups", "More"]],
-    ["complaints and leads", () => signInWith("complaints", "leads"), ["Home", "Complaints", "Leads", "Follow-ups", "More"]],
-    ["all three",() => signInWith("leads", "complaints", "tasks"), ["Home", "Tasks", "Complaints", "Leads", "More"]],
-    ["an admin", () => seedAuth({ access: { isAdmin: true } }), ["Home", "Tasks", "Complaints", "Leads", "More"]],
+    ["complaints-only", () => signInWith("complaints"), ["Today", "Complaints", "More"]],
+    ["leads-only", () => signInWith("leads"), ["Today", "Leads", "Follow-ups", "More"]],
+    ["tasks-only", () => signInWith("tasks"), ["Today", "Tasks", "More"]],
+    ["tasks and leads", () => signInWith("tasks", "leads"), ["Today", "Tasks", "Leads", "Follow-ups", "More"]],
+    ["complaints and leads", () => signInWith("complaints", "leads"), ["Today", "Complaints", "Leads", "Follow-ups", "More"]],
+    ["all three",() => signInWith("leads", "complaints", "tasks"), ["Today", "Tasks", "Complaints", "Leads", "More"]],
+    ["an admin", () => seedAuth({ access: { isAdmin: true } }), ["Today", "Tasks", "Complaints", "Leads", "More"]],
     // Customers is its own module (096): it does not open complaints.
-    ["customers-only", () => signInWith("customers"), ["Home", "More"]],
+    ["customers-only", () => signInWith("customers"), ["Today", "More"]],
     // Access not known yet: nothing is granted.
-    ["access not loaded", () => seedAuth(), ["Home", "More"]],
+    ["access not loaded", () => seedAuth(), ["Today", "More"]],
   ] as const)("%s", async (_role, signIn, tabs) => {
     signIn();
     await mountApp();
@@ -144,7 +212,7 @@ it("the tab bar switches between every tab, each opening its list", async () => 
     ["Complaints", "Complaints screen"],
     ["Leads", "Leads screen"],
     ["More", "More screen"],
-    ["Home", "Home screen"],
+    ["Today", "Home screen"],
   ] as const) {
     await fireEvent.press(screen.getByRole("tab", { name: tab }));
     expect(await screen.findByText(body)).toBeOnTheScreen();
@@ -156,9 +224,9 @@ it("a role losing a module loses its tab without a re-login", async () => {
   signInWith("tasks", "complaints");
   await mountApp();
   await screen.findByText("Home screen");
-  expect(tabLabels()).toEqual(["Home", "Tasks", "Complaints", "More"]);
+  expect(tabLabels()).toEqual(["Today", "Tasks", "Complaints", "More"]);
   await act(async () => signInWith("tasks"));
-  expect(tabLabels()).toEqual(["Home", "Tasks", "More"]);
+  expect(tabLabels()).toEqual(["Today", "Tasks", "More"]);
 });
 
 it("logging out swaps the whole tree back to login", async () => {
@@ -210,5 +278,238 @@ describe("Follow-ups: a tab while there is room, else pushed", () => {
     await mountApp();
     await openFromHome("FollowUps");
     expect(await screen.findByText("FollowUps screen (pushed) today")).toBeOnTheScreen();
+  });
+});
+
+// ------------------------------------------------------------------ the Shell (spec §3.3, §3.4)
+
+const flatOf = (id: string) => StyleSheet.flatten(screen.getByTestId(id).props.style);
+const badgeOf = (name: string) => screen.getByRole("tab", { name }).props.accessibilityValue?.text;
+const ADD = { view: true, add: true, edit: true, delete: false, reach: "Own" as const };
+
+describe("the docked bar", () => {
+  it("is navy, docked over the home-indicator inset, the active pill in its module tone", async () => {
+    signInWith("tasks", "complaints", "leads");
+    await mountApp();
+    await screen.findByText("Home screen");
+    expect(flatOf("bottom-bar")).toMatchObject({ backgroundColor: "#171D47", height: 58 + 34, paddingBottom: 34 });
+    expect(flatOf("pill-Home").backgroundColor).toBe("#D5D9F5");
+    expect(flatOf("indicator-Home")).toMatchObject({ width: 32, height: 3, backgroundColor: "#8592F0" });
+    await fireEvent.press(screen.getByRole("tab", { name: "Complaints" }));
+    expect(flatOf("pill-Complaints").backgroundColor).toBe("#FFCCB8");
+    expect(screen.queryByTestId("indicator-Home")).toBeNull();
+  });
+
+  it("badges come from Home's queries: needs-you tasks, overdue complaints", async () => {
+    signInWith("tasks", "complaints", "leads");
+    await mountApp();
+    expect(await screen.findByText("2")).toBeOnTheScreen();
+    expect(badgeOf("Tasks")).toBe("2 new");
+    expect(badgeOf("Complaints")).toBe("3 new");
+    expect(badgeOf("Leads")).toBeUndefined();
+    expect(badgeOf("Today")).toBeUndefined();
+    expect(jest.mocked(fetchTickets)).toHaveBeenCalledWith(expect.objectContaining({ Overdue: true, PageSize: 1 }));
+  });
+
+  it("leads-only: Follow-ups carries the overdue follow-ups badge", async () => {
+    signInWith("leads");
+    await mountApp();
+    expect(await screen.findByText("4")).toBeOnTheScreen();
+    expect(badgeOf("Follow-ups")).toBe("4 new");
+    expect(fetchMyDay).not.toHaveBeenCalled();
+    expect(fetchTickets).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["Inbox", "Inbox screen", "Today"],
+    ["Boards", "Boards screen", "More"],
+    ["Me", "Profile screen", "More"],
+    ["Search", "Search screen", "Today"],
+  ])("a pushed %s keeps the bar with its owner tab active", async (name, body, owner) => {
+    signInWith("tasks", "complaints", "leads");
+    await mountApp();
+    await openFromHome(name);
+    expect(await screen.findByText(body)).toBeOnTheScreen();
+    expect(screen.getByRole("tab", { name: owner })).toBeSelected();
+  });
+
+  it("a tab press from a pushed screen pops back to that tab", async () => {
+    signInWith("tasks", "complaints", "leads");
+    await mountApp();
+    await openFromHome("Boards");
+    await fireEvent.press(screen.getByRole("tab", { name: "Tasks" }));
+    await act(async () => { jest.runOnlyPendingTimers(); });
+    expect(await screen.findByText("My Work screen")).toBeOnTheScreen();
+    expect(screen.getByRole("tab", { name: "Tasks" })).toBeSelected();
+  });
+
+  it("a form has no bar", async () => {
+    signInWith("leads");
+    await mountApp();
+    await openFromHome("LeadForm");
+    expect(await screen.findByText("LeadForm")).toBeOnTheScreen();
+    expect(screen.queryByTestId("bottom-bar")).toBeNull();
+  });
+
+  it("a record shows the action bar it publishes, the main action filled", async () => {
+    signInWith("complaints");
+    await mountApp();
+    await openFromHome("ComplaintDetail");
+    expect(await screen.findByText("ComplaintDetail")).toBeOnTheScreen();
+    expect(screen.queryByTestId("bottom-bar")).toBeNull();
+    expect(screen.getByTestId("action-bar")).toBeOnTheScreen();
+    expect(flatOf("action-main").backgroundColor).toBe("#3F4FAF");
+    await fireEvent.press(screen.getByRole("button", { name: "Resolve" }));
+    expect(mockResolve).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("the rail (tablet, ≥ medium)", () => {
+  const railLabels = () => screen.getAllByRole("tab").map((t) => t.props.accessibilityLabel);
+
+  it.each([
+    ["all three", ["tasks", "complaints", "leads"], ["Today", "Tasks", "Complaints", "Leads", "Follow-ups", "Inbox", "More"]],
+    ["complaints-only", ["complaints"], ["Today", "Complaints", "Inbox", "More"]],
+    ["leads-only", ["leads"], ["Today", "Leads", "Follow-ups", "Inbox", "More"]],
+    ["tasks-only", ["tasks"], ["Today", "Tasks", "Inbox", "More"]],
+  ] as const)("%s: the rail replaces the bar, in E's order", async (_role, modules, labels) => {
+    setWindow(...TABLET);
+    signInWith(...modules);
+    await mountApp();
+    await screen.findByText("Home screen");
+    expect(screen.getByTestId("rail")).toBeOnTheScreen();
+    expect(screen.queryByTestId("bottom-bar")).toBeNull();
+    expect(railLabels()).toEqual(labels);
+  });
+
+  it("Inbox is a rail item with the unread badge; a form keeps the rail; no action bar on a record", async () => {
+    setWindow(...TABLET);
+    signInWith("complaints", "leads");
+    await mountApp();
+    expect(await screen.findByText("63")).toBeOnTheScreen();
+    expect(badgeOf("Inbox")).toBe("63 new");
+    await fireEvent.press(screen.getByRole("tab", { name: "Inbox" }));
+    await act(async () => { jest.runOnlyPendingTimers(); });
+    expect(await screen.findByText("Inbox screen")).toBeOnTheScreen();
+    expect(screen.getByRole("tab", { name: "Inbox" })).toBeSelected();
+    await fireEvent.press(screen.getByRole("tab", { name: "More" }));
+    await act(async () => { jest.runOnlyPendingTimers(); });
+    expect(await screen.findByText("More screen")).toBeOnTheScreen();
+    expect(screen.getByRole("tab", { name: "More" })).toBeSelected();
+  });
+
+  it("a record at the rail has no action bar (actions go in its band)", async () => {
+    setWindow(...TABLET);
+    signInWith("complaints");
+    await mountApp();
+    await openFromHome("ComplaintDetail");
+    expect(await screen.findByText("ComplaintDetail")).toBeOnTheScreen();
+    expect(screen.queryByTestId("action-bar")).toBeNull();
+    expect(screen.getByTestId("rail")).toBeOnTheScreen();
+  });
+});
+
+describe("Create (04b)", () => {
+  it("rows only for modules the role can add, in E's order, with the footnote", async () => {
+    seedAuth({ access: { modules: { tasks: ADD, complaints: ADD, leads: { ...ADD, add: false } } } });
+    await mountApp();
+    await fireEvent.press(await screen.findByText("+ New"));
+    expect(screen.getAllByRole("button", { name: /^New / }).map((b) => b.props.accessibilityLabel)).toEqual(["New task", "New complaint"]);
+    expect(screen.getByText("Only the modules you can add to appear here.")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "New complaint" }));
+    await act(async () => { jest.runOnlyPendingTimers(); });
+    expect(await screen.findByText("ComplaintForm")).toBeOnTheScreen();
+  });
+
+  it("one addable module skips the sheet: the band reads + Lead and opens the form", async () => {
+    seedAuth({ access: { modules: { leads: ADD } } });
+    await mountApp();
+    await fireEvent.press(await screen.findByText("+ Lead"));
+    await act(async () => { jest.runOnlyPendingTimers(); });
+    expect(await screen.findByText("LeadForm")).toBeOnTheScreen();
+  });
+
+  it("New task opens the form on the caller's personal workspace", async () => {
+    jest.mocked(fetchWorkspaces).mockResolvedValue([
+      makeWorkspace({ Id: 7, Type: "shared", OwnerUserId: 1 }),
+      makeWorkspace({ Id: 9, Type: "personal", OwnerUserId: 1 }),
+    ]);
+    seedAuth({ UserId: 1, access: { modules: { tasks: ADD } } });
+    await mountApp();
+    await fireEvent.press(await screen.findByText("+ Task"));
+    await act(async () => { jest.runOnlyPendingTimers(); });
+    expect(await screen.findByText("TaskForm")).toBeOnTheScreen();
+  });
+});
+
+it("the heartbeat records the session's expiry while signed in (G22)", async () => {
+  signInWith("tasks");
+  await mountApp();
+  await screen.findByText("Home screen");
+  expect(heartbeat).toHaveBeenCalled();
+  await act(async () => {});
+  expect(useAuthStore.getState().sessionExpiresAt).toBe("2026-11-02T19:00:00.000Z");
+});
+
+describe("Create: a new task without a personal workspace", () => {
+  it("asks the server to make one, then opens the form on it", async () => {
+    jest.mocked(fetchWorkspaces)
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([makeWorkspace({ Id: 11, Type: "personal", OwnerUserId: 1 })]);
+    jest.mocked(ensurePersonalWorkspace).mockResolvedValue(envelope(null));
+    seedAuth({ UserId: 1, access: { modules: { tasks: ADD } } });
+    await mountApp();
+    await fireEvent.press(await screen.findByText("+ Task"));
+    await act(async () => { jest.runOnlyPendingTimers(); });
+    expect(await screen.findByText("TaskForm")).toBeOnTheScreen();
+    expect(ensurePersonalWorkspace).toHaveBeenCalledTimes(1);
+  });
+
+  it("says so when none can be had", async () => {
+    jest.mocked(ensurePersonalWorkspace).mockResolvedValue(envelope(null));
+    seedAuth({ UserId: 1, access: { modules: { tasks: ADD } } });
+    await mountApp();
+    await fireEvent.press(await screen.findByText("+ Task"));
+    expect(await screen.findByRole("alert", { name: "Could not find your personal workspace." })).toBeOnTheScreen();
+  });
+
+  it("says so when the server refuses", async () => {
+    jest.mocked(fetchWorkspaces).mockRejectedValue(serverError(500, "Server busy"));
+    seedAuth({ UserId: 1, access: { modules: { tasks: ADD } } });
+    await mountApp();
+    await fireEvent.press(await screen.findByText("+ Task"));
+    expect(await screen.findByRole("alert", { name: "Server busy" })).toBeOnTheScreen();
+  });
+
+  it("the rail's + names the one module and opens its form", async () => {
+    setWindow(...TABLET);
+    seedAuth({ access: { modules: { complaints: ADD } } });
+    await mountApp();
+    await fireEvent.press(within(await screen.findByTestId("rail")).getByRole("button", { name: "New complaint" }));
+    await act(async () => { jest.runOnlyPendingTimers(); });
+    expect(await screen.findByText("ComplaintForm")).toBeOnTheScreen();
+  });
+});
+
+describe("focusedRoute / shellNavigator", () => {
+  it("reads the stack route, and the tab inside Tabs (or the one asked for, else Home)", () => {
+    const tabs = (state?: object, params?: object) => ({ index: 0, routes: [{ key: "t", name: "Tabs", state, params }] }) as never;
+    expect(focusedRoute(undefined)).toBeNull();
+    expect(focusedRoute({ index: 0, routes: [{ key: "i", name: "Inbox" }] } as never)).toEqual({ name: "Inbox", key: "i", tab: null });
+    expect(focusedRoute(tabs({ index: 1, routes: [{ name: "Home" }, { name: "Leads" }] }))).toMatchObject({ tab: "Leads" });
+    expect(focusedRoute(tabs(undefined, { screen: "Complaints" }))).toMatchObject({ tab: "Complaints" });
+    expect(focusedRoute(tabs())).toMatchObject({ tab: "Home" });
+  });
+
+  it("drops a press before the container is ready", () => {
+    const ref = { isReady: jest.fn(() => false), navigate: jest.fn(), dispatch: jest.fn() };
+    const nav = shellNavigator(ref as never);
+    nav.navigate("Inbox");
+    nav.toTab("Leads");
+    expect(ref.navigate).not.toHaveBeenCalled();
+    expect(ref.dispatch).not.toHaveBeenCalled();
+    ref.isReady.mockReturnValue(true);
+    nav.toTab("Leads");
+    expect(ref.dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "POP_TO", payload: expect.objectContaining({ name: "Tabs", params: { screen: "Leads" } }) }));
   });
 });

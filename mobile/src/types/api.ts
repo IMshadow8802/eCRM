@@ -319,7 +319,18 @@ export interface DayTask {
  */
 export interface MyDay {
   day: { key: string; live: boolean };
-  me: { UserId: number; FullName: string | null; tasks: DayTask[] } | null;
+  /**
+   * The caller's presence row (todayData.loadDay → presenceController.withStatus):
+   * ShiftStart/ShiftEnd are ISO datetimes, null on a day off (G21: "On shift until …").
+   */
+  me: {
+    UserId: number;
+    FullName: string | null;
+    ShiftStart?: string | null;
+    ShiftEnd?: string | null;
+    status?: { code: string; label: string; online?: boolean } | null;
+    tasks: DayTask[];
+  } | null;
 }
 
 export interface TaskChecklistItem {

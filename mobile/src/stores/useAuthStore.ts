@@ -46,6 +46,10 @@ interface AuthState {
   CompId: number | null;
   BranchId: number | null;
   loginTimestamp: number | null;
+  /** When the server session ends (ISO), from login and every heartbeat (G22). Null = unknown. */
+  sessionExpiresAt: string | null;
+  /** A heartbeat answered with a new expiry; a null answer keeps the last known one. */
+  noteSessionExpiry: (expiresAt: string | null | undefined) => void;
   /** Why the last session ended server-side (a 401 `code`); shown on the login screen. */
   sessionEndedReason: string | null;
   /** The server's own wording for that 401, shown before any local fallback. */
@@ -84,6 +88,7 @@ const EMPTY = {
   CompId: null,
   BranchId: null,
   loginTimestamp: null,
+  sessionExpiresAt: null,
   presenceNotice: false,
   reauth: null,
 } as const;
@@ -118,7 +123,7 @@ const useAuthStore = create<AuthState>()(
         set({ ...EMPTY, ...CLIENT_EMPTY });
       },
 
-      login: ({ token, user, company, permissions, access, presenceNotice }) => {
+      login: ({ token, user, company, permissions, access, presenceNotice, sessionExpiresAt }) => {
         setAuthToken(token);
         // The previous user's (or company's) cached tasks, complaints and inbox must not show.
         queryClient.clear();
@@ -134,6 +139,7 @@ const useAuthStore = create<AuthState>()(
           CompId: user?.CompId ?? null,
           BranchId: user?.BranchId ?? null,
           loginTimestamp: Date.now(),
+          sessionExpiresAt: sessionExpiresAt ?? null,
           sessionEndedReason: null,
           sessionEndedMessage: null,
           presenceNotice: Boolean(presenceNotice),
@@ -141,6 +147,10 @@ const useAuthStore = create<AuthState>()(
       },
 
       ackPresenceNotice: () => set({ presenceNotice: false }),
+
+      noteSessionExpiry: (expiresAt) => {
+        if (expiresAt && get().isAuthenticated) set({ sessionExpiresAt: expiresAt });
+      },
 
       logout: () => {
         // Parked requests fail with their original 401; the navigator drops to login.
@@ -172,6 +182,7 @@ const useAuthStore = create<AuthState>()(
           access: data.access ?? get().access,
           accessCheckedAt: data.access ? Date.now() : get().accessCheckedAt,
           loginTimestamp: Date.now(),
+          sessionExpiresAt: data.sessionExpiresAt ?? null,
           presenceNotice: Boolean(data.presenceNotice),
           reauth: null,
         });

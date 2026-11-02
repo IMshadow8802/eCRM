@@ -67,6 +67,30 @@ describe("session", () => {
     expect(getAuthToken()).toBe("tok-1");
   });
 
+  // G22: More's footer reads "session ends 7:00 pm".
+  it("login stores the session expiry; a heartbeat moves it; a null beat keeps it; logout clears it", () => {
+    state().login(loginData({ sessionExpiresAt: "2026-11-02T13:30:00.000Z" }));
+    expect(state().sessionExpiresAt).toBe("2026-11-02T13:30:00.000Z");
+    state().noteSessionExpiry("2026-11-02T14:00:00.000Z");
+    expect(state().sessionExpiresAt).toBe("2026-11-02T14:00:00.000Z");
+    state().noteSessionExpiry(null);
+    expect(state().sessionExpiresAt).toBe("2026-11-02T14:00:00.000Z");
+    state().logout();
+    expect(state().sessionExpiresAt).toBeNull();
+    // A late beat after logout does not paint an expiry on a signed-out app.
+    state().noteSessionExpiry("2026-11-02T15:00:00.000Z");
+    expect(state().sessionExpiresAt).toBeNull();
+  });
+
+  it("a login without an expiry stores none; a re-sign-in takes the new session's", () => {
+    state().login(loginData());
+    expect(state().sessionExpiresAt).toBeNull();
+    state().resumeSession(loginData({ token: "tok-2", sessionExpiresAt: "2026-11-02T16:00:00.000Z" }));
+    expect(state().sessionExpiresAt).toBe("2026-11-02T16:00:00.000Z");
+    state().resumeSession(loginData({ token: "tok-3" }));
+    expect(state().sessionExpiresAt).toBeNull();
+  });
+
   it("presenceNotice defaults to false when login omits it", () => {
     state().login(loginData());
     expect(state().presenceNotice).toBe(false);
