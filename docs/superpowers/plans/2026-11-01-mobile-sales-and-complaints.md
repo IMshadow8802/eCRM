@@ -77,7 +77,7 @@ Activity row: `Id, LeadId, UserId, UserName, Type, Summary, CreatedAt`. Assignme
 
 ## Phase A — tests for every existing mobile screen (user order 2026-11-02)
 
-Characterization tests for code that already exists. TDD discipline for these: each test must be shown able to fail — after it passes, temporarily break the behaviour it asserts (or invert the assertion), watch it fail for the right reason, restore; record that RED evidence per test file in the report. A test exposing a real bug → keep the failing test, fix the code, flag it in the report as "regression found". Coverage ≥80% lines + branches on every file the task lists. Mock API modules, never the code under test.
+Characterization tests for code that already exists. TDD discipline for these: each test must be shown able to fail — after it passes, temporarily break the behaviour it asserts (or invert the assertion), watch it fail for the right reason, restore; record that RED evidence per test file in the report. A test exposing a real bug → keep the failing test, fix the code, flag it in the report as "regression found". Coverage ≥80% lines + branches on every file the task lists. Mock API modules, never the code under test. Do not pin behaviour the parity audit (`.superpowers/sdd/2026-11-01-mobile-sales-and-complaints/parity-audit.md`) marks as a bug — leave a `// parity: <ID>` note and let the Phase B task fix it test-first.
 
 ### Task 1: API layer tests
 
@@ -133,9 +133,60 @@ Characterization tests for code that already exists. TDD discipline for these: e
 
 ## Phase B — catch up with the web (from the parity audit)
 
-### Tasks 8–19: parity fixes
+Source: `.superpowers/sdd/2026-11-01-mobile-sales-and-complaints/parity-audit.md` (67 gaps, each with web/backend and mobile file:line and the change needed). Each task below lists audit IDs; the audit row IS the requirement for that ID. Every gap is fixed test-first: a failing test that shows the gap (wrong payload, wrong label, missing control, wrong gate) → fix → green. Rows marked **(unverified)** in the audit: verify first; if the gap is not real, record that in the report and skip it. Out of scope: WS-11 (personal → shared conversion stays web-only by design) and any backend change (the `taskController.js` UTC `WorkDate` fallback is reported to the user, not fixed here).
 
-Filled from `.superpowers/sdd/2026-11-01-mobile-sales-and-complaints/parity-audit.md` once it lands: one task per coherent batch of gaps (same screen/domain), each test-first (failing test that shows the gap → fix → green).
+### Task 8: Auth — cache, access refresh, session messages
+**Audit IDs:** AUTH-01, AUTH-02, AUTH-04, AUTH-05.
+**Produces:** `fetchMyAccess` fetcher; `access` in `useAuthStore` (refreshed on login, on `AppState` active at most once a minute); `useAccess(module): { view, add, edit, delete, reach } & { isAdmin }`; `ModuleKey` gains `partners`, `cards`. Later tasks gate controls with `useAccess` and read admin from `access.isAdmin`, never `user.IsAdmin`.
+- [ ] Tests first for each ID (cache cleared on login/logout/switch company — a query seeded before is gone after; access refetched on focus but not twice within 60 s; the server's 401 message shown for every session code; dev override keeps the session on rehydrate). Gate. Commit.
+
+### Task 9: Re-sign-in dialog on session end
+**Audit IDs:** AUTH-03.
+- [ ] Tests first: a session 401 mid-form shows a password-only re-sign-in Dialog over the current screen (typed form state kept); success retries the failed request once and continues; "Sign in as someone else" does a full logout; concurrent 401s share one dialog/promise; login/logout 401s never open it. Gate. Commit.
+
+### Task 10: Tasks — small correctness fixes
+**Audit IDs:** TASK-01, TASK-03, TASK-06, TASK-07, TASK-08.
+- [ ] Tests first per ID (WorkDate is the local day for a time logged at 00:30 IST; checklist tick with `completionChange`/`tatReasonNeeded` toasts and opens the explain-delay sheet; Unassigned/All send `OnlyOpen: true`; Deadline tab hidden on personal boards; Done + Blocked chips; "Time logged" menu entry always opens the sheet). Gate. Commit.
+
+### Task 11: Tasks — due time, time allowed, dependencies
+**Audit IDs:** TASK-02, TASK-05.
+- [ ] Tests first: form sends `DueTime` only with a due date and `TatMinutes` (hours×60; empty = policy → not sent; 0 = no clock) only when changed, hidden on personal boards and without `can.editFields`; dependencies sheet always reachable, adds "Blocks another task" (TaskId = other, DependsOnTaskId = this), removes dependents with `can.editFields`, picker excludes existing blockers. Gate. Commit.
+
+### Task 12: Tasks — comments: reply, edit, delete, pin
+**Audit IDs:** TASK-04.
+- [ ] Tests first: long-press → ActionSheet (Reply / Edit own / Delete own / Pin when `can.pinComment`); reply posts `ParentCommentId` and renders indented under its parent; edit posts `Id`; deleted shows italic placeholder; edited marker. Gate. Commit.
+
+### Task 13: Task deadlines (TAT) — labels, reasons, verdicts
+**Audit IDs:** TAT-01, TAT-02, TAT-03, TAT-04, TAT-05.
+**Produces:** `saveVerdict({ TatId, Verdict, Remarks })` fetcher; `eventText`, `isWallClock`, `VERDICT_LABEL` in `features/tasks/tatChip.ts`.
+- [ ] Tests first: breached open clock → "Missed deadline" danger; remarks required when reason Code is `other`; reason + verdict entries in the timeline; history uses `eventText` (no raw `Kind`); other assignees' clocks listed read-only; Accept/Reject only when `CanJudge`, remarks required to excuse. Gate. Commit.
+
+### Task 14: "Needs you" on My Work
+**Audit IDs:** TAT-06.
+**Produces:** `todayQueries.ts` with `fetchMyDay()` → `POST /api/today/mine` (contract from `backend/src/controllers/todayController.js`).
+- [ ] Tests first: My Work shows a "Needs you" section with reason-owed (incl. finished tasks), TAT-overdue and at-risk rows from `fetchMyDay`; a row opens the task on its Deadline tab; section hidden when empty; error does not break My Work. Gate. Commit.
+
+### Task 15: Boards — membership, archive, roles
+**Audit IDs:** WS-01, WS-02, WS-03, WS-04, WS-05, WS-06, WS-07, WS-08, WS-09, WS-10, WS-14, WS-15.
+- [ ] Tests first per ID (rename re-sends TeamId/ProjectId; Archive owner/admin only; Delete only when archived with web's hint otherwise; list fetched with `IncludeArchived: true` and Archived section restorable; every active member opens settings read-only + "Leave board"; invite role picker; admin gates from `useAccess`/`access.isAdmin`; admin-view section; sync members on project boards; declined members + Re-invite, no Remove on pending/self; hub "· n invites"; invite card wording). Gate. Commit.
+
+### Task 16: Board and columns
+**Audit IDs:** COL-01, COL-02, COL-03, COL-04, COL-05, WS-12, WS-13.
+- [ ] Tests first per ID (new column `SortOrder: 0`; "n / max" + limit field; FAB in last column targets the first; board search sends `SearchTerm`; optimistic move with rollback on failure; template select on create; delete confirm shows task/comment/file counts). Gate. Commit.
+
+### Task 17: Complaints and customers — correctness and form
+**Audit IDs:** CMP-01, CMP-02, CMP-03, CMP-04, CMP-06, CMP-07, CMP-09, CMP-10, CMP-11, CMP-12, CUST-01, CUST-03.
+**Produces:** `ui/MobileInput` (no `maxLength`; normalises like `backend/src/utils/mobile.js` — strip non-digits, drop leading `91`/`0`; ten digits or the server's 400 shown). Task 25 (lead form) reuses it.
+- [ ] Tests first per ID (transfer sends `ToBranchId: null`; assignment history on History; extra facts with tap-to-call/mail; Unassigned queue; only Customer + Subject required; working-hours wording; success toasts; Resolve first in the menu; reopen wording; Edit/Transfer/Delete/attachments gated by `useAccess("complaints")`; `+91 98250 12345` → `9825012345`; email format check). Gate. Commit.
+
+### Task 18: Complaints — paging, office, customer history, staged files
+**Audit IDs:** CMP-05, CMP-08, CUST-02, CUST-04.
+**Produces:** `fetchCustomerDetail` fetcher.
+- [ ] Tests first: list pages with `useInfiniteQuery` (PageNumber, 50/page) and loads more at the end; files picked on create upload after save (Entity before file part); customer create sends `BranchId` and wide-reach users get an Office select; picker rows show office; stale company-wide comments fixed; "N previous complaints" opens a sheet of that customer's complaints. Gate. Commit.
+
+### Task 19: Hub, inbox, profile, attachments
+**Audit IDs:** HUB-01, HUB-02, NOTIF-01, NOTIF-02, NOTIF-03, ME-01, ME-02, ME-03, ATT-01, ATT-02, ATT-03, ATT-04.
+- [ ] Tests first per ID (hub ticket count only fetched with complaints access; Inbox tab badge from unread count, refreshed on focus + 60 s; null `EntityType` safe; `user` notifications route to My Work and read rows skip mark-read; Edit profile (MobileInput, avatar presets) + Change password (≥6, confirm) sending all four profile fields; version from expo-constants; extension allow-list before upload; HEIC-named JPEG renamed `.jpg`; multi-select upload; download 401 runs the normal session path). Gate. Commit.
 
 ## Phase C — Sales on mobile
 
