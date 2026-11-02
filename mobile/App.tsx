@@ -69,7 +69,10 @@ export default function App() {
                 <PresenceNoticeDialog />
                 {/* Above the navigator: a closed session is answered in place, the screen kept. */}
                 <ReauthDialog />
-                <StatusBar style="dark" />
+                {/* Light: every screen opens on the navy band. RN's StatusBar is
+                    last-mounted-wins and this one mounts after the navigator, so a
+                    "dark" here overrode every Band's light entry (dark icons on navy). */}
+                <StatusBar style="light" />
               </ToastProvider>
             </BottomSheetModalProvider>
           </GestureHandlerRootView>
