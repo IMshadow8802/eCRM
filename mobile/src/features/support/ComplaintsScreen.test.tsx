@@ -319,6 +319,19 @@ describe("20a–c · states", () => {
     expect(screen.getByTestId("status-pills")).toBeOnTheScreen();
   });
 
+  it("switching from an empty preset shows skeletons, not the old preset's empty state, until the new one answers (device)", async () => {
+    rows = [];
+    await mount();
+    expect(await screen.findByText("Nothing assigned to you")).toBeOnTheScreen();
+    const counts = jest.mocked(fetchTickets).getMockImplementation()!;
+    // Team's list never answers; its counts do.
+    jest.mocked(fetchTickets).mockImplementation((p = {}) => (p.PageSize !== 1 && !p.AssignedTo ? new Promise(() => {}) : counts(p)));
+    await fireEvent.press(screen.getByRole("tab", { name: "Team, 18" }));
+    expect(screen.queryByText("No complaints here")).toBeNull();
+    expect(screen.queryByText("Nothing assigned to you")).toBeNull();
+    expect(screen.getAllByTestId("skeleton-row").length).toBeGreaterThan(0);
+  });
+
   it("a narrowed list that is empty says so", async () => {
     rows = [];
     await mount();

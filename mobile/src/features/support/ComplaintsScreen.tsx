@@ -246,15 +246,20 @@ export default function ComplaintsScreen({ navigation, route }: Props) {
             ) : null
           }
           ListEmptyComponent={
-            <EmptyState
-              top
-              module="complaints"
-              accents={["done", "escalated"]}
-              title={narrowed ? "Nothing matches" : empty.title}
-              message={narrowed ? "Try another status, or clear the search." : empty.message}
-              actionLabel={!narrowed && empty.showMine ? "Show all of mine" : undefined}
-              onAction={() => setQueue("mine")}
-            />
+            // Placeholder rows are the previous preset's: no verdict on this one yet.
+            isPlaceholderData ? (
+              <SkeletonRows rows={6} />
+            ) : (
+              <EmptyState
+                top
+                module="complaints"
+                accents={["done", "escalated"]}
+                title={narrowed ? "Nothing matches" : empty.title}
+                message={narrowed ? "Try another status, or clear the search." : empty.message}
+                actionLabel={!narrowed && empty.showMine ? "Show all of mine" : undefined}
+                onAction={() => setQueue("mine")}
+              />
+            )
           }
         />
       </>

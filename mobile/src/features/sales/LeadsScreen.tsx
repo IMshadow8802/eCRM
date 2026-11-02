@@ -250,12 +250,17 @@ export default function LeadsScreen({ navigation, route }: Props) {
               </ListGroupCell>
             )}
             ListEmptyComponent={
-              <EmptyState
-                top
-                module="leads"
-                title={narrowed ? "Nothing matches" : EMPTY[queue].title}
-                message={narrowed ? "Try another status, or clear the search." : EMPTY[queue].message}
-              />
+              // Placeholder rows are the previous preset's: no verdict on this one yet.
+              isPlaceholderData ? (
+                <SkeletonRows />
+              ) : (
+                <EmptyState
+                  top
+                  module="leads"
+                  title={narrowed ? "Nothing matches" : EMPTY[queue].title}
+                  message={narrowed ? "Try another status, or clear the search." : EMPTY[queue].message}
+                />
+              )
             }
           />
         )}

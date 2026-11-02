@@ -274,6 +274,16 @@ it("an empty Mine says so; an empty search says nothing matches", async () => {
   expect(await screen.findByText("Nothing matches")).toBeOnTheScreen();
 });
 
+it("switching from an empty preset shows skeletons, not its empty state, until the new one answers (device)", async () => {
+  answer((p) => (p.OwnerId ? Promise.resolve(leadsReply([])) : new Promise(() => {})));
+  await mount();
+  expect(await screen.findByText("No leads yet")).toBeOnTheScreen();
+  await fireEvent.press(screen.getByRole("tab", { name: /^All/ }));
+  expect(screen.queryByText("No leads yet")).toBeNull();
+  expect(screen.queryByText("No leads")).toBeNull();
+  expect(screen.getAllByTestId("skeleton-row").length).toBeGreaterThan(0);
+});
+
 it("tapping a row opens the lead", async () => {
   const navigation = makeNavigation<"Leads">();
   await mount(navigation);
