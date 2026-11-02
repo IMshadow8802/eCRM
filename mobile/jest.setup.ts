@@ -1,11 +1,15 @@
 import "react-native-gesture-handler/jestSetup";
 import { notifyManager } from "@tanstack/react-query";
 
-// React Query batches observer notifications on a setTimeout(0), which can fire
-// after a test's last act()/waitFor and log "not wrapped in act". Synchronous
-// notifications land inside whichever act() resolved the query.
+// React Query batches observer notifications on a setTimeout(0); synchronous
+// notifications land inside whichever act() resolved the query. The "not
+// wrapped in act" warning this was added for came from a test asserting before
+// its data had loaded — so tests still wait on data (findBy*/waitFor) and never
+// lean on this scheduler for timing.
 notifyManager.setScheduler((cb) => cb());
 
+// Reanimated 4 runs on react-native-worklets, whose native module is absent in jest.
+jest.mock("react-native-worklets", () => require("react-native-worklets/src/mock"));
 jest.mock("react-native-reanimated", () => require("react-native-reanimated/mock"));
 jest.mock("@gorhom/bottom-sheet", () => require("@gorhom/bottom-sheet/mock"));
 jest.mock("@react-native-async-storage/async-storage", () =>

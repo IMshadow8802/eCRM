@@ -14,10 +14,13 @@ export function envelope<T>(data: T, extra: Partial<ApiEnvelope<T>> = {}): ApiEn
   };
 }
 
-export const pagination = (totalRecords: number, extra: Partial<Pagination> = {}): Pagination => ({
-  currentPage: 1,
-  pageSize: 50,
-  totalRecords,
-  totalPages: Math.max(1, Math.ceil(totalRecords / 50)),
-  ...extra,
-});
+export const pagination = (totalRecords: number, extra: Partial<Pagination> = {}): Pagination => {
+  const pageSize = extra.pageSize ?? 50;
+  return {
+    currentPage: 1,
+    pageSize,
+    totalRecords,
+    totalPages: Math.max(1, Math.ceil(totalRecords / pageSize)),
+    ...extra,
+  };
+};

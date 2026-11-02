@@ -36,5 +36,3 @@ export const lastRequest = () => {
   const body: unknown = typeof config.data === "string" ? JSON.parse(config.data) : config.data;
   return { config, url: config.url, body };
 };
-
-export const requestCount = (): number => adapter.mock.calls.length;
