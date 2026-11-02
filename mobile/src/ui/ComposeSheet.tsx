@@ -92,12 +92,11 @@ export const ComposeSheet = forwardRef<SheetRef, ComposeSheetProps>(
       setPicked({});
     };
 
+    const isRequired = (f: (typeof fields)[number]) =>
+      typeof f.required === "function" ? f.required(picked) : !!f.required;
+
     const complete =
-      fields.every(
-        (f) =>
-          !(typeof f.required === "function" ? f.required(picked) : f.required) ||
-          (values[f.key] ?? "").trim(),
-      ) &&
+      fields.every((f) => !isRequired(f) || (values[f.key] ?? "").trim()) &&
       choices.every((c) => !c.required || picked[c.key] != null);
 
     /**
@@ -154,7 +153,16 @@ export const ComposeSheet = forwardRef<SheetRef, ComposeSheetProps>(
 
           {fields.map((field, i) => (
             <View key={field.key} style={styles.field}>
-              {field.label ? <Text variant="label">{field.label}</Text> : null}
+              {field.label ? (
+                <Text variant="label">
+                  {field.label}
+                  {isRequired(field) ? (
+                    <Text variant="label" color="danger">
+                      {" *"}
+                    </Text>
+                  ) : null}
+                </Text>
+              ) : null}
               <BottomSheetTextInput
                 value={values[field.key] ?? ""}
                 onChangeText={(text) => set(field.key, text)}

@@ -27,7 +27,8 @@ async function renderSheet(props: Partial<ComposeSheetProps> = {}) {
 
 it("submit stays disabled until every required field and choice is filled", async () => {
   const { onSubmit } = await renderSheet();
-  expect(screen.getByText(" *")).toBeOnTheScreen();
+  // Kind (choice) and Hours (field) are both required.
+  expect(screen.getAllByText(" *")).toHaveLength(2);
   expect(submitButton()).toBeDisabled();
 
   await fireEvent.changeText(screen.getByPlaceholderText("Hours"), "   ");
@@ -165,4 +166,20 @@ it("lifts itself over the keyboard instead of waiting for a window resize", asyn
   spy.mockRestore();
   expect(props?.keyboardBehavior).toBe("interactive");
   expect(props?.android_keyboardInputMode).not.toBe("adjustResize");
+});
+
+// Found on the emulator (Task 30): Resolve needs remarks, but only the
+// resolution chips carried a star — the button sat disabled with no hint why.
+it("marks a required text field like a required choice", async () => {
+  await renderSheet({
+    choices: [],
+    fields: [
+      { key: "remarks", label: "Remarks", placeholder: "Why", required: true },
+      { key: "note", label: "Note", placeholder: "Optional" },
+      { key: "ref", label: "Reference", placeholder: "Ref", required: (picked) => picked.kind === "x" },
+    ],
+  });
+  expect(screen.getByText("Remarks", { exact: false })).toHaveTextContent("Remarks *");
+  expect(screen.getByText("Note")).toHaveTextContent(/^Note$/);
+  expect(screen.getByText("Reference")).toHaveTextContent(/^Reference$/);
 });
