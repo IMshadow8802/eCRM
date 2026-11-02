@@ -88,6 +88,9 @@ describe("E 18 — Today / Earlier", () => {
     const earlier = screen.getByTestId("inbox-earlier");
     expect(screen.getByText("Today")).toBeOnTheScreen();
     expect(screen.getByText("Earlier")).toBeOnTheScreen();
+    // E 18: the day groups are overlines (E `.gh-row b`), not h3 titles.
+    expect(flat(screen.getByText("Today"))).toMatchObject({ textTransform: "uppercase", fontSize: 12 });
+    expect(flat(screen.getByText("Earlier"))).toMatchObject({ textTransform: "uppercase", fontSize: 12 });
 
     expect(within(today).getByText("C-1042 escalated to Neha Kapoor")).toBeOnTheScreen();
     expect(within(today).getByText("2:05 pm")).toBeOnTheScreen();

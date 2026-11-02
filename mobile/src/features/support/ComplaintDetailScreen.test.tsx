@@ -176,6 +176,8 @@ describe("E 11 · facts and activity", () => {
     await mount();
     await loaded();
     expect(await screen.findByRole("link", { name: "All 7" })).toBeOnTheScreen();
+    // E 11: "ACTIVITY" is an overline; so are the sections under it.
+    for (const h of ["Activity", "Details"]) expect(flat(screen.getByText(h))).toMatchObject({ textTransform: "uppercase", fontSize: 12 });
     expect(screen.getByText("Subject edited")).toBeOnTheScreen();
     // E 11: the verb bold, the rest regular.
     expect(flat(screen.getByText("Escalated"))).toMatchObject({ fontFamily: "Inter_600SemiBold" });

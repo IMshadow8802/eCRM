@@ -299,6 +299,8 @@ describe("E 16", () => {
     // The paired field is not repeated under More details.
     expect(screen.getAllByText(/^Roof type/).filter((n) => n.props.accessibilityRole !== "header")).toHaveLength(1);
     expect(screen.getByText("More details")).toBeOnTheScreen();
+    // E 16: "MORE DETAILS" is an overline.
+    expect(flat(screen.getByText("More details"))).toMatchObject({ textTransform: "uppercase", fontSize: 12 });
     // T4: the paired custom field's label carries the xs "Custom" chip.
     expect(screen.getByText("Custom").parent!.parent).toHaveTextContent(/^Roof type( \*)?\s*Custom$/);
     await fireEvent.press(screen.getByRole("button", { name: "Cancel" }));

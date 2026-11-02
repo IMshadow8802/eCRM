@@ -11,6 +11,7 @@ import { fetchAssignableUsers, fetchBranches } from "../../api/userQueries";
 import type { Lookup } from "../../types/api";
 import { customer, envelope, serverError, ticket } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
+import { flat } from "../../test/style";
 import { PICKER_TYPES } from "../attachments/attachmentHelpers";
 import ComplaintFormScreen from "./ComplaintFormScreen";
 
@@ -585,6 +586,8 @@ describe("E 12", () => {
     expect(screen.getByText("New complaint")).toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Submit complaint" })).toBeOnTheScreen();
     expect(screen.getByText("More details")).toBeOnTheScreen();
+    // Same overline as the lead form's (E 16).
+    expect(flat(screen.getByText("More details"))).toMatchObject({ textTransform: "uppercase", fontSize: 12 });
   });
 
   it("the dropdown ends with Add new customer \"{term}\"", async () => {

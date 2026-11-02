@@ -602,7 +602,7 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
 
             {attachments}
 
-            <GroupHeader title="More details" />
+            <GroupHeader label="More details" />
             <View style={styles.stack}>
               {/* Optional: the channel list is company data and can be empty. */}
               <Select

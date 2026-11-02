@@ -116,13 +116,13 @@ export default function NotificationsScreen() {
     <>
       {today.length ? (
         <>
-          <GroupHeader title="Today" first />
+          <GroupHeader label="Today" first />
           <ListGroup testID="inbox-today">{today.map((n, i) => row(n, i, true))}</ListGroup>
         </>
       ) : null}
       {earlier.length ? (
         <>
-          <GroupHeader title="Earlier" first={!today.length} />
+          <GroupHeader label="Earlier" first={!today.length} />
           <ListGroup testID="inbox-earlier">{earlier.map((n, i) => row(n, i, false))}</ListGroup>
         </>
       ) : null}

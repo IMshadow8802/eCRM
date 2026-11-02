@@ -213,7 +213,7 @@ export default function FollowUpsScreen({ navigation, route, pushed = false }: P
       {showDone ? (
         <>
           {/* "—" only once it has failed (no 118); while it loads the title carries no number. */}
-          <GroupHeader title={doneToday.isError ? "Done today · —" : doneToday.data ? `Done today · ${count(doneToday) ?? 0}` : "Done today"} />
+          <GroupHeader label={doneToday.isError ? "Done today · —" : doneToday.data ? `Done today · ${count(doneToday) ?? 0}` : "Done today"} />
           {done.length ? (
             <ListGroup>
               {done.map((f, i) => (

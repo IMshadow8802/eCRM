@@ -472,7 +472,7 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
           )}
 
           <GroupHeader
-            title="Activity"
+            label="Activity"
             link={activity.length > COLLAPSED ? { label: expanded ? "Fewer" : `All ${activity.length}`, onPress: () => setExpanded((e) => !e) } : undefined}
           />
           {shown.length ? (
@@ -485,19 +485,19 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
             <Text variant="meta">Nothing has happened yet.</Text>
           )}
 
-          <GroupHeader title="Details" />
+          <GroupHeader label="Details" />
           <Card gap={0} style={styles.details}>
             <Facts layout="list" items={details} />
           </Card>
 
           <View onLayout={(e) => setFilesY(e.nativeEvent.layout.y)}>
-            <GroupHeader title="Files" />
+            <GroupHeader label="Files" />
             <AttachmentList entity="ticket" entityId={ticketId} canManage={can.edit} embedded />
           </View>
 
           {assignments.length ? (
             <>
-              <GroupHeader title="Handovers" />
+              <GroupHeader label="Handovers" />
               <ListGroup>
                 {assignments.map((a, i) => (
                   <ListRow

@@ -385,7 +385,7 @@ function LeadForm({ lead, navigation }: { lead: Lead | null; navigation: Props["
           </Field>
           {moreFields.length ? (
             <>
-              <GroupHeader title="More details" rightChip={{ label: "Custom field", tone: "slate" }} />
+              <GroupHeader label="More details" rightChip={{ label: "Custom field", tone: "slate" }} />
               {moreFields.map((def) => def && <Field key={def.Id}>{customField(def)}</Field>)}
             </>
           ) : null}

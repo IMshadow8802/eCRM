@@ -179,6 +179,8 @@ describe("Done today (G20, SQL 118)", () => {
     );
     await mount();
     expect(await screen.findByText("Done today · 1")).toBeOnTheScreen();
+    // E 17: an overline, like every E group label but Home's.
+    expect(flat(screen.getByText("Done today · 1"))).toMatchObject({ textTransform: "uppercase", fontSize: 12 });
     expect(fetchFollowUps).toHaveBeenCalledWith({ Status: "done", DoneFrom: today, DoneTo: tomorrow, PageSize: 50 });
     const name = screen.getByText("Sunita Agarwal");
     expect(flat(name).color).toBe(colors.textSecondary);
