@@ -140,14 +140,16 @@ const useAuthStore = create<AuthState>()(
       },
 
       refreshAccess: async () => {
-        const { isAuthenticated, accessCheckedAt } = get();
+        const { isAuthenticated, accessCheckedAt, access, token } = get();
         if (!isAuthenticated) return;
-        if (accessCheckedAt != null && Date.now() - accessCheckedAt < ACCESS_REFRESH_MS) return;
+        // Unknown access (an old saved session, a failed first ask) retries on every foreground.
+        if (access && accessCheckedAt != null && Date.now() - accessCheckedAt < ACCESS_REFRESH_MS) return;
         // Stamped before the call so a second foreground mid-request does not ask again.
         set({ accessCheckedAt: Date.now() });
         try {
           const { data } = await fetchMyAccess();
-          if (!data?.access) return;
+          // A reply that lands after logout or another sign-in belongs to a session that is gone.
+          if (!data?.access || get().token !== token) return;
           set({
             access: data.access,
             permissions: { hasAdminAccess: false, ...get().permissions, ...data.permissions },
@@ -167,6 +169,8 @@ const useAuthStore = create<AuthState>()(
     {
       name: "nexus-crm-auth",
       storage: createJSONStorage(() => AsyncStorage),
+      // The throttle stamp is per process: a cold start always re-reads access, as the web does on load.
+      partialize: ({ accessCheckedAt: _, ...rest }) => rest,
       // Only a base URL on a Central-hosted origin survives a reload; anything
       // else (a tampered AsyncStorage value) drops the company binding AND the
       // session, since the token would otherwise be sent to that host.
@@ -177,6 +181,7 @@ const useAuthStore = create<AuthState>()(
         return {
           ...current,
           ...p,
+          accessCheckedAt: null,
           ...(trusted ? { isClientConfigured: DEV_API_BASE_URL != null || !!p.isClientConfigured } : { ...EMPTY, ...CLIENT_EMPTY }),
         };
       },

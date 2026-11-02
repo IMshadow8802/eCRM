@@ -205,6 +205,66 @@ describe("refreshAccess", () => {
     await state().refreshAccess();
     expect(state().access).toEqual(access());
   });
+
+  it("while access is unknown, every foreground retries (no throttle)", async () => {
+    fetchMyAccess.mockRejectedValue(new Error("Network Error"));
+    seedAuth();
+    await state().refreshAccess();
+    await state().refreshAccess();
+    expect(fetchMyAccess).toHaveBeenCalledTimes(2);
+  });
+
+  it("a cold start always asks, whatever stamp was saved", async () => {
+    await AsyncStorage.setItem(
+      "nexus-crm-auth",
+      JSON.stringify({
+        state: { API_BASE_URL: BASE, isClientConfigured: true, isAuthenticated: true, token: "tok-9", access: access(), accessCheckedAt: now },
+        version: 0,
+      }),
+    );
+    await useAuthStore.persist.rehydrate();
+    await state().refreshAccess();
+    expect(fetchMyAccess).toHaveBeenCalledTimes(1);
+  });
+
+  it("never saves the stamp", async () => {
+    state().login(loginData());
+    const saved = JSON.parse((await AsyncStorage.getItem("nexus-crm-auth")) ?? "{}");
+    expect(saved.state.token).toBe("tok-1");
+    expect(saved.state).not.toHaveProperty("accessCheckedAt");
+  });
+
+  describe("a reply that lands after the session changed is dropped", () => {
+    let release: () => void;
+    beforeEach(() => {
+      fetchMyAccess.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            release = () => resolve(envelope({ access: fresh, permissions: { menuItems: menu, rawPermissions: menu, totalMenuItems: 1 } }));
+          }),
+      );
+    });
+
+    it("logout mid-flight writes no access", async () => {
+      seedAuth();
+      const pending = state().refreshAccess();
+      state().logout();
+      release();
+      await pending;
+      expect(state()).toMatchObject({ access: null, permissions: null });
+    });
+
+    it("another user signing in mid-flight keeps their own access", async () => {
+      seedAuth();
+      const pending = state().refreshAccess();
+      const theirs = access({ modules: { complaints: { view: true, add: false, edit: false, delete: false, reach: "Own" } } });
+      state().login(loginData({ token: "tok-B", access: theirs }));
+      release();
+      await pending;
+      expect(state().access).toEqual(theirs);
+      expect(state().permissions?.rawPermissions).toEqual([]);
+    });
+  });
 });
 
 describe("a 401 from the API", () => {
