@@ -139,7 +139,7 @@ export default function MyWorkScreen() {
           <View style={styles.greetBlock}>
             <View style={styles.greetLine}>
               <Text variant="secondary">{greeting},</Text>
-              <Hand size={16} color={colors.warning} />
+              <View accessible accessibilityLabel="Waving hand"><Hand size={16} color={colors.warning} /></View>
             </View>
             <Text variant="h1">{firstName}</Text>
             <Text variant="caption" color="textMuted">

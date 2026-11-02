@@ -42,6 +42,7 @@ export const palette = {
     600: "#DC2626",
     700: "#B91C1C",
     800: "#991B1B",
+    900: "#7F1D1D",
   },
   /**
    * Emerald, not the old grass green (#16A34A).
@@ -216,8 +217,9 @@ export const colors = {
 /**
  * "Sorbet" chip tones: a soft SOLID tint of the hue as the fill, the same hue's
  * dark shade for text and icon. Every pair clears WCAG AA (4.5:1) for the small
- * caption a chip carries; the old `*Soft` + 600 pairs did not (amber 3.1:1,
- * green 3.6:1). `ui/Chip` is the only reader; screens pick a tone name.
+ * caption a chip carries; the old `*Soft` + 600 pairs did not (amber #D97706
+ * on #FFFBEB 3.07:1, green 3.58:1). Read by `ui/Chip`, and by the complaint
+ * facts list for its tinted values; screens pick a tone name, never a colour.
  */
 export const chipTones = {
   neutral: { fill: palette.gray[100], text: palette.gray[700] }, // 9.4:1
@@ -225,6 +227,8 @@ export const chipTones = {
   success: { fill: palette.green[100], text: palette.green[800] }, // 6.8:1
   warning: { fill: palette.amber[100], text: palette.amber[800] }, // 6.4:1
   danger: { fill: palette.red[100], text: palette.red[800] }, // 6.8:1
+  /** Task priority `urgent` — a deeper red than `danger` (high), so the two differ. */
+  urgent: { fill: palette.red[300], text: palette.red[900] }, // 5.3:1
   info: { fill: palette.blue[100], text: palette.blue[800] }, // 7.2:1
   purple: { fill: palette.purple[100], text: palette.purple[800] }, // 7.6:1
   teal: { fill: palette.teal[100], text: palette.teal[800] }, // 6.7:1

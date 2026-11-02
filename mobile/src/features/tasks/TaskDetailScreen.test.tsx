@@ -184,6 +184,14 @@ describe("summary", () => {
     expect(screen.getByText("AR")).toBeOnTheScreen();
   });
 
+  it("urgent wears its own tone, distinct from high", async () => {
+    serve({ task: { ...TASK, Priority: "urgent" } });
+    await mount();
+    await loaded();
+    expect(chipTones.urgent.text).not.toBe(chipTones.danger.text);
+    expect(screen.getByText("urgent")).toHaveStyle({ color: chipTones.urgent.text });
+  });
+
   it("a lone blocker, logged time with no estimate, and nobody on it", async () => {
     serve({ task: { ...TASK, AssigneesJson: null, BlockerCount: 1, LoggedHours: 2, DueDate: localDay(3) } });
     await mount();

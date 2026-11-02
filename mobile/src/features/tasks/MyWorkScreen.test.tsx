@@ -98,8 +98,8 @@ it("the greeting's wave is a lucide icon, not an emoji in the text", async () =>
   await screen.findByText("Late task");
   const greet = screen.getByText(/^(Good|Working)/);
   expect(greet).toHaveTextContent(/^[A-Za-z ]+,$/);
-  // Beside the text sits an SVG (lucide), not a glyph inside the string.
-  expect(greet.parent!.children.map((c) => (typeof c === "string" ? c : c.type))).toEqual(["Text", "RNSVGSvgView"]);
+  // Beside the text sits the lucide icon, labelled for screen readers.
+  expect(screen.getByLabelText("Waving hand")).toBeOnTheScreen();
 });
 
 it("Unassigned shows only tasks nobody is on", async () => {

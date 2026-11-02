@@ -71,7 +71,6 @@ import {
   useToast,
 } from "../../ui";
 import AttachmentList from "../attachments/AttachmentList";
-import { priorityTone } from "../support/ticketHelpers";
 import ActivityTab from "./ActivityTab";
 import { Checklist } from "./Checklist";
 import { DependencySheet } from "./DependencySheet";
@@ -82,6 +81,7 @@ import {
   abilitiesFor,
   assigneesOf,
   boardQuery,
+  taskPriorityTone,
   dueBucket,
   dueLabel,
   formatHours,
@@ -656,7 +656,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
           ) : null}
           {task.IsBlocked ? <Chip label="Blocked" tone="danger" /> : null}
           {task.Priority ? (
-            <Chip label={task.Priority} icon={Flag} tone={priorityTone(task.Priority)} />
+            <Chip label={task.Priority} icon={Flag} tone={taskPriorityTone(task.Priority)} />
           ) : null}
           {due ? (
             <Meta

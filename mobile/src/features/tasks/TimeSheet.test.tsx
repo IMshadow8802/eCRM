@@ -4,6 +4,7 @@ import { deleteTaskTimeEntry, getTaskTimeEntries } from "../../api/taskQueries";
 import type { TaskTimeEntry } from "../../types/api";
 import { envelope, serverError } from "../../test/fixtures";
 import { renderWithProviders } from "../../test/renderWithProviders";
+import { chipTones } from "../../theme";
 import { TimeSheet } from "./TimeSheet";
 
 jest.mock("../../api/taskQueries");
@@ -43,6 +44,14 @@ it("totals the entries and names who booked them", async () => {
   expect(screen.getByText("Site visit")).toBeOnTheScreen();
   expect(screen.getByText("No note")).toBeOnTheScreen();
   expect(screen.getByText(/^Someone · /)).toBeOnTheScreen();
+});
+
+it("each entry's hours sit in a primary sorbet chip", async () => {
+  await mount({ scopedToMe: false });
+  await screen.findByText("3.5h across 2 entries");
+  const hours = screen.getByText("2h");
+  expect(hours).toHaveStyle({ color: chipTones.primary.text });
+  expect(hours.parent).toHaveStyle({ backgroundColor: chipTones.primary.fill });
 });
 
 it("a member is told the list is only their own time", async () => {

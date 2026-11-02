@@ -5,8 +5,8 @@ import { Timer, Trash2 } from "lucide-react-native";
 
 import { deleteTaskTimeEntry, getTaskTimeEntries } from "../../api/taskQueries";
 import { apiErrorMessage } from "../../api/errors";
-import { colors, radius, spacing } from "../../theme";
-import { Sheet, Text, useToast, type SheetRef } from "../../ui";
+import { colors, spacing } from "../../theme";
+import { Chip, Sheet, Text, useToast, type SheetRef } from "../../ui";
 import { formatHours, relativeTime } from "./taskHelpers";
 
 interface TimeSheetProps {
@@ -71,9 +71,7 @@ export const TimeSheet = forwardRef<SheetRef, TimeSheetProps>(function TimeSheet
           return (
             <View key={entry.Id} style={styles.row}>
               <View style={styles.hours}>
-                <Text variant="bodyStrong" color="primary">
-                  {formatHours(entry.Hours ?? 0)}
-                </Text>
+                <Chip label={formatHours(entry.Hours ?? 0)} tone="primary" />
               </View>
 
               <View style={styles.text}>
@@ -137,14 +135,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[4],
     paddingVertical: spacing[3],
   },
-  hours: {
-    minWidth: 56,
-    paddingVertical: spacing[1],
-    paddingHorizontal: spacing[2],
-    borderRadius: radius.sm,
-    backgroundColor: colors.primarySoft,
-    alignItems: "center",
-  },
+  // Fixed column so the notes line up whatever the hours read.
+  hours: { minWidth: 56 },
   text: { flex: 1, gap: spacing[1] },
   empty: { padding: spacing[4] },
 });

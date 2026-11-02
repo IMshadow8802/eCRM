@@ -26,7 +26,10 @@ it("slides in with a transform and never fades (no translucent frame)", async ()
   await fireEvent.press(screen.getByText("fire Saved"));
   const wrap = StyleSheet.flatten(screen.getByRole("alert").parent!.props.style);
   expect(wrap).not.toHaveProperty("opacity");
-  expect(wrap.transform).toEqual([{ translateY: expect.anything() }]);
+  // First frame: the interpolation's start puts the whole bar (well under
+  // 100px tall) above the screen's top edge, so it slides in, not fades in.
+  const [{ translateY }] = wrap.transform as [{ translateY: number }];
+  expect((wrap.top as number) + translateY).toBeLessThanOrEqual(-100);
 });
 
 it("a blank message shows nothing", async () => {

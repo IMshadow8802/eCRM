@@ -13,9 +13,21 @@ import {
   isAssignee,
   isUnassigned,
   relativeTime,
+  taskPriorityTone,
   threadComments,
   workspaceAbilities,
 } from "./taskHelpers";
+
+describe("taskPriorityTone", () => {
+  it("gives each of the four task priorities its own chip tone; urgent is not high", () => {
+    expect((["low", "medium", "high", "urgent"] as const).map((p) => taskPriorityTone(p))).toEqual([
+      "success",
+      "warning",
+      "danger",
+      "urgent",
+    ]);
+  });
+});
 
 jest.mock("../../api/taskQueries");
 

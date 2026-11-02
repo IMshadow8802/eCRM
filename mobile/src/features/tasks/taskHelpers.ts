@@ -1,4 +1,5 @@
 import { fetchTasks } from "../../api/taskQueries";
+import type { ChipTone } from "../../theme";
 import type {
   Task,
   TaskAssignee,
@@ -163,12 +164,15 @@ export const formatHours = (h: number) =>
 
 // ---------------------------------------------------------------- priority
 
-export const PRIORITY_TONE: Record<TaskPriority, "success" | "warning" | "danger"> = {
+const PRIORITY_TONE: Record<TaskPriority, ChipTone> = {
   low: "success",
   medium: "warning",
   high: "danger",
-  urgent: "danger",
+  urgent: "urgent",
 };
+
+/** The chip tone for a task's own four-level priority (same scale TaskCard inks). */
+export const taskPriorityTone = (p: TaskPriority): ChipTone => PRIORITY_TONE[p];
 
 /** Checklist drives completion — there is no IsDone column to read. */
 export function checklistProgress(task: Task): { done: number; total: number } {
