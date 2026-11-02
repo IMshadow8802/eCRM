@@ -1,6 +1,17 @@
 import { CirclePause, Clock, OctagonAlert, TriangleAlert } from "lucide-react-native";
 
-import { istDay, istShort, istStamp, overBy, parseIst, tatChip } from "./tatChip";
+import type { TaskTatEvent } from "../../types/api";
+import {
+  eventText,
+  isWallClock,
+  istDay,
+  istShort,
+  istStamp,
+  overBy,
+  parseIst,
+  tatChip,
+  VERDICT_LABEL,
+} from "./tatChip";
 
 // 2026-10-08 12:00 IST.
 const NOW = new Date("2026-10-08T06:30:00Z");
@@ -83,5 +94,54 @@ describe("tatChip", () => {
       text: "Due 17:30 IST",
       icon: Clock,
     });
+  });
+});
+
+// parity: TAT-04 — port of web/src/utils/tatChip.js eventText/isWallClock.
+describe("isWallClock", () => {
+  it("is true only for a DB wall-clock string", () => {
+    expect(isWallClock("2026-10-08 17:00:00")).toBe(true);
+    expect(isWallClock("2026-10-08T11:30:00Z")).toBe(false);
+    expect(isWallClock("blocked")).toBe(false);
+    expect(isWallClock(null)).toBe(false);
+  });
+});
+
+describe("eventText", () => {
+  const ev = (Kind: string, NewValue: string | null = null, OldValue: string | null = null): TaskTatEvent => ({
+    Id: 1, Kind, OldValue, NewValue, At: "2026-10-08 10:00:00", ActorName: null,
+  });
+
+  it("reads a due move as a deadline change, whatever its kind", () => {
+    // Old is read against the new due's day: Thu 17:00 → (Fri) 11:00.
+    expect(eventText(ev("recompute", "2026-10-09 11:00:00", "2026-10-08 17:00:00"))).toBe(
+      "Deadline changed Thu 17:00 → 11:00 IST",
+    );
+    expect(eventText(ev("assign", "2026-10-08 17:00:00"))).toBe("Due set to 17:00 IST");
+  });
+
+  it("names every plain fact in words", () => {
+    expect(eventText(ev("assign"))).toBe("Assigned");
+    expect(eventText(ev("reopen"))).toBe("Reopened");
+    expect(eventText(ev("resume"))).toBe("Timer restarted");
+    expect(eventText(ev("hold", "blocked"))).toBe("On hold: blocked by a dependency");
+    expect(eventText(ev("hold", "Waiting on client"))).toBe("Put on hold: Waiting on client");
+    expect(eventText(ev("hold"))).toBe("Put on hold:");
+    expect(eventText(ev("release", "auto"))).toBe("Resumed automatically");
+    expect(eventText(ev("release", "blocked"))).toBe("Dependency done, timer running");
+    expect(eventText(ev("release"))).toBe("Resumed");
+    expect(eventText(ev("acknowledge"))).toBe("Accepted");
+    expect(eventText(ev("my_part_done"))).toBe("Marked their part done");
+    expect(eventText(ev("reason", "Parts late"))).toBe("Reason given: Parts late");
+    expect(eventText(ev("reason"))).toBe("Reason given:");
+    expect(eventText(ev("verdict", "excused"))).toBe("Decision: Delay accepted");
+    expect(eventText(ev("verdict", "not_excused"))).toBe("Decision: Delay rejected");
+    expect(eventText(ev("verdict", "odd"))).toBe("Decision: odd");
+    expect(eventText(ev("verdict"))).toBe("Decision:");
+    expect(eventText(ev("something_new"))).toBe("something_new");
+  });
+
+  it("labels both verdicts", () => {
+    expect(VERDICT_LABEL).toEqual({ excused: "Delay accepted", not_excused: "Delay rejected" });
   });
 });

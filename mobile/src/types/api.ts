@@ -244,6 +244,9 @@ export interface TaskTatClock {
   Verdict: string | null;
   VerdictByName: string | null;
   VerdictRemarks: string | null;
+  VerdictAt: string | null;
+  /** Added by tatController.fetchTaskTat: the caller may rule on this clock (never their own). */
+  CanJudge: boolean;
 }
 
 export interface TaskTatHold {

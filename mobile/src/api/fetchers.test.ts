@@ -125,6 +125,9 @@ const CASES: [string, Case][] = [
   ["releaseMine", { call: () => tat.releaseMine(9), url: "/api/tat/release", body: { TaskId: 9, Mine: true } }],
   ["holdMine", { call: () => tat.holdMine({ TaskId: 9, ReasonId: 3, Remarks: null }), url: "/api/tat/hold", body: { TaskId: 9, ReasonId: 3, Remarks: null, Mine: true } }],
   ["saveTatReason", { call: () => tat.saveTatReason({ TaskId: 9, TatId: 11, ReasonId: 3, Remarks: "late part" }), url: "/api/tat/saveReason", body: { TaskId: 9, TatId: 11, ReasonId: 3, Remarks: "late part" } }],
+  // parity: TAT-05 — viewableTask() reads TaskId, so the verdict carries it too.
+  ["saveVerdict", { call: () => tat.saveVerdict({ TaskId: 9, TatId: 11, Verdict: "excused", Remarks: "vendor strike" }), url: "/api/tat/saveVerdict", body: { TaskId: 9, TatId: 11, Verdict: "excused", Remarks: "vendor strike" } }],
+  ["saveVerdict no remarks", { call: () => tat.saveVerdict({ TaskId: 9, TatId: 11, Verdict: "not_excused", Remarks: null }), url: "/api/tat/saveVerdict", body: { TaskId: 9, TatId: 11, Verdict: "not_excused", Remarks: null } }],
 
   // ------------------------------------------------------------- tickets
   ["fetchTickets", { call: () => tickets.fetchTickets(), url: "/api/tickets/fetchTickets", body: { BranchId: null, PageNumber: 1, PageSize: 50, SearchTerm: null, StatusId: null, StatusCode: null, Priority: null, CategoryId: null, ChannelId: null, ProductId: null, CustomerId: null, AssignedTo: null, Overdue: 0, Escalated: 0, Unassigned: 0, FromDate: null, ToDate: null } }],

@@ -43,6 +43,20 @@ it("submit stays disabled until every required field and choice is filled", asyn
   expect(onSubmit).toHaveBeenCalledWith({ hours: "2.5", note: "" }, { kind: 2 });
 });
 
+it("a field can be required only for some choices", async () => {
+  // A breach reason of "Other" needs remarks (web BreachReasonDialog).
+  const { onSubmit } = await renderSheet({
+    fields: [{ key: "note", placeholder: "Note", required: (c) => c.kind === "call" }],
+  });
+  await fireEvent.press(screen.getByText("Visit"));
+  expect(submitButton()).toBeEnabled();
+  await fireEvent.press(screen.getByText("Call"));
+  expect(submitButton()).toBeDisabled();
+  await fireEvent.changeText(screen.getByPlaceholderText("Note"), "why");
+  await fireEvent.press(submitButton());
+  expect(onSubmit).toHaveBeenCalledWith({ note: "why" }, { kind: "call" });
+});
+
 // The real sheet calls onDismiss when it closes; the mock's dismiss is a no-op.
 jest
   .spyOn(BottomSheetModal.prototype, "dismiss")

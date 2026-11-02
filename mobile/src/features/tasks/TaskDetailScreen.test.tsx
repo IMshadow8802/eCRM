@@ -62,6 +62,8 @@ const breachedClock: TaskTatClock = {
   Verdict: null,
   VerdictByName: null,
   VerdictRemarks: null,
+  VerdictAt: null,
+  CanJudge: false,
 };
 const reasonLookup: Lookup = { Id: 2, CompId: 1, Kind: "task_breach_reason", Value: "Parts late", SortOrder: 1, IsActive: true, Code: null };
 
@@ -446,7 +448,7 @@ describe("tabs", () => {
     expect(screen.getByText(/^Someone · /)).toBeOnTheScreen();
 
     await fireEvent.press(screen.getByText("Deadline"));
-    expect(await screen.findByText("No deadline on you")).toBeOnTheScreen();
+    expect(await screen.findByText("No deadline on this task")).toBeOnTheScreen();
 
     await fireEvent.press(screen.getByText("History"));
     expect(await screen.findByText("No history yet")).toBeOnTheScreen();

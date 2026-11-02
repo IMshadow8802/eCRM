@@ -1,7 +1,7 @@
 // src/api/tatQueries.ts
 // Task TAT clocks. Bodies mirror web/src/api/tatQueries.js callers and
-// backend/src/controllers/tatController.js. Mobile only acts on the caller's
-// own clock (R-P4-4): no verdicts, no hold/release for everyone.
+// backend/src/controllers/tatController.js. Mobile acts on the caller's own
+// clock plus verdicts where the server says CanJudge; no hold/release for everyone.
 import { post } from "./client";
 import type { TaskTat } from "../types/api";
 
@@ -12,6 +12,7 @@ export const TAT_ENDPOINTS = {
   release: "/api/tat/release",
   myPartDone: "/api/tat/myPartDone",
   saveReason: "/api/tat/saveReason",
+  saveVerdict: "/api/tat/saveVerdict",
 } as const;
 
 export const fetchTaskTat = (TaskId: number): Promise<TaskTat> =>
@@ -31,3 +32,10 @@ export const saveTatReason = (p: {
   ReasonId: number;
   Remarks: string | null;
 }) => post(TAT_ENDPOINTS.saveReason, p);
+/** A judge's ruling on someone else's missed deadline; the server checks who may judge. */
+export const saveVerdict = (p: {
+  TaskId: number;
+  TatId: number;
+  Verdict: "excused" | "not_excused";
+  Remarks: string | null;
+}) => post(TAT_ENDPOINTS.saveVerdict, p);

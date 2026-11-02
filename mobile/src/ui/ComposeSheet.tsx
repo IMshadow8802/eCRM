@@ -15,8 +15,11 @@ export interface ComposeField {
   multiline?: boolean;
   /** Decimal keypad — hours worked, quantities. */
   numeric?: boolean;
-  /** Submit stays disabled until every required field has content. */
-  required?: boolean;
+  /**
+   * Submit stays disabled until every required field has content. A function
+   * makes it depend on the picked choices ("Other" needs remarks).
+   */
+  required?: boolean | ((choices: Record<string, string | number>) => boolean);
 }
 
 /**
@@ -90,7 +93,11 @@ export const ComposeSheet = forwardRef<SheetRef, ComposeSheetProps>(
     };
 
     const complete =
-      fields.every((f) => !f.required || (values[f.key] ?? "").trim()) &&
+      fields.every(
+        (f) =>
+          !(typeof f.required === "function" ? f.required(picked) : f.required) ||
+          (values[f.key] ?? "").trim(),
+      ) &&
       choices.every((c) => !c.required || picked[c.key] != null);
 
     /**

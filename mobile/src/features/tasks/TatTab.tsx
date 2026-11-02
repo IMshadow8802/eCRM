@@ -12,7 +12,9 @@ import {
   myPartDone,
   releaseMine,
   saveTatReason,
+  saveVerdict,
 } from "../../api/tatQueries";
+import type { TaskTatClock, TaskTatHold } from "../../types/api";
 import { colors, spacing, SCREEN_PADDING } from "../../theme";
 import {
   Button,
@@ -22,11 +24,12 @@ import {
   ScreenLoader,
   Text,
   Timeline,
+  type ComposeSheetProps,
   type SheetRef,
   type TimelineEntry,
   useToast,
 } from "../../ui";
-import { istStamp, overBy, parseIst } from "./tatChip";
+import { eventText, istStamp, overBy, parseIst, VERDICT_LABEL } from "./tatChip";
 
 const CLOSE_LABEL: Record<string, string> = {
   completed: "Done",
@@ -37,12 +40,64 @@ const CLOSE_LABEL: Record<string, string> = {
   no_clock: "No deadline",
 };
 
-type Form = "hold" | "reason";
+type Form = "hold" | "reason" | "excused" | "not_excused";
+
+const paren = (s: string | null) => (s ? ` (${s})` : "");
+
+function clockChip(c: TaskTatClock, hold: TaskTatHold | undefined) {
+  if (c.ClosedAt) return <Chip label={CLOSE_LABEL[c.CloseReason ?? ""] ?? "Closed"} />;
+  if (c.BreachedAt) return <Chip label="Missed deadline" tone="danger" />;
+  return <Chip label={hold ? "On hold" : "Running"} tone={hold ? "neutral" : "info"} />;
+}
+
+function clockEntries(c: TaskTatClock, holds: TaskTatHold[]): TimelineEntry[] {
+  const step = (k: string, title: string, at: string | null, tone?: keyof typeof colors): TimelineEntry[] =>
+    at ? [{ key: k, title, meta: istStamp(at), tone }] : [];
+  return [
+    ...step("assigned", "Assigned", c.AssignedAt),
+    ...step("seen", "Seen", c.FirstSeenAt),
+    ...step("ack", "Accepted", c.AcknowledgedAt),
+    ...holds
+      .filter((h) => h.TatId === c.Id)
+      .map((h) => ({
+        key: `hold-${h.HoldId}`,
+        title: `On hold: ${h.Kind === "blocked" ? "Blocked by a dependency" : (h.Reason ?? "")}${paren(h.Remarks)}`,
+        meta: `${istStamp(h.StartedAt)} → ${h.EndedAt ? istStamp(h.EndedAt) : "now"}`,
+        tone: "warning" as const,
+      })),
+    ...step("due", "Due", c.DueAt),
+    ...(c.BreachedAt
+      ? [
+          {
+            key: "breach",
+            title: `Missed deadline${c.DueAt ? ` by ${overBy((parseIst(c.ClosedAt) ?? new Date()).getTime() - (parseIst(c.DueAt)?.getTime() ?? 0))}` : ""}`,
+            meta: `${istStamp(c.BreachedAt)}${c.BreachReason || c.Verdict ? "" : " · waiting for reason"}`,
+            tone: "danger" as const,
+          },
+        ]
+      : []),
+    ...(c.BreachReason
+      ? [{ key: "reason", title: `Reason: ${c.BreachReason}${paren(c.BreachRemarks)}`, meta: istStamp(c.ReasonAt) }]
+      : []),
+    ...(c.Verdict
+      ? [
+          {
+            key: "verdict",
+            title: `${VERDICT_LABEL[c.Verdict] ?? c.Verdict} by ${c.VerdictByName ?? "the system"}${paren(c.VerdictRemarks)}`,
+            meta: istStamp(c.VerdictAt),
+            tone: c.Verdict === "excused" ? ("success" as const) : ("danger" as const),
+          },
+        ]
+      : []),
+    ...step("closed", CLOSE_LABEL[c.CloseReason ?? ""] ?? "Closed", c.ClosedAt, "success"),
+  ];
+}
 
 /**
- * The caller's own clock on this task: timeline plus the actions R-P4-4 allows
- * (acknowledge, hold/release own, my part done, give a breach reason). No
- * verdicts and no hold-everyone on mobile. The server is the judge.
+ * The task's deadline clocks. The caller's own clock carries the R-P4-4
+ * actions (acknowledge, hold/release own, my part done, breach reason); other
+ * assignees' clocks are read-only, plus Accept/Reject delay where the server
+ * says CanJudge. No hold-everyone on mobile. The server is the judge.
  */
 export function TatTab({
   taskId,
@@ -58,8 +113,8 @@ export function TatTab({
   const toast = useToast();
   const sheetRef = useRef<SheetRef>(null);
   const [form, setForm] = useState<Form>(explainTatId ? "reason" : "hold");
-  // Which clock a reason is for: the one the server named, else the one shown.
-  const [reasonFor, setReasonFor] = useState<number | null>(explainTatId);
+  // Which clock a reason or verdict is for.
+  const [target, setTarget] = useState<number | null>(explainTatId);
   const [formError, setFormError] = useState<string | null>(null);
 
   const key = ["task", taskId, "tat"];
@@ -106,102 +161,124 @@ export function TatTab({
   }
 
   const { clocks, holds, events } = tatQuery.data ?? { clocks: [], holds: [], events: [] };
-  const mine = clocks.filter((c) => Number(c.UserId) === Number(userId));
-  const clock = mine.find((c) => !c.ClosedAt) ?? mine[mine.length - 1];
-  if (!clock) {
+  if (!clocks.length) {
     return (
       <EmptyState
         icon={Timer}
-        title="No deadline on you"
-        message="A deadline starts when you are assigned a task on a shared or project board."
+        title="No deadline on this task"
+        message="A deadline starts when someone is assigned a task on a shared or project board."
       />
     );
   }
+  const isMine = (c: TaskTatClock) => Number(c.UserId) === Number(userId);
+  const mine = clocks.filter(isMine);
+  const others = clocks.filter((c) => !isMine(c));
+  const clock = mine.find((c) => !c.ClosedAt) ?? mine[mine.length - 1];
+  const holdOf = (c: TaskTatClock) => holds.find((h) => h.TatId === c.Id && !h.EndedAt);
 
-  const open = !clock.ClosedAt;
-  const hold = holds.find((h) => h.TatId === clock.Id && !h.EndedAt);
+  const open = clock != null && !clock.ClosedAt;
+  const hold = clock && holdOf(clock);
   const openClocks = clocks.filter((c) => !c.ClosedAt).length;
 
-  const step = (k: string, title: string, at: string | null, tone?: keyof typeof colors): TimelineEntry[] =>
-    at ? [{ key: k, title, meta: istStamp(at), tone }] : [];
-  const entries: TimelineEntry[] = [
-    ...step("assigned", "Assigned", clock.AssignedAt),
-    ...step("seen", "Seen", clock.FirstSeenAt),
-    ...step("ack", "Accepted", clock.AcknowledgedAt),
-    ...holds
-      .filter((h) => h.TatId === clock.Id)
-      .map((h) => ({
-        key: `hold-${h.HoldId}`,
-        title: `On hold: ${h.Kind === "blocked" ? "Blocked by a dependency" : (h.Reason ?? "")}${h.Remarks ? ` (${h.Remarks})` : ""}`,
-        meta: `${istStamp(h.StartedAt)} → ${h.EndedAt ? istStamp(h.EndedAt) : "now"}`,
-        tone: "warning" as const,
-      })),
-    ...step("due", "Due", clock.DueAt),
-    ...(clock.BreachedAt
-      ? [
-          {
-            key: "breach",
-            title: `Missed deadline${clock.DueAt ? ` by ${overBy((parseIst(clock.ClosedAt) ?? new Date()).getTime() - (parseIst(clock.DueAt)?.getTime() ?? 0))}` : ""}`,
-            meta: `${istStamp(clock.BreachedAt)} · ${
-              clock.BreachReason
-                ? `${clock.BreachReason}${clock.BreachRemarks ? ` (${clock.BreachRemarks})` : ""}`
-                : "waiting for reason"
-            }`,
-            tone: "danger" as const,
-          },
-        ]
-      : []),
-    ...step("closed", CLOSE_LABEL[clock.CloseReason ?? ""] ?? "Closed", clock.ClosedAt, "success"),
-  ];
-
-  const present = (f: Form) => {
+  const present = (f: Form, tatId: number) => {
     setForm(f);
-    setReasonFor(null);
+    setTarget(tatId);
     setFormError(null);
     sheetRef.current?.present();
   };
-  const reasons = (form === "hold" ? holdReasons.data : breachReasons.data) ?? [];
+
+  const breachList = breachReasons.data ?? [];
+  const reasonOptions = ((form === "hold" ? holdReasons.data : breachList) ?? []).map((r) => ({
+    value: r.Id,
+    label: r.Value,
+  }));
+  const isOther = (id: string | number | undefined) =>
+    breachList.some((r) => r.Id === Number(id) && r.Code === "other");
+  const SHEET: Record<Form, Pick<ComposeSheetProps, "title" | "submitLabel" | "fields">> = {
+    hold: {
+      title: "Why is your part on hold?",
+      submitLabel: "Put on hold",
+      fields: [{ key: "remarks", placeholder: "Remarks (optional)", label: "Remarks", multiline: true }],
+    },
+    reason: {
+      title: "Why was the deadline missed?",
+      submitLabel: "Save reason",
+      fields: [
+        {
+          key: "remarks",
+          placeholder: "Remarks (needed for Other)",
+          label: "Remarks",
+          multiline: true,
+          required: (c) => isOther(c.reasonId),
+        },
+      ],
+    },
+    excused: {
+      title: "Accept the delay",
+      submitLabel: "Save decision",
+      fields: [{ key: "remarks", placeholder: "Remarks", label: "Remarks", multiline: true, required: true }],
+    },
+    not_excused: {
+      title: "Reject the delay",
+      submitLabel: "Save decision",
+      fields: [{ key: "remarks", placeholder: "Remarks (optional)", label: "Remarks", multiline: true }],
+    },
+  };
+  const verdict = form === "excused" || form === "not_excused";
 
   return (
     <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
-      <View style={styles.head}>
-        {open ? (
-          <Chip label={hold ? "On hold" : "Running"} tone={hold ? "neutral" : "info"} />
-        ) : (
-          <Chip label={CLOSE_LABEL[clock.CloseReason ?? ""] ?? "Closed"} />
-        )}
-      </View>
+      {clock ? (
+        <>
+          <View style={styles.head}>{clockChip(clock, hold)}</View>
 
-      <View style={styles.actions}>
-        {open && !clock.AcknowledgedAt ? (
-          <Button title="Accept task" variant="secondary" loading={quick.isPending}
-            onPress={() => quick.mutate(() => acknowledgeTat(taskId))} />
-        ) : null}
-        {open && !hold ? (
-          <Button title="Put on hold" variant="secondary" onPress={() => present("hold")} />
-        ) : null}
-        {open && hold?.Kind === "manual" && Number(hold.StartedBy) === Number(userId) ? (
-          <Button title="Resume" variant="secondary" loading={quick.isPending}
-            onPress={() => quick.mutate(() => releaseMine(taskId))} />
-        ) : null}
-        {open && openClocks > 1 ? (
-          <Button title="My part is done" variant="secondary" loading={quick.isPending}
-            onPress={() => quick.mutate(() => myPartDone(taskId))} />
-        ) : null}
-        {clock.BreachedAt && !clock.BreachReasonId && !clock.Verdict ? (
-          <Button title="Explain delay" variant="secondary" onPress={() => present("reason")} />
-        ) : null}
-      </View>
+          <View style={styles.actions}>
+            {open && !clock.AcknowledgedAt ? (
+              <Button title="Accept task" variant="secondary" loading={quick.isPending}
+                onPress={() => quick.mutate(() => acknowledgeTat(taskId))} />
+            ) : null}
+            {open && !hold ? (
+              <Button title="Put on hold" variant="secondary" onPress={() => present("hold", clock.Id)} />
+            ) : null}
+            {open && hold?.Kind === "manual" && Number(hold.StartedBy) === Number(userId) ? (
+              <Button title="Resume" variant="secondary" loading={quick.isPending}
+                onPress={() => quick.mutate(() => releaseMine(taskId))} />
+            ) : null}
+            {open && openClocks > 1 ? (
+              <Button title="My part is done" variant="secondary" loading={quick.isPending}
+                onPress={() => quick.mutate(() => myPartDone(taskId))} />
+            ) : null}
+            {clock.BreachedAt && !clock.BreachReasonId && !clock.Verdict ? (
+              <Button title="Explain delay" variant="secondary" onPress={() => present("reason", clock.Id)} />
+            ) : null}
+          </View>
 
-      <Timeline entries={entries} />
+          <Timeline entries={clockEntries(clock, holds)} />
+        </>
+      ) : null}
+
+      {others.map((c) => (
+        <View key={c.Id} style={styles.other}>
+          <View style={styles.head}>
+            <Text variant="label">{c.FullName ?? "Someone"}</Text>
+            {clockChip(c, holdOf(c))}
+          </View>
+          {c.CanJudge && c.BreachedAt && !c.Verdict ? (
+            <View style={styles.actions}>
+              <Button title="Accept delay" variant="secondary" onPress={() => present("excused", c.Id)} />
+              <Button title="Reject delay" variant="secondary" onPress={() => present("not_excused", c.Id)} />
+            </View>
+          ) : null}
+          <Timeline entries={clockEntries(c, holds)} />
+        </View>
+      ))}
 
       {events.length ? (
         <View style={styles.events}>
           <Text variant="label">History</Text>
           {events.map((e) => (
             <Text key={e.Id} variant="caption" color="textSecondary">
-              {istStamp(e.At)} · {e.Kind}
-              {e.ActorName ? ` by ${e.ActorName}` : ""}
+              {`${istStamp(e.At)} · ${eventText(e)}${e.ActorName ? ` by ${e.ActorName}` : ""}`}
             </Text>
           ))}
         </View>
@@ -209,23 +286,24 @@ export function TatTab({
 
       <ComposeSheet
         ref={sheetRef}
-        title={form === "hold" ? "Why is your part on hold?" : "Why was the deadline missed?"}
-        submitLabel={form === "hold" ? "Put on hold" : "Save reason"}
-        fields={[{ key: "remarks", placeholder: "Remarks (optional)", label: "Remarks", multiline: true }]}
-        choices={[
-          {
-            key: "reasonId",
-            label: "Reason",
-            required: true,
-            options: reasons.map((r) => ({ value: r.Id, label: r.Value })),
-          },
-        ]}
+        {...SHEET[form]}
+        choices={
+          verdict
+            ? []
+            : [{ key: "reasonId", label: "Reason", required: true, options: reasonOptions }]
+        }
         busy={sheet.isPending}
         error={formError}
         onSubmit={(v, c) => {
-          const body = { TaskId: taskId, ReasonId: Number(c.reasonId), Remarks: v.remarks || null };
+          const Remarks = v.remarks || null;
+          // present() or explainTatId always sets the target before the sheet opens.
+          const TatId = Number(target);
           sheet.mutate(() =>
-            form === "hold" ? holdMine(body) : saveTatReason({ ...body, TatId: reasonFor ?? clock.Id }),
+            verdict
+              ? saveVerdict({ TaskId: taskId, TatId, Verdict: form, Remarks })
+              : form === "hold"
+                ? holdMine({ TaskId: taskId, ReasonId: Number(c.reasonId), Remarks })
+                : saveTatReason({ TaskId: taskId, TatId, ReasonId: Number(c.reasonId), Remarks }),
           );
         }}
       />
@@ -237,5 +315,6 @@ const styles = StyleSheet.create({
   list: { paddingHorizontal: SCREEN_PADDING, paddingBottom: spacing[20], gap: spacing[4] },
   head: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing[2] },
+  other: { gap: spacing[3] },
   events: { gap: spacing[1] },
 });
