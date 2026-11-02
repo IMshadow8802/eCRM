@@ -144,3 +144,25 @@ it("a new prefill reseeds the fields; a re-render with the same one keeps what w
   await fireEvent.press(screen.getByText("No seed"));
   expect(hours()).toHaveDisplayValue("");
 });
+
+// Found on the emulator (Task 30): under "adjustResize" gorhom leaves the lift
+// to a window resize, which Android's edge-to-edge (forced on RN 0.86) never
+// does — the sheet stayed put and the keyboard covered Notes and "Log call".
+// The sheet has to lift itself: keyboard-interactive, gorhom's own pan mode.
+it("lifts itself over the keyboard instead of waiting for a window resize", async () => {
+  // RNTL 14 has no UNSAFE_getByType; read the props the (mocked, class) sheet
+  // is rendered with. The real export is typed as a function component.
+  type Props = { keyboardBehavior?: string; android_keyboardInputMode?: string };
+  type Host = { props: Props };
+  const Modal = BottomSheetModal as unknown as { prototype: { render(this: Host): unknown } };
+  const render = Modal.prototype.render;
+  let props: Props | undefined;
+  const spy = jest.spyOn(Modal.prototype, "render").mockImplementation(function (this: Host) {
+    props = this.props;
+    return render.call(this);
+  });
+  await renderSheet();
+  spy.mockRestore();
+  expect(props?.keyboardBehavior).toBe("interactive");
+  expect(props?.android_keyboardInputMode).not.toBe("adjustResize");
+});

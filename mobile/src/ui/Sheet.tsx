@@ -63,9 +63,11 @@ export const Sheet = forwardRef<SheetRef, SheetProps>(function Sheet(
       backdropComponent={renderBackdrop}
       onDismiss={onDismiss}
       // Without these an input inside the sheet is hidden by the keyboard.
+      // No android_keyboardInputMode="adjustResize": in that mode gorhom waits
+      // for the window to resize, which edge-to-edge Android never does, so the
+      // keyboard covered the form. The default (pan) makes the sheet lift itself.
       keyboardBehavior={keyboardAware ? "interactive" : undefined}
       keyboardBlurBehavior={keyboardAware ? "restore" : undefined}
-      android_keyboardInputMode={keyboardAware ? "adjustResize" : undefined}
       handleIndicatorStyle={styles.handle}
       backgroundStyle={styles.background}
     >
