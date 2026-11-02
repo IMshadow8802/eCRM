@@ -10,9 +10,10 @@ import {
 } from "react";
 import { Animated, Pressable, StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { CircleAlert, CircleCheck } from "lucide-react-native";
+import { CircleCheck, OctagonAlert } from "lucide-react-native";
 
-import { colors, radius, shadows, spacing, SCREEN_PADDING } from "../theme";
+import { colors, metrics, radius, spacing, SCREEN_PADDING } from "../theme";
+import { StatusBadge } from "./StatusBadge";
 import { Text } from "./Text";
 
 /**
@@ -152,7 +153,6 @@ function ToastBar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const Icon = tone === "danger" ? CircleAlert : CircleCheck;
 
   return (
     <Animated.View
@@ -180,13 +180,11 @@ function ToastBar({
         onPress={onDone}
         accessibilityRole="alert"
         accessibilityLabel={message}
-        style={[
-          styles.bar,
-          { backgroundColor: tone === "danger" ? colors.danger : colors.success },
-        ]}
+        // E (proposed): a navy bar; the badge carries the tone.
+        style={styles.bar}
       >
-        <Icon size={18} color={colors.textOnBrand} />
-        <Text variant="label" color="textOnBrand" style={styles.message}>
+        <StatusBadge size={32} tone={tone === "danger" ? "red" : "green"} icon={tone === "danger" ? OctagonAlert : CircleCheck} />
+        <Text variant="text" color="textOnBrand" style={styles.message}>
           {message}
         </Text>
       </Pressable>
@@ -207,11 +205,11 @@ const styles = StyleSheet.create({
   bar: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[2],
+    gap: spacing[3],
     paddingVertical: spacing[3],
-    paddingHorizontal: spacing[4],
-    borderRadius: radius.md,
-    ...shadows.lg,
+    paddingHorizontal: metrics.rowPadH,
+    borderRadius: radius.card,
+    backgroundColor: colors.band,
   },
   message: { flex: 1 },
 });

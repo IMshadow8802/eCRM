@@ -36,10 +36,13 @@ export const AVATAR_ICONS: Record<string, LucideIcon> = {
 export const colorOf = (key?: string): string =>
   (key && AVATAR_COLORS[key]) || AVATAR_COLORS.violet!;
 
+/** The preset's colour name, or violet for an unknown one (the same fallback as `colorOf`). */
+const keyOf = (key?: string): string => (key && AVATAR_COLORS[key] ? key : "violet");
+
 export type ParsedAvatar =
-  | { kind: "icon"; Icon: LucideIcon; color: string }
+  | { kind: "icon"; Icon: LucideIcon; color: string; key: string }
   | { kind: "emoji"; emoji: string }
-  | { kind: "color"; color: string }
+  | { kind: "color"; color: string; key: string }
   | { kind: "image"; uri: string }
   | null;
 
@@ -68,10 +71,10 @@ export function parseAvatar(preset?: string | null): ParsedAvatar {
     const [iconKey, colorKey] = rest.split("|");
     const Icon = iconKey ? AVATAR_ICONS[iconKey] : undefined;
     if (!Icon) return null;
-    return { kind: "icon", Icon, color: colorOf(colorKey) };
+    return { kind: "icon", Icon, color: colorOf(colorKey), key: keyOf(colorKey) };
   }
 
-  if (kind === "color") return { kind: "color", color: colorOf(rest) };
+  if (kind === "color") return { kind: "color", color: colorOf(rest), key: keyOf(rest) };
 
   return null;
 }

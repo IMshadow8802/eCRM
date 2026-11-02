@@ -1,5 +1,5 @@
-import { forwardRef, useCallback, useEffect, useMemo, type ReactNode } from "react";
-import { BackHandler, StyleSheet, View } from "react-native";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, type ReactNode } from "react";
+import { BackHandler, Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   BottomSheetModal,
@@ -9,75 +9,113 @@ import {
   type BottomSheetModal as BottomSheetModalType,
   useBottomSheetModal,
 } from "@gorhom/bottom-sheet";
+import { X } from "lucide-react-native";
 
-import { colors, radius, spacing } from "../theme";
+import { colors, metrics, radius, spacing } from "../theme";
+import { StatusBadge, type StatusBadgeProps } from "./StatusBadge";
 import { Text } from "./Text";
 
 export type SheetRef = BottomSheetModalType;
 
 export interface SheetProps {
   title?: string;
+  /** The line under the title ("C-1042 · AC not cooling"). */
+  subtitle?: string;
+  /** The 40 badge leading the header (Resolve: green circle-check). */
+  badge?: Pick<StatusBadgeProps, "tone" | "icon">;
+  /** The round close button. On by default whenever there is a subtitle or a badge (E's header). */
+  closable?: boolean;
   children: ReactNode;
   /** Percentages or pixel heights, e.g. ["50%"]. Omit to size to content. */
   snapPoints?: (string | number)[];
   onDismiss?: () => void;
   /** Set when the sheet contains a text input so it lifts with the keyboard. */
   keyboardAware?: boolean;
+  /**
+   * E's 16 side padding. Off by default only because pre-E sheets pad their
+   * own rows; every E sheet passes it.
+   */
+  padded?: boolean;
+}
+
+export interface SheetHeaderProps {
+  title: string;
+  subtitle?: string;
+  badge?: Pick<StatusBadgeProps, "tone" | "icon">;
+  onClose?: () => void;
+}
+
+/** Badge · title + subtitle · close (E `.shd`). */
+export function SheetHeader({ title, subtitle, badge, onClose }: SheetHeaderProps) {
+  return (
+    <View style={styles.header}>
+      {badge ? <StatusBadge tone={badge.tone} icon={badge.icon} /> : null}
+      <View style={styles.flex}>
+        <Text variant="sheetTitle" accessibilityRole="header" numberOfLines={1}>{title}</Text>
+        {subtitle ? <Text variant="meta" tabular numberOfLines={1}>{subtitle}</Text> : null}
+      </View>
+      {onClose ? (
+        <Pressable onPress={onClose} hitSlop={spacing[1]} accessibilityRole="button" accessibilityLabel="Close" style={styles.close}>
+          <X size={18} color={colors.textSecondary} />
+        </Pressable>
+      ) : null}
+    </View>
+  );
 }
 
 /**
- * The ONE bottom sheet. Every picker, action menu and "move to…" list uses it —
- * screens must not hand-roll modals.
+ * The ONE bottom sheet (E `.bsheet`): white, top corners 24, the grabber,
+ * the scrim. Every picker, action menu and "move to…" list uses it.
  *
- * Imperative by design: `const ref = useRef<SheetRef>(null)` then
- * `ref.current?.present()`. That keeps the sheet out of render state, so a
- * parent re-render cannot reopen or close it by accident.
+ * Imperative by design: `ref.current?.present()`. That keeps the sheet out of
+ * render state, so a parent re-render cannot reopen or close it by accident.
  */
 export const Sheet = forwardRef<SheetRef, SheetProps>(function Sheet(
-  { title, children, snapPoints, onDismiss, keyboardAware = false },
+  { title, subtitle, badge, closable, children, snapPoints, onDismiss, keyboardAware = false, padded = false },
   ref,
 ) {
+  const inner = useRef<SheetRef>(null);
+  useImperativeHandle(ref, () => inner.current as SheetRef, []);
   const points = useMemo(() => snapPoints, [snapPoints]);
-  // A sheet is flush to the bottom edge, so it MUST pay the inset itself —
-  // on Android with on-screen nav buttons the last row is otherwise unreachable.
+  // A sheet is flush to the bottom edge, so it MUST pay the inset itself.
   const insets = useSafeAreaInsets();
 
   // Tap-outside-to-close. Without appearsOnIndex/disappearsOnIndex the backdrop
   // renders opaque at rest and swallows every touch on the screen behind it.
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
-        {...props}
-        appearsOnIndex={0}
-        disappearsOnIndex={-1}
-        pressBehavior="close"
-      />
+      <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} pressBehavior="close" style={[props.style, styles.scrim]} opacity={1} />
     ),
     [],
   );
+  const showClose = closable ?? !!(subtitle || badge);
 
   return (
     <BottomSheetModal
-      ref={ref}
+      ref={inner}
       snapPoints={points}
       enableDynamicSizing={!points}
       backdropComponent={renderBackdrop}
       onDismiss={onDismiss}
-      // Without these an input inside the sheet is hidden by the keyboard.
-      // No android_keyboardInputMode="adjustResize": in that mode gorhom waits
-      // for the window to resize, which edge-to-edge Android never does, so the
-      // keyboard covered the form. The default (pan) makes the sheet lift itself.
+      // No android_keyboardInputMode="adjustResize": edge-to-edge Android never
+      // resizes, so gorhom would wait forever. The default (pan) lifts the sheet.
       keyboardBehavior={keyboardAware ? "interactive" : undefined}
       keyboardBlurBehavior={keyboardAware ? "restore" : undefined}
+      handleStyle={styles.handleArea}
       handleIndicatorStyle={styles.handle}
       backgroundStyle={styles.background}
     >
       <BottomSheetView
-        style={[styles.content, { paddingBottom: insets.bottom + spacing[4] }]}
+        style={[padded && styles.padded, { paddingBottom: insets.bottom + spacing[4] }]}
       >
         {title ? (
-          <View style={styles.header}>
-            <Text variant="h2">{title}</Text>
+          <View style={padded ? styles.headerGap : styles.headerLegacy}>
+            <SheetHeader
+              title={title}
+              subtitle={subtitle}
+              badge={badge}
+              onClose={showClose ? () => inner.current?.dismiss() : undefined}
+            />
           </View>
         ) : null}
         {children}
@@ -88,9 +126,7 @@ export const Sheet = forwardRef<SheetRef, SheetProps>(function Sheet(
 
 /**
  * Android Back closes the top open sheet instead of leaving the screen behind
- * it. gorhom does not do this itself; one listener here covers every sheet.
- * Mount it once inside BottomSheetModalProvider, AFTER the navigator: the last
- * listener added runs first, so it gets Back before navigation does.
+ * it. Mount it once inside BottomSheetModalProvider, AFTER the navigator.
  */
 export function SheetBackHandler() {
   const { dismiss } = useBottomSheetModal();
@@ -102,14 +138,25 @@ export function SheetBackHandler() {
 }
 
 const styles = StyleSheet.create({
-  background: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: radius.xl,
-    borderTopRightRadius: radius.xl,
+  background: { backgroundColor: colors.surface, borderTopLeftRadius: radius.modal, borderTopRightRadius: radius.modal },
+  // The scrim is the theme's one translucent colour; the backdrop's own
+  // opacity animation is pinned to 1 so nothing is layered on top of it.
+  scrim: { backgroundColor: colors.overlay },
+  handleArea: { paddingTop: spacing[2], paddingBottom: 14 },
+  handle: { backgroundColor: colors.grabber, width: metrics.grabber.width, height: metrics.grabber.height, borderRadius: radius.mark },
+  padded: { paddingHorizontal: spacing[4] },
+  header: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
+  headerGap: { marginBottom: spacing[4] },
+  headerLegacy: { paddingHorizontal: spacing[4], paddingBottom: spacing[3] },
+  flex: { flex: 1, minWidth: 0 },
+  close: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.background,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  handle: { backgroundColor: colors.borderStrong, width: spacing[10] },
-  content: {},
-  header: { paddingHorizontal: spacing[4], paddingBottom: spacing[3] },
 });
 
 export default Sheet;

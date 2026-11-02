@@ -8,16 +8,13 @@ import {
   type NativeSyntheticEvent,
 } from "react-native";
 
-import { spacing, SCREEN_PADDING } from "../theme";
+import { metrics, SCREEN_PADDING, spacing } from "../theme";
 import { BoardSurfaceContext } from "./boardSurface";
 
-/**
- * How much of the screen one column occupies. Under 1 deliberately: the sliver
- * of the next column is the only thing that tells the user a board scrolls
- * sideways at all.
- */
-export const BOARD_COLUMN_RATIO = 0.86;
-
+/** E 07: a column is the window less 80 (310 on a 390 phone), so the next one peeks. */
+export const boardColumnWidth = (windowWidth: number) => windowWidth - metrics.boardColumnInset;
+/** Gap between columns (E 07). */
+export const BOARD_GAP = 10;
 
 export interface BoardColumnsProps<T> {
   columns: T[];
@@ -26,29 +23,24 @@ export interface BoardColumnsProps<T> {
   renderColumn: (column: T) => ReactElement | null;
   /** Fires with the index that settled under the viewport after a swipe. */
   onSettle?: (index: number) => void;
+  /**
+   * Left inset of the strip. Inside a `BandSheet bleedRight` the sheet already
+   * pads 16 on the left, so pass 0 there; the default suits a bare screen.
+   */
+  insetLeft?: number;
 }
 
 /**
- * The horizontal, snapping column strip both boards sit on — tasks by kanban
- * column, complaints by pipeline stage.
- *
- * It exists so the snap arithmetic lives once. Column width and gap have to
- * agree exactly or every swipe lands a few pixels off and the drift compounds
- * across the board.
+ * The horizontal, snapping column strip a board sits on. It exists so the
+ * snap arithmetic lives once: width and gap must agree exactly or every swipe
+ * lands a few pixels off and the drift compounds.
  */
-export function BoardColumns<T>({
-  columns,
-  keyOf,
-  renderColumn,
-  onSettle,
-}: BoardColumnsProps<T>) {
+export function BoardColumns<T>({ columns, keyOf, renderColumn, onSettle, insetLeft = SCREEN_PADDING }: BoardColumnsProps<T>) {
   const { width } = useWindowDimensions();
   const [, setIndex] = useState(0);
 
-  const columnWidth = Math.round(width * BOARD_COLUMN_RATIO);
-  // The column and the gap travel together, so a snap lands the next column in
-  // exactly the same place the last one was.
-  const snap = columnWidth + spacing[3];
+  const columnWidth = boardColumnWidth(width);
+  const snap = columnWidth + BOARD_GAP;
 
   const settle = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const next = Math.round(event.nativeEvent.contentOffset.x / snap);
@@ -57,9 +49,7 @@ export function BoardColumns<T>({
   };
 
   return (
-    // Everything inside a column is on a board, and cards read that to drop
-    // their shadow — a narrow column repeated across the screen cannot carry
-    // one without banding. See ui/boardSurface.
+    // Cards inside a column drop their shadow (ui/boardSurface).
     <BoardSurfaceContext value={true}>
       <FlatList
         horizontal
@@ -69,23 +59,15 @@ export function BoardColumns<T>({
         snapToInterval={snap}
         decelerationRate="fast"
         onMomentumScrollEnd={settle}
-        contentContainerStyle={styles.board}
-        renderItem={({ item }) => (
-          <View style={[styles.column, { width: columnWidth }]}>
-            {renderColumn(item)}
-          </View>
-        )}
+        contentContainerStyle={[styles.board, { paddingLeft: insetLeft }]}
+        renderItem={({ item }) => <View style={[styles.column, { width: columnWidth }]}>{renderColumn(item)}</View>}
       />
     </BoardSurfaceContext>
   );
 }
 
 const styles = StyleSheet.create({
-  board: {
-    paddingHorizontal: SCREEN_PADDING,
-    paddingTop: spacing[3],
-    gap: spacing[3],
-  },
+  board: { paddingRight: SCREEN_PADDING, paddingTop: spacing[3], gap: BOARD_GAP },
   column: { flex: 1 },
 });
 

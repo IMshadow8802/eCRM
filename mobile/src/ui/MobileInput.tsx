@@ -18,13 +18,14 @@ export interface MobileInputProps
  * digits afterwards is handed back as typed and the server's 400 says so.
  */
 export const MobileInput = forwardRef<TextInput, MobileInputProps>(function MobileInput(
-  { onChangeText, placeholder = "10-digit number", ...rest },
+  { onChangeText, placeholder = "10-digit number", prefix = "+91", ...rest },
   ref,
 ) {
   return (
     <Input
       ref={ref}
       placeholder={placeholder}
+      prefix={prefix}
       keyboardType="phone-pad"
       autoComplete="tel"
       {...rest}

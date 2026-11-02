@@ -1,15 +1,12 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, StyleSheet, View } from "react-native";
-import { WifiOff } from "lucide-react-native";
+import { StyleSheet, View } from "react-native";
 
-import { colors, spacing } from "../theme";
-import { Button } from "./Button";
-import { Text } from "./Text";
+import { spacing } from "../theme";
+import { ErrorCard, SkeletonRows } from "./EmptyState";
 
 /**
- * How long a spinner may spin before it stops being reassuring and starts
- * looking frozen. Comfortably longer than any healthy request on a phone
- * connection, short enough that nobody force-quits the app first.
+ * How long skeleton rows may stand before they stop being reassuring and
+ * start looking frozen. Longer than any healthy request on a phone connection.
  */
 const PATIENCE_MS = 6000;
 
@@ -22,16 +19,9 @@ export interface ScreenLoaderProps {
 }
 
 /**
- * The full-screen loading state, with a way out.
- *
- * A bare `<ActivityIndicator/>` is indistinguishable from a hung app, and the
- * screens that used one rendered no header either — so a slow request left the
- * user with no back button and no retry, and force-quitting was genuinely the
- * only option. That is the bug this exists to kill.
- *
- * The spinner still shows first, because most loads are quick and a
- * "something's wrong" message flashing on every navigation would be worse.
- * After PATIENCE_MS it admits the request is not going well and offers a retry.
+ * The full-screen loading state, with a way out — built on E's states:
+ * skeleton rows first (most loads are quick), then after PATIENCE_MS the
+ * error card admits it is slow and offers a retry; a failure says so at once.
  */
 export function ScreenLoader({ onRetry, failed = false, message }: ScreenLoaderProps) {
   const [slow, setSlow] = useState(false);
@@ -42,42 +32,26 @@ export function ScreenLoader({ onRetry, failed = false, message }: ScreenLoaderP
     return () => clearTimeout(timer);
   }, [failed]);
 
-  const stalled = failed || slow;
-
   return (
-    <View style={styles.centre}>
-      {failed ? (
-        <WifiOff size={30} color={colors.textMuted} />
+    <View style={styles.fill}>
+      {failed || slow ? (
+        <View style={styles.card}>
+          <ErrorCard
+            title={failed ? "Could not load this" : "Still trying…"}
+            message={message ?? "Check your connection. Nothing has been lost — you can go back and try again."}
+            onRetry={onRetry}
+          />
+        </View>
       ) : (
-        <ActivityIndicator color={colors.primary} />
+        <SkeletonRows rows={4} />
       )}
-
-      {stalled ? (
-        <>
-          <Text variant="h3" align="center">
-            {failed ? "Could not load this" : "Still trying…"}
-          </Text>
-          <Text variant="secondary" align="center">
-            {message ??
-              "Check your connection. Nothing has been lost — you can go back and try again."}
-          </Text>
-          {onRetry ? (
-            <Button title="Try again" size="sm" onPress={onRetry} />
-          ) : null}
-        </>
-      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  centre: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing[3],
-    padding: spacing[6],
-  },
+  fill: { flex: 1, padding: spacing[4] },
+  card: { paddingTop: 72 - spacing[4] },
 });
 
 export default ScreenLoader;

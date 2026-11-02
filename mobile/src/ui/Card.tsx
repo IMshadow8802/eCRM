@@ -1,8 +1,19 @@
 import type { ReactNode } from "react";
 import { Pressable, StyleSheet, View, type ViewStyle } from "react-native";
 
-import { colors, radius, shadows, spacing } from "../theme";
+import { colors, elevation, radius, spacing } from "../theme";
 import { useOnBoard } from "./boardSurface";
+
+/** Tinted cards carry their colour and no shadow (E: Create rows, follow-up card, pending delete, info). */
+export type CardTone = "surface" | "muted" | "followUp" | "danger" | "brandSoft";
+
+const TONE_FILL: Record<CardTone, string> = {
+  surface: colors.surface,
+  muted: colors.surfaceMuted,
+  followUp: colors.followUpTint,
+  danger: colors.dangerCardTint,
+  brandSoft: colors.primarySoft,
+};
 
 export interface CardProps {
   children: ReactNode;
@@ -12,62 +23,39 @@ export interface CardProps {
   padded?: boolean;
   /** Vertical rhythm between children. */
   gap?: keyof typeof spacing;
+  tone?: CardTone;
   style?: ViewStyle;
+  testID?: string;
 }
 
 /**
- * THE card. Every raised white surface in the app is this one — task cards,
- * complaint cards, boards, hub rows, settings panels.
- *
- * It exists because the shell was hand-rolled in nine files, so every change
- * to it had to be made nine times: dropping the border, retuning the shadow,
- * the press physics. A clipping bug lived in exactly one of those copies and
- * flattened that screen while the other eight looked fine — which is the whole
- * argument for this file in one sentence.
- *
- * Content stays per-domain. A task and a complaint genuinely show different
- * things, and one component rendering both becomes a soup of `showX` props —
- * the opposite failure, and harder to unpick than duplication. This owns the
- * surface; the feature owns what sits on it.
+ * THE card (E `.card`): radius 16, white, the solid-colour whisper shadow.
  *
  * Three rules are load-bearing:
- *
- *   NO border. On a white page an outline draws a box around every card; the
- *   shadow alone is what reads as lift.
- *
- *   NO `overflow: hidden`, ever. On iOS it sets `masksToBounds`, which clips
- *   the layer's OWN shadow along with its children, and the card renders
- *   completely flat. Anything that needs clipping does it on a child.
- *
- *   Press SINKS it. Translating down while the shadow tightens is what a
- *   raised object does when pushed. A colour tint or a bare scale is not.
+ *   NO border — the sheet being one step darker is what makes a card a card.
+ *   NO `overflow: hidden` — on iOS it clips the card's own shadow. Clip a child.
+ *   Press SINKS it (translate + scale), never tints it.
  */
 export function Card({
-  children,
-  onPress,
-  onLongPress,
-  padded = true,
-  gap = 3,
-  style,
+  children, onPress, onLongPress, padded = true, gap = 3, tone = "surface", style, testID,
 }: CardProps) {
-  // Inside a board column the shadow is dropped — see ui/boardSurface for why
-  // a narrow repeated column cannot carry one.
+  // Inside a board column the shadow is dropped — see ui/boardSurface.
   const onBoard = useOnBoard();
-
   const shell = [
     styles.card,
-    !onBoard && shadows.md,
+    { backgroundColor: TONE_FILL[tone] },
+    !onBoard && tone === "surface" && elevation.whisper,
     padded && styles.padded,
     { gap: spacing[gap] },
     style,
   ];
 
   if (!onPress && !onLongPress) {
-    return <View style={shell}>{children}</View>;
+    return <View testID={testID} style={shell}>{children}</View>;
   }
-
   return (
     <Pressable
+      testID={testID}
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={300}
@@ -79,15 +67,7 @@ export function Card({
 }
 
 const styles = StyleSheet.create({
-  /**
-   * The shadow is applied inline, not here, because it depends on where the
-   * card is: on a board column it is dropped entirely. Contrast — a white card
-   * on a page one step darker — is what separates a card either way.
-   */
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-  },
+  card: { borderRadius: radius.card },
   padded: { padding: spacing[4] },
   pressed: { transform: [{ scale: 0.985 }, { translateY: 1 }] },
 });

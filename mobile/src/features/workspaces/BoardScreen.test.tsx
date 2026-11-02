@@ -8,8 +8,8 @@ import { fetchWorkspaces } from "../../api/workspaceQueries";
 import type { KanbanColumn, Task, Workspace, WorkspaceRole } from "../../types/api";
 import { access, envelope, pagination } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
-import { chipTones, spacing } from "../../theme";
-import { BOARD_COLUMN_RATIO } from "../../ui/BoardColumns";
+import { chipTones } from "../../theme";
+import { BOARD_GAP, boardColumnWidth } from "../../ui/BoardColumns";
 import BoardScreen from "./BoardScreen";
 
 jest.mock("../../api/kanbanQueries");
@@ -166,7 +166,7 @@ it("an admin outside the board gets both shortcuts on a shared board (WS-07)", a
 
 /** Swipe the board so the column at `index` is the one on screen. */
 const settleOn = async (index: number) => {
-  const snap = Math.round(Dimensions.get("window").width * BOARD_COLUMN_RATIO) + spacing[3];
+  const snap = boardColumnWidth(Dimensions.get("window").width) + BOARD_GAP;
   // Fired on the first column's header; it bubbles to the horizontal list.
   await fireEvent(screen.getAllByText("Backlog")[0]!, "momentumScrollEnd", {
     nativeEvent: { contentOffset: { x: snap * index, y: 0 } },

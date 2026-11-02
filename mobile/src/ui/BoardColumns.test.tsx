@@ -1,8 +1,8 @@
-import { Dimensions } from "react-native";
+import { Dimensions, StyleSheet } from "react-native";
 import { fireEvent, render, screen } from "@testing-library/react-native";
 
-import { spacing } from "../theme";
-import { BOARD_COLUMN_RATIO, BoardColumns } from "./BoardColumns";
+import { BOARD_GAP, BoardColumns, boardColumnWidth } from "./BoardColumns";
+
 import { Text } from "./Text";
 import { useOnBoard } from "./boardSurface";
 
@@ -45,7 +45,7 @@ it("outside a board the surface flag is off", async () => {
 it("settles on the column whose snap interval the scroll ended in", async () => {
   const onSettle = jest.fn();
   await mount(onSettle);
-  const snap = Math.round(Dimensions.get("window").width * BOARD_COLUMN_RATIO) + spacing[3];
+  const snap = boardColumnWidth(Dimensions.get("window").width) + BOARD_GAP;
   // A little short of two full snaps still rounds to the third column.
   await fireEvent(screen.root!, "momentumScrollEnd", {
     nativeEvent: { contentOffset: { x: snap * 2 - 10, y: 0 } },
@@ -59,4 +59,13 @@ it("settling without a listener does not throw", async () => {
     nativeEvent: { contentOffset: { x: 0, y: 0 } },
   });
   expect(screen.getByText("Doing:board")).toBeOnTheScreen();
+});
+
+it("a column is the window less 80 (310 on a 390 phone), 10 apart; the left inset is the caller's", async () => {
+  expect(boardColumnWidth(390)).toBe(310);
+  await render(<BoardColumns columns={columns} keyOf={(c) => c.id} insetLeft={0} renderColumn={(c) => <Probe title={c.title} />} />);
+  const wrapper = StyleSheet.flatten(screen.getByText("To do:board").parent!.props.style);
+  expect(wrapper.width).toBe(boardColumnWidth(Dimensions.get("window").width));
+  const strip = StyleSheet.flatten(screen.root!.props.contentContainerStyle);
+  expect(strip).toMatchObject({ paddingLeft: 0, gap: 10 });
 });

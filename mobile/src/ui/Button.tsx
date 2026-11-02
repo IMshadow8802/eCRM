@@ -6,20 +6,23 @@ import {
   type PressableProps,
   type ViewStyle,
 } from "react-native";
-
-import { colors, radius, spacing, CONTROL_HEIGHT } from "../theme";
 import type { LucideIcon } from "lucide-react-native";
 
+import { colors, metrics, spacing, type ColorKey, type TypographyVariant } from "../theme";
 import { Text } from "./Text";
 
 export type ButtonVariant =
   | "primary"
   | "secondary"
-  | "ghost"
   | "danger"
-  /** Solid white — for use on the brand gradient, where primary would vanish. */
-  | "onBrand";
-export type ButtonSize = "sm" | "md" | "lg";
+  /** White on the indigo hero ("Explain delay", 09). */
+  | "onBrand"
+  /** Green fill (the labelled "Call", T2). */
+  | "success"
+  /** Text-only, in brand indigo ("Decline" next to Accept). */
+  | "ghost";
+/** md 48 · sm 36 · xs 32 (E `.btn`, `.btn.sm`, Accept in 06). `lg` is retired and draws as md. */
+export type ButtonSize = "xs" | "sm" | "md" | "lg";
 
 export interface ButtonProps extends Omit<PressableProps, "style" | "children"> {
   title: string;
@@ -31,29 +34,27 @@ export interface ButtonProps extends Omit<PressableProps, "style" | "children"> 
   style?: ViewStyle;
 }
 
-const BG: Record<ButtonVariant, string> = {
-  primary: colors.primary,
-  secondary: colors.surfaceMuted,
-  ghost: "transparent",
-  danger: colors.danger,
-  onBrand: colors.surface,
+/** variant → [fill, pressed fill, text] — all solid (spec §1.2 pressed states). */
+const PAINT: Record<ButtonVariant, [ColorKey, ColorKey, ColorKey]> = {
+  primary: ["primary", "primaryPressed", "textOnBrand"],
+  secondary: ["secondaryFill", "secondaryPressed", "text"],
+  danger: ["danger", "dangerText", "textOnBrand"],
+  onBrand: ["surface", "fieldTint", "primary"],
+  success: ["success", "successText", "textOnBrand"],
+  ghost: ["transparentBorder", "fieldTint", "primary"],
 };
 
-const FG: Record<ButtonVariant, keyof typeof colors> = {
-  primary: "textOnBrand",
-  secondary: "text",
-  ghost: "primary",
-  danger: "textOnBrand",
-  onBrand: "primary",
+const SIZE: Record<ButtonSize, { height: number; padH: number; variant: TypographyVariant; icon: number }> = {
+  md: { height: metrics.buttonHeight.md, padH: spacing[5], variant: "bodyStrong", icon: 18 },
+  lg: { height: metrics.buttonHeight.md, padH: spacing[5], variant: "bodyStrong", icon: 18 },
+  sm: { height: metrics.buttonHeight.sm, padH: spacing[4], variant: "rowTitle", icon: 16 },
+  xs: { height: metrics.buttonHeight.xs, padH: 14, variant: "metaStrong", icon: 14 },
 };
 
-// md matches CONTROL_HEIGHT exactly so a button lines up with an Input beside it.
-const HEIGHT: Record<ButtonSize, number> = {
-  sm: 38,
-  md: CONTROL_HEIGHT,
-  lg: 56,
-};
-
+/**
+ * The pill button (E `.btn`). Disabled is the solid `disabledBg` fill, never
+ * an opacity; pressed is a solid darker fill.
+ */
 export function Button({
   title,
   variant = "primary",
@@ -66,44 +67,32 @@ export function Button({
   ...rest
 }: ButtonProps) {
   const isDisabled = disabled || loading;
-  const fg = FG[variant];
+  const [fill, pressedFill, ink] = PAINT[variant];
+  const s = SIZE[size];
+  const fg: ColorKey = isDisabled && !loading ? "disabledText" : ink;
 
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={title}
       accessibilityState={{ disabled: !!isDisabled, busy: loading }}
       disabled={isDisabled}
       style={({ pressed }) => [
         styles.base,
-        {
-          height: HEIGHT[size],
-          backgroundColor: BG[variant],
-        },
-        isDisabled &&
-          (variant === "primary"
-            ? styles.disabledPrimary
-            : variant === "danger"
-              ? styles.disabledDanger
-              : styles.disabledNeutral),
-        variant === "ghost" && styles.ghost,
+        { height: s.height, borderRadius: s.height / 2, paddingHorizontal: s.padH, backgroundColor: colors[fill] },
+        isDisabled && !loading && styles.disabled,
         fullWidth && styles.fullWidth,
-        pressed &&
-          !isDisabled &&
-          (variant === "primary" ? styles.pressed : styles.pressedNeutral),
+        pressed && !isDisabled && { backgroundColor: colors[pressedFill] },
         style,
       ]}
       {...rest}
     >
       {loading ? (
-        <ActivityIndicator
-          color={variant === "secondary" ? colors.text : colors.textOnBrand}
-        />
+        <ActivityIndicator color={colors[ink]} />
       ) : (
         <View style={styles.content}>
-          {Icon ? (
-            <Icon size={size === "sm" ? 16 : 18} color={colors[fg]} />
-          ) : null}
-          <Text variant="button" color={fg} numberOfLines={1}>
+          {Icon ? <Icon size={s.icon} color={colors[fg]} /> : null}
+          <Text variant={s.variant} color={fg} numberOfLines={1}>
             {title}
           </Text>
         </View>
@@ -113,26 +102,10 @@ export function Button({
 }
 
 const styles = StyleSheet.create({
-  base: {
-    borderRadius: radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: spacing[5],
-  },
-  ghost: { paddingHorizontal: spacing[2] },
-  // Solid muted fills — never `opacity`. Dimming lets the background bleed
-  // through and reads as faded rather than disabled.
-  disabledPrimary: { backgroundColor: colors.primaryDim },
-  disabledDanger: { backgroundColor: colors.dangerDim },
-  disabledNeutral: { backgroundColor: colors.disabledBg },
+  base: { alignItems: "center", justifyContent: "center" },
+  disabled: { backgroundColor: colors.disabledBg },
   fullWidth: { alignSelf: "stretch" },
-  pressed: { backgroundColor: colors.primaryPressed },
-  pressedNeutral: { backgroundColor: colors.surfacePressed },
-  content: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[2],
-  },
+  content: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
 });
 
 export default Button;

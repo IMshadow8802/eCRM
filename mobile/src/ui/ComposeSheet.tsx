@@ -2,9 +2,11 @@ import { forwardRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 
-import { colors, radius, spacing, typography } from "../theme";
+import { colors, metrics, radius, spacing, typography } from "../theme";
 import { Button } from "./Button";
-import { ChipGroup } from "./ChipGroup";
+import { FieldLabel } from "./Field";
+import type { StatusBadgeProps } from "./StatusBadge";
+import { FilterPills } from "./Tabs";
 import { Sheet, type SheetRef } from "./Sheet";
 import { Text } from "./Text";
 
@@ -38,6 +40,10 @@ export interface ComposeChoice {
 
 export interface ComposeSheetProps {
   title: string;
+  /** The line under the title ("C-1042 · AC not cooling"). */
+  subtitle?: string;
+  /** The 40 badge leading the header. */
+  badge?: Pick<StatusBadgeProps, "tone" | "icon">;
   submitLabel: string;
   fields: ComposeField[];
   choices?: ComposeChoice[];
@@ -71,7 +77,7 @@ export interface ComposeSheetProps {
  */
 export const ComposeSheet = forwardRef<SheetRef, ComposeSheetProps>(
   function ComposeSheet(
-    { title, submitLabel, fields, choices = [], busy = false, error, initialValues, onSubmit },
+    { title, subtitle, badge, submitLabel, fields, choices = [], busy = false, error, initialValues, onSubmit },
     ref,
   ) {
     const [values, setValues] = useState<Record<string, string>>(initialValues ?? {});
@@ -123,25 +129,22 @@ export const ComposeSheet = forwardRef<SheetRef, ComposeSheetProps>(
       <Sheet
         ref={ref}
         title={title}
+        subtitle={subtitle}
+        badge={badge}
         keyboardAware
+        padded
         onDismiss={reset}
       >
         <View style={styles.body}>
           {/* Choices first: they are the shape of the record, and picking one
               should not mean scrolling back past a keyboard-covered field. */}
           {choices.map((choice) => (
-            <View key={choice.key} style={styles.field}>
-              {choice.label ? (
-                <Text variant="label">
-                  {choice.label}
-                  {choice.required ? (
-                    <Text variant="label" color="danger">
-                      {" *"}
-                    </Text>
-                  ) : null}
-                </Text>
-              ) : null}
-              <ChipGroup
+            <View key={choice.key}>
+              {choice.label ? <FieldLabel label={choice.label} required={choice.required} /> : null}
+              <FilterPills
+                tone="inSheet"
+                wrap
+                label={choice.label}
                 value={picked[choice.key] ?? null}
                 options={choice.options}
                 onChange={(value) =>
@@ -152,17 +155,8 @@ export const ComposeSheet = forwardRef<SheetRef, ComposeSheetProps>(
           ))}
 
           {fields.map((field, i) => (
-            <View key={field.key} style={styles.field}>
-              {field.label ? (
-                <Text variant="label">
-                  {field.label}
-                  {isRequired(field) ? (
-                    <Text variant="label" color="danger">
-                      {" *"}
-                    </Text>
-                  ) : null}
-                </Text>
-              ) : null}
+            <View key={field.key}>
+              {field.label ? <FieldLabel label={field.label} required={isRequired(field)} /> : null}
               <BottomSheetTextInput
                 testID={`compose-${field.key}`}
                 value={values[field.key] ?? ""}
@@ -186,11 +180,7 @@ export const ComposeSheet = forwardRef<SheetRef, ComposeSheetProps>(
             </View>
           ))}
 
-          {error ? (
-            <Text variant="caption" color="danger">
-              {error}
-            </Text>
-          ) : null}
+          {error ? <Text variant="label" color="dangerText">{error}</Text> : null}
 
           <Button
             title={submitLabel}
@@ -206,27 +196,28 @@ export const ComposeSheet = forwardRef<SheetRef, ComposeSheetProps>(
 );
 
 const styles = StyleSheet.create({
-  body: { paddingHorizontal: spacing[4], gap: spacing[3] },
-  field: { gap: spacing[2] },
-  chipPressed: { backgroundColor: colors.surfacePressed },
+  body: { gap: metrics.fieldGap + 2 },
+  // The E field box (§3.14) on gorhom's input, which must stay a bare TextInput.
   input: {
     ...typography.body,
+    color: colors.text,
+    height: metrics.controlHeight,
     borderWidth: 1,
-    borderColor: colors.borderStrong,
-    borderRadius: radius.md,
+    borderColor: colors.border,
+    borderRadius: radius.badge,
     paddingHorizontal: spacing[3],
-    paddingVertical: spacing[3],
+    paddingVertical: 0,
     backgroundColor: colors.surface,
-    // Same reasoning as Input: a single-line TextInput does not centre its
-    // glyphs inside a lineHeight box, and Android reserves accent room it does
-    // not need. Both push the text off centre against the padding around it.
     lineHeight: undefined,
     includeFontPadding: false,
     textAlignVertical: "center",
   },
   inputMultiline: {
-    minHeight: 110,
-    lineHeight: typography.body.lineHeight,
+    height: undefined,
+    minHeight: 76,
+    paddingTop: 11,
+    paddingBottom: 11,
+    lineHeight: 20,
     textAlignVertical: "top",
   },
 });

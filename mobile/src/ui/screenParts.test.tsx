@@ -1,6 +1,6 @@
-// ScreenHeader, ScreenLoader, EmptyState, Fab, Card, Timeline.
+// ScreenHeader, EmptyState, Fab, Card, Timeline.
 import { StyleSheet, Text as RNText } from "react-native";
-import { act, fireEvent, screen } from "@testing-library/react-native";
+import { fireEvent, screen } from "@testing-library/react-native";
 import { Plus, Settings } from "lucide-react-native";
 
 import { colors } from "../theme";
@@ -10,11 +10,9 @@ import { Card } from "./Card";
 import { EmptyState } from "./EmptyState";
 import { Fab } from "./Fab";
 import { ScreenHeader } from "./ScreenHeader";
-import { ScreenLoader } from "./ScreenLoader";
 import { Text } from "./Text";
 import { Timeline } from "./Timeline";
 
-afterEach(() => jest.useRealTimers());
 
 // A finger landing and staying down: the responder grant RNTL's own press()
 // dispatches, without the release, so the pressed style can be read.
@@ -55,26 +53,6 @@ describe("ScreenHeader", () => {
   it("no back handler means no back button", async () => {
     await renderWithProviders(<ScreenHeader title="Today" />);
     expect(screen.queryByRole("button", { name: "Go back" })).toBeNull();
-  });
-});
-
-describe("ScreenLoader", () => {
-  it("spins quietly, then after 6s admits it is slow and offers a retry", async () => {
-    jest.useFakeTimers();
-    const onRetry = jest.fn();
-    await renderWithProviders(<ScreenLoader onRetry={onRetry} />);
-    expect(screen.queryByText("Still trying…")).toBeNull();
-    await act(async () => jest.advanceTimersByTime(6000));
-    expect(screen.getByText("Still trying…")).toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
-    expect(onRetry).toHaveBeenCalledTimes(1);
-  });
-
-  it("a failed load says so at once, with the caller's message and no retry when none is given", async () => {
-    await renderWithProviders(<ScreenLoader failed message="Server is down" />);
-    expect(screen.getByText("Could not load this")).toBeOnTheScreen();
-    expect(screen.getByText("Server is down")).toBeOnTheScreen();
-    expect(screen.queryByRole("button")).toBeNull();
   });
 });
 

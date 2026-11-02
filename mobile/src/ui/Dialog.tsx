@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
 import { KeyboardAvoidingView, Modal, Pressable, StyleSheet, View } from "react-native";
 
-import { colors, radius, shadows, spacing } from "../theme";
+import { colors, radius, spacing } from "../theme";
 import { Button } from "./Button";
+import { StatusBadge, type StatusBadgeProps } from "./StatusBadge";
 import { Text } from "./Text";
 
 export interface DialogProps {
@@ -12,6 +13,8 @@ export interface DialogProps {
   confirmLabel?: string;
   cancelLabel?: string;
   destructive?: boolean;
+  /** A 48 badge over the title (E 21: a destructive delete is red trash-2). */
+  badge?: Pick<StatusBadgeProps, "tone" | "icon">;
   /** Notice-style dialog: a single confirm button. */
   hideCancel?: boolean;
   loading?: boolean;
@@ -34,6 +37,7 @@ export function Dialog({
   confirmLabel = "Confirm",
   cancelLabel = "Cancel",
   destructive = false,
+  badge,
   hideCancel = false,
   loading = false,
   dismissable = true,
@@ -59,9 +63,10 @@ export function Dialog({
       <Pressable style={styles.backdrop} onPress={dismiss}>
         {/* Stops a tap inside the card from closing the dialog. */}
         <Pressable style={styles.card} onPress={(e) => e.stopPropagation()}>
-          <Text variant="h2">{title}</Text>
-          {message ? <Text variant="secondary">{message}</Text> : null}
-          {children}
+          {badge ? <StatusBadge size={48} tone={badge.tone} icon={badge.icon} /> : null}
+          <Text variant="sheetTitle" style={badge ? styles.titleAfterBadge : undefined}>{title}</Text>
+          {message ? <Text variant="text" color="textSecondary" style={styles.message}>{message}</Text> : null}
+          {children ? <View style={styles.children}>{children}</View> : null}
           <View style={[styles.actions, stacked && styles.actionsStacked]}>
             {hideCancel ? null : (
               <Button
@@ -88,21 +93,25 @@ export function Dialog({
 }
 
 const styles = StyleSheet.create({
+  // E 21: the card sits 32 from each edge.
   backdrop: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: spacing[6],
+    paddingHorizontal: spacing[8],
   },
   card: {
     width: "100%",
     backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    padding: spacing[5],
-    gap: spacing[3],
-    ...shadows.lg,
+    borderRadius: radius.modal,
+    paddingTop: 22,
+    paddingHorizontal: spacing[5],
+    paddingBottom: 18,
   },
-  actions: { flexDirection: "row", gap: spacing[3], marginTop: spacing[2] },
+  titleAfterBadge: { marginTop: 14 },
+  message: { marginTop: 6 },
+  children: { marginTop: spacing[3] },
+  actions: { flexDirection: "row", gap: 10, marginTop: spacing[5] },
   // Primary on top when stacked, the way a phone dialog reads.
   actionsStacked: { flexDirection: "column-reverse" },
   action: { flex: 1 },

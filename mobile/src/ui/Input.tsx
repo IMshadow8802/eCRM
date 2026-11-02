@@ -1,22 +1,9 @@
 import { forwardRef, useState } from "react";
-import {
-  Pressable,
-  StyleSheet,
-  TextInput,
-  View,
-  type TextInputProps,
-  type ViewStyle,
-} from "react-native";
+import { Pressable, StyleSheet, TextInput, View, type TextInputProps, type ViewStyle } from "react-native";
 import { Eye, EyeOff, type LucideIcon } from "lucide-react-native";
 
-import {
-  colors,
-  radius,
-  shadows,
-  spacing,
-  typography,
-  CONTROL_HEIGHT,
-} from "../theme";
+import { colors, fontScaleCap, spacing } from "../theme";
+import { FieldHelp, FieldLabel, FieldPrefix, fieldBox } from "./Field";
 import { Text } from "./Text";
 
 export interface InputProps extends Omit<TextInputProps, "style"> {
@@ -24,45 +11,33 @@ export interface InputProps extends Omit<TextInputProps, "style"> {
   error?: string | null;
   hint?: string;
   required?: boolean;
+  /** An xs chip after the label ("Custom", T4). */
+  labelTag?: string;
   leftIcon?: LucideIcon;
+  /** "+91", "₹" — inside the field, before the text, with a divider. */
+  prefix?: string;
   /** Renders the show/hide eye and manages secureTextEntry internally. */
   password?: boolean;
   /**
-   * "onBrand" is for a field sitting directly on the brand gradient. The field
-   * itself stays SOLID WHITE — a translucent one reads as icy and washes out
-   * the text. Only the label, helper and elevation change.
+   * retired (Task 40): E puts the auth form on white, so this only keeps the
+   * label and help legible on the gradient until LoginScreen is restyled.
    */
   tone?: "default" | "onBrand";
-  /**
-   * Strips the border, background and fixed height — for an inline composer
-   * sitting inside a card that already provides the surface. Exists so screens
-   * never reach for a raw RN TextInput to get one.
-   */
+  /** No border, background or fixed height — an inline composer inside a card. */
   bare?: boolean;
   containerStyle?: ViewStyle;
 }
 
 /**
- * The single text input. Handles label, error, hint, focus ring and the
- * password reveal so no screen re-implements them.
+ * The single text input (E `.in`): label, field, help. Focus is a 2 px primary
+ * ring, an error a 2 px danger ring with the leading icon turned danger.
  */
 export const Input = forwardRef<TextInput, InputProps>(function Input(
   {
-    label,
-    error,
-    hint,
-    required,
-    leftIcon: LeftIcon,
-    password = false,
-    tone = "default",
-    bare = false,
-    containerStyle,
-    editable = true,
-    multiline,
-    // Pulled out of `rest`: spread after the wrappers below, they replaced
-    // them and a caller's onFocus switched the focus ring off.
-    onFocus,
-    onBlur,
+    label, error, hint, required, labelTag, leftIcon: LeftIcon, prefix, password = false, tone = "default",
+    bare = false, containerStyle, editable = true, multiline,
+    // Pulled out of `rest`: spread after the wrappers, a caller's onFocus would switch the ring off.
+    onFocus, onBlur,
     ...rest
   },
   ref,
@@ -72,38 +47,38 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
   const onBrand = tone === "onBrand";
 
   return (
-    <View style={[styles.container, containerStyle]}>
+    <View style={containerStyle}>
       {label ? (
-        <Text
-          variant="label"
-          color={onBrand ? "textOnBrandMuted" : "textSecondary"}
-          style={styles.label}
-        >
-          {label}
-          {required ? <Text variant="label" color="danger"> *</Text> : null}
-        </Text>
+        onBrand ? (
+          <Text variant="label" color="textOnBrandMuted" style={styles.legacyLabel}>
+            {label}
+            {required ? <Text variant="label" color="danger"> *</Text> : null}
+          </Text>
+        ) : (
+          <FieldLabel label={label} required={required} tag={labelTag} />
+        )
       ) : null}
 
       <View
         style={[
-          styles.field,
-          bare && styles.fieldBare,
-          onBrand && styles.fieldOnBrand,
-          multiline && styles.fieldMultiline,
-          focused && styles.fieldFocused,
-          !!error && styles.fieldError,
-          !editable && !onBrand && styles.fieldDisabled,
+          fieldBox.box,
+          multiline && fieldBox.multiline,
+          focused && fieldBox.focused,
+          !!error && fieldBox.error,
+          !editable && fieldBox.disabled,
+          bare && styles.bare,
         ]}
       >
-        {LeftIcon ? <LeftIcon size={18} color={colors.textMuted} /> : null}
-
+        {LeftIcon ? <LeftIcon size={18} color={error ? colors.danger : colors.textMuted} /> : null}
+        {prefix ? <FieldPrefix text={prefix} /> : null}
         <TextInput
           ref={ref}
-          style={[styles.input, multiline && styles.inputMultiline]}
+          style={[fieldBox.input, multiline && fieldBox.inputMultiline]}
           placeholderTextColor={colors.textMuted}
           secureTextEntry={password && !reveal}
           editable={editable}
           multiline={multiline}
+          maxFontSizeMultiplier={fontScaleCap.body}
           onFocus={(e) => {
             setFocused(true);
             onFocus?.(e);
@@ -114,104 +89,30 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
           }}
           {...rest}
         />
-
         {password ? (
           <Pressable
             onPress={() => setReveal((v) => !v)}
-            hitSlop={spacing[2]}
+            hitSlop={spacing[3]}
             accessibilityLabel={reveal ? "Hide password" : "Show password"}
           >
-            {reveal ? <EyeOff size={20} color={colors.textSecondary} /> : <Eye size={20} color={colors.textSecondary} />}
+            {reveal ? <EyeOff size={18} color={colors.textSecondary} /> : <Eye size={18} color={colors.textSecondary} />}
           </Pressable>
         ) : null}
       </View>
 
-      {error ? (
-        <Text
-          variant="caption"
-          color={onBrand ? "textOnBrand" : "danger"}
-          style={styles.helper}
-        >
-          {error}
-        </Text>
-      ) : hint ? (
-        <Text
-          variant="caption"
-          color={onBrand ? "textOnBrandMuted" : "textSecondary"}
-          style={styles.helper}
-        >
-          {hint}
-        </Text>
-      ) : null}
+      {onBrand && (error || hint) ? (
+        <Text variant="label" color={error ? "textOnBrand" : "textOnBrandMuted"} style={styles.legacyHelp}>{error || hint}</Text>
+      ) : (
+        <FieldHelp error={error} hint={hint} />
+      )}
     </View>
   );
 });
 
 const styles = StyleSheet.create({
-  container: { gap: spacing[2] },
-  label: {},
-  field: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[2],
-    height: CONTROL_HEIGHT,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing[3],
-    backgroundColor: colors.surface,
-  },
-  // Multiline is the one case that grows past the fixed control height.
-  fieldBare: {
-    height: undefined,
-    minHeight: undefined,
-    borderWidth: 0,
-    paddingHorizontal: 0,
-    backgroundColor: colors.transparentBorder,
-  },
-  fieldMultiline: {
-    height: undefined,
-    minHeight: CONTROL_HEIGHT * 2,
-    alignItems: "flex-start",
-    paddingVertical: spacing[3],
-  },
-  fieldFocused: { borderColor: colors.primary },
-  // Solid white, borderless, lifted off the gradient by a shadow rather than
-  // by a stroke — a border on white over a gradient just looks like a seam.
-  fieldOnBrand: {
-    borderColor: colors.transparentBorder,
-    ...shadows.base,
-  },
-  fieldError: { borderColor: colors.danger },
-  fieldDisabled: { backgroundColor: colors.disabledBg },
-  input: {
-    flex: 1,
-    // No vertical padding — the parent's fixed height centres it. Padding here
-    // is what made inputs render taller than buttons beside them.
-    paddingVertical: 0,
-    maxHeight: 96,
-    ...typography.body,
-    // Three things that all shift text off the row's centre line, so the
-    // placeholder never lines up with the leading icon beside it:
-    //
-    // 1. lineHeight. A single-line TextInput lays its text out inside a
-    //    lineHeight box and does not centre the glyphs within it. body's 22px
-    //    box around 14px type leaves the text riding high.
-    // 2. includeFontPadding (Android). Reserves room above the ascender and
-    //    below the descender for accents the string does not contain.
-    // 3. textAlignVertical (Android). Defaults to top on a bare TextInput.
-    //
-    // Dropped here and restored for multiline below, where a line box is
-    // exactly what wrapped text needs.
-    lineHeight: undefined,
-    includeFontPadding: false,
-    textAlignVertical: "center",
-  },
-  inputMultiline: {
-    lineHeight: typography.body.lineHeight,
-    textAlignVertical: "top",
-  },
-  helper: {},
+  bare: { height: undefined, minHeight: undefined, borderWidth: 0, paddingHorizontal: 0, backgroundColor: colors.transparentBorder },
+  legacyLabel: { marginBottom: 6 },
+  legacyHelp: { marginTop: 6 },
 });
 
 export default Input;

@@ -40,7 +40,7 @@ it("focus shows the ring and blur removes it", async () => {
   await fireEvent(screen.getByPlaceholderText("Note"), "focus");
   expect(borderOf("Note")).toBe(colors.primary);
   await fireEvent(screen.getByPlaceholderText("Note"), "blur");
-  expect(borderOf("Note")).toBe(colors.borderStrong);
+  expect(borderOf("Note")).toBe(colors.border);
 });
 
 // Regression: `{...rest}` was spread after the wrappers, so a caller's own
@@ -54,7 +54,7 @@ it("a caller's onFocus/onBlur run AND the focus ring still shows", async () => {
   expect(borderOf("Search")).toBe(colors.primary);
   await fireEvent(screen.getByPlaceholderText("Search"), "blur");
   expect(onBlur).toHaveBeenCalledTimes(1);
-  expect(borderOf("Search")).toBe(colors.borderStrong);
+  expect(borderOf("Search")).toBe(colors.border);
 });
 
 it("a bare field has no border of its own", async () => {
@@ -66,4 +66,40 @@ it("a bare field has no border of its own", async () => {
 it("a read-only field cannot be edited", async () => {
   await render(<Input placeholder="Code" editable={false} />);
   expect(screen.getByPlaceholderText("Code")).not.toBeEnabled();
+});
+
+describe("E field (§3.14)", () => {
+  const box = (placeholder: string) => StyleSheet.flatten(screen.getByPlaceholderText(placeholder).parent!.props.style);
+
+  it("44 tall, radius 12, 1 px border; focus is a 2 px primary ring with 11 padding", async () => {
+    await render(<Input placeholder="Subject" />);
+    expect(box("Subject")).toMatchObject({ height: 44, borderRadius: 12, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12 });
+    await fireEvent(screen.getByPlaceholderText("Subject"), "focus");
+    expect(box("Subject")).toMatchObject({ borderWidth: 2, borderColor: colors.primary, paddingHorizontal: 11 });
+  });
+
+  it("an error is a 2 px danger ring, the help in dangerText, the leading icon danger", async () => {
+    await render(<Input placeholder="Password" leftIcon={Search} error="Wrong password" />);
+    expect(box("Password")).toMatchObject({ borderWidth: 2, borderColor: colors.danger });
+    expect(StyleSheet.flatten(screen.getByText("Wrong password").props.style).color).toBe(colors.dangerText);
+    const icon = screen.getByPlaceholderText("Password").parent!.children[0] as { props: { stroke?: string; color?: string } };
+    expect(icon.props.stroke ?? icon.props.color).toBe(colors.danger);
+  });
+
+  it("multiline grows from 72; a prefix sits before the text; the label can carry a tag", async () => {
+    await render(<><Input placeholder="Remarks" multiline /><Input label="Roof type" labelTag="Custom" prefix="₹" placeholder="Value" /></>);
+    expect(box("Remarks")).toMatchObject({ minHeight: 72, alignItems: "flex-start", paddingTop: 11 });
+    expect(screen.getByText("₹")).toBeOnTheScreen();
+    expect(screen.getByText("Custom")).toBeOnTheScreen();
+  });
+
+  it("a disabled field is the solid disabled fill", async () => {
+    await render(<Input placeholder="Code" editable={false} />);
+    expect(box("Code").backgroundColor).toBe(colors.disabledBg);
+  });
+
+  it("onBrand keeps the old legible label and error on the gradient (retired)", async () => {
+    await render(<Input label="Username" tone="onBrand" required error="Required" placeholder="u" />);
+    expect(StyleSheet.flatten(screen.getByText("Required").props.style).color).toBe(colors.textOnBrand);
+  });
 });

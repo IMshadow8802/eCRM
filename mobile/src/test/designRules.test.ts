@@ -48,6 +48,8 @@ function badIconImport(code: string, file: string): boolean {
     .some(
       (spec) =>
         ICONISH.test(spec) &&
+        // Our own modules ("./IconButton") are not icon libraries.
+        !spec.startsWith(".") &&
         !spec.startsWith("lucide-react-native") &&
         // Drawing primitives belong to the design system, never to a screen.
         !(inUi && spec === "react-native-svg"),
@@ -146,6 +148,8 @@ it("lets the allowed forms through", () => {
   ).toEqual([]);
   // The design system itself may draw with react-native-svg.
   expect(violations(`import Svg from "react-native-svg";`, "ui/Svg.tsx")).toEqual([]);
+  // Our own modules may have "icon" in the name.
+  expect(violations(`import { IconButton } from "./IconButton";`, "ui/Band.tsx")).toEqual([]);
   // The auth backdrop is the one gradient.
   expect(violations(`import { LinearGradient } from "expo-linear-gradient";`, "features/auth/Login.tsx")).toEqual([]);
   // A full border is not an edge rail.

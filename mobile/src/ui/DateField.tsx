@@ -5,7 +5,8 @@ import DateTimePicker, {
 } from "@react-native-community/datetimepicker";
 import { Calendar, Clock, X } from "lucide-react-native";
 
-import { colors, radius, spacing, CONTROL_HEIGHT } from "../theme";
+import { colors, spacing } from "../theme";
+import { FieldHelp, FieldLabel, fieldBox } from "./Field";
 import { Text } from "./Text";
 
 export interface DateFieldProps {
@@ -75,22 +76,13 @@ export function DateField({
   };
 
   return (
-    <View style={styles.container}>
-      {label ? (
-        <Text variant="label">
-          {label}
-          {required ? <Text variant="label" color="danger"> *</Text> : null}
-        </Text>
-      ) : null}
+    <View>
+      {label ? <FieldLabel label={label} required={required} /> : null}
 
       <Pressable
         onPress={() => !disabled && setOpen(true)}
         disabled={disabled}
-        style={[
-          styles.trigger,
-          !!error && styles.triggerError,
-          disabled && styles.triggerDisabled,
-        ]}
+        style={[fieldBox.box, !!error && fieldBox.error, disabled && fieldBox.disabled]}
       >
         {mode === "time" ? (
           <Clock size={18} color={colors.textMuted} />
@@ -116,7 +108,7 @@ export function DateField({
         ) : null}
       </Pressable>
 
-      {error ? <Text variant="caption" color="danger">{error}</Text> : null}
+      <FieldHelp error={error} />
 
       {open ? (
         <DateTimePicker
@@ -138,7 +130,7 @@ export function DateField({
 
       {open && Platform.OS === "ios" ? (
         <Pressable onPress={() => setOpen(false)} style={styles.iosDone}>
-          <Text variant="button" color="primary">Done</Text>
+          <Text variant="bodyStrong" color="primary">Done</Text>
         </Pressable>
       ) : null}
     </View>
@@ -146,20 +138,6 @@ export function DateField({
 }
 
 const styles = StyleSheet.create({
-  container: { gap: spacing[2] },
-  trigger: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[2],
-    height: CONTROL_HEIGHT,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing[3],
-    backgroundColor: colors.surface,
-  },
-  triggerError: { borderColor: colors.danger },
-  triggerDisabled: { backgroundColor: colors.disabledBg },
   triggerText: { flex: 1 },
   iosDone: { alignSelf: "flex-end", padding: spacing[2] },
 });
