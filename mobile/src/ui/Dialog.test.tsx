@@ -1,3 +1,4 @@
+import { KeyboardAvoidingView, StyleSheet } from "react-native";
 import { fireEvent, render, screen } from "@testing-library/react-native";
 
 import { Dialog } from "./Dialog";
@@ -64,4 +65,38 @@ it("a notice has a single OK button", async () => {
   await render(<Dialog visible title="Saved" confirmLabel="OK" hideCancel {...handlers()} />);
   expect(screen.getAllByRole("button")).toHaveLength(1);
   expect(screen.queryByText("Cancel")).toBeNull();
+});
+
+// Found on the emulator (Task 30), on the re-sign-in dialog.
+describe("room for its content", () => {
+  it("labels too long to share a row stack, so neither is cut", async () => {
+    await render(
+      <Dialog visible title="Sign in again" confirmLabel="Sign in" cancelLabel="Sign in as someone else" {...handlers()} />,
+    );
+    const row = screen.getByText("Sign in as someone else").parent?.parent?.parent;
+    // Column-reverse: the primary button sits on top.
+    expect(StyleSheet.flatten(row?.props.style).flexDirection).toBe("column-reverse");
+  });
+
+  it("short labels keep sharing a row", async () => {
+    await render(<Dialog visible title="Delete task?" confirmLabel="Delete" {...handlers()} />);
+    const row = screen.getByText("Cancel").parent?.parent?.parent;
+    expect(StyleSheet.flatten(row?.props.style).flexDirection).toBe("row");
+  });
+
+  it("moves out of the keyboard's way itself", async () => {
+    // Edge-to-edge Android never resizes the window for the keyboard, so the
+    // card stayed centred and the keyboard covered its buttons.
+    type Host = { props: { behavior?: string } };
+    const KAV = KeyboardAvoidingView as unknown as { prototype: { render(this: Host): unknown } };
+    const render0 = KAV.prototype.render;
+    let behavior: string | undefined;
+    const spy = jest.spyOn(KAV.prototype, "render").mockImplementation(function (this: Host) {
+      behavior = this.props.behavior;
+      return render0.call(this);
+    });
+    await render(<Dialog visible title="Sign in again" {...handlers()} />);
+    spy.mockRestore();
+    expect(behavior).toBe("padding");
+  });
 });
