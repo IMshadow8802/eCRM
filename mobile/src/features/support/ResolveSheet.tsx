@@ -68,6 +68,7 @@ export const ResolveSheet = forwardRef<SheetRef, ResolveSheetProps>(function Res
         onChangeText={setRemarks}
         placeholder="What was done"
         minHeight={84}
+        autoFocus
         hint="Required. Shows in the complaint history."
         error={tried && !remarks.trim() ? "Remarks are required to resolve." : null}
       />

@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeftRight, ChevronsUp, CircleCheck, CirclePause } from "lucide-react-native";
 
@@ -11,7 +11,7 @@ import type { Lookup, Ticket, TicketStatusCode } from "../../types/api";
 import { ComposeSheet, LogCallSheet, useToast, type LogCallThen, type SheetRef } from "../../ui";
 import { ResolveSheet } from "./ResolveSheet";
 import { TransferSheet } from "./TransferSheet";
-import { dueWhen, isActive, isTerminal, lifecycleOf, statusFor } from "./ticketHelpers";
+import { asStatusCode, dueWhen, isActive, isTerminal, lifecycleOf, statusFor } from "./ticketHelpers";
 import { useTicketRefData } from "./useTicketRefData";
 
 /** Every write a complaint offers. Each opens its sheet; none writes on its own. */
@@ -28,6 +28,8 @@ export type ComplaintAction =
 
 export interface ComplaintSheetsHandle {
   open: (action: ComplaintAction, ticket: Ticket) => void;
+  /** Change status: any company status row, asking what its Code demands. */
+  moveTo: (ticket: Ticket, target: Lookup) => void;
 }
 
 /** A status move that is not Resolve: where it goes and what the SP will demand (spec §2). */
@@ -71,6 +73,7 @@ export const ComplaintSheets = forwardRef<ComplaintSheetsHandle>(function Compla
 
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [move, setMove] = useState<Move | null>(null);
+  const [resolveTarget, setResolveTarget] = useState<Lookup | null>(null);
   const [callError, setCallError] = useState<string | null>(null);
 
   const resolveRef = useRef<SheetRef>(null);
@@ -133,14 +136,44 @@ export const ComplaintSheets = forwardRef<ComplaintSheetsHandle>(function Compla
     onError: (err) => setCallError(apiErrorMessage(err, "Could not log that call.")),
   });
 
+  /**
+   * The sheet a move into `target` needs — exactly what its Code demands of
+   * sp_SetTicketStatus (spec §2): resolved → resolution + remarks; rejected →
+   * remarks; into closed straight from active → resolution + remarks; terminal
+   * → active is a reopen → remarks. Resolved goes to the Resolve sheet, aimed
+   * at THIS row (a company may have two resolved-coded statuses).
+   */
+  const ask = useCallback((row: Ticket, target: Lookup, action?: Move["action"]) => {
+    const from = lifecycleOf(row);
+    const to = asStatusCode(target.Code);
+    if (to === "resolved") {
+      setResolveTarget(target);
+      resolveRef.current?.present();
+      return;
+    }
+    const reopen = isTerminal(from) && isActive(to);
+    const straightToClosed = to === "closed" && from !== "resolved";
+    setMove({
+      action: action ?? (to === "onhold" ? "hold" : to === "open" ? (reopen ? "reopen" : "resume") : to === "closed" ? "close" : "reject"),
+      target,
+      needsResolution: straightToClosed,
+      needsRemarks: reopen || to === "rejected" || straightToClosed,
+    });
+    moveRef.current?.present();
+  }, []);
+  const mutateStatus = status.mutate;
+
+  // Stable deps: a new handle each render would re-run a callback ref (the record keeps it in state) forever.
   useImperativeHandle(ref, () => ({
     open: (action, row) => {
       setTicket(row);
       if (action === "call") {
         setCallError(null);
         callRef.current?.present();
-      } else if (action === "resolve") resolveRef.current?.present();
-      else if (action === "transfer") transferRef.current?.present();
+      } else if (action === "resolve") {
+        setResolveTarget(null);
+        resolveRef.current?.present();
+      } else if (action === "transfer") transferRef.current?.present();
       else if (action === "escalate") escalateRef.current?.present();
       else {
         const target = statusFor(statuses, MOVE_TO[action]);
@@ -148,20 +181,21 @@ export const ComplaintSheets = forwardRef<ComplaintSheetsHandle>(function Compla
           toast.error("That status is not set up for your company. Add it on the web first.");
           return;
         }
-        const from = lifecycleOf(row);
-        const reopen = isTerminal(from) && isActive(MOVE_TO[action]);
-        // sp_SetTicketStatus: into Closed straight from an active status needs a resolution.
-        const straightToClosed = action === "close" && from !== "resolved";
-        setMove({
-          action,
-          target,
-          needsResolution: straightToClosed,
-          needsRemarks: reopen || action === "reject" || straightToClosed,
-        });
-        moveRef.current?.present();
+        ask(row, target, action);
       }
     },
-  }), [statuses, toast]);
+    moveTo: (row, target) => {
+      setTicket(row);
+      const from = lifecycleOf(row);
+      const to = asStatusCode(target.Code);
+      // Same code (two `open` rows) or active → active: nothing to ask, the pick is the act.
+      if (to === from || (isActive(from) && isActive(to))) {
+        mutateStatus({ TicketId: row.Id, StatusId: target.Id });
+        return;
+      }
+      ask(row, target);
+    },
+  }), [statuses, toast, mutateStatus, ask]);
 
   const onhold = statusFor(statuses, "onhold");
   const resolved = statusFor(statuses, "resolved");
@@ -193,8 +227,9 @@ export const ComplaintSheets = forwardRef<ComplaintSheetsHandle>(function Compla
         resolutions={resolutions}
         busy={status.isPending}
         onSubmit={({ resolutionId, remarks }) => {
-          if (!ticket || !resolved) return;
-          status.mutate({ TicketId: ticket.Id, StatusId: resolved.Id, ResolutionId: resolutionId, Remarks: remarks });
+          const to = resolveTarget ?? resolved;
+          if (!ticket || !to) return;
+          status.mutate({ TicketId: ticket.Id, StatusId: to.Id, ResolutionId: resolutionId, Remarks: remarks });
         }}
       />
 
@@ -313,7 +348,10 @@ export const ComplaintSheets = forwardRef<ComplaintSheetsHandle>(function Compla
                 invalidate(row.Id);
                 // The "Then" step chains after the call is on the record.
                 if (v.then === "hold" && onhold) status.mutate({ TicketId: row.Id, StatusId: onhold.Id });
-                else if (v.then === "resolve") resolveRef.current?.present();
+                else if (v.then === "resolve") {
+                  setResolveTarget(null);
+                  resolveRef.current?.present();
+                }
                 else toast.success("Call logged");
               },
             },

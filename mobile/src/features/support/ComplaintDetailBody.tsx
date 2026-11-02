@@ -21,7 +21,6 @@ import {
   Smartphone,
   Trash2,
   UserCheck,
-
 } from "lucide-react-native";
 
 import { fetchCalls } from "../../api/callQueries";
@@ -31,7 +30,6 @@ import { deleteTicket, fetchEscalationTargets, fetchTicketDetail } from "../../a
 import { useActionBar } from "../../navigation/Shell";
 import useAuthStore from "../../stores/useAuthStore";
 import { activityBadge, colors, complaintBadge, escalatedMark, metrics, priorityChip, spacing } from "../../theme";
-
 import {
   ActionSheet,
   Avatar,
@@ -70,6 +68,7 @@ import {
   isActive,
   isTerminal,
   lifecycleOf,
+  asStatusCode,
   lookupMap,
   openedText,
   statusFor,
@@ -113,6 +112,7 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
   const [sheets, setSheets] = useState<ComplaintSheetsHandle | null>(null);
   const menuRef = useRef<SheetRef>(null);
   const historyRef = useRef<SheetRef>(null);
+  const statusRef = useRef<SheetRef>(null);
   const scrollRef = useRef<ScrollView>(null);
   const [filesY, setFilesY] = useState(0);
   const [expanded, setExpanded] = useState(false);
@@ -248,7 +248,8 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
         key: `c-${c.Id}`,
         at: c.CalledAt,
         badge: { tone: b.tone, icon: b.icon, size: rowBadge },
-        title: ["Call logged", c.Duration ? `${c.Duration} min` : null, outcome ?? (c.Direction === "in" ? "incoming" : "outgoing")]
+        // E 11 (phone) reads "Call logged · 4 min"; T2 adds the direction.
+        title: ["Call logged", c.Duration ? `${c.Duration} min` : null, outcome ?? (inBand ? (c.Direction === "in" ? "incoming" : "outgoing") : null)]
           .filter(Boolean)
           .join(" · "),
         meta: c.Notes ?? undefined,
@@ -313,6 +314,7 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
 
   const menu: SheetAction[] = [
     ...(can.edit ? [{ key: "edit", label: "Edit complaint", icon: Pencil, onPress: () => onEdit(ticketId) }] : []),
+    ...(can.edit ? [{ key: "status", label: "Change status", icon: ArrowLeftRight, onPress: () => statusRef.current?.present() }] : []),
     ...(can.edit && code !== "closed"
       ? [{ key: "close", label: "Close", icon: Archive, onPress: run("close") }]
       : []),
@@ -324,7 +326,25 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
       : []),
   ];
 
-  const historyActions: SheetAction[] = (historyQuery.data?.data?.tickets ?? [])
+  // Every company status but the current one (as before E), each with its
+  // Code's badge. The pick asks exactly what that Code demands (ComplaintSheets).
+  const statusMoves: SheetAction[] = statuses
+    .filter((s) => s.Id !== ticket.StatusId)
+    .map((s) => {
+      const to = asStatusCode(s.Code);
+      const b = complaintBadge(to);
+      const reopen = isTerminal(code) && isActive(to);
+      return {
+        key: `s-${s.Id}`,
+        label: s.Value,
+        accessibilityLabel: `Move to ${s.Value}`,
+        badge: { tone: b.tone, icon: b.icon },
+        chip: reopen ? { label: "Reopen", tone: b.chip } : undefined,
+        onPress: () => sheets?.moveTo(ticket, s),
+      };
+    });
+
+  const historyActions: SheetAction[] =(historyQuery.data?.data?.tickets ?? [])
     .filter((t) => t.Id !== ticket.Id)
     .map((t) => {
       const b = complaintBadge(t.StatusCode);
@@ -407,7 +427,8 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
       <BandSheet padded={false}>
         <ScrollView
           ref={scrollRef}
-          contentContainerStyle={[styles.content, { paddingHorizontal: layout.gutter }]}
+          testID="record-scroll"
+          contentContainerStyle={[styles.content, inBand ? styles.contentPane : { paddingHorizontal: layout.gutter }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -475,6 +496,13 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
       <ComplaintSheets ref={setSheets} />
       <ActionSheet ref={menuRef} title="Complaint actions" actions={menu} />
       <ActionSheet
+        ref={statusRef}
+        title="Change status"
+        subtitle={`${ticket.TicketNo} · now ${ticket.StatusName ?? code}`}
+        actions={statusMoves}
+        emptyMessage="No other statuses are set up. Add them on the web first."
+      />
+      <ActionSheet
         ref={historyRef}
         title={`${ticket.CustomerName ?? "Customer"} · complaints`}
         actions={historyActions}
@@ -500,17 +528,17 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
   );
 }
 
-
-
 const styles = StyleSheet.create({
   title: { marginTop: spacing[1] },
-  chips: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: spacing[2], marginTop: 10 },
+  chips: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: spacing[2], marginTop: metrics.pairGap },
   bandActions: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
   content: { paddingTop: metrics.sheetPadTop, paddingBottom: spacing[8] },
+  // T2: the record pane's sheet pads 20 24 (E), whatever the window's gutter.
+  contentPane: { paddingTop: spacing[5], paddingHorizontal: metrics.gutterMedium },
   customerCard: { paddingVertical: spacing[3], paddingHorizontal: metrics.rowPadH },
   customer: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
-  mobileRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 14 },
-  factsGap: { marginTop: 10 },
+  mobileRow: { flexDirection: "row", alignItems: "center", gap: metrics.pairGap, marginTop: metrics.rowPadH },
+  factsGap: { marginTop: metrics.pairGap },
   pair: { flexDirection: "row", gap: spacing[4], alignItems: "stretch" },
   half: { flex: 1, minWidth: 0 },
   details: { paddingVertical: spacing[1], paddingHorizontal: spacing[4] },

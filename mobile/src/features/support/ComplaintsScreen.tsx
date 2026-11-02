@@ -72,7 +72,8 @@ export const SWIPE_HINT_KEY = "complaints.swipeHint.seen";
  *
  * Presets in the band say WHICH complaints (their counts are active-only, the
  * same requests Home makes, so a Home number equals the preset it opens); the
- * pills narrow by status within one, "All" being no filter. Sorting is the
+ * list opens on "Active" — that same set — and the pills narrow by status
+ * within it. Sorting is the
  * server's: overdue first, then by due time.
  */
 export default function ComplaintsScreen({ navigation, route }: Props) {
@@ -80,13 +81,14 @@ export default function ComplaintsScreen({ navigation, route }: Props) {
   const userId = useAuthStore((s) => s.UserId);
   const can = useAccess("complaints");
 
-  const [status, setStatus] = useState<ComplaintStatusFilter>("all");
+  // Active by default: the set every count (preset, Home, Search) counted, so a number equals the list it opens.
+  const [status, setStatus] = useState<ComplaintStatusFilter>("active");
   const [search, setSearch] = useState(route.params?.term ?? "");
   // "Mine" unless a navigate() (Home's numbers, Search's "See all") asks for
   // another queue — which also resets the pill and takes the carried term, so
   // the list is exactly what was counted.
   const [queue, setQueue] = useParamState<ComplaintQueue>(route.params, route.params?.queue, "mine", () => {
-    setStatus("all");
+    setStatus("active");
     setSearch(route.params?.term ?? "");
   });
   const [selected, setSelected] = useState<number | null>(null);
@@ -118,7 +120,7 @@ export default function ComplaintsScreen({ navigation, route }: Props) {
   });
   const pillCounts = useQueries({
     queries: [
-      complaintCountQuery(complaintQueueParams(queue, "all", userId, term)),
+      complaintCountQuery(complaintQueueParams(queue, "active", userId, term)),
       ...statuses.map((s) => complaintCountQuery(complaintQueueParams(queue, s.Id, userId, term))),
     ],
     combine: (rs) => rs.map(total),
@@ -130,7 +132,8 @@ export default function ComplaintsScreen({ navigation, route }: Props) {
     countTone: q.value === "overdue" ? ("danger" as const) : undefined,
   }));
   const pills: FilterOption<ComplaintStatusFilter>[] = [
-    { value: "all", label: "All", count: pillCounts[0] },
+    // E draws "All"; the controller ruled "Active" so the first pill equals its preset (ledgered deviation).
+    { value: "active", label: "Active", count: pillCounts[0] },
     ...statuses.map((s, i) => ({
       value: s.Id,
       label: s.Value,
@@ -147,7 +150,7 @@ export default function ComplaintsScreen({ navigation, route }: Props) {
   const loadMore = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage && !isPlaceholderData) void fetchNextPage();
   }, [hasNextPage, isFetchingNextPage, isPlaceholderData, fetchNextPage]);
-  const narrowed = status !== "all" || term.length > 0;
+  const narrowed = status !== "active" || term.length > 0;
 
   const openTicket = useCallback(
     (ticket: Ticket) => {
@@ -182,6 +185,7 @@ export default function ComplaintsScreen({ navigation, route }: Props) {
     />
   );
 
+  const pillBleed = { marginRight: layout.isTwoPane ? layout.gutter - metrics.gutter : 0 };
   const empty = EMPTY[queue];
   let body;
   if (ticketsQuery.isLoading) {
@@ -195,7 +199,10 @@ export default function ComplaintsScreen({ navigation, route }: Props) {
   } else {
     body = (
       <>
-        <FilterPills label="Filter by status" value={status} options={pills} onChange={setStatus} testID="status-pills" />
+        {/* The pills bleed by the window gutter; in the 420 pane the edge is 16 in. */}
+        <View style={pillBleed}>
+          <FilterPills label="Filter by status" value={status} options={pills} onChange={setStatus} testID="status-pills" />
+        </View>
         <FlatList
           testID="complaints-list"
           style={styles.list}
@@ -250,7 +257,12 @@ export default function ComplaintsScreen({ navigation, route }: Props) {
   const list = (
     <>
       {band}
-      <BandSheet>{body}</BandSheet>
+      <BandSheet padded={false}>
+        {/* E T2: the list pane pads 16 whatever the window gutter (32 at expanded). */}
+        <View testID="list-body" style={[styles.body, { paddingHorizontal: layout.isTwoPane ? metrics.gutter : layout.gutter }]}>
+          {body}
+        </View>
+      </BandSheet>
     </>
   );
 
@@ -287,7 +299,9 @@ export default function ComplaintsScreen({ navigation, route }: Props) {
 }
 
 const styles = StyleSheet.create({
-  errorTop: { paddingTop: 72 },
+  // E 20c: 72 from the top; spacing[16] (64) is the nearest token (theme/ is not this task's).
+  errorTop: { paddingTop: spacing[16] },
+  body: { flex: 1, paddingTop: metrics.sheetPadTop },
   list: { marginTop: spacing[3] },
   listContent: { paddingBottom: spacing[6] },
   grow: { flexGrow: 1 },

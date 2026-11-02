@@ -14,6 +14,7 @@ export interface RemarksInputProps {
   minHeight?: number;
   hint?: string;
   error?: string | null;
+  autoFocus?: boolean;
   testID?: string;
 }
 
@@ -23,7 +24,7 @@ export interface RemarksInputProps {
  * cannot pan with it.
  */
 export function RemarksInput({
-  value, onChangeText, label = "Remarks", placeholder, required = true, minHeight = 64, hint, error, testID,
+  value, onChangeText, label = "Remarks", placeholder, required = true, minHeight = 64, hint, error, testID, autoFocus,
 }: RemarksInputProps) {
   return (
     <View style={styles.block}>
@@ -35,6 +36,7 @@ export function RemarksInput({
         placeholder={placeholder}
         placeholderTextColor={colors.textMuted}
         multiline
+        autoFocus={autoFocus}
         style={[styles.input, { minHeight }, !!error && styles.error]}
       />
       <FieldHelp error={error} hint={hint} />

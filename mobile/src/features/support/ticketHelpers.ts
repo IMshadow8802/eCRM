@@ -22,8 +22,8 @@ export const asOptions = (lookups: Lookup[] | undefined) =>
 export type ComplaintQueue = "mine" | "team" | "unassigned" | "overdue" | "escalated";
 
 /**
- * "all" = no status filter (E's "All" pill); "active" = open + onhold (what
- * Home and the preset counts mean); a number = one ticket_status id.
+ * "all" = no status filter (no longer a pill — the list opens on Active); "active" = open + onhold (what
+ * Home, the presets, Search and the first pill mean); a number = one ticket_status id.
  */
 export type ComplaintStatusFilter = "all" | "active" | number;
 

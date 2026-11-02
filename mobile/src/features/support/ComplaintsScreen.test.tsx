@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Linking } from "react-native";
+import { Linking, StyleSheet } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react-native";
 
@@ -121,18 +121,21 @@ describe("E 10 · the band", () => {
     await fireEvent.press(screen.getByRole("tab", { name: "Team, 18" }));
     await waitFor(() => expect(lastList()).toMatchObject({ AssignedTo: null, Unassigned: false }));
     await fireEvent.press(screen.getByRole("tab", { name: "Unassigned, 3" }));
-    await waitFor(() => expect(lastList()).toMatchObject({ Unassigned: true, StatusCode: null }));
+    await waitFor(() => expect(lastList()).toMatchObject({ Unassigned: true, StatusCode: "active" }));
   });
 });
 
 describe("E 10 · status pills", () => {
-  it("All is no filter, with each status's count; a status with none shows no number", async () => {
+  it("opens on Active — the set the preset counted — then each status's count; none shows no number", async () => {
     await mount();
-    expect(await screen.findByRole("radio", { name: "All, 9" })).toBeSelected();
+    // The tab and the default list agree: Mine 7 opens Active 7.
+    expect(await screen.findByRole("radio", { name: "Active, 7" })).toBeSelected();
+    expect(screen.getByRole("tab", { name: "Mine, 7" })).toBeSelected();
+    expect(screen.queryByRole("radio", { name: /^All/ })).toBeNull();
     expect(screen.getByRole("radio", { name: "Open, 6" })).toBeOnTheScreen();
     expect(screen.getByRole("radio", { name: "On hold, 1" })).toBeOnTheScreen();
     expect(await screen.findByRole("radio", { name: "Rejected" })).toBeOnTheScreen();
-    expect(lastList()).toMatchObject({ AssignedTo: 42, StatusCode: null, StatusId: null });
+    expect(lastList()).toMatchObject({ AssignedTo: 42, StatusCode: "active", StatusId: null });
   });
 
   it("a pill narrows within the preset by status id; its tone is the status's", async () => {
@@ -328,10 +331,25 @@ describe("paging and search", () => {
   });
 });
 
+describe("count equality", () => {
+  it("Home → Mine: the number Home showed is the rows the list shows", async () => {
+    // The server answers the list with exactly the active Mine set.
+    rows = Array.from({ length: 7 }, (_, i) => ticket({ Id: 100 + i, Subject: `Complaint ${i}` }));
+    await mount(undefined, { queue: "mine" } as never);
+    expect(await screen.findByRole("tab", { name: "Mine, 7" })).toBeOnTheScreen();
+    await screen.findByText("Complaint 0");
+    expect(screen.getAllByTestId(/^complaint-\d+$/)).toHaveLength(7);
+    // Same filters as the count Home made, but for the page size.
+    const count = complaintQueueParams("mine", "active", 42, "");
+    expect(fetchTickets).toHaveBeenCalledWith({ ...count, PageSize: 1 });
+    expect(lastList()).toEqual({ ...count, PageNumber: 1 });
+  });
+});
+
 describe("route params", () => {
   it("Home's queue and Search's term land on exactly that list", async () => {
     await mount(undefined, { queue: "overdue", term: "sharma" });
-    await waitFor(() => expect(lastList()).toMatchObject({ Overdue: true, SearchTerm: "sharma", StatusCode: null }));
+    await waitFor(() => expect(lastList()).toMatchObject({ Overdue: true, SearchTerm: "sharma", StatusCode: "active" }));
     expect(screen.getByPlaceholderText("Search number, customer, mobile").props.value).toBe("sharma");
     expect(screen.getByRole("tab", { name: "Overdue, 2" })).toBeSelected();
   });
@@ -350,7 +368,7 @@ describe("route params", () => {
     await act(async () => { jest.advanceTimersByTime(300); });
     await waitFor(() => expect(lastList()).toMatchObject({ StatusId: 3, SearchTerm: "sharma" }));
     await act(async () => navigateTo({ queue: "overdue" }));
-    await waitFor(() => expect(lastList()).toEqual({ ...complaintQueueParams("overdue", "all", 42, ""), PageNumber: 1 }));
+    await waitFor(() => expect(lastList()).toEqual({ ...complaintQueueParams("overdue", "active", 42, ""), PageNumber: 1 }));
     expect(screen.getByPlaceholderText("Search number, customer, mobile").props.value).toBe("");
   });
 });
@@ -370,6 +388,15 @@ describe("T2 · two panes", () => {
     expect(await screen.findByRole("header", { name: "T-7" })).toBeOnTheScreen();
     expect(screen.getByTestId("complaint-7")).toBeSelected();
     expect(screen.queryByText("Pick a complaint")).toBeNull();
+  });
+
+  it("E's pane gutters: the list 16, the record 24", async () => {
+    await mount();
+    expect(flat(await screen.findByTestId("list-body")).paddingHorizontal).toBe(16);
+    await fireEvent.press(await screen.findByTestId("complaint-7"));
+    await screen.findByRole("header", { name: "T-7" });
+    const scroll = screen.getByTestId("record-scroll");
+    expect(StyleSheet.flatten(scroll.props.contentContainerStyle).paddingHorizontal).toBe(24);
   });
 
   it("deleting the selected complaint empties the pane; Edit opens the form", async () => {

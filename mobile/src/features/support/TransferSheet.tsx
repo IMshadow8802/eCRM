@@ -69,6 +69,7 @@ export const TransferSheet = forwardRef<SheetRef, TransferSheetProps>(function T
   const shown = q ? people.filter((p) => `${p.FullName} ${p.note ?? ""}`.toLowerCase().includes(q)) : people;
   const name = people.find((p) => p.Id === person)?.FullName ?? null;
   const needsReason = !!reasons;
+  const noReasons = !!reasons && !reasons.length;
 
   const submit = () => {
     setTried(true);
@@ -120,15 +121,22 @@ export const TransferSheet = forwardRef<SheetRef, TransferSheetProps>(function T
       {reasons ? (
         <View style={styles.block}>
           <FieldLabel label="Reason" required />
-          <FilterPills
-            tone="inSheet"
-            wrap
-            label="Reason"
-            value={reason}
-            options={reasons.map((r) => ({ value: r.Id, label: r.Value }))}
-            onChange={setReason}
-          />
-          <FieldHelp error={tried && reason == null ? "Pick a reason." : null} />
+          {noReasons ? (
+            // The SP demands a reason; with none set up a transfer cannot be sent.
+            <FieldHelp error="No transfer reasons are set up. Add them on the web first." />
+          ) : (
+            <>
+              <FilterPills
+                tone="inSheet"
+                wrap
+                label="Reason"
+                value={reason}
+                options={reasons.map((r) => ({ value: r.Id, label: r.Value }))}
+                onChange={setReason}
+              />
+              <FieldHelp error={tried && reason == null ? "Pick a reason." : null} />
+            </>
+          )}
         </View>
       ) : null}
 
@@ -148,7 +156,7 @@ export const TransferSheet = forwardRef<SheetRef, TransferSheetProps>(function T
           <Text variant="small" tabular style={styles.flex}>{footnote}</Text>
         </View>
       ) : null}
-      <Button title={submitLabel(name)} onPress={submit} loading={busy} fullWidth />
+      <Button title={submitLabel(name)} onPress={submit} loading={busy} disabled={noReasons} fullWidth />
     </Sheet>
   );
 });

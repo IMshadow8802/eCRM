@@ -86,6 +86,77 @@ describe("Resolve (13)", () => {
   });
 });
 
+describe("moving to any company status (Change status)", () => {
+  const OPEN_TOO = lookup(6, LOOKUP_KIND.ticketStatus, "Reopened", "open");
+  const mountMove = async () => {
+    const ref = createRef<ComplaintSheetsHandle>();
+    await renderWithProviders(<ComplaintSheets ref={ref} />);
+    await screen.findByText("Fixed on site");
+    return (target: Lookup, row: Ticket = ticket()) => act(() => ref.current!.moveTo(row, target));
+  };
+
+  it("a same-code row (a second `open`) and active→active move straight away, asking nothing", async () => {
+    const { present } = spySheets();
+    const moveTo = await mountMove();
+    await moveTo(OPEN_TOO);
+    await waitFor(() => expect(setTicketStatus).toHaveBeenCalledWith({ TicketId: 7, StatusId: 6 }));
+    await moveTo(STATUSES[1]!);
+    await waitFor(() => expect(setTicketStatus).toHaveBeenLastCalledWith({ TicketId: 7, StatusId: 2 }));
+    await moveTo(STATUSES[3]!, ticket({ StatusCode: "closed", StatusId: 4 }));
+    await waitFor(() => expect(setTicketStatus).toHaveBeenLastCalledWith({ TicketId: 7, StatusId: 4 }));
+    expect(present).not.toHaveBeenCalled();
+  });
+
+  it("resolved asks for a resolution and remarks, and moves to THAT resolved row", async () => {
+    const second = lookup(7, LOOKUP_KIND.ticketStatus, "Fixed remotely", "resolved");
+    const moveTo = await mountMove();
+    await moveTo(second);
+    await fireEvent.press(screen.getByRole("radio", { name: "Fixed on site" }));
+    await fireEvent.changeText(screen.getByTestId("resolve-remarks"), "Remote reset");
+    await fireEvent.press(screen.getByRole("button", { name: "Save · mark resolved" }));
+    await waitFor(() =>
+      expect(setTicketStatus).toHaveBeenCalledWith({ TicketId: 7, StatusId: 7, ResolutionId: 20, Remarks: "Remote reset" }),
+    );
+  });
+
+  it("rejected asks for remarks; terminal→active is a reopen asking for remarks", async () => {
+    const moveTo = await mountMove();
+    await moveTo(STATUSES[4]!);
+    expect(screen.getByText("Reject complaint")).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Reject" })).toBeDisabled();
+    await moveTo(OPEN_TOO, ticket({ StatusCode: "rejected", StatusId: 5 }));
+    expect(screen.getByText("Reopen complaint")).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Reopen" })).toBeDisabled();
+    await fireEvent.changeText(screen.getByTestId("compose-remarks"), "Customer came back");
+    await fireEvent.press(screen.getByRole("button", { name: "Reopen" }));
+    await waitFor(() =>
+      expect(setTicketStatus).toHaveBeenCalledWith({ TicketId: 7, StatusId: 6, ResolutionId: null, Remarks: "Customer came back" }),
+    );
+  });
+
+  it("closed from resolved: remarks are optional", async () => {
+    const moveTo = await mountMove();
+    await moveTo(STATUSES[3]!, ticket({ StatusCode: "resolved", StatusId: 3 }));
+    await fireEvent.press(screen.getByRole("button", { name: "Close complaint" }));
+    await waitFor(() =>
+      expect(setTicketStatus).toHaveBeenCalledWith({ TicketId: 7, StatusId: 4, ResolutionId: null, Remarks: null }),
+    );
+  });
+});
+
+it("Resolve's remarks take the focus (E 13)", async () => {
+  await mount();
+  expect(screen.getByTestId("resolve-remarks").props.autoFocus).toBe(true);
+});
+
+it("with no transfer reasons set up, Transfer says so and cannot be sent", async () => {
+  lookups[LOOKUP_KIND.transferReason] = [];
+  const open = await mount();
+  await open("transfer");
+  expect(screen.getByText("No transfer reasons are set up. Add them on the web first.")).toBeOnTheScreen();
+  expect(screen.getByRole("button", { name: "Transfer" })).toBeDisabled();
+});
+
 it("a dismissed Resolve or Transfer sheet forgets what was typed", async () => {
   const open = await mount();
   await open("resolve");

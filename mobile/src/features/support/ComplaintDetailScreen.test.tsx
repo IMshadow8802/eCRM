@@ -181,7 +181,7 @@ describe("E 11 · facts and activity", () => {
     // The activity's own 'call' row gives way to the richer call row.
     expect(screen.queryByText("Outbound call logged")).toBeNull();
     await fireEvent.press(screen.getByRole("link", { name: "All 7" }));
-    expect(screen.getByText("Call logged · 4 min · outgoing")).toBeOnTheScreen();
+    expect(screen.getByText("Call logged · 4 min")).toBeOnTheScreen();
     expect(screen.getByText("Unit trips after 10 min")).toBeOnTheScreen();
     expect(screen.getByText("Call logged · Reached")).toBeOnTheScreen();
     expect(screen.getByText("Created by Ravi Kumar")).toBeOnTheScreen();
@@ -284,8 +284,8 @@ describe("E 11 · the ⋮ menu", () => {
     const scroll = jest.spyOn(ScrollView.prototype, "scrollTo");
     await mount(navigation);
     await loaded();
-    const items = screen.getAllByRole("menuitem").map((m) => m.props.accessibilityLabel);
-    expect(items).toEqual(["Edit complaint", "Close", "Reject", "Files", "Delete complaint"]);
+    const items = screen.getAllByRole("menuitem").map((m) => m.props.accessibilityLabel).filter((l: string) => !l.startsWith("Move to"));
+    expect(items).toEqual(["Edit complaint", "Change status", "Close", "Reject", "Files", "Delete complaint"]);
     await fireEvent.press(screen.getByRole("menuitem", { name: "Edit complaint" }));
     expect(navigation.navigate).toHaveBeenCalledWith("ComplaintForm", { ticketId: 7 });
     await fireEvent.press(screen.getByRole("menuitem", { name: "Files" }));
@@ -294,12 +294,24 @@ describe("E 11 · the ⋮ menu", () => {
     expect(screen.getByRole("button", { name: "Close complaint" })).toBeOnTheScreen();
   });
 
+  it("Change status lists every company status but the current one; an active→active move needs nothing", async () => {
+    const { present } = spySheets();
+    await mount();
+    await loaded();
+    await fireEvent.press(screen.getByRole("menuitem", { name: "Change status" }));
+    expect(present).toHaveBeenCalled();
+    const moves = screen.getAllByRole("menuitem").map((m) => m.props.accessibilityLabel).filter((l: string) => l.startsWith("Move to"));
+    expect(moves).toEqual(["Move to On hold", "Move to Resolved", "Move to Closed", "Move to Rejected"]);
+    await fireEvent.press(screen.getByRole("menuitem", { name: "Move to On hold" }));
+    await waitFor(() => expect(setTicketStatus).toHaveBeenCalledWith({ TicketId: 7, StatusId: 2 }));
+  });
+
   it("a terminal one offers Reopen and no Reject", async () => {
     jest.mocked(fetchTicketDetail).mockResolvedValue(detail(ticket({ StatusCode: "closed", StatusId: 4 })));
     await mount();
     await screen.findByRole("header", { name: "T-7" });
-    const items = screen.getAllByRole("menuitem").map((m) => m.props.accessibilityLabel);
-    expect(items).toEqual(["Edit complaint", "Reopen", "Files", "Delete complaint"]);
+    const items = screen.getAllByRole("menuitem").map((m) => m.props.accessibilityLabel).filter((l: string) => !l.startsWith("Move to"));
+    expect(items).toEqual(["Edit complaint", "Change status", "Reopen", "Files", "Delete complaint"]);
   });
 
   it("Delete asks first, then deletes and goes back; a refusal says why", async () => {
@@ -325,6 +337,7 @@ describe("T2 · at the rail", () => {
     jest.mocked(fetchTicketDetail).mockResolvedValue(
       detail(ticket({ ContactPerson: "Rakesh Sharma", PriorityName: "High" })),
     );
+    jest.mocked(fetchCalls).mockResolvedValue([call()]);
     await mount();
     await loaded();
     const band = screen.getAllByRole("button").map((b) => b.props.accessibilityLabel).filter((l) =>
@@ -333,6 +346,9 @@ describe("T2 · at the rail", () => {
     // The band comes first in the tree; the sheets (kept mounted by the mock) follow.
     expect(band.slice(0, 5)).toEqual(["Log call", "On hold", "Transfer", "Escalate", "Resolve"]);
     expect(screen.getByText("Contact: Rakesh Sharma")).toBeOnTheScreen();
+    // T2 keeps the direction on a call row; the phone (11) drops it.
+    expect(await screen.findByText("Call logged · 4 min · outgoing")).toBeOnTheScreen();
+    expect(screen.getByRole("menuitem", { name: "Change status" })).toBeOnTheScreen();
     expect(screen.getByText("Opened Sun, 1 Nov · 10:00 am")).toBeOnTheScreen();
     expect(screen.getAllByText("High").length).toBe(2);
     await fireEvent.press(screen.getByRole("button", { name: "Call 9825012345" }));
