@@ -457,6 +457,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
     {
       key: "dependencies",
       label: "Dependencies",
+      accessibilityLabel: "Open dependencies",
       icon: Ban,
       onPress: () => dependencyRef.current?.present(),
     },

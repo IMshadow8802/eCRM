@@ -158,8 +158,10 @@ function TaskForm({ navigation, workspaceId, columnId, task }: TaskFormProps) {
   const isAdmin = useAuthStore((s) => Boolean(s.access?.isAdmin));
   // No TAT on a personal board. On create the caller is the creator, who may
   // always set the target; on edit it is the reassign right (= editFields),
-  // which the server checks too (taskController.save).
+  // which the server checks too (taskController.save). Unknown board = no
+  // field: until it loads it might be personal.
   const canSetTarget =
+    ws != null &&
     !isPersonal &&
     (!editing || abilitiesFor(task, userId, ws?.MyRole ?? null, isAdmin, ws?.Type ?? null).editFields);
 

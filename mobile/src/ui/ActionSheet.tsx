@@ -16,6 +16,8 @@ export interface SheetAction {
   /** Shows a tick — for "which column is this card in" style menus. */
   selected?: boolean;
   disabled?: boolean;
+  /** For a row whose label repeats elsewhere on screen (e.g. a sheet's own title). */
+  accessibilityLabel?: string;
   onPress: () => void;
 }
 
@@ -50,6 +52,7 @@ export const ActionSheet = forwardRef<SheetRef, ActionSheetProps>(
               <Pressable
                 key={action.key}
                 disabled={action.disabled}
+                accessibilityLabel={action.accessibilityLabel}
                 onPress={() => {
                   innerRef.current?.dismiss();
                   action.onPress();

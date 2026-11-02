@@ -277,6 +277,13 @@ describe("due time and time allowed", () => {
     expect(screen.queryByLabelText("Time allowed (working hours)")).toBeNull();
   });
 
+  it("until the board type is known, time allowed is not offered — it might be personal", async () => {
+    jest.mocked(fetchWorkspaces).mockReturnValue(new Promise(() => {}));
+    await mount();
+    await screen.findByText("Create task");
+    expect(screen.queryByLabelText("Time allowed (working hours)")).toBeNull();
+  });
+
   const timed = makeTask({
     Id: 9,
     Title: "Timed",

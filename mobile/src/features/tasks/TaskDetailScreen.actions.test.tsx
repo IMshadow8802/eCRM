@@ -254,8 +254,8 @@ describe("dependencies", () => {
     serve({ ws: makeWorkspace({ Id: 10, MyRole: "viewer" }) });
     await mount();
     const { present } = spySheets();
-    // [0] is the menu row; the sheet's own heading carries the same word.
-    await fireEvent.press(screen.getAllByText("Dependencies")[0]!);
+    // Labelled: the sheet's own heading carries the same word.
+    await fireEvent.press(screen.getByLabelText("Open dependencies"));
     expect(present).toHaveBeenCalledTimes(1);
     // A viewer can look, not link.
     expect(screen.queryByText("Add a blocker")).toBeNull();
