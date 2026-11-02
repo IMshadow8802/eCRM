@@ -44,6 +44,11 @@ const clock = (v: string | null | undefined) => {
   const d = parseIst(v);
   return d ? d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" }).toLowerCase() : null;
 };
+/** A follow-up's time; null for one booked for a bare day (midnight), which has none. */
+const dueClock = (v: string | null | undefined) => {
+  const d = parseIst(v);
+  return d && (d.getHours() !== 0 || d.getMinutes() !== 0) ? clock(v) : null;
+};
 
 /** A rolling 7 days: ResolvedFrom = 6 days ago 00:00, ResolvedTo = tomorrow 00:00 (exclusive), local Y-M-D (§7.6). */
 const ymd = (d: Date) =>
@@ -195,7 +200,7 @@ export default function HomeScreen() {
     queryFn: () => fetchFollowUps(overdueRowParams),
     enabled: canLeads,
   });
-  const nextAt = clock(dueToday.data?.data?.followups[0]?.DueAt);
+  const nextAt = dueClock(dueToday.data?.data?.followups[0]?.DueAt);
   const fuOverdueCount = total(fuOverdue.data);
 
   // ------------------------------------------------------------ inbox (G27)
@@ -387,7 +392,7 @@ export default function HomeScreen() {
     if (compact) {
       return {
         key: `c${f.Id}`, badge: { tone: b.tone, icon: b.icon, size: 36 }, title: f.LeadName ?? "Follow-up",
-        right: { text: clock(f.DueAt) ?? "" }, onPress: () => navigation.navigate("LeadDetail", { leadId: f.LeadId }),
+        right: { text: dueClock(f.DueAt) ?? "Today" }, onPress: () => navigation.navigate("LeadDetail", { leadId: f.LeadId }),
       };
     }
     return {
@@ -396,7 +401,7 @@ export default function HomeScreen() {
       title: f.LeadName ?? "Follow-up",
       right: overdue
         ? { text: `Overdue ${due ? shortSpan(now.getTime() - due.getTime()) : ""}`.trim(), tone: "danger" }
-        : { text: clock(f.DueAt) ?? "" },
+        : { text: dueClock(f.DueAt) ?? "Today" },
       meta: [followUpTypeLabel(f.Type), f.LeadCompany].filter(Boolean).join(" · "),
       onPress: () => navigation.navigate("LeadDetail", { leadId: f.LeadId }),
     };

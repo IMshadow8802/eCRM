@@ -67,8 +67,10 @@ const count = (q: { data?: { data?: { pagination?: { totalRecords?: number } } |
 function when(f: FollowUp, now = new Date()): string {
   const d = parseDate(f.Status === "open" ? f.DueAt : (f.DoneAt ?? f.DueAt));
   if (!d) return "—";
-  if (localDay(d) === localDay(now)) return clock(d);
-  return d.getHours() || d.getMinutes() ? `${shortDay(d)} ${clock(d)}` : shortDay(d);
+  const timed = d.getHours() !== 0 || d.getMinutes() !== 0;
+  // A day booked with no time (midnight) is not "12:00 am".
+  if (localDay(d) === localDay(now)) return timed ? clock(d) : "Today";
+  return timed ? `${shortDay(d)} ${clock(d)}` : shortDay(d);
 }
 
 /**

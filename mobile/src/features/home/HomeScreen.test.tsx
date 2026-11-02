@@ -125,6 +125,18 @@ const scroller = () =>
     props: { onRefresh: () => void; refreshing: boolean };
   };
 
+describe("date-only follow-ups", () => {
+  it("a follow-up with no time gives no 'Next at 12:00 am' (device)", async () => {
+    jest.mocked(fetchFollowUps).mockImplementation(async (p = {}) =>
+      envelope({ followups: p.Overdue ? [] : [followUp({ Id: 91, LeadId: 5, DueAt: "2026-11-02 00:00:00" })], pagination: pagination(p.Overdue ? 0 : 4) }),
+    );
+    signInWith("tasks", "complaints", "leads");
+    await renderWithProviders(<HomeScreen />);
+    expect(await screen.findByRole("button", { name: "Follow-ups, 4 due today" })).toBeOnTheScreen();
+    expect(screen.queryByText(/12:00 am/)).toBeNull();
+  });
+});
+
 describe("04 · complaints, tasks and leads", () => {
   it("band → shift row + New → hero → tiles → Needs you, in E's order and copy", async () => {
     signInWith("tasks", "complaints", "leads");

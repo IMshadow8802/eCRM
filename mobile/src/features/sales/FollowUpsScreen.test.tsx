@@ -93,6 +93,14 @@ it("one left reads singular", async () => {
   expect(await screen.findByText(/· 1 call or visit left today$/)).toBeOnTheScreen();
 });
 
+it("a follow-up booked for a day with no time reads Today, not 12:00 am (device)", async () => {
+  answer(() => Promise.resolve(reply([followUp({ DueAt: `${today}T00:00:00` })])));
+  await mount();
+  const row = within(await screen.findByTestId("followup-row-11"));
+  expect(row.getByText("Today")).toBeOnTheScreen();
+  expect(row.queryByText("12:00 am")).toBeNull();
+});
+
 it("E 17 row: the type badge, the name and time, type · company · remarks, a green Done pill", async () => {
   answer(() => Promise.resolve(reply([followUp({ DueAt: `${today}T15:00:00`, Remarks: "10 kW quote" })])));
   await mount();
