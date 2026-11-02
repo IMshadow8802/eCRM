@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { FlatList, StyleSheet, View } from "react-native";
 import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { CalendarCheck, CalendarClock, CloudOff, Phone, Search } from "lucide-react-native";
 import type { StackScreenProps } from "@react-navigation/stack";
 
 import { fetchFollowUps } from "../../api/followupQueries";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import { colors, spacing, SCREEN_PADDING } from "../../theme";
 import { Card, Chip, EmptyState, Input, Refresher, Screen, ScreenHeader, Segmented, Text } from "../../ui";
@@ -19,9 +20,6 @@ const EMPTY: Record<FollowUpView, { title: string; message: string }> = {
   all: { title: "No follow-ups", message: "Schedule one from a lead." },
 };
 
-/** A pause this long ends a burst of typing; one request per pause, not per key. */
-const SEARCH_DEBOUNCE_MS = 300;
-
 /**
  * The follow-up queue across every lead the caller can see — the morning
  * list. Logging happens on the lead, where the history is; a row opens it.
@@ -29,12 +27,7 @@ const SEARCH_DEBOUNCE_MS = 300;
 export default function FollowUpsScreen({ navigation }: Props) {
   const [view, setView] = useState<FollowUpView>("today");
   const [search, setSearch] = useState("");
-  const [term, setTerm] = useState("");
-
-  useEffect(() => {
-    const t = setTimeout(() => setTerm(search.trim()), SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(t);
-  }, [search]);
+  const term = useDebouncedValue(search.trim());
 
   const params = useMemo(
     () => ({ ...followUpViewParams(view), SearchTerm: term || null, PageSize: 50 }),

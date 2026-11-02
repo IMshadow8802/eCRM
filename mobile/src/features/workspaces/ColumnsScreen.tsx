@@ -10,8 +10,8 @@ import {
   saveKanbanColumn,
 } from "../../api/kanbanQueries";
 import { apiErrorMessage } from "../../api/errors";
-import { fetchTasks } from "../../api/taskQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
+import { boardQuery } from "../tasks/taskHelpers";
 import type { KanbanColumn } from "../../types/api";
 import { colors, radius, spacing, SCREEN_PADDING } from "../../theme";
 import {
@@ -58,10 +58,7 @@ export default function ColumnsScreen({ route, navigation }: Props) {
     queryFn: () => fetchKanbanColumns({ WorkspaceId: workspaceId }),
   });
 
-  const { data: taskData } = useQuery({
-    queryKey: ["tasks", "board", workspaceId],
-    queryFn: () => fetchTasks({ WorkspaceId: workspaceId, PageSize: 200 }),
-  });
+  const { data: taskData } = useQuery(boardQuery(workspaceId));
 
   const columns = data ?? [];
   const tasks = taskData?.data?.tasks ?? [];

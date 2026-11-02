@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { FlatList, StyleSheet, View } from "react-native";
 import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { CloudOff, Headset, Plus, Search } from "lucide-react-native";
 import type { StackScreenProps } from "@react-navigation/stack";
 
 import { fetchTickets, type FetchTicketsParams } from "../../api/ticketQueries";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
 import type { Ticket } from "../../types/api";
@@ -69,6 +70,9 @@ const EMPTY: Record<Queue, { title: string; message: string }> = {
 /** "active" = every open/onhold status; a number = one ticket_status id. */
 type StatusFilter = "active" | number;
 
+/** Rows per page. The controller caps PageSize at 200 (controllerKit.js). */
+const PAGE_SIZE = 50;
+
 /**
  * Which server-side filters each queue is, in one place, so the header count
  * and the list cannot disagree about what "Mine" means.
@@ -82,11 +86,6 @@ type StatusFilter = "active" | number;
  * A status chip other than "Active" replaces StatusCode with StatusId: sending
  * both would AND them, and "Resolved" within "active" is the empty set.
  */
-const SEARCH_DEBOUNCE_MS = 300;
-
-/** Rows per page. The controller caps PageSize at 200 (controllerKit.js). */
-const PAGE_SIZE = 50;
-
 function queueParams(
   queue: Queue,
   status: StatusFilter,
@@ -124,11 +123,7 @@ export default function ComplaintsScreen({ navigation }: Props) {
   // Debounced: one request once typing pauses, not one per keystroke (each
   // would also restart paging). keepPreviousData below holds the old rows on
   // screen while the new search loads.
-  const [term, setTerm] = useState("");
-  useEffect(() => {
-    const timer = setTimeout(() => setTerm(search.trim()), SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(timer);
-  }, [search]);
+  const term = useDebouncedValue(search.trim());
 
   const params = useMemo(
     () => queueParams(queue, status, userId, term),

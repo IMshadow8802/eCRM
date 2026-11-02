@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { FlatList, StyleSheet, View } from "react-native";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -14,6 +14,7 @@ import { fetchKanbanColumns } from "../../api/kanbanQueries";
 import { fetchTasks, moveTaskColumn } from "../../api/taskQueries";
 import { fetchWorkspaces } from "../../api/workspaceQueries";
 import { apiErrorMessage } from "../../api/errors";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
 import type { KanbanColumn, Task } from "../../types/api";
@@ -33,14 +34,13 @@ import {
   useToast,
 } from "../../ui";
 import { TaskCard } from "../tasks/TaskCard";
-import { abilitiesFor, workspaceAbilities } from "../tasks/taskHelpers";
+import { abilitiesFor, boardQuery, workspaceAbilities } from "../tasks/taskHelpers";
 
 type Props = StackScreenProps<RootStackParamList, "Board">;
 type TasksReply = Awaited<ReturnType<typeof fetchTasks>>;
 
 /** Tasks whose ColumnId is null still have to live somewhere visible. */
 const UNSORTED_ID = -1;
-const SEARCH_DEBOUNCE_MS = 300;
 
 /**
  * One workspace's kanban.
@@ -69,21 +69,14 @@ export default function BoardScreen({ route, navigation }: Props) {
   const [search, setSearch] = useState("");
   // A real debounce: each settled term is a 200-row fetch, so a keystroke
   // must not be one. (useDeferredValue only defers rendering, not requests.)
-  const [term, setTerm] = useState("");
-  useEffect(() => {
-    const timer = setTimeout(() => setTerm(search.trim()), SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(timer);
-  }, [search]);
+  const term = useDebouncedValue(search.trim());
   // No search = the same key TaskDetail and Columns read, so opening a card
   // from the board does not refetch the whole board.
-  const tasksKey = term
-    ? ["tasks", "board", workspaceId, term]
-    : ["tasks", "board", workspaceId];
+  const board = boardQuery(workspaceId, term);
+  const tasksKey = board.queryKey;
 
   const tasksQuery = useQuery({
-    queryKey: tasksKey,
-    queryFn: () =>
-      fetchTasks({ WorkspaceId: workspaceId, PageSize: 200, SearchTerm: term || null }),
+    ...board,
     // The last list stays up while a search loads — no flash of empty columns.
     placeholderData: keepPreviousData,
   });

@@ -35,7 +35,6 @@ import {
   deleteTaskComment,
   fetchTaskById,
   fetchTaskDependencies,
-  fetchTasks,
   getTaskChecklist,
   getTaskComments,
   logTaskTime,
@@ -81,6 +80,7 @@ import { istDay } from "./tatChip";
 import {
   abilitiesFor,
   assigneesOf,
+  boardQuery,
   dueBucket,
   dueLabel,
   formatHours,
@@ -203,8 +203,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   // Candidate blockers. Shares its key with BoardScreen, so arriving here from
   // a board costs nothing — the board already loaded exactly this list.
   const siblingsQuery = useQuery({
-    queryKey: ["tasks", "board", boardId],
-    queryFn: () => fetchTasks({ WorkspaceId: boardId, PageSize: 200 }),
+    ...boardQuery(boardId),
     enabled: boardId != null,
   });
   // Same key as DependencySheet, so one request serves both: the picker leaves

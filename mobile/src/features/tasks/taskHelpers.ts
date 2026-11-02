@@ -1,3 +1,4 @@
+import { fetchTasks } from "../../api/taskQueries";
 import type {
   Task,
   TaskAssignee,
@@ -6,6 +7,19 @@ import type {
   WorkspaceRole,
   WorkspaceType,
 } from "../../types/api";
+
+/**
+ * One workspace's tasks, as the board shows them. Board, Columns and
+ * TaskDetail read the unsearched key, so opening any of them after another
+ * costs no request; a search gets its own entry beneath it, and invalidating
+ * ["tasks"] reaches all of them.
+ */
+export function boardQuery(workspaceId: number | null, term = "") {
+  return {
+    queryKey: term ? ["tasks", "board", workspaceId, term] : ["tasks", "board", workspaceId],
+    queryFn: () => fetchTasks({ WorkspaceId: workspaceId, PageSize: 200, SearchTerm: term || null }),
+  };
+}
 
 /**
  * Assignment lives in tblTaskAssignee and arrives as AssigneesJson. The scalar

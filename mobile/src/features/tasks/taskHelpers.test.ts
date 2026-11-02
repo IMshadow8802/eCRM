@@ -1,8 +1,10 @@
+import { fetchTasks } from "../../api/taskQueries";
 import { assigneesJson, makeComment, makeTask } from "../../test/fixtures";
 import type { WorkspaceRole, WorkspaceType } from "../../types/api";
 import {
   abilitiesFor,
   assigneesOf,
+  boardQuery,
   checklistProgress,
   dueBucket,
   dueLabel,
@@ -14,6 +16,8 @@ import {
   threadComments,
   workspaceAbilities,
 } from "./taskHelpers";
+
+jest.mock("../../api/taskQueries");
 
 // Local wall-clock times: the helpers compare local calendar days.
 const at = (y: number, m: number, d: number, h = 12, min = 0) => new Date(y, m - 1, d, h, min);
@@ -267,5 +271,23 @@ describe("threadComments", () => {
       makeComment({ Id: 2, ParentCommentId: 1 }),
     ]);
     expect(rows).toHaveLength(2);
+  });
+});
+
+describe("boardQuery", () => {
+  it("an unsearched board is ['tasks','board',id], the key Board, Columns and TaskDetail share", () => {
+    expect(boardQuery(7).queryKey).toEqual(["tasks", "board", 7]);
+    expect(boardQuery(7, "").queryKey).toEqual(["tasks", "board", 7]);
+  });
+
+  it("a search gets its own entry under the board's key", () => {
+    expect(boardQuery(7, "cement").queryKey).toEqual(["tasks", "board", 7, "cement"]);
+  });
+
+  it("fetches the board's 200 tasks, with the term or none", async () => {
+    await boardQuery(7).queryFn();
+    expect(fetchTasks).toHaveBeenLastCalledWith({ WorkspaceId: 7, PageSize: 200, SearchTerm: null });
+    await boardQuery(7, "cement").queryFn();
+    expect(fetchTasks).toHaveBeenLastCalledWith({ WorkspaceId: 7, PageSize: 200, SearchTerm: "cement" });
   });
 });

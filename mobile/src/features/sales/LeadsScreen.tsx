@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { FlatList, StyleSheet, View } from "react-native";
 import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { CloudOff, Plus, Search, TrendingUp } from "lucide-react-native";
 import type { StackScreenProps } from "@react-navigation/stack";
 
 import { fetchLeads } from "../../api/leadQueries";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
 import type { Lead } from "../../types/api";
@@ -16,8 +17,6 @@ import { LEAD_QUEUES, leadQueueParams, type LeadQueue, type LeadStatusFilter } f
 import { useLeadRefData } from "./useLeadRefData";
 
 type Props = StackScreenProps<RootStackParamList, "Leads">;
-
-const SEARCH_DEBOUNCE_MS = 300;
 
 const SUBTITLE: Record<LeadQueue, string> = {
   mine: "yours",
@@ -43,11 +42,7 @@ export default function LeadsScreen({ navigation }: Props) {
   const [search, setSearch] = useState("");
   // Debounced: one request once typing pauses, not one per key.
   // keepPreviousData below keeps the old rows up while it loads.
-  const [term, setTerm] = useState("");
-  useEffect(() => {
-    const t = setTimeout(() => setTerm(search.trim()), SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(t);
-  }, [search]);
+  const term = useDebouncedValue(search.trim());
 
   // No user yet = no query: a null OwnerId would turn Mine into the whole reach.
   const params = useMemo(
