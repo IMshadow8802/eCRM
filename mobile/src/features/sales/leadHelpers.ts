@@ -241,6 +241,12 @@ export function followUpMeta(f: FollowUp): string {
   return [followUpTypeLabel(f.Type), d ? shortDay(d) : null, tail].filter(Boolean).join(" · ");
 }
 
+/** `day` at the time of day of `iso` ("2026-11-05T15:30"); a bare day when `iso` has none. */
+export function onDayAtTimeOf(iso: string | null | undefined, day: string): string {
+  const d = parseDate(iso);
+  return d && hasTime(d) ? `${day}T${pad(d.getHours())}:${pad(d.getMinutes())}` : day;
+}
+
 /** "Tue, 3 Nov · 11:00 am" — the next-follow-up card's title. */
 export function dueTitle(iso: string | null | undefined): string {
   const d = parseDate(iso);

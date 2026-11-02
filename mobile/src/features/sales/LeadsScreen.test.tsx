@@ -39,9 +39,20 @@ const leadsGrant = (add: boolean): Partial<Access> => ({
 const listCalls = () =>
   jest.mocked(fetchLeads).mock.calls.map(([p]) => p as FetchLeadsParams).filter((p) => p.PageSize === 50);
 const lastList = () => listCalls().at(-1);
-/** Every count is 9 unless a test says otherwise; the list answers `list`. */
-const answer = (list: (p: FetchLeadsParams) => Promise<ReturnType<typeof leadsReply>>, count = 9) =>
-  jest.mocked(fetchLeads).mockImplementation((p = {}) => (p.PageSize === 1 ? Promise.resolve(leadsReply([], count)) : list(p)));
+/**
+ * Each count answers its own total (G13), so a count asked with the wrong
+ * params shows the wrong number: Mine 12 · All 48 · Overdue 3 · New 5 ·
+ * Unassigned 7; a status pill adds its StatusId × 100.
+ */
+function countFor(p: FetchLeadsParams): number {
+  if (p.Overdue) return 3;
+  if (p.Unassigned) return 7;
+  if (p.OwnerId === 42) return 12 + (p.StatusId ?? 0) * 100;
+  if (p.StatusId === 1) return 5; // the New preset
+  return 48 + (p.StatusId ?? 0) * 100;
+}
+const answer = (list: (p: FetchLeadsParams) => Promise<ReturnType<typeof leadsReply>>) =>
+  jest.mocked(fetchLeads).mockImplementation((p = {}) => (p.PageSize === 1 ? Promise.resolve(leadsReply([], countFor(p))) : list(p)));
 
 const mount = (navigation = makeNavigation<"Leads">(), params?: { queue?: "overdue" | "all"; term?: string }) =>
   renderWithProviders(<LeadsScreen navigation={navigation} route={makeRoute("Leads", params)} />);
@@ -69,14 +80,16 @@ it("E 14: the five presets carry counts (G13), Overdue in red; the GH is By next
   await mount();
   await screen.findByText("Ravi Patel");
   const tabs = screen.getAllByRole("tab").map((t) => t.props.accessibilityLabel);
-  await waitFor(() => expect(screen.getAllByRole("tab").map((t) => t.props.accessibilityLabel)).toEqual(["Mine, 9", "All, 9", "Overdue, 9", "New, 9", "Unassigned, 9"]));
+  await waitFor(() => expect(screen.getAllByRole("tab").map((t) => t.props.accessibilityLabel)).toEqual(["Mine, 12", "All, 48", "Overdue, 3", "New, 5", "Unassigned, 7"]));
   expect(tabs).toHaveLength(5);
   expect(screen.getByText("By next follow-up")).toBeOnTheScreen();
   // The New preset counts the first open-coded status, across the reach.
   expect(fetchLeads).toHaveBeenCalledWith({ ...leadQueueParams("new", "all", 42, "", 1), PageSize: 1, PageNumber: 1 });
 });
 
-it("G3: the open value of the list, from one 200-row page; hidden past 200", async () => {
+const valueCalls = () => jest.mocked(fetchLeads).mock.calls.map(([p]) => p as FetchLeadsParams).filter((p) => p.PageSize === 200);
+
+it("G3: the open value of Mine, from one 200-row page — not refetched per preset, pill or search", async () => {
   answer((p) =>
     Promise.resolve(
       p.PageSize === 200
@@ -86,20 +99,43 @@ it("G3: the open value of the list, from one 200-row page; hidden past 200", asy
   );
   await mount();
   expect(await screen.findByText("Open value ₹11,23,000")).toBeOnTheScreen();
-
-  answer((p) => Promise.resolve(p.PageSize === 200 ? leadsReply([row], 201) : leadsReply([row], 201)));
   await fireEvent.press(screen.getByRole("tab", { name: /^All/ }));
   await waitFor(() => expect(lastList()).toEqual(expect.objectContaining({ OwnerId: null })));
-  await waitFor(() => expect(screen.queryByText(/Open value/)).toBeNull());
+  await fireEvent.press(await screen.findByRole("radio", { name: /^Qualified/ }));
+  await fireEvent.changeText(screen.getByPlaceholderText("Search name, company, mobile"), "patel");
+  await act(() => jest.advanceTimersByTime(300));
+  await waitFor(() => expect(lastList()).toEqual(expect.objectContaining({ SearchTerm: "patel", StatusId: 5 })));
+  expect(valueCalls()).toEqual([{ ...leadQueueParams("mine", "all", 42, ""), PageSize: 200, PageNumber: 1 }]);
+  expect(screen.getByText("Open value ₹11,23,000")).toBeOnTheScreen();
+});
+
+it("G3: hidden when Mine is longer than one 200-row page", async () => {
+  answer(() => Promise.resolve(leadsReply([row], 201)));
+  await mount();
+  await screen.findByText("Ravi Patel");
+  await waitFor(() => expect(valueCalls()).toHaveLength(1));
+  expect(screen.queryByText(/Open value/)).toBeNull();
+});
+
+it("while a search is set the pills drop their counts (no count storm per term); the presets' counts follow the term", async () => {
+  await mount();
+  await screen.findByText("Ravi Patel");
+  await waitFor(() => expect(screen.getByRole("radio", { name: "Qualified, 512" })).toBeOnTheScreen());
+  const pillCounts = () => jest.mocked(fetchLeads).mock.calls.filter(([p]) => p?.PageSize === 1 && p.StatusId != null && p.SearchTerm).length;
+  await fireEvent.changeText(screen.getByPlaceholderText("Search name, company, mobile"), "patel");
+  await act(() => jest.advanceTimersByTime(300));
+  await waitFor(() => expect(screen.getByRole("radio", { name: "Qualified" })).toBeOnTheScreen());
+  expect(pillCounts()).toBe(1); // only the New preset's own count carries a StatusId
+  expect(fetchLeads).toHaveBeenCalledWith({ ...leadQueueParams("overdue", "all", 42, "patel"), PageSize: 1, PageNumber: 1 });
 });
 
 it("the status pills (7.2) narrow by StatusId and carry counts; New hides them", async () => {
   await mount();
   await screen.findByText("Ravi Patel");
   await waitFor(() =>
-    expect(screen.getAllByRole("radio").map((r) => r.props.accessibilityLabel)).toEqual(["All, 9", "New, 9", "Qualified, 9"]),
+    expect(screen.getAllByRole("radio").map((r) => r.props.accessibilityLabel)).toEqual(["All, 12", "New, 112", "Qualified, 512"]),
   );
-  await fireEvent.press(screen.getByRole("radio", { name: "Qualified, 9" }));
+  await fireEvent.press(screen.getByRole("radio", { name: "Qualified, 512" }));
   await waitFor(() => expect(lastList()).toEqual(expect.objectContaining({ StatusId: 5, OwnerId: 42 })));
 
   await fireEvent.press(screen.getByRole("tab", { name: /^New/ }));

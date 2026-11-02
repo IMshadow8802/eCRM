@@ -5,7 +5,7 @@ import { CalendarClock, Check, Megaphone, MessageCircle, Phone, Smartphone, Trop
 
 import type { CustomFieldValue, FollowUp, Lead } from "../../types/api";
 import { followUpBadge } from "../../theme/statusBadges";
-import { colors, spacing } from "../../theme";
+import { colors, metrics, spacing } from "../../theme";
 import {
   Avatar,
   Button,
@@ -215,18 +215,21 @@ export function FollowUpsTab({
 const styles = StyleSheet.create({
   flex: { flex: 1, minWidth: 0 },
   row: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
-  person: { flexDirection: "row", alignItems: "center", gap: 6 },
-  contact: { flexDirection: "row", alignItems: "center", gap: spacing[3], paddingVertical: spacing[3], paddingHorizontal: 14 },
-  contactWide: { paddingVertical: 14, paddingHorizontal: spacing[4] },
-  facts: { flexDirection: "row", gap: spacing[4], paddingLeft: 66, paddingRight: 14, paddingBottom: spacing[3] },
+  // E's off-grid numbers read the nearest metrics: 14 = rowPadH, 6 = inlineGap,
+  // 66 = the badge separator inset, 10 = pairGap; E's 2 under the next card's
+  // title is rowLineGap (3) until the central pass adds a 2.
+  person: { flexDirection: "row", alignItems: "center", gap: metrics.inlineGap },
+  contact: { flexDirection: "row", alignItems: "center", gap: spacing[3], paddingVertical: spacing[3], paddingHorizontal: metrics.rowPadH },
+  contactWide: { paddingVertical: metrics.rowPadH, paddingHorizontal: spacing[4] },
+  facts: { flexDirection: "row", gap: spacing[4], paddingLeft: metrics.sepInset.badge, paddingRight: metrics.rowPadH, paddingBottom: spacing[3] },
   factValue: { marginTop: spacing[1] },
-  factsList: { paddingHorizontal: spacing[4], paddingBottom: 6 },
+  factsList: { paddingHorizontal: spacing[4], paddingBottom: metrics.inlineGap },
   stack: { gap: spacing[3] },
-  next: { padding: 14 },
+  next: { padding: metrics.rowPadH },
   nextWide: { padding: spacing[4] },
-  sub: { marginTop: 2 },
-  remarks: { marginTop: 10 },
+  sub: { marginTop: metrics.rowLineGap },
+  remarks: { marginTop: metrics.pairGap },
   buttons: { flexDirection: "row", gap: spacing[2], marginTop: spacing[3] },
-  after: { marginTop: 10 },
+  after: { marginTop: metrics.pairGap },
   none: { paddingVertical: spacing[4] },
 });

@@ -33,7 +33,7 @@ import { fetchUserDirectory } from "../../api/userQueries";
 import { apiErrorMessage } from "../../api/errors";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import type { AssignableUser, FollowUp, FollowUpType } from "../../types/api";
-import { colors, spacing } from "../../theme";
+import { colors, metrics, spacing } from "../../theme";
 import {
   ActionSheet,
   Band,
@@ -312,7 +312,6 @@ export function LeadDetailBody({ leadId, navigation, onBack, useBar, pane = fals
   const contact = (
     <ContactCard lead={lead} fields={detailQuery.data?.fields ?? []} wide={wide} onCall={dial} onMessage={message} />
   );
-  const openCount = followups.filter((f) => f.Status === "open").length;
   const tabs = (
     <View style={[styles.flex, !wide && styles.tabsGap]}>
       <SegmentedTabs
@@ -320,7 +319,8 @@ export function LeadDetailBody({ leadId, navigation, onBack, useBar, pane = fals
         onChange={setTab}
         options={[
           { value: "details", label: "Details" },
-          { value: "followups", label: "Follow-ups", count: openCount },
+          // E counts every follow-up on the lead, open or not.
+          { value: "followups", label: "Follow-ups", count: followups.length },
           { value: "activity", label: "Activity" },
         ]}
       />
@@ -495,9 +495,9 @@ const styles = StyleSheet.create({
   statusRow: { flexDirection: "row", alignItems: "center", gap: spacing[2], marginTop: spacing[3] },
   tabsGap: { marginTop: spacing[3] },
   body: { paddingTop: spacing[3], paddingBottom: spacing[6] },
-  sheetWide: { paddingTop: 20, paddingHorizontal: spacing[6] },
+  sheetWide: { paddingTop: spacing[5], paddingHorizontal: spacing[6] },
   columns: { flexDirection: "row", gap: spacing[4] },
-  factsColumn: { width: 300 },
+  factsColumn: { width: metrics.factsColumn },
 });
 
 export default LeadDetailBody;

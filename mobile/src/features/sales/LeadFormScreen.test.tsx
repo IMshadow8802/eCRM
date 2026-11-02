@@ -8,6 +8,8 @@ import type { Access, AssignableUser, CustomFieldDef, LeadDetail, Lookup } from 
 import { envelope, lead, localDay, serverError } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import { PHONE, setWindow, TABLET } from "../../test/window";
+import { colors } from "../../theme";
+import { flat } from "../../test/style";
 import LeadFormScreen from "./LeadFormScreen";
 
 jest.mock("../../api/configQueries");
@@ -83,6 +85,8 @@ describe("create", () => {
     await screen.findAllByText("Priya Shah (you)");
     await save();
     expect(screen.getByText("The lead needs a name.")).toBeOnTheScreen();
+    // The name field turns to its error ring.
+    expect(flat(screen.getByPlaceholderText("Who is it").parent).borderColor).toBe(colors.danger);
     await fireEvent.changeText(screen.getByPlaceholderText("Who is it"), "Meera Joshi");
     await save();
     expect(screen.getByText("A mobile number is required.")).toBeOnTheScreen();
@@ -185,7 +189,9 @@ describe("create", () => {
     expect(screen.getByText("Custom field")).toBeOnTheScreen();
     await fillRequired();
     await save();
+    // At the field itself (it may be far below the band's Save), and in a toast that is always in view.
     expect(screen.getByText("Roof type is required.")).toBeOnTheScreen();
+    expect(screen.getByText("Check the form — Roof type is required.")).toBeOnTheScreen();
     expect(createLead).not.toHaveBeenCalled();
 
     await fireEvent.press(screen.getByText("Tin"));

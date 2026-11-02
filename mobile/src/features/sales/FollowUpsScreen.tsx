@@ -122,6 +122,8 @@ export default function FollowUpsScreen({ navigation, route, pushed = false }: P
     queryKey: ["followups", "done-today", doneParams],
     queryFn: () => fetchFollowUps({ ...doneParams, PageSize: 50 }),
     enabled: showDone,
+    // Without 118 it can never succeed; retrying only delays the "—".
+    retry: false,
   });
 
   // Offset paging: a row that shifts mid-scroll can land on two pages.
@@ -209,7 +211,8 @@ export default function FollowUpsScreen({ navigation, route, pushed = false }: P
     <>
       {showDone ? (
         <>
-          <GroupHeader title={`Done today · ${doneToday.isError ? "—" : (count(doneToday) ?? "—")}`} />
+          {/* "—" only once it has failed (no 118); while it loads the title carries no number. */}
+          <GroupHeader title={doneToday.isError ? "Done today · —" : doneToday.data ? `Done today · ${count(doneToday) ?? 0}` : "Done today"} />
           {done.length ? (
             <ListGroup>
               {done.map((f, i) => (

@@ -34,6 +34,7 @@ import {
   SkeletonRows,
   Text,
   useLayout,
+  useToast,
 } from "../../ui";
 import { asOptions, blankDraft, missingRequired, serialiseCustomFields } from "../support/ticketHelpers";
 import {
@@ -75,6 +76,9 @@ const draftOf = (lead: Lead): Draft => ({
 });
 
 const orNull = (s: string) => s.trim() || null;
+
+/** A validation message per field key ("Name", "MobileNo", "EstValue", "pick", "c{customFieldId}"). */
+type FieldErrors = Partial<Record<string, string>>;
 
 /** The day a first-follow-up choice books, or null (None, or Pick with no date yet). */
 const firstDay = (choice: FirstFollowUp, picked: string | null, now = new Date()): string | null =>
@@ -189,6 +193,8 @@ function LeadForm({ lead, navigation }: { lead: Lead | null; navigation: Props["
   const [pickedDay, setPickedDay] = useState<string | null>(null);
   const [custom, setCustom] = useState<Record<number, string | boolean>>({});
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const toast = useToast();
 
   const { statuses, sources, users, products, choicesState, retryChoices } = useLeadRefData();
   // Create sends a status and an owner picked from these lists; edit sends neither.
@@ -256,14 +262,22 @@ function LeadForm({ lead, navigation }: { lead: Lead | null; navigation: Props["
   });
 
   const submit = () => {
-    if (!draft.Name.trim()) return setError("The lead needs a name.");
-    if (!draft.MobileNo.trim()) return setError("A mobile number is required.");
+    // Every failing field says so beside itself; a toast names the first, so a
+    // Save tapped in the band never looks like nothing happened when the field
+    // is scrolled out of view.
     const value = draft.EstValue.trim() ? Number(draft.EstValue.replace(/,/g, "")) : null;
-    if (value != null && (!Number.isFinite(value) || value < 0)) return setError("Estimated value must be a number.");
-    if (!editing) {
-      const missing = missingRequired(fieldDefs, customDraft);
-      if (missing.length) return setError(`${missing[0]!.Label} is required.`);
-      if (first === "pick" && !pickedDay) return setError("Pick the day of the first follow-up.");
+    const errors: FieldErrors = {
+      ...(!draft.Name.trim() && { Name: "The lead needs a name." }),
+      ...(!draft.MobileNo.trim() && { MobileNo: "A mobile number is required." }),
+      ...(value != null && (!Number.isFinite(value) || value < 0) && { EstValue: "Estimated value must be a number." }),
+      ...(!editing && first === "pick" && !pickedDay && { pick: "Pick the day of the first follow-up." }),
+      ...(!editing && Object.fromEntries(missingRequired(fieldDefs, customDraft).map((d) => [`c${d.Id}`, `${d.Label} is required.`]))),
+    };
+    setFieldErrors(errors);
+    const firstError = Object.values(errors)[0];
+    if (firstError) {
+      toast.error(`Check the form — ${firstError}`);
+      return;
     }
     setError(null);
     save.mutate({
@@ -284,7 +298,13 @@ function LeadForm({ lead, navigation }: { lead: Lead | null; navigation: Props["
   };
 
   const customField = (def: CustomFieldDef) => (
-    <DynamicField key={def.Id} field={def} value={customDraft[def.Id] ?? ""} onChange={(next) => setCustom((c) => ({ ...c, [def.Id]: next }))} />
+    <DynamicField
+      key={def.Id}
+      field={def}
+      value={customDraft[def.Id] ?? ""}
+      error={fieldErrors[`c${def.Id}`]}
+      onChange={(next) => setCustom((c) => ({ ...c, [def.Id]: next }))}
+    />
   );
   // T4 pairs Owner with the first custom field; the rest go under More details.
   const [pairedField, ...moreFields] = !editing && wide ? fieldDefs : [undefined, ...(!editing ? fieldDefs : [])];
@@ -312,10 +332,10 @@ function LeadForm({ lead, navigation }: { lead: Lead | null; navigation: Props["
       ) : null}
 
       <Field>
-        <Input label="Name" required value={draft.Name} onChangeText={set("Name")} placeholder="Who is it" />
+        <Input label="Name" required value={draft.Name} onChangeText={set("Name")} placeholder="Who is it" error={fieldErrors.Name} />
       </Field>
       <Pair
-        left={<MobileInput label="Mobile" required value={draft.MobileNo} onChangeText={set("MobileNo")} placeholder="10-digit mobile number" />}
+        left={<MobileInput label="Mobile" required value={draft.MobileNo} onChangeText={set("MobileNo")} placeholder="10-digit mobile number" error={fieldErrors.MobileNo} />}
         right={<MobileInput label="Alternate mobile" value={draft.AltMobile} onChangeText={set("AltMobile")} placeholder="Optional" />}
       />
       <Field>
@@ -331,7 +351,7 @@ function LeadForm({ lead, navigation }: { lead: Lead | null; navigation: Props["
       />
       <Pair
         left={
-          <Input label="Estimated value" prefix="₹" tabular value={draft.EstValue} onChangeText={set("EstValue")} placeholder="Amount in rupees" keyboardType="number-pad" />
+          <Input label="Estimated value" prefix="₹" tabular value={draft.EstValue} onChangeText={set("EstValue")} placeholder="Amount in rupees" keyboardType="number-pad" error={fieldErrors.EstValue} />
         }
         right={
           editing ? null : (
@@ -354,7 +374,7 @@ function LeadForm({ lead, navigation }: { lead: Lead | null; navigation: Props["
             />
             {first === "pick" ? (
               <View style={styles.pick}>
-                <DateField value={pickedDay} onChange={setPickedDay} placeholder="Choose a day" minimumDate={new Date()} />
+                <DateField value={pickedDay} onChange={setPickedDay} placeholder="Choose a day" minimumDate={new Date()} error={fieldErrors.pick} />
               </View>
             ) : null}
             {day ? (
@@ -412,7 +432,7 @@ const styles = StyleSheet.create({
   bandActions: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
   sheetWide: { paddingTop: spacing[6] },
   column: { width: "100%", alignSelf: "center" },
-  card: { paddingTop: 20, paddingHorizontal: 20, paddingBottom: spacing[2] },
+  card: { paddingTop: spacing[5], paddingHorizontal: spacing[5], paddingBottom: spacing[2] },
   error: { marginBottom: spacing[3] },
   retry: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
   pick: { marginTop: spacing[2] },

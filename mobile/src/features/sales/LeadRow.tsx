@@ -2,7 +2,7 @@ import { memo } from "react";
 import { CalendarClock } from "lucide-react-native";
 
 import type { Lead, Lookup } from "../../types/api";
-import { colors } from "../../theme";
+import { colors, metrics } from "../../theme";
 import { ListRow, Text } from "../../ui";
 import { followUpLine, leadStatusBadge, parseDate, rupees, shortDay } from "./leadHelpers";
 
@@ -47,7 +47,8 @@ function LeadRowBase({ lead, statuses, onPress, selected = false, first = false 
           </Text>
         ) : (
           <>
-            <CalendarClock size={14} color={colors[LINE_INK[line.tone]]} />
+            {/* ponytail: no icon-size token; 14 is rowPadH until the central pass adds an iconSm. */}
+            <CalendarClock size={metrics.rowPadH} color={colors[LINE_INK[line.tone]]} />
             <Text variant="label" color={LINE_INK[line.tone]} numberOfLines={1}>
               {line.text}
             </Text>

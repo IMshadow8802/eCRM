@@ -6,7 +6,15 @@ import { completeFollowUp, scheduleFollowUp, skipFollowUp } from "../../api/foll
 import { apiErrorMessage } from "../../api/errors";
 import type { CallDirection, FollowUp, FollowUpType } from "../../types/api";
 import { ComposeSheet, type SheetRef } from "../../ui";
-import { dueFromChoice, followUpTypeLabel, WHEN_CHOICES, type WhenChoice } from "./leadHelpers";
+import {
+  dueFromChoice,
+  followUpTypeLabel,
+  onDayAtTimeOf,
+  parseDate,
+  shortDay,
+  WHEN_CHOICES,
+  type WhenChoice,
+} from "./leadHelpers";
 import { useLeadRefData } from "./useLeadRefData";
 
 export interface FollowUpSheetsHandle {
@@ -36,9 +44,10 @@ const wholeMinutes = (text: string | undefined): number | null => {
  * reschedule, skip. A refusal shows in the sheet, which keeps what was typed;
  * success refetches the lead, the lists and the queue.
  *
- * ponytail: the API has no reschedule — it is a skip (with the reason) plus a
- * new booking of the same type. If the booking fails after the skip, the sheet
- * says so; add a reschedule endpoint if that ever bites.
+ * ponytail: the API has no reschedule — it is a new booking (same type,
+ * assignee and time of day) and only then a skip of the old one with the
+ * reason, so a failure never loses the follow-up. If the skip fails after the
+ * booking, the sheet says so; add a reschedule endpoint if that ever bites.
  */
 export const FollowUpSheets = forwardRef<FollowUpSheetsHandle>(function FollowUpSheets(_props, ref) {
   const queryClient = useQueryClient();
@@ -63,7 +72,7 @@ export const FollowUpSheets = forwardRef<FollowUpSheetsHandle>(function FollowUp
   const handlers = (on: Key, fallback: string) => ({
     onError: (err: unknown) => {
       setFailure({ on, message: apiErrorMessage(err, fallback) });
-      // A reschedule can fail half-way (skipped, not re-booked): show that state.
+      // A reschedule can fail half-way (booked, old one not skipped): show that state.
       if (on === "reschedule") refresh();
     },
     onSuccess: () => {
@@ -76,12 +85,18 @@ export const FollowUpSheets = forwardRef<FollowUpSheetsHandle>(function FollowUp
   const skip = useMutation({ mutationFn: skipFollowUp, ...handlers("skip", "Could not skip the follow-up.") });
   const reschedule = useMutation({
     mutationFn: async ({ f, due, remarks }: { f: FollowUp; due: string; remarks: string }) => {
-      await skipFollowUp({ Id: f.Id, Remarks: `Rescheduled to ${due}: ${remarks}` });
+      const booked = await scheduleFollowUp({
+        LeadId: f.LeadId,
+        Type: (f.Type ?? "call") as FollowUpType,
+        DueAt: onDayAtTimeOf(f.DueAt, due),
+        AssignedTo: f.AssignedTo,
+      });
       try {
-        return await scheduleFollowUp({ LeadId: f.LeadId, Type: (f.Type ?? "call") as FollowUpType, DueAt: due });
+        await skipFollowUp({ Id: f.Id, Remarks: `Rescheduled to ${shortDay(parseDate(due) as Date)}: ${remarks}` });
       } catch {
-        throw new Error("It was skipped, but the new one could not be booked. Schedule it from the lead.");
+        throw new Error("Booked the new follow-up, but the old one is still open — skip it from the lead.");
       }
+      return booked;
     },
     ...handlers("reschedule", "Could not reschedule the follow-up."),
   });

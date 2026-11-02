@@ -118,16 +118,20 @@ export default function LeadsScreen({ navigation, route }: Props) {
 
   const presetCounts = useQueries({ queries: LEAD_QUEUES.map((q) => countQuery(build(q.value, "all"), q.value)) });
   const pillQueries: ReturnType<typeof countQuery>[] =
-    queue === "new" ? [] : statuses.map((s) => countQuery(build(queue, s.Id), `status-${s.Id}`));
+    // While a search is set the pills go without counts: N requests per typed term
+    // is a storm for little use. The presets' counts follow the (debounced) term.
+    queue === "new" || term ? [] : statuses.map((s) => countQuery(build(queue, s.Id), `status-${s.Id}`));
   const pillCounts = useQueries({ queries: pillQueries });
   const totalOf = (r: { data?: { data?: { pagination?: { totalRecords?: number } } | null } }) =>
     r.data?.data?.pagination?.totalRecords;
 
   // G3: one 200-row page of this list, summed.
+  // G3 is Mine's open value (spec), whatever the preset, pill or search: one stable request.
+  const mineParams = useMemo(() => (userId == null ? null : leadQueueParams("mine", "all", userId, "")), [userId]);
   const valueQuery = useQuery({
-    queryKey: ["leads", "value", params],
-    queryFn: () => fetchLeads({ ...params, PageSize: OPEN_VALUE_PAGE, PageNumber: 1 }),
-    enabled: params != null,
+    queryKey: ["leads", "value", mineParams],
+    queryFn: () => fetchLeads({ ...mineParams, PageSize: OPEN_VALUE_PAGE, PageNumber: 1 }),
+    enabled: mineParams != null,
   });
   const value = valueQuery.data?.data
     ? openValue(valueQuery.data.data.leads, valueQuery.data.data.pagination.totalRecords)

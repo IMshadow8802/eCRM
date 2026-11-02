@@ -1,4 +1,7 @@
-import { fireEvent, screen } from "@testing-library/react-native";
+import { fireEvent, screen, within } from "@testing-library/react-native";
+
+import { chipTones } from "../../theme";
+import { flat } from "../../test/style";
 
 import type { Lookup } from "../../types/api";
 import { renderWithProviders } from "../../test/renderWithProviders";
@@ -52,7 +55,11 @@ it("Lost requires a reason, then sends it", async () => {
   expect(save()).toBeDisabled();
   await fireEvent.press(save());
   expect(onSubmit).not.toHaveBeenCalled();
+  // E 25: a Select; the pick shows in the field as a red chip.
+  expect(screen.getByRole("button", { name: "Why was it lost?: Choose a reason" })).toBeOnTheScreen();
   await fireEvent.press(screen.getByRole("radio", { name: "Price too high" }));
+  const field = screen.getByRole("button", { name: "Why was it lost?: Price too high" });
+  expect(flat(within(field).getByText("Price too high").parent).backgroundColor).toBe(chipTones.red.fill);
   await fireEvent.press(screen.getByText("Save · mark lost"));
   expect(onSubmit).toHaveBeenCalledWith({ kind: "status", StatusId: 6, LostReasonId: 31 });
 });

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { QueryClient } from "@tanstack/react-query";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react-native";
 
 import { fetchLookups } from "../../api/configQueries";
@@ -152,7 +153,8 @@ it("swipe right reveals Done, swipe left Reschedule; each opens its sheet, nothi
   await fireEvent.changeText(screen.getByPlaceholderText("Why it is moving"), "Asked for Friday");
   // [0] the swipe block, [1] the sheet's title, [2] its submit.
   await fireEvent.press(screen.getAllByText("Reschedule")[2]!);
-  await waitFor(() => expect(scheduleFollowUp).toHaveBeenCalledWith({ LeadId: 21, Type: "call", DueAt: tomorrow }));
+  await waitFor(() => expect(skipFollowUp).toHaveBeenCalled());
+  expect(scheduleFollowUp).toHaveBeenCalledWith({ LeadId: 21, Type: "call", DueAt: `${tomorrow}T10:00`, AssignedTo: null });
   expect(screen.getByText("Swipe a row right to mark it done, left to reschedule.")).toBeOnTheScreen();
 });
 
@@ -181,8 +183,12 @@ describe("Done today (G20, SQL 118)", () => {
 
   it("a server without 118 refuses the filter: the group reads — and nothing crashes", async () => {
     answer(() => Promise.resolve(reply([followUp()])), () => Promise.reject(serverError(500, "Procedure has too many arguments")));
-    await mount();
+    // Retrying a call that cannot succeed only delays the "—": a client that retries by default must not here.
+    await renderWithProviders(<FollowUpsScreen navigation={makeNavigation<"FollowUps">()} route={makeRoute("FollowUps", undefined)} />, {
+      queryClient: new QueryClient({ defaultOptions: { queries: { retry: 3, retryDelay: 0, gcTime: 0 } } }),
+    });
     expect(await screen.findByText("Done today · —")).toBeOnTheScreen();
+    expect(jest.mocked(fetchFollowUps).mock.calls.filter(([p]) => p?.DoneFrom)).toHaveLength(1);
     expect(screen.getByText("Ramesh Patel")).toBeOnTheScreen();
   });
 

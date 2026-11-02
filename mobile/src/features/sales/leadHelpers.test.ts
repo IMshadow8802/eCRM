@@ -21,6 +21,7 @@ import {
   leadStatusBadge,
   localDay,
   nextOpen,
+  onDayAtTimeOf,
   openRank,
   openValue,
   rupees,
@@ -234,6 +235,12 @@ describe("dates and money", () => {
     expect(followUpMeta(f({ DueAt: "2026-11-07" }))).toBe("Visit · Sat, 7 Nov");
     expect(followUpMeta(f({ Type: "call", Status: "done", DoneAt: new Date(2026, 9, 29, 9).toISOString() }))).toBe("Call · Thu, 29 Oct · done");
     expect(followUpMeta(f({ Status: "skipped" }))).toBe("Visit · Sat, 7 Nov · skipped");
+  });
+
+  it("a re-booking keeps the old follow-up's time of day on the new day", () => {
+    expect(onDayAtTimeOf("2026-11-02T15:30:00", "2026-11-05")).toBe("2026-11-05T15:30");
+    expect(onDayAtTimeOf("2026-11-02", "2026-11-05")).toBe("2026-11-05");
+    expect(onDayAtTimeOf(null, "2026-11-05")).toBe("2026-11-05");
   });
 
   it("the form's first follow-up: Tomorrow, In 3 days, Pick date, None", () => {

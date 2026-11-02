@@ -3,8 +3,8 @@ import { StyleSheet, View } from "react-native";
 import { Tag } from "lucide-react-native";
 
 import type { Lead, Lookup } from "../../types/api";
-import { colors, radius, spacing } from "../../theme";
-import { Button, ChoiceList, FieldHelp, FieldLabel, FilterPills, Input, Sheet, Text, type SheetRef } from "../../ui";
+import { colors, metrics, radius, spacing } from "../../theme";
+import { Button, ChoiceList, FieldHelp, FieldLabel, Input, Select, Sheet, Text, type SheetRef } from "../../ui";
 import { leadStatusBadge } from "./leadHelpers";
 
 /** What a save sends: `converted` only ever through convertLead (CLAUDE.md §6). */
@@ -96,17 +96,22 @@ export const StatusSheet = forwardRef<SheetRef, StatusSheetProps>(function Statu
 
       {lost ? (
         <View style={styles.panel} testID="lost-panel">
-          <FieldLabel label="Why was it lost?" required />
           {lostReasonsLoaded && !lostReasons.length ? (
-            <Text variant="label" color="dangerText">{NO_LOST_REASONS}</Text>
+            <>
+              <FieldLabel label="Why was it lost?" required />
+              <Text variant="label" color="dangerText">{NO_LOST_REASONS}</Text>
+            </>
           ) : (
-            <FilterPills
-              wrap
-              tone="inSheet"
+            // E 25: a Select whose value is a red chip. A sheet opened from this
+            // sheet is checked on a device in Task 39; a fix belongs in ui/Select.
+            <Select
               label="Why was it lost?"
+              required
               value={reason}
-              onChange={setReason}
-              options={lostReasons.map((r) => ({ value: r.Id, label: r.Value, tone: r.Id === reason ? ("red" as const) : undefined }))}
+              onChange={(v) => setReason(v as number)}
+              placeholder="Choose a reason"
+              sheetTitle="Why was it lost?"
+              options={lostReasons.map((r) => ({ value: r.Id, label: r.Value, chip: { tone: "red" as const } }))}
             />
           )}
           <FieldHelp hint="A reason is required for Lost." />
@@ -155,7 +160,8 @@ const styles = StyleSheet.create({
   panel: { marginTop: spacing[3], padding: spacing[3], borderRadius: radius.card, backgroundColor: colors.surfaceMuted },
   gap: { marginTop: spacing[3] },
   error: { marginTop: spacing[2] },
-  save: { marginTop: 14 },
+  // E's 14 above the button; nearest token (central pass: a sheetActionGap metric).
+  save: { marginTop: metrics.rowPadH },
 });
 
 export default StatusSheet;
