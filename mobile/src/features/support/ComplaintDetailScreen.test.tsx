@@ -260,6 +260,8 @@ describe("an open complaint", () => {
     );
     await mount();
     await loaded();
+    // The tab's badge counts the hand-over, not just activity rows.
+    expect(screen.getByText("1")).toBeOnTheScreen();
     await fireEvent.press(screen.getByText("History"));
     expect(await screen.findByText("Unassigned → Priya Shah (Surat Office)")).toBeOnTheScreen();
     expect(screen.getByText(/^On leave · covering · by Test User · /)).toBeOnTheScreen();
@@ -267,12 +269,23 @@ describe("an open complaint", () => {
   });
 
   describe("by role (CMP-12)", () => {
-    it("without edit or delete, Edit, Transfer, Delete and file uploads are hidden", async () => {
+    it("a view-only role sees no status, escalate, transfer, edit, delete or upload", async () => {
+      // Every one of these routes needs the edit (or delete) grant.
       seedAuth({ UserId: 42, access: { modules: { complaints: { ...FULL, edit: false, delete: false } } } });
+      jest.mocked(fetchEscalationTargets).mockResolvedValue([
+        { Id: 50, FullName: "Ravi Mehta", JobTitle: null, BranchId: 1, BranchName: null, Depth: 1 },
+      ]);
       await mount();
-      // Not `loaded()`: it waits on the transfer sheet's people, which is gone.
-      await screen.findByText("Rejected");
+      // Not `loaded()`: it waits on sheets a view-only role no longer gets.
       await screen.findByText("Reached");
+      expect(screen.queryByText("Resolve")).toBeNull();
+      expect(screen.queryByText("Change status")).toBeNull();
+      expect(screen.queryByText("Rejected")).toBeNull();
+      expect(screen.queryByText("Escalate")).toBeNull();
+      expect(screen.queryByText("Ravi Mehta")).toBeNull();
+      expect(fetchEscalationTargets).not.toHaveBeenCalled();
+      // Logging a call stays: it is not an edit.
+      expect(screen.getByText("Goes straight onto the history")).toBeOnTheScreen();
       expect(screen.queryByText("Edit complaint")).toBeNull();
       expect(screen.queryByText("Delete complaint")).toBeNull();
       expect(screen.queryByText("Transfer")).toBeNull();

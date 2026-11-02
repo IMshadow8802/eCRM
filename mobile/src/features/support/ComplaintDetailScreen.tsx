@@ -192,7 +192,7 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
   const { data: seniors } = useQuery({
     queryKey: ["escalation-targets", forUserId],
     queryFn: () => fetchEscalationTargets(forUserId),
-    enabled: !!ticket && isActive(lifecycleOf(ticket)),
+    enabled: can.edit && !!ticket && isActive(lifecycleOf(ticket)),
   });
 
   const outcomeNames = useMemo(() => lookupMap(callOutcomes), [callOutcomes]);
@@ -462,7 +462,7 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
 
   // Built as a literal with a conditional spread, never `.push()` — see
   // CLAUDE.md §9.5 on `react-hooks/refs`.
-  const escalateEntry: SheetAction[] = active
+  const escalateEntry: SheetAction[] = active && can.edit
     ? [
         {
           key: "escalate",
@@ -478,7 +478,7 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
 
   // The web's primary button on an active complaint: one tap to the resolve
   // sheet on the company's first `resolved`-coded status (Code, not label).
-  const resolvedStatus = active
+  const resolvedStatus = active && can.edit
     ? statuses.find((s) => asStatusCode(s.Code) === "resolved")
     : undefined;
   const resolveEntry: SheetAction[] = resolvedStatus
@@ -528,15 +528,21 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
       ]
     : [];
 
+  const statusEntry: SheetAction[] = can.edit
+    ? [
+        {
+          key: "status",
+          label: "Change status",
+          sublabel: ticket.StatusName ?? undefined,
+          icon: ArrowRightLeft,
+          onPress: () => statusRef.current?.present(),
+        },
+      ]
+    : [];
+
   const menuActions: SheetAction[] = [
     ...resolveEntry,
-    {
-      key: "status",
-      label: "Change status",
-      sublabel: ticket.StatusName ?? undefined,
-      icon: ArrowRightLeft,
-      onPress: () => statusRef.current?.present(),
-    },
+    ...statusEntry,
     ...transferEntry,
     ...escalateEntry,
     {
@@ -627,7 +633,7 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
           options={[
             { value: "details", label: "Details" },
             { value: "files", label: "Files" },
-            { value: "history", label: "History", count: activity.length },
+            { value: "history", label: "History", count: activity.length + assignments.length },
           ]}
         />
       </View>
@@ -804,65 +810,67 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
 
       <ActionSheet ref={menuRef} title="Complaint actions" actions={menuActions} />
 
-      <ActionSheet
-        ref={statusRef}
-        title="Change status"
-        actions={statusActions}
-        emptyMessage="No other statuses are configured. Add them on the web first."
-      />
-
-      {/* One sheet for every move that needs more than a tap. Its fields are
-          computed from `pending`: Resolve shows resolution chips + remarks,
-          Reject / Reopen show required remarks, Close from Resolved shows
-          optional remarks — so the SP is asked for exactly what it needs. */}
-      <ComposeSheet
-        ref={moveRef}
-        title={
-          pending
-            ? pending.reopen
-              ? `Reopen as ${pending.target.Value}`
-              : `Mark as ${pending.target.Value}`
-            : "Change status"
-        }
-        submitLabel={pending?.reopen ? "Reopen" : "Update status"}
-        busy={move.isPending}
-        choices={
-          pending?.needsResolution
-            ? [
-                {
-                  key: "resolution",
-                  label: "Resolution",
-                  required: true,
-                  options: resolutions.map((r) => ({ value: r.Id, label: r.Value })),
-                },
-              ]
-            : []
-        }
-        fields={[
-          {
-            key: "remarks",
-            label: "Remarks",
-            placeholder: pending?.needsRemarks
-              ? "Why — this goes on the history"
-              : "Optional note for the history",
-            multiline: true,
-            required: pending?.needsRemarks ?? false,
-          },
-        ]}
-        onSubmit={(values, picked) => {
-          if (!pending) return;
-          move.mutate({
-            TicketId: ticketId,
-            StatusId: pending.target.Id,
-            ResolutionId: (picked.resolution as number | undefined) ?? null,
-            Remarks: values.remarks || null,
-          });
-        }}
-      />
-
-      {/* Hidden without the edit grant — transferTicket 403s anyway. */}
+      {/* Every sheet below moves the complaint — setTicketStatus, transfer and
+          escalate all need the edit grant (ticketRoutes.js), so a view-only
+          role gets none of them rather than a 403. */}
       {can.edit ? (
         <>
+          <ActionSheet
+            ref={statusRef}
+            title="Change status"
+            actions={statusActions}
+            emptyMessage="No other statuses are configured. Add them on the web first."
+          />
+
+          {/* One sheet for every move that needs more than a tap. Its fields are
+              computed from `pending`: Resolve shows resolution chips + remarks,
+              Reject / Reopen show required remarks, Close from Resolved shows
+              optional remarks — so the SP is asked for exactly what it needs. */}
+          <ComposeSheet
+            ref={moveRef}
+            title={
+              pending
+                ? pending.reopen
+                  ? `Reopen as ${pending.target.Value}`
+                  : `Mark as ${pending.target.Value}`
+                : "Change status"
+            }
+            submitLabel={pending?.reopen ? "Reopen" : "Update status"}
+            busy={move.isPending}
+            choices={
+              pending?.needsResolution
+                ? [
+                    {
+                      key: "resolution",
+                      label: "Resolution",
+                      required: true,
+                      options: resolutions.map((r) => ({ value: r.Id, label: r.Value })),
+                    },
+                  ]
+                : []
+            }
+            fields={[
+              {
+                key: "remarks",
+                label: "Remarks",
+                placeholder: pending?.needsRemarks
+                  ? "Why — this goes on the history"
+                  : "Optional note for the history",
+                multiline: true,
+                required: pending?.needsRemarks ?? false,
+              },
+            ]}
+            onSubmit={(values, picked) => {
+              if (!pending) return;
+              move.mutate({
+                TicketId: ticketId,
+                StatusId: pending.target.Id,
+                ResolutionId: (picked.resolution as number | undefined) ?? null,
+                Remarks: values.remarks || null,
+              });
+            }}
+          />
+
           <ActionSheet
             ref={transferPickRef}
             title="Transfer to…"
@@ -906,42 +914,42 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
               });
             }}
           />
+
+          <ActionSheet
+            ref={escalatePickRef}
+            title="Escalate to…"
+            actions={escalateActions}
+            emptyMessage={
+              ticket.AssignedTo
+                ? "The assignee has nobody above them in the reporting chain."
+                : "You have nobody above you in the reporting chain."
+            }
+          />
+          <ComposeSheet
+            ref={escalateRef}
+            title={escalateTo ? `Escalate to ${escalateTo.FullName}` : "Escalate"}
+            submitLabel="Escalate"
+            busy={escalate.isPending}
+            fields={[
+              {
+                key: "remarks",
+                label: "Why",
+                placeholder: "What they need to know — they get a notification",
+                multiline: true,
+                required: true,
+              },
+            ]}
+            onSubmit={(values) => {
+              if (!escalateTo) return;
+              escalate.mutate({
+                TicketId: ticketId,
+                ToUserId: escalateTo.Id,
+                Remarks: values.remarks ?? "",
+              });
+            }}
+          />
         </>
       ) : null}
-
-      <ActionSheet
-        ref={escalatePickRef}
-        title="Escalate to…"
-        actions={escalateActions}
-        emptyMessage={
-          ticket.AssignedTo
-            ? "The assignee has nobody above them in the reporting chain."
-            : "You have nobody above you in the reporting chain."
-        }
-      />
-      <ComposeSheet
-        ref={escalateRef}
-        title={escalateTo ? `Escalate to ${escalateTo.FullName}` : "Escalate"}
-        submitLabel="Escalate"
-        busy={escalate.isPending}
-        fields={[
-          {
-            key: "remarks",
-            label: "Why",
-            placeholder: "What they need to know — they get a notification",
-            multiline: true,
-            required: true,
-          },
-        ]}
-        onSubmit={(values) => {
-          if (!escalateTo) return;
-          escalate.mutate({
-            TicketId: ticketId,
-            ToUserId: escalateTo.Id,
-            Remarks: values.remarks ?? "",
-          });
-        }}
-      />
 
       {/* One sheet, not a chain of them: direction and outcome are chips so
           the whole call fits on screen with the keyboard up. NextFollowupDate
