@@ -20,6 +20,10 @@ export interface FetchFollowUpsParams {
   Status?: FollowUpStatus | null;
   DueFrom?: string | null;
   DueTo?: string | null;
+  /** DoneAt from (inclusive, a local day) — SQL 118. */
+  DoneFrom?: string | null;
+  /** DoneAt to: an EXCLUSIVE instant ("through today" = tomorrow) — SQL 118. */
+  DoneTo?: string | null;
   /** Open and due before today — the SP's verdict, not a client comparison. */
   Overdue?: boolean;
   SearchTerm?: string | null;
@@ -41,6 +45,8 @@ export const fetchFollowUps = ({
   Status = null,
   DueFrom = null,
   DueTo = null,
+  DoneFrom = null,
+  DoneTo = null,
   Overdue = false,
   SearchTerm = null,
   PageNumber = 1,
@@ -51,6 +57,9 @@ export const fetchFollowUps = ({
     Status,
     DueFrom,
     DueTo,
+    // Only when set (as the controller): an older server never sees the keys.
+    ...(DoneFrom ? { DoneFrom } : null),
+    ...(DoneTo ? { DoneTo } : null),
     Overdue,
     SearchTerm,
     PageNumber,

@@ -1,230 +1,232 @@
-// Presentational halves of LeadDetailScreen — the Details and Follow-ups tabs.
-// No data fetching and no writes here; every action comes in as a callback.
-import { ScrollView, StyleSheet, View } from "react-native";
-import {
-  Ban,
-  Building2,
-  CalendarClock,
-  CircleCheck,
-  History,
-  IndianRupee,
-  Mail,
-  MapPin,
-  Package,
-  Phone,
-  SkipForward,
-  Sparkles,
-  Trophy,
-  User,
-  UserPlus,
-  type LucideIcon,
-} from "lucide-react-native";
+// Presentational halves of the lead record (E 15, T3): the contact card, the
+// Details and Follow-ups tabs. No fetching and no writes; actions come in as callbacks.
+import { StyleSheet, View } from "react-native";
+import { CalendarClock, Check, Megaphone, MessageCircle, Phone, Smartphone, Trophy } from "lucide-react-native";
 
 import type { CustomFieldValue, FollowUp, Lead } from "../../types/api";
-import { colors, spacing, SCREEN_PADDING } from "../../theme";
-import { Button, Card, Chip, Text } from "../../ui";
-import { relativeTime } from "../tasks/taskHelpers";
-import { dayLabel, followUpTypeLabel, rupees } from "./leadHelpers";
+import { followUpBadge } from "../../theme/statusBadges";
+import { colors, spacing } from "../../theme";
+import {
+  Avatar,
+  Button,
+  Card,
+  Chip,
+  CircleAction,
+  Facts,
+  ListGroup,
+  ListRow,
+  StatusBadge,
+  Text,
+  type Fact,
+} from "../../ui";
+import { dayLabel, dueTitle, followUpMeta, followUpTypeLabel, fromNow, parseDate, rupees, shortDay } from "./leadHelpers";
 
-export function LeadDetailsTab({ lead, fields }: { lead: Lead; fields: CustomFieldValue[] }) {
-  const address = [lead.Address, lead.City, lead.State, lead.Pincode].filter(Boolean).join(", ");
-  return (
-    <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
-      {lead.StatusCode === "converted" ? (
-        <Card>
-          <View style={styles.row}>
-            <Trophy size={20} color={colors.success} />
-            <View style={styles.grow}>
-              <Text variant="h3">Won for {rupees(lead.WonValue) ?? "—"}</Text>
-              <Text variant="caption" color="textMuted">
-                {[dayLabel(lead.WonAt), lead.CustomerName ? `customer: ${lead.CustomerName}` : null]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </Text>
-            </View>
-          </View>
-        </Card>
-      ) : null}
-
-      <Card padded={false} gap={0} style={styles.factCard}>
-        <Fact Icon={Phone} label="Mobile" value={lead.MobileNo ?? "—"} />
-        {lead.AltMobile ? <Fact Icon={Phone} label="Alternate" value={lead.AltMobile} /> : null}
-        <Fact Icon={Mail} label="Email" value={lead.Email ?? "—"} />
-        <Fact Icon={Building2} label="Company" value={lead.Company ?? "—"} />
-        <Fact Icon={Package} label="Product" value={lead.ProductName ?? "—"} />
-        <Fact Icon={IndianRupee} label="Est. value" value={rupees(lead.EstValue) ?? "—"} />
-        <Fact Icon={Sparkles} label="Source" value={lead.SourceName ?? "—"} />
-        {lead.PartnerName ? <Fact Icon={UserPlus} label="Partner" value={lead.PartnerName} /> : null}
-        <Fact Icon={User} label="Owner" value={lead.OwnerName ?? "Unassigned"} />
-        <Fact Icon={Building2} label="Office" value={lead.BranchName ?? "—"} />
-        {lead.LostReason ? (
-          <Fact Icon={Ban} label="Lost reason" value={lead.LostReason} danger />
-        ) : null}
-        <Fact Icon={History} label="Added" value={relativeTime(lead.CreatedAt)} last />
-      </Card>
-
-      {address ? (
-        <Block title="Address">
-          <View style={styles.row}>
-            <MapPin size={16} color={colors.textMuted} />
-            <Text variant="body" style={styles.grow}>
-              {address}
-            </Text>
-          </View>
-        </Block>
-      ) : null}
-
-      {lead.Remarks ? (
-        <Block title="Remarks">
-          <Text variant="body">{lead.Remarks}</Text>
-        </Block>
-      ) : null}
-
-      {fields.length ? (
-        <Block title="Extra details">
-          {fields.map((field) => (
-            <View key={field.FieldId} style={styles.fieldRow}>
-              <Text variant="caption" color="textMuted">
-                {field.Label}
-              </Text>
-              <Text variant="body">{customValue(field)}</Text>
-            </View>
-          ))}
-        </Block>
-      ) : null}
-    </ScrollView>
-  );
-}
-
-/** `onLog`/`onSkip` are absent for a role without the edit grant — no buttons then. */
-export function FollowUpsTab({
-  followups,
-  onLog,
-  onSkip,
-}: {
-  followups: FollowUp[];
-  onLog?: (f: FollowUp) => void;
-  onSkip?: (f: FollowUp) => void;
-}) {
-  return (
-    <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
-      {followups.length ? (
-        followups.map((f) => {
-          const open = f.Status === "open";
-          return (
-            <Card key={f.Id}>
-              <View style={styles.row}>
-                <CalendarClock size={18} color={f.IsOverdue ? colors.danger : colors.textMuted} />
-                <Text variant="h3" style={styles.grow}>
-                  {followUpTypeLabel(f.Type)}
-                </Text>
-                <Chip
-                  label={
-                    open
-                      ? `${f.IsOverdue ? "Overdue ·" : "Due"} ${dayLabel(f.DueAt) ?? "—"}`
-                      : f.Status === "done"
-                        ? "Done"
-                        : "Skipped"
-                  }
-                  tone={open ? (f.IsOverdue ? "danger" : "teal") : "neutral"}
-                />
-              </View>
-              {f.Outcome || f.Remarks ? (
-                <Text variant="body">{[f.Outcome, f.Remarks].filter(Boolean).join(" — ")}</Text>
-              ) : null}
-              <Text variant="caption" color="textMuted">
-                {open
-                  ? `Assigned to ${f.AssignedToName ?? "—"}`
-                  : `${f.DoneByName ?? "—"} · ${relativeTime(f.DoneAt)}`}
-              </Text>
-              {open && onLog && onSkip ? (
-                <View style={styles.buttons}>
-                  <Button title="Log" icon={CircleCheck} size="sm" onPress={() => onLog(f)} style={styles.grow} />
-                  <Button
-                    title="Skip"
-                    icon={SkipForward}
-                    size="sm"
-                    variant="secondary"
-                    onPress={() => onSkip(f)}
-                    style={styles.grow}
-                  />
-                </View>
-              ) : null}
-            </Card>
-          );
-        })
-      ) : (
-        <Text variant="secondary">No follow-ups yet.</Text>
-      )}
-    </ScrollView>
-  );
-}
-
-function Block({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <View style={styles.block}>
-      <Text variant="overline" color="textMuted">
-        {title}
-      </Text>
-      {children}
-    </View>
-  );
-}
+/** "98250 12345" — a ten-digit number split as people say it. */
+export const spacedMobile = (m: string | null | undefined): string =>
+  m && /^\d{10}$/.test(m) ? `${m.slice(0, 5)} ${m.slice(5)}` : (m ?? "—");
 
 /** The EAV row splits by type; exactly one column is populated. */
-function customValue(field: CustomFieldValue): string {
-  if (field.Type === "checkbox") {
-    return field.ValueText === "true" || field.ValueNumber === 1 ? "Yes" : "No";
-  }
+export function customValue(field: CustomFieldValue): string {
+  if (field.Type === "checkbox") return field.ValueText === "true" || field.ValueNumber === 1 ? "Yes" : "No";
   if (field.Type === "number") return field.ValueNumber?.toString() ?? "—";
   if (field.Type === "date") return field.ValueDate ? field.ValueDate.slice(0, 10) : "—";
   return field.ValueText || "—";
 }
 
-function Fact({
-  Icon,
-  label,
-  value,
-  danger = false,
-  last = false,
+const created = (lead: Lead) => {
+  const d = parseDate(lead.CreatedAt);
+  return d ? shortDay(d) : "—";
+};
+
+const owner = (lead: Lead) => (
+  <View style={styles.person}>
+    <Avatar name={lead.OwnerName} uri={lead.OwnerAvatar} userId={lead.OwnerId} size={22} />
+    <Text variant="rowTitle" numberOfLines={1}>{lead.OwnerName ?? "Unassigned"}</Text>
+  </View>
+);
+
+/**
+ * Mobile + call/message (G30), then Owner and Source (phone) or the facts
+ * list in the 300 column (T3: Owner · Source · Product · custom fields · Created).
+ */
+export function ContactCard({
+  lead, fields, wide, onCall, onMessage,
 }: {
-  Icon: LucideIcon;
-  label: string;
-  value: string;
-  danger?: boolean;
-  last?: boolean;
+  lead: Lead;
+  fields: CustomFieldValue[];
+  wide: boolean;
+  onCall: () => void;
+  onMessage: () => void;
 }) {
   return (
-    <View style={[styles.fact, !last && styles.factDivider]}>
-      <Icon size={16} color={colors.textMuted} />
-      <Text variant="caption" color="textMuted" style={styles.factLabel}>
-        {label}
-      </Text>
-      <View style={styles.factValue}>
-        <Text variant="body" color={danger ? "danger" : undefined} numberOfLines={1} align="right">
-          {value}
-        </Text>
+    <Card padded={false} gap={0}>
+      <View style={[styles.contact, wide && styles.contactWide]}>
+        <StatusBadge tone="mint" icon={Smartphone} />
+        <View style={styles.flex}>
+          <Text variant="label" color="textMuted">Mobile</Text>
+          <Text variant="bodyStrong" tabular numberOfLines={1}>{spacedMobile(lead.MobileNo)}</Text>
+        </View>
+        {lead.MobileNo ? (
+          <>
+            <CircleAction icon={Phone} tone="primary" size={40} accessibilityLabel="Call" onPress={onCall} />
+            <CircleAction icon={MessageCircle} tone="success" size={40} accessibilityLabel="Message" onPress={onMessage} />
+          </>
+        ) : null}
       </View>
+      {wide ? (
+        <View style={styles.factsList}>
+          <Facts
+            layout="list"
+            items={[
+              { label: "Owner", node: owner(lead) },
+              { label: "Source", value: lead.SourceName ?? "—" },
+              { label: "Product", value: lead.ProductName ?? "—" },
+              ...fields.map((f) => ({ label: f.Label, value: customValue(f) })),
+              { label: "Created", value: created(lead) },
+            ]}
+          />
+        </View>
+      ) : (
+        <View style={styles.facts}>
+          <View style={styles.flex}>
+            <Text variant="label" color="textMuted">Owner</Text>
+            <View style={styles.factValue}>{owner(lead)}</View>
+          </View>
+          <View style={styles.flex}>
+            <Text variant="label" color="textMuted">Source</Text>
+            <View style={[styles.factValue, styles.person]}>
+              <Megaphone size={16} color={colors.textSecondary} />
+              <Text variant="rowTitle" numberOfLines={1}>{lead.SourceName ?? "—"}</Text>
+            </View>
+          </View>
+        </View>
+      )}
+    </Card>
+  );
+}
+
+/** Details (spec 15, proposed): the facts the card does not carry, and the custom fields. Files follow it. */
+export function DetailsFacts({ lead, fields, wide }: { lead: Lead; fields: CustomFieldValue[]; wide: boolean }) {
+  const address = [lead.Address, lead.City, lead.State, lead.Pincode].filter(Boolean).join(", ");
+  const items: Fact[] = [
+    { label: "Email", value: lead.Email ?? "—" },
+    { label: "Alternate mobile", value: lead.AltMobile ? spacedMobile(lead.AltMobile) : "—" },
+    { label: "Company", value: lead.Company ?? "—" },
+    { label: "Office", value: lead.BranchName ?? "—" },
+    { label: "Address", value: address || "—" },
+    ...(lead.PartnerName ? [{ label: "Partner", value: lead.PartnerName }] : []),
+    ...(lead.LostReason ? [{ label: "Lost reason", value: lead.LostReason, tone: "danger" as const }] : []),
+    ...(lead.Remarks ? [{ label: "Remarks", value: lead.Remarks }] : []),
+    // The 300 column already lists the custom fields and Created.
+    ...(wide ? [] : [...fields.map((f) => ({ label: f.Label, value: customValue(f) })), { label: "Created", value: created(lead) }]),
+  ];
+  return (
+    <View style={styles.stack}>
+      {lead.StatusCode === "converted" ? (
+        <Card tone="brandSoft">
+          <View style={styles.row}>
+            <StatusBadge tone="green" icon={Trophy} />
+            <View style={styles.flex}>
+              <Text variant="rowTitle">Won for {rupees(lead.WonValue) ?? "—"}</Text>
+              <Text variant="small">
+                {[dayLabel(lead.WonAt), lead.CustomerName ? `customer: ${lead.CustomerName}` : null].filter(Boolean).join(" · ") || "—"}
+              </Text>
+            </View>
+          </View>
+        </Card>
+      ) : null}
+      <Facts items={items} />
+    </View>
+  );
+}
+
+/**
+ * Follow-ups (E 15 / T3): the next open one as the butter card, then the rest
+ * as rows. `onOpen` is absent for a view-only role; T3 puts Mark done and
+ * Reschedule on the card itself (`wide`).
+ */
+export function FollowUpsTab({
+  followups, next, plannedBy, wide, onOpen, onDone, onReschedule,
+}: {
+  followups: FollowUp[];
+  next: FollowUp | undefined;
+  plannedBy: (f: FollowUp) => string | null;
+  wide: boolean;
+  onOpen?: (f: FollowUp) => void;
+  onDone?: (f: FollowUp) => void;
+  onReschedule?: (f: FollowUp) => void;
+}) {
+  const rest = followups.filter((f) => f !== next);
+  if (!followups.length) {
+    return <Text variant="meta" style={styles.none}>No follow-ups yet.</Text>;
+  }
+  const by = next ? plannedBy(next) : null;
+  return (
+    <View>
+      {next ? (
+        <Card tone="followUp" gap={0} style={wide ? styles.nextWide : styles.next} onPress={onOpen && !wide ? () => onOpen(next) : undefined} testID="next-followup">
+          <View style={styles.row}>
+            <StatusBadge tone="butter" icon={CalendarClock} />
+            <View style={styles.flex}>
+              <View style={styles.person}>
+                <Chip label="Next" tone="indigo" />
+                <Text variant={wide ? "bodyStrong" : "rowTitle"} tabular numberOfLines={1}>{dueTitle(next.DueAt)}</Text>
+              </View>
+              <Text variant="small" color={next.IsOverdue ? "dangerText" : "warningText"} style={styles.sub}>
+                {[followUpTypeLabel(next.Type), next.IsOverdue ? "overdue" : fromNow(next.DueAt), by ? `planned by ${by}` : null]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </Text>
+            </View>
+          </View>
+          {next.Remarks ? <Text variant="text" style={styles.remarks}>{next.Remarks}</Text> : null}
+          {wide && onDone && onReschedule ? (
+            <View style={styles.buttons}>
+              <Button title="Mark done" icon={Check} size="sm" onPress={() => onDone(next)} />
+              <Button title="Reschedule" size="sm" variant="secondary" onPress={() => onReschedule(next)} />
+            </View>
+          ) : null}
+        </Card>
+      ) : null}
+      {rest.length ? (
+        <ListGroup style={next ? styles.after : undefined}>
+          {rest.map((f, i) => {
+            const open = f.Status === "open";
+            const badge = followUpBadge(f.Type, open ? (f.IsOverdue ? "overdue" : "open") : "done");
+            return (
+              <ListRow
+                key={f.Id}
+                badge={{ tone: badge.tone, icon: badge.icon }}
+                title={f.Remarks || followUpTypeLabel(f.Type)}
+                titleTone={open ? "default" : "muted"}
+                meta={followUpMeta(f)}
+                noSeparator={i === 0}
+                onPress={open && onOpen ? () => onOpen(f) : undefined}
+                testID={`followup-${f.Id}`}
+              />
+            );
+          })}
+        </ListGroup>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  list: {
-    paddingHorizontal: SCREEN_PADDING,
-    paddingBottom: spacing[20],
-    gap: spacing[4],
-  },
+  flex: { flex: 1, minWidth: 0 },
   row: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
-  buttons: { flexDirection: "row", gap: spacing[2] },
-  grow: { flex: 1 },
-  factCard: { paddingHorizontal: spacing[4] },
-  fact: { flexDirection: "row", alignItems: "center", gap: spacing[3], paddingVertical: spacing[3] },
-  factDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.divider },
-  factLabel: { width: 96 },
-  // No alignItems: flex-end. A shrink-wrapped one-line value is laid out at
-  // full width and Android clips its start; `align="right"` does the aligning.
-  factValue: { flex: 1 },
-  block: { gap: spacing[2] },
-  fieldRow: { gap: spacing[1] },
+  person: { flexDirection: "row", alignItems: "center", gap: 6 },
+  contact: { flexDirection: "row", alignItems: "center", gap: spacing[3], paddingVertical: spacing[3], paddingHorizontal: 14 },
+  contactWide: { paddingVertical: 14, paddingHorizontal: spacing[4] },
+  facts: { flexDirection: "row", gap: spacing[4], paddingLeft: 66, paddingRight: 14, paddingBottom: spacing[3] },
+  factValue: { marginTop: spacing[1] },
+  factsList: { paddingHorizontal: spacing[4], paddingBottom: 6 },
+  stack: { gap: spacing[3] },
+  next: { padding: 14 },
+  nextWide: { padding: spacing[4] },
+  sub: { marginTop: 2 },
+  remarks: { marginTop: 10 },
+  buttons: { flexDirection: "row", gap: spacing[2], marginTop: spacing[3] },
+  after: { marginTop: 10 },
+  none: { paddingVertical: spacing[4] },
 });

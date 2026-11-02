@@ -1,16 +1,16 @@
 import { useState } from "react";
-import { StyleSheet } from "react-native";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react-native";
 
+import { fetchCalls } from "../../api/callQueries";
 import { fetchLookups } from "../../api/configQueries";
-import { fetchLeads } from "../../api/leadQueries";
+import { fetchLeadDetail, fetchLeads, type FetchLeadsParams } from "../../api/leadQueries";
 import { fetchProducts } from "../../api/productQueries";
-import { fetchAssignableUsers } from "../../api/userQueries";
+import { fetchAssignableUsers, fetchUserDirectory } from "../../api/userQueries";
 import useAuthStore from "../../stores/useAuthStore";
 import type { Access, Lead, Lookup } from "../../types/api";
 import { envelope, lead, pagination } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
-import { TAB_BAR_HEIGHT } from "../../theme";
+import { PHONE, setWindow, TABLET } from "../../test/window";
 import { leadQueueParams } from "./leadHelpers";
 import LeadsScreen from "./LeadsScreen";
 
@@ -18,149 +18,180 @@ jest.mock("../../api/leadQueries");
 jest.mock("../../api/configQueries");
 jest.mock("../../api/productQueries");
 jest.mock("../../api/userQueries");
+jest.mock("../../api/callQueries");
 
 // Lists arm VirtualizedList's batch timer on every data change; fake timers
 // park it (RNTL's waitFor/findBy advance them).
 jest.useFakeTimers();
 
 const row = lead();
+const leadsReply = (leads: Lead[], total = leads.length) => envelope({ leads, pagination: pagination(total) });
 
-const leadsReply = (leads: Lead[], total = leads.length) =>
-  envelope({ leads, pagination: pagination(total) });
-
-const qualified: Lookup = {
-  Id: 5,
-  CompId: 1,
-  Kind: "lead_status",
-  Value: "Qualified",
-  SortOrder: 2,
-  IsActive: true,
-  Code: "qualified",
-};
+const status = (Id: number, Value: string, Code: string, SortOrder: number): Lookup =>
+  ({ Id, CompId: 1, Kind: "lead_status", Value, SortOrder, IsActive: true, Code }) as Lookup;
+const STATUSES = [status(1, "New", "open", 1), status(5, "Qualified", "qualified", 2)];
 
 const leadsGrant = (add: boolean): Partial<Access> => ({
   modules: { leads: { view: true, add, edit: true, delete: false, reach: "Own" } },
 });
 
-const mount = (navigation = makeNavigation<"Leads">()) =>
-  renderWithProviders(<LeadsScreen navigation={navigation} route={makeRoute("Leads", undefined)} />);
+/** The list's own requests (pages of 50) — counts ask for 1 row, the open value for 200. */
+const listCalls = () =>
+  jest.mocked(fetchLeads).mock.calls.map(([p]) => p as FetchLeadsParams).filter((p) => p.PageSize === 50);
+const lastList = () => listCalls().at(-1);
+/** Every count is 9 unless a test says otherwise; the list answers `list`. */
+const answer = (list: (p: FetchLeadsParams) => Promise<ReturnType<typeof leadsReply>>, count = 9) =>
+  jest.mocked(fetchLeads).mockImplementation((p = {}) => (p.PageSize === 1 ? Promise.resolve(leadsReply([], count)) : list(p)));
+
+const mount = (navigation = makeNavigation<"Leads">(), params?: { queue?: "overdue" | "all"; term?: string }) =>
+  renderWithProviders(<LeadsScreen navigation={navigation} route={makeRoute("Leads", params)} />);
 
 beforeEach(() => {
-  jest.mocked(fetchLeads).mockResolvedValue(leadsReply([row], 3));
-  jest.mocked(fetchLookups).mockImplementation(({ Kind }) =>
-    Promise.resolve(Kind === "lead_status" ? [qualified] : []),
-  );
+  setWindow(...PHONE);
+  answer(() => Promise.resolve(leadsReply([row], 3)));
+  jest.mocked(fetchLookups).mockImplementation(({ Kind }) => Promise.resolve(Kind === "lead_status" ? STATUSES : []));
   jest.mocked(fetchProducts).mockResolvedValue([]);
   jest.mocked(fetchAssignableUsers).mockResolvedValue([]);
+  jest.mocked(fetchUserDirectory).mockResolvedValue([]);
+  jest.mocked(fetchCalls).mockResolvedValue([]);
   seedAuth({ UserId: 42, access: leadsGrant(true) });
 });
 
-it("opens on Mine: the caller's own leads, counted in the header", async () => {
+it("opens on Mine: the caller's own leads, counted in the band", async () => {
   await mount();
   expect(await screen.findByText("Ravi Patel")).toBeOnTheScreen();
   expect(screen.getByText("Leads")).toBeOnTheScreen();
   expect(screen.getByText("3 yours")).toBeOnTheScreen();
-  expect(fetchLeads).toHaveBeenCalledWith(
-    expect.objectContaining({
-      OwnerId: 42,
-      Overdue: false,
-      StatusId: null,
-      SearchTerm: null,
-      PageNumber: 1,
-      PageSize: 50,
-    }),
+  expect(lastList()).toEqual(expect.objectContaining({ OwnerId: 42, Overdue: false, StatusId: null, SearchTerm: null, PageNumber: 1 }));
+});
+
+it("E 14: the five presets carry counts (G13), Overdue in red; the GH is By next follow-up", async () => {
+  await mount();
+  await screen.findByText("Ravi Patel");
+  const tabs = screen.getAllByRole("tab").map((t) => t.props.accessibilityLabel);
+  await waitFor(() => expect(screen.getAllByRole("tab").map((t) => t.props.accessibilityLabel)).toEqual(["Mine, 9", "All, 9", "Overdue, 9", "New, 9", "Unassigned, 9"]));
+  expect(tabs).toHaveLength(5);
+  expect(screen.getByText("By next follow-up")).toBeOnTheScreen();
+  // The New preset counts the first open-coded status, across the reach.
+  expect(fetchLeads).toHaveBeenCalledWith({ ...leadQueueParams("new", "all", 42, "", 1), PageSize: 1, PageNumber: 1 });
+});
+
+it("G3: the open value of the list, from one 200-row page; hidden past 200", async () => {
+  answer((p) =>
+    Promise.resolve(
+      p.PageSize === 200
+        ? leadsReply([lead({ EstValue: 1000000 }), lead({ Id: 2, EstValue: 123000 }), lead({ Id: 3, StatusCode: "lost", EstValue: 5 })], 3)
+        : leadsReply([row], 3),
+    ),
   );
+  await mount();
+  expect(await screen.findByText("Open value ₹11,23,000")).toBeOnTheScreen();
+
+  answer((p) => Promise.resolve(p.PageSize === 200 ? leadsReply([row], 201) : leadsReply([row], 201)));
+  await fireEvent.press(screen.getByRole("tab", { name: /^All/ }));
+  await waitFor(() => expect(lastList()).toEqual(expect.objectContaining({ OwnerId: null })));
+  await waitFor(() => expect(screen.queryByText(/Open value/)).toBeNull());
+});
+
+it("the status pills (7.2) narrow by StatusId and carry counts; New hides them", async () => {
+  await mount();
+  await screen.findByText("Ravi Patel");
+  await waitFor(() =>
+    expect(screen.getAllByRole("radio").map((r) => r.props.accessibilityLabel)).toEqual(["All, 9", "New, 9", "Qualified, 9"]),
+  );
+  await fireEvent.press(screen.getByRole("radio", { name: "Qualified, 9" }));
+  await waitFor(() => expect(lastList()).toEqual(expect.objectContaining({ StatusId: 5, OwnerId: 42 })));
+
+  await fireEvent.press(screen.getByRole("tab", { name: /^New/ }));
+  await waitFor(() => expect(lastList()).toEqual(expect.objectContaining({ StatusId: 1, OwnerId: null })));
+  expect(screen.queryAllByRole("radio")).toHaveLength(0);
+});
+
+it("New waits for the statuses: no request that would list every status", async () => {
+  jest.mocked(fetchLookups).mockImplementation(() => new Promise(() => {}));
+  await mount();
+  await waitFor(() => expect(listCalls().length).toBeGreaterThan(0));
+  await fireEvent.press(screen.getByRole("tab", { name: /^New/ }));
+  const before = listCalls().length;
+  await act(() => jest.advanceTimersByTime(1000));
+  expect(listCalls()).toHaveLength(before);
+  expect(screen.getByLabelText("Loading")).toBeOnTheScreen();
 });
 
 describe("paging", () => {
   const list = () => screen.getByTestId("leads-list");
-  const pageCalls = (n: number) =>
-    jest.mocked(fetchLeads).mock.calls.filter(([p]) => p?.PageNumber === n);
+  const pageCalls = (n: number) => listCalls().filter((p) => p.PageNumber === n);
 
-  it("reaching the end asks for the next page and shows it; the header keeps the server total", async () => {
-    jest
-      .mocked(fetchLeads)
-      .mockResolvedValueOnce(leadsReply([row], 120))
-      .mockResolvedValueOnce(leadsReply([lead({ Id: 12, Name: "Meera Joshi" })], 120));
+  it("reaching the end asks for the next page and shows it; the band keeps the server total", async () => {
+    answer((p) =>
+      Promise.resolve(p.PageNumber === 2 ? leadsReply([lead({ Id: 12, Name: "Meera Joshi" })], 120) : leadsReply([row], 120)),
+    );
     await mount();
     await screen.findByText("Ravi Patel");
     expect(screen.getByText("120 yours")).toBeOnTheScreen();
-
     await fireEvent(list(), "onEndReached");
     expect(await screen.findByText("Meera Joshi")).toBeOnTheScreen();
     expect(pageCalls(2)).toHaveLength(1);
-    expect(pageCalls(2)[0]![0]).toEqual(expect.objectContaining({ OwnerId: 42, PageSize: 50 }));
     expect(screen.getByText("Ravi Patel")).toBeOnTheScreen();
-    expect(screen.getByText("120 yours")).toBeOnTheScreen();
   });
 
   it("never asks past the last page", async () => {
-    await mount(); // 3 rows = one page
+    await mount();
     await screen.findByText("Ravi Patel");
     await fireEvent(list(), "onEndReached");
     await act(() => jest.advanceTimersByTime(1000));
     expect(pageCalls(2)).toHaveLength(0);
   });
 
+  it("a row that shifts onto the next page while scrolling shows once", async () => {
+    answer((p) =>
+      Promise.resolve(
+        p.PageNumber === 2
+          ? leadsReply([lead({ Id: 12, Name: "Meera Joshi (moved)" }), lead({ Id: 13, Name: "Arjun Rao" })], 120)
+          : leadsReply([row, lead({ Id: 12, Name: "Meera Joshi" })], 120),
+      ),
+    );
+    await mount();
+    await screen.findByText("Meera Joshi");
+    await fireEvent(list(), "onEndReached");
+    expect(await screen.findByText("Arjun Rao")).toBeOnTheScreen();
+    expect(screen.getAllByText(/^Meera Joshi/)).toHaveLength(1);
+  });
+
   it("does not page while a new search is still loading over the old rows", async () => {
-    jest.mocked(fetchLeads).mockResolvedValueOnce(leadsReply([row], 120)).mockReturnValue(new Promise(() => {}));
     await mount();
     await screen.findByText("Ravi Patel");
-    await fireEvent.changeText(screen.getByPlaceholderText("Name, company or mobile"), "zz");
-    await waitFor(() =>
-      expect(fetchLeads).toHaveBeenLastCalledWith(expect.objectContaining({ SearchTerm: "zz" })),
-    );
-    const before = jest.mocked(fetchLeads).mock.calls.length;
+    answer((p) => (p.SearchTerm ? new Promise(() => {}) : Promise.resolve(leadsReply([row], 120))));
+    await fireEvent.changeText(screen.getByPlaceholderText("Search name, company, mobile"), "zz");
+    await waitFor(() => expect(lastList()).toEqual(expect.objectContaining({ SearchTerm: "zz" })));
+    const before = listCalls().length;
     await fireEvent(list(), "onEndReached");
     await act(() => jest.advanceTimersByTime(1000));
-    expect(fetchLeads).toHaveBeenCalledTimes(before);
+    expect(listCalls()).toHaveLength(before);
+    // The old rows stay up meanwhile.
+    expect(screen.getByText("Ravi Patel")).toBeOnTheScreen();
   });
 });
 
-it("switching queue does not spin pull-to-refresh; a pull does", async () => {
+const spinning = () => screen.getByTestId("leads-list").props.refreshControl.props.refreshing;
+
+it("switching preset does not spin pull-to-refresh", async () => {
   await mount();
   await screen.findByText("Ravi Patel");
-  const spinning = () => screen.getByTestId("leads-list").props.refreshControl.props.refreshing;
-  jest.mocked(fetchLeads).mockReturnValue(new Promise(() => {}));
-  await fireEvent.press(screen.getByText("Overdue"));
-  await waitFor(() =>
-    expect(fetchLeads).toHaveBeenLastCalledWith(expect.objectContaining({ Overdue: true })),
-  );
+  answer(() => new Promise(() => {}));
+  await fireEvent.press(screen.getByRole("tab", { name: /^Overdue/ }));
+  await waitFor(() => expect(lastList()).toEqual(expect.objectContaining({ Overdue: true, OwnerId: null })));
   expect(spinning()).toBe(false);
+});
 
-  // Back on Mine with a server that answers: let its background refetch land
-  // so nothing is in flight and the rows are real, not a placeholder.
-  jest.mocked(fetchLeads).mockResolvedValue(leadsReply([row], 3));
-  const settled = jest.mocked(fetchLeads).mock.calls.length;
-  await fireEvent.press(screen.getByText("Mine"));
-  await screen.findByText("3 yours");
-  await waitFor(() => expect(fetchLeads).toHaveBeenCalledTimes(settled + 1));
-  await act(() => jest.advanceTimersByTime(100));
-  expect(spinning()).toBe(false);
-
-  // The pull, and only the pull, starts the spinner. It never settles, so
-  // fire it without awaiting.
-  jest.mocked(fetchLeads).mockReturnValue(new Promise(() => {}));
+it("a pull spins pull-to-refresh", async () => {
+  await mount();
+  await screen.findByText("Ravi Patel");
+  answer(() => new Promise(() => {}));
   await act(() => {
     void screen.getByTestId("leads-list").props.refreshControl.props.onRefresh();
   });
   await waitFor(() => expect(spinning()).toBe(true));
-});
-
-it("a row that shifts onto the next page while scrolling shows once", async () => {
-  jest
-    .mocked(fetchLeads)
-    .mockResolvedValueOnce(leadsReply([row, lead({ Id: 12, Name: "Meera Joshi" })], 120))
-    .mockResolvedValueOnce(
-      leadsReply([lead({ Id: 12, Name: "Meera Joshi (moved)" }), lead({ Id: 13, Name: "Arjun Rao" })], 120),
-    );
-  await mount();
-  await screen.findByText("Meera Joshi");
-  await fireEvent(screen.getByTestId("leads-list"), "onEndReached");
-  expect(await screen.findByText("Arjun Rao")).toBeOnTheScreen();
-  // First occurrence wins: one Meera, the page-1 copy.
-  expect(screen.getAllByText(/^Meera Joshi/)).toHaveLength(1);
-  expect(screen.getByText("Meera Joshi")).toBeOnTheScreen();
 });
 
 it("does not fetch until the signed-in user is known", async () => {
@@ -171,143 +202,129 @@ it("does not fetch until the signed-in user is known", async () => {
   expect(fetchLeads).not.toHaveBeenCalled();
 });
 
-it("Overdue re-fetches with Overdue and no owner", async () => {
-  await mount();
-  await screen.findByText("Ravi Patel");
-  await fireEvent.press(screen.getByText("Overdue"));
-  await waitFor(() =>
-    expect(fetchLeads).toHaveBeenLastCalledWith(expect.objectContaining({ Overdue: true, OwnerId: null })),
-  );
-});
-
-it("a status chip narrows by StatusId", async () => {
-  await mount();
-  await screen.findByText("Ravi Patel");
-  await fireEvent.press(await screen.findByText("Qualified"));
-  await waitFor(() =>
-    expect(fetchLeads).toHaveBeenLastCalledWith(expect.objectContaining({ StatusId: 5 })),
-  );
-});
-
-it("typing a search term passes SearchTerm", async () => {
-  await mount();
-  await screen.findByText("Ravi Patel");
-  await fireEvent.changeText(screen.getByPlaceholderText("Name, company or mobile"), "  patel ");
-  await waitFor(() =>
-    expect(fetchLeads).toHaveBeenLastCalledWith(expect.objectContaining({ SearchTerm: "patel" })),
-  );
-});
-
 it("fast typing sends one request, for the final term", async () => {
   await mount();
   await screen.findByText("Ravi Patel");
-  const input = screen.getByPlaceholderText("Name, company or mobile");
+  const before = listCalls().length;
+  const input = screen.getByPlaceholderText("Search name, company, mobile");
   await fireEvent.changeText(input, "p");
   await fireEvent.changeText(input, "pa");
-  await fireEvent.changeText(input, "pat");
+  await fireEvent.changeText(input, " pat ");
   await act(() => jest.advanceTimersByTime(299));
-  expect(fetchLeads).toHaveBeenCalledTimes(1);
+  expect(listCalls()).toHaveLength(before);
   await act(() => jest.advanceTimersByTime(1));
-  await waitFor(() => expect(fetchLeads).toHaveBeenCalledTimes(2));
-  expect(fetchLeads).toHaveBeenLastCalledWith(expect.objectContaining({ SearchTerm: "pat" }));
+  await waitFor(() => expect(listCalls()).toHaveLength(before + 1));
+  expect(lastList()).toEqual(expect.objectContaining({ SearchTerm: "pat" }));
 });
 
-it("the previous rows stay up while a new search loads", async () => {
+it("a failed list shows the error card, and Try again refetches", async () => {
+  answer(() => Promise.reject(new Error("boom")));
   await mount();
-  await screen.findByText("Ravi Patel");
-  jest.mocked(fetchLeads).mockReturnValue(new Promise(() => {}));
-  await fireEvent.changeText(screen.getByPlaceholderText("Name, company or mobile"), "zz");
-  await waitFor(() =>
-    expect(fetchLeads).toHaveBeenLastCalledWith(expect.objectContaining({ SearchTerm: "zz" })),
-  );
-  expect(screen.getByText("Ravi Patel")).toBeOnTheScreen();
-});
-
-it("a rejected fetch shows the error state", async () => {
-  jest.mocked(fetchLeads).mockRejectedValue(new Error("boom"));
-  await mount();
-  expect(await screen.findByText("Couldn't load leads")).toBeOnTheScreen();
+  expect(await screen.findByText("Could not load. Try again")).toBeOnTheScreen();
+  answer(() => Promise.resolve(leadsReply([row], 3)));
+  await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+  expect(await screen.findByText("Ravi Patel")).toBeOnTheScreen();
 });
 
 it("an empty Mine says so; an empty search says nothing matches", async () => {
-  jest.mocked(fetchLeads).mockResolvedValue(leadsReply([]));
+  answer(() => Promise.resolve(leadsReply([])));
   await mount();
   expect(await screen.findByText("No leads yet")).toBeOnTheScreen();
-  await fireEvent.changeText(screen.getByPlaceholderText("Name, company or mobile"), "zz");
+  await fireEvent.changeText(screen.getByPlaceholderText("Search name, company, mobile"), "zz");
   expect(await screen.findByText("Nothing matches")).toBeOnTheScreen();
 });
 
-it("tapping a card opens the lead", async () => {
+it("tapping a row opens the lead", async () => {
   const navigation = makeNavigation<"Leads">();
   await mount(navigation);
   await fireEvent.press(await screen.findByText("Ravi Patel"));
   expect(navigation.navigate).toHaveBeenCalledWith("LeadDetail", { leadId: 11 });
 });
 
-it("the FAB opens a blank lead form", async () => {
+it("New in the band opens a blank lead form; no add grant, no New", async () => {
   const navigation = makeNavigation<"Leads">();
   await mount(navigation);
   await screen.findByText("Ravi Patel");
-  await fireEvent.press(screen.getByLabelText("Add a lead"));
+  await fireEvent.press(screen.getByRole("button", { name: "New" }));
   expect(navigation.navigate).toHaveBeenCalledWith("LeadForm", {});
 });
 
-it("no add grant, no FAB — the server would refuse the create", async () => {
+it("no add grant, no New — the server would refuse the create", async () => {
   seedAuth({ UserId: 42, access: leadsGrant(false) });
   await mount();
   await screen.findByText("Ravi Patel");
-  expect(screen.queryByLabelText("Add a lead")).toBeNull();
+  expect(screen.queryByRole("button", { name: "New" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Go back" })).toBeNull();
 });
 
-// Task 32: Leads is a tab. Home's row opens it on a queue; a tab root has no back.
 describe("as a tab", () => {
   it("opens on the queue a navigate() asks for", async () => {
-    seedAuth({ UserId: 7, access: leadsGrant(true) });
-    await renderWithProviders(
-      <LeadsScreen navigation={makeNavigation<"Leads">()} route={makeRoute("Leads", { queue: "overdue" })} />,
-    );
-    await waitFor(() =>
-      expect(fetchLeads).toHaveBeenCalledWith(expect.objectContaining({ Overdue: true, OwnerId: null })),
-    );
-    expect(fetchLeads).not.toHaveBeenCalledWith(expect.objectContaining({ OwnerId: 7 }));
+    await mount(makeNavigation<"Leads">(), { queue: "overdue" });
+    await waitFor(() => expect(lastList()).toEqual(expect.objectContaining({ Overdue: true, OwnerId: null })));
+    expect(listCalls().some((p) => p.OwnerId === 42)).toBe(false);
   });
 
-  it("has no back button", async () => {
-    seedAuth({ UserId: 7, access: leadsGrant(true) });
+  it("Search's See all lands on All with its term, so the list is what Search showed", async () => {
+    await mount(makeNavigation<"Leads">(), { queue: "all", term: "patel" });
+    await waitFor(() => expect(lastList()).toEqual({ ...leadQueueParams("all", "all", 42, "patel"), PageNumber: 1 }));
+    expect(screen.getByPlaceholderText("Search name, company, mobile").props.value).toBe("patel");
+  });
+
+  // A mounted tab keeps its chip and search; Home's navigate must still land on
+  // exactly the list its number counted.
+  it("a navigate() with a queue drops the status pill and search the user left", async () => {
+    const navigation = makeNavigation<"Leads">();
+    let navigateTo: (params: { queue: "mine" }) => void = () => {};
+    function Harness() {
+      const [route, setRoute] = useState(makeRoute("Leads", { queue: "all" }));
+      navigateTo = (params) => setRoute(makeRoute("Leads", params));
+      return <LeadsScreen navigation={navigation} route={route} />;
+    }
+    await renderWithProviders(<Harness />);
+    await fireEvent.press(await screen.findByRole("radio", { name: /^Qualified/ }));
+    await fireEvent.changeText(screen.getByPlaceholderText("Search name, company, mobile"), "patel");
+    await act(async () => { jest.advanceTimersByTime(300); });
+    await waitFor(() => expect(lastList()).toEqual(expect.objectContaining({ StatusId: 5, SearchTerm: "patel" })));
+    await act(async () => navigateTo({ queue: "mine" }));
+    await waitFor(() => expect(lastList()).toEqual({ ...leadQueueParams("mine", "all", 42, ""), PageNumber: 1 }));
+    expect(screen.getByPlaceholderText("Search name, company, mobile").props.value).toBe("");
+  });
+});
+
+describe("T3: tablet two-pane", () => {
+  beforeEach(() => {
+    setWindow(...TABLET);
+    answer(() => Promise.resolve(leadsReply([row, lead({ Id: 12, Name: "Meera Joshi", Company: "Joshi Mills" })], 2)));
+    jest.mocked(fetchLeadDetail).mockImplementation(({ LeadId }) =>
+      Promise.resolve({
+        lead: LeadId === 12 ? lead({ Id: 12, Name: "Meera Joshi", Company: "Joshi Mills" }) : row,
+        fields: [],
+        activity: [],
+        followups: [],
+        assignments: [],
+      }),
+    );
+  });
+
+  it("the first lead opens beside the list; a row tap selects instead of pushing", async () => {
+    const navigation = makeNavigation<"Leads">();
+    await mount(navigation);
+    // The pane's band names it.
+    expect(await screen.findByRole("header", { name: "Ravi Patel" })).toBeOnTheScreen();
+    expect(fetchLeadDetail).toHaveBeenCalledWith({ LeadId: 11 });
+    // T3's pane has no GH; the actions sit in the band.
+    expect(screen.queryByText("By next follow-up")).toBeNull();
+    expect(screen.getByRole("button", { name: "Log follow-up" })).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByText("Meera Joshi"));
+    expect(await screen.findByRole("header", { name: "Meera Joshi" })).toBeOnTheScreen();
+    expect(navigation.navigate).not.toHaveBeenCalledWith("LeadDetail", expect.anything());
+    expect(screen.getByTestId("lead-row-12").props.accessibilityState).toEqual({ selected: true });
+  });
+
+  it("an empty list leaves the pane saying nothing is selected", async () => {
+    answer(() => Promise.resolve(leadsReply([])));
     await mount();
-    await waitFor(() => expect(fetchLeads).toHaveBeenCalled());
-    expect(screen.queryByRole("button", { name: "Go back" })).toBeNull();
+    expect(await screen.findByText("No lead selected")).toBeOnTheScreen();
   });
-});
-
-// Task 32 regression: as a tab, the + must sit above the floating tab bar, not under it.
-it("the + clears the tab bar", async () => {
-  seedAuth({ UserId: 7, access: leadsGrant(true) });
-  await mount();
-  const fab = await screen.findByRole("button", { name: "Add a lead" });
-  expect(StyleSheet.flatten(fab.props.style).bottom).toBeGreaterThan(TAB_BAR_HEIGHT);
-});
-
-// Task 32 review: a mounted tab keeps its chip and search; Home's navigate must
-// still land on exactly the list its number counted.
-it("a navigate() with a queue drops the status chip and search the user left", async () => {
-  const navigation = makeNavigation<"Leads">();
-  let navigateTo: (params: { queue: "mine" }) => void = () => {};
-  function Harness() {
-    const [route, setRoute] = useState(makeRoute("Leads", { queue: "all" }));
-    navigateTo = (params) => setRoute(makeRoute("Leads", params));
-    return <LeadsScreen navigation={navigation} route={route} />;
-  }
-  await renderWithProviders(<Harness />);
-  await fireEvent.press(await screen.findByText("Qualified"));
-  await fireEvent.changeText(screen.getByPlaceholderText("Name, company or mobile"), "patel");
-  await act(async () => { jest.advanceTimersByTime(300); });
-  await waitFor(() =>
-    expect(fetchLeads).toHaveBeenLastCalledWith(expect.objectContaining({ StatusId: 5, SearchTerm: "patel" })),
-  );
-  await act(async () => navigateTo({ queue: "mine" }));
-  await waitFor(() =>
-    expect(fetchLeads).toHaveBeenLastCalledWith({ ...leadQueueParams("mine", "all", 42, ""), PageNumber: 1 }),
-  );
-  expect(screen.getByPlaceholderText("Name, company or mobile").props.value).toBe("");
 });

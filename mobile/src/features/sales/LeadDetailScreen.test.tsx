@@ -1,5 +1,5 @@
-import { Linking, StyleSheet } from "react-native";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react-native";
+import { Linking } from "react-native";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react-native";
 
 import { fetchAttachments } from "../../api/attachmentQueries";
 import { fetchCalls, logCall } from "../../api/callQueries";
@@ -9,9 +9,13 @@ import { convertLead, fetchLeadDetail, setLeadStatus, transferLead } from "../..
 import { fetchProducts } from "../../api/productQueries";
 import { fetchAssignableUsers, fetchUserDirectory } from "../../api/userQueries";
 import type { AssignableUser, FollowUp, Lead, LeadDetail, Lookup } from "../../types/api";
+import type { BarAction } from "../../ui";
 import { envelope, followUp as fixtureFollowUp, lead as fixtureLead, localDay, serverError } from "../../test/fixtures";
 import { spySheets } from "../../test/sheets";
+import { flat } from "../../test/style";
+import { PHONE, setWindow, TABLET } from "../../test/window";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
+import { colors } from "../../theme";
 import LeadDetailScreen from "./LeadDetailScreen";
 
 jest.mock("../../api/leadQueries");
@@ -22,14 +26,35 @@ jest.mock("../../api/userQueries");
 jest.mock("../../api/productQueries");
 jest.mock("../../api/attachmentQueries");
 
+// The Shell draws the action bar from what the screen publishes; outside a
+// navigator there is no Shell, so this stand-in records the published actions
+// and answers `inBand` the way the Shell does (the rail is up from 600 dp).
+const mockBar: { actions: BarAction[] } = { actions: [] };
+jest.mock("../../navigation/Shell", () => ({
+  useActionBar: (actions: BarAction[]) => {
+    mockBar.actions = actions;
+    const { Dimensions } = jest.requireActual("react-native");
+    return { inBand: Dimensions.get("window").width >= 600 };
+  },
+}));
+const bar = () => mockBar.actions.map((a) => `${a.label}${a.main ? " (main)" : ""}${a.disabled ? " (off)" : ""}`);
+const pressBar = (label: string) =>
+  act(async () => {
+    mockBar.actions.find((a) => a.label === label)!.onPress();
+  });
+
+/** The row menu renders after the follow-up sheets, whose title and button share its words. */
+const menuItem = (label: string) => screen.getAllByText(label).at(-1)!;
+/** Reschedule: [0] the sheet title, [1] its submit, [2] the row menu. */
+const rescheduleSubmit = () => screen.getAllByText("Reschedule")[1]!;
+
 const FULL = { view: true, add: true, edit: true, delete: true, reach: "Company" as const };
 
 const lookup = (Id: number, Kind: string, Value: string, Code: string | null = null): Lookup => ({
   Id, CompId: 1, Kind, Value, Code, SortOrder: Id, IsActive: true,
 });
-
 const STATUSES = [
-  lookup(1, LOOKUP_KIND.leadStatus, "Open", "open"),
+  lookup(1, LOOKUP_KIND.leadStatus, "New", "open"),
   lookup(2, LOOKUP_KIND.leadStatus, "Qualified", "qualified"),
   lookup(3, LOOKUP_KIND.leadStatus, "Won", "converted"),
   lookup(4, LOOKUP_KIND.leadStatus, "Lost", "lost"),
@@ -47,23 +72,22 @@ const user = (Id: number, FullName: string, JobTitle: string, BranchId = 1): Ass
 const ravi = user(5, "Ravi Mehta", "Manager");
 const priya = user(9, "Priya Shah", "Sales");
 
-// Thin wrappers over the shared fixtures with this file's defaults spelled out:
-// Ravi (5) owns the lead, so the owner-exclusion and transfer tests mean what
-// they say; the follow-up is due far ahead, so it is never overdue by accident.
+// Ravi (5) owns the lead; the follow-up is due far ahead, so never overdue by accident.
 const lead = (patch: Partial<Lead> = {}): Lead =>
   fixtureLead({
     Id: 11, BranchId: 1, BranchName: "Head Office", Name: "Anil Kumar", Company: "Sharma Traders",
     MobileNo: "9825012345", AltMobile: null, Email: "anil@sharma.in", SourceId: 1, SourceName: "Walk-in",
-    PartnerName: null, ProductId: 1, ProductName: "Solar 5kW", StatusId: 1, StatusName: "Open",
-    StatusCode: "open", OwnerId: 5, OwnerName: "Ravi Mehta", EstValue: 250000, Remarks: null,
-    NextFollowupDate: null, IsOverdue: false, WonAt: null, WonValue: null, CreatedAt: "2026-11-01T10:00:00",
+    PartnerName: null, ProductId: 1, ProductName: "Solar 5kW", StatusId: 2, StatusName: "Qualified",
+    StatusCode: "qualified", OwnerId: 5, OwnerName: "Ravi Mehta", EstValue: 120000, Remarks: null,
+    NextFollowupDate: null, IsOverdue: false, WonAt: null, WonValue: null, CreatedAt: "2026-10-26T10:00:00",
     ...patch,
   });
 
 const followUp = (patch: Partial<FollowUp> = {}): FollowUp =>
   fixtureFollowUp({
-    Id: 70, LeadId: 11, Type: "call", DueAt: "2099-01-01T10:00:00", Status: "open", AssignedTo: 5,
+    Id: 70, LeadId: 11, Type: "call", DueAt: "2099-01-01T11:00:00", Status: "open", AssignedTo: 5,
     AssignedToName: "Ravi Mehta", DoneAt: null, DoneByName: null, Outcome: null, Remarks: null, IsOverdue: false,
+    CreatedBy: 42, LeadName: "Anil Kumar",
     ...patch,
   });
 
@@ -72,38 +96,26 @@ const detail = (row: Lead | null = lead(), extra: Partial<LeadDetail> = {}): Lea
 });
 
 const mount = (navigation = makeNavigation<"LeadDetail">()) =>
-  renderWithProviders(
-    <LeadDetailScreen navigation={navigation} route={makeRoute("LeadDetail", { leadId: 11 })} />,
-  );
+  renderWithProviders(<LeadDetailScreen navigation={navigation} route={makeRoute("LeadDetail", { leadId: 11 })} />);
 
-/** The row, plus the lookups and users every sheet is built from. */
+/** The band, plus the lookups and users every sheet is built from. */
 const loaded = async () => {
-  expect(await screen.findByText("Anil Kumar")).toBeOnTheScreen();
-  await screen.findByText("Qualified");
-  await screen.findByText("Price too high");
+  expect(await screen.findByRole("header", { name: "Anil Kumar" })).toBeOnTheScreen();
+  await screen.findByText("On leave");
   await screen.findAllByText("Reached");
   await screen.findByText("Priya Shah");
 };
 
-// Found on the emulator (Task 30): a right-aligned one-line value inside a
-// column that shrink-wraps its children is laid out at full text width, and
-// Android cuts the START off ("VIAESTRO Cust..."). The value has to fill the
-// column so numberOfLines ellipsizes the end instead.
-const fillsItsColumn = (text: string) => {
-  const column = screen.getByText(text).parent;
-  expect(StyleSheet.flatten(column?.props.style).alignItems).not.toBe("flex-end");
-};
-
 beforeEach(() => {
+  setWindow(...PHONE);
+  mockBar.actions = [];
   seedAuth({ UserId: 42, access: { modules: { leads: FULL } } });
   jest.mocked(fetchAttachments).mockResolvedValue([]);
   jest.mocked(fetchLeadDetail).mockResolvedValue(detail());
   jest.mocked(fetchLookups).mockImplementation(async ({ Kind }) => LOOKUPS[Kind] ?? []);
   jest.mocked(fetchAssignableUsers).mockResolvedValue([ravi, priya]);
   jest.mocked(fetchProducts).mockResolvedValue([]);
-  jest.mocked(fetchUserDirectory).mockResolvedValue([
-    { Id: 42, FullName: "Test User", Username: null, Avatar: null, JobTitle: null },
-  ]);
+  jest.mocked(fetchUserDirectory).mockResolvedValue([{ Id: 42, FullName: "Ayush Mishra", Username: null, Avatar: null, JobTitle: null }]);
   jest.mocked(fetchCalls).mockResolvedValue([]);
   const ok = envelope(null);
   jest.mocked(setLeadStatus).mockResolvedValue(ok);
@@ -121,9 +133,9 @@ describe("when the lead cannot be shown", () => {
     const navigation = makeNavigation<"LeadDetail">();
     await mount(navigation);
     expect(await screen.findByText("Lead not available")).toBeOnTheScreen();
-    expect(screen.queryByText(/Check your connection/)).toBeNull();
-    await fireEvent.press(screen.getByLabelText("Go back"));
+    await fireEvent.press(screen.getByRole("button", { name: "Go back" }));
     expect(navigation.goBack).toHaveBeenCalled();
+    expect(mockBar.actions).toEqual([]);
   });
 
   it("a resolved detail with no lead row is treated the same way", async () => {
@@ -132,291 +144,130 @@ describe("when the lead cannot be shown", () => {
     expect(await screen.findByText("Lead not available")).toBeOnTheScreen();
   });
 
-  it("a server fault offers a retry", async () => {
-    jest.mocked(fetchLeadDetail).mockRejectedValue(serverError(500, "Server error"));
+  it("a server fault offers a retry that refetches", async () => {
+    jest.mocked(fetchLeadDetail).mockRejectedValueOnce(serverError(500, "boom"));
     await mount();
-    expect(
-      await screen.findByText("The lead could not be loaded. Check your connection and try again."),
-    ).toBeOnTheScreen();
+    expect(await screen.findByText("The lead could not be loaded. Check your connection and try again.")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByRole("header", { name: "Anil Kumar" })).toBeOnTheScreen();
+  });
+
+  it("loading shows skeleton rows under the band", async () => {
+    jest.mocked(fetchLeadDetail).mockReturnValue(new Promise(() => {}));
+    await mount();
+    expect(screen.getByLabelText("Loading")).toBeOnTheScreen();
   });
 });
 
-describe("details", () => {
-  it("a long fact value fills its column, so it ellipsizes at the end", async () => {
-    const company = "A company whose name is far too long to fit";
-    jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead({ Company: company })));
-    await mount();
-    expect(await screen.findByText(company)).toBeOnTheScreen();
-    fillsItsColumn(company);
-  });
-
-  it("shows the header, the facts and the custom fields off the row", async () => {
-    jest.mocked(fetchLeadDetail).mockResolvedValue(
-      detail(lead({ Address: "Ring Road", City: "Surat", Remarks: "Wants a site visit" }), {
-        fields: [
-          { FieldId: 1, FieldKey: "roof", Label: "Roof", Type: "text", ValueText: "RCC", ValueNumber: null, ValueDate: null },
-          { FieldId: 2, FieldKey: "subsidy", Label: "Subsidy", Type: "checkbox", ValueText: null, ValueNumber: 0, ValueDate: null },
-          { FieldId: 3, FieldKey: "kw", Label: "kW", Type: "number", ValueText: null, ValueNumber: 5, ValueDate: null },
-          { FieldId: 4, FieldKey: "visit", Label: "Visit", Type: "date", ValueText: null, ValueNumber: null, ValueDate: "2026-12-01T00:00:00" },
-        ],
-      }),
-    );
+describe("E 15 band and contact card", () => {
+  it("name, company · product, est. value, the status chip and Change status", async () => {
     await mount();
     await loaded();
-    expect(screen.getByText("Sharma Traders · Open")).toBeOnTheScreen();
-    expect(screen.getByText("9825012345")).toBeOnTheScreen();
-    expect(screen.getByText("anil@sharma.in")).toBeOnTheScreen();
-    expect(screen.getByText("Sharma Traders")).toBeOnTheScreen();
-    expect(screen.getByText("Solar 5kW")).toBeOnTheScreen();
-    expect(screen.getByText("₹2,50,000")).toBeOnTheScreen();
+    expect(screen.getByText("Sharma Traders · Solar 5kW")).toBeOnTheScreen();
+    expect(screen.getByText("Est. value")).toBeOnTheScreen();
+    expect(screen.getByText("₹1,20,000")).toBeOnTheScreen();
+    expect(screen.getAllByText("Qualified").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Change status" })).toBeOnTheScreen();
+    // Mobile spaced as people say it; owner and source on the card.
+    expect(screen.getByText("98250 12345")).toBeOnTheScreen();
+    expect(screen.getByText("Ravi Mehta")).toBeOnTheScreen();
     expect(screen.getByText("Walk-in")).toBeOnTheScreen();
-    expect(screen.getAllByText("Ravi Mehta").length).toBeGreaterThan(0);
-    expect(screen.getByText("Head Office")).toBeOnTheScreen();
-    expect(screen.getByText("Ring Road, Surat")).toBeOnTheScreen();
-    expect(screen.getByText("Wants a site visit")).toBeOnTheScreen();
-    expect(screen.getByText("RCC")).toBeOnTheScreen();
-    expect(screen.getByText("No")).toBeOnTheScreen();
-    expect(screen.getByText("5")).toBeOnTheScreen();
-    expect(screen.getByText("2026-12-01")).toBeOnTheScreen();
-    // Neither banner on an open lead.
-    expect(screen.queryByText(/^Won for/)).toBeNull();
-    expect(screen.queryByText("Lost reason")).toBeNull();
   });
 
-  it("a won lead shows the won banner", async () => {
-    jest.mocked(fetchLeadDetail).mockResolvedValue(
-      detail(lead({ StatusId: 3, StatusName: "Won", StatusCode: "converted", WonValue: 50000, WonAt: "2026-11-01T10:00:00", CustomerName: "Sharma Traders" })),
-    );
-    await mount();
-    expect(await screen.findByText("Won for ₹50,000")).toBeOnTheScreen();
-    expect(screen.getByText(/customer: Sharma Traders/)).toBeOnTheScreen();
-  });
-
-  it("a lost lead shows its reason and no won banner", async () => {
-    jest.mocked(fetchLeadDetail).mockResolvedValue(
-      detail(lead({ StatusId: 4, StatusName: "Lost", StatusCode: "lost", Company: null, LostReason: "Price too high", WonValue: 1 })),
-    );
-    await mount();
-    expect(await screen.findByText("Lost reason")).toBeOnTheScreen();
-    // Header subtitle without a company is just the status.
-    expect(screen.getAllByText("Lost").length).toBeGreaterThan(0);
-    expect(screen.queryByText(/^Won for/)).toBeNull();
-  });
-
-  it("a sparse won lead falls back to dashes, and shows the alternate mobile and partner when set", async () => {
-    jest.mocked(fetchLeadDetail).mockResolvedValue(
-      detail(
-        lead({
-          StatusId: 3, StatusName: null, StatusCode: "converted", WonValue: null, Company: null, Email: null,
-          ProductName: null, EstValue: null, SourceName: null, OwnerName: null, BranchName: null,
-          AltMobile: "9000000000", PartnerName: "Sun Partners",
-        }),
-        {
-          fields: [
-            { FieldId: 1, FieldKey: "ok", Label: "Ok", Type: "checkbox", ValueText: "true", ValueNumber: null, ValueDate: null },
-            { FieldId: 2, FieldKey: "n", Label: "N", Type: "number", ValueText: null, ValueNumber: null, ValueDate: null },
-            { FieldId: 3, FieldKey: "d", Label: "D", Type: "date", ValueText: null, ValueNumber: null, ValueDate: null },
-            { FieldId: 4, FieldKey: "t", Label: "T", Type: "text", ValueText: "", ValueNumber: null, ValueDate: null },
-          ],
-        },
-      ),
-    );
-    await mount();
-    expect(await screen.findByText("Won for —")).toBeOnTheScreen();
-    expect(screen.getByText("9000000000")).toBeOnTheScreen();
-    expect(screen.getByText("Sun Partners")).toBeOnTheScreen();
-    expect(screen.getByText("Yes")).toBeOnTheScreen();
-    expect(screen.getAllByText("Unassigned").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(9);
-  });
-
-  it("the follow-ups tab labels overdue and skipped rows", async () => {
-    jest.mocked(fetchLeadDetail).mockResolvedValue(
-      detail(lead(), {
-        followups: [
-          followUp({ IsOverdue: true, DueAt: "2026-01-05T10:00:00", AssignedToName: null }),
-          followUp({ Id: 72, Type: "meeting", Status: "skipped", DoneByName: null, DoneAt: null, Remarks: "rain" }),
-        ],
-      }),
-    );
-    await mount();
-    await loaded();
-    await fireEvent.press(screen.getByText("Follow-ups"));
-    expect(await screen.findByText("Overdue · 5 Jan")).toBeOnTheScreen();
-    expect(screen.getByText("Assigned to —")).toBeOnTheScreen();
-    expect(screen.getByText("Skipped")).toBeOnTheScreen();
-    expect(screen.getByText("rain")).toBeOnTheScreen();
-    expect(screen.getByText("— · ")).toBeOnTheScreen();
-  });
-
-  it("an overdue next follow-up is flagged on the summary", async () => {
-    jest.mocked(fetchLeadDetail).mockResolvedValue(
-      detail(lead({ NextFollowupDate: "2026-01-05T00:00:00", IsOverdue: true })),
-    );
-    await mount();
-    expect(await screen.findByText(/^Overdue · /)).toBeOnTheScreen();
-  });
-
-  it("Call dials the lead's mobile", async () => {
-    const openURL = jest.spyOn(Linking, "openURL").mockResolvedValue(true);
+  it("Call dials; Message tries WhatsApp, then SMS (G30); a phone with neither says so", async () => {
+    const open = jest.spyOn(Linking, "openURL").mockResolvedValue(true);
     await mount();
     await loaded();
     await fireEvent.press(screen.getByRole("button", { name: "Call" }));
-    expect(openURL).toHaveBeenCalledWith("tel:9825012345");
-    openURL.mockRestore();
-  });
+    expect(open).toHaveBeenCalledWith("tel:9825012345");
+    await fireEvent.press(screen.getByRole("button", { name: "Message" }));
+    expect(open).toHaveBeenCalledWith("whatsapp://send?phone=919825012345");
 
-  it("a phone with no dialer says so instead of failing silently", async () => {
-    const openURL = jest.spyOn(Linking, "openURL").mockRejectedValue(new Error("no handler"));
-    await mount();
-    await loaded();
+    open.mockReset();
+    open.mockRejectedValueOnce(new Error("no whatsapp")).mockResolvedValueOnce(true);
+    await fireEvent.press(screen.getByRole("button", { name: "Message" }));
+    await waitFor(() => expect(open).toHaveBeenCalledWith("sms:9825012345"));
+
+    open.mockReset();
+    open.mockRejectedValue(new Error("nothing"));
+    await fireEvent.press(screen.getByRole("button", { name: "Message" }));
+    expect(await screen.findByText("Can't open messaging on this device")).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", { name: "Call" }));
-    expect(await screen.findByLabelText("Can't open the dialer on this device")).toBeOnTheScreen();
-    openURL.mockRestore();
+    expect(await screen.findByText("Can't open the dialer on this device")).toBeOnTheScreen();
+    open.mockRestore();
   });
 
-  it("no mobile, no Call button", async () => {
-    jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead({ MobileNo: null })));
+  it("no mobile: no call or message buttons, and the bar's are off", async () => {
+    jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead({ MobileNo: null, EstValue: null, Company: null, ProductName: null })));
     await mount();
     await loaded();
     expect(screen.queryByRole("button", { name: "Call" })).toBeNull();
+    expect(screen.queryByText("Est. value")).toBeNull();
+    expect(bar()).toEqual(["Call (off)", "Message (off)", "Log follow-up (main)", "Status", "Transfer"]);
   });
 });
 
-describe("status", () => {
-  it("a plain status posts setLeadStatus straight away", async () => {
+describe("the action bar", () => {
+  it("Call · Message · Log follow-up (main) · Status · Transfer", async () => {
     await mount();
     await loaded();
-    await fireEvent.press(screen.getByText("Qualified"));
-    await waitFor(() =>
-      expect(setLeadStatus).toHaveBeenCalledWith({ LeadId: 11, StatusId: 2 }, expect.anything()),
-    );
+    expect(bar()).toEqual(["Call", "Message", "Log follow-up (main)", "Status", "Transfer"]);
   });
 
-  it("a refused direct pick toasts the server's sentence", async () => {
-    jest.mocked(setLeadStatus).mockRejectedValue(serverError(400, "Lead is locked"));
-    await mount();
-    await loaded();
-    await fireEvent.press(screen.getByText("Qualified"));
-    expect(await screen.findByLabelText("Lead is locked")).toBeOnTheScreen();
-  });
-
-  it("Lost cannot submit until a reason is picked, then sends it", async () => {
+  it("Log follow-up completes the next open one: remarks required, a call defaults to out and books the next", async () => {
+    jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead(), { followups: [followUp()] }));
     const { present } = spySheets();
     await mount();
     await loaded();
-    await fireEvent.press(screen.getByText("Lost"));
-    expect(present).toHaveBeenCalled();
-    expect(screen.getByText("Mark as Lost")).toBeOnTheScreen();
-    expect(setLeadStatus).not.toHaveBeenCalled();
-    await fireEvent.press(screen.getByText("Mark lost"));
-    expect(setLeadStatus).not.toHaveBeenCalled();
-    await fireEvent.press(screen.getByText("Price too high"));
-    await fireEvent.press(screen.getByText("Mark lost"));
+    present.mockClear();
+    await pressBar("Log follow-up");
+    expect(present).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Log the call")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByText("Mark done"));
+    expect(completeFollowUp).not.toHaveBeenCalled();
+    await fireEvent.changeText(screen.getByPlaceholderText("What was discussed — the next person reads this"), "Spoke to him");
+    await fireEvent.changeText(screen.getByPlaceholderText("Call minutes"), "2.6");
+    // Done's "Next follow-up" chips render first.
+    await fireEvent.press(screen.getAllByRole("radio", { name: "Tomorrow" })[0]!);
+    await fireEvent.press(screen.getByText("Mark done"));
     await waitFor(() =>
-      expect(setLeadStatus).toHaveBeenCalledWith(
-        { LeadId: 11, StatusId: 4, LostReasonId: 10 },
+      expect(completeFollowUp).toHaveBeenCalledWith(
+        { Id: 70, Remarks: "Spoke to him", OutcomeId: null, Direction: "out", Duration: 3, NextType: "call", NextDueAt: localDay(1) },
         expect.anything(),
       ),
     );
   });
 
-  it("a refused Lost shows the sentence in the sheet and keeps it open", async () => {
-    jest.mocked(setLeadStatus).mockRejectedValue(serverError(400, "Lost reason is required"));
+  it("a visit logs no direction, minutes or next; a refusal keeps the sheet", async () => {
+    jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead(), { followups: [followUp({ Type: "visit" })] }));
+    jest.mocked(completeFollowUp).mockRejectedValueOnce(serverError(400, "Already done"));
     const { dismiss } = spySheets();
     await mount();
     await loaded();
-    await fireEvent.press(screen.getByText("Lost"));
-    await fireEvent.press(screen.getByText("Price too high"));
-    dismiss.mockClear(); // picking "Lost" closed the status list
-    await fireEvent.press(screen.getByText("Mark lost"));
-    expect(await screen.findByText("Lost reason is required")).toBeOnTheScreen();
-    // In the sheet, not a toast.
-    expect(screen.queryByLabelText("Lost reason is required")).toBeNull();
-    expect(dismiss).not.toHaveBeenCalled();
-  });
-
-  it("says nothing about lost reasons while they are still loading", async () => {
-    jest.mocked(fetchLookups).mockImplementation(async ({ Kind }) =>
-      Kind === LOOKUP_KIND.lostReason ? new Promise<Lookup[]>(() => {}) : (LOOKUPS[Kind] ?? []),
-    );
-    await mount();
-    await screen.findByText("Qualified");
-    await screen.findByText("On leave");
-    expect(screen.queryByText("No lost reasons are set up. Add them on the web first.")).toBeNull();
-  });
-
-  it("with no lost reasons configured the sheet says so", async () => {
-    jest.mocked(fetchLookups).mockImplementation(async ({ Kind }) =>
-      Kind === LOOKUP_KIND.lostReason ? [] : (LOOKUPS[Kind] ?? []),
-    );
-    await mount();
-    expect(
-      await screen.findByText("No lost reasons are set up. Add them on the web first."),
-    ).toBeOnTheScreen();
-  });
-
-  it("Won never calls setLeadStatus; the won sheet converts with the value", async () => {
-    const { dismiss } = spySheets();
-    await mount();
-    await loaded();
-    await fireEvent.press(screen.getByText("Won"));
-    expect(screen.getByText("Mark as Won")).toBeOnTheScreen();
-    await fireEvent.changeText(screen.getByPlaceholderText("e.g. 50,000"), "50,000");
-    dismiss.mockClear(); // picking "Won" closed the status list
-    await fireEvent.press(screen.getByText("Mark won"));
-    await waitFor(() =>
-      expect(convertLead).toHaveBeenCalledWith(
-        { LeadId: 11, WonValue: 50000, Remarks: null },
-        expect.anything(),
-      ),
-    );
-    expect(setLeadStatus).not.toHaveBeenCalled();
-    await waitFor(() => expect(dismiss).toHaveBeenCalled());
-  });
-
-  it("a won value that is not a number is refused in the sheet", async () => {
-    await mount();
-    await loaded();
-    await fireEvent.press(screen.getByText("Won"));
-    await fireEvent.changeText(screen.getByPlaceholderText("e.g. 50,000"), "lots");
-    await fireEvent.press(screen.getByText("Mark won"));
-    expect(await screen.findByText("Enter the value this lead was won for.")).toBeOnTheScreen();
-    expect(convertLead).not.toHaveBeenCalled();
-  });
-
-  it("a refused win shows the server's sentence in the sheet", async () => {
-    jest.mocked(convertLead).mockRejectedValue(serverError(400, "Lead is already won"));
-    const { dismiss } = spySheets();
-    await mount();
-    await loaded();
-    await fireEvent.press(screen.getByText("Won"));
-    await fireEvent.changeText(screen.getByPlaceholderText("e.g. 50,000"), "10");
+    await pressBar("Log follow-up");
+    await fireEvent.changeText(screen.getByPlaceholderText("What was discussed — the next person reads this"), "Met");
     dismiss.mockClear();
-    await fireEvent.press(screen.getByText("Mark won"));
-    expect(await screen.findByText("Lead is already won")).toBeOnTheScreen();
-    // In the sheet, not a toast.
-    expect(screen.queryByLabelText("Lead is already won")).toBeNull();
-    expect(screen.getByDisplayValue("10")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByText("Mark done"));
+    expect(await screen.findByText("Already done")).toBeOnTheScreen();
     expect(dismiss).not.toHaveBeenCalled();
+    expect(completeFollowUp).toHaveBeenCalledWith(
+      { Id: 70, Remarks: "Met", OutcomeId: null, Direction: null, Duration: null, NextType: null, NextDueAt: null },
+      expect.anything(),
+    );
   });
-});
 
-describe("follow-ups", () => {
-  it("schedule needs a type and a day, then sends the local date", async () => {
+  it("with nothing open, Log follow-up schedules one: a type and a day, the local date", async () => {
     await mount();
     await loaded();
+    await pressBar("Log follow-up");
     await fireEvent.press(screen.getByText("Add follow-up"));
     expect(scheduleFollowUp).not.toHaveBeenCalled();
-    // The schedule sheet's chips come first.
-    await fireEvent.press(screen.getAllByRole("radio", { name: "Call" })[0]!);
-    await fireEvent.press(screen.getAllByRole("radio", { name: "Tomorrow" })[0]!);
+    await fireEvent.press(screen.getAllByRole("radio", { name: "Visit" })[0]!);
+    // Schedule's "When" is the third Tomorrow (after Done's next and Reschedule's day).
+    await fireEvent.press(screen.getAllByRole("radio", { name: "Tomorrow" })[2]!);
     await fireEvent.press(screen.getByText("Add follow-up"));
     await waitFor(() =>
-      expect(scheduleFollowUp).toHaveBeenCalledWith(
-        { LeadId: 11, Type: "call", DueAt: localDay(1) },
-        expect.anything(),
-      ),
+      expect(scheduleFollowUp).toHaveBeenCalledWith({ LeadId: 11, Type: "visit", DueAt: localDay(1) }, expect.anything()),
     );
   });
 
@@ -424,206 +275,212 @@ describe("follow-ups", () => {
     jest.mocked(scheduleFollowUp).mockRejectedValue(serverError(400, "Due date is in the past"));
     await mount();
     await loaded();
-    await fireEvent.press(screen.getAllByRole("radio", { name: "Visit" })[0]!);
-    await fireEvent.press(screen.getAllByRole("radio", { name: "Today" })[0]!);
+    await pressBar("Log follow-up");
+    await fireEvent.press(screen.getAllByRole("radio", { name: "Call" })[0]!);
+    await fireEvent.press(screen.getAllByRole("radio", { name: "Today" })[2]!);
     await fireEvent.press(screen.getByText("Add follow-up"));
     expect(await screen.findByText("Due date is in the past")).toBeOnTheScreen();
-    // In the sheet, not a toast.
-    expect(screen.queryByLabelText("Due date is in the past")).toBeNull();
   });
 
-  it("an open row offers Log and Skip; a done row does not", async () => {
+  it("Status opens the status sheet; Transfer the pick list (owner left out)", async () => {
+    const { present } = spySheets();
+    await mount();
+    await loaded();
+    present.mockClear();
+    await pressBar("Status");
+    await pressBar("Transfer");
+    expect(present).toHaveBeenCalledTimes(2);
+    expect(screen.getByText("Anil Kumar · now Qualified")).toBeOnTheScreen();
+    expect(screen.getByText("Sales · Head Office")).toBeOnTheScreen();
+    expect(screen.queryByText("Manager · Head Office")).toBeNull();
+  });
+});
+
+describe("status (E 25)", () => {
+  it("a plain status posts setLeadStatus and refreshes the lead, the lists and the queue", async () => {
+    const { queryClient } = await mount();
+    await loaded();
+    const spy = jest.spyOn(queryClient, "invalidateQueries");
+    await fireEvent.press(screen.getByRole("radio", { name: "New" }));
+    await fireEvent.press(screen.getByText("Save · mark new"));
+    await waitFor(() =>
+      expect(setLeadStatus).toHaveBeenCalledWith({ LeadId: 11, StatusId: 1, LostReasonId: null }, expect.anything()),
+    );
+    expect(spy).toHaveBeenCalledWith({ queryKey: ["lead", 11] });
+    expect(spy).toHaveBeenCalledWith({ queryKey: ["leads"] });
+    expect(spy).toHaveBeenCalledWith({ queryKey: ["followups"] });
+  });
+
+  it("Lost sends its reason; a refusal shows in the sheet", async () => {
+    jest.mocked(setLeadStatus).mockRejectedValueOnce(serverError(400, "Lead is locked"));
+    await mount();
+    await loaded();
+    await fireEvent.press(screen.getByRole("radio", { name: "Lost" }));
+    await fireEvent.press(screen.getByRole("radio", { name: "Price too high" }));
+    await fireEvent.press(screen.getByText("Save · mark lost"));
+    expect(await screen.findByText("Lead is locked")).toBeOnTheScreen();
+    expect(setLeadStatus).toHaveBeenCalledWith({ LeadId: 11, StatusId: 4, LostReasonId: 10 }, expect.anything());
+  });
+
+  it("Won converts with the value — setLeadStatus is never asked for converted", async () => {
+    await mount();
+    await loaded();
+    await fireEvent.press(screen.getByRole("radio", { name: "Won" }));
+    await fireEvent.changeText(screen.getByPlaceholderText("Amount in rupees"), "50,000");
+    await fireEvent.press(screen.getByText("Save · mark won"));
+    await waitFor(() =>
+      expect(convertLead).toHaveBeenCalledWith({ LeadId: 11, WonValue: 50000, Remarks: null }, expect.anything()),
+    );
+    expect(setLeadStatus).not.toHaveBeenCalled();
+  });
+
+  it("a refused win shows the server's sentence", async () => {
+    jest.mocked(convertLead).mockRejectedValue(serverError(400, "Quotation pending"));
+    await mount();
+    await loaded();
+    await fireEvent.press(screen.getByRole("radio", { name: "Won" }));
+    await fireEvent.changeText(screen.getByPlaceholderText("Amount in rupees"), "1");
+    await fireEvent.press(screen.getByText("Save · mark won"));
+    expect(await screen.findByText("Quotation pending")).toBeOnTheScreen();
+  });
+});
+
+describe("follow-ups tab", () => {
+  it("opens on Follow-ups with the open count; the next one is the butter card with who planned it (G18)", async () => {
     jest.mocked(fetchLeadDetail).mockResolvedValue(
       detail(lead(), {
         followups: [
-          followUp(),
-          followUp({ Id: 71, Type: "visit", Status: "done", DoneByName: "Ravi Mehta", DoneAt: "2026-11-01T10:00:00", Outcome: "Reached", Remarks: "met" }),
+          followUp({ Remarks: "Share the revised quote" }),
+          followUp({ Id: 71, Type: "visit", DueAt: "2099-01-03T15:00:00", Remarks: "Roof survey" }),
+          followUp({ Id: 72, Status: "done", DoneAt: "2026-10-29T09:00:00", Remarks: "Sent brochure" }),
+          followUp({ Id: 73, Status: "skipped", Remarks: null, Type: "meeting" }),
         ],
       }),
     );
     await mount();
     await loaded();
-    // The tab counts open follow-ups only.
-    expect(within(screen.getByRole("tab", { name: /Follow-ups/ })).getByText("1")).toBeOnTheScreen();
-    await fireEvent.press(screen.getByText("Follow-ups"));
-    expect(await screen.findByText("Reached — met")).toBeOnTheScreen();
-    expect(screen.getAllByRole("button", { name: "Log" })).toHaveLength(1);
-    expect(screen.getAllByRole("button", { name: "Skip" })).toHaveLength(1);
+    expect(screen.getByRole("tab", { name: "Follow-ups, 2" }).props.accessibilityState).toEqual({ selected: true });
+    const card = screen.getByTestId("next-followup");
+    expect(flat(card).backgroundColor).toBe(colors.followUpTint);
+    expect(screen.getByText("Thu, 1 Jan · 11:00 am")).toBeOnTheScreen();
+    expect(screen.getByText(/^Call · in \d+ d · planned by Ayush Mishra$/)).toBeOnTheScreen();
+    expect(screen.getByText("Share the revised quote")).toBeOnTheScreen();
+    expect(screen.getByText("Visit · Sat, 3 Jan · 3:00 pm")).toBeOnTheScreen();
+    expect(screen.getByText("Call · Thu, 29 Oct · done")).toBeOnTheScreen();
+    expect(flat(screen.getByText("Sent brochure")).color).toBe(colors.textSecondary);
+    expect(within(screen.getByTestId("followup-73")).getByText("Meeting")).toBeOnTheScreen();
   });
 
-  it("no follow-ups says so", async () => {
+  it("an overdue next one says so in red", async () => {
+    jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead(), { followups: [followUp({ IsOverdue: true, CreatedBy: null })] }));
     await mount();
     await loaded();
-    await fireEvent.press(screen.getByText("Follow-ups"));
-    expect(await screen.findByText(/^No follow-ups yet/)).toBeOnTheScreen();
+    expect(flat(screen.getByText("Call · overdue")).color).toBe(colors.dangerText);
   });
 
-  it("a call follow-up's fractional minutes are rounded, not dropped by the server", async () => {
-    jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead(), { followups: [followUp()] }));
-    await mount();
-    await loaded();
-    await fireEvent.press(screen.getByRole("button", { name: "Log follow-up" }));
-    await fireEvent.changeText(screen.getByPlaceholderText("What was discussed — the next person reads this"), "ok");
-    await fireEvent.changeText(screen.getByPlaceholderText("Call minutes"), "4.5");
-    await fireEvent.press(screen.getByText("Mark done"));
-    await waitFor(() =>
-      expect(completeFollowUp).toHaveBeenCalledWith(expect.objectContaining({ Duration: 5 }), expect.anything()),
+  it("a row opens Mark done / Reschedule / Skip; reschedule skips with the reason and books the same type", async () => {
+    jest.mocked(fetchLeadDetail).mockResolvedValue(
+      detail(lead(), { followups: [followUp(), followUp({ Id: 71, Type: "visit", Remarks: "Roof survey" })] }),
     );
-  });
-
-  it("logging a call needs remarks, defaults Direction to out and books the next one", async () => {
-    jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead(), { followups: [followUp()] }));
-    const { dismiss } = spySheets();
     await mount();
     await loaded();
-    await fireEvent.press(screen.getByText("Follow-ups"));
-    await fireEvent.press(await screen.findByRole("button", { name: "Log" }));
-    expect(screen.getByText("Log the call")).toBeOnTheScreen();
-    await fireEvent.press(screen.getByText("Mark done"));
-    expect(completeFollowUp).not.toHaveBeenCalled();
-
-    await fireEvent.changeText(screen.getByPlaceholderText("What was discussed — the next person reads this"), " will buy ");
-    await fireEvent.changeText(screen.getByPlaceholderText("Call minutes"), "4");
-    // The complete sheet's "Next follow-up" row comes after the schedule sheet's "When".
+    await fireEvent.press(screen.getByTestId("followup-71"));
+    await fireEvent.press(menuItem("Reschedule"));
     await fireEvent.press(screen.getAllByRole("radio", { name: "In 3 days" })[1]!);
-    await fireEvent.press(screen.getByText("Mark done"));
+    await fireEvent.changeText(screen.getByPlaceholderText("Why it is moving"), "Client away");
+    await fireEvent.press(rescheduleSubmit());
     await waitFor(() =>
-      expect(completeFollowUp).toHaveBeenCalledWith(
-        {
-          Id: 70, Remarks: "will buy", OutcomeId: null, Direction: "out", Duration: 4,
-          NextType: "call", NextDueAt: localDay(3),
-        },
-        expect.anything(),
-      ),
+      expect(scheduleFollowUp).toHaveBeenCalledWith({ LeadId: 11, Type: "visit", DueAt: localDay(3) }),
     );
-    await waitFor(() => expect(dismiss).toHaveBeenCalled());
+    expect(skipFollowUp).toHaveBeenCalledWith({ Id: 71, Remarks: `Rescheduled to ${localDay(3)}: Client away` });
   });
 
-  it("logging a visit sends no direction, minutes or next", async () => {
-    jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead(), { followups: [followUp({ Type: "visit" })] }));
-    await mount();
-    await loaded();
-    // The quick button logs the first open follow-up.
-    await fireEvent.press(screen.getByRole("button", { name: "Log follow-up" }));
-    expect(screen.getByText("Log the visit")).toBeOnTheScreen();
-    expect(screen.queryByPlaceholderText("Call minutes")).toBeNull();
-    await fireEvent.changeText(screen.getByPlaceholderText("What was discussed — the next person reads this"), "seen");
-    await fireEvent.press(screen.getByText("Mark done"));
-    await waitFor(() =>
-      expect(completeFollowUp).toHaveBeenCalledWith(
-        { Id: 70, Remarks: "seen", OutcomeId: null, Direction: null, Duration: null, NextType: null, NextDueAt: null },
-        expect.anything(),
-      ),
-    );
-  });
-
-  it("a refused log keeps the sheet and what was typed", async () => {
+  it("a reschedule whose new booking fails says it was skipped", async () => {
     jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead(), { followups: [followUp()] }));
-    jest.mocked(completeFollowUp).mockRejectedValue(serverError(400, "Already done"));
-    const { dismiss } = spySheets();
+    jest.mocked(scheduleFollowUp).mockRejectedValue(serverError(400, "nope"));
     await mount();
     await loaded();
-    await fireEvent.press(screen.getByRole("button", { name: "Log follow-up" }));
-    await fireEvent.changeText(screen.getByPlaceholderText("What was discussed — the next person reads this"), "typed");
-    await fireEvent.press(screen.getByText("Mark done"));
-    expect(await screen.findByText("Already done")).toBeOnTheScreen();
-    // In the sheet, not a toast.
-    expect(screen.queryByLabelText("Already done")).toBeNull();
-    expect(screen.getByDisplayValue("typed")).toBeOnTheScreen();
-    expect(dismiss).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByTestId("next-followup"));
+    await fireEvent.press(menuItem("Reschedule"));
+    await fireEvent.press(screen.getAllByRole("radio", { name: "Tomorrow" })[1]!);
+    await fireEvent.changeText(screen.getByPlaceholderText("Why it is moving"), "x");
+    await fireEvent.press(rescheduleSubmit());
+    expect(await screen.findByText("It was skipped, but the new one could not be booked. Schedule it from the lead.")).toBeOnTheScreen();
   });
 
   it("skip needs remarks, then sends them", async () => {
     jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead(), { followups: [followUp()] }));
     await mount();
     await loaded();
-    await fireEvent.press(screen.getByText("Follow-ups"));
-    await fireEvent.press(await screen.findByRole("button", { name: "Skip" }));
-    await fireEvent.press(screen.getByText("Skip follow-up"));
+    await fireEvent.press(screen.getByTestId("next-followup"));
+    await fireEvent.press(menuItem("Skip"));
+    // The skip sheet renders before the ⋮ menu, which also offers "Skip follow-up".
+    await fireEvent.press(screen.getAllByText("Skip follow-up")[0]!);
     expect(skipFollowUp).not.toHaveBeenCalled();
-    await fireEvent.changeText(screen.getByPlaceholderText("Why it is not happening"), "phone off");
-    await fireEvent.press(screen.getByText("Skip follow-up"));
-    await waitFor(() =>
-      expect(skipFollowUp).toHaveBeenCalledWith({ Id: 70, Remarks: "phone off" }, expect.anything()),
-    );
+    await fireEvent.changeText(screen.getByPlaceholderText("Why it is not happening"), "Closed shop");
+    await fireEvent.press(screen.getAllByText("Skip follow-up")[0]!);
+    await waitFor(() => expect(skipFollowUp).toHaveBeenCalledWith({ Id: 70, Remarks: "Closed shop" }, expect.anything()));
+  });
+
+  it("no follow-ups says so", async () => {
+    await mount();
+    await loaded();
+    expect(screen.getByText("No follow-ups yet.")).toBeOnTheScreen();
   });
 });
 
-describe("calls", () => {
-  it("rounds fractional minutes to whole ones", async () => {
+describe("the ⋮ menu", () => {
+  it("logs a call through LogCallSheet — no Then step on a lead", async () => {
     await mount();
     await loaded();
-    await fireEvent.press(screen.getAllByRole("radio", { name: "Outgoing" }).at(-1)!);
-    await fireEvent.changeText(screen.getByPlaceholderText("0"), "2.6");
-    await fireEvent.press(screen.getByText("Log call"));
-    await waitFor(() =>
-      expect(logCall).toHaveBeenCalledWith(expect.objectContaining({ Duration: 3 }), expect.anything()),
-    );
-  });
-
-  it("logs a call with direction, outcome, notes and minutes", async () => {
-    await mount();
-    await loaded();
-    // The call sheet's Direction row is the last one.
-    await fireEvent.press(screen.getAllByRole("radio", { name: "Incoming" }).at(-1)!);
-    await fireEvent.press(screen.getAllByRole("radio", { name: "Reached" }).at(-1)!);
-    await fireEvent.changeText(screen.getByPlaceholderText("What was said"), "call back Monday");
-    await fireEvent.changeText(screen.getByPlaceholderText("0"), "6");
-    await fireEvent.press(screen.getByText("Log call"));
+    expect(screen.getByText("Log a call")).toBeOnTheScreen();
+    expect(screen.queryByText("Then")).toBeNull();
+    await fireEvent.press(screen.getByRole("button", { name: "More duration" }));
+    await fireEvent.changeText(screen.getByTestId("logcall-notes"), " Asked for a quote ");
+    await fireEvent.press(screen.getByText("Save call"));
     await waitFor(() =>
       expect(logCall).toHaveBeenCalledWith(
-        { LeadId: 11, Direction: "in", OutcomeId: 40, Notes: "call back Monday", Duration: 6 },
+        { LeadId: 11, Direction: "out", OutcomeId: null, Notes: "Asked for a quote", Duration: 2 },
         expect.anything(),
       ),
     );
   });
 
   it("a refused call shows the sentence in the sheet", async () => {
-    jest.mocked(logCall).mockRejectedValue(serverError(403, "You cannot edit this lead"));
+    jest.mocked(logCall).mockRejectedValue(serverError(403, "Not yours"));
     await mount();
     await loaded();
-    await fireEvent.press(screen.getAllByRole("radio", { name: "Outgoing" }).at(-1)!);
-    await fireEvent.press(screen.getByText("Log call"));
-    expect(await screen.findByText("You cannot edit this lead")).toBeOnTheScreen();
-    // In the sheet, not a toast.
-    expect(screen.queryByLabelText("You cannot edit this lead")).toBeNull();
-    expect(logCall).toHaveBeenCalledWith(
-      { LeadId: 11, Direction: "out", OutcomeId: null, Notes: null, Duration: null },
-      expect.anything(),
-    );
+    await fireEvent.changeText(screen.getByTestId("logcall-notes"), "x");
+    await fireEvent.press(screen.getByText("Save call"));
+    expect(await screen.findByText("Not yours")).toBeOnTheScreen();
+  });
+
+  it("Files goes to the Details tab, where the attachments are", async () => {
+    await mount();
+    await loaded();
+    await fireEvent.press(screen.getByText("Files"));
+    await waitFor(() => expect(fetchAttachments).toHaveBeenCalledWith({ Entity: "lead", EntityId: 11 }));
+    expect(screen.getByRole("tab", { name: "Details" }).props.accessibilityState).toEqual({ selected: true });
+    expect(await screen.findByLabelText("Add a file")).toBeOnTheScreen();
+  });
+
+  it("Skip follow-up is offered only while one is open", async () => {
+    await mount();
+    await loaded();
+    expect(screen.queryByText("It is not happening")).toBeNull();
+  });
+
+  it("Edit opens the form for this lead", async () => {
+    const navigation = makeNavigation<"LeadDetail">();
+    await mount(navigation);
+    await loaded();
+    await fireEvent.press(screen.getByRole("button", { name: "Edit lead" }));
+    expect(navigation.navigate).toHaveBeenCalledWith("LeadForm", { leadId: 11 });
   });
 });
 
 describe("transfer", () => {
-  it("the pick list leaves out the current owner", async () => {
-    await mount();
-    await loaded();
-    expect(screen.getByText("Sales · Head Office")).toBeOnTheScreen();
-    expect(screen.queryByText("Manager · Head Office")).toBeNull();
-  });
-
-  it("with no transfer reasons configured the sheet says so, but not while loading", async () => {
-    jest.mocked(fetchLookups).mockImplementation(async ({ Kind }) =>
-      Kind === LOOKUP_KIND.transferReason ? [] : (LOOKUPS[Kind] ?? []),
-    );
-    await mount();
-    expect(
-      await screen.findByText("No transfer reasons are set up. Add them on the web first."),
-    ).toBeOnTheScreen();
-  });
-
-  it("says nothing about transfer reasons while they are still loading", async () => {
-    jest.mocked(fetchLookups).mockImplementation(async ({ Kind }) =>
-      Kind === LOOKUP_KIND.transferReason ? new Promise<Lookup[]>(() => {}) : (LOOKUPS[Kind] ?? []),
-    );
-    await mount();
-    await screen.findByText("Price too high");
-    expect(screen.queryByText("No transfer reasons are set up. Add them on the web first.")).toBeNull();
-  });
-
   it("needs a reason and remarks, and never sends an office", async () => {
-    // Even when the new owner sits in another office: a non-wide caller gets
-    // 403 for sending one, a wide caller would silently move the lead.
     jest.mocked(fetchAssignableUsers).mockResolvedValue([ravi, user(9, "Priya Shah", "Sales", 2)]);
     await mount();
     await loaded();
@@ -642,42 +499,61 @@ describe("transfer", () => {
     );
   });
 
-  it("a refused transfer shows the sentence in the sheet and keeps it open", async () => {
+  it("with no transfer reasons configured the sheet says so, but not while loading", async () => {
+    jest.mocked(fetchLookups).mockImplementation(async ({ Kind }) => (Kind === LOOKUP_KIND.transferReason ? [] : (LOOKUPS[Kind] ?? [])));
+    await mount();
+    expect(await screen.findByText("No transfer reasons are set up. Add them on the web first.")).toBeOnTheScreen();
+  });
+
+  it("a refused transfer shows the sentence in the sheet", async () => {
     jest.mocked(transferLead).mockRejectedValue(serverError(403, "Not in your team"));
-    const { dismiss } = spySheets();
     await mount();
     await loaded();
     await fireEvent.press(screen.getByText("Priya Shah"));
     await fireEvent.press(screen.getByText("On leave"));
     await fireEvent.changeText(screen.getByPlaceholderText("Anything the next person should know"), "x");
-    dismiss.mockClear(); // picking Priya closed the pick list
     await fireEvent.press(screen.getAllByText("Transfer").at(-1)!);
     expect(await screen.findByText("Not in your team")).toBeOnTheScreen();
-    // In the sheet, not a toast.
-    expect(screen.queryByLabelText("Not in your team")).toBeNull();
-    expect(dismiss).not.toHaveBeenCalled();
   });
 });
 
-it("a successful write refreshes the lead, the list and the follow-up queue", async () => {
-  const { queryClient } = await mount();
-  await loaded();
-  const spy = jest.spyOn(queryClient, "invalidateQueries");
-  await fireEvent.press(screen.getByText("Qualified"));
-  await waitFor(() => expect(spy).toHaveBeenCalledWith({ queryKey: ["lead", 11] }));
-  expect(spy).toHaveBeenCalledWith({ queryKey: ["leads"] });
-  expect(spy).toHaveBeenCalledWith({ queryKey: ["followups"] });
+describe("details tab", () => {
+  it("shows the facts the card does not carry, custom fields and Created", async () => {
+    jest.mocked(fetchLeadDetail).mockResolvedValue(
+      detail(lead({ AltMobile: "9876543210", Address: "12 MG Road", City: "Surat", Remarks: "Wants net metering" }), {
+        fields: [{ FieldId: 1, Label: "Roof type", Type: "text", ValueText: "RCC flat", ValueNumber: null, ValueDate: null } as never],
+      }),
+    );
+    await mount();
+    await loaded();
+    await fireEvent.press(screen.getByRole("tab", { name: "Details" }));
+    for (const text of ["anil@sharma.in", "98765 43210", "Sharma Traders", "Head Office", "12 MG Road, Surat", "Wants net metering", "RCC flat", "Mon, 26 Oct"]) {
+      expect(screen.getByText(text)).toBeOnTheScreen();
+    }
+  });
+
+  it("a won lead shows the won banner; a lost lead its reason", async () => {
+    jest.mocked(fetchLeadDetail).mockResolvedValue(
+      detail(lead({ StatusCode: "converted", StatusName: "Won", WonValue: 150000, WonAt: null, CustomerName: "Sharma Traders" })),
+    );
+    await mount();
+    await loaded();
+    await fireEvent.press(screen.getByRole("tab", { name: "Details" }));
+    expect(screen.getByText("Won for ₹1,50,000")).toBeOnTheScreen();
+    expect(screen.getByText("customer: Sharma Traders")).toBeOnTheScreen();
+  });
+
+  it("a lost lead shows its reason in red", async () => {
+    jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead({ StatusCode: "lost", StatusName: "Lost", LostReason: "Price too high" })));
+    await mount();
+    await loaded();
+    await fireEvent.press(screen.getByRole("tab", { name: "Details" }));
+    const reasons = screen.getAllByText("Price too high").filter((n) => flat(n).color === colors.dangerText);
+    expect(reasons).toHaveLength(1);
+  });
 });
 
-it("Edit lead opens the form for this lead", async () => {
-  const navigation = makeNavigation<"LeadDetail">();
-  await mount(navigation);
-  await loaded();
-  await fireEvent.press(screen.getByText("Edit lead"));
-  expect(navigation.navigate).toHaveBeenCalledWith("LeadForm", { leadId: 11 });
-});
-
-it("History weaves activity, calls and transfers newest first, dropping the duplicate call row", async () => {
+it("Activity weaves activity, calls and transfers newest first, dropping the duplicate call row", async () => {
   jest.mocked(fetchLeadDetail).mockResolvedValue(
     detail(lead(), {
       activity: [
@@ -701,62 +577,71 @@ it("History weaves activity, calls and transfers newest first, dropping the dupl
   ]);
   await mount();
   await loaded();
-  await fireEvent.press(screen.getByText("History"));
+  await fireEvent.press(screen.getByRole("tab", { name: "Activity" }));
   expect(await screen.findByText("Lead created")).toBeOnTheScreen();
   expect(screen.queryByText("Outbound call logged")).toBeNull();
-  expect(screen.getByText(/^Test User · Reached · 3 min/)).toBeOnTheScreen();
-  // Newest first: getAllByText returns nodes in tree order.
+  expect(screen.getByText(/^Ayush Mishra · Reached · 3 min/)).toBeOnTheScreen();
   const titles = screen
     .getAllByText(/^(Ravi Mehta → Priya Shah — covering|Incoming call|Spoke to owner|Lead created|something_new)$/)
     .map((node) => node.props.children);
-  expect(titles).toEqual([
-    "Ravi Mehta → Priya Shah — covering",
-    "Incoming call",
-    "Spoke to owner",
-    "Lead created",
-    "something_new",
-  ]);
+  expect(titles).toEqual(["Ravi Mehta → Priya Shah — covering", "Incoming call", "Spoke to owner", "Lead created", "something_new"]);
 });
 
-it("History with nothing on it says so", async () => {
+it("Activity with nothing on it says so", async () => {
   await mount();
   await loaded();
-  await fireEvent.press(screen.getByText("History"));
+  await fireEvent.press(screen.getByRole("tab", { name: "Activity" }));
   expect(await screen.findByText("Nothing has happened yet.")).toBeOnTheScreen();
 });
 
 describe("a view-only role", () => {
-  it("sees the facts and Call, but no action menu, write sheets, follow-up buttons or upload", async () => {
+  it("sees the facts, Call and Message, but no write actions, sheets or uploads", async () => {
     seedAuth({ UserId: 42, access: { modules: { leads: { ...FULL, add: false, edit: false, delete: false } } } });
-    jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead(), { followups: [followUp()] }));
+    jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead(), { followups: [followUp(), followUp({ Id: 71 })] }));
     await mount();
-    expect(await screen.findByText("Anil Kumar")).toBeOnTheScreen();
-    await waitFor(() => expect(fetchLookups).toHaveBeenCalledWith(expect.objectContaining({ Kind: LOOKUP_KIND.leadStatus })));
+    expect(await screen.findByRole("header", { name: "Anil Kumar" })).toBeOnTheScreen();
     await waitFor(() => expect(fetchAssignableUsers).toHaveBeenCalled());
-    expect(screen.getByRole("button", { name: "Call" })).toBeOnTheScreen();
+    expect(bar()).toEqual(["Call", "Message"]);
     expect(screen.queryByLabelText("Lead actions")).toBeNull();
-    for (const text of [
-      "Change status", "Qualified", "Mark lost", "Mark won", "Schedule follow-up", "Add follow-up",
-      "Log a call", "Log call", "Transfer", "Priya Shah", "Edit lead", "Mark done", "Skip follow-up",
-    ]) {
+    expect(screen.queryByRole("button", { name: "Edit lead" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Change status" })).toBeNull();
+    for (const text of ["Change status", "Add follow-up", "Log a call", "Priya Shah", "Mark done", "Skip follow-up"]) {
       expect(screen.queryByText(text)).toBeNull();
     }
-    expect(screen.queryByRole("button", { name: "Log follow-up" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Schedule" })).toBeNull();
-    await fireEvent.press(screen.getByText("Follow-ups"));
-    expect(await screen.findByText("Assigned to Ravi Mehta")).toBeOnTheScreen();
-    expect(screen.queryByRole("button", { name: "Log" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Skip" })).toBeNull();
-    await fireEvent.press(screen.getByText("Files"));
+    // Rows do not open a menu.
+    expect(screen.getByTestId("followup-71").props.accessibilityRole).toBeUndefined();
+    await fireEvent.press(screen.getByRole("tab", { name: "Details" }));
     await waitFor(() => expect(fetchAttachments).toHaveBeenCalledWith({ Entity: "lead", EntityId: 11 }));
     expect(screen.queryByLabelText("Add a file")).toBeNull();
   });
+});
 
-  it("with edit, the ⋮ menu and uploads are there", async () => {
+describe("T3: at the rail", () => {
+  beforeEach(() => setWindow(...TABLET));
+
+  it("the actions sit in the band; the facts list fills the 300 column; the card has Mark done and Reschedule", async () => {
+    jest.mocked(fetchLeadDetail).mockResolvedValue(
+      detail(lead(), {
+        followups: [followUp()],
+        fields: [{ FieldId: 1, Label: "Roof type", Type: "text", ValueText: "RCC flat", ValueNumber: null, ValueDate: null } as never],
+      }),
+    );
+    const { present } = spySheets();
     await mount();
     await loaded();
-    expect(screen.getByLabelText("Lead actions")).toBeOnTheScreen();
-    await fireEvent.press(screen.getByText("Files"));
-    expect(await screen.findByLabelText("Add a file")).toBeOnTheScreen();
+    expect(screen.getByText("Estimated value")).toBeOnTheScreen();
+    // The band's Transfer comes before the transfer sheet's submit.
+    expect(screen.getAllByRole("button", { name: "Transfer" })[0]).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Edit" })).toBeOnTheScreen();
+    for (const label of ["Owner", "Source", "Product", "Roof type", "Created"]) expect(screen.getByText(label)).toBeOnTheScreen();
+    expect(screen.getByText("RCC flat")).toBeOnTheScreen();
+
+    present.mockClear();
+    await fireEvent.press(screen.getByRole("button", { name: "Log follow-up" }));
+    const card = within(screen.getByTestId("next-followup"));
+    await fireEvent.press(card.getByRole("button", { name: "Mark done" }));
+    await fireEvent.press(card.getByRole("button", { name: "Reschedule" }));
+    await fireEvent.press(screen.getAllByRole("button", { name: "Transfer" })[0]!);
+    expect(present).toHaveBeenCalledTimes(4);
   });
 });

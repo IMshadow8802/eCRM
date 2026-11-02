@@ -7,15 +7,28 @@ import {
   FOLLOWUP_VIEWS,
   followUpTypeLabel,
   followUpViewParams,
+  clock,
+  doneTodayParams,
+  dueTitle,
+  FIRST_FOLLOWUPS,
+  firstOpenStatus,
+  followUpLine,
+  followUpMeta,
+  fromNow,
   isActiveLead,
   LEAD_QUEUES,
   leadQueueParams,
-  leadTone,
+  leadStatusBadge,
   localDay,
   nextOpen,
+  openRank,
+  openValue,
   rupees,
+  shortDay,
+  whenText,
   WHEN_CHOICES,
 } from "./leadHelpers";
+import { lead } from "../../test/fixtures";
 
 // 23:30 IST is already 18:00 UTC — still 2 Nov either way, but 3 Nov's "tomorrow"
 // must come from local getters too.
@@ -35,15 +48,22 @@ describe("lifecycle", () => {
     expect(["converted", "lost", "junk", null, undefined].map(isActiveLead)).toEqual([false, false, false, false, false]);
   });
 
-  it("gives every code its tone, primary when there is none", () => {
-    expect(["open", "qualified", "converted", "lost", "junk", null].map(leadTone)).toEqual([
-      "primary",
-      "purple",
-      "success",
-      "danger",
-      "neutral",
-      "primary",
-    ]);
+  it("G1: ranks open-coded statuses by SortOrder, so New / Contacted / Proposal get their own badge", () => {
+    const rows = [
+      { Id: 3, Code: "open", SortOrder: 3 },
+      { Id: 1, Code: "open", SortOrder: 1 },
+      { Id: 9, Code: "qualified", SortOrder: 2 },
+      { Id: 2, Code: "open", SortOrder: 2 },
+      { Id: 4, Code: "open", SortOrder: 4 },
+    ] as Lookup[];
+    expect([1, 2, 3, 4, 77].map((id) => openRank(rows, id))).toEqual([0, 1, 2, 3, 0]);
+    expect(firstOpenStatus(rows)).toBe(1);
+    expect(firstOpenStatus([status(9, "qualified")])).toBeNull();
+    expect(leadStatusBadge(rows, "open", 1)).toMatchObject({ tone: "sky", chip: "sky" });
+    expect(leadStatusBadge(rows, "open", 2)).toMatchObject({ tone: "teal" });
+    expect(leadStatusBadge(rows, "open", 4)).toMatchObject({ tone: "butter" });
+    expect(leadStatusBadge(rows, "lost", 8)).toMatchObject({ tone: "red", chip: "red" });
+    expect(leadStatusBadge(rows, "qualified", 9)).toMatchObject({ tone: "lilac" });
   });
 
   it("starts a new lead in the first open status, else the first status, else none", () => {
@@ -54,8 +74,13 @@ describe("lifecycle", () => {
 });
 
 describe("leadQueueParams", () => {
-  it("lists the four queues in order", () => {
-    expect(LEAD_QUEUES.map((q) => q.label)).toEqual(["Mine", "All", "Overdue", "Unassigned"]);
+  it("lists the five presets in order: E's four plus Unassigned (7.1)", () => {
+    expect(LEAD_QUEUES.map((q) => q.label)).toEqual(["Mine", "All", "Overdue", "New", "Unassigned"]);
+  });
+
+  it("New is every lead you can see in the first open status; a status pill does not override it", () => {
+    expect(leadQueueParams("new", 7, 42, "", 1)).toMatchObject({ OwnerId: null, StatusId: 1, Overdue: false, Unassigned: false });
+    expect(leadQueueParams("mine", 7, 42, "", 1).StatusId).toBe(7);
   });
 
   it("mine narrows to the caller, a status number to that status, an empty term to none", () => {
@@ -94,6 +119,12 @@ describe("leadQueueParams", () => {
 });
 
 describe("followUpViewParams", () => {
+  it("Done today (G20, 118): done follow-ups whose DoneAt falls today, an exclusive end at tomorrow 00:00", () => {
+    expect(doneTodayParams(now)).toEqual({ Status: "done", DoneFrom: "2026-11-02", DoneTo: "2026-11-03" });
+    expect(doneTodayParams(new Date(2026, 11, 31, 9))).toEqual({ Status: "done", DoneFrom: "2026-12-31", DoneTo: "2027-01-01" });
+    expectToday(() => doneTodayParams().DoneFrom);
+  });
+
   it("lists the four views in order", () => {
     expect(FOLLOWUP_VIEWS.map((v) => v.label)).toEqual(["Today", "Overdue", "Upcoming", "All"]);
   });
@@ -137,7 +168,78 @@ describe("follow-ups", () => {
   });
 });
 
+describe("the lead row's follow-up line (G2)", () => {
+  const at = (d: number, h = 0, m = 0) => new Date(2026, 10, d, h, m).toISOString();
+  it("planned: the day in words and the time when there is one", () => {
+    expect(followUpLine(lead({ NextFollowupDate: at(2, 16, 30) }), now)).toEqual({ text: "Follow-up today 4:30 pm", tone: "default" });
+    expect(followUpLine(lead({ NextFollowupDate: at(3, 11) }), now)).toEqual({ text: "Follow-up tomorrow 11:00 am", tone: "default" });
+    expect(followUpLine(lead({ NextFollowupDate: at(4) }), now)).toEqual({ text: "Follow-up Wed, 4 Nov", tone: "default" });
+  });
+  it("overdue is red with the full date; none is muted; a closed lead owes nothing", () => {
+    expect(followUpLine(lead({ NextFollowupDate: at(1, 17), IsOverdue: true }), now)).toEqual({
+      text: "Follow-up overdue · Sun, 1 Nov 5:00 pm",
+      tone: "danger",
+    });
+    expect(followUpLine(lead({ NextFollowupDate: "2026-11-01", IsOverdue: true }), now).text).toBe("Follow-up overdue · Sun, 1 Nov");
+    expect(followUpLine(lead(), now)).toEqual({ text: "No follow-up planned", tone: "muted" });
+    expect(followUpLine(lead({ StatusCode: "converted", NextFollowupDate: at(3) }), now).text).toBe("No follow-up planned");
+  });
+});
+
+describe("open value (G3)", () => {
+  it("sums EstValue over open and qualified leads only", () => {
+    const rows = [
+      lead({ EstValue: 100000 }),
+      lead({ StatusCode: "qualified", EstValue: 23000 }),
+      lead({ StatusCode: "converted", EstValue: 5 }),
+      lead({ EstValue: null }),
+    ];
+    expect(openValue(rows, 4)).toBe(123000);
+  });
+  it("is unknown when the list holds more than one 200-row page", () => {
+    expect(openValue([lead({ EstValue: 1 })], 201)).toBeNull();
+    expect(openValue([], 0)).toBe(0);
+  });
+});
+
 describe("dates and money", () => {
+  it("writes E's day and clock", () => {
+    expect(shortDay(new Date(2026, 10, 3, 11))).toBe("Tue, 3 Nov");
+    expect([[11, 0], [17, 5], [12, 30], [0, 15]].map(([h, m]) => clock(new Date(2026, 10, 3, h!, m!)))).toEqual([
+      "11:00 am",
+      "5:05 pm",
+      "12:30 pm",
+      "12:15 am",
+    ]);
+    expect(whenText(new Date(2026, 10, 9, 10, 30).toISOString(), now)).toBe("Mon, 9 Nov 10:30 am");
+    expect(whenText(null, now)).toBeNull();
+    expect(whenText("nope", now)).toBeNull();
+    expect(dueTitle(new Date(2026, 10, 3, 11).toISOString())).toBe("Tue, 3 Nov · 11:00 am");
+    expect(dueTitle("2026-11-03")).toBe("Tue, 3 Nov");
+    expect(dueTitle(null)).toBe("—");
+  });
+
+  it("says how far away an instant is", () => {
+    expect(fromNow(new Date(2026, 10, 3, 19, 30).toISOString(), now)).toBe("in 20 h");
+    expect(fromNow(new Date(2026, 10, 2, 23, 50).toISOString(), now)).toBe("in 20 min");
+    expect(fromNow(new Date(2026, 10, 6, 23, 30).toISOString(), now)).toBe("in 4 d");
+    expect(fromNow(new Date(2026, 10, 2, 21, 30).toISOString(), now)).toBe("2 h ago");
+    expect(fromNow(null, now)).toBeNull();
+  });
+
+  it("a follow-up row reads type · day · time, or · done", () => {
+    const f = (patch: Partial<FollowUp>) =>
+      ({ Type: "visit", Status: "open", DueAt: new Date(2026, 10, 7, 15).toISOString(), DoneAt: null, ...patch }) as FollowUp;
+    expect(followUpMeta(f({}))).toBe("Visit · Sat, 7 Nov · 3:00 pm");
+    expect(followUpMeta(f({ DueAt: "2026-11-07" }))).toBe("Visit · Sat, 7 Nov");
+    expect(followUpMeta(f({ Type: "call", Status: "done", DoneAt: new Date(2026, 9, 29, 9).toISOString() }))).toBe("Call · Thu, 29 Oct · done");
+    expect(followUpMeta(f({ Status: "skipped" }))).toBe("Visit · Sat, 7 Nov · skipped");
+  });
+
+  it("the form's first follow-up: Tomorrow, In 3 days, Pick date, None", () => {
+    expect(FIRST_FOLLOWUPS.map((c) => c.label)).toEqual(["Tomorrow", "In 3 days", "Pick date", "None"]);
+  });
+
   it("formats a local Y-M-D with padding", () => {
     expect(localDay(new Date(2026, 0, 5))).toBe("2026-01-05");
     expect(localDay(now)).toBe("2026-11-02");

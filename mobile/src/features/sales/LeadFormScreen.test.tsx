@@ -7,6 +7,7 @@ import { fetchAssignableUsers } from "../../api/userQueries";
 import type { Access, AssignableUser, CustomFieldDef, LeadDetail, Lookup } from "../../types/api";
 import { envelope, lead, localDay, serverError } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
+import { PHONE, setWindow, TABLET } from "../../test/window";
 import LeadFormScreen from "./LeadFormScreen";
 
 jest.mock("../../api/configQueries");
@@ -52,9 +53,11 @@ const fillRequired = async () => {
   await fireEvent.changeText(screen.getByPlaceholderText("10-digit mobile number"), "+91 98250 12345");
 };
 
-const save = () => fireEvent.press(screen.getByText("Add lead"));
+const saveButton = () => screen.getByRole("button", { name: "Save" });
+const save = () => fireEvent.press(saveButton());
 
 beforeEach(() => {
+  setWindow(...PHONE);
   seedAuth({ UserId: 42, access: grant(true, true) });
   jest.mocked(fetchLookups).mockImplementation(async ({ Kind }) =>
     Kind === "lead_status" ? STATUSES : Kind === "lead_source" ? SOURCES : [],
@@ -72,12 +75,12 @@ describe("create", () => {
     seedAuth({ UserId: 42, access: grant(false, true) });
     await mount();
     expect(await screen.findByText("You can't add leads")).toBeOnTheScreen();
-    expect(screen.queryByText("Add lead")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
   });
 
   it("needs a name, then a mobile number", async () => {
     await mount();
-    await screen.findAllByText("Priya Shah");
+    await screen.findAllByText("Priya Shah (you)");
     await save();
     expect(screen.getByText("The lead needs a name.")).toBeOnTheScreen();
     await fireEvent.changeText(screen.getByPlaceholderText("Who is it"), "Meera Joshi");
@@ -98,7 +101,7 @@ describe("create", () => {
     const navigation = makeNavigation<"LeadForm">();
     const { queryClient } = await mount(undefined, navigation);
     const invalidate = jest.spyOn(queryClient, "invalidateQueries");
-    await screen.findAllByText("Priya Shah");
+    await screen.findAllByText("Priya Shah (you)");
     await fillRequired();
     await fireEvent.press(screen.getByText("Walk-in"));
     await fireEvent.changeText(screen.getByPlaceholderText("Amount in rupees"), "1,20,000");
@@ -134,18 +137,18 @@ describe("create", () => {
     jest.mocked(fetchAssignableUsers).mockReturnValue(new Promise((resolve) => (release = resolve)));
     await mount();
     await screen.findAllByText("New");
-    expect(screen.getByText("Add lead")).toBeDisabled();
+    expect(saveButton()).toBeDisabled();
     release([person(42, "Priya Shah")]);
-    await waitFor(() => expect(screen.getByText("Add lead")).toBeEnabled());
+    await waitFor(() => expect(saveButton()).toBeEnabled());
   });
 
   it("a failed list says so, offers a retry, and keeps the save shut", async () => {
     jest.mocked(fetchAssignableUsers).mockRejectedValueOnce(serverError(500, "boom"));
     await mount();
     expect(await screen.findByText("Could not load the statuses or the team.")).toBeOnTheScreen();
-    expect(screen.getByText("Add lead")).toBeDisabled();
+    expect(saveButton()).toBeDisabled();
     await fireEvent.press(screen.getByText("Try again"));
-    await waitFor(() => expect(screen.getByText("Add lead")).toBeEnabled());
+    await waitFor(() => expect(saveButton()).toBeEnabled());
     expect(screen.queryByText("Could not load the statuses or the team.")).toBeNull();
   });
 
@@ -153,7 +156,7 @@ describe("create", () => {
     jest.mocked(createLead).mockResolvedValue({ ...envelope({ Id: 0 }), data: null });
     const navigation = makeNavigation<"LeadForm">();
     await mount(undefined, navigation);
-    await screen.findAllByText("Priya Shah");
+    await screen.findAllByText("Priya Shah (you)");
     await fillRequired();
     await save();
     await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
@@ -178,7 +181,8 @@ describe("create", () => {
   it("a missing required custom field blocks the save; filled, it is serialised", async () => {
     jest.mocked(fetchCustomFields).mockResolvedValue([fieldDef({})]);
     await mount();
-    expect(await screen.findByText("Extra details")).toBeOnTheScreen();
+    expect(await screen.findByText("More details")).toBeOnTheScreen();
+    expect(screen.getByText("Custom field")).toBeOnTheScreen();
     await fillRequired();
     await save();
     expect(screen.getByText("Roof type is required.")).toBeOnTheScreen();
@@ -194,7 +198,7 @@ describe("create", () => {
 
   it("a non-number estimated value is refused", async () => {
     await mount();
-    await screen.findAllByText("Priya Shah");
+    await screen.findAllByText("Priya Shah (you)");
     await fillRequired();
     await fireEvent.changeText(screen.getByPlaceholderText("Amount in rupees"), "abc");
     await save();
@@ -206,7 +210,7 @@ describe("create", () => {
     jest.mocked(createLead).mockRejectedValue(serverError(400, "Mobile number must be 10 digits"));
     const navigation = makeNavigation<"LeadForm">();
     await mount(undefined, navigation);
-    await screen.findAllByText("Priya Shah");
+    await screen.findAllByText("Priya Shah (you)");
     await fireEvent.changeText(screen.getByPlaceholderText("Who is it"), "Meera Joshi");
     await fireEvent.changeText(screen.getByPlaceholderText("10-digit mobile number"), "98250");
     await save();
@@ -220,7 +224,7 @@ describe("create", () => {
     jest.mocked(createLead).mockResolvedValue(envelope({ Id: 0 }, { success: false, message: "Duplicate mobile" }));
     const navigation = makeNavigation<"LeadForm">();
     await mount(undefined, navigation);
-    await screen.findAllByText("Priya Shah");
+    await screen.findAllByText("Priya Shah (you)");
     await fillRequired();
     await save();
     expect(await screen.findByText("Duplicate mobile")).toBeOnTheScreen();
@@ -229,12 +233,78 @@ describe("create", () => {
   });
 });
 
+describe("E 16", () => {
+  const LABELS = /^(Name|Mobile|Alternate mobile|Company|Source|Product|Estimated value|Status|Owner|First follow-up|Roof type|Email|City|State|Pincode|Address|Remarks)( \*)?$/;
+
+  it("Save is in the band; the fields run in E's order, custom fields under More details", async () => {
+    jest.mocked(fetchCustomFields).mockResolvedValue([fieldDef({})]);
+    await mount();
+    await screen.findByText("More details");
+    expect(screen.getByText("New lead")).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Close" })).toBeOnTheScreen();
+    // Field labels only: a dropdown's sheet title repeats its label as a header.
+    const labels = screen.getAllByText(LABELS).filter((n) => n.props.accessibilityRole !== "header");
+    expect(labels.map((n) => String([n.props.children].flat()[0]))).toEqual([
+      "Name", "Mobile", "Alternate mobile", "Company", "Source", "Product", "Estimated value", "Status", "Owner",
+      "First follow-up", "Roof type", "Email", "City", "State", "Pincode", "Address", "Remarks",
+    ]);
+    // Me as owner reads "(you)".
+    expect(screen.getAllByText("Priya Shah (you)").length).toBeGreaterThan(0);
+  });
+
+  it("first follow-up presets: Tomorrow by default with its help line; In 3 days; Pick date asks for a day", async () => {
+    await mount();
+    await screen.findAllByText("Priya Shah (you)");
+    const day = (n: number) => {
+      const d = new Date();
+      d.setDate(d.getDate() + n);
+      return `Call on ${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()]}, ${d.getDate()} ${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d.getMonth()]}`;
+    };
+    expect(screen.getAllByRole("tab").map((t) => t.props.accessibilityLabel)).toEqual(["Tomorrow", "In 3 days", "Pick date", "None"]);
+    expect(screen.getByText(day(1))).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("tab", { name: "In 3 days" }));
+    expect(screen.getByText(day(3))).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByRole("tab", { name: "Pick date" }));
+    expect(screen.queryByText(/^Call on/)).toBeNull();
+    await fillRequired();
+    await save();
+    expect(screen.getByText("Pick the day of the first follow-up.")).toBeOnTheScreen();
+    expect(createLead).not.toHaveBeenCalled();
+  });
+
+  it("In 3 days books that local day", async () => {
+    await mount();
+    await screen.findAllByText("Priya Shah (you)");
+    await fillRequired();
+    await fireEvent.press(screen.getByRole("tab", { name: "In 3 days" }));
+    await save();
+    await waitFor(() => expect(createLead).toHaveBeenCalledWith(expect.objectContaining({ FirstFollowupAt: localDay(3) })));
+  });
+
+  it("T4: at the rail the form is one centred 640 card; the band holds Cancel and Save lead; Owner pairs with the first custom field", async () => {
+    setWindow(...TABLET);
+    jest.mocked(fetchCustomFields).mockResolvedValue([fieldDef({}), fieldDef({ Id: 71, Label: "Floors", Type: "text", IsRequired: false })]);
+    const navigation = makeNavigation<"LeadForm">();
+    await mount(undefined, navigation);
+    await screen.findAllByText("Priya Shah (you)");
+    expect(screen.getByRole("button", { name: "Save lead" })).toBeOnTheScreen();
+    expect(screen.getByText(/· reminder in your Follow-ups queue$/)).toBeOnTheScreen();
+    // The paired field is not repeated under More details.
+    expect(screen.getAllByText(/^Roof type/).filter((n) => n.props.accessibilityRole !== "header")).toHaveLength(1);
+    expect(screen.getByText("More details")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Cancel" }));
+    expect(navigation.goBack).toHaveBeenCalled();
+  });
+});
+
 describe("edit", () => {
   it("is not offered without the leads edit right", async () => {
     seedAuth({ UserId: 42, access: grant(true, false) });
     await mount(11);
     expect(await screen.findByText("You can't edit leads")).toBeOnTheScreen();
-    expect(screen.queryByText("Save changes")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    expect(screen.getByText("Edit lead")).toBeOnTheScreen();
   });
 
   it("a failed load offers a retry", async () => {
@@ -257,10 +327,10 @@ describe("edit", () => {
     expect(screen.queryByText("Status")).toBeNull();
     expect(screen.queryByText("Owner")).toBeNull();
     expect(screen.queryByText("First follow-up")).toBeNull();
-    expect(screen.queryByText("Extra details")).toBeNull();
+    expect(screen.queryByText("More details")).toBeNull();
 
     await fireEvent.changeText(screen.getByDisplayValue("Surat"), "Vadodara");
-    await fireEvent.press(screen.getByText("Save changes"));
+    await save();
 
     await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
     expect(createLead).not.toHaveBeenCalled();

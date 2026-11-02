@@ -1,41 +1,51 @@
-import { useMemo, useState } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { useMemo, useState, type ReactNode } from "react";
+import { StyleSheet, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { StackScreenProps } from "@react-navigation/stack";
-import { Lock } from "lucide-react-native";
+import { Calendar, Lock } from "lucide-react-native";
 
 import { fetchCustomFields } from "../../api/configQueries";
-import {
-  createLead,
-  fetchLeadDetail,
-  updateLead,
-  type LeadBaseFields,
-} from "../../api/leadQueries";
+import { createLead, fetchLeadDetail, updateLead, type LeadBaseFields } from "../../api/leadQueries";
 import { apiErrorMessage } from "../../api/errors";
 import { useAccess } from "../auth/useAccess";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
-import type { ApiEnvelope, Lead } from "../../types/api";
-import { spacing, SCREEN_PADDING } from "../../theme";
+import type { ApiEnvelope, CustomFieldDef, Lead } from "../../types/api";
+import { metrics, spacing } from "../../theme";
 import {
+  Band,
+  BandSheet,
   Button,
+  Card,
+  DateField,
   DynamicField,
   EmptyState,
+  ErrorCard,
+  FieldHelp,
+  FieldLabel,
+  FieldRow,
+  GroupHeader,
+  HeaderButton,
   Input,
   MobileInput,
   Screen,
-  ScreenHeader,
-  ScreenLoader,
+  SegmentedTabs,
   Select,
+  SkeletonRows,
   Text,
+  useLayout,
 } from "../../ui";
+import { asOptions, blankDraft, missingRequired, serialiseCustomFields } from "../support/ticketHelpers";
 import {
-  asOptions,
-  blankDraft,
-  missingRequired,
-  serialiseCustomFields,
-} from "../support/ticketHelpers";
-import { defaultStatus, dueFromChoice, WHEN_CHOICES, type WhenChoice } from "./leadHelpers";
+  addDays,
+  defaultStatus,
+  FIRST_FOLLOWUPS,
+  leadStatusBadge,
+  localDay,
+  parseDate,
+  shortDay,
+  type FirstFollowUp,
+} from "./leadHelpers";
 import { useLeadRefData } from "./useLeadRefData";
 
 type Props = StackScreenProps<RootStackParamList, "LeadForm">;
@@ -47,17 +57,7 @@ type Draft = Record<
 >;
 
 const EMPTY: Draft = {
-  Name: "",
-  MobileNo: "",
-  AltMobile: "",
-  Email: "",
-  Company: "",
-  Address: "",
-  City: "",
-  State: "",
-  Pincode: "",
-  EstValue: "",
-  Remarks: "",
+  Name: "", MobileNo: "", AltMobile: "", Email: "", Company: "", Address: "", City: "", State: "", Pincode: "", EstValue: "", Remarks: "",
 };
 
 const draftOf = (lead: Lead): Draft => ({
@@ -76,12 +76,59 @@ const draftOf = (lead: Lead): Draft => ({
 
 const orNull = (s: string) => s.trim() || null;
 
+/** The day a first-follow-up choice books, or null (None, or Pick with no date yet). */
+const firstDay = (choice: FirstFollowUp, picked: string | null, now = new Date()): string | null =>
+  choice === "tomorrow" ? localDay(addDays(now, 1)) : choice === "3days" ? localDay(addDays(now, 3)) : choice === "pick" ? picked : null;
+
+/** The form's frame (E 16 / T4): the band holds Save; at the rail the fields sit in a centred 640 card. */
+function Frame({
+  title, onClose, onSave, saving, disabled, children,
+}: {
+  title: string;
+  onClose: () => void;
+  onSave?: () => void;
+  saving?: boolean;
+  disabled?: boolean;
+  children: ReactNode;
+}) {
+  const layout = useLayout();
+  const wide = layout.nav === "rail";
+  const save = onSave ? (
+    <HeaderButton label={saving ? "Saving…" : wide ? "Save lead" : "Save"} onPress={onSave} disabled={disabled || saving} />
+  ) : null;
+  return (
+    <Screen band>
+      <Band
+        variant="record"
+        title={title}
+        titleVariant={wide ? "h1" : "h2"}
+        onBack={onClose}
+        backIcon="close"
+        actions={
+          <View style={styles.bandActions}>
+            {wide ? <HeaderButton label="Cancel" variant="ghost" onPress={onClose} /> : null}
+            {save}
+          </View>
+        }
+      />
+      <BandSheet scroll padded={!wide} style={wide ? styles.sheetWide : undefined} contentBottom={spacing[10]}>
+        {wide ? (
+          <View style={[styles.column, { maxWidth: layout.contentMaxWidth }]}>
+            <Card padded={false} gap={0} style={styles.card}>{children}</Card>
+          </View>
+        ) : (
+          children
+        )}
+      </BandSheet>
+    </Screen>
+  );
+}
+
 /**
- * Add or edit a lead. Status, owner and the first follow-up are create-only:
- * afterwards they move through the detail screen's status sheet, Transfer and
- * the follow-up sheets, which keep history. Custom fields are filled on
- * create; editing them stays on the web (the edit sends CustomJSON null so
- * stored values survive).
+ * Add or edit a lead (E 16; T4 at the rail). Status, owner, the first
+ * follow-up and the custom fields are create-only: afterwards they move
+ * through the status sheet, Transfer and the follow-up sheets, which keep
+ * history (the edit sends CustomJSON null so stored values survive).
  */
 export default function LeadFormScreen({ route, navigation }: Props) {
   const leadId = route.params?.leadId;
@@ -95,27 +142,27 @@ export default function LeadFormScreen({ route, navigation }: Props) {
     enabled: editing && allowed,
   });
   const lead = detailQuery.data?.lead ?? null;
+  const title = editing ? "Edit lead" : "New lead";
 
   // Courtesy only — the server refuses anyway; this just spares a form that cannot be saved.
   if (!allowed) {
     return (
-      <Screen>
-        <ScreenHeader title={editing ? "Edit lead" : "Add a lead"} onBack={navigation.goBack} />
+      <Frame title={title} onClose={navigation.goBack}>
         <EmptyState
+          module="leads"
           icon={Lock}
           title={editing ? "You can't edit leads" : "You can't add leads"}
           message="Your role does not allow it. Ask an admin if you need it."
         />
-      </Screen>
+      </Frame>
     );
   }
 
   if (editing && !lead) {
     return (
-      <Screen>
-        <ScreenHeader title="Edit lead" onBack={navigation.goBack} />
-        <ScreenLoader failed={detailQuery.isError} onRetry={detailQuery.refetch} />
-      </Screen>
+      <Frame title={title} onClose={navigation.goBack}>
+        {detailQuery.isError ? <ErrorCard onRetry={() => void detailQuery.refetch()} /> : <SkeletonRows rows={5} />}
+      </Frame>
     );
   }
 
@@ -129,6 +176,7 @@ function LeadForm({ lead, navigation }: { lead: Lead | null; navigation: Props["
   const leadId = lead?.Id;
   const queryClient = useQueryClient();
   const userId = useAuthStore((s) => s.UserId);
+  const wide = useLayout().nav === "rail";
 
   const [draft, setDraft] = useState<Draft>(() => (lead ? draftOf(lead) : EMPTY));
   const [sourceId, setSourceId] = useState<number | null>(lead?.SourceId ?? null);
@@ -137,7 +185,8 @@ function LeadForm({ lead, navigation }: { lead: Lead | null; navigation: Props["
   // open status; me as owner when I am assignable) is derived, not copied in.
   const [statusPick, setStatusPick] = useState<number | undefined>(undefined);
   const [ownerPick, setOwnerPick] = useState<number | null | undefined>(undefined);
-  const [firstFollowUp, setFirstFollowUp] = useState<WhenChoice | "none">("tomorrow");
+  const [first, setFirst] = useState<FirstFollowUp>("tomorrow");
+  const [pickedDay, setPickedDay] = useState<string | null>(null);
   const [custom, setCustom] = useState<Record<number, string | boolean>>({});
   const [error, setError] = useState<string | null>(null);
 
@@ -154,21 +203,30 @@ function LeadForm({ lead, navigation }: { lead: Lead | null; navigation: Props["
   // Won is never a starting status — convert writes it, with a value.
   const startable = useMemo(() => statuses.filter((s) => s.Code !== "converted"), [statuses]);
   const statusId = statusPick ?? defaultStatus(startable);
-  const ownerId =
-    ownerPick !== undefined ? ownerPick : users.some((u) => u.Id === userId) ? userId : null;
+  const ownerId = ownerPick !== undefined ? ownerPick : users.some((u) => u.Id === userId) ? userId : null;
   const customDraft = { ...blankDraft(fieldDefs), ...custom };
+  const followUpDay = firstDay(first, pickedDay);
 
   const set = (key: keyof Draft) => (text: string) => setDraft((d) => ({ ...d, [key]: text }));
 
   const userOptions = useMemo(
-    () => users.map((u) => ({ value: u.Id, label: u.FullName })),
-    [users],
+    () =>
+      users.map((u) => ({
+        value: u.Id,
+        label: u.Id === userId ? `${u.FullName} (you)` : u.FullName,
+        avatar: { name: u.FullName, uri: u.Avatar, userId: u.Id },
+      })),
+    [users, userId],
   );
-  const productOptions = useMemo(
-    () => products.map((p) => ({ value: p.Id, label: p.Name })),
-    [products],
+  const productOptions = useMemo(() => products.map((p) => ({ value: p.Id, label: p.Name })), [products]);
+  const statusOptions = useMemo(
+    () =>
+      startable.map((s) => {
+        const badge = leadStatusBadge(statuses, s.Code, s.Id);
+        return { value: s.Id, label: s.Value, badge: { tone: badge.tone, icon: badge.icon }, chip: { tone: badge.chip ?? ("slate" as const), icon: badge.icon } };
+      }),
+    [startable, statuses],
   );
-  const statusOptions = useMemo(() => startable.map((s) => ({ value: s.Id, label: s.Value })), [startable]);
 
   const save = useMutation({
     mutationFn: (base: LeadBaseFields): Promise<ApiEnvelope<{ Id: number }>> =>
@@ -178,7 +236,7 @@ function LeadForm({ lead, navigation }: { lead: Lead | null; navigation: Props["
             ...base,
             StatusId: statusId,
             OwnerId: ownerId,
-            FirstFollowupAt: firstFollowUp === "none" ? null : dueFromChoice(firstFollowUp),
+            FirstFollowupAt: followUpDay,
             CustomJSON: serialiseCustomFields(fieldDefs, customDraft),
           }),
     onSuccess: (response) => {
@@ -194,20 +252,18 @@ function LeadForm({ lead, navigation }: { lead: Lead | null; navigation: Props["
       if (!editing && id) navigation.replace("LeadDetail", { leadId: id });
       else navigation.goBack();
     },
-    onError: (err) =>
-      setError(apiErrorMessage(err, "Could not save this lead. Check your connection.")),
+    onError: (err) => setError(apiErrorMessage(err, "Could not save this lead. Check your connection.")),
   });
 
   const submit = () => {
     if (!draft.Name.trim()) return setError("The lead needs a name.");
     if (!draft.MobileNo.trim()) return setError("A mobile number is required.");
     const value = draft.EstValue.trim() ? Number(draft.EstValue.replace(/,/g, "")) : null;
-    if (value != null && (!Number.isFinite(value) || value < 0)) {
-      return setError("Estimated value must be a number.");
-    }
+    if (value != null && (!Number.isFinite(value) || value < 0)) return setError("Estimated value must be a number.");
     if (!editing) {
       const missing = missingRequired(fieldDefs, customDraft);
       if (missing.length) return setError(`${missing[0]!.Label} is required.`);
+      if (first === "pick" && !pickedDay) return setError("Pick the day of the first follow-up.");
     }
     setError(null);
     save.mutate({
@@ -227,182 +283,137 @@ function LeadForm({ lead, navigation }: { lead: Lead | null; navigation: Props["
     });
   };
 
+  const customField = (def: CustomFieldDef) => (
+    <DynamicField key={def.Id} field={def} value={customDraft[def.Id] ?? ""} onChange={(next) => setCustom((c) => ({ ...c, [def.Id]: next }))} />
+  );
+  // T4 pairs Owner with the first custom field; the rest go under More details.
+  const [pairedField, ...moreFields] = !editing && wide ? fieldDefs : [undefined, ...(!editing ? fieldDefs : [])];
+  const day = parseDate(followUpDay);
+
+  const owner = (
+    <Select
+      label="Owner"
+      value={ownerId}
+      options={userOptions}
+      onChange={(v) => setOwnerPick(v as number)}
+      placeholder="Nobody yet"
+      sheetTitle="Who works this lead?"
+    />
+  );
+
   return (
-    <Screen>
-      <ScreenHeader
-        title={editing ? "Edit lead" : "Add a lead"}
-        subtitle={lead?.Name}
-        tint="success"
-        onBack={navigation.goBack}
+    <Frame title={editing ? "Edit lead" : "New lead"} onClose={navigation.goBack} onSave={submit} saving={save.isPending} disabled={!choicesReady}>
+      {error ? <Text variant="label" color="dangerText" style={styles.error}>{error}</Text> : null}
+      {!editing && choicesState === "failed" ? (
+        <View style={[styles.field, styles.retry]}>
+          <Text variant="label" color="dangerText" style={styles.flex}>Could not load the statuses or the team.</Text>
+          <Button title="Try again" size="sm" variant="secondary" onPress={retryChoices} />
+        </View>
+      ) : null}
+
+      <Field>
+        <Input label="Name" required value={draft.Name} onChangeText={set("Name")} placeholder="Who is it" />
+      </Field>
+      <Pair
+        left={<MobileInput label="Mobile" required value={draft.MobileNo} onChangeText={set("MobileNo")} placeholder="10-digit mobile number" />}
+        right={<MobileInput label="Alternate mobile" value={draft.AltMobile} onChangeText={set("AltMobile")} placeholder="Optional" />}
       />
-
-      <ScrollView
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.block}>
-          <Text variant="overline" color="textMuted">
-            Contact
-          </Text>
-          <Input label="Name" required value={draft.Name} onChangeText={set("Name")} placeholder="Who is it" />
-          <MobileInput
-            label="Mobile"
-            required
-            value={draft.MobileNo}
-            onChangeText={set("MobileNo")}
-            placeholder="10-digit mobile number"
-          />
-          <MobileInput
-            label="Alternate mobile"
-            value={draft.AltMobile}
-            onChangeText={set("AltMobile")}
-            placeholder="Optional"
-          />
-          <Input
-            label="Email"
-            value={draft.Email}
-            onChangeText={set("Email")}
-            placeholder="Optional"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          <Input label="Company" value={draft.Company} onChangeText={set("Company")} placeholder="Optional" />
-        </View>
-
-        <View style={styles.block}>
-          <Text variant="overline" color="textMuted">
-            Interest
-          </Text>
-          <Select
-            label="Source"
-            value={sourceId}
-            options={asOptions(sources)}
-            onChange={(v) => setSourceId(v as number)}
-            placeholder="Not recorded"
-            sheetTitle="Where did it come from?"
-          />
-          <Select
-            label="Product"
-            value={productId}
-            options={productOptions}
-            onChange={(v) => setProductId(v as number)}
-            placeholder="Not chosen"
-            sheetTitle="Which product?"
-          />
-          <Input
-            label="Estimated value (₹)"
-            value={draft.EstValue}
-            onChangeText={set("EstValue")}
-            placeholder="Amount in rupees"
-            keyboardType="number-pad"
-          />
-          {editing ? null : (
+      <Field>
+        <Input label="Company" value={draft.Company} onChangeText={set("Company")} placeholder="Optional" />
+      </Field>
+      <Pair
+        left={
+          <Select label="Source" value={sourceId} options={asOptions(sources)} onChange={(v) => setSourceId(v as number)} placeholder="Not recorded" sheetTitle="Where did it come from?" />
+        }
+        right={
+          <Select label="Product" value={productId} options={productOptions} onChange={(v) => setProductId(v as number)} placeholder="Not chosen" sheetTitle="Which product?" />
+        }
+      />
+      <Pair
+        left={
+          <Input label="Estimated value" prefix="₹" tabular value={draft.EstValue} onChangeText={set("EstValue")} placeholder="Amount in rupees" keyboardType="number-pad" />
+        }
+        right={
+          editing ? null : (
+            <Select label="Status" value={statusId} options={statusOptions} onChange={(v) => setStatusPick(v as number)} sheetTitle="Where does it stand?" />
+          )
+        }
+      />
+      {editing ? null : (
+        <>
+          {pairedField ? <Pair left={owner} right={customField(pairedField)} /> : <Field>{owner}</Field>}
+          <Field>
+            <FieldLabel label="First follow-up" />
+            <SegmentedTabs
+              compact
+              tone={wide ? "inSheet" : "card"}
+              tall={wide}
+              value={first}
+              onChange={setFirst}
+              options={FIRST_FOLLOWUPS.map((c) => ({ value: c.value, label: c.label, icon: c.value === "pick" ? Calendar : undefined }))}
+            />
+            {first === "pick" ? (
+              <View style={styles.pick}>
+                <DateField value={pickedDay} onChange={setPickedDay} placeholder="Choose a day" minimumDate={new Date()} />
+              </View>
+            ) : null}
+            {day ? (
+              <FieldHelp hint={`Call on ${shortDay(day)}${wide ? " · reminder in your Follow-ups queue" : ""}`} />
+            ) : null}
+          </Field>
+          {moreFields.length ? (
             <>
-              <Select
-                label="Status"
-                value={statusId}
-                options={statusOptions}
-                onChange={(v) => setStatusPick(v as number)}
-                sheetTitle="Where does it stand?"
-              />
-              <Select
-                label="Owner"
-                value={ownerId}
-                options={userOptions}
-                onChange={(v) => setOwnerPick(v as number)}
-                placeholder="Nobody yet"
-                sheetTitle="Who works this lead?"
-              />
-              <Select
-                label="First follow-up"
-                value={firstFollowUp}
-                options={[
-                  ...WHEN_CHOICES.map((w) => ({ value: w.value, label: w.label })),
-                  { value: "none", label: "None" },
-                ]}
-                onChange={(v) => setFirstFollowUp(v as WhenChoice | "none")}
-                sheetTitle="When is the first call?"
-              />
+              <GroupHeader title="More details" rightChip={{ label: "Custom field", tone: "slate" }} />
+              {moreFields.map((def) => def && <Field key={def.Id}>{customField(def)}</Field>)}
             </>
-          )}
-        </View>
+          ) : null}
+        </>
+      )}
 
-        <View style={styles.block}>
-          <Text variant="overline" color="textMuted">
-            Address
-          </Text>
-          <Input label="City" value={draft.City} onChangeText={set("City")} placeholder="Optional" />
-          <Input label="State" value={draft.State} onChangeText={set("State")} placeholder="Optional" />
-          <Input
-            label="Pincode"
-            value={draft.Pincode}
-            onChangeText={set("Pincode")}
-            placeholder="Optional"
-            keyboardType="number-pad"
-          />
-          <Input
-            label="Address"
-            value={draft.Address}
-            onChangeText={set("Address")}
-            placeholder="Optional"
-            multiline
-          />
-          <Input
-            label="Remarks"
-            value={draft.Remarks}
-            onChangeText={set("Remarks")}
-            placeholder="Anything worth knowing"
-            multiline
-            numberOfLines={3}
-          />
-        </View>
+      <Field>
+        <Input label="Email" value={draft.Email} onChangeText={set("Email")} placeholder="Optional" keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
+      </Field>
+      <Pair
+        left={<Input label="City" value={draft.City} onChangeText={set("City")} placeholder="Optional" />}
+        right={<Input label="State" value={draft.State} onChangeText={set("State")} placeholder="Optional" />}
+      />
+      <Field>
+        <Input label="Pincode" value={draft.Pincode} onChangeText={set("Pincode")} placeholder="Optional" keyboardType="number-pad" />
+      </Field>
+      <Field>
+        <Input label="Address" value={draft.Address} onChangeText={set("Address")} placeholder="Optional" multiline />
+      </Field>
+      <Field>
+        <Input label="Remarks" value={draft.Remarks} onChangeText={set("Remarks")} placeholder="Anything worth knowing" multiline numberOfLines={3} />
+      </Field>
+    </Frame>
+  );
+}
 
-        {!editing && fieldDefs.length ? (
-          <View style={styles.block}>
-            <Text variant="overline" color="textMuted">
-              Extra details
-            </Text>
-            {fieldDefs.map((def) => (
-              <DynamicField
-                key={def.Id}
-                field={def}
-                value={customDraft[def.Id] ?? ""}
-                onChange={(next) => setCustom((c) => ({ ...c, [def.Id]: next }))}
-              />
-            ))}
-          </View>
-        ) : null}
+function Field({ children }: { children: ReactNode }) {
+  return <View style={styles.field}>{children}</View>;
+}
 
-        {error ? (
-          <Text variant="caption" color="danger">
-            {error}
-          </Text>
-        ) : null}
-
-        {!editing && choicesState === "failed" ? (
-          <View style={styles.block}>
-            <Text variant="caption" color="danger">
-              Could not load the statuses or the team.
-            </Text>
-            <Button title="Try again" size="sm" variant="secondary" onPress={retryChoices} />
-          </View>
-        ) : null}
-
-        <Button
-          title={editing ? "Save changes" : "Add lead"}
-          onPress={submit}
-          loading={save.isPending}
-          disabled={!choicesReady}
-          fullWidth
-        />
-      </ScrollView>
-    </Screen>
+/** Two fields on one row (E `.two`); a missing right one leaves its half empty. */
+function Pair({ left, right }: { left: ReactNode; right: ReactNode }) {
+  return (
+    <View style={styles.field}>
+      <FieldRow>
+        <View style={styles.flex}>{left}</View>
+        <View style={styles.flex}>{right}</View>
+      </FieldRow>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  content: { padding: SCREEN_PADDING, paddingBottom: spacing[20], gap: spacing[6] },
-  block: { gap: spacing[4] },
+  flex: { flex: 1, minWidth: 0 },
+  field: { marginBottom: metrics.fieldGap },
+  bandActions: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
+  sheetWide: { paddingTop: spacing[6] },
+  column: { width: "100%", alignSelf: "center" },
+  card: { paddingTop: 20, paddingHorizontal: 20, paddingBottom: spacing[2] },
+  error: { marginBottom: spacing[3] },
+  retry: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
+  pick: { marginTop: spacing[2] },
 });
