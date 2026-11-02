@@ -57,8 +57,80 @@ it("opens on Mine: the caller's own leads, counted in the header", async () => {
   expect(screen.getByText("Leads")).toBeOnTheScreen();
   expect(screen.getByText("3 yours")).toBeOnTheScreen();
   expect(fetchLeads).toHaveBeenCalledWith(
-    expect.objectContaining({ OwnerId: 42, Overdue: false, StatusId: null, SearchTerm: null }),
+    expect.objectContaining({
+      OwnerId: 42,
+      Overdue: false,
+      StatusId: null,
+      SearchTerm: null,
+      PageNumber: 1,
+      PageSize: 50,
+    }),
   );
+});
+
+describe("paging", () => {
+  const list = () => screen.getByTestId("leads-list");
+  const pageCalls = (n: number) =>
+    jest.mocked(fetchLeads).mock.calls.filter(([p]) => p?.PageNumber === n);
+
+  it("reaching the end asks for the next page and shows it; the header keeps the server total", async () => {
+    jest
+      .mocked(fetchLeads)
+      .mockResolvedValueOnce(leadsReply([row], 120))
+      .mockResolvedValueOnce(leadsReply([lead({ Id: 12, Name: "Meera Joshi" })], 120));
+    await mount();
+    await screen.findByText("Ravi Patel");
+    expect(screen.getByText("120 yours")).toBeOnTheScreen();
+
+    await fireEvent(list(), "onEndReached");
+    expect(await screen.findByText("Meera Joshi")).toBeOnTheScreen();
+    expect(pageCalls(2)).toHaveLength(1);
+    expect(pageCalls(2)[0]![0]).toEqual(expect.objectContaining({ OwnerId: 42, PageSize: 50 }));
+    expect(screen.getByText("Ravi Patel")).toBeOnTheScreen();
+    expect(screen.getByText("120 yours")).toBeOnTheScreen();
+  });
+
+  it("never asks past the last page", async () => {
+    await mount(); // 3 rows = one page
+    await screen.findByText("Ravi Patel");
+    await fireEvent(list(), "onEndReached");
+    await act(() => jest.advanceTimersByTime(1000));
+    expect(pageCalls(2)).toHaveLength(0);
+  });
+
+  it("does not page while a new search is still loading over the old rows", async () => {
+    jest.mocked(fetchLeads).mockResolvedValueOnce(leadsReply([row], 120)).mockReturnValue(new Promise(() => {}));
+    await mount();
+    await screen.findByText("Ravi Patel");
+    await fireEvent.changeText(screen.getByPlaceholderText("Name, company or mobile"), "zz");
+    await waitFor(() =>
+      expect(fetchLeads).toHaveBeenLastCalledWith(expect.objectContaining({ SearchTerm: "zz" })),
+    );
+    const before = jest.mocked(fetchLeads).mock.calls.length;
+    await fireEvent(list(), "onEndReached");
+    await act(() => jest.advanceTimersByTime(1000));
+    expect(fetchLeads).toHaveBeenCalledTimes(before);
+  });
+});
+
+it("switching queue does not spin pull-to-refresh; a pull does", async () => {
+  await mount();
+  await screen.findByText("Ravi Patel");
+  const spinning = () => screen.getByTestId("leads-list").props.refreshControl.props.refreshing;
+  jest.mocked(fetchLeads).mockReturnValue(new Promise(() => {}));
+  await fireEvent.press(screen.getByText("Overdue"));
+  await waitFor(() =>
+    expect(fetchLeads).toHaveBeenLastCalledWith(expect.objectContaining({ Overdue: true })),
+  );
+  expect(spinning()).toBe(false);
+
+  await fireEvent.press(screen.getByText("Mine"));
+  await screen.findByText("Ravi Patel");
+  // The refetch never settles (pending mock), so fire the pull without awaiting it.
+  await act(() => {
+    void screen.getByTestId("leads-list").props.refreshControl.props.onRefresh();
+  });
+  await waitFor(() => expect(spinning()).toBe(true));
 });
 
 it("does not fetch until the signed-in user is known", async () => {

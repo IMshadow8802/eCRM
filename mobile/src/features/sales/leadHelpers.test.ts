@@ -65,7 +65,7 @@ describe("leadQueueParams", () => {
       SearchTerm: null,
       Overdue: false,
       Unassigned: false,
-      PageSize: 100,
+      PageSize: 50,
     });
   });
 
@@ -82,7 +82,7 @@ describe("leadQueueParams", () => {
       SearchTerm: "acme",
       Overdue: false,
       Unassigned: false,
-      PageSize: 100,
+      PageSize: 50,
     });
     expect(leadQueueParams("overdue", "all", 42, "")).toMatchObject({ OwnerId: null, Overdue: true, Unassigned: false });
     expect(leadQueueParams("unassigned", "all", 42, "")).toMatchObject({

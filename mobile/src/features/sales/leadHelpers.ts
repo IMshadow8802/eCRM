@@ -50,7 +50,7 @@ export const leadQueueParams = (
   userId: number,
   term: string,
 ): FetchLeadsParams => ({
-  PageSize: 100,
+  PageSize: 50,
   SearchTerm: term || null,
   OwnerId: queue === "mine" ? userId : null,
   Overdue: queue === "overdue",

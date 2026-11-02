@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FlatList, StyleSheet, View } from "react-native";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { CloudOff, Plus, Search, TrendingUp } from "lucide-react-native";
 import type { StackScreenProps } from "@react-navigation/stack";
 
@@ -55,9 +55,15 @@ export default function LeadsScreen({ navigation }: Props) {
     [queue, status, userId, term],
   );
 
-  const leadsQuery = useQuery({
-    queryKey: ["leads", params],
-    queryFn: () => fetchLeads(params ?? undefined),
+  // Pages of 50, fetched as the list nears its end. "list" in the key keeps an
+  // infinite cache entry apart from any plain ["leads", …] query; invalidating
+  // ["leads"] still reaches it.
+  const leadsQuery = useInfiniteQuery({
+    queryKey: ["leads", "list", params],
+    queryFn: ({ pageParam }) => fetchLeads({ ...params, PageNumber: pageParam }),
+    initialPageParam: 1,
+    getNextPageParam: (last, all) =>
+      all.length < (last.data?.pagination.totalPages ?? 0) ? all.length + 1 : undefined,
     enabled: params != null,
     placeholderData: keepPreviousData,
   });
@@ -71,8 +77,18 @@ export default function LeadsScreen({ navigation }: Props) {
     [statuses],
   );
 
-  const leads = leadsQuery.data?.data?.leads ?? [];
-  const total = leadsQuery.data?.data?.pagination.totalRecords ?? leads.length;
+  const leads = useMemo(
+    () => leadsQuery.data?.pages.flatMap((page) => page.data?.leads ?? []) ?? [],
+    [leadsQuery.data],
+  );
+  const total = leadsQuery.data?.pages[0]?.data?.pagination.totalRecords ?? leads.length;
+
+  // Placeholder rows belong to the previous search: paging them would fetch
+  // page 2 of the new one before its page 1 has landed.
+  const { hasNextPage, isFetchingNextPage, isPlaceholderData, fetchNextPage } = leadsQuery;
+  const loadMore = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage && !isPlaceholderData) void fetchNextPage();
+  }, [hasNextPage, isFetchingNextPage, isPlaceholderData, fetchNextPage]);
   const narrowed = status !== "all" || term.length > 0;
 
   const openLead = useCallback(
@@ -103,14 +119,19 @@ export default function LeadsScreen({ navigation }: Props) {
       </View>
 
       <FlatList
+        testID="leads-list"
         data={leads}
         keyExtractor={(lead) => String(lead.Id)}
         contentContainerStyle={[styles.list, !leads.length && styles.listEmpty]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.5}
         refreshControl={
           <Refresher
-            refreshing={leadsQuery.isRefetching && !leadsQuery.isLoading}
+            // A queue switch or search refetches with the old rows up: that is
+            // not a pull, so no spinner. Paging is not a pull either.
+            refreshing={leadsQuery.isRefetching && !isPlaceholderData && !isFetchingNextPage}
             onRefresh={leadsQuery.refetch}
           />
         }
