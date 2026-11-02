@@ -65,6 +65,8 @@ export function Chip({
         variant="caption"
         color={color ? "textOnBrand" : FG[tone]}
         numberOfLines={1}
+        // Without it a long label overflows a maxWidth pill instead of truncating.
+        style={styles.label}
       >
         {label}
       </Text>
@@ -82,6 +84,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
     alignSelf: "flex-start",
   },
+  label: { flexShrink: 1 },
 });
 
 export default Chip;
