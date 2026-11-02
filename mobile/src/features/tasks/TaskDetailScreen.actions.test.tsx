@@ -21,7 +21,7 @@ import {
   moveTaskColumn,
 } from "../../api/taskQueries";
 import { fetchWorkspaces } from "../../api/workspaceQueries";
-import type { KanbanColumn, Task, Workspace } from "../../types/api";
+import type { KanbanColumn, Task, TaskDependency, Workspace } from "../../types/api";
 import { assigneesJson, envelope, makeTask, makeWorkspace, pagination, serverError } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import { spySheets } from "../../test/sheets";
@@ -115,7 +115,7 @@ describe("menu", () => {
     const { present } = spySheets();
     await fireEvent.press(screen.getByLabelText("Task actions"));
     expect(present).toHaveBeenCalledTimes(1);
-    for (const label of ["Log time", "Edit task", "Add a blocker", "Delete task"]) {
+    for (const label of ["Log time", "Edit task", "Add a blocker", "Blocks another task", "Delete task"]) {
       expect(screen.getByText(label)).toBeOnTheScreen();
     }
     expect(screen.queryByText("Take this task")).toBeNull();
@@ -185,7 +185,6 @@ describe("menu", () => {
     expect(screen.getAllByText("Fit the inverter")).toHaveLength(1);
     await fireEvent.press(screen.getByText("Order parts"));
     await waitFor(() => expect(addTaskDependency).toHaveBeenCalled());
-    // parity: TASK-05 — existing blockers are not filtered out of the picker yet.
     expect(body(addTaskDependency)).toEqual({ TaskId: 1, DependsOnTaskId: 2, WorkspaceId: 10 });
   });
 
@@ -225,6 +224,76 @@ describe("menu", () => {
     await fireEvent.press(screen.getByText("Delete"));
     expect(await screen.findByText("Someone else has commented on this task")).toBeOnTheScreen();
     expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+});
+
+// TASK-05: both directions, on web's rules (useTaskDependencies.js, DependenciesPanel.jsx).
+describe("dependencies", () => {
+  const THIRD = makeTask({ Id: 3, Title: "Get permit", ColumnTitle: null });
+  const link = (Direction: "blocker" | "dependent", TaskId: number, Title: string): TaskDependency => ({
+    Direction,
+    TaskId,
+    Title,
+    ColumnTitle: null,
+    IsCompleted: false,
+    Type: "blocks",
+  });
+
+  /** Mount and wait for the board's tasks — the pickers are built from them. */
+  const mountWith = async (deps: { blockers: TaskDependency[]; dependents: TaskDependency[] }) => {
+    serve({ siblings: [TASK, SIBLING, THIRD] });
+    jest.mocked(fetchTaskDependencies).mockResolvedValue(deps);
+    await renderWithProviders(
+      <TaskDetailScreen navigation={makeNavigation<"TaskDetail">()} route={makeRoute("TaskDetail", { taskId: 1, workspaceId: 10 })} />,
+    );
+    await screen.findByText("Doing");
+    await waitFor(() => expect(fetchTaskDependencies).toHaveBeenCalled());
+  };
+
+  it("'Dependencies' is on the menu for everyone, even with no blockers, and opens the sheet", async () => {
+    serve({ ws: makeWorkspace({ Id: 10, MyRole: "viewer" }) });
+    await mount();
+    const { present } = spySheets();
+    // [0] is the menu row; the sheet's own heading carries the same word.
+    await fireEvent.press(screen.getAllByText("Dependencies")[0]!);
+    expect(present).toHaveBeenCalledTimes(1);
+    // A viewer can look, not link.
+    expect(screen.queryByText("Add a blocker")).toBeNull();
+    expect(screen.queryByText("Blocks another task")).toBeNull();
+  });
+
+  it("the blocker picker leaves out tasks already blocking this one", async () => {
+    await mountWith({ blockers: [link("blocker", 2, "Order parts")], dependents: [] });
+    expect(await screen.findByText("Get permit")).toBeOnTheScreen();
+    // Once, in the dependency sheet — not again as a candidate.
+    await waitFor(() => expect(screen.getAllByText("Order parts")).toHaveLength(1));
+  });
+
+  it("'Blocks another task' makes the picked task wait on this one", async () => {
+    await mountWith({ blockers: [], dependents: [link("dependent", 3, "Get permit")] });
+    await screen.findByText("Order parts");
+    await fireEvent.press(screen.getByText("Blocks another task"));
+    expect(await screen.findByText("Which task waits on this one?")).toBeOnTheScreen();
+    // Already waiting on this one: only in the sheet, not offered again.
+    expect(screen.getAllByText("Get permit")).toHaveLength(1);
+    await fireEvent.press(screen.getByText("Order parts"));
+    await waitFor(() => expect(addTaskDependency).toHaveBeenCalled());
+    expect(body(addTaskDependency)).toEqual({ TaskId: 2, DependsOnTaskId: 1, WorkspaceId: 10 });
+
+    // "Add a blocker" turns the same picker back the other way.
+    await fireEvent.press(screen.getByText("Add a blocker"));
+    expect(await screen.findByText("Blocked by which task?")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByText("Order parts"));
+    await waitFor(() => expect(addTaskDependency).toHaveBeenCalledTimes(2));
+    expect(body(addTaskDependency)).toEqual({ TaskId: 1, DependsOnTaskId: 2, WorkspaceId: 10 });
+  });
+
+  it("a refused link says why", async () => {
+    jest.mocked(addTaskDependency).mockRejectedValue(serverError(409, "Dependency already exists"));
+    await mount();
+    await fireEvent.press(screen.getByText("Blocks another task"));
+    await fireEvent.press(screen.getByText("Order parts"));
+    expect(await screen.findByText("Dependency already exists")).toBeOnTheScreen();
   });
 });
 

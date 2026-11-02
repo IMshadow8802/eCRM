@@ -197,6 +197,132 @@ describe("create", () => {
   });
 });
 
+/** Types the title and a step, so a create can go through. */
+const fillMinimum = async () => {
+  await fireEvent.changeText(screen.getByPlaceholderText("What needs doing?"), "Call bank");
+  await fireEvent.changeText(screen.getByPlaceholderText("Step 1"), "Dial");
+};
+const pickDate = async (d: Date) => {
+  await fireEvent.press(screen.getByText("Select a date"));
+  await fireEvent(screen.getByTestId("date-picker"), "valueChange", {}, d);
+  await fireEvent.press(screen.getByText("Done"));
+};
+const pickTime = async (from: string, h: number, m: number) => {
+  await fireEvent.press(screen.getByText(from));
+  await fireEvent(screen.getByTestId("date-picker"), "valueChange", {}, new Date(2026, 10, 20, h, m));
+  await fireEvent.press(screen.getByText("Done"));
+};
+const allowed = () => screen.getByLabelText("Time allowed (working hours)");
+
+// TASK-02: due time and time allowed (TAT), on web's rules (useTaskDraft.js).
+describe("due time and time allowed", () => {
+  it("a due time is offered only with a due date, and sent as HH:mm", async () => {
+    await mount();
+    await ready("Create task");
+    expect(screen.queryByText("Due time")).toBeNull();
+    await fillMinimum();
+    await pickDate(new Date(2026, 10, 20));
+    expect(screen.getByText("Due time")).toBeOnTheScreen();
+    await pickTime("Select a time", 9, 5);
+    expect(screen.getByText("09:05")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByText("Create task"));
+    await waitFor(() => expect(saveTask).toHaveBeenCalled());
+    expect(sent()).toMatchObject({ DueDate: "2026-11-20", DueTime: "09:05" });
+    // Empty target = the company default for the priority: not sent at all.
+    expect(sent()).not.toHaveProperty("TatMinutes");
+  });
+
+  it("a due time without a due date is not sent", async () => {
+    await mount();
+    await ready("Create task");
+    await fillMinimum();
+    await pickDate(new Date(2026, 10, 20));
+    await pickTime("Select a time", 14, 30);
+    await fireEvent.press(screen.getByLabelText("Clear date"));
+    expect(screen.queryByText("Due time")).toBeNull();
+    await fireEvent.press(screen.getByText("Create task"));
+    await waitFor(() => expect(saveTask).toHaveBeenCalled());
+    expect(sent()).not.toHaveProperty("DueTime");
+  });
+
+  it("time allowed goes up as working minutes, and 0 means no clock", async () => {
+    await mount();
+    await ready("Create task");
+    await fillMinimum();
+    await fireEvent.changeText(allowed(), "1.5");
+    await fireEvent.press(screen.getByText("Create task"));
+    await waitFor(() => expect(saveTask).toHaveBeenCalledTimes(1));
+    expect(sent()).toMatchObject({ TatMinutes: 90 });
+
+    await fireEvent.changeText(allowed(), "0");
+    await fireEvent.press(screen.getByText("Create task"));
+    await waitFor(() => expect(saveTask).toHaveBeenCalledTimes(2));
+    expect(sent()).toMatchObject({ TatMinutes: 0 });
+  });
+
+  it("refuses a time allowed that is not hours, before the server", async () => {
+    await mount();
+    await ready("Create task");
+    await fillMinimum();
+    await fireEvent.changeText(allowed(), "-2");
+    await fireEvent.press(screen.getByText("Create task"));
+    expect(screen.getByText(/Time allowed is a number of working hours/)).toBeOnTheScreen();
+    expect(saveTask).not.toHaveBeenCalled();
+  });
+
+  it("a personal board has no clock, so no time allowed", async () => {
+    jest.mocked(fetchWorkspaces).mockResolvedValue([makeWorkspace({ Id: 10, Type: "personal" })]);
+    await mount();
+    await ready("Create task");
+    expect(screen.queryByLabelText("Time allowed (working hours)")).toBeNull();
+  });
+
+  const timed = makeTask({
+    Id: 9,
+    Title: "Timed",
+    CreatedByUserId: ME,
+    DueDate: "2026-11-20T00:00:00",
+    DueTime: "10:00:00",
+    TatMinutes: 120,
+  });
+
+  it("an edit starts from the stored time and target and sends only what changed", async () => {
+    jest.mocked(fetchTaskById).mockResolvedValue(timed);
+    await mount({ workspaceId: 10, taskId: 9 });
+    await ready("Save changes");
+    expect(screen.getByText("10:00")).toBeOnTheScreen();
+    expect(allowed()).toHaveDisplayValue("2");
+
+    await pickTime("10:00", 16, 0);
+    await fireEvent.press(screen.getByText("Save changes"));
+    await waitFor(() => expect(saveTask).toHaveBeenCalledTimes(1));
+    expect(sent()).toMatchObject({ DueTime: "16:00" });
+    expect(sent()).not.toHaveProperty("TatMinutes");
+  });
+
+  it("an edit that empties the target sends null — back to the company default", async () => {
+    jest.mocked(fetchTaskById).mockResolvedValue(timed);
+    await mount({ workspaceId: 10, taskId: 9 });
+    await ready("Save changes");
+    await fireEvent.changeText(allowed(), "");
+    await fireEvent.press(screen.getByLabelText("Clear time"));
+    await fireEvent.press(screen.getByText("Save changes"));
+    await waitFor(() => expect(saveTask).toHaveBeenCalled());
+    expect(sent()).toMatchObject({ TatMinutes: null, DueTime: null });
+  });
+
+  it("an edit without the right to edit fields cannot set the target", async () => {
+    jest.mocked(fetchWorkspaces).mockResolvedValue([makeWorkspace({ Id: 10, MyRole: "member" })]);
+    jest.mocked(fetchTaskById).mockResolvedValue({ ...timed, CreatedByUserId: 1 });
+    await mount({ workspaceId: 10, taskId: 9 });
+    await ready("Save changes");
+    expect(screen.queryByLabelText("Time allowed (working hours)")).toBeNull();
+    await fireEvent.press(screen.getByText("Save changes"));
+    await waitFor(() => expect(saveTask).toHaveBeenCalled());
+    expect(sent()).not.toHaveProperty("TatMinutes");
+  });
+});
+
 describe("edit", () => {
   const existing = makeTask({
     Id: 9,
@@ -234,7 +360,6 @@ describe("edit", () => {
     await fireEvent.press(screen.getByText("Save changes"));
 
     await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
-    // parity: TASK-02 — DueTime/TatMinutes are not sent yet; Phase B adds them.
     expect(sent()).toMatchObject({
         Id: 9,
         Title: "Fit two inverters",
@@ -254,6 +379,9 @@ describe("edit", () => {
         Watchers: "1,2",
         ChecklistItems: null,
     });
+    // TASK-02: an untouched time and target stay off the body, so the server keeps what it has.
+    expect(sent()).not.toHaveProperty("DueTime");
+    expect(sent()).not.toHaveProperty("TatMinutes");
   });
 
   it("a task with no due date or estimate edits to the same", async () => {

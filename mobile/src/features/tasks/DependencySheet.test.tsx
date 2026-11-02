@@ -67,6 +67,21 @@ it("removing a blocker unlinks it on the server", async () => {
   });
 });
 
+// TASK-05: a dependent is unlinked from its own side — it is the one waiting.
+it("removing a dependent unlinks the other task from this one", async () => {
+  await mount();
+  await screen.findByText("Hand over to customer");
+  const crosses = screen.getAllByLabelText("Remove this dependency");
+  expect(crosses).toHaveLength(3);
+  await fireEvent.press(crosses[2]!);
+  await waitFor(() => expect(removeTaskDependency).toHaveBeenCalled());
+  expect(jest.mocked(removeTaskDependency).mock.calls[0]![0]).toEqual({
+    TaskId: 30,
+    DependsOnTaskId: 1,
+    WorkspaceId: 10,
+  });
+});
+
 it("a refused removal shows the server's reason", async () => {
   jest.mocked(removeTaskDependency).mockRejectedValue(serverError(403, "Only an owner can change dependencies"));
   await mount();

@@ -3,15 +3,17 @@ import { Platform, Pressable, StyleSheet, View } from "react-native";
 import DateTimePicker, {
   type DateTimePickerChangeEvent,
 } from "@react-native-community/datetimepicker";
-import { Calendar, X } from "lucide-react-native";
+import { Calendar, Clock, X } from "lucide-react-native";
 
 import { colors, radius, spacing, CONTROL_HEIGHT } from "../theme";
 import { Text } from "./Text";
 
 export interface DateFieldProps {
   label?: string;
-  /** ISO date string (yyyy-MM-dd) or null. Matches what the API sends. */
+  /** ISO date (yyyy-MM-dd), or "HH:mm" with mode="time", or null. Matches what the API sends. */
   value: string | null;
+  /** A day (default) or a time of day; both use the same native picker. */
+  mode?: "date" | "time";
   onChange: (value: string | null) => void;
   placeholder?: string;
   required?: boolean;
@@ -26,6 +28,17 @@ export const toISODate = (d: Date) => {
   // back a day for anyone east of Greenwich, which is every user here (IST).
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+const toHHMM = (d: Date) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+
+/** The picker's starting Date for a stored "HH:mm": today at that time. */
+const timeToDate = (hhmm: string | null) => {
+  const d = new Date();
+  const [h, m] = (hhmm ?? "").split(":").map(Number);
+  if (Number.isFinite(h) && Number.isFinite(m)) d.setHours(h!, m!, 0, 0);
+  return d;
 };
 
 const format = (iso: string) => {
@@ -43,7 +56,8 @@ export function DateField({
   label,
   value,
   onChange,
-  placeholder = "Select a date",
+  mode = "date",
+  placeholder = mode === "time" ? "Select a time" : "Select a date",
   required,
   error,
   disabled,
@@ -57,7 +71,7 @@ export function DateField({
   // calendar mounted until Done.
   const handlePick = (_event: DateTimePickerChangeEvent, picked: Date) => {
     if (Platform.OS === "android") setOpen(false);
-    onChange(toISODate(picked));
+    onChange(mode === "time" ? toHHMM(picked) : toISODate(picked));
   };
 
   return (
@@ -78,20 +92,24 @@ export function DateField({
           disabled && styles.triggerDisabled,
         ]}
       >
-        <Calendar size={18} color={colors.textMuted} />
+        {mode === "time" ? (
+          <Clock size={18} color={colors.textMuted} />
+        ) : (
+          <Calendar size={18} color={colors.textMuted} />
+        )}
         <Text
           variant="body"
           color={value ? "text" : "textMuted"}
           style={styles.triggerText}
         >
-          {value ? format(value) : placeholder}
+          {value ? (mode === "time" ? value : format(value)) : placeholder}
         </Text>
         {value && clearable ? (
           <Pressable
             onPress={() => onChange(null)}
             hitSlop={spacing[2]}
             accessibilityRole="button"
-            accessibilityLabel="Clear date"
+            accessibilityLabel={mode === "time" ? "Clear time" : "Clear date"}
           >
             <X size={18} color={colors.textSecondary} />
           </Pressable>
@@ -102,9 +120,16 @@ export function DateField({
 
       {open ? (
         <DateTimePicker
-          value={value ? new Date(`${value}T00:00:00`) : new Date()}
-          mode="date"
-          display={Platform.OS === "ios" ? "inline" : "default"}
+          value={
+            mode === "time"
+              ? timeToDate(value)
+              : value
+                ? new Date(`${value}T00:00:00`)
+                : new Date()
+          }
+          mode={mode}
+          // iOS has no inline clock; the wheel is its time picker.
+          display={Platform.OS === "ios" ? (mode === "time" ? "spinner" : "inline") : "default"}
           minimumDate={minimumDate}
           onValueChange={handlePick}
           onDismiss={() => setOpen(false)}

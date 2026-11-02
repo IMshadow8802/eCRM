@@ -24,9 +24,9 @@ interface DependencySheetProps {
  *
  * Dependencies are HARD blocks in this system — an incomplete blocker is the
  * reason a task cannot be finished — so each row leads with whether it is done
- * rather than with its title. Only blockers can be removed here: a dependent
- * edge belongs to the other task, and unlinking it from this side would be a
- * change that task's owner never sees.
+ * rather than with its title. Both directions can be unlinked with edit
+ * rights, as on web (DependenciesPanel.jsx): a dependent edge is stored on the
+ * waiting task, so its removal names that task, and the server checks it.
  */
 export const DependencySheet = forwardRef<SheetRef, DependencySheetProps>(
   function DependencySheet({ taskId, workspaceId, canEdit }, ref) {
@@ -40,9 +40,11 @@ export const DependencySheet = forwardRef<SheetRef, DependencySheetProps>(
 
     const remove = useMutation({
       mutationFn: removeTaskDependency,
-      onError: (err) => toast.error(apiErrorMessage(err, "Could not remove that blocker.")),
-      onSuccess: () => {
+      onError: (err) => toast.error(apiErrorMessage(err, "Could not remove that dependency.")),
+      onSuccess: (_res, vars) => {
         queryClient.invalidateQueries({ queryKey: ["task", taskId] });
+        // The other end of the link changed too.
+        queryClient.invalidateQueries({ queryKey: ["task", vars.TaskId === taskId ? vars.DependsOnTaskId : vars.TaskId] });
         queryClient.invalidateQueries({ queryKey: ["tasks"] });
       },
     });
@@ -51,7 +53,7 @@ export const DependencySheet = forwardRef<SheetRef, DependencySheetProps>(
     const dependents = data?.dependents ?? [];
     const open = blockers.filter((d) => !d.IsCompleted).length;
 
-    const row = (dep: TaskDependency, removable: boolean) => (
+    const row = (dep: TaskDependency) => (
       <View key={`${dep.Direction}-${dep.TaskId}`} style={styles.row}>
         {dep.IsCompleted ? (
           <CircleCheck size={20} color={colors.success} />
@@ -69,16 +71,16 @@ export const DependencySheet = forwardRef<SheetRef, DependencySheetProps>(
           </Text>
         </View>
 
-        {removable ? (
+        {canEdit ? (
           <Pressable
             hitSlop={spacing[2]}
             disabled={remove.isPending}
             onPress={() =>
-              remove.mutate({
-                TaskId: taskId,
-                DependsOnTaskId: dep.TaskId,
-                WorkspaceId: workspaceId,
-              })
+              remove.mutate(
+                dep.Direction === "dependent"
+                  ? { TaskId: dep.TaskId, DependsOnTaskId: taskId, WorkspaceId: workspaceId }
+                  : { TaskId: taskId, DependsOnTaskId: dep.TaskId, WorkspaceId: workspaceId },
+              )
             }
             accessibilityLabel="Remove this dependency"
             accessibilityRole="button"
@@ -108,7 +110,7 @@ export const DependencySheet = forwardRef<SheetRef, DependencySheetProps>(
               <Text variant="overline" color="textMuted" style={styles.heading}>
                 Blocked by
               </Text>
-              {blockers.map((dep) => row(dep, canEdit))}
+              {blockers.map(row)}
             </>
           ) : null}
 
@@ -117,7 +119,7 @@ export const DependencySheet = forwardRef<SheetRef, DependencySheetProps>(
               <Text variant="overline" color="textMuted" style={styles.heading}>
                 Waiting on this
               </Text>
-              {dependents.map((dep) => row(dep, false))}
+              {dependents.map(row)}
             </>
           ) : null}
 

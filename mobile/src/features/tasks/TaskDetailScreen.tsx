@@ -8,6 +8,7 @@ import {
   CircleAlert,
   Eye,
   Flag,
+  GitBranch,
   Link2,
   Lock,
   MessageCircle,
@@ -29,6 +30,7 @@ import {
   deleteTask,
   deleteTaskChecklist,
   fetchTaskById,
+  fetchTaskDependencies,
   fetchTasks,
   getTaskChecklist,
   getTaskComments,
@@ -138,6 +140,9 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   const blockerRef = useRef<SheetRef>(null);
   const timeRef = useRef<SheetRef>(null);
   const dependencyRef = useRef<SheetRef>(null);
+  // One picker for both directions: "blocker" = a task this one waits on,
+  // "dependent" = a task that waits on this one.
+  const [linkDirection, setLinkDirection] = useState<"blocker" | "dependent">("blocker");
 
   const taskQuery = useQuery({
     queryKey: ["task", taskId],
@@ -177,6 +182,12 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
     queryKey: ["tasks", "board", boardId],
     queryFn: () => fetchTasks({ WorkspaceId: boardId, PageSize: 200 }),
     enabled: boardId != null,
+  });
+  // Same key as DependencySheet, so one request serves both: the picker leaves
+  // out a task already linked in the direction being added (web does the same).
+  const depsQuery = useQuery({
+    queryKey: ["task", taskId, "dependencies"],
+    queryFn: () => fetchTaskDependencies({ TaskId: taskId }),
   });
 
   const ws = useMemo(() => workspaces?.find((w) => w.Id === boardId), [workspaces, boardId]);
@@ -251,9 +262,10 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   });
   const addBlocker = useMutation({
     mutationFn: addTaskDependency,
-    onError: (err) => toast.error(apiErrorMessage(err, "Could not add that blocker.")),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["task", taskId, "dependencies"] });
+    onError: (err) => toast.error(apiErrorMessage(err, "Could not link those tasks.")),
+    onSuccess: (_res, vars) => {
+      // ["task", taskId] covers this task's dependencies; the other end changed too.
+      queryClient.invalidateQueries({ queryKey: ["task", vars.TaskId === taskId ? vars.DependsOnTaskId : vars.TaskId] });
       invalidate();
     },
   });
@@ -425,10 +437,29 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
             key: "blocker",
             label: "Add a blocker",
             icon: Link2,
-            onPress: () => blockerRef.current?.present(),
+            onPress: () => {
+              setLinkDirection("blocker");
+              blockerRef.current?.present();
+            },
+          } satisfies SheetAction,
+          {
+            key: "dependent",
+            label: "Blocks another task",
+            icon: GitBranch,
+            onPress: () => {
+              setLinkDirection("dependent");
+              blockerRef.current?.present();
+            },
           } satisfies SheetAction,
         ]
       : []),
+    // Always here: the meta chip only shows while something blocks this task.
+    {
+      key: "dependencies",
+      label: "Dependencies",
+      icon: Ban,
+      onPress: () => dependencyRef.current?.present(),
+    },
     ...(can.deleteTask
       ? [
           {
@@ -455,17 +486,22 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
       }),
   }));
 
+  const asBlocker = linkDirection === "blocker";
+  const linked = new Set(
+    (asBlocker ? depsQuery.data?.blockers : depsQuery.data?.dependents)?.map((d) => d.TaskId),
+  );
   const blockerActions: SheetAction[] = (siblingsQuery.data?.data?.tasks ?? [])
-    .filter((candidate) => candidate.Id !== taskId)
+    .filter((candidate) => candidate.Id !== taskId && !linked.has(candidate.Id))
     .map((candidate) => ({
       key: String(candidate.Id),
       label: candidate.Title,
       sublabel: candidate.ColumnTitle ?? undefined,
-      icon: Ban,
+      icon: asBlocker ? Ban : GitBranch,
       onPress: () =>
         addBlocker.mutate({
-          TaskId: taskId,
-          DependsOnTaskId: candidate.Id,
+          // The edge lives on the waiting task.
+          TaskId: asBlocker ? taskId : candidate.Id,
+          DependsOnTaskId: asBlocker ? candidate.Id : taskId,
           WorkspaceId: task.WorkspaceId,
         }),
     }));
@@ -672,7 +708,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
       <ActionSheet ref={moveRef} title="Move to column" actions={moveActions} />
       <ActionSheet
         ref={blockerRef}
-        title="Blocked by which task?"
+        title={asBlocker ? "Blocked by which task?" : "Which task waits on this one?"}
         actions={blockerActions}
         emptyMessage="This board has no other tasks to depend on."
       />

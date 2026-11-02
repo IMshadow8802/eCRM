@@ -72,3 +72,24 @@ it("a value with no clearable flag has no clear control", async () => {
   await render(<DateField value="2026-01-05" clearable={false} onChange={jest.fn()} />);
   expect(screen.queryByLabelText("Clear date")).toBeNull();
 });
+
+it("time mode opens the clock on the stored time, sends HH:mm, and clears to null", async () => {
+  const onChange = jest.fn();
+  await render(<DateField mode="time" value="09:05" onChange={onChange} />);
+  expect(screen.getByText("09:05")).toBeOnTheScreen();
+  await fireEvent.press(screen.getByText("09:05"));
+  const picker = screen.getByTestId("date-picker");
+  expect(picker.props.mode).toBe("time");
+  const shown: Date = picker.props.value;
+  expect([shown.getHours(), shown.getMinutes()]).toEqual([9, 5]);
+  await fireEvent(picker, "valueChange", { nativeEvent }, new Date(2026, 10, 2, 0, 30));
+  expect(onChange).toHaveBeenCalledWith("00:30");
+  await fireEvent.press(screen.getByLabelText("Clear time"));
+  expect(onChange).toHaveBeenLastCalledWith(null);
+});
+
+it("time mode with nothing stored says so and opens the clock", async () => {
+  await render(<DateField mode="time" value={null} onChange={jest.fn()} />);
+  await fireEvent.press(screen.getByText("Select a time"));
+  expect(screen.getByTestId("date-picker").props.value).toBeInstanceOf(Date);
+});

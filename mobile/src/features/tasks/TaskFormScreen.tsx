@@ -24,7 +24,15 @@ import {
   Text,
 } from "../../ui";
 import useAuthStore from "../../stores/useAuthStore";
-import { assigneesOf } from "./taskHelpers";
+import { abilitiesFor, assigneesOf } from "./taskHelpers";
+
+// The stored values the TAT fields start from, as web's useTaskDraft.js: "HH:mm"
+// and hours as text, so an empty target (company default) stays distinct from
+// 0 (no clock). DueTime may arrive as "HH:mm:ss"; anything else is no time.
+const dueTimeOf = (task: Task | null) =>
+  /^\d{2}:\d{2}/.test(task?.DueTime ?? "") ? task!.DueTime!.slice(0, 5) : "";
+const tatHoursOf = (task: Task | null) =>
+  task?.TatMinutes == null ? "" : String(Math.round((task.TatMinutes / 60) * 100) / 100);
 
 type Props = StackScreenProps<RootStackParamList, "TaskForm">;
 type Nav = StackNavigationProp<RootStackParamList, "TaskForm">;
@@ -121,6 +129,8 @@ function TaskForm({ navigation, workspaceId, columnId, task }: TaskFormProps) {
   const [estimate, setEstimate] = useState(
     task?.EstimatedHours ? String(task.EstimatedHours) : "",
   );
+  const [dueTime, setDueTime] = useState(() => dueTimeOf(task));
+  const [tatHours, setTatHours] = useState(() => tatHoursOf(task));
   // Create only. sp_SaveTask rejects a create with no checklist item, because
   // completion is derived from the checklist and a task with an empty one could
   // never complete. Editing ignores this — the checklist is owned by
@@ -142,8 +152,16 @@ function TaskForm({ navigation, workspaceId, columnId, task }: TaskFormProps) {
     queryKey: ["workspaces", false],
     queryFn: () => fetchWorkspaces({ PageSize: 100 }),
   });
-  const isPersonal = workspaces?.find((w) => w.Id === workspaceId)?.Type === "personal";
+  const ws = workspaces?.find((w) => w.Id === workspaceId);
+  const isPersonal = ws?.Type === "personal";
   const userId = useAuthStore((s) => s.UserId);
+  const isAdmin = useAuthStore((s) => Boolean(s.access?.isAdmin));
+  // No TAT on a personal board. On create the caller is the creator, who may
+  // always set the target; on edit it is the reassign right (= editFields),
+  // which the server checks too (taskController.save).
+  const canSetTarget =
+    !isPersonal &&
+    (!editing || abilitiesFor(task, userId, ws?.MyRole ?? null, isAdmin, ws?.Type ?? null).editFields);
 
   const { data: members } = useQuery({
     queryKey: ["workspace", workspaceId, "members"],
@@ -190,9 +208,17 @@ function TaskForm({ navigation, workspaceId, columnId, task }: TaskFormProps) {
       setError("Add at least one step — that is what marks the task done.");
       return;
     }
+    const tatValue = tatHours.trim();
+    if (canSetTarget && tatValue !== "" && !(Number(tatValue) >= 0)) {
+      setError("Time allowed is a number of working hours, 0 or more.");
+      return;
+    }
     setError(null);
 
     const hours = Number(estimate);
+    // A time only counts with a day. Sent only when it differs from what is
+    // stored: the server keeps a time/target that is absent from the body.
+    const time = dueDate ? dueTime : "";
 
     save.mutate({
       Id: task?.Id ?? 0,
@@ -224,6 +250,11 @@ function TaskForm({ navigation, workspaceId, columnId, task }: TaskFormProps) {
       Watchers: task?.Watchers ?? null,
       // Ignored on update; required on create.
       ChecklistItems: editing ? null : trimmedSteps,
+      ...(time !== dueTimeOf(task) && { DueTime: time || null }),
+      // "" = the company default for the priority, 0 = no clock.
+      ...(canSetTarget && tatValue !== tatHoursOf(task) && {
+        TatMinutes: tatValue === "" ? null : Math.round(Number(tatValue) * 60),
+      }),
     });
   };
 
@@ -285,6 +316,32 @@ function TaskForm({ navigation, workspaceId, columnId, task }: TaskFormProps) {
         />
 
         <DateField label="Due date" value={dueDate} onChange={setDueDate} />
+
+        {dueDate ? (
+          <View style={styles.hinted}>
+            <DateField
+              mode="time"
+              label="Due time"
+              value={dueTime || null}
+              onChange={(v) => setDueTime(v ?? "")}
+            />
+            <Text variant="caption" color="textMuted">
+              {"Empty = end of the working day on the person's shift."}
+            </Text>
+          </View>
+        ) : null}
+
+        {canSetTarget ? (
+          <Input
+            label="Time allowed (working hours)"
+            accessibilityLabel="Time allowed (working hours)"
+            value={tatHours}
+            onChangeText={setTatHours}
+            placeholder="Company default"
+            keyboardType="decimal-pad"
+            hint="Empty = company default for the priority · 0 = no deadline"
+          />
+        ) : null}
 
         <Input
           label="Estimated hours"
@@ -364,6 +421,7 @@ const styles = StyleSheet.create({
     gap: spacing[4],
   },
   actions: { paddingTop: spacing[2] },
+  hinted: { gap: spacing[1] },
   steps: { gap: spacing[2] },
   stepRow: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
   stepInput: { flex: 1 },
