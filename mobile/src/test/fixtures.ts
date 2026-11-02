@@ -3,7 +3,16 @@
 // real return type fails `pnpm typecheck`.
 import { AxiosError, type AxiosResponse } from "axios";
 
-import type { Access, ApiEnvelope, LoginData, Pagination, Task, Workspace } from "../types/api";
+import type {
+  Access,
+  ApiEnvelope,
+  Customer,
+  LoginData,
+  Pagination,
+  Task,
+  Ticket,
+  Workspace,
+} from "../types/api";
 
 export function envelope<T>(data: T, extra: Partial<ApiEnvelope<T>> = {}): ApiEnvelope<T> {
   return {
@@ -148,4 +157,74 @@ export const loginData = (patch: Partial<LoginData> = {}): LoginData => ({
   permissions: { menuItems: [], rawPermissions: [], totalMenuItems: 0, hasAdminAccess: false },
   access: access(),
   ...patch,
+});
+
+/** An open, unassigned complaint with every column filled; override what a test reads. */
+export const ticket = (overrides: Partial<Ticket> = {}): Ticket => ({
+  Id: 7,
+  CompId: 1,
+  BranchId: 1,
+  BranchName: "Head Office",
+  TicketNo: "T-7",
+  Subject: "Inverter keeps tripping",
+  CustomerId: 3,
+  CustomerName: "Sharma Traders",
+  CustomerMobile: "9825012345",
+  ContactPerson: null,
+  Contact: null,
+  ChannelId: null,
+  ChannelName: null,
+  CategoryId: null,
+  CategoryName: null,
+  Priority: null,
+  PriorityName: null,
+  ProductId: null,
+  ProductName: null,
+  StatusId: 1,
+  StatusName: "Open",
+  StatusCode: "open",
+  AssignedTo: null,
+  AssigneeName: null,
+  AssigneeAvatar: null,
+  AssignedAt: null,
+  DueAt: null,
+  IsOverdue: false,
+  AgeHours: null,
+  EscalatedTo: null,
+  EscalatedToName: null,
+  EscalatedAt: null,
+  LinkedLeadId: null,
+  ResolvedAt: null,
+  ClosedAt: null,
+  ResolutionId: null,
+  ResolutionName: null,
+  Description: null,
+  CreatedBy: null,
+  CreatedAt: "2026-11-01T10:00:00",
+  UpdatedAt: null,
+  ...overrides,
+});
+
+/** An active customer at office 1 with one open complaint; override what a test reads. */
+export const customer = (overrides: Partial<Customer> = {}): Customer => ({
+  Id: 3,
+  CompId: 1,
+  BranchId: 1,
+  BranchName: "Head Office",
+  Name: "Sharma Traders",
+  ContactPerson: "Mr Sharma",
+  Mobile: "9825012345",
+  AltMobile: null,
+  Email: null,
+  Address: null,
+  City: "Surat",
+  State: null,
+  Pincode: null,
+  Remarks: null,
+  IsActive: true,
+  OpenTickets: 1,
+  TotalTickets: 3,
+  LastTicketAt: null,
+  CreatedAt: "2026-10-01T00:00:00",
+  ...overrides,
 });

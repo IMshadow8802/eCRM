@@ -4,7 +4,7 @@ import { fetchLookups } from "../../api/configQueries";
 import { fetchTickets } from "../../api/ticketQueries";
 import { fetchAssignableUsers } from "../../api/userQueries";
 import type { Ticket } from "../../types/api";
-import { envelope, pagination } from "../../test/fixtures";
+import { envelope, pagination, ticket } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import ComplaintsScreen from "./ComplaintsScreen";
 
@@ -12,15 +12,7 @@ jest.mock("../../api/ticketQueries");
 jest.mock("../../api/configQueries");
 jest.mock("../../api/userQueries");
 
-const ticket = {
-  Id: 7,
-  TicketNo: "T-7",
-  Subject: "Inverter keeps tripping",
-  StatusCode: "open",
-  StatusName: "Open",
-  IsOverdue: false,
-  DueAt: null,
-} as Ticket;
+const row = ticket();
 
 const ticketsReply = (tickets: Ticket[]) => envelope({ tickets, pagination: pagination(tickets.length) });
 
@@ -33,7 +25,7 @@ const mount = (navigation = makeNavigation<"Complaints">()) =>
   );
 
 beforeEach(() => {
-  jest.mocked(fetchTickets).mockResolvedValue(ticketsReply([ticket]));
+  jest.mocked(fetchTickets).mockResolvedValue(ticketsReply([row]));
   jest.mocked(fetchLookups).mockResolvedValue([]);
   jest.mocked(fetchAssignableUsers).mockResolvedValue([]);
   seedAuth({ UserId: 42 });

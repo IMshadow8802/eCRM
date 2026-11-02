@@ -14,9 +14,9 @@ export const CUSTOMER_ENDPOINTS = {
 } as const;
 
 /**
- * Company-wide on purpose: a customer is one record however many branches they
- * have complained to, and the picker has to find the existing row before
- * someone creates a fourth spelling of the same mobile. The SP searches
+ * Customers are per office since 2026-09-16 (mobile unique per CompId +
+ * BranchId); `BranchId: null` asks for every office the caller's `customers`
+ * reach covers, and the server narrows to that. The SP searches
  * Name / ContactPerson / Mobile / Email / City.
  */
 export const fetchCustomers = ({
@@ -37,7 +37,7 @@ export interface SaveCustomerPayload {
   ContactPerson?: string | null;
   /**
    * Digits and `+` only. The SP strips spaces/dashes and answers 409 when
-   * another active customer in the company already has that mobile.
+   * another active customer in the same office already has that mobile.
    */
   Mobile?: string | null;
   AltMobile?: string | null;
