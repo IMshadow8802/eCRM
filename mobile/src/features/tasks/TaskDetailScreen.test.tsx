@@ -267,7 +267,7 @@ describe("who may do what", () => {
   });
 
   it("a personal board is private even from an admin", async () => {
-    seedAuth({ UserId: ME, user: { IsAdmin: true } });
+    seedAuth({ UserId: ME, access: { isAdmin: true } });
     serve({
       task: { ...TASK, CreatedByUserId: 1, AssigneesJson: assigneesJson([1, "Owner"]) },
       ws: makeWorkspace({ Id: 10, Type: "personal", MyRole: null }),
@@ -279,7 +279,7 @@ describe("who may do what", () => {
   });
 
   it("an admin works any task on a shared board", async () => {
-    seedAuth({ UserId: ME, user: { IsAdmin: true } });
+    seedAuth({ UserId: ME, access: { isAdmin: true } });
     serve({
       task: { ...TASK, CreatedByUserId: 1, AssigneesJson: assigneesJson([1, "Owner"]) },
       ws: makeWorkspace({ Id: 10, Type: "shared", MyRole: null }),
