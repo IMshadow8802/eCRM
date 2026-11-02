@@ -1,11 +1,10 @@
 import { forwardRef, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
-import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { Clock, Search, type LucideIcon } from "lucide-react-native";
 
-import { colors, metrics, radius, spacing, typography, type BadgeTone } from "../../theme";
+import { colors, metrics, spacing, type BadgeTone } from "../../theme";
 import type { Lookup } from "../../types/api";
-import { Avatar, Button, ChoiceList, FieldHelp, FieldLabel, FilterPills, Sheet, Text, type SheetRef } from "../../ui";
+import { Avatar, Button, ChoiceList, FieldHelp, FieldLabel, FilterPills, Input, Sheet, Text, type SheetRef } from "../../ui";
 import { RemarksInput } from "./RemarksInput";
 
 export interface Person {
@@ -90,18 +89,16 @@ export const TransferSheet = forwardRef<SheetRef, TransferSheetProps>(function T
     >
       <FieldLabel label={pickLabel} required />
       {searchable ? (
-        <View style={styles.search}>
-          <Search size={18} color={colors.textMuted} />
-          <BottomSheetTextInput
-            testID={`${testID}-search`}
-            value={query}
-            onChangeText={setQuery}
-            placeholder="Search people in your reach"
-            placeholderTextColor={colors.textMuted}
-            autoCorrect={false}
-            style={styles.searchInput}
-          />
-        </View>
+        <Input
+          testID={`${testID}-search`}
+          accessibilityLabel="Search people in your reach"
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search people in your reach"
+          leftIcon={Search}
+          autoCorrect={false}
+          fieldHeight={metrics.searchHeight}
+        />
       ) : null}
       <ScrollView style={styles.people} bounces={false} keyboardShouldPersistTaps="handled">
         <ChoiceList
@@ -162,18 +159,6 @@ export const TransferSheet = forwardRef<SheetRef, TransferSheetProps>(function T
 });
 
 const styles = StyleSheet.create({
-  search: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[2],
-    height: metrics.searchHeight,
-    paddingHorizontal: spacing[3],
-    borderRadius: radius.badge,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  searchInput: { ...typography.body, flex: 1, color: colors.text, padding: 0 },
   people: { maxHeight: 300, marginTop: metrics.inlineGap },
   block: { marginTop: spacing[3] },
   foot: { flexDirection: "row", alignItems: "center", gap: spacing[2], marginBottom: spacing[3] },

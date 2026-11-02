@@ -193,6 +193,33 @@ describe("E 11 · facts and activity", () => {
     expect(screen.queryByText("Created by Ravi Kumar")).toBeNull();
   });
 
+  it("only a known leading verb is bold; the SP's other summaries read plain; legacy lowercase is capitalised", async () => {
+    jest.mocked(fetchTicketDetail).mockResolvedValue(
+      detail(ticket(), {
+        activity: [
+          act_(1, "created", "Complaint created", "2026-11-01T10:30:00"),
+          act_(2, "status", "Status: Open → Resolved", "2026-11-01T11:20:00"),
+          act_(3, "resolved", "resolved", "2026-11-01T12:00:00"),
+        ],
+      }),
+    );
+    await mount();
+    await loaded();
+    const plain = { fontFamily: "Inter_600SemiBold" };
+    expect(await screen.findByText("Complaint created")).toBeOnTheScreen();
+    expect(screen.queryByText("Complaint")).toBeNull();
+    expect(flat(screen.getByText("Complaint created"))).toMatchObject(plain);
+    expect(screen.queryByText("Status:")).toBeNull();
+    expect(flat(screen.getByText("Status: Open → Resolved"))).toMatchObject(plain);
+    // "resolved" → a bold "Resolved", the whole title.
+    expect(screen.queryByText("resolved")).toBeNull();
+    // ("Resolved" is also a status label elsewhere; the activity one sits in a rich title.)
+    const verb = screen.getAllByText("Resolved").find((n) => n.parent && flat(n.parent).fontFamily === "Inter_400Regular");
+    expect(verb).toBeDefined();
+    expect(flat(verb!)).toMatchObject({ fontFamily: "Inter_600SemiBold" });
+    expect(verb!.parent).toHaveTextContent(/^Resolved$/);
+  });
+
   it("nothing yet says so", async () => {
     await mount();
     await loaded();

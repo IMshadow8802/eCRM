@@ -7,7 +7,7 @@ import { fetchNotifications } from "../../api/notificationQueries";
 import { fetchBranches } from "../../api/userQueries";
 import { fetchWorkspaces } from "../../api/workspaceQueries";
 import useAuthStore from "../../stores/useAuthStore";
-import { chipTones } from "../../theme";
+import { chipTones, colors } from "../../theme";
 import type { ModuleKey } from "../../types/api";
 import { envelope, makeWorkspace, pagination } from "../../test/fixtures";
 import { makeNavigation, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
@@ -241,8 +241,11 @@ describe("account rows", () => {
     const avatar = screen.getByTestId("profile-avatar");
     expect(flat(avatar).marginTop).toBe(16);
     // The avatar is the band's first content: nothing (no 52 row) before it.
-    const band = avatar.parent!;
-    expect(band.children.some((c) => typeof c !== "string" && flat(c).height === 52)).toBe(false);
+    // The avatar is a direct child of the navy band: no row wraps or precedes it.
+    let band = avatar.parent;
+    while (band && flat(band).backgroundColor !== colors.band) band = band.parent;
+    expect(avatar.parent).toBe(band);
+    expect(band!.children[0]).toBe(avatar);
     expect(flat(screen.getByText("Profile"))).toMatchObject({ fontSize: 15, fontFamily: "Inter_600SemiBold" });
     let row = screen.getByText("Profile").parent;
     while (row && !flat(row).paddingVertical) row = row.parent;

@@ -125,6 +125,13 @@ describe("E field (§3.14)", () => {
     expect(icon.props.stroke ?? icon.props.color).toBe(colors.danger);
   });
 
+  it("fieldHeight: a single line's height (E 23 search 40), a multiline's minimum (E 13 84)", async () => {
+    await render(<><Input placeholder="Search people" fieldHeight={40} /><Input placeholder="Remarks" multiline fieldHeight={84} /></>);
+    expect(box("Search people").height).toBe(40);
+    expect(box("Remarks")).toMatchObject({ minHeight: 84 });
+    expect(box("Remarks").height).toBeUndefined();
+  });
+
   it("a right slot sits inside the field, straight after the text (E 12 clear X)", async () => {
     await render(<Input placeholder="Customer" right={<RNText>clear</RNText>} />);
     const kids = screen.getByPlaceholderText("Customer").parent!.children;

@@ -1,5 +1,5 @@
 // Self-service account edits — the phone's half of web/src/components/AccountModal.jsx.
-import { forwardRef, useImperativeHandle, useRef, useState } from "react";
+import { useState, type RefObject } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { useMutation } from "@tanstack/react-query";
 import { Check, KeyRound } from "lucide-react-native";
@@ -77,19 +77,18 @@ export function AvatarPicker({ value, onChange }: { value: AvatarPreset; onChang
 /**
  * Change your own password (E 19's "Change password" row → spec §4 19: the
  * password ComposeSheet). Masked fields; the sheet resets on close, so a
- * closed sheet never keeps a typed password. Present it through the ref.
+ * closed sheet never keeps a typed password. Present it through the ref, which
+ * goes straight to the ComposeSheet (React 19 passes `ref` as a prop).
  */
-export const ChangePasswordSheet = forwardRef<SheetRef>(function ChangePasswordSheet(_, ref) {
+export function ChangePasswordSheet({ ref }: { ref: RefObject<SheetRef | null> }) {
   const toast = useToast();
-  const inner = useRef<SheetRef>(null);
-  useImperativeHandle(ref, () => inner.current as SheetRef, []);
   const [error, setError] = useState<string | null>(null);
 
   const save = useMutation({
     mutationFn: (p: Parameters<typeof changeMyPassword>[0]) => changeMyPassword(p),
     onSuccess: () => {
       toast.success("Password changed");
-      inner.current?.dismiss();
+      ref.current?.dismiss();
     },
     onError: (err) => setError(apiErrorMessage(err, "Could not change your password.")),
   });
@@ -104,7 +103,7 @@ export const ChangePasswordSheet = forwardRef<SheetRef>(function ChangePasswordS
 
   return (
     <ComposeSheet
-      ref={inner}
+      ref={ref}
       title="Change password"
       badge={{ tone: "slate", icon: KeyRound }}
       submitLabel="Save password"
@@ -119,7 +118,7 @@ export const ChangePasswordSheet = forwardRef<SheetRef>(function ChangePasswordS
       onDismiss={() => setError(null)}
     />
   );
-});
+}
 
 const styles = StyleSheet.create({
   picker: { gap: spacing[2] },

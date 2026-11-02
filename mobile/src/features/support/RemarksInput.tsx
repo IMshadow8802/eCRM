@@ -1,8 +1,7 @@
-import { StyleSheet, View } from "react-native";
-import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
+import { StyleSheet } from "react-native";
 
-import { colors, metrics, radius, spacing, typography } from "../../theme";
-import { FieldHelp, FieldLabel } from "../../ui";
+import { metrics } from "../../theme";
+import { Input } from "../../ui";
 
 export interface RemarksInputProps {
   value: string;
@@ -19,46 +18,33 @@ export interface RemarksInputProps {
 }
 
 /**
- * A textarea inside a bottom sheet (E `.in.ta`). gorhom's input, not ui/Input:
- * a plain TextInput in a sheet sits under the keyboard because the sheet
- * cannot pan with it.
+ * A textarea inside a bottom sheet (E `.in.ta`): ui/Input, which turns into
+ * gorhom's sheet input inside a Sheet, so it rides the keyboard.
  */
 export function RemarksInput({
   value, onChangeText, label = "Remarks", placeholder, required = true, minHeight = 64, hint, error, testID, autoFocus,
 }: RemarksInputProps) {
   return (
-    <View style={styles.block}>
-      <FieldLabel label={label} required={required} />
-      <BottomSheetTextInput
-        testID={testID}
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor={colors.textMuted}
-        multiline
-        autoFocus={autoFocus}
-        style={[styles.input, { minHeight }, !!error && styles.error]}
-      />
-      <FieldHelp error={error} hint={hint} />
-    </View>
+    <Input
+      testID={testID}
+      label={label}
+      required={required}
+      accessibilityLabel={label}
+      value={value}
+      onChangeText={onChangeText}
+      placeholder={placeholder}
+      multiline
+      fieldHeight={minHeight}
+      autoFocus={autoFocus}
+      hint={hint}
+      error={error}
+      containerStyle={styles.block}
+    />
   );
 }
 
 const styles = StyleSheet.create({
   block: { marginBottom: metrics.fieldGap },
-  input: {
-    ...typography.body,
-    color: colors.text,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.badge,
-    paddingHorizontal: spacing[3],
-    paddingTop: 11,
-    paddingBottom: 11,
-    backgroundColor: colors.surface,
-    textAlignVertical: "top",
-  },
-  error: { borderWidth: 2, borderColor: colors.danger, paddingHorizontal: 11 },
 });
 
 export default RemarksInput;

@@ -298,7 +298,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.surfaceSunken,
     borderRadius: radius.column,
-    // ponytail: E's 10 has no spacing step; BOARD_GAP is the board's own 10.
+    // E: the column pads 10 at the top, the same 10 as the gap between columns.
     paddingTop: BOARD_GAP,
     paddingHorizontal: spacing[2],
     paddingBottom: spacing[2],

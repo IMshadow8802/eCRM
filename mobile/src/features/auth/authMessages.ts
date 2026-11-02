@@ -14,6 +14,8 @@ export const FALLBACK_ERROR =
 export interface AuthError {
   title: string;
   body?: string;
+  /** The server's error code, when it sent one (INVALID_CREDENTIALS, USER_INACTIVE …). */
+  code?: string;
 }
 
 export const UNREACHABLE: AuthError = {
@@ -36,5 +38,8 @@ export const LOGIN_ERRORS: Record<string, AuthError> = {
 export function loginError(err: unknown): AuthError {
   const data = (err as { response?: { data?: { code?: string; message?: string } } } | null)?.response?.data;
   if (!data) return UNREACHABLE;
-  return LOGIN_ERRORS[data.code ?? ""] ?? (data.message ? { title: data.message } : UNREACHABLE);
+  const code = data.code ? { code: data.code } : {};
+  const known = LOGIN_ERRORS[data.code ?? ""];
+  if (known) return { ...known, ...code };
+  return data.message ? { title: data.message, ...code } : UNREACHABLE;
 }

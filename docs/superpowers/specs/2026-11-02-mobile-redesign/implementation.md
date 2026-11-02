@@ -620,7 +620,9 @@ interface ActionBarProps { actions: BarAction[] }
 
 **ListGroup.** Outer `View`: `surface`, radius 16, `elevation.whisper`. Inner `View`: radius 16, `overflow: hidden`. The clip sits on the child, per the Card rule.
 
-**ListGroupCell** (Task 37b). The same group cut per FlatList cell so a long list stays virtualised: `first` rounds the top corners, `last` the bottom; whisper on the outer view, clip on the inner (a SwipeRow's blocks stay inside the corners). Complaints, Leads, Follow-ups.
+**ListGroupCell** (Task 37b). The same group cut per FlatList cell so a long list stays virtualised: `first` rounds the top corners, `last` the bottom; clip on the inner view (a SwipeRow's blocks stay inside the corners). The whisper is on the last cell only: per-cell shadows spill a seam onto the row above, and a box-shadow cannot be limited to the sides (device check in Task 39). Complaints, Leads, Follow-ups.
+
+Activity titles (11, T2): the leading verb is bold only when it is in a closed list (Created, Escalated, Assigned, Transferred, Unassigned, Resolved, Reopened, Closed, Rejected, Called); "Complaint created" and "Status: Open → Resolved" read plain; legacy lowercase summaries are capitalised. Lead and task timelines stay plain (E has no sample).
 
 **ListRow**
 - Row: direction row, gap 12, aligned centre, padding 11 14, background `surface`.

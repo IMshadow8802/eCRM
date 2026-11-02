@@ -86,15 +86,24 @@ export interface ComplaintDetailBodyProps {
   onOpenTicket: (ticketId: number) => void;
 }
 
+/** Summaries that lead with one of these verbs get it bold (E 11 / T2: "**Escalated** to Neha Kapoor"). */
+const ACTIVITY_VERBS = new Set([
+  "created", "escalated", "assigned", "transferred", "unassigned", "resolved", "reopened", "closed", "rejected", "called",
+]);
+
 /**
- * E 11 / T2 activity titles: the verb bold, the rest regular ("**Escalated**
- * to Neha Kapoor"). ponytail: the summary's first word is taken as its verb —
- * sp_LogTicketActivity writes "Escalated to …", "Assigned to …", "Created by …";
- * one that does not lead with a verb still reads, its first word bold.
+ * E 11 / T2 activity titles: a leading verb bold, the rest regular. Only a
+ * closed verb list is bolded: sp_LogTicketActivity also writes "Complaint
+ * created", "Complaint details updated" and "Status: Open → Resolved", which
+ * read as plain titles. Legacy rows wrote a lowercase "resolved" / "closed" /
+ * "reopened"; the first letter is capitalised.
  */
-function verbFirst(text: string): { titleVerb: string; title: string } {
-  const at = text.indexOf(" ");
-  return at < 0 ? { titleVerb: text, title: "" } : { titleVerb: text.slice(0, at), title: text.slice(at + 1) };
+function activityTitle(text: string): { titleVerb?: string; title: string } {
+  const capped = text.charAt(0).toUpperCase() + text.slice(1);
+  const at = capped.indexOf(" ");
+  const first = at < 0 ? capped : capped.slice(0, at);
+  if (!ACTIVITY_VERBS.has(first.toLowerCase())) return { title: capped };
+  return { titleVerb: first, title: at < 0 ? "" : capped.slice(at + 1) };
 }
 
 /** Activity shows four until "All n" (E 11). */
@@ -247,7 +256,7 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
           key: `a-${a.Id}`,
           at: a.CreatedAt,
           badge: { tone: b.tone, icon: b.icon, size: rowBadge },
-          ...verbFirst(a.Summary ?? a.Type ?? ""),
+          ...activityTitle(a.Summary ?? a.Type ?? ""),
           meta: a.UserName ? `By ${a.UserName}` : undefined,
           right: { text: whenText(a.CreatedAt) },
         };

@@ -226,6 +226,8 @@ describe("03 — sign-in error, in the form", () => {
     await signIn();
     expect(await screen.findByText(message)).toBeOnTheScreen();
     expect(screen.getByTestId("auth-error")).toHaveTextContent(message);
+    // Only wrong credentials ring the password (keyed on the code, not the wording).
+    expect(flat(screen.getByLabelText("Password").parent!).borderColor).toBe(colors.border);
   });
 
   it("a network failure shows the connection fallback", async () => {

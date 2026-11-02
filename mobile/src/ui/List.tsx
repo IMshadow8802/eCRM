@@ -24,14 +24,19 @@ export function ListGroup({ children, style, testID }: { children: ReactNode; st
 
 /**
  * One cell of a ListGroup inside a FlatList (E `.lg`, virtualised): the first
- * cell rounds the top, the last the bottom. Shadow outside, clip inside — the
- * clip keeps a SwipeRow's revealed blocks inside the rounded corners without
- * flattening the whisper (the Card rule).
+ * cell rounds the top, the last the bottom. The clip is on the inner view, so
+ * a SwipeRow's revealed blocks stay inside the corners.
+ *
+ * The whisper (0 1px 2px) is on the LAST cell only. Put on every cell, each
+ * cell's blur spills up over the cell above and draws a seam between rows, and
+ * a box-shadow cannot be limited to the sides. What E's single group shows of
+ * it is the 1 px shadow under its bottom edge; the last cell draws exactly that.
+ * ponytail: a whole group's faint 2 px side/top haze is not drawn; checked on a device (Task 39).
  */
 export function ListGroupCell({ first, last, children }: { first: boolean; last: boolean; children: ReactNode }) {
   const corners = [first && styles.cellFirst, last && styles.cellLast];
   return (
-    <View testID="list-cell" style={[styles.cell, elevation.whisper, ...corners]}>
+    <View testID="list-cell" style={[styles.cell, last && elevation.whisper, ...corners]}>
       <View style={[styles.cellClip, ...corners]}>{children}</View>
     </View>
   );

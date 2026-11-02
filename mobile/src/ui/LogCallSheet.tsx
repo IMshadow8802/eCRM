@@ -1,13 +1,13 @@
 import { forwardRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { PhoneCall, PhoneIncoming, PhoneMissed, PhoneOutgoing, type LucideIcon } from "lucide-react-native";
 
-import { colors, metrics, radius, spacing, typography, type ChipTone } from "../theme";
+import { metrics, spacing, type ChipTone } from "../theme";
 import type { Lookup } from "../types/api";
 import { Button } from "./Button";
 import { Stepper } from "./ChoiceList";
 import { FieldLabel } from "./Field";
+import { Input } from "./Input";
 import { Sheet, type SheetRef } from "./Sheet";
 import { FilterPills, SegmentedTabs } from "./Tabs";
 import { Text } from "./Text";
@@ -109,18 +109,18 @@ export const LogCallSheet = forwardRef<SheetRef, LogCallSheetProps>(function Log
         </View>
       )}
 
-      <View style={styles.block}>
-        <FieldLabel label="What was said" required />
-        <BottomSheetTextInput
-          testID="logcall-notes"
-          value={notes}
-          onChangeText={setNotes}
-          placeholder="What was said"
-          placeholderTextColor={colors.textMuted}
-          multiline
-          style={styles.notes}
-        />
-      </View>
+      <Input
+        testID="logcall-notes"
+        label="What was said"
+        required
+        accessibilityLabel="What was said"
+        value={notes}
+        onChangeText={setNotes}
+        placeholder="What was said"
+        multiline
+        fieldHeight={76}
+        containerStyle={styles.notes}
+      />
 
       {then?.length ? (
         <View style={styles.thenBlock}>
@@ -139,20 +139,8 @@ const styles = StyleSheet.create({
   block: { marginTop: 14 },
   thenBlock: { marginTop: spacing[1] },
   duration: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
-  notes: {
-    ...typography.body,
-    color: colors.text,
-    minHeight: 76,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.badge,
-    paddingHorizontal: spacing[3],
-    paddingTop: 11,
-    paddingBottom: 11,
-    marginBottom: metrics.fieldGap,
-    backgroundColor: colors.surface,
-    textAlignVertical: "top",
-  },
+  // The block above it (14) and E .fl 12 below.
+  notes: { marginTop: 14, marginBottom: metrics.fieldGap },
   error: { marginTop: spacing[2] },
   save: { marginTop: spacing[4] },
 });

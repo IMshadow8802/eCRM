@@ -374,8 +374,9 @@ describe("T3: tablet two-pane", () => {
     expect(StyleSheet.flatten(list.props.contentContainerStyle).paddingHorizontal).toBe(16);
     const cells = screen.getAllByTestId("list-cell");
     expect(cells).toHaveLength(2);
-    expect(flat(cells[0]!)).toMatchObject({ boxShadow: "0 1px 2px #DCE0EC", borderTopLeftRadius: 16 });
-    expect(flat(cells[1]!)).toMatchObject({ borderBottomLeftRadius: 16 });
+    expect(flat(cells[0]!)).toMatchObject({ borderTopLeftRadius: 16 });
+    expect(flat(cells[0]!).boxShadow).toBeUndefined();
+    expect(flat(cells[1]!)).toMatchObject({ borderBottomLeftRadius: 16, boxShadow: "0 1px 2px #DCE0EC" });
   });
 
   it("an empty list leaves the pane saying nothing is selected", async () => {

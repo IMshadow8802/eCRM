@@ -167,9 +167,11 @@ describe("E 10 · the row", () => {
     await screen.findByTestId("complaint-3");
     const cells = screen.getAllByTestId("list-cell");
     expect(cells).toHaveLength(3);
-    expect(flat(cells[0]!)).toMatchObject({ boxShadow: "0 1px 2px #DCE0EC", borderTopLeftRadius: 16 });
+    expect(flat(cells[0]!)).toMatchObject({ borderTopLeftRadius: 16 });
+    expect(flat(cells[0]!).boxShadow).toBeUndefined();
     expect(flat(cells[1]!).borderTopLeftRadius).toBeUndefined();
-    expect(flat(cells[2]!)).toMatchObject({ borderBottomLeftRadius: 16 });
+    expect(flat(cells[1]!).boxShadow).toBeUndefined();
+    expect(flat(cells[2]!)).toMatchObject({ borderBottomLeftRadius: 16, boxShadow: "0 1px 2px #DCE0EC" });
   });
 
   it("the violet corner dot only when escalated; a closed one reads quieter", async () => {

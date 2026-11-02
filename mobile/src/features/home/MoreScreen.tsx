@@ -129,7 +129,7 @@ export default function MoreScreen() {
               title="Workspaces"
               right={workspaces ? { text: String(workspaces.filter(isMine).length) } : undefined}
               chevron
-            menu
+              menu
               onPress={() => navigation.navigate("Boards")}
             />
           ) : null}
@@ -139,7 +139,7 @@ export default function MoreScreen() {
               title="Follow-ups"
               trailing={followUpsToday > 0 ? <Chip label={`${followUpsToday} today`} tone="butter" /> : null}
               chevron
-            menu
+              menu
               onPress={() => navigation.navigate("FollowUps", undefined)}
             />
           ) : null}

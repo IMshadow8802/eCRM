@@ -29,7 +29,7 @@ describe("ListGroup", () => {
 });
 
 describe("ListGroupCell (a ListGroup per FlatList cell)", () => {
-  it("first rounds the top, last the bottom, middle is square; whisper outside, clip inside", async () => {
+  it("first rounds the top, last the bottom, middle is square; the whisper only under the last; clip inside", async () => {
     await render(
       <>
         <ListGroupCell first last={false}><RNText>a</RNText></ListGroupCell>
@@ -38,7 +38,11 @@ describe("ListGroupCell (a ListGroup per FlatList cell)", () => {
       </>,
     );
     const [a, b, c] = screen.getAllByTestId("list-cell");
-    expect(flat(a!)).toMatchObject({ backgroundColor: colors.surface, boxShadow: "0 1px 2px #DCE0EC", borderTopLeftRadius: 16, borderTopRightRadius: 16 });
+    expect(flat(a!)).toMatchObject({ backgroundColor: colors.surface, borderTopLeftRadius: 16, borderTopRightRadius: 16 });
+    // A shadow per cell would spill a seam onto the row above: only the last draws it.
+    expect(flat(a!).boxShadow).toBeUndefined();
+    expect(flat(b!).boxShadow).toBeUndefined();
+    expect(flat(c!).boxShadow).toBe("0 1px 2px #DCE0EC");
     expect(flat(a!).overflow).toBeUndefined();
     expect(flat(a!).borderBottomLeftRadius).toBeUndefined();
     expect(flat(b!).borderTopLeftRadius).toBeUndefined();

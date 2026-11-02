@@ -11,7 +11,7 @@ import useAuthStore from "../../stores/useAuthStore";
 import { colors, gradients, radius, spacing } from "../../theme";
 import { Button, InfoNote, Input, StatusBadge, Text } from "../../ui";
 import { appVersion } from "./appVersion";
-import { LOGIN_ERRORS, REASONS, UNREACHABLE, loginError, type AuthError } from "./authMessages";
+import { REASONS, UNREACHABLE, loginError, type AuthError } from "./authMessages";
 
 /** A field-level prompt (on the field) or a server answer (the box, E 03). */
 type FormError = { field: "code" | "identifier" | "password"; message: string } | { box: AuthError };
@@ -229,7 +229,7 @@ export default function LoginScreen() {
                   leftIcon={Lock}
                   error={fieldError("password")}
                   // E 03: wrong credentials ring the password; the box above says why.
-                  invalid={box === LOGIN_ERRORS.INVALID_CREDENTIALS}
+                  invalid={box?.code === "INVALID_CREDENTIALS"}
                   autoCapitalize="none"
                   autoComplete="password"
                   editable={!busy}

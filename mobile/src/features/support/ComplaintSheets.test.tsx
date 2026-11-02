@@ -9,7 +9,20 @@ import type { AssignableUser, Lookup, Ticket } from "../../types/api";
 import { envelope, serverError, ticket } from "../../test/fixtures";
 import { renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import { spySheets } from "../../test/sheets";
+import { flat } from "../../test/style";
 import { ComplaintSheets, type ComplaintAction, type ComplaintSheetsHandle } from "./ComplaintSheets";
+
+// gorhom's mock makes BottomSheetTextInput a bare TextInput; tag it so a test
+// can see a field is the sheet's own input (a plain TextInput loses focus there).
+jest.mock("@gorhom/bottom-sheet", () => {
+  const mock = jest.requireActual("@gorhom/bottom-sheet/mock");
+  const { createElement, forwardRef } = jest.requireActual("react");
+  const { TextInput } = jest.requireActual("react-native");
+  return {
+    ...mock,
+    BottomSheetTextInput: forwardRef((props: object, ref: unknown) => createElement(TextInput, { ...props, ref, nativeID: "sheet-input" })),
+  };
+});
 
 jest.mock("../../api/ticketQueries");
 jest.mock("../../api/callQueries");
@@ -147,6 +160,21 @@ describe("moving to any company status (Change status)", () => {
 it("Resolve's remarks take the focus (E 13)", async () => {
   await mount();
   expect(screen.getByTestId("resolve-remarks").props.autoFocus).toBe(true);
+});
+
+it("the sheets' remarks and search are the shared Input as sheet inputs: remarks 84 / 64 tall, search 40 with its icon", async () => {
+  const open = await mount();
+  await open("resolve");
+  const resolve = screen.getByTestId("resolve-remarks");
+  expect(resolve.props.nativeID).toBe("sheet-input");
+  expect(flat(resolve.parent!)).toMatchObject({ minHeight: 84, borderRadius: 12 });
+  await open("transfer");
+  const search = screen.getByTestId("transfer-search");
+  expect(search.props.nativeID).toBe("sheet-input");
+  expect(flat(search.parent!)).toMatchObject({ height: 40, borderRadius: 12, borderWidth: 1 });
+  const remarks = screen.getByTestId("transfer-remarks");
+  expect(remarks.props.nativeID).toBe("sheet-input");
+  expect(flat(remarks.parent!)).toMatchObject({ minHeight: 64 });
 });
 
 it("with no transfer reasons set up, Transfer says so and cannot be sent", async () => {

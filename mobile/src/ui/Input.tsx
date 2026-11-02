@@ -33,6 +33,8 @@ export interface InputProps extends Omit<TextInputProps, "style"> {
   tone?: "default" | "onBrand";
   /** No border, background or fixed height — an inline composer inside a card. */
   bare?: boolean;
+  /** Field height when not 44: a single line takes it as its height (E 23 search 40), a multiline as its minimum (E 13 84, E 23 64). */
+  fieldHeight?: number;
   containerStyle?: ViewStyle;
 }
 
@@ -43,7 +45,7 @@ export interface InputProps extends Omit<TextInputProps, "style"> {
 export const Input = forwardRef<TextInput, InputProps>(function Input(
   {
     label, error, invalid = false, right, hint, required, labelTag, leftIcon: LeftIcon, prefix, tabular = false, password = false, tone = "default",
-    bare = false, containerStyle, editable = true, multiline,
+    bare = false, fieldHeight, containerStyle, editable = true, multiline,
     // Pulled out of `rest`: spread after the wrappers, a caller's onFocus would switch the ring off.
     onFocus, onBlur,
     ...rest
@@ -79,6 +81,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
           bad && fieldBox.error,
           !editable && fieldBox.disabled,
           bare && styles.bare,
+          fieldHeight != null && (multiline ? { minHeight: fieldHeight } : { height: fieldHeight }),
         ]}
       >
         {LeftIcon ? <LeftIcon size={18} color={bad ? colors.danger : colors.textMuted} /> : null}

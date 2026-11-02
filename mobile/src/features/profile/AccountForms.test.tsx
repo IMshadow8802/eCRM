@@ -31,7 +31,7 @@ describe("ChangePasswordSheet", () => {
   it("checks length and the confirm before asking the server, then changes it and closes", async () => {
     jest.mocked(changeMyPassword).mockResolvedValue(envelope({}));
     const { dismiss } = spySheets();
-    await renderWithProviders(<ChangePasswordSheet />);
+    await renderWithProviders(<ChangePasswordSheet ref={createRef<SheetRef>()} />);
     expect(screen.getByText("Change password")).toBeOnTheScreen();
     expect(screen.getByLabelText("New password").props.secureTextEntry).toBe(true);
 
@@ -50,7 +50,7 @@ describe("ChangePasswordSheet", () => {
   });
 
   it("needs the current password: Save stays off until all three are typed", async () => {
-    await renderWithProviders(<ChangePasswordSheet />);
+    await renderWithProviders(<ChangePasswordSheet ref={createRef<SheetRef>()} />);
     await fill("", "new-fixture", "new-fixture");
     expect(screen.getByRole("button", { name: "Save password" })).toBeDisabled();
     expect(changeMyPassword).not.toHaveBeenCalled();
@@ -59,7 +59,7 @@ describe("ChangePasswordSheet", () => {
   it("shows the server's reason and stays open", async () => {
     jest.mocked(changeMyPassword).mockRejectedValue(serverError(401, "Current password is incorrect"));
     const { dismiss } = spySheets();
-    await renderWithProviders(<ChangePasswordSheet />);
+    await renderWithProviders(<ChangePasswordSheet ref={createRef<SheetRef>()} />);
     await fill("wrong-fixture", "new-fixture", "new-fixture");
     expect(await screen.findByText("Current password is incorrect")).toBeOnTheScreen();
     expect(dismiss).not.toHaveBeenCalled();
@@ -85,7 +85,7 @@ describe("ChangePasswordSheet", () => {
   it("a wrong current password over the wire keeps the user signed in", async () => {
     jest.mocked(changeMyPassword).mockImplementation(userQueries.changeMyPassword);
     fail(401, { success: false, code: "WRONG_PASSWORD", message: "Current password is incorrect" });
-    await renderWithProviders(<ChangePasswordSheet />);
+    await renderWithProviders(<ChangePasswordSheet ref={createRef<SheetRef>()} />);
     await fill("wrong-fixture", "new-fixture", "new-fixture");
     expect(await screen.findByText("Current password is incorrect")).toBeOnTheScreen();
     expect(lastRequest()).toMatchObject({ url: "/api/users/me/changePassword" });

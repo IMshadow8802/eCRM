@@ -4,7 +4,20 @@ import { CircleCheck, CirclePause } from "lucide-react-native";
 
 import { renderWithProviders } from "../test/renderWithProviders";
 import type { Lookup } from "../types/api";
+import { flat } from "../test/style";
 import { LogCallSheet, type LogCallSheetProps } from "./LogCallSheet";
+
+// gorhom's mock makes BottomSheetTextInput a bare TextInput; tag it so a test
+// can see a field is the sheet's own input (a plain TextInput loses focus there).
+jest.mock("@gorhom/bottom-sheet", () => {
+  const mock = jest.requireActual("@gorhom/bottom-sheet/mock");
+  const { createElement, forwardRef } = jest.requireActual("react");
+  const { TextInput } = jest.requireActual("react-native");
+  return {
+    ...mock,
+    BottomSheetTextInput: forwardRef((props: object, ref: unknown) => createElement(TextInput, { ...props, ref, nativeID: "sheet-input" })),
+  };
+});
 
 const lookup = (Id: number, Value: string): Lookup => ({ Id, CompId: 1, Kind: "call_outcome", Value, SortOrder: Id, IsActive: true, Code: null });
 const THEN = [
@@ -12,6 +25,15 @@ const THEN = [
   { value: "onhold", label: "Put on hold", tone: "butter" as const, icon: CirclePause },
   { value: "resolve", label: "Resolve", tone: "green" as const, icon: CircleCheck },
 ];
+
+it("the notes are the shared Input as a sheet input, 76 tall at least, labelled and required", async () => {
+  await mount();
+  const notes = screen.getByTestId("logcall-notes");
+  expect(notes.props.nativeID).toBe("sheet-input");
+  expect(flat(notes.parent!)).toMatchObject({ minHeight: 76, borderRadius: 12, borderWidth: 1 });
+  expect(screen.getByLabelText("What was said")).toBe(notes);
+  expect(screen.getByText("What was said", { exact: false })).toHaveTextContent("What was said *");
+});
 
 const mount = async (props: Partial<LogCallSheetProps> = {}) => {
   const onSubmit = jest.fn();

@@ -248,6 +248,8 @@ export function LeadDetailBody({ leadId, navigation, onBack, useBar, pane = fals
   };
 
   // Activity (minus its 'call' rows — the call rows say more), calls, transfers.
+  // Titles stay plain: E has no lead-activity sample, so the complaint's bold
+  // verb (E 11 / T2) is not carried over here.
   const timeline: TimelineEntry[] = [
     ...(detailQuery.data?.activity ?? [])
       .filter((a) => (a.Type ?? "").toLowerCase() !== "call")
