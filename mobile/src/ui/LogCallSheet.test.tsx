@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { act, fireEvent, screen } from "@testing-library/react-native";
 import { CircleCheck, CirclePause } from "lucide-react-native";
@@ -106,4 +107,19 @@ it("a dismiss clears what was typed and picked, for the next call", async () => 
   spy.mockRestore();
   expect(screen.getByTestId("logcall-notes")).toHaveDisplayValue("");
   expect(screen.getByRole("radio", { name: "Keep open" })).toBeChecked();
+});
+
+it("Then options that arrive after mount still default to the first (device bug: none selected)", async () => {
+  // The complaint detail mounts the sheet before the ticket loads, so `then` starts undefined.
+  const onSubmit = jest.fn();
+  function Late() {
+    const [then, setThen] = useState<typeof THEN | undefined>(undefined);
+    useEffect(() => setThen(THEN), []);
+    return <LogCallSheet onSubmit={onSubmit} then={then} />;
+  }
+  await renderWithProviders(<Late />);
+  expect(await screen.findByRole("radio", { name: "Keep open" })).toBeChecked();
+  await fireEvent.changeText(screen.getByTestId("logcall-notes"), "Rang");
+  await fireEvent.press(save());
+  expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ then: "open" }));
 });

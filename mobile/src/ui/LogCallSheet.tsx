@@ -60,13 +60,16 @@ export const LogCallSheet = forwardRef<SheetRef, LogCallSheetProps>(function Log
   const [direction, setDirection] = useState<CallDirection>("out");
   const [minutes, setMinutes] = useState(1);
   const [notes, setNotes] = useState("");
-  const [next, setNext] = useState<string | null>(then?.[0]?.value ?? null);
+  // null = not picked: the first option, even when the options arrive after mount
+  // (the complaint detail mounts this sheet before its ticket loads).
+  const [picked, setNext] = useState<string | null>(null);
+  const next = picked ?? then?.[0]?.value ?? null;
 
   const reset = () => {
     setDirection("out");
     setMinutes(1);
     setNotes("");
-    setNext(then?.[0]?.value ?? null);
+    setNext(null);
   };
 
   const directions = [
