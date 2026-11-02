@@ -10,7 +10,7 @@
 
 **Spec:** No separate spec document. Authority, in order: the user's instructions (2026-11-01/02: sales + complaints on mobile asap; subagent-driven; proper TDD on mobile; Maestro on the emulator, fix in a loop until every flow passes), CLAUDE.md (§0, §3, §6 Sales/Support, §9), and the live contracts in this plan (backend controllers + `TestCRM` SPs read 2026-11-01).
 
-**Reference code (not the implementation):** an untested first draft of Tasks 2–8 is parked in `docs/superpowers/plans/2026-11-01-mobile-sales-reference/` (`leadQueries.ts`, `followupQueries.ts`, `sales/*.tsx|ts`, `tracked-changes.patch` for `types/api.ts`, `configQueries.ts`, `RootNavigator.tsx`, `WorkHubScreen.tsx`). An implementer MAY read it for layout/wording, but must write the failing test first and must not copy a file wholesale before its tests exist and fail. The reference is deleted in Task 11.
+**Reference code (not the implementation):** an untested first draft of Tasks 20–26 is parked in `docs/superpowers/plans/2026-11-01-mobile-sales-reference/` (`leadQueries.ts`, `followupQueries.ts`, `sales/*.tsx|ts`, `tracked-changes.patch` for `types/api.ts`, `configQueries.ts`, `RootNavigator.tsx`, `WorkHubScreen.tsx`). An implementer MAY read it for layout/wording, but must write the failing test first and must not copy a file wholesale before its tests exist and fail. The reference is deleted in Task 31.
 
 ## Global Constraints
 
@@ -50,11 +50,11 @@ Activity row: `Id, LeadId, UserId, UserName, Type, Summary, CreatedAt`. Assignme
 
 ## Review Focus
 
-1. Editing a lead that has a partner or custom fields → both survive (Task 7 payload test + Maestro `leads-edit`).
-2. Picking Won or Lost → never posts `setLeadStatus` with `converted`; Lost cannot submit without a reason (Task 6 tests + Maestro `leads-status`).
-3. A lead the user cannot see (404) → "Lead not available" with a back button, never an endless spinner (Task 6 test).
-4. Empty lookups (no `lost_reason` / `call_outcome` configured) → the sheet says so rather than offering an unsubmittable form (Task 6 test).
-5. A server refusal (`success:false`, 400 on a bad mobile, 403 on transfer) → the server's own sentence is shown, typed input is kept (Task 7 + Task 6 tests).
+1. Editing a lead that has a partner or custom fields → both survive (Task 25 payload test + Maestro `leads-edit`).
+2. Picking Won or Lost → never posts `setLeadStatus` with `converted`; Lost cannot submit without a reason (Task 24 tests + Maestro `leads-status`).
+3. A lead the user cannot see (404) → "Lead not available" with a back button, never an endless spinner (Task 24 test).
+4. Empty lookups (no `lost_reason` / `call_outcome` configured) → the sheet says so rather than offering an unsubmittable form (Task 24 test).
+5. A server refusal (`success:false`, 400 on a bad mobile, 403 on transfer) → the server's own sentence is shown, typed input is kept (Task 25 + Task 24 tests).
 
 ---
 
@@ -74,7 +74,40 @@ Activity row: `Id, LeadId, UserId, UserName, Type, Summary, CreatedAt`. Assignme
 - [ ] CLAUDE.md: §0.4 — mobile is no longer exempt: mobile follows the same test-first rule (≥80% on touched files) with `pnpm test`, in addition to typecheck + lint. §9.7 — replace "No test suite on mobile" with the jest-expo + RNTL setup and `renderWithProviders`; §2 mobile commands gain `pnpm test`.
 - [ ] Gate: `pnpm test`, `pnpm typecheck`, `pnpm lint` clean. Commit.
 
-### Task 1: Complaints characterization + gaps
+
+## Phase A — tests for every existing mobile screen (user order 2026-11-02)
+
+Characterization tests for code that already exists. TDD discipline for these: each test must be shown able to fail — after it passes, temporarily break the behaviour it asserts (or invert the assertion), watch it fail for the right reason, restore; record that RED evidence per test file in the report. A test exposing a real bug → keep the failing test, fix the code, flag it in the report as "regression found". Coverage ≥80% lines + branches on every file the task lists. Mock API modules, never the code under test.
+
+### Task 1: API layer tests
+
+**Files:** tests for every module in `mobile/src/api/` (`client.ts`, `errors.ts`, `queryClient.ts`, `authQueries`, `centralQueries`, `taskQueries`, `workspaceQueries`, `kanbanQueries`, `tatQueries`, `ticketQueries`, `callQueries`, `customerQueries`, `configQueries`, `productQueries`, `userQueries`, `notificationQueries`, `attachmentQueries`, `presenceQueries`).
+
+- [ ] Per fetcher: posts to its endpoint constant with the documented defaults (nulls, `0/1` bits, page defaults), unwraps the documented `data` key, and maps absent arrays to `[]`. `client.ts`: token header from `setAuthToken`, base URL from `setApiBaseUrl`, the 401 path calls the registered unauthorized handler and auth-endpoint 401s do not. `errors.ts`: `apiErrorMessage` prefers the server `message`, falls back to the given text, handles network errors.
+- [ ] Gate. Commit.
+
+### Task 2: Auth, session and store tests
+
+**Files:** tests for `stores/useAuthStore.ts`, `features/auth/LoginScreen.tsx`, `PresenceNoticeDialog.tsx`, `useSignOut.ts`, `utils/menuAccess.ts`.
+
+- [ ] Login two steps: company code → `fetchClientConfig` → stored config; unknown code shows the error in the form; credentials step posts `loginUser`; server message (e.g. "Incorrect username or password") renders in the form, not only a toast; "Switch company" clears config and session. Session 401 codes (`SESSION_ENDED`, `SESSION_EXPIRED`, `SESSION_FORCED`, `SESSION_REQUIRED`) log the user out with the right wording; presence notice shows once and `ackNotice` is called. `menuAccess` visibility rules.
+- [ ] Gate. Commit.
+
+### Task 3: Tasks feature tests
+
+**Files:** tests for `features/tasks/*` (`MyWorkScreen`, `TaskDetailScreen`, `TaskFormScreen`, `TaskCard`, `Checklist`, `DependencySheet`, `TimeSheet`, `TatTab`, `ActivityTab`, `taskHelpers`, `tatChip`, `greeting`).
+
+- [ ] Helpers: due buckets/labels across midnight, assignee parsing, abilities per workspace role (owner/manager/member/viewer, personal vs shared, `IsAdmin` bypass never on personal). Screens: My Work groups by due; detail shows checklist-derived completion; checklist toggle/add/delete call their fetchers; dependency block shown; time entry add; TAT tab actions (hold/release/acknowledge/my part done/reason) call `tatQueries`; form create vs edit payloads; errors show server text.
+- [ ] Gate. Commit.
+
+### Task 4: Workspaces / boards tests
+
+**Files:** tests for `features/workspaces/*` (`BoardsScreen`, `BoardScreen`, `ColumnsScreen`, `WorkspaceFormScreen`, `WorkspaceSettingsScreen`, `WorkspaceCard`) and `ui/BoardColumns`.
+
+- [ ] Boards list (pending invite accept/decline, archived hidden), board columns render + long-press "Move to…" calls `moveTaskColumn`, column add/rename/reorder/delete, workspace create/edit payloads, settings members (invite, role change, remove) gated by role.
+- [ ] Gate. Commit.
+
+### Task 5: Complaints tests
 
 **Files:** Create tests for `mobile/src/api/ticketQueries.ts`, `mobile/src/api/callQueries.ts`, `features/support/ComplaintDetailScreen.tsx`, `features/support/ComplaintFormScreen.tsx`; fix any defect a test exposes.
 
@@ -84,7 +117,29 @@ Activity row: `Id, LeadId, UserId, UserName, Type, Summary, CreatedAt`. Assignme
 - [ ] `ComplaintFormScreen.test.tsx`: submit with no customer shows "Pick the customer, or add a new one."; a valid create posts `saveTicket` with `Id: 0` and the picked ids; `success:false` shows the server message and stays on screen.
 - [ ] Any test that fails because the code is wrong (not the test): fix the code, note it in the report as a regression found. Gate. Commit.
 
-### Task 2: Lead types and fetchers
+### Task 6: Notifications, profile, hub, attachments, navigation tests
+
+**Files:** tests for `features/notifications/NotificationsScreen`, `features/profile/MeScreen`, `features/hub/WorkHubScreen` (+ `ComingSoonScreen` while it exists), `features/attachments/*` (`AttachmentList`, `FileViewer`, `attachmentHelpers`, `useDownloadAttachment`), `navigation/FloatingTabBar`, `navigation/RootNavigator` (authenticated vs login tree).
+
+- [ ] Inbox list/mark read/mark all; profile update + change password validation + sign out; hub rows filtered by menu rights with counts; attachment upload appends `Entity` before the file part, size/type guards, delete, view; tab bar navigation.
+- [ ] Gate. Commit.
+
+### Task 7: UI kit tests
+
+**Files:** tests for `mobile/src/ui/*` components with behaviour (`Select`, `ComposeSheet`, `ActionSheet`, `Dialog`, `DateField`, `Input`, `Button`, `Chip`, `ChipGroup`, `Segmented`, `Checkbox`, `DynamicField`, `Toast`, `ScreenHeader`, `ScreenLoader`, `EmptyState`, `Fab`, `Card`, `Timeline`, `Avatar`/`avatarPresets`).
+
+- [ ] Behaviour only (no snapshot tests): Select single/multi picks, ComposeSheet required fields/choices gate submit and keeps typed text on failure, Dialog confirm/cancel/loading, DateField formats local Y-M-D (never UTC shift — test with a date near midnight), Button disabled/loading blocks press, Segmented counts, DynamicField per type, Toast shows/dismisses, Avatar preset parsing.
+- [ ] Gate. Commit.
+
+## Phase B — catch up with the web (from the parity audit)
+
+### Tasks 8–19: parity fixes
+
+Filled from `.superpowers/sdd/2026-11-01-mobile-sales-and-complaints/parity-audit.md` once it lands: one task per coherent batch of gaps (same screen/domain), each test-first (failing test that shows the gap → fix → green).
+
+## Phase C — Sales on mobile
+
+### Task 20: Lead types and fetchers
 
 **Files:** Modify `mobile/src/types/api.ts`, `mobile/src/api/configQueries.ts` (add `LOOKUP_KIND.leadStatus = "lead_status"`); create `mobile/src/api/leadQueries.ts`, `mobile/src/api/followupQueries.ts` and their tests.
 
@@ -95,7 +150,7 @@ Activity row: `Id, LeadId, UserId, UserName, Type, Summary, CreatedAt`. Assignme
 
 - [ ] Tests first (mock `./client`): `updateLead` body has `CustomJSON: null` and **no** `PartnerId`/`CommType`/`CommValue`/`StatusId`/`OwnerId`/`FirstFollowupAt` keys (`expect(body).not.toHaveProperty(...)`); `createLead` body has `Id: 0`; `fetchLeadDetail` defaults missing arrays to `[]`, missing lead to null; `setLeadStatus` sends `LostReasonId: null` when omitted; `fetchFollowUps({Overdue:true})` sends `LeadId: 0, Overdue: true, PageSize: 50`; `completeFollowUp({Id:1, Remarks:"x"})` sends nulls for the five optionals. Run → fail. Implement → pass. Gate. Commit.
 
-### Task 3: Sales helpers and reference data
+### Task 21: Sales helpers and reference data
 
 **Files:** Create `features/sales/leadHelpers.ts`, `features/sales/useLeadRefData.ts` + tests.
 
@@ -103,21 +158,21 @@ Activity row: `Id, LeadId, UserId, UserName, Type, Summary, CreatedAt`. Assignme
 
 - [ ] Tests first with a fixed `now = new Date(2026, 10, 2, 23, 30)` (local): `dueFromChoice("week", now) === "2026-11-09"`; `localDay(new Date(2026,0,5)) === "2026-01-05"`; `dueFromChoice("tomorrow", new Date(2026, 11, 31)) === "2027-01-01"`; `dayLabel` four cases + null; `rupees(150000) === "₹1,50,000"`; `leadQueueParams("mine", 7, 42, "")` → `{ OwnerId: 42, StatusId: 7, SearchTerm: null, Overdue: false, Unassigned: false, PageSize: 100 }`; `followUpViewParams` all four; `defaultStatus` three cases; `useLeadRefData` with mocked fetchers returns each list under its name (renderHook). Run → fail. Implement → pass. Gate. Commit.
 
-### Task 4: Leads list
+### Task 22: Leads list
 
-**Files:** Create `features/sales/LeadCard.tsx`, `features/sales/LeadsScreen.tsx` + tests. Add stack params `Leads: undefined; LeadDetail: { leadId: number }; LeadForm: { leadId?: number }; FollowUps: undefined;` to `RootStackParamList` (types only — screens are registered in Task 9).
+**Files:** Create `features/sales/LeadCard.tsx`, `features/sales/LeadsScreen.tsx` + tests. Add stack params (types only — screens are registered in Task 26) `Leads: undefined; LeadDetail: { leadId: number }; LeadForm: { leadId?: number }; FollowUps: undefined;` to `RootStackParamList` .
 
 - [ ] Tests first: card shows Name, `"<mobile> · <company>"`, status chip, `"Overdue · <day>"` when `IsOverdue`, "Unassigned" when no owner, `₹` value; no next-date chip on a converted lead. Screen: default queue Mine calls `fetchLeads` with `OwnerId` = the store's `UserId`; tapping "Overdue" re-fetches with `Overdue: true`; status chip narrows by `StatusId`; typing a search term passes `SearchTerm`; rejected fetch → "Couldn't load leads"; empty Mine → "No leads yet"; tapping a card → `navigate("LeadDetail", { leadId })`; FAB "Add a lead" → `navigate("LeadForm", {})`. Header "Leads", subtitle `"<total> yours"` on Mine.
 - [ ] Implement in the shape of `ComplaintsScreen` (tint `success`, Segmented, ChipGroup "All" + statuses, search placeholder "Name, company or mobile", FlatList + Refresher + EmptyState + Fab). Gate. Commit.
 
-### Task 5: Follow-ups queue
+### Task 23: Follow-ups queue
 
 **Files:** Create `features/sales/FollowUpsScreen.tsx` + test.
 
 - [ ] Tests first: default view Today calls `fetchFollowUps` with today's `DueFrom/DueTo` and `PageSize: 100`; "Overdue" → `Overdue: true`; a row shows LeadName, `"<Type> · <day>"`, danger tone when overdue, "Done"/"Skipped" chip for closed rows; tapping a row → `navigate("LeadDetail", { leadId: row.LeadId })`; empty Today → "Nothing due today"; error → "Couldn't load follow-ups".
 - [ ] Implement (header "Follow-ups", tint `success`, Segmented + search "Lead name, company or mobile"). Gate. Commit.
 
-### Task 6: Lead detail
+### Task 24: Lead detail
 
 **Files:** Create `features/sales/LeadDetailScreen.tsx` (+ small presentational children in `features/sales/` if the file passes ~500 lines) + tests.
 
@@ -135,7 +190,7 @@ Activity row: `Id, LeadId, UserId, UserName, Type, Summary, CreatedAt`. Assignme
   - History tab merges activity (minus `Type === "call"`), calls and assignments newest first.
 - [ ] Implement in the shape of `ComplaintDetailScreen` (tint `success`, tabs Details · Follow-ups (open count) · Files (`AttachmentList entity="lead"`) · History). Mutations through one named hook defined outside the component (no hooks inside callbacks). Gate. Commit.
 
-### Task 7: Lead form
+### Task 25: Lead form
 
 **Files:** Create `features/sales/LeadFormScreen.tsx` + test.
 
@@ -146,16 +201,14 @@ Activity row: `Id, LeadId, UserId, UserName, Type, Summary, CreatedAt`. Assignme
   - Estimated value "abc" → "Estimated value must be a number."
 - [ ] Implement: a loader shell that renders the form child keyed by record id (no `setState` in effects). Gate. Commit.
 
-### Task 8: (merged into Task 4 — stack param types)
-
-### Task 9: Wiring
+### Task 26: Wiring
 
 **Files:** Modify `navigation/RootNavigator.tsx`, `features/hub/WorkHubScreen.tsx` (+ test); delete `features/hub/ComingSoonScreen.tsx` (and its route) once nothing references it; delete `features/_sales/`, `features/_support/`.
 
 - [ ] Tests first (`WorkHubScreen.test.tsx`): with menu rights for `/support` and `/sales`, the hub shows Complaints, Leads, Follow-ups and no "Coming soon"; Leads detail shows `"<n> yours"` from `fetchLeads({ OwnerId: me, PageSize: 1 })`; Follow-ups detail `"<n> due today"` from the Today params with `PageSize: 1`; tapping Leads → `navigate("Leads")`; without `/sales` rights the Sales section is absent.
 - [ ] Register `Leads`, `LeadDetail`, `LeadForm`, `FollowUps`. Gate. Commit.
 
-### Task 10: Maestro end to end + fix loop
+### Task 30: Maestro end to end + fix loop
 
 **Pre-req (user):** emulator booted, Debug build installed, Metro running with `adb reverse tcp:8081 tcp:8081`, app signed in to company `TestCRM` by the user. The controller arranges this before dispatch.
 
@@ -164,7 +217,7 @@ Activity row: `Id, LeadId, UserId, UserName, Type, Summary, CreatedAt`. Assignme
 - [ ] Write each flow against the real screen text; run `maestro test --test-output-dir <scratch> .maestro/<flow>.yaml`; on failure read screenshot + Metro log, fix the app code **with a unit/screen test that reproduces the bug first**, re-run. Also inspect every screenshot for clipped text, overlapping chips, keyboard covering a submit button; each such fix also gets a test where a test can express it.
 - [ ] Done when the whole suite passes twice in a row. Report the `MAESTRO %` records created. Commit flows + fixes.
 
-### Task 11: Docs and cleanup
+### Task 31: Docs and cleanup
 
 - [ ] CLAUDE.md §9: Phase C status (what is on mobile, what stays web), `mobile/.maestro/` usage. Delete `docs/superpowers/plans/2026-11-01-mobile-sales-reference/`. Commit.
 - [ ] Notion entry after the user accepts the branch (controller).
