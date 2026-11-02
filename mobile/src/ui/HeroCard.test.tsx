@@ -132,6 +132,12 @@ describe("Facts (E 11, T2)", () => {
     await render(<Facts layout="list" items={[{ label: "Owner", value: "Ayush" }]} />);
     expect(flat(screen.getByText("Ayush")).textAlign).toBe("right");
   });
+
+  it("list: a long value wraps on its side; the label keeps its width (device bug: 'Repo/rted/by')", async () => {
+    await render(<Facts layout="list" items={[{ label: "Reported by", value: "MAESTRO Cust 52399613 · 9752399613" }]} />);
+    expect(flat(screen.getByText("Reported by")).flexShrink).toBe(0);
+    expect(flat(screen.getByTestId("fact-value"))).toMatchObject({ flex: 1 });
+  });
 });
 
 describe("Timeline (E 09)", () => {

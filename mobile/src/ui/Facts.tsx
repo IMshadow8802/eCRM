@@ -36,8 +36,9 @@ export function Facts({ items, layout = "grid" }: FactsProps) {
       <View>
         {items.map((f) => (
           <View key={f.label} style={styles.listRow}>
-            <Text variant="metaStrong" color="textMuted" style={styles.flex}>{f.label}</Text>
-            {value(f, "right")}
+            <Text variant="metaStrong" color="textMuted" style={styles.label}>{f.label}</Text>
+            {/* The value takes what is left and wraps there; the label never squeezes. */}
+            <View testID="fact-value" style={styles.listValue}>{value(f, "right")}</View>
           </View>
         ))}
       </View>
@@ -60,7 +61,8 @@ const styles = StyleSheet.create({
   cell: { width: "50%", paddingRight: spacing[2] },
   cellValue: { marginTop: spacing[1], alignItems: "flex-start" },
   listRow: { flexDirection: "row", alignItems: "center", gap: spacing[3], paddingVertical: 10 },
-  flex: { flex: 1 },
+  label: { flexShrink: 0 },
+  listValue: { flex: 1, alignItems: "flex-end" },
 });
 
 export default Facts;
