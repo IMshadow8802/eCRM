@@ -7,7 +7,7 @@
 // deleteFollowup is deliberately absent: a phone logs or skips, it does not
 // erase the diary.
 import { post } from "./client";
-import type { ApiEnvelope, FollowUp, FollowUpStatus, FollowUpType, Pagination } from "../types/api";
+import type { ApiEnvelope, CallDirection, FollowUp, FollowUpStatus, FollowUpType, Pagination } from "../types/api";
 
 export const FOLLOWUP_ENDPOINTS = {
   scheduleFollowUp: "/api/followups/scheduleFollowUp",
@@ -23,6 +23,7 @@ export interface FetchFollowUpsParams {
   /** Open and due before today — the SP's verdict, not a client comparison. */
   Overdue?: boolean;
   SearchTerm?: string | null;
+  PageNumber?: number;
   PageSize?: number;
 }
 
@@ -31,19 +32,29 @@ export interface FollowUpsPayload {
   pagination: Pagination;
 }
 
-/** The queue across every lead the caller can see (LeadId 0), soonest due first. */
-export const fetchFollowUps = (
-  params: FetchFollowUpsParams = {},
-): Promise<ApiEnvelope<FollowUpsPayload>> =>
+/**
+ * The queue across every lead the caller can see (LeadId 0), soonest due first.
+ * Keys are named, not spread: a LeadId riding in on a variable would switch
+ * the controller to per-lead mode, which answers without pagination.
+ */
+export const fetchFollowUps = ({
+  Status = null,
+  DueFrom = null,
+  DueTo = null,
+  Overdue = false,
+  SearchTerm = null,
+  PageNumber = 1,
+  PageSize = 50,
+}: FetchFollowUpsParams = {}): Promise<ApiEnvelope<FollowUpsPayload>> =>
   post<FollowUpsPayload>(FOLLOWUP_ENDPOINTS.fetchFollowups, {
     LeadId: 0,
-    Status: null,
-    DueFrom: null,
-    DueTo: null,
-    Overdue: false,
-    SearchTerm: null,
-    PageSize: 50,
-    ...params,
+    Status,
+    DueFrom,
+    DueTo,
+    Overdue,
+    SearchTerm,
+    PageNumber,
+    PageSize,
   });
 
 export const scheduleFollowUp = (params: {
@@ -59,7 +70,7 @@ export const completeFollowUp = (params: {
   Id: number;
   Remarks: string;
   OutcomeId?: number | null;
-  Direction?: "in" | "out" | null;
+  Direction?: CallDirection | null;
   /** Minutes. */
   Duration?: number | null;
   NextType?: FollowUpType | null;

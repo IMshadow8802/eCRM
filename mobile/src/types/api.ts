@@ -664,6 +664,9 @@ export interface LeadActivityEntry {
 /** A row of tblLeadAssignment (RS5) — same shape as a ticket transfer. */
 export type LeadAssignment = TicketAssignment;
 
+/** A logged call or follow-up's direction (tblCall, tblFollowUp). */
+export type CallDirection = "in" | "out";
+
 export type FollowUpType = "call" | "visit" | "meeting" | "other";
 export type FollowUpStatus = "open" | "done" | "skipped";
 
@@ -685,7 +688,7 @@ export interface FollowUp {
   OutcomeId: number | null;
   Outcome: string | null;
   Remarks: string | null;
-  Direction: "in" | "out" | null;
+  Direction: CallDirection | null;
   /** Minutes. */
   Duration: number | null;
   /** Computed by the SP: open and due before today. */

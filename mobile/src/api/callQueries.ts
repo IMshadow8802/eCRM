@@ -7,14 +7,14 @@
 // TicketId parameter at all — so a call logged on a complaint appeared in no
 // list and no history. Do not use these against a backend older than that.
 import { post, postData } from "./client";
-import type { ApiEnvelope, Call } from "../types/api";
+import type { ApiEnvelope, Call, CallDirection } from "../types/api";
+
+export type { CallDirection };
 
 export const CALL_ENDPOINTS = {
   logCall: "/api/calls/logCall",
   fetchCalls: "/api/calls/fetchCalls",
 } as const;
-
-export type CallDirection = "in" | "out";
 
 /**
  * Exactly one of LeadId / TicketId. `NextFollowupDate` schedules a follow-up in
