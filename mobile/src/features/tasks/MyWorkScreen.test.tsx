@@ -15,9 +15,15 @@ jest.mock("../../api/authQueries");
 jest.mock("../../api/todayQueries");
 
 const mockNavigation = makeNavigation<"Tabs">();
+// The Tasks tab's route; a test that opens it on a filter swaps the params.
+let mockRoute: { key: string; name: "Tasks"; params?: { filter?: "mine" | "unassigned" | "all" } } = {
+  key: "Tasks-test",
+  name: "Tasks",
+};
 jest.mock("@react-navigation/native", () => ({
   ...jest.requireActual("@react-navigation/native"),
   useNavigation: () => mockNavigation,
+  useRoute: () => mockRoute,
 }));
 
 // Lists arm VirtualizedList's 50 ms batch timer on every data change; under
@@ -58,6 +64,15 @@ beforeEach(() => {
   serve([dueToday, late], [dueToday, late, nobodys, lateButDone]);
   jest.mocked(logout).mockResolvedValue(envelope(null));
   serveDay([]);
+  mockRoute = { key: "Tasks-test", name: "Tasks" };
+});
+
+// Task 32 review: the Tasks tab is mounted, so Home's rows must bring the filter.
+it("opens on the filter a navigate() asks for", async () => {
+  mockRoute = { key: "Tasks-test", name: "Tasks", params: { filter: "unassigned" } };
+  await renderWithProviders(<MyWorkScreen />);
+  expect(await screen.findByText("Nobody's task")).toBeOnTheScreen();
+  expect(screen.queryByText("Late task")).toBeNull();
 });
 
 it("lists my open tasks, overdue first, with the counts in the header", async () => {

@@ -8,8 +8,13 @@ import { fetchWorkspaces } from "../../api/workspaceQueries";
 import useAuthStore from "../../stores/useAuthStore";
 import type { Company } from "../../types/api";
 import { assigneesJson, envelope, makeTask, makeWorkspace, pagination, serverError } from "../../test/fixtures";
-import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
+import { makeNavigation, makeRoute, renderWithProviders, seedAuth as seed } from "../../test/renderWithProviders";
 import MeScreen from "./MeScreen";
+
+// Profile's work counts need tasks:view (Task 32 review). Most tests here are
+// about a task user, so that is the default; a test passing `access` overrides it.
+const TASKS_VIEW = { tasks: { view: true, add: false, edit: false, delete: false, reach: "Own" as const } };
+const seedAuth = (patch: Parameters<typeof seed>[0] = {}) => seed({ access: { modules: TASKS_VIEW }, ...patch });
 
 jest.mock("../../api/authQueries");
 jest.mock("../../api/taskQueries");
@@ -291,4 +296,19 @@ it("pushed from More, its back button goes back", async () => {
   expect(screen.getByText("Profile")).toBeOnTheScreen();
   await fireEvent.press(screen.getByRole("button", { name: "Go back" }));
   expect(navigation.goBack).toHaveBeenCalled();
+});
+
+// Task 32 review: Profile is reachable by every role from More; a role without
+// tasks must not fire task/workspace requests that only 403.
+it("without the tasks module: no work counts and no task requests", async () => {
+  seedAuth({
+    user: { Id: 7, FullName: "Asha" },
+    access: { modules: { complaints: { view: true, add: false, edit: false, delete: false, reach: "Own" } } },
+  });
+  await renderWithProviders(<MeScreen />);
+  expect(screen.getByText("Asha")).toBeOnTheScreen();
+  expect(screen.queryByText("Assigned")).toBeNull();
+  expect(screen.queryByText("Boards")).toBeNull();
+  expect(fetchTasks).not.toHaveBeenCalled();
+  expect(fetchWorkspaces).not.toHaveBeenCalled();
 });

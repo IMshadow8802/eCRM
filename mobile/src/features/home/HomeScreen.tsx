@@ -20,7 +20,7 @@ import { fetchTickets } from "../../api/ticketQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
 import { colors, fontFamily, radius, spacing, SCREEN_PADDING, TAB_BAR_CLEARANCE } from "../../theme";
-import { EmptyState, MenuList, Screen, Text, type MenuListRow } from "../../ui";
+import { EmptyState, MenuList, Refresher, Screen, Text, type MenuListRow } from "../../ui";
 import { useAccess } from "../auth/useAccess";
 import { useUnreadCount } from "../notifications/useUnreadCount";
 import { followUpViewParams, leadQueueParams } from "../sales/leadHelpers";
@@ -94,7 +94,24 @@ export default function HomeScreen() {
     enabled: canLeads,
   });
 
-  const toTasks = () => navigation.navigate("Tabs", { screen: "Tasks" });
+  // Every count the role may see; a disabled query (no access) is skipped.
+  const counts = [myTasks, myDay, ticketsMine, ticketsOverdue, leadsMine, dueToday];
+  const refreshing = counts.some((q) => q.isRefetching && !q.isLoading);
+  const refresh = () => {
+    for (const [q, on] of [
+      [myTasks, canTasks && signedIn],
+      [myDay, canTasks],
+      [ticketsMine, canComplaints && signedIn],
+      [ticketsOverdue, canComplaints],
+      [leadsMine, canLeads && signedIn],
+      [dueToday, canLeads],
+    ] as const) {
+      if (on) void q.refetch();
+    }
+  };
+
+  // Both task rows open "Mine": My Work shows "Needs you" only there.
+  const toTasks = () => navigation.navigate("Tabs", { screen: "Tasks", params: { filter: "mine" } });
 
   const groups = ([
     canTasks
@@ -104,7 +121,8 @@ export default function HomeScreen() {
             icon: ClipboardCheck,
             tint: "primary",
             label: "My tasks",
-            value: myTasks.data?.data?.tasks.length,
+            // The total, not the page: the list is capped at 200 rows.
+            value: total(myTasks.data),
             some: (n) => `${plural(n, "task")} assigned to you`,
             none: "Nothing assigned to you",
             neutral: "Tasks assigned to you",
@@ -208,8 +226,10 @@ export default function HomeScreen() {
       </View>
 
       <ScrollView
+        testID="home-list"
         contentContainerStyle={[styles.content, !groups.length && styles.contentEmpty]}
         showsVerticalScrollIndicator={false}
+        refreshControl={<Refresher refreshing={refreshing} onRefresh={refresh} />}
       >
         {groups.map((rows) => (
           <MenuList key={rows[0]!.key} rows={rows.map((r) => ({ ...r, detail: detail(r) }))} />

@@ -38,10 +38,15 @@ export default function LeadsScreen({ navigation, route }: Props) {
   const userId = useAuthStore((s) => s.UserId);
   const { add: canAdd } = useAccess("leads");
 
-  // "Mine" unless a navigate() (Home's rows) asks for another queue.
-  const [queue, setQueue] = useParamState<LeadQueue>(route.params, route.params?.queue, "mine");
   const [status, setStatus] = useState<LeadStatusFilter>("all");
   const [search, setSearch] = useState("");
+  // "Mine" unless a navigate() (Home's rows) asks for another queue — which
+  // also drops any chip or search left on this mounted tab, so the list is
+  // exactly what Home counted.
+  const [queue, setQueue] = useParamState<LeadQueue>(route.params, route.params?.queue, "mine", () => {
+    setStatus("all");
+    setSearch("");
+  });
   // Debounced: one request once typing pauses, not one per key.
   // keepPreviousData below keeps the old rows up while it loads.
   const term = useDebouncedValue(search.trim());

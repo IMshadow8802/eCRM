@@ -30,9 +30,12 @@ const EMPTY: Record<FollowUpView, { title: string; message: string }> = {
  * list. Logging happens on the lead, where the history is; a row opens it.
  */
 export default function FollowUpsScreen({ navigation, route, pushed = false }: Props) {
-  // "Today" unless a navigate() asks for another view.
-  const [view, setView] = useParamState<FollowUpView>(route.params, route.params?.view, "today");
   const [search, setSearch] = useState("");
+  // "Today" unless a navigate() asks for another view — which also clears a
+  // search left on this mounted tab, so the list is what Home counted.
+  const [view, setView] = useParamState<FollowUpView>(route.params, route.params?.view, "today", () =>
+    setSearch(""),
+  );
   const term = useDebouncedValue(search.trim());
 
   const params = useMemo(

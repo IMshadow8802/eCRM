@@ -5,7 +5,7 @@ appId: com.shadowider.eCRM
 ---
 - runFlow: common/new-lead.yaml
 - runFlow: common/open-work.yaml
-- tapOn: "Follow-ups"
+- tapOn: "Follow-ups due today"
 - assertVisible: "\\d+ follow-ups"
 - tapOn: "Overdue"
 - assertVisible: "\\d+ follow-ups"

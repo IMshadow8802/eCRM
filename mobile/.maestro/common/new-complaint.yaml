@@ -3,7 +3,7 @@
 appId: com.shadowider.eCRM
 ---
 - runFlow: open-work.yaml
-- tapOn: "Complaints"
+- tapOn: "My complaints"
 - tapOn: "Log a complaint"
 - assertVisible: "Log a complaint"
 - evalScript: ${output.stamp = String(Date.now()).slice(-8)}

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react-native";
 
 import { fetchFollowUps } from "../../api/followupQueries";
@@ -263,4 +264,27 @@ describe("tab or pushed", () => {
     await fireEvent.press(await screen.findByRole("button", { name: "Go back" }));
     expect(navigation.goBack).toHaveBeenCalled();
   });
+});
+
+// Task 32 review: a mounted tab keeps its search; Home's navigate must land on
+// exactly the list its number counted.
+it("a navigate() with a view clears the search the user left", async () => {
+  const navigation = makeNavigation<"FollowUps">();
+  let navigateTo: (params: { view: "today" }) => void = () => {};
+  function Harness() {
+    const [route, setRoute] = useState(makeRoute("FollowUps", { view: "all" }));
+    navigateTo = (params) => setRoute(makeRoute("FollowUps", params));
+    return <FollowUpsScreen navigation={navigation} route={route} />;
+  }
+  await renderWithProviders(<Harness />);
+  await fireEvent.changeText(await screen.findByPlaceholderText("Lead name, company or mobile"), "patel");
+  await act(async () => { jest.advanceTimersByTime(300); });
+  await waitFor(() => expect(fetchFollowUps).toHaveBeenLastCalledWith(expect.objectContaining({ SearchTerm: "patel" })));
+  await act(async () => navigateTo({ view: "today" }));
+  await waitFor(() =>
+    expect(fetchFollowUps).toHaveBeenLastCalledWith(
+      expect.objectContaining({ Status: "open", DueFrom: today, DueTo: today, SearchTerm: null }),
+    ),
+  );
+  expect(screen.getByPlaceholderText("Lead name, company or mobile").props.value).toBe("");
 });

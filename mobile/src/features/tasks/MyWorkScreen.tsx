@@ -1,13 +1,14 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { Pressable, SectionList, StyleSheet, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { ClipboardCheck, CloudOff, Hand, Power } from "lucide-react-native";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
 import type { StackNavigationProp } from "@react-navigation/stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { fetchTasks } from "../../api/taskQueries";
-import type { RootStackParamList } from "../../navigation/RootNavigator";
+import { useParamState } from "../../hooks/useParamState";
+import type { RootStackParamList, TabParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
 import type { DayTask, Task } from "../../types/api";
 import {
@@ -31,7 +32,8 @@ import {
   needsYou,
 } from "./taskHelpers";
 
-type Filter = "mine" | "unassigned" | "all";
+export type TaskListFilter = "mine" | "unassigned" | "all";
+type Filter = TaskListFilter;
 
 const FILTERS: { value: Filter; label: string }[] = [
   { value: "mine", label: "Mine" },
@@ -45,7 +47,10 @@ export default function MyWorkScreen() {
   const userId = useAuthStore((s) => s.UserId);
   const user = useAuthStore((s) => s.user);
   const insets = useSafeAreaInsets();
-  const [filter, setFilter] = useState<Filter>("mine");
+  const route = useRoute<RouteProp<TabParamList, "Tasks">>();
+  // "Mine" unless a navigate() (Home's rows) asks for a filter — the tab is
+  // mounted, so a filter picked earlier would otherwise still be up.
+  const [filter, setFilter] = useParamState<Filter>(route.params, route.params?.filter, "mine");
   const signOut = useSignOut();
 
   // WorkspaceId: null = every workspace the caller can see. "Mine" is filtered

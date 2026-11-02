@@ -82,10 +82,15 @@ const EMPTY: Record<ComplaintQueue, { title: string; message: string }> = {
 export default function ComplaintsScreen({ navigation, route }: Props) {
   const userId = useAuthStore((s) => s.UserId);
 
-  // "Mine" unless a navigate() (Home's rows) asks for another queue.
-  const [queue, setQueue] = useParamState<ComplaintQueue>(route.params, route.params?.queue, "mine");
   const [status, setStatus] = useState<ComplaintStatusFilter>("active");
   const [search, setSearch] = useState("");
+  // "Mine" unless a navigate() (Home's rows) asks for another queue — which
+  // also drops any chip or search left on this mounted tab, so the list is
+  // exactly what Home counted.
+  const [queue, setQueue] = useParamState<ComplaintQueue>(route.params, route.params?.queue, "mine", () => {
+    setStatus("active");
+    setSearch("");
+  });
 
   // Debounced: one request once typing pauses, not one per keystroke (each
   // would also restart paging). keepPreviousData below holds the old rows on

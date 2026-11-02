@@ -1,7 +1,7 @@
 appId: com.shadowider.eCRM
 ---
 - runFlow: common/open-work.yaml
-- tapOn: "Complaints"
+- tapOn: "My complaints"
 - assertVisible: "Log and track|\\d+ assigned to you"
 - tapOn: "Team"
 - assertVisible: ".*in your team"

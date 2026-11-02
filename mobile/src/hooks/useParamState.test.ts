@@ -25,6 +25,19 @@ it("a new navigate() re-applies its param, even the same value after a local cha
   expect(result.current[0]).toBe("overdue");
 });
 
+it("a navigate() that brings a value also runs onNavigate; a plain re-render does not", async () => {
+  const onNavigate = jest.fn();
+  const first: Params = { queue: "overdue" };
+  const { rerender } = await renderHook((p: Params) => useParamState(p, p?.queue, "mine", onNavigate), {
+    initialProps: first,
+  });
+  await rerender(first);
+  await rerender({});
+  expect(onNavigate).not.toHaveBeenCalled();
+  await rerender({ queue: "mine" });
+  expect(onNavigate).toHaveBeenCalledTimes(1);
+});
+
 it("new params without the key keep the current value", async () => {
   const { result, rerender } = await mount({ queue: "overdue" });
   await rerender({});

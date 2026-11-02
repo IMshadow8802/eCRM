@@ -118,7 +118,8 @@ describe("the tab bar is the role's modules, in a fixed order, never more than f
     ["leads-only", () => signInWith("leads"), ["Home", "Leads", "Follow-ups", "More"]],
     ["tasks-only", () => signInWith("tasks"), ["Home", "Tasks", "More"]],
     ["tasks and leads", () => signInWith("tasks", "leads"), ["Home", "Tasks", "Leads", "Follow-ups", "More"]],
-    ["all three", () => signInWith("leads", "complaints", "tasks"), ["Home", "Tasks", "Complaints", "Leads", "More"]],
+    ["complaints and leads", () => signInWith("complaints", "leads"), ["Home", "Complaints", "Leads", "Follow-ups", "More"]],
+    ["all three",() => signInWith("leads", "complaints", "tasks"), ["Home", "Tasks", "Complaints", "Leads", "More"]],
     ["an admin", () => seedAuth({ access: { isAdmin: true } }), ["Home", "Tasks", "Complaints", "Leads", "More"]],
     // Customers is its own module (096): it does not open complaints.
     ["customers-only", () => signInWith("customers"), ["Home", "More"]],

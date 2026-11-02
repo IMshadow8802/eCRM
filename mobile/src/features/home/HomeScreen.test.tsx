@@ -81,8 +81,8 @@ it("each row opens its list on the matching filter", async () => {
   await renderWithProviders(<HomeScreen />);
   await screen.findByText("4 due today");
   for (const [row, ...target] of [
-    ["My tasks", "Tabs", { screen: "Tasks" }],
-    ["Needs you", "Tabs", { screen: "Tasks" }],
+    ["My tasks", "Tabs", { screen: "Tasks", params: { filter: "mine" } }],
+    ["Needs you", "Tabs", { screen: "Tasks", params: { filter: "mine" } }],
     ["My complaints", "Complaints", { queue: "mine" }],
     ["Overdue complaints", "Complaints", { queue: "overdue" }],
     ["My leads", "Leads", { queue: "mine" }],
@@ -216,4 +216,38 @@ describe("the Inbox bell", () => {
     await waitFor(() => expect(fetchNotifications).toHaveBeenCalled());
     expect(screen.getByRole("button", { name: "Inbox" })).not.toHaveTextContent(/\d/);
   });
+});
+
+// Task 32 review: the list is capped at 200 rows; the count is the server's total.
+it("my task count is the server's total, not the rows on the page", async () => {
+  signInWith("tasks");
+  jest.mocked(fetchTasks).mockResolvedValue(envelope({ tasks: [makeTask()], pagination: pagination(250) }));
+  await renderWithProviders(<HomeScreen />);
+  expect(await screen.findByText("250 tasks assigned to you")).toBeOnTheScreen();
+});
+
+it("pulling down re-reads every count the role has", async () => {
+  signInWith("tasks", "complaints", "leads");
+  await renderWithProviders(<HomeScreen />);
+  await screen.findByText("4 due today");
+  for (const fn of [fetchTasks, fetchMyDay, fetchTickets, fetchLeads, fetchFollowUps]) jest.mocked(fn).mockClear();
+  await act(async () => {
+    screen.getByTestId("home-list").props.refreshControl.props.onRefresh();
+  });
+  await waitFor(() => expect(fetchFollowUps).toHaveBeenCalledTimes(1));
+  expect(fetchTasks).toHaveBeenCalledTimes(1);
+  expect(fetchMyDay).toHaveBeenCalledTimes(1);
+  expect(fetchTickets).toHaveBeenCalledTimes(2);
+  expect(fetchLeads).toHaveBeenCalledTimes(1);
+});
+
+it("pulling down asks for nothing the role cannot view", async () => {
+  signInWith("complaints");
+  await renderWithProviders(<HomeScreen />);
+  await screen.findByText("5 open");
+  await act(async () => {
+    screen.getByTestId("home-list").props.refreshControl.props.onRefresh();
+  });
+  await waitFor(() => expect(fetchTickets).toHaveBeenCalledTimes(4));
+  for (const fn of [fetchTasks, fetchMyDay, fetchLeads, fetchFollowUps]) expect(fn).not.toHaveBeenCalled();
 });

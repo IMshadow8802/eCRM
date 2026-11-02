@@ -16,9 +16,11 @@ appId: com.shadowider.eCRM
       - launchApp:
           stopApp: false
       - waitForAnimationToEnd
-# Lands on More: the module tabs (Complaints, Leads, ...) are on the bar for
-# the next tap, and Follow-ups / Workspaces / Inbox / Profile are on screen.
+# Lands on Home. Open a list through Home's rows ("My complaints", "My leads",
+# "Follow-ups due today"), not its tab: the tabs stay mounted between flows and
+# keep whatever queue, chip or search the last flow left, while Home's rows
+# navigate with a filter that resets all three.
 - tapOn:
-    text: "More"
+    text: "Home"
     index: 0
-- assertVisible: "Profile"
+- assertVisible: "Today"

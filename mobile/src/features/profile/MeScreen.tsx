@@ -26,6 +26,7 @@ import { fetchWorkspaces } from "../../api/workspaceQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
 import { isAssignee } from "../tasks/taskHelpers";
+import { useAccess } from "../auth/useAccess";
 import { useSignOut } from "../auth/useSignOut";
 import {
   colors,
@@ -46,14 +47,18 @@ export default function MeScreen({ navigation }: Partial<StackScreenProps<RootSt
   const signOut = useSignOut();
   const [editing, setEditing] = useState<"profile" | "password" | null>(null);
 
-  // Both already cached by My Work and Boards, so opening this tab is free.
+  // Both already cached by My Work and Boards, so opening this is free. Both
+  // routes need tasks:view — without it there are no work counts to show.
+  const canTasks = useAccess("tasks").view;
   const { data: taskData } = useQuery({
     queryKey: ["tasks", "all-workspaces"],
     queryFn: () => fetchTasks({ WorkspaceId: null, PageSize: 200 }),
+    enabled: canTasks,
   });
   const { data: workspaces } = useQuery({
     queryKey: ["workspaces", false],
     queryFn: () => fetchWorkspaces({ PageSize: 100 }),
+    enabled: canTasks,
   });
 
   const stats = useMemo(() => {
@@ -96,11 +101,13 @@ export default function MeScreen({ navigation }: Partial<StackScreenProps<RootSt
           ) : null}
         </View>
 
-        <View style={styles.statRow}>
-          <StatTile Icon={ClipboardList} tint="primary" value={stats.assigned} label="Assigned" />
-          <StatTile Icon={CircleCheckBig} tint="success" value={stats.done} label="Completed" />
-          <StatTile Icon={LayoutDashboard} tint="info" value={stats.boards} label="Boards" />
-        </View>
+        {canTasks ? (
+          <View style={styles.statRow}>
+            <StatTile Icon={ClipboardList} tint="primary" value={stats.assigned} label="Assigned" />
+            <StatTile Icon={CircleCheckBig} tint="success" value={stats.done} label="Completed" />
+            <StatTile Icon={LayoutDashboard} tint="info" value={stats.boards} label="Boards" />
+          </View>
+        ) : null}
 
         <View style={styles.group}>
           <Text variant="overline" color="textMuted" style={styles.groupTitle}>

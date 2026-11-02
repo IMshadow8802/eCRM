@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { StyleSheet } from "react-native";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react-native";
 
@@ -9,6 +10,7 @@ import { envelope, pagination, ticket } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import { TAB_BAR_HEIGHT } from "../../theme";
 import ComplaintsScreen from "./ComplaintsScreen";
+import { complaintQueueParams } from "./ticketHelpers";
 
 jest.mock("../../api/ticketQueries");
 jest.mock("../../api/configQueries");
@@ -180,4 +182,34 @@ it("the + clears the tab bar", async () => {
   await mount();
   const fab = await screen.findByRole("button", { name: "Log a complaint" });
   expect(StyleSheet.flatten(fab.props.style).bottom).toBeGreaterThan(TAB_BAR_HEIGHT);
+});
+
+// Task 32 review: a mounted tab keeps its chip and search; Home's navigate must
+// still land on exactly the list its number counted.
+it("a navigate() with a queue drops the status chip and search the user left", async () => {
+  jest.mocked(fetchLookups).mockResolvedValue([
+    { Id: 9, CompId: 1, Kind: "ticket_status", Value: "Resolved", SortOrder: 3, IsActive: true, Code: "resolved" },
+  ]);
+  const navigation = makeNavigation<"Complaints">();
+  let navigateTo: (params: { queue: "overdue" }) => void = () => {};
+  function Harness() {
+    const [route, setRoute] = useState(makeRoute("Complaints", undefined));
+    navigateTo = (params) => setRoute(makeRoute("Complaints", params));
+    return <ComplaintsScreen navigation={navigation} route={route} />;
+  }
+  await renderWithProviders(<Harness />);
+  await fireEvent.press(await screen.findByText("Resolved"));
+  await fireEvent.changeText(screen.getByPlaceholderText("Ticket no., subject, customer or mobile"), "sharma");
+  await act(async () => { jest.advanceTimersByTime(300); });
+  await waitFor(() =>
+    expect(fetchTickets).toHaveBeenLastCalledWith(expect.objectContaining({ StatusId: 9, SearchTerm: "sharma" })),
+  );
+  await act(async () => navigateTo({ queue: "overdue" }));
+  await waitFor(() =>
+    expect(fetchTickets).toHaveBeenLastCalledWith({
+      ...complaintQueueParams("overdue", "active", 42, ""),
+      PageNumber: 1,
+    }),
+  );
+  expect(screen.getByPlaceholderText("Ticket no., subject, customer or mobile").props.value).toBe("");
 });

@@ -27,6 +27,7 @@ import FloatingTabBar from "./FloatingTabBar";
 import { useTabs, type TabName } from "./tabs";
 import type { ComplaintQueue } from "../features/support/ticketHelpers";
 import type { FollowUpView, LeadQueue } from "../features/sales/leadHelpers";
+import type { TaskListFilter } from "../features/tasks/MyWorkScreen";
 
 export type RootStackParamList = {
   Login: undefined;
@@ -70,7 +71,7 @@ export type RootStackParamList = {
 
 export type TabParamList = {
   Home: undefined;
-  Tasks: undefined;
+  Tasks: { filter?: TaskListFilter } | undefined;
   Complaints: RootStackParamList["Complaints"];
   Leads: RootStackParamList["Leads"];
   FollowUps: RootStackParamList["FollowUps"];

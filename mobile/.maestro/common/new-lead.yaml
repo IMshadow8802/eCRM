@@ -4,7 +4,7 @@
 appId: com.shadowider.eCRM
 ---
 - runFlow: open-work.yaml
-- tapOn: "Leads"
+- tapOn: "My leads"
 - assertVisible: "Leads"
 - tapOn: "Add a lead"
 - assertVisible: "Add a lead"

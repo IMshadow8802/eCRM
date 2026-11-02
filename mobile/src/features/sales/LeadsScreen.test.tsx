@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { StyleSheet } from "react-native";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react-native";
 
@@ -10,6 +11,7 @@ import type { Access, Lead, Lookup } from "../../types/api";
 import { envelope, lead, pagination } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import { TAB_BAR_HEIGHT } from "../../theme";
+import { leadQueueParams } from "./leadHelpers";
 import LeadsScreen from "./LeadsScreen";
 
 jest.mock("../../api/leadQueries");
@@ -284,4 +286,28 @@ it("the + clears the tab bar", async () => {
   await mount();
   const fab = await screen.findByRole("button", { name: "Add a lead" });
   expect(StyleSheet.flatten(fab.props.style).bottom).toBeGreaterThan(TAB_BAR_HEIGHT);
+});
+
+// Task 32 review: a mounted tab keeps its chip and search; Home's navigate must
+// still land on exactly the list its number counted.
+it("a navigate() with a queue drops the status chip and search the user left", async () => {
+  const navigation = makeNavigation<"Leads">();
+  let navigateTo: (params: { queue: "mine" }) => void = () => {};
+  function Harness() {
+    const [route, setRoute] = useState(makeRoute("Leads", { queue: "all" }));
+    navigateTo = (params) => setRoute(makeRoute("Leads", params));
+    return <LeadsScreen navigation={navigation} route={route} />;
+  }
+  await renderWithProviders(<Harness />);
+  await fireEvent.press(await screen.findByText("Qualified"));
+  await fireEvent.changeText(screen.getByPlaceholderText("Name, company or mobile"), "patel");
+  await act(async () => { jest.advanceTimersByTime(300); });
+  await waitFor(() =>
+    expect(fetchLeads).toHaveBeenLastCalledWith(expect.objectContaining({ StatusId: 5, SearchTerm: "patel" })),
+  );
+  await act(async () => navigateTo({ queue: "mine" }));
+  await waitFor(() =>
+    expect(fetchLeads).toHaveBeenLastCalledWith({ ...leadQueueParams("mine", "all", 42, ""), PageNumber: 1 }),
+  );
+  expect(screen.getByPlaceholderText("Name, company or mobile").props.value).toBe("");
 });
