@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { StyleSheet, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, CheckCheck } from "lucide-react-native";
@@ -31,6 +31,14 @@ export default function NotificationsScreen() {
   const query = useQuery({ queryKey: QUERY_KEY, queryFn: () => fetchNotifications() });
   const items = (query.data?.data?.notifications ?? []).filter((n) => n.Id != null);
   const unreadCount = query.data?.data?.unreadCount ?? 0;
+
+  // A failed refresh with a list already on screen keeps the list (E 20c is for
+  // a first load that failed); the toast says the list may be stale.
+  const refreshFailed = query.isError && query.data != null;
+  const { errorUpdatedAt } = query;
+  useEffect(() => {
+    if (refreshFailed) toast.error("Could not refresh your inbox.");
+  }, [refreshFailed, errorUpdatedAt, toast]);
 
   const refresh = useCallback(
     () => queryClient.invalidateQueries({ queryKey: QUERY_KEY }),
@@ -101,7 +109,7 @@ export default function NotificationsScreen() {
 
   const body = query.isLoading ? (
     <ListGroup><SkeletonRows /></ListGroup>
-  ) : query.isError ? (
+  ) : query.isError && !query.data ? (
     <ErrorCard onRetry={() => void query.refetch()} />
   ) : !items.length ? (
     <EmptyState module="inbox" icon={Bell} title="You're all caught up" />
@@ -130,7 +138,13 @@ export default function NotificationsScreen() {
         onBack={navigation.goBack}
         actions={
           unreadCount > 0 ? (
-            <HeaderButton variant="ghost" icon={CheckCheck} label="Mark all read" onPress={() => markAll.mutate()} />
+            <HeaderButton
+              variant="ghost"
+              icon={CheckCheck}
+              label="Mark all read"
+              disabled={markAll.isPending}
+              onPress={() => markAll.mutate()}
+            />
           ) : null
         }
       >
@@ -138,7 +152,7 @@ export default function NotificationsScreen() {
       </Band>
       <BandSheet
         scroll
-        center={!query.isLoading && !query.isError && !items.length}
+        center={!query.isLoading && !(query.isError && !query.data) && !items.length}
         refresh={{ refreshing: query.isRefetching && !query.isLoading, onRefresh: () => void query.refetch() }}
       >
         {body}

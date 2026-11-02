@@ -202,7 +202,7 @@ describe("the session footer (G22)", () => {
       sessionExpiresAt: "2026-11-02T13:30:00.000Z", // 7:00 pm IST
     });
     await renderWithProviders(<MoreScreen />);
-    expect(screen.getByText("Nexus CRM · v1.0.1 (20261102)")).toBeOnTheScreen();
+    expect(screen.getByText("Nexus CRM · v1.0.1")).toBeOnTheScreen();
     expect(screen.getByText("Signed in since 9:28 am · session ends 7:00 pm")).toBeOnTheScreen();
   });
 
@@ -216,7 +216,7 @@ describe("the session footer (G22)", () => {
   it("without a sign-in time, no second line", async () => {
     signInWith(["tasks"]);
     await renderWithProviders(<MoreScreen />);
-    expect(screen.getByText("Nexus CRM · v1.0.1 (20261102)")).toBeOnTheScreen();
+    expect(screen.getByText("Nexus CRM · v1.0.1")).toBeOnTheScreen();
     expect(screen.queryByText(/Signed in since/)).toBeNull();
   });
 });

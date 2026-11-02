@@ -1,10 +1,7 @@
-import { Platform } from "react-native";
 import Constants from "expo-constants";
 
-/** From app.config.ts as built (version + the date-stamped build number), never a literal. */
+/** E 01/19: "Nexus CRM · v{version}" from app.config.ts as built, never a literal; no build number. */
 export function appVersion(): string {
-  const config = Constants.expoConfig;
-  if (!config?.version) return "Nexus CRM";
-  const build = Platform.OS === "android" ? config.android?.versionCode : config.ios?.buildNumber;
-  return `Nexus CRM · v${config.version}${build ? ` (${build})` : ""}`;
+  const version = Constants.expoConfig?.version;
+  return version ? `Nexus CRM · v${version}` : "Nexus CRM";
 }

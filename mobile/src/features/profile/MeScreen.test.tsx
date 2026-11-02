@@ -24,14 +24,40 @@ beforeEach(() => {
   useAuthStore.setState({ companyName: "PRD Infotech (Test)" });
 });
 
-it("the band shows who is signed in, their username and company, with Save and back", async () => {
+it("the band shows who is signed in, with Save and back — no extra line under the name", async () => {
   await mountMe();
   expect(screen.getByText("Profile")).toBeOnTheScreen();
   expect(screen.getByText("Asha Patel")).toBeOnTheScreen();
-  expect(screen.getByText("asha · PRD Infotech (Test)")).toBeOnTheScreen();
+  expect(screen.queryByText(/asha · /)).toBeNull();
+  expect(screen.queryByText(/PRD Infotech/)).toBeNull();
   expect(screen.getByRole("button", { name: "Save" })).toBeOnTheScreen();
+  // Nothing edited: back goes straight back.
   await fireEvent.press(screen.getByRole("button", { name: "Go back" }));
   expect(navigation.goBack).toHaveBeenCalled();
+  expect(screen.queryByText("Discard changes?")).toBeNull();
+});
+
+describe("back with unsaved edits", () => {
+  it("asks first; Keep editing stays with the edits", async () => {
+    await mountMe();
+    await fireEvent.changeText(screen.getByLabelText("Display name"), "Asha P");
+    await fireEvent.press(screen.getByRole("button", { name: "Go back" }));
+    expect(await screen.findByText("Discard changes?")).toBeOnTheScreen();
+    expect(navigation.goBack).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole("button", { name: "Keep editing" }));
+    await waitFor(() => expect(screen.queryByText("Discard changes?")).toBeNull());
+    expect(screen.getByLabelText("Display name")).toHaveDisplayValue("Asha P");
+    expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+
+  it("Discard goes back without saving; an avatar pick counts as an edit", async () => {
+    await mountMe();
+    await fireEvent.press(screen.getByLabelText("Colour blue"));
+    await fireEvent.press(screen.getByRole("button", { name: "Go back" }));
+    await fireEvent.press(await screen.findByRole("button", { name: "Discard" }));
+    expect(navigation.goBack).toHaveBeenCalled();
+    expect(updateMyProfile).not.toHaveBeenCalled();
+  });
 });
 
 it("the form opens filled with the current values", async () => {
@@ -50,12 +76,8 @@ it("fires no task or workspace requests — Profile is for every role", async ()
   expect(fetchWorkspaces).not.toHaveBeenCalled();
 });
 
-it("without a username or company the band line is left out; no user, a dash", async () => {
-  seedAuth({ user: { Id: 7, FullName: "Ravi", Username: undefined } });
-  useAuthStore.setState({ companyName: null });
+it("no user loaded: a dash", async () => {
   await mountMe();
-  expect(screen.getByText("Ravi")).toBeOnTheScreen();
-  expect(screen.queryByText(/ · /)).toBeNull();
   await act(async () => useAuthStore.setState({ user: null }));
   expect(await screen.findByText("—")).toBeOnTheScreen();
 });

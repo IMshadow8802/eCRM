@@ -1,5 +1,5 @@
 import type { QueryClient } from "@tanstack/react-query";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react-native";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react-native";
 
 import {
   fetchNotifications,
@@ -182,6 +182,20 @@ describe("the band", () => {
     expect(fetchNotifications).toHaveBeenCalledTimes(1);
   });
 
+  it("a double tap on Mark all read sends one request: the button is disabled while it runs", async () => {
+    let done: (v: Awaited<ReturnType<typeof markAllNotificationsRead>>) => void = () => {};
+    jest.mocked(markAllNotificationsRead).mockReturnValue(new Promise((r) => (done = r)));
+    jest.mocked(fetchNotifications).mockResolvedValue(reply([note({ Title: "Unread one" })]));
+    await mountInbox();
+    await screen.findByText("1 unread");
+    await fireEvent.press(screen.getByRole("button", { name: "Mark all read" }));
+    expect(screen.getByRole("button", { name: "Mark all read" })).toBeDisabled();
+    await fireEvent.press(screen.getByRole("button", { name: "Mark all read" }));
+    expect(markAllNotificationsRead).toHaveBeenCalledTimes(1);
+    await act(async () => done(envelope({ updatedCount: 1 })));
+    await waitFor(() => expect(fetchNotifications).toHaveBeenCalledTimes(2));
+  });
+
   // Task 32: the Inbox is pushed from Home's bell or More.
   it("its back button goes back", async () => {
     jest.mocked(fetchNotifications).mockResolvedValue(reply([]));
@@ -205,6 +219,19 @@ describe("states", () => {
     jest.mocked(fetchNotifications).mockResolvedValue(reply([note({ Title: "Back again" })]));
     await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByText("Back again")).toBeOnTheScreen();
+  });
+
+  it("a failed refresh keeps the list on screen and says so in a toast", async () => {
+    jest.mocked(fetchNotifications).mockResolvedValueOnce(reply([note({ Title: "Still here" })]));
+    const { queryClient } = await mountInbox();
+    expect(await screen.findByText("Still here")).toBeOnTheScreen();
+    jest.mocked(fetchNotifications).mockRejectedValueOnce(new Error("offline"));
+    await act(async () => {
+      await queryClient.refetchQueries({ queryKey: ["notifications"] });
+    });
+    expect(await screen.findByText("Could not refresh your inbox.")).toBeOnTheScreen();
+    expect(screen.getByText("Still here")).toBeOnTheScreen();
+    expect(screen.queryByText("Could not load. Try again")).toBeNull();
   });
 });
 

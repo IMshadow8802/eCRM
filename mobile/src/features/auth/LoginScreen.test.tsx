@@ -64,7 +64,7 @@ describe("01 — company code", () => {
     expect(screen.getByText("Company code")).toBeOnTheScreen();
     expect(screen.getByText("Not case-sensitive. Example: TestCRM")).toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Continue" })).toBeOnTheScreen();
-    expect(screen.getByText("Nexus CRM · v1.0.1 (20261102)")).toBeOnTheScreen();
+    expect(screen.getByText("Nexus CRM · v1.0.1")).toBeOnTheScreen();
   });
 
   it("looks the code up at Central and moves to sign-in, showing the company", async () => {
@@ -123,7 +123,7 @@ describe("02 — sign in", () => {
     expect(screen.getByText("Password")).toBeOnTheScreen();
     expect(screen.getByText("Switch company")).toBeOnTheScreen();
     expect(screen.getByText(/^Not Test CRM\?/)).toBeOnTheScreen();
-    expect(screen.getByText("Nexus CRM · v1.0.1 (20261102)")).toBeOnTheScreen();
+    expect(screen.getByText("Nexus CRM · v1.0.1")).toBeOnTheScreen();
   });
 
   it("posts the identifier and password and opens the session", async () => {
@@ -252,9 +252,12 @@ describe("why the last session ended", () => {
 
   // The wording backend/src/utils/responseHelper.js sends with each 401 code.
   it.each([
+    ["SESSION_REQUIRED", "Please sign in again"],
     ["SESSION_EXPIRED", "Your session ended at the end of your shift. Sign in again to continue."],
     ["SESSION_FORCED", "An admin ended your session. Sign in again to continue."],
+    ["SESSION_ENDED", "You signed out. Sign in again to continue."],
     ["TOKEN_EXPIRED", "Token has expired - please login again"],
+    ["INVALID_TOKEN", "Invalid token - please login again"],
   ])("%s shows the server's message", async (code, message) => {
     configured();
     useAuthStore.setState({ sessionEndedReason: code, sessionEndedMessage: message });
