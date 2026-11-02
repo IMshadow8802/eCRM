@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Lock, Users } from "lucide-react-native";
 import type {
@@ -12,15 +12,18 @@ import { fetchWorkspaces, saveWorkspace } from "../../api/workspaceQueries";
 import { apiErrorMessage } from "../../api/errors";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import type { Workspace, WorkspaceType } from "../../types/api";
-import { spacing, SCREEN_PADDING } from "../../theme";
+import { metrics, spacing } from "../../theme";
 import {
-  Button,
+  Band,
+  BandSheet,
+  ErrorCard,
+  FieldHelp,
+  HeaderButton,
   Input,
   Screen,
-  ScreenHeader,
-  ScreenLoader,
   Select,
-  Text,
+  SkeletonRows,
+  useLayout,
 } from "../../ui";
 
 type Props = StackScreenProps<RootStackParamList, "WorkspaceForm">;
@@ -68,9 +71,11 @@ export default function WorkspaceFormScreen({ route, navigation }: Props) {
 
   if (editing && (isLoading || isError)) {
     return (
-      <Screen>
-        <ScreenHeader title="Rename board" onBack={navigation.goBack} />
-        <ScreenLoader failed={isError} onRetry={refetch} />
+      <Screen band>
+        <Band title="Rename board" variant="record" backIcon="close" onBack={navigation.goBack} />
+        <BandSheet scroll>
+          {isError ? <ErrorCard onRetry={() => void refetch()} /> : <SkeletonRows rows={3} />}
+        </BandSheet>
       </Screen>
     );
   }
@@ -90,6 +95,7 @@ interface WorkspaceFormProps {
 
 function WorkspaceForm({ navigation, workspace }: WorkspaceFormProps) {
   const queryClient = useQueryClient();
+  const layout = useLayout();
   const editing = workspace != null;
 
   const [name, setName] = useState(workspace?.Name ?? "");
@@ -158,17 +164,25 @@ function WorkspaceForm({ navigation, workspace }: WorkspaceFormProps) {
   };
 
   return (
-    <Screen>
-      <ScreenHeader
+    <Screen band>
+      {/* 16's pattern: Save in the band. */}
+      <Band
         title={editing ? "Rename board" : "New board"}
+        variant="record"
+        backIcon="close"
         onBack={navigation.goBack}
+        actions={
+          <HeaderButton
+            label={save.isPending ? "Saving…" : "Save"}
+            onPress={submit}
+            disabled={save.isPending}
+            accessibilityLabel={editing ? "Save changes" : "Create board"}
+          />
+        }
       />
 
-      <ScrollView
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
+      <BandSheet scroll contentBottom={spacing[10]}>
+        <View style={[styles.form, { maxWidth: layout.contentMaxWidth }]}>
         <Input
           label="Name"
           required
@@ -212,30 +226,13 @@ function WorkspaceForm({ navigation, workspace }: WorkspaceFormProps) {
           />
         ) : null}
 
-        {error ? (
-          <Text variant="caption" color="danger">
-            {error}
-          </Text>
-        ) : null}
-
-        <View style={styles.actions}>
-          <Button
-            title={editing ? "Save changes" : "Create board"}
-            onPress={submit}
-            loading={save.isPending}
-            fullWidth
-          />
+        {error ? <FieldHelp error={error} /> : null}
         </View>
-      </ScrollView>
+      </BandSheet>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  content: {
-    padding: SCREEN_PADDING,
-    paddingBottom: spacing[20],
-    gap: spacing[4],
-  },
-  actions: { paddingTop: spacing[2] },
+  form: { width: "100%", alignSelf: "center", gap: metrics.fieldGap },
 });

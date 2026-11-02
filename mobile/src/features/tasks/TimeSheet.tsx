@@ -71,14 +71,14 @@ export const TimeSheet = forwardRef<SheetRef, TimeSheetProps>(function TimeSheet
           return (
             <View key={entry.Id} style={styles.row}>
               <View style={styles.hours}>
-                <Chip label={formatHours(entry.Hours ?? 0)} tone="primary" />
+                <Chip label={formatHours(entry.Hours ?? 0)} tone="indigo" />
               </View>
 
               <View style={styles.text}>
-                <Text variant="body" numberOfLines={2}>
+                <Text variant="rowTitle" numberOfLines={2}>
                   {entry.Description || "No note"}
                 </Text>
-                <Text variant="caption" color="textMuted">
+                <Text variant="small">
                   {entry.UserName ?? "Someone"} ·{" "}
                   {relativeTime(entry.WorkDate ?? entry.CreatedDate)}
                 </Text>
@@ -106,7 +106,7 @@ export const TimeSheet = forwardRef<SheetRef, TimeSheetProps>(function TimeSheet
         })}
 
         {!entries.length ? (
-          <Text variant="secondary" style={styles.empty}>
+          <Text variant="meta" style={styles.empty}>
             {scopedToMe
               ? "You have not booked any time against this task."
               : "No time booked against this task yet."}

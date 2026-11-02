@@ -1,11 +1,11 @@
 import { useMemo, useRef, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Archive,
   ArchiveRestore,
   Crown,
   Eye,
+  Lock,
   LogOut,
   Pencil,
   RefreshCw,
@@ -35,22 +35,28 @@ import { apiErrorMessage } from "../../api/errors";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
 import type { WorkspaceMember, WorkspaceRole } from "../../types/api";
-import { colors, radius, spacing, SCREEN_PADDING } from "../../theme";
+import type { ChipTone } from "../../theme";
 import {
   ActionSheet,
   Avatar,
-  Button,
-  Card,
+  Band,
+  BandSheet,
   Dialog,
+  GroupHeader,
+  IconButton,
+  InfoNote,
+  ListGroup,
+  ListRow,
   Screen,
-  ScreenHeader,
-  Text,
   type SheetAction,
   type SheetRef,
   useToast,
 } from "../../ui";
 
 type Props = StackScreenProps<RootStackParamList, "WorkspaceSettings">;
+
+const ROLE_TONE: Record<WorkspaceRole, ChipTone> = { owner: "lilac", manager: "indigo", member: "slate", viewer: "slate" };
+const ROLE_LABEL: Record<WorkspaceRole, string> = { owner: "Owner", manager: "Manager", member: "Member", viewer: "Viewer" };
 
 const ROLE_META: Record<WorkspaceRole, { Icon: LucideIcon; blurb: string }> = {
   owner: { Icon: Star, blurb: "Full control, including deleting the board" },
@@ -312,218 +318,108 @@ export default function WorkspaceSettingsScreen({ route, navigation }: Props) {
     },
   }));
 
+  const typeLabel = workspace?.Type ? workspace.Type[0]!.toUpperCase() + workspace.Type.slice(1) : undefined;
+
   return (
-    <Screen>
-      <ScreenHeader
+    <Screen band>
+      <Band
+        variant="record"
+        titleVariant="h2"
         title={workspace?.Name ?? "Board settings"}
-        subtitle={workspace?.Type}
+        subtitle={typeLabel}
         onBack={navigation.goBack}
         actions={
-          manages
-            ? [
-                {
-                  icon: Pencil,
-                  label: "Rename this board",
-                  onPress: () =>
-                    navigation.navigate("WorkspaceForm", { workspaceId }),
-                },
-              ]
-            : undefined
+          manages ? (
+            <IconButton icon={Pencil} accessibilityLabel="Rename this board" onPress={() => navigation.navigate("WorkspaceForm", { workspaceId })} />
+          ) : undefined
         }
       />
 
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.section}>
-          <View style={styles.sectionHead}>
-            <Text variant="overline" color="textMuted">
-              Members
-            </Text>
-            {manageMembers && !personal ? (
-              <Button
-                title="Add"
-                variant="ghost"
-                size="sm"
-                icon={UserPlus}
-                onPress={() => addRef.current?.present()}
-              />
-            ) : null}
-          </View>
-
-          {/* A personal board has exactly one member by definition, and
-              converting it to shared is a web action. */}
-          {personal ? (
-            <Card>
-              <Text variant="secondary">
-                Personal boards are yours alone — private even from
-                administrators. Create a shared board to work with anyone else.
-              </Text>
-            </Card>
-          ) : (
-            <Card padded={false} gap={0}>
-              {roster.map((member, i) => {
-                const meta = ROLE_META[member.Role] ?? ROLE_META.member;
-                const gone = isGone(member);
-                return (
-                  <Pressable
-                    key={member.UserId}
-                    disabled={!manageMembers || member.InviteStatus === "pending"}
-                    onPress={() => openMember(member)}
-                    style={({ pressed }) => [
-                      styles.row,
-                      i < roster.length - 1 && styles.rowDivider,
-                      pressed && styles.rowPressed,
-                    ]}
-                  >
-                    <Avatar
-                      name={member.FullName}
-                      uri={member.Avatar}
-                      size={38}
-                    />
-                    <View style={styles.rowText}>
-                      <Text
-                        variant="bodyStrong"
-                        color={gone ? "textMuted" : undefined}
-                        numberOfLines={1}
-                      >
-                        {member.FullName ?? member.Username ?? "Someone"}
-                        {member.UserId === userId ? " (you)" : ""}
-                      </Text>
-                      <Text variant="caption" color="textMuted">
-                        {member.InviteStatus === "pending"
-                          ? "Waiting for reply"
-                          : gone
-                            ? member.InviteStatus === "declined" ? "Declined" : "Removed"
-                            : meta.blurb}
-                      </Text>
-                    </View>
-                    <meta.Icon size={18} color={colors.textSecondary} />
-                  </Pressable>
-                );
-              })}
-
-              {!roster.length ? (
-                <View style={styles.row}>
-                  <Text variant="secondary">Nobody on this board yet.</Text>
-                </View>
-              ) : null}
-            </Card>
-          )}
-        </View>
+      <BandSheet scroll>
+        <GroupHeader
+          label="Members"
+          first
+          link={manageMembers && !personal ? { label: "Add", onPress: () => addRef.current?.present() } : undefined}
+        />
+        {/* A personal board has exactly one member by definition, and
+            converting it to shared is a web action. */}
+        {personal ? (
+          <InfoNote icon={Lock}>
+            Personal boards are yours alone — private even from administrators. Create a shared board to work with anyone else.
+          </InfoNote>
+        ) : (
+          <ListGroup>
+            {roster.map((member, i) => {
+              const meta = ROLE_META[member.Role] ?? ROLE_META.member;
+              const gone = isGone(member);
+              const pending = member.InviteStatus === "pending";
+              const tappable = manageMembers && !pending;
+              return (
+                <ListRow
+                  key={member.UserId}
+                  noSeparator={i === 0}
+                  badge={<Avatar name={member.FullName} uri={member.Avatar} userId={member.UserId} size={36} />}
+                  title={`${member.FullName ?? member.Username ?? "Someone"}${member.UserId === userId ? " (you)" : ""}`}
+                  titleTone={gone ? "muted" : "default"}
+                  meta={pending ? "Waiting for reply" : gone ? (member.InviteStatus === "declined" ? "Declined" : "Removed") : meta.blurb}
+                  chips={gone || pending ? undefined : [{ label: ROLE_LABEL[member.Role] ?? "Member", tone: ROLE_TONE[member.Role] ?? "slate" }]}
+                  chevron={tappable}
+                  accessibilityLabel={member.FullName ?? member.Username ?? "Someone"}
+                  onPress={tappable ? () => openMember(member) : undefined}
+                />
+              );
+            })}
+            {!roster.length ? <ListRow noSeparator title="Nobody on this board yet." titleTone="muted" /> : null}
+          </ListGroup>
+        )}
 
         {canSync || canLeave || canArchive ? (
-          <View style={styles.section}>
-            <Text variant="overline" color="textMuted">
-              Board
-            </Text>
-
-            <Card padded={false} gap={0}>
+          <>
+            <GroupHeader label="Board" />
+            <ListGroup>
               {canSync ? (
-                <Pressable
-                  disabled={sync.isPending}
-                  onPress={() => sync.mutate()}
-                  style={({ pressed }) => [
-                    styles.row,
-                    styles.rowDivider,
-                    pressed && styles.rowPressed,
-                  ]}
-                >
-                  <View style={styles.glyph}>
-                    <RefreshCw size={18} color={colors.textOnBrand} />
-                  </View>
-                  <View style={styles.rowText}>
-                    <Text variant="bodyStrong">Sync members from team</Text>
-                    <Text variant="caption" color="textMuted">
-                      Adds the project team, removes who left it
-                    </Text>
-                  </View>
-                </Pressable>
+                <ListRow
+                  noSeparator
+                  badge={{ tone: "teal", icon: RefreshCw }}
+                  title="Sync members from team"
+                  meta="Adds the project team, removes who left it"
+                  onPress={sync.isPending ? undefined : () => sync.mutate()}
+                />
               ) : null}
-
               {canLeave ? (
-                <Pressable
+                <ListRow
+                  noSeparator={!canSync}
+                  badge={{ tone: "red", icon: LogOut }}
+                  title="Leave board"
+                  titleTone="danger"
+                  meta="You lose access until someone invites you again"
                   onPress={() => setConfirmLeave(true)}
-                  style={({ pressed }) => [
-                    styles.row,
-                    canArchive && styles.rowDivider,
-                    pressed && styles.rowPressed,
-                  ]}
-                >
-                  <View style={[styles.glyph, styles.glyphDanger]}>
-                    <LogOut size={18} color={colors.textOnBrand} />
-                  </View>
-                  <View style={styles.rowText}>
-                    <Text variant="bodyStrong" color="danger">
-                      Leave board
-                    </Text>
-                    <Text variant="caption" color="textMuted">
-                      You lose access until someone invites you again
-                    </Text>
-                  </View>
-                </Pressable>
+                />
               ) : null}
-
               {canArchive ? (
-              <Pressable
-                onPress={() =>
-                  archive.mutate({
-                    WorkspaceId: workspaceId,
-                    IsArchived: !workspace?.IsArchived,
-                  })
-                }
-                style={({ pressed }) => [
-                  styles.row,
-                  workspace?.IsArchived && styles.rowDivider,
-                  pressed && styles.rowPressed,
-                ]}
-              >
-                <View style={styles.glyph}>
-                  {workspace?.IsArchived ? (
-                    <ArchiveRestore size={18} color={colors.textOnBrand} />
-                  ) : (
-                    <Archive size={18} color={colors.textOnBrand} />
-                  )}
-                </View>
-                <View style={styles.rowText}>
-                  <Text variant="bodyStrong">
-                    {workspace?.IsArchived ? "Restore board" : "Archive board"}
-                  </Text>
-                  <Text variant="caption" color="textMuted">
-                    {workspace?.IsArchived
-                      ? "Puts it back in the active list"
-                      : "Archive the board first to delete it."}
-                  </Text>
-                </View>
-              </Pressable>
+                <ListRow
+                  noSeparator={!canSync && !canLeave}
+                  badge={{ tone: "slate", icon: workspace?.IsArchived ? ArchiveRestore : Archive }}
+                  title={workspace?.IsArchived ? "Restore board" : "Archive board"}
+                  meta={workspace?.IsArchived ? "Puts it back in the active list" : "Archive the board first to delete it."}
+                  onPress={() => archive.mutate({ WorkspaceId: workspaceId, IsArchived: !workspace?.IsArchived })}
+                />
               ) : null}
-
               {/* sp_DeleteWorkspace refuses an active board, so Delete only
                   exists once it is archived. */}
               {canArchive && workspace?.IsArchived ? (
-                <Pressable
-                  disabled={dryRun.isPending}
-                  onPress={() => dryRun.mutate()}
-                  style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-                >
-                  <View style={[styles.glyph, styles.glyphDanger]}>
-                    <Trash2 size={18} color={colors.textOnBrand} />
-                  </View>
-                  <View style={styles.rowText}>
-                    <Text variant="bodyStrong" color="danger">
-                      Delete board
-                    </Text>
-                    <Text variant="caption" color="textMuted">
-                      Destroys every task and file on it
-                    </Text>
-                  </View>
-                </Pressable>
+                <ListRow
+                  badge={{ tone: "red", icon: Trash2 }}
+                  title="Delete board"
+                  titleTone="danger"
+                  meta="Destroys every task and file on it"
+                  onPress={dryRun.isPending ? undefined : () => dryRun.mutate()}
+                />
               ) : null}
-            </Card>
-          </View>
+            </ListGroup>
+          </>
         ) : null}
-      </ScrollView>
+      </BandSheet>
 
       <ActionSheet
         ref={memberRef}
@@ -544,6 +440,7 @@ export default function WorkspaceSettingsScreen({ route, navigation }: Props) {
 
       <Dialog
         visible={confirmDelete}
+        badge={{ tone: "red", icon: Trash2 }}
         title={`Delete "${workspace?.Name ?? ""}"?`}
         message={`${blastRadius ?? ""} This cannot be undone — archive it instead if you might want it back.`}
         confirmLabel="Delete"
@@ -555,6 +452,7 @@ export default function WorkspaceSettingsScreen({ route, navigation }: Props) {
 
       <Dialog
         visible={confirmLeave}
+        badge={{ tone: "red", icon: LogOut }}
         title={`Leave "${workspace?.Name ?? ""}"?`}
         message="You stop seeing its tasks. Someone on the board can invite you back."
         confirmLabel="Leave"
@@ -566,34 +464,3 @@ export default function WorkspaceSettingsScreen({ route, navigation }: Props) {
     </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  content: { padding: SCREEN_PADDING, paddingBottom: spacing[20], gap: spacing[5] },
-  section: { gap: spacing[2] },
-  sectionHead: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[3],
-    padding: spacing[4],
-  },
-  rowDivider: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.divider,
-  },
-  rowPressed: { backgroundColor: colors.surfacePressed },
-  rowText: { flex: 1, gap: spacing[1] },
-  glyph: {
-    width: 38,
-    height: 38,
-    borderRadius: radius.full,
-    backgroundColor: colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  glyphDanger: { backgroundColor: colors.danger },
-});

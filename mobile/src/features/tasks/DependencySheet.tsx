@@ -62,10 +62,10 @@ export const DependencySheet = forwardRef<SheetRef, DependencySheetProps>(
         )}
 
         <View style={styles.text}>
-          <Text variant="body" numberOfLines={2}>
+          <Text variant="rowTitle" numberOfLines={2}>
             {dep.Title ?? `Task #${dep.TaskId}`}
           </Text>
-          <Text variant="caption" color="textMuted">
+          <Text variant="small">
             {dep.IsCompleted ? "Done" : "Still open"}
             {dep.ColumnTitle ? ` · ${dep.ColumnTitle}` : ""}
           </Text>
@@ -107,7 +107,7 @@ export const DependencySheet = forwardRef<SheetRef, DependencySheetProps>(
         <ScrollView style={styles.list} bounces={false}>
           {blockers.length ? (
             <>
-              <Text variant="overline" color="textMuted" style={styles.heading}>
+              <Text variant="overline" style={styles.heading}>
                 Blocked by
               </Text>
               {blockers.map(row)}
@@ -116,7 +116,7 @@ export const DependencySheet = forwardRef<SheetRef, DependencySheetProps>(
 
           {dependents.length ? (
             <>
-              <Text variant="overline" color="textMuted" style={styles.heading}>
+              <Text variant="overline" style={styles.heading}>
                 Waiting on this
               </Text>
               {dependents.map(row)}
@@ -124,7 +124,7 @@ export const DependencySheet = forwardRef<SheetRef, DependencySheetProps>(
           ) : null}
 
           {!blockers.length && !dependents.length ? (
-            <Text variant="secondary" style={styles.empty}>
+            <Text variant="meta" style={styles.empty}>
               This task has no dependencies.
             </Text>
           ) : null}
@@ -152,7 +152,7 @@ const styles = StyleSheet.create({
     gap: spacing[3],
     paddingHorizontal: spacing[4],
     paddingVertical: spacing[3],
-    borderRadius: radius.md,
+    borderRadius: radius.card,
   },
   text: { flex: 1, gap: spacing[1] },
   empty: { padding: spacing[4] },

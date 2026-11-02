@@ -76,7 +76,7 @@ describe("create", () => {
     await fireEvent.press(screen.getByText("Select a date"));
     // The native picker is a plain View in jest; its valueChange event carries the date.
     await fireEvent(screen.getByTestId("date-picker"), "valueChange", {}, new Date(2026, 10, 20));
-    await fireEvent.press(screen.getByText("Create task"));
+    await fireEvent.press(screen.getByRole("button", { name: "Create task" }));
 
     await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
     expect(sent()).toMatchObject({
@@ -122,7 +122,7 @@ describe("create", () => {
 
     await fireEvent.changeText(screen.getByPlaceholderText("What needs doing?"), "Call bank");
     await fireEvent.changeText(screen.getByPlaceholderText("Step 1"), "Dial");
-    await fireEvent.press(screen.getByText("Create task"));
+    await fireEvent.press(screen.getByRole("button", { name: "Create task" }));
     await waitFor(() => expect(saveTask).toHaveBeenCalled());
     // No column param: the server puts it in the first column.
     expect(sent()).toMatchObject({ AssigneeIds: [ME], ColumnId: null });
@@ -132,7 +132,7 @@ describe("create", () => {
     await mount();
     await ready("Create task");
     await fireEvent.changeText(screen.getByPlaceholderText("Step 1"), "Dial");
-    await fireEvent.press(screen.getByText("Create task"));
+    await fireEvent.press(screen.getByRole("button", { name: "Create task" }));
     expect(screen.getByText("A task needs a title.")).toBeOnTheScreen();
     expect(saveTask).not.toHaveBeenCalled();
   });
@@ -141,7 +141,7 @@ describe("create", () => {
     await mount();
     await ready("Create task");
     await fireEvent.changeText(screen.getByPlaceholderText("What needs doing?"), "Call bank");
-    await fireEvent.press(screen.getByText("Create task"));
+    await fireEvent.press(screen.getByRole("button", { name: "Create task" }));
     expect(screen.getByText(/Add at least one step/)).toBeOnTheScreen();
     expect(saveTask).not.toHaveBeenCalled();
   });
@@ -165,7 +165,7 @@ describe("create", () => {
     await ready("Create task");
     await fireEvent.changeText(screen.getByPlaceholderText("What needs doing?"), "Call bank");
     await fireEvent.changeText(screen.getByPlaceholderText("Step 1"), "Dial");
-    await fireEvent.press(screen.getByText("Create task"));
+    await fireEvent.press(screen.getByRole("button", { name: "Create task" }));
 
     expect(await screen.findByText("Assignee is not a member of this board")).toBeOnTheScreen();
     expect(screen.getByDisplayValue("Call bank")).toBeOnTheScreen();
@@ -178,7 +178,7 @@ describe("create", () => {
     await ready("Create task");
     await fireEvent.changeText(screen.getByPlaceholderText("What needs doing?"), "Call bank");
     await fireEvent.changeText(screen.getByPlaceholderText("Step 1"), "Dial");
-    await fireEvent.press(screen.getByText("Create task"));
+    await fireEvent.press(screen.getByRole("button", { name: "Create task" }));
     expect(await screen.findByText("Could not save this task. Check your connection.")).toBeOnTheScreen();
   });
 
@@ -189,9 +189,9 @@ describe("create", () => {
     await ready("Create task");
     await fireEvent.changeText(screen.getByPlaceholderText("What needs doing?"), "Call bank");
     await fireEvent.changeText(screen.getByPlaceholderText("Step 1"), "Dial");
-    await fireEvent.press(screen.getByText("Create task"));
+    await fireEvent.press(screen.getByRole("button", { name: "Create task" }));
     expect(await screen.findByText("Board is archived")).toBeOnTheScreen();
-    await fireEvent.press(screen.getByText("Create task"));
+    await fireEvent.press(screen.getByRole("button", { name: "Create task" }));
     expect(await screen.findByText("Could not save this task.")).toBeOnTheScreen();
     expect(navigation.goBack).not.toHaveBeenCalled();
   });
@@ -225,7 +225,7 @@ describe("due time and time allowed", () => {
     expect(screen.getByText("Due time")).toBeOnTheScreen();
     await pickTime("Select a time", 9, 5);
     expect(screen.getByText("09:05")).toBeOnTheScreen();
-    await fireEvent.press(screen.getByText("Create task"));
+    await fireEvent.press(screen.getByRole("button", { name: "Create task" }));
     await waitFor(() => expect(saveTask).toHaveBeenCalled());
     expect(sent()).toMatchObject({ DueDate: "2026-11-20", DueTime: "09:05" });
     // Empty target = the company default for the priority: not sent at all.
@@ -240,7 +240,7 @@ describe("due time and time allowed", () => {
     await pickTime("Select a time", 14, 30);
     await fireEvent.press(screen.getByLabelText("Clear date"));
     expect(screen.queryByText("Due time")).toBeNull();
-    await fireEvent.press(screen.getByText("Create task"));
+    await fireEvent.press(screen.getByRole("button", { name: "Create task" }));
     await waitFor(() => expect(saveTask).toHaveBeenCalled());
     expect(sent()).not.toHaveProperty("DueTime");
   });
@@ -250,12 +250,12 @@ describe("due time and time allowed", () => {
     await ready("Create task");
     await fillMinimum();
     await fireEvent.changeText(allowed(), "1.5");
-    await fireEvent.press(screen.getByText("Create task"));
+    await fireEvent.press(screen.getByRole("button", { name: "Create task" }));
     await waitFor(() => expect(saveTask).toHaveBeenCalledTimes(1));
     expect(sent()).toMatchObject({ TatMinutes: 90 });
 
     await fireEvent.changeText(allowed(), "0");
-    await fireEvent.press(screen.getByText("Create task"));
+    await fireEvent.press(screen.getByRole("button", { name: "Create task" }));
     await waitFor(() => expect(saveTask).toHaveBeenCalledTimes(2));
     expect(sent()).toMatchObject({ TatMinutes: 0 });
   });
@@ -265,7 +265,7 @@ describe("due time and time allowed", () => {
     await ready("Create task");
     await fillMinimum();
     await fireEvent.changeText(allowed(), "-2");
-    await fireEvent.press(screen.getByText("Create task"));
+    await fireEvent.press(screen.getByRole("button", { name: "Create task" }));
     expect(screen.getByText(/Time allowed is a number of working hours/)).toBeOnTheScreen();
     expect(saveTask).not.toHaveBeenCalled();
   });
@@ -280,7 +280,7 @@ describe("due time and time allowed", () => {
   it("until the board type is known, time allowed is not offered — it might be personal", async () => {
     jest.mocked(fetchWorkspaces).mockReturnValue(new Promise(() => {}));
     await mount();
-    await screen.findByText("Create task");
+    await screen.findByRole("button", { name: "Create task" });
     expect(screen.queryByLabelText("Time allowed (working hours)")).toBeNull();
   });
 
@@ -301,7 +301,7 @@ describe("due time and time allowed", () => {
     expect(allowed()).toHaveDisplayValue("2");
 
     await pickTime("10:00", 16, 0);
-    await fireEvent.press(screen.getByText("Save changes"));
+    await fireEvent.press(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(saveTask).toHaveBeenCalledTimes(1));
     expect(sent()).toMatchObject({ DueTime: "16:00" });
     expect(sent()).not.toHaveProperty("TatMinutes");
@@ -313,7 +313,7 @@ describe("due time and time allowed", () => {
     await ready("Save changes");
     await fireEvent.changeText(allowed(), "");
     await fireEvent.press(screen.getByLabelText("Clear time"));
-    await fireEvent.press(screen.getByText("Save changes"));
+    await fireEvent.press(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(saveTask).toHaveBeenCalled());
     expect(sent()).toMatchObject({ TatMinutes: null, DueTime: null });
   });
@@ -324,7 +324,7 @@ describe("due time and time allowed", () => {
     await mount({ workspaceId: 10, taskId: 9 });
     await ready("Save changes");
     expect(screen.queryByLabelText("Time allowed (working hours)")).toBeNull();
-    await fireEvent.press(screen.getByText("Save changes"));
+    await fireEvent.press(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(saveTask).toHaveBeenCalled());
     expect(sent()).not.toHaveProperty("TatMinutes");
   });
@@ -364,7 +364,7 @@ describe("edit", () => {
     expect(screen.queryByText("Add step")).toBeNull();
 
     await fireEvent.changeText(screen.getByDisplayValue("Fit the inverter"), "Fit two inverters");
-    await fireEvent.press(screen.getByText("Save changes"));
+    await fireEvent.press(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
     expect(sent()).toMatchObject({
@@ -395,7 +395,7 @@ describe("edit", () => {
     jest.mocked(fetchTaskById).mockResolvedValue(makeTask({ Id: 9, Title: "Bare", Priority: null, Type: null }));
     await mount({ workspaceId: 10, taskId: 9 });
     await ready("Save changes");
-    await fireEvent.press(screen.getByText("Save changes"));
+    await fireEvent.press(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(saveTask).toHaveBeenCalled());
     expect(sent()).toMatchObject({ DueDate: null, EstimatedHours: 0, Priority: "medium", Type: "task", AssigneeIds: [] });
   });
@@ -404,7 +404,7 @@ describe("edit", () => {
     jest.mocked(fetchTaskById).mockResolvedValue(null);
     const navigation = await mount({ workspaceId: 10, taskId: 9 });
     expect(await screen.findByText("Task not available")).toBeOnTheScreen();
-    await fireEvent.press(screen.getByLabelText("Go back"));
+    await fireEvent.press(screen.getByLabelText("Close"));
     expect(navigation.goBack).toHaveBeenCalled();
   });
 

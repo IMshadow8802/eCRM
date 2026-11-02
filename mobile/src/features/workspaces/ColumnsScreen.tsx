@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { FlatList, Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Columns3, Pencil, Plus, Trash2 } from "lucide-react-native";
 import type { StackScreenProps } from "@react-navigation/stack";
@@ -13,17 +13,19 @@ import { apiErrorMessage } from "../../api/errors";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import { boardQuery } from "../tasks/taskHelpers";
 import type { KanbanColumn } from "../../types/api";
-import { colors, radius, spacing, SCREEN_PADDING } from "../../theme";
+import { colors, spacing } from "../../theme";
 import {
   ActionSheet,
-  Card,
+  Band,
+  BandSheet,
   ComposeSheet,
   Dialog,
   EmptyState,
-  Fab,
+  HeaderButton,
+  ListGroup,
+  ListRow,
   Screen,
-  ScreenHeader,
-  Text,
+  SkeletonRows,
   useToast,
   type SheetAction,
   type SheetRef,
@@ -154,79 +156,64 @@ export default function ColumnsScreen({ route, navigation }: Props) {
   const reassignName = columns.find((c) => c.Id === reassignTo)?.Title;
 
   return (
-    <Screen>
-      <ScreenHeader
+    <Screen band>
+      <Band
         title="Columns"
-        subtitle={`${columns.length} column${columns.length === 1 ? "" : "s"}`}
+        count={`${columns.length} column${columns.length === 1 ? "" : "s"}`}
+        variant="record"
         onBack={navigation.goBack}
+        actions={<HeaderButton label="New" icon={Plus} accessibilityLabel="Add a column" onPress={() => openCompose(null)} />}
       />
 
-      <FlatList
-        data={columns}
-        keyExtractor={(column) => String(column.Id)}
-        contentContainerStyle={[
-          styles.list,
-          !columns.length && styles.listEmpty,
-        ]}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          isLoading ? null : (
-            <EmptyState
-              icon={Columns3}
-              title="No columns yet"
-              message="A board needs at least one column before it can hold tasks."
-              actionLabel="Add a column"
-              onAction={() => openCompose(null)}
-            />
-          )
-        }
-        renderItem={({ item }) => (
-          <Card style={styles.row}>
-            <View
-              style={[
-                styles.dot,
-                { backgroundColor: item.Color ?? colors.primary },
-              ]}
-            />
-
-            <View style={styles.text}>
-              <Text variant="h3" numberOfLines={1}>
-                {item.Title}
-              </Text>
-              <Text variant="caption" color="textMuted">
-                {countIn(item.Id)} task{countIn(item.Id) === 1 ? "" : "s"}
-              </Text>
-            </View>
-
-            <Pressable
-              hitSlop={spacing[2]}
-              onPress={() => openCompose(item)}
-              accessibilityLabel={`Rename ${item.Title}`}
-              accessibilityRole="button"
-            >
-              <Pencil size={19} color={colors.textSecondary} />
-            </Pressable>
-
-            {/* The last column stays — a board with none cannot hold a task. */}
-            {columns.length > 1 ? (
-              <Pressable
-                hitSlop={spacing[2]}
-                onPress={() => startDelete(item)}
-                accessibilityLabel={`Delete ${item.Title}`}
-                accessibilityRole="button"
-              >
-                <Trash2 size={19} color={colors.danger} />
-              </Pressable>
-            ) : null}
-          </Card>
+      <BandSheet scroll center={!isLoading && !columns.length}>
+        {isLoading ? (
+          <SkeletonRows rows={3} />
+        ) : !columns.length ? (
+          <EmptyState
+            module="tasks"
+            icon={Columns3}
+            title="No columns yet"
+            message="A board needs at least one column before it can hold tasks."
+            actionLabel="Add a column"
+            onAction={() => openCompose(null)}
+          />
+        ) : (
+          <ListGroup>
+            {columns.map((item, i) => (
+              <ListRow
+                key={item.Id}
+                noSeparator={i === 0}
+                badge={{ tone: "slate", icon: Columns3, size: 36 }}
+                title={item.Title}
+                meta={`${countIn(item.Id)} task${countIn(item.Id) === 1 ? "" : "s"}`}
+                trailing={
+                  <View style={styles.tools}>
+                    <Pressable
+                      hitSlop={spacing[3]}
+                      onPress={() => openCompose(item)}
+                      accessibilityLabel={`Rename ${item.Title}`}
+                      accessibilityRole="button"
+                    >
+                      <Pencil size={18} color={colors.textSecondary} />
+                    </Pressable>
+                    {/* The last column stays — a board with none cannot hold a task. */}
+                    {columns.length > 1 ? (
+                      <Pressable
+                        hitSlop={spacing[3]}
+                        onPress={() => startDelete(item)}
+                        accessibilityLabel={`Delete ${item.Title}`}
+                        accessibilityRole="button"
+                      >
+                        <Trash2 size={18} color={colors.danger} />
+                      </Pressable>
+                    ) : null}
+                  </View>
+                }
+              />
+            ))}
+          </ListGroup>
         )}
-      />
-
-      <Fab
-        icon={Plus}
-        accessibilityLabel="Add a column"
-        onPress={() => openCompose(null)}
-      />
+      </BandSheet>
 
       <ComposeSheet
         ref={composeRef}
@@ -260,6 +247,7 @@ export default function ColumnsScreen({ route, navigation }: Props) {
 
       <Dialog
         visible={Boolean(deleting) && (pendingCount === 0 || reassignTo != null)}
+        badge={{ tone: "red", icon: Trash2 }}
         title={`Delete "${deleting?.Title ?? ""}"?`}
         message={
           pendingCount === 0
@@ -287,15 +275,5 @@ export default function ColumnsScreen({ route, navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  list: {
-    padding: SCREEN_PADDING,
-    paddingBottom: spacing[20],
-    gap: spacing[3],
-  },
-  listEmpty: { flexGrow: 1 },
-  // Surface (background, radius, shadow, press physics) belongs to ui/Card —
-  // this is only how the row lays its children out.
-  row: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
-  dot: { width: 12, height: 12, borderRadius: radius.full },
-  text: { flex: 1, gap: spacing[1] },
+  tools: { flexDirection: "row", alignItems: "center", gap: spacing[4] },
 });

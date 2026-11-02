@@ -43,7 +43,7 @@ it("creates a shared board with the people picked as invites, then goes back", a
   expect(screen.getByText("New board")).toBeOnTheScreen();
   await fireEvent.changeText(screen.getByPlaceholderText("Client onboarding"), "  Plant visit  ");
   await fireEvent.press(await screen.findByText("Asha Rao"));
-  await fireEvent.press(screen.getByText("Create board"));
+  await fireEvent.press(screen.getByRole("button", { name: "Create board" }));
   await waitFor(() => expect(saveWorkspace).toHaveBeenCalled());
   expect(jest.mocked(saveWorkspace).mock.calls[0]![0]).toEqual({
     Id: 0,
@@ -66,7 +66,7 @@ it("a new board starts from the column template picked (WS-12)", async () => {
   await mount();
   await fireEvent.changeText(screen.getByPlaceholderText("Client onboarding"), "Sprint 4");
   await fireEvent.press(screen.getByText("Scrum"));
-  await fireEvent.press(screen.getByText("Create board"));
+  await fireEvent.press(screen.getByRole("button", { name: "Create board" }));
   await waitFor(() => expect(saveWorkspace).toHaveBeenCalled());
   expect(jest.mocked(saveWorkspace).mock.calls[0]![0]).toEqual(
     expect.objectContaining({ Name: "Sprint 4", TemplateKey: "scrum" }),
@@ -79,7 +79,7 @@ it("a personal board sends no invites and hides the picker", async () => {
   await fireEvent.press(await screen.findByText("Asha Rao"));
   await fireEvent.press(screen.getByText("Personal"));
   expect(screen.queryByText("Who should join?")).toBeNull();
-  await fireEvent.press(screen.getByText("Create board"));
+  await fireEvent.press(screen.getByRole("button", { name: "Create board" }));
   await waitFor(() => expect(saveWorkspace).toHaveBeenCalled());
   expect(jest.mocked(saveWorkspace).mock.calls[0]![0]).toEqual(
     expect.objectContaining({ Name: "My list", Type: "personal", Members: [] }),
@@ -89,7 +89,7 @@ it("a personal board sends no invites and hides the picker", async () => {
 it("a blank name is refused before any request", async () => {
   await mount();
   await fireEvent.changeText(screen.getByPlaceholderText("Client onboarding"), "   ");
-  await fireEvent.press(screen.getByText("Create board"));
+  await fireEvent.press(screen.getByRole("button", { name: "Create board" }));
   expect(screen.getByText("Give the board a name.")).toBeOnTheScreen();
   expect(saveWorkspace).not.toHaveBeenCalled();
 });
@@ -101,7 +101,7 @@ it("a success:false reply shows its message and stays", async () => {
   const navigation = makeNavigation<"WorkspaceForm">();
   await mount({}, navigation);
   await fireEvent.changeText(screen.getByPlaceholderText("Client onboarding"), "Dup");
-  await fireEvent.press(screen.getByText("Create board"));
+  await fireEvent.press(screen.getByRole("button", { name: "Create board" }));
   expect(await screen.findByText("Name already used")).toBeOnTheScreen();
   expect(navigation.goBack).not.toHaveBeenCalled();
 });
@@ -110,7 +110,7 @@ it("a success:false reply without a message gets the fallback", async () => {
   jest.mocked(saveWorkspace).mockResolvedValue(envelope({ workspaceId: 0 }, { success: false, message: "" }));
   await mount();
   await fireEvent.changeText(screen.getByPlaceholderText("Client onboarding"), "Dup");
-  await fireEvent.press(screen.getByText("Create board"));
+  await fireEvent.press(screen.getByRole("button", { name: "Create board" }));
   expect(await screen.findByText("Could not save this workspace.")).toBeOnTheScreen();
 });
 
@@ -118,7 +118,7 @@ it("a rejected save shows the reason", async () => {
   jest.mocked(saveWorkspace).mockRejectedValue(new Error("Not allowed"));
   await mount();
   await fireEvent.changeText(screen.getByPlaceholderText("Client onboarding"), "X");
-  await fireEvent.press(screen.getByText("Create board"));
+  await fireEvent.press(screen.getByRole("button", { name: "Create board" }));
   expect(await screen.findByText("Not allowed")).toBeOnTheScreen();
 });
 
@@ -130,7 +130,7 @@ it("renaming keeps Color and Icon and never re-sends invites", async () => {
   expect(screen.queryByText("Kind")).toBeNull();
   expect(screen.queryByText("Invite")).toBeNull();
   await fireEvent.changeText(screen.getByDisplayValue("Site works"), "Site works 2");
-  await fireEvent.press(screen.getByText("Save changes"));
+  await fireEvent.press(screen.getByRole("button", { name: "Save changes" }));
   await waitFor(() => expect(saveWorkspace).toHaveBeenCalled());
   // WS-01: sp_SaveWorkspace writes TeamId/ProjectId on update, so they travel back.
   expect(jest.mocked(saveWorkspace).mock.calls[0]![0]).toEqual(
@@ -147,7 +147,7 @@ it("renaming a project board re-sends its ProjectId (WS-01)", async () => {
   jest.mocked(fetchWorkspaces).mockResolvedValue([{ ...existing, Type: "project", TeamId: null, ProjectId: 77 }]);
   await mount({ workspaceId: 9 });
   await fireEvent.changeText(await screen.findByDisplayValue("Site works"), "Site works 3");
-  await fireEvent.press(screen.getByText("Save changes"));
+  await fireEvent.press(screen.getByRole("button", { name: "Save changes" }));
   await waitFor(() => expect(saveWorkspace).toHaveBeenCalled());
   expect(jest.mocked(saveWorkspace).mock.calls[0]![0]).toEqual(
     expect.objectContaining({ Id: 9, Type: "project", TeamId: null, ProjectId: 77 }),
@@ -157,7 +157,7 @@ it("renaming a project board re-sends its ProjectId (WS-01)", async () => {
 it("an edit whose board fails to load offers a retry", async () => {
   jest.mocked(fetchWorkspaces).mockRejectedValue(new Error("boom"));
   await mount({ workspaceId: 9 });
-  expect(await screen.findByText("Could not load this")).toBeOnTheScreen();
+  expect(await screen.findByText("Could not load. Try again")).toBeOnTheScreen();
   jest.mocked(fetchWorkspaces).mockResolvedValue([existing]);
   await fireEvent.press(screen.getByText("Try again"));
   expect(await screen.findByDisplayValue("Site works")).toBeOnTheScreen();

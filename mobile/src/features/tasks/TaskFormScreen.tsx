@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Lock, Plus, X } from "lucide-react-native";
 import type {
@@ -12,16 +12,23 @@ import { apiErrorMessage } from "../../api/errors";
 import { fetchWorkspaceMembers, fetchWorkspaces } from "../../api/workspaceQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import type { Task, TaskPriority } from "../../types/api";
-import { colors, spacing, SCREEN_PADDING } from "../../theme";
+import { colors, metrics, spacing } from "../../theme";
 import {
-  Button,
+  Band,
+  BandSheet,
   DateField,
+  EmptyState,
+  ErrorCard,
+  FieldHelp,
+  FieldLabel,
+  FieldRow,
+  HeaderButton,
   Input,
   Screen,
-  ScreenHeader,
-  ScreenLoader,
   Select,
+  SkeletonRows,
   Text,
+  useLayout,
 } from "../../ui";
 import useAuthStore from "../../stores/useAuthStore";
 import { abilitiesFor, assigneesOf } from "./taskHelpers";
@@ -73,24 +80,27 @@ export default function TaskFormScreen({ route, navigation }: Props) {
 
   if (editing && (isLoading || isError)) {
     return (
-      <Screen>
-        <ScreenHeader title="Edit task" onBack={navigation.goBack} />
-        <ScreenLoader failed={isError} onRetry={refetch} />
+      <Screen band>
+        <Band title="Edit task" variant="record" backIcon="close" onBack={navigation.goBack} />
+        <BandSheet scroll>
+          {isError ? <ErrorCard onRetry={() => void refetch()} /> : <SkeletonRows rows={4} />}
+        </BandSheet>
       </Screen>
     );
   }
 
   if (editing && !task) {
     return (
-      <Screen>
-        <ScreenHeader title="Edit task" onBack={navigation.goBack} />
-        <View style={styles.centre}>
-          <Lock size={30} color={colors.textMuted} />
-          <Text variant="h3">Task not available</Text>
-          <Text variant="secondary" align="center">
-            It may have been deleted, or you no longer have access to its board.
-          </Text>
-        </View>
+      <Screen band>
+        <Band title="Edit task" variant="record" backIcon="close" onBack={navigation.goBack} />
+        <BandSheet center>
+          <EmptyState
+            module="tasks"
+            icon={Lock}
+            title="Task not available"
+            message="It may have been deleted, or you no longer have access to its board."
+          />
+        </BandSheet>
       </Screen>
     );
   }
@@ -114,6 +124,7 @@ interface TaskFormProps {
 
 function TaskForm({ navigation, workspaceId, columnId, task }: TaskFormProps) {
   const queryClient = useQueryClient();
+  const layout = useLayout();
   const editing = task != null;
 
   const [title, setTitle] = useState(task?.Title ?? "");
@@ -261,18 +272,27 @@ function TaskForm({ navigation, workspaceId, columnId, task }: TaskFormProps) {
   };
 
   return (
-    <Screen>
-      <ScreenHeader
+    <Screen band>
+      {/* 16's pattern: Save in the band so the whole form fits; pairs share a row. */}
+      <Band
         title={editing ? "Edit task" : "New task"}
-        subtitle={task?.WorkspaceName ?? undefined}
+        variant="record"
+        backIcon="close"
         onBack={navigation.goBack}
+        actions={
+          <HeaderButton
+            label={save.isPending ? "Saving…" : "Save"}
+            onPress={submit}
+            // Until the board type is known a personal board would be saved unassigned.
+            disabled={!workspaces || save.isPending}
+            accessibilityLabel={editing ? "Save changes" : "Create task"}
+          />
+        }
       />
 
-      <ScrollView
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
+      <BandSheet scroll contentBottom={spacing[10]}>
+        <View style={[styles.form, { maxWidth: layout.contentMaxWidth }]}>
+        {task?.WorkspaceName ? <Text variant="meta">{task.WorkspaceName}</Text> : null}
         <Input
           label="Title"
           required
@@ -303,35 +323,35 @@ function TaskForm({ navigation, workspaceId, columnId, task }: TaskFormProps) {
           />
         )}
 
-        <Select
-          label="Priority"
-          value={priority}
-          options={PRIORITIES}
-          onChange={(v) => setPriority(v as TaskPriority)}
-        />
+        <FieldRow>
+          <Select
+            label="Priority"
+            value={priority}
+            options={PRIORITIES}
+            onChange={(v) => setPriority(v as TaskPriority)}
+          />
+          <Select
+            label="Type"
+            value={type}
+            options={TYPES}
+            onChange={(v) => setType(v as string)}
+          />
+        </FieldRow>
 
-        <Select
-          label="Type"
-          value={type}
-          options={TYPES}
-          onChange={(v) => setType(v as string)}
-        />
-
-        <DateField label="Due date" value={dueDate} onChange={setDueDate} />
-
-        {dueDate ? (
-          <View style={styles.hinted}>
-            <DateField
-              mode="time"
-              label="Due time"
-              value={dueTime || null}
-              onChange={(v) => setDueTime(v ?? "")}
-            />
-            <Text variant="caption" color="textMuted">
-              {"Empty = end of the working day on the person's shift."}
-            </Text>
-          </View>
-        ) : null}
+        <View>
+          <FieldRow>
+            <DateField label="Due date" value={dueDate} onChange={setDueDate} />
+            {dueDate ? (
+              <DateField
+                mode="time"
+                label="Due time"
+                value={dueTime || null}
+                onChange={(v) => setDueTime(v ?? "")}
+              />
+            ) : null}
+          </FieldRow>
+          {dueDate ? <FieldHelp hint="No time = end of the working day on the person's shift." /> : null}
+        </View>
 
         {canSetTarget ? (
           <Input
@@ -355,10 +375,9 @@ function TaskForm({ navigation, workspaceId, columnId, task }: TaskFormProps) {
 
         {!editing ? (
           <View style={styles.steps}>
-            <Text variant="label">Steps *</Text>
-            <Text variant="caption" color="textMuted">
-              Break the work into steps. The task completes when every step is
-              ticked.
+            <FieldLabel label="Steps" required />
+            <Text variant="small">
+              Break the work into steps. The task completes when every step is ticked.
             </Text>
             {steps.map((step, idx) => (
               <View key={idx} style={styles.stepRow}>
@@ -379,59 +398,25 @@ function TaskForm({ navigation, workspaceId, columnId, task }: TaskFormProps) {
                 </Pressable>
               </View>
             ))}
-            <Pressable onPress={addStep} hitSlop={8} style={styles.stepAdd}>
-              <Plus size={16} color={colors.primary} />
-              <Text variant="label" color="primary">
-                Add step
-              </Text>
+            <Pressable onPress={addStep} hitSlop={8} accessibilityRole="button" accessibilityLabel="Add step" style={styles.stepAdd}>
+              <Plus size={18} color={colors.primary} />
+              <Text variant="rowTitle" color="primary">Add step</Text>
             </Pressable>
           </View>
         ) : null}
 
-        {error ? (
-          <Text variant="caption" color="danger">
-            {error}
-          </Text>
-        ) : null}
-
-        <View style={styles.actions}>
-          <Button
-            title={editing ? "Save changes" : "Create task"}
-            onPress={submit}
-            loading={save.isPending}
-            // Until the board type is known a personal board would be saved unassigned.
-            disabled={!workspaces}
-            fullWidth
-          />
+        {error ? <FieldHelp error={error} /> : null}
         </View>
-      </ScrollView>
+      </BandSheet>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  centre: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing[2],
-    padding: spacing[6],
-  },
-  content: {
-    padding: SCREEN_PADDING,
-    paddingBottom: spacing[20],
-    gap: spacing[4],
-  },
-  actions: { paddingTop: spacing[2] },
-  hinted: { gap: spacing[1] },
+  form: { width: "100%", alignSelf: "center", gap: metrics.fieldGap },
   steps: { gap: spacing[2] },
   stepRow: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
   stepInput: { flex: 1 },
   stepRemove: { padding: spacing[2] },
-  stepAdd: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[1],
-    paddingVertical: spacing[1],
-  },
+  stepAdd: { flexDirection: "row", alignItems: "center", gap: spacing[1], paddingVertical: spacing[1] },
 });
