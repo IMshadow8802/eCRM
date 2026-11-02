@@ -143,6 +143,17 @@ it("Done with nothing finished says so", async () => {
   expect(await screen.findByText("Nothing finished this week")).toBeOnTheScreen();
 });
 
+it("Open a board counts what Workspaces lists: no archived board, none I only see as admin (device: 11 vs 7)", async () => {
+  jest.mocked(fetchWorkspaces).mockResolvedValue([
+    makeWorkspace({ Id: 11, Type: "personal", OwnerUserId: ME, MyInviteStatus: "active" }),
+    makeWorkspace({ Id: 10, Type: "shared", MyInviteStatus: "active" }),
+    makeWorkspace({ Id: 13, Type: "shared", MyInviteStatus: "active", IsArchived: true }),
+    makeWorkspace({ Id: 14, Type: "shared", MyRole: null, MyInviteStatus: null }),
+  ]);
+  await renderWithProviders(<MyWorkScreen />);
+  expect(await screen.findByText("2 workspaces")).toBeOnTheScreen();
+});
+
 it("Open a board counts the boards I am in and opens Workspaces", async () => {
   await renderWithProviders(<MyWorkScreen />);
   expect(await screen.findByText("2 workspaces")).toBeOnTheScreen();

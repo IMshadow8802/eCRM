@@ -12,7 +12,6 @@ import type { RootStackParamList } from "../../navigation/RootNavigator";
 import { useTabs } from "../../navigation/tabs";
 import useAuthStore from "../../stores/useAuthStore";
 import { moduleTones, spacing, type ChipTone } from "../../theme";
-import type { Workspace } from "../../types/api";
 import {
   Avatar, Band, BandSheet, Chip, CountBadge, Dialog, Footnote, ListGroup, ListRow, Screen, Text, type SheetRef,
 } from "../../ui";
@@ -20,6 +19,7 @@ import { appVersion } from "../auth/appVersion";
 import { useAccess } from "../auth/useAccess";
 import { useSignOut } from "../auth/useSignOut";
 import { useUnreadCount } from "../notifications/useUnreadCount";
+import { isMyWorkspace } from "../tasks/taskHelpers";
 import { clockTime } from "../notifications/timeLabels";
 import { ChangePasswordSheet } from "../profile/AccountForms";
 import { followUpViewParams } from "../sales/leadHelpers";
@@ -27,8 +27,6 @@ import { followUpViewParams } from "../sales/leadHelpers";
 type Nav = StackNavigationProp<RootStackParamList>;
 
 /** Same rule as Boards' "Your boards": live, accepted, and not seen only through the admin bypass. */
-const isMine = (w: Workspace) =>
-  w.MyInviteStatus !== "pending" && !w.IsArchived && (w.MyRole != null || w.MyInviteStatus != null);
 
 /** "A", "A and B", "A, B and C". */
 const listOf = (names: string[]) =>
@@ -127,7 +125,7 @@ export default function MoreScreen() {
             <ListRow
               badge={{ tone: "lilac", icon: LayoutDashboard }}
               title="Workspaces"
-              right={workspaces ? { text: String(workspaces.filter(isMine).length) } : undefined}
+              right={workspaces ? { text: String(workspaces.filter(isMyWorkspace).length) } : undefined}
               chevron
               menu
               onPress={() => navigation.navigate("Boards")}

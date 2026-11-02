@@ -18,7 +18,7 @@ import {
 } from "../../ui";
 import { TaskRow } from "./TaskRow";
 import {
-  doneThisWeek, groupByDue, isUnassigned, MY_DAY_QUERY, myDoneQuery, myTasksQuery, needRank, needsYou, WORKSPACES_QUERY,
+  doneThisWeek, groupByDue, isMyWorkspace, isUnassigned, MY_DAY_QUERY, myDoneQuery, myTasksQuery, needRank, needsYou, WORKSPACES_QUERY,
 } from "./taskHelpers";
 
 export type TaskListFilter = "mine" | "unassigned" | "all";
@@ -119,7 +119,7 @@ export default function MyWorkScreen() {
   const updated = active.dataUpdatedAt
     ? new Date(active.dataUpdatedAt).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" }).toLowerCase()
     : undefined;
-  const boardCount = workspaces.data?.filter((w) => w.MyInviteStatus !== "pending").length;
+  const boardCount = workspaces.data?.filter(isMyWorkspace).length;
 
   let list;
   if (active.isLoading) list = <SkeletonRows rows={4} />;
