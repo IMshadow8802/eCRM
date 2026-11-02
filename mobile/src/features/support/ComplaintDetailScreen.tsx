@@ -540,21 +540,28 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
       ]
     : [];
 
+  // logCall on a ticket runs assertRecordAccess(..., "write") — edit again.
+  const callEntry: SheetAction[] = can.edit
+    ? [
+        {
+          key: "call",
+          label: "Log a call",
+          sublabel: "Goes straight onto the history",
+          icon: PhoneCall,
+          onPress: () => {
+            setCallError(null);
+            callRef.current?.present();
+          },
+        },
+      ]
+    : [];
+
   const menuActions: SheetAction[] = [
     ...resolveEntry,
     ...statusEntry,
     ...transferEntry,
     ...escalateEntry,
-    {
-      key: "call",
-      label: "Log a call",
-      sublabel: "Goes straight onto the history",
-      icon: PhoneCall,
-      onPress: () => {
-        setCallError(null);
-        callRef.current?.present();
-      },
-    },
+    ...callEntry,
     ...editEntry,
     ...deleteEntry,
   ];
@@ -587,13 +594,18 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
         subtitle={`${ticket.TicketNo} · ${ticket.StatusName ?? code}`}
         tint="danger"
         onBack={navigation.goBack}
-        actions={[
-          {
-            icon: EllipsisVertical,
-            label: "Complaint actions",
-            onPress: () => menuRef.current?.present(),
-          },
-        ]}
+        // Every menu entry needs edit or delete; a view-only role gets no ⋮.
+        actions={
+          can.edit || can.delete
+            ? [
+                {
+                  icon: EllipsisVertical,
+                  label: "Complaint actions",
+                  onPress: () => menuRef.current?.present(),
+                },
+              ]
+            : []
+        }
       />
 
       <View style={styles.summary}>
@@ -810,9 +822,10 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
 
       <ActionSheet ref={menuRef} title="Complaint actions" actions={menuActions} />
 
-      {/* Every sheet below moves the complaint — setTicketStatus, transfer and
-          escalate all need the edit grant (ticketRoutes.js), so a view-only
-          role gets none of them rather than a 403. */}
+      {/* Every sheet below writes to the complaint — setTicketStatus,
+          transfer and escalate need the edit grant (ticketRoutes.js), and
+          logCall checks write access on the ticket (callController) — so a
+          view-only role gets none of them rather than a 403. */}
       {can.edit ? (
         <>
           <ActionSheet
@@ -948,54 +961,54 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
               });
             }}
           />
+
+          {/* One sheet, not a chain of them: direction and outcome are chips so
+              the whole call fits on screen with the keyboard up. NextFollowupDate
+              is absent on purpose — tblFollowUp hangs off LeadId, so a ticket
+              cannot carry one; its next step is its status. */}
+          <ComposeSheet
+            ref={callRef}
+            title="Log a call"
+            submitLabel="Log call"
+            busy={logTheCall.isPending}
+            error={callError}
+            choices={[
+              {
+                key: "direction",
+                label: "Direction",
+                required: true,
+                options: [
+                  { value: "in", label: "Incoming" },
+                  { value: "out", label: "Outgoing" },
+                ],
+              },
+              ...(callOutcomes.length
+                ? [
+                    {
+                      key: "outcome",
+                      label: "Outcome",
+                      options: callOutcomes.map((o) => ({ value: o.Id, label: o.Value })),
+                    },
+                  ]
+                : []),
+            ]}
+            fields={[
+              { key: "notes", label: "Notes", placeholder: "What was said", multiline: true },
+              { key: "minutes", label: "Minutes", placeholder: "0", numeric: true },
+            ]}
+            onSubmit={(values, picked) => {
+              const minutes = Number(values.minutes);
+              logTheCall.mutate({
+                TicketId: ticketId,
+                Direction: (picked.direction as CallDirection) ?? "out",
+                OutcomeId: (picked.outcome as number) ?? null,
+                Notes: values.notes || null,
+                Duration: Number.isFinite(minutes) && minutes > 0 ? minutes : null,
+              });
+            }}
+          />
         </>
       ) : null}
-
-      {/* One sheet, not a chain of them: direction and outcome are chips so
-          the whole call fits on screen with the keyboard up. NextFollowupDate
-          is absent on purpose — tblFollowUp hangs off LeadId, so a ticket
-          cannot carry one; its next step is its status. */}
-      <ComposeSheet
-        ref={callRef}
-        title="Log a call"
-        submitLabel="Log call"
-        busy={logTheCall.isPending}
-        error={callError}
-        choices={[
-          {
-            key: "direction",
-            label: "Direction",
-            required: true,
-            options: [
-              { value: "in", label: "Incoming" },
-              { value: "out", label: "Outgoing" },
-            ],
-          },
-          ...(callOutcomes.length
-            ? [
-                {
-                  key: "outcome",
-                  label: "Outcome",
-                  options: callOutcomes.map((o) => ({ value: o.Id, label: o.Value })),
-                },
-              ]
-            : []),
-        ]}
-        fields={[
-          { key: "notes", label: "Notes", placeholder: "What was said", multiline: true },
-          { key: "minutes", label: "Minutes", placeholder: "0", numeric: true },
-        ]}
-        onSubmit={(values, picked) => {
-          const minutes = Number(values.minutes);
-          logTheCall.mutate({
-            TicketId: ticketId,
-            Direction: (picked.direction as CallDirection) ?? "out",
-            OutcomeId: (picked.outcome as number) ?? null,
-            Notes: values.notes || null,
-            Duration: Number.isFinite(minutes) && minutes > 0 ? minutes : null,
-          });
-        }}
-      />
 
       <Dialog
         visible={confirmingDelete}

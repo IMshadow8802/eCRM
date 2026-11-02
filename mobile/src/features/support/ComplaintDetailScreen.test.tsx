@@ -1,5 +1,5 @@
 import { Linking } from "react-native";
-import { fireEvent, screen, waitFor } from "@testing-library/react-native";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react-native";
 
 import { fetchAttachments } from "../../api/attachmentQueries";
 import { fetchCalls, logCall } from "../../api/callQueries";
@@ -261,7 +261,7 @@ describe("an open complaint", () => {
     await mount();
     await loaded();
     // The tab's badge counts the hand-over, not just activity rows.
-    expect(screen.getByText("1")).toBeOnTheScreen();
+    expect(within(screen.getByRole("tab", { name: /History/ })).getByText("1")).toBeOnTheScreen();
     await fireEvent.press(screen.getByText("History"));
     expect(await screen.findByText("Unassigned → Priya Shah (Surat Office)")).toBeOnTheScreen();
     expect(screen.getByText(/^On leave · covering · by Test User · /)).toBeOnTheScreen();
@@ -277,15 +277,22 @@ describe("an open complaint", () => {
       ]);
       await mount();
       // Not `loaded()`: it waits on sheets a view-only role no longer gets.
-      await screen.findByText("Reached");
+      // Waiting on the fetches instead means a hidden row is hidden by the
+      // grant, not merely because its lookups had not landed yet.
+      await screen.findByText("Inverter keeps tripping");
+      await waitFor(() => expect(fetchLookups).toHaveBeenCalledWith(expect.objectContaining({ Kind: LOOKUP_KIND.ticketStatus })));
+      await waitFor(() => expect(fetchAssignableUsers).toHaveBeenCalled());
+      // Nothing left on the menu, so no ⋮ either.
+      expect(screen.queryByLabelText("Complaint actions")).toBeNull();
       expect(screen.queryByText("Resolve")).toBeNull();
       expect(screen.queryByText("Change status")).toBeNull();
       expect(screen.queryByText("Rejected")).toBeNull();
       expect(screen.queryByText("Escalate")).toBeNull();
       expect(screen.queryByText("Ravi Mehta")).toBeNull();
       expect(fetchEscalationTargets).not.toHaveBeenCalled();
-      // Logging a call stays: it is not an edit.
-      expect(screen.getByText("Goes straight onto the history")).toBeOnTheScreen();
+      // logCall on a ticket runs assertRecordAccess(..., "write") — edit too.
+      expect(screen.queryByText("Goes straight onto the history")).toBeNull();
+      expect(screen.queryByText("Log call")).toBeNull();
       expect(screen.queryByText("Edit complaint")).toBeNull();
       expect(screen.queryByText("Delete complaint")).toBeNull();
       expect(screen.queryByText("Transfer")).toBeNull();
