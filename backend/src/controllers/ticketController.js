@@ -11,7 +11,7 @@ const {
   canReopen,
 } = require("../middleware/permission");
 const { assertCustomerVisible } = require("./customerController");
-const { positiveInt, pageParams } = require("../utils/controllerKit");
+const { positiveInt, pageParams, optionalDateTime } = require("../utils/controllerKit");
 const { parseDay } = require("../utils/reportKit");
 const ticketDue = require("../services/ticketDue");
 
@@ -164,6 +164,12 @@ const ticketController = {
       // Clamped, not taken raw: PageSize goes straight to the SP, which has no
       // ceiling of its own. Default 25 matches the SP's own default.
       const { PageNumber, PageSize } = pageParams(b, 25);
+      // 118: a ResolvedAt bracket, from inclusive, to exclusive.
+      const ResolvedFrom = optionalDateTime(b.ResolvedFrom);
+      const ResolvedTo = optionalDateTime(b.ResolvedTo);
+      if (ResolvedFrom === undefined || ResolvedTo === undefined) {
+        return responseHelper.validationError(res, "ResolvedFrom / ResolvedTo is not a valid date");
+      }
 
       const result = await database.executeStoredProcedure("sp_FetchTickets", {
         CompId,
@@ -189,6 +195,8 @@ const ticketController = {
         Unassigned: bit(b.Unassigned),
         FromDate: isoDay(b.FromDate),
         ToDate: isoDay(b.ToDate),
+        ResolvedFrom,
+        ResolvedTo,
         ...scopeParams(req),
         // Escalated = escalated to me OR overdue in my ReportsTo subtree (incl. self), not overdue anywhere in reach.
         EscalatedSubtreeJson: bit(b.Escalated)

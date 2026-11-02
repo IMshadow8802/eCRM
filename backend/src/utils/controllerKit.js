@@ -11,6 +11,7 @@
 // One import per controller: `require("../utils/controllerKit")`.
 
 const { error } = require("./responseHelper");
+const { toSqlIst } = require("./workCalendar");
 
 /**
  * Wraps a controller method so a thrown error becomes one consistent 500
@@ -112,7 +113,26 @@ const positiveInt = (value) => {
   return Number.isInteger(n) && n > 0 && n <= INT_MAX ? n : null;
 };
 
+// A DATETIME for the SP, or null when invalid. 'YYYY-MM-DD' and 'YYYY-MM-DDTHH:mm[:ss]'
+// are IST wall clock and pass as sent; an instant with Z / ±HH:mm becomes its IST wall clock.
+const DUE = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})?)?$/;
+function istDateTime(v) {
+  const s = typeof v === "string" ? v.trim() : "";
+  const m = DUE.exec(s);
+  if (!m) return null;
+  const [, y, mo, d, h = "0", mi = "0", sec = "0", zone] = m;
+  const t = new Date(Date.UTC(+y, +mo - 1, +d));
+  if (t.getUTCMonth() !== +mo - 1 || t.getUTCDate() !== +d || +h > 23 || +mi > 59 || +sec > 59) return null;
+  return zone ? toSqlIst(new Date(s)) : s;
+}
+// An optional DATETIME filter: null when absent/blank, undefined when present
+// but invalid (the caller 400s), else the SP value. Never nulls a bad value —
+// null would silently drop the filter and widen the list.
+const optionalDateTime = (v) => (v == null || v === "" ? null : istDateTime(v) ?? undefined);
+
 module.exports = {
+  istDateTime,
+  optionalDateTime,
   asyncRoute,
   firstRow,
   spStatus,

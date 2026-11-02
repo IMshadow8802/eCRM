@@ -1,25 +1,12 @@
 const database = require("../config/database");
 const { success, error, validationError } = require("../utils/responseHelper");
 const {
-  asyncRoute, firstRow, spStatus, spOk, spMessage, pageParams, positiveInt,
+  asyncRoute, firstRow, spStatus, spOk, spMessage, pageParams, positiveInt, istDateTime, optionalDateTime,
 } = require("../utils/controllerKit");
 const { assertRecordAccess, assertCanAssign, canSeeRecord, scopeParams } = require("../middleware/permission");
-const { toSqlIst } = require("../utils/workCalendar");
 
 const blank = (s) => !s || !String(s).trim();
 
-// A follow-up due date for the SP, or null when invalid. 'YYYY-MM-DD' and 'YYYY-MM-DDTHH:mm[:ss]'
-// are IST wall clock and pass as sent; an instant with Z / ±HH:mm becomes its IST wall clock.
-const DUE = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})?)?$/;
-function followUpDue(v) {
-  const s = typeof v === "string" ? v.trim() : "";
-  const m = DUE.exec(s);
-  if (!m) return null;
-  const [, y, mo, d, h = "0", mi = "0", sec = "0", zone] = m;
-  const t = new Date(Date.UTC(+y, +mo - 1, +d));
-  if (t.getUTCMonth() !== +mo - 1 || t.getUTCDate() !== +d || +h > 23 || +mi > 59 || +sec > 59) return null;
-  return zone ? toSqlIst(new Date(s)) : s;
-}
 const BAD_DUE = "Follow-up date is not valid";
 
 // A follow-up is governed by its lead's visibility, plus one extra: the person
@@ -60,7 +47,7 @@ class FollowupController {
       const { LeadId, Type: rawType, DueAt, AssignedTo = null } = req.body;
       const Type = rawType ?? "call";
       if (!DueAt) return validationError(res, "Due date is required");
-      const due = followUpDue(DueAt);
+      const due = istDateTime(DueAt);
       if (!due) return validationError(res, BAD_DUE);
       if (!(await assertRecordAccess(req, res, "lead", LeadId))) return;
       // Scheduling onto someone else is an assignment: same roster gate as a
@@ -80,7 +67,7 @@ class FollowupController {
     async (req, res) => {
       const { Id, OutcomeId = null, Remarks, Direction = null, Duration = null, NextType = null, NextDueAt = null } = req.body;
       if (blank(Remarks)) return validationError(res, "Remarks are required");
-      const nextDue = NextDueAt == null || NextDueAt === "" ? null : followUpDue(NextDueAt);
+      const nextDue = NextDueAt == null || NextDueAt === "" ? null : istDateTime(NextDueAt);
       if (NextDueAt != null && NextDueAt !== "" && !nextDue) return validationError(res, BAD_DUE);
       if (!(await loadVisibleFollowUp(req, res, Id))) return;
       const result = await database.executeStoredProcedure("sp_CompleteFollowUp", {
@@ -113,6 +100,10 @@ class FollowupController {
       const LeadId = positiveInt(req.body.LeadId) ?? 0;
       const { AssignedTo = null, Status = null, DueFrom = null, DueTo = null, Overdue = false, SearchTerm = null } = req.body;
       const { PageNumber, PageSize } = pageParams(req.body, 25);
+      // "Done today" (118): a DoneAt bracket, from inclusive, to exclusive.
+      const DoneFrom = optionalDateTime(req.body.DoneFrom);
+      const DoneTo = optionalDateTime(req.body.DoneTo);
+      if (DoneFrom === undefined || DoneTo === undefined) return validationError(res, "DoneFrom / DoneTo is not a valid date");
 
       // Per-lead: the lead is the record being read; gate on it and return the
       // full list. Queue: the SP applies scope itself.
@@ -120,7 +111,7 @@ class FollowupController {
 
       const result = await database.executeStoredProcedure("sp_FetchFollowUps", {
         CompId: req.user.CompId, LeadId,
-        AssignedTo: positiveInt(AssignedTo), Status, DueFrom, DueTo,
+        AssignedTo: positiveInt(AssignedTo), Status, DueFrom, DueTo, DoneFrom, DoneTo,
         Overdue: Overdue === true || Overdue === 1 || Overdue === "true",
         SearchTerm, PageNumber, PageSize,
         ...scopeParams(req),

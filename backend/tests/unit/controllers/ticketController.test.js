@@ -258,7 +258,7 @@ describe("ticketController.fetch", () => {
     expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_FetchTickets", {
       CompId: 5, BranchId: null, PageNumber: 1, PageSize: 25, SearchTerm: null,
       StatusId: null, StatusCode: null, Priority: null, CategoryId: null, ChannelId: null, ProductId: null,
-      CustomerId: null, AssignedTo: null, Overdue: 0, Escalated: 0, Unassigned: 0, FromDate: null, ToDate: null,
+      CustomerId: null, AssignedTo: null, Overdue: 0, Escalated: 0, Unassigned: 0, FromDate: null, ToDate: null, ResolvedFrom: null, ResolvedTo: null,
       UserId: 7, AccessibleBranchIdsJson: "[1,2,3,4,5]", OwnerIdsJson: null, EscalatedSubtreeJson: null,
     });
   });
@@ -347,6 +347,36 @@ describe("ticketController.fetch", () => {
     expect(data.tickets).toEqual([]);
     expect(data.pagination).toEqual({ currentPage: 1, pageSize: 25, totalRecords: 0, totalPages: 1 });
   });
+
+  // 118: "my complaints resolved in the last 7 days" — ResolvedAt bracket.
+  it("passes ResolvedFrom / ResolvedTo through as IST wall clock", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[], [{ TotalRecords: 4 }]] });
+    const res = mockRes();
+    await ticketController.fetch(
+      baseReq({ body: { AssignedTo: 7, ResolvedFrom: "2026-10-27", ResolvedTo: "2026-11-02T10:15", PageSize: 1 } }),
+      res,
+    );
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({
+      AssignedTo: 7, ResolvedFrom: "2026-10-27", ResolvedTo: "2026-11-02T10:15", PageSize: 1,
+    });
+    expect(res.json.mock.calls[0][0].data.pagination.totalRecords).toBe(4);
+  });
+
+  it("sends ResolvedFrom / ResolvedTo as null when absent (old callers)", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[], []] });
+    await ticketController.fetch(baseReq({ body: { ResolvedTo: null } }), mockRes());
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({ ResolvedFrom: null, ResolvedTo: null });
+  });
+
+  it.each([["ResolvedFrom", "last week"], ["ResolvedTo", "2026-13-01"], ["ResolvedFrom", {}]])(
+    "400s a bad %s (%p) before any DB call",
+    async (key, value) => {
+      const res = mockRes();
+      await ticketController.fetch(baseReq({ body: { [key]: value } }), res);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+    },
+  );
 
   it("handles DB error as 500", async () => {
     database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));

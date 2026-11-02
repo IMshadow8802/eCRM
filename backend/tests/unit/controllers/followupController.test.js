@@ -276,6 +276,37 @@ describe("fetch", () => {
       currentPage: 2, pageSize: 5, totalRecords: 1, totalPages: 1,
     });
   });
+
+  // 118: "Done today" on the mobile Home — DoneAt bracket, from inclusive, to exclusive.
+  it("passes DoneFrom / DoneTo through as IST wall clock", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[], [{ TotalRecords: 3 }]] });
+    const res = mockRes();
+    await followupController.fetch(
+      baseReq({ body: { Status: "done", DoneFrom: "2026-11-02", DoneTo: "2026-11-02T18:30:00Z", PageSize: 1 } }),
+      res,
+    );
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
+      "sp_FetchFollowUps",
+      expect.objectContaining({ Status: "done", DoneFrom: "2026-11-02", DoneTo: "2026-11-03 00:00:00" }),
+    );
+    expect(res.json.mock.calls[0][0].data.pagination.totalRecords).toBe(3);
+  });
+
+  it("sends DoneFrom / DoneTo as null when absent (old callers)", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[], []] });
+    await followupController.fetch(baseReq({ body: { DoneFrom: "" } }), mockRes());
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({ DoneFrom: null, DoneTo: null });
+  });
+
+  it.each([["DoneFrom", "yesterday"], ["DoneTo", "2026-02-30"], ["DoneFrom", 20261102]])(
+    "400s a bad %s (%p) before any DB call",
+    async (key, value) => {
+      const res = mockRes();
+      await followupController.fetch(baseReq({ body: { [key]: value } }), res);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("delete", () => {
