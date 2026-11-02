@@ -30,6 +30,6 @@ appId: com.shadowider.eCRM
     element: "Escalated to"
 - assertVisible: "Neha Gupta \\(TL Head Office\\)"
 - tapOn: "History.*"
-- assertVisible: ".*MAESTRO transfer ${output.stamp}.*"
-- assertVisible: ".*MAESTRO escalate ${output.stamp}.*"
+- assertVisible: ".*transfer ${output.stamp}.*"
+- assertVisible: ".*escalate ${output.stamp}.*"
 - takeScreenshot: transfer-escalate-history

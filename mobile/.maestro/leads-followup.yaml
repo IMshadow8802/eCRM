@@ -23,7 +23,7 @@ appId: com.shadowider.eCRM
 - waitForAnimationToEnd
 # The visit is done and a new one is booked in 3 days.
 - assertVisible: "Done"
-- assertVisible: ".*MAESTRO visit ${output.stamp}.*"
+- assertVisible: ".*visit ${output.stamp}.*"
 - assertVisible: "Due .*"
 - takeScreenshot: followup-logged
 

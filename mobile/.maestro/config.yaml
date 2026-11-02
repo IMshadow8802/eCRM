@@ -1,5 +1,6 @@
 # Maestro E2E for the mobile app. Run from mobile/:
-#   maestro test .maestro            (every flow below, in this order)
+#   maestro test .maestro            (every flow below; each sets up its own
+#                                     records, so the run order does not matter)
 # Needs the app signed in to company TestCRM once by hand (flows never type a
 # password and never clear app state). Records they create start "MAESTRO ".
 flows:

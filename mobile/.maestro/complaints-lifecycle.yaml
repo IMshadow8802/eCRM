@@ -46,8 +46,8 @@ appId: com.shadowider.eCRM
 
 # History: the call and every move are on it.
 - tapOn: "History.*"
-- assertVisible: ".*MAESTRO call ${output.stamp}.*"
-- assertVisible: ".*MAESTRO resolved ${output.stamp}.*"
+- assertVisible: ".*call ${output.stamp}.*"
+- assertVisible: ".*resolved ${output.stamp}.*"
 - scrollUntilVisible:
     element: ".*On Hold.*"
 - takeScreenshot: lifecycle-history

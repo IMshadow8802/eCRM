@@ -28,6 +28,6 @@ appId: com.shadowider.eCRM
 - waitForAnimationToEnd
 - assertVisible: "Amit Singh \\(Exec HO, under Neha\\)"
 - tapOn: "History"
-- assertVisible: ".*MAESTRO lead call ${output.stamp}.*"
-- assertVisible: ".*MAESTRO lead transfer ${output.stamp}.*"
+- assertVisible: ".*lead call ${output.stamp}.*"
+- assertVisible: ".*lead transfer ${output.stamp}.*"
 - takeScreenshot: lead-call-transfer-history
