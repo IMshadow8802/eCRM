@@ -2,6 +2,20 @@ appId: com.shadowider.eCRM
 ---
 - launchApp:
     stopApp: false
+- waitForAnimationToEnd
+# A failed flow can leave the app deep in a stack: back out to the tab bar.
+# A back that lands outside the app (it was still resuming) is undone by the
+# relaunch; the session survives, flows never sign in.
+- repeat:
+    times: 6
+    while:
+      notVisible: "Profile"
+    commands:
+      - hideKeyboard
+      - back
+      - launchApp:
+          stopApp: false
+      - waitForAnimationToEnd
 - tapOn:
     text: "Work"
     index: 0

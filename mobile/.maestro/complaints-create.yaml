@@ -1,13 +1,9 @@
+# Logs a complaint for a brand-new customer and checks what the detail shows.
 appId: com.shadowider.eCRM
 ---
-- runFlow: common/open-work.yaml
-- tapOn: "Complaints"
-- tapOn: "Log a complaint"
-- assertVisible: "Log a complaint"
-- takeScreenshot: complaints-form-empty
-- evalScript: ${output.stamp = String(Date.now()).slice(-6)}
-- tapOn:
-    text: ".*customer.*"
-    index: 0
-- inputText: "MAESTRO"
-- takeScreenshot: complaints-customer-search
+- runFlow: common/new-complaint.yaml
+- assertVisible: "Technical"
+- assertVisible: "medium"
+- assertVisible: "Unassigned"
+- assertVisible: "97${output.stamp}"
+- takeScreenshot: complaints-created-detail

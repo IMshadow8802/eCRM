@@ -1,0 +1,44 @@
+# Logs an unassigned complaint for a new customer and opens it.
+# Leaves output.stamp; subject is "MAESTRO complaint <stamp>".
+appId: com.shadowider.eCRM
+---
+- runFlow: open-work.yaml
+- tapOn: "Complaints"
+- tapOn: "Log a complaint"
+- assertVisible: "Log a complaint"
+- evalScript: ${output.stamp = String(Date.now()).slice(-8)}
+- tapOn: "Search customer (mobile or name)"
+- inputText: "MAESTRO Cust ${output.stamp}"
+- assertVisible: "Nobody matches.*"
+- tapOn: "New customer"
+# The search text carries over as the new customer's name.
+- assertVisible: "MAESTRO Cust ${output.stamp}"
+- tapOn: "10-digit number"
+- inputText: "97${output.stamp}"
+- hideKeyboard
+- scrollUntilVisible:
+    element: "One line — what is wrong"
+    centerElement: true
+- tapOn: "One line — what is wrong"
+- inputText: "MAESTRO complaint ${output.stamp}"
+- hideKeyboard
+- tapOn:
+    text: "Not set"
+    index: 0
+- tapOn: "Technical"
+- tapOn:
+    text: "Not set"
+    index: 0
+- tapOn: "medium"
+- assertVisible: "Due 72 working hours from when it is logged"
+- scrollUntilVisible:
+    element: "Log complaint"
+- tapOn: "Log complaint"
+# Back on the list; the new one is unassigned.
+- assertVisible: "Complaints"
+- tapOn: "Unassigned"
+- tapOn: "Ticket no., subject, customer or mobile"
+- inputText: "${output.stamp}"
+- hideKeyboard
+- tapOn: "MAESTRO complaint ${output.stamp}"
+- assertVisible: "MAESTRO Cust ${output.stamp}"

@@ -1,0 +1,53 @@
+# Log a call, then On Hold -> In Progress -> Resolved (resolution + remarks);
+# the history shows every step.
+appId: com.shadowider.eCRM
+---
+- runFlow: common/new-complaint.yaml
+- tapOn: "Complaint actions"
+- tapOn: "Log a call"
+- tapOn: "Outgoing"
+- tapOn: "Connected"
+- tapOn: "What was said"
+- inputText: "MAESTRO call ${output.stamp}"
+- tapOn: "0"
+- inputText: "5"
+- takeScreenshot: lifecycle-call
+- tapOn: "Log call"
+# The sheet closes once the call is saved.
+- assertNotVisible: "Log call"
+- waitForAnimationToEnd
+
+- tapOn: "Complaint actions"
+- tapOn: "Change status"
+# A move that needs no remarks applies in one tap.
+- tapOn: "On Hold"
+- assertVisible: "TKT-\\d+ · On Hold"
+# The closing sheet's backdrop eats a tap made mid-animation.
+- waitForAnimationToEnd
+
+- tapOn: "Complaint actions"
+- tapOn: "Change status"
+- tapOn: "In Progress"
+- assertVisible: "TKT-\\d+ · In Progress"
+- waitForAnimationToEnd
+
+- tapOn: "Complaint actions"
+- tapOn: "Resolve"
+- assertVisible: "Mark as Resolved"
+- assertVisible: "Remarks \\*"
+- tapOn: "Fixed"
+- tapOn: "Why — this goes on the history"
+- inputText: "MAESTRO resolved ${output.stamp}"
+- takeScreenshot: lifecycle-resolve-sheet
+- tapOn: "Update status"
+- assertVisible: "TKT-\\d+ · Resolved"
+- assertVisible: "Fixed"
+- waitForAnimationToEnd
+
+# History: the call and every move are on it.
+- tapOn: "History.*"
+- assertVisible: ".*MAESTRO call ${output.stamp}.*"
+- assertVisible: ".*MAESTRO resolved ${output.stamp}.*"
+- scrollUntilVisible:
+    element: ".*On Hold.*"
+- takeScreenshot: lifecycle-history

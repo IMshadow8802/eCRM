@@ -7,8 +7,15 @@ appId: com.shadowider.eCRM
 - assertVisible: ".*in your team"
 - tapOn: "Overdue"
 - assertVisible: ".*overdue"
+# Five presets: the strip scrolls sideways past the fourth.
+- swipe:
+    from: "Overdue"
+    direction: LEFT
 - tapOn: "Escalated"
 - assertVisible: ".*escalated"
+- swipe:
+    from: "Escalated"
+    direction: RIGHT
 - tapOn: "Mine"
 - tapOn: "Ticket no., subject, customer or mobile"
 - inputText: "zzzz-no-match"
