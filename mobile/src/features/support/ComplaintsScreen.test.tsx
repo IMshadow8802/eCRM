@@ -305,6 +305,8 @@ describe("20a–c · states", () => {
     await mount();
     expect(await screen.findByText("Nothing assigned to you")).toBeOnTheScreen();
     expect(screen.queryByTestId("status-pills")).toBeNull();
+    // Top-aligned under the presets, like E, not centred in the sheet.
+    expect(flat(screen.getByTestId("empty-state")).justifyContent).toBe("flex-start");
   });
 
   it("20a: an empty Active with closed ones behind it keeps the pills, so they can be reached", async () => {

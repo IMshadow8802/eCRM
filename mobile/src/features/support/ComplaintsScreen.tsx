@@ -247,6 +247,7 @@ export default function ComplaintsScreen({ navigation, route }: Props) {
           }
           ListEmptyComponent={
             <EmptyState
+              top
               module="complaints"
               accents={["done", "escalated"]}
               title={narrowed ? "Nothing matches" : empty.title}

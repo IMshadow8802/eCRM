@@ -19,17 +19,19 @@ export interface EmptyStateProps {
   message?: string;
   actionLabel?: string;
   onAction?: () => void;
+  /** In a list sheet: top-aligned, 96 under the sheet's edge (E 20a), not centred. */
+  top?: boolean;
 }
 
 /**
  * The empty state (E 20a): a 132 rounded square in the module's colour with
  * its icon, optional accent badges, a title, a line, and one secondary button.
  */
-export function EmptyState({ module = "more", icon, accents = [], title, message, actionLabel, onAction }: EmptyStateProps) {
+export function EmptyState({ module = "more", icon, accents = [], title, message, actionLabel, onAction, top = false }: EmptyStateProps) {
   const { fill, ink } = badgeTones[moduleTones[module].badge];
   const Icon = icon ?? moduleIcons[module].tile;
   return (
-    <View style={styles.container}>
+    <View testID="empty-state" style={[styles.container, top && styles.top]}>
       <View style={styles.art}>
         <View testID="empty-art" style={[styles.artBox, { backgroundColor: fill }]}>
           <Icon size={56} strokeWidth={1.75} color={ink} />
@@ -117,6 +119,8 @@ export function ErrorCard({
 
 const styles = StyleSheet.create({
   container: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing[8] },
+  // The list body already pads sheetPadTop.
+  top: { justifyContent: "flex-start", paddingTop: metrics.emptyTop - metrics.sheetPadTop },
   art: { width: metrics.emptyArt, height: metrics.emptyArt },
   artBox: {
     width: metrics.emptyArt,

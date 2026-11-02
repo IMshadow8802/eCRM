@@ -25,6 +25,14 @@ describe("EmptyState (20a)", () => {
     expect(onAction).toHaveBeenCalled();
   });
 
+  it("top: in a list sheet it sits 96 below the sheet's top edge, not centred (E 20a)", async () => {
+    await render(<EmptyState top title="Nothing assigned to you" />);
+    // The list body already pads 16 (sheetPadTop): 16 + 80 = E's 96.
+    expect(flat(screen.getByTestId("empty-state"))).toMatchObject({ justifyContent: "flex-start", paddingTop: 80 });
+    await render(<EmptyState title="Centred" />);
+    expect(flat(screen.getByTestId("empty-state")).justifyContent).toBe("center");
+  });
+
   it("no handler, no button; default module is slate", async () => {
     await render(<EmptyState title="Nothing" actionLabel="Add" />);
     expect(screen.queryByRole("button")).toBeNull();

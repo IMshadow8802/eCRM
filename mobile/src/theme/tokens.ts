@@ -325,6 +325,8 @@ export const metrics = Object.freeze({
   sheetActionGap: 14,
   /** The load-failed card sits 72 down the sheet (E 20c). */
   errorTop: 72,
+  /** E 20a: a list's empty state sits this far under the sheet's top edge. */
+  emptyTop: 96,
   /** Tablet two-pane gutters (E T2/T3): list band 20 / sheet 16, detail band 28 / sheet 24. */
   pane: Object.freeze({ listBand: 20, listSheet: 16, detailBand: 28, detailSheet: 24 }),
 });

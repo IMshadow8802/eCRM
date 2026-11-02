@@ -268,6 +268,8 @@ it("an empty Mine says so; an empty search says nothing matches", async () => {
   answer(() => Promise.resolve(leadsReply([])));
   await mount();
   expect(await screen.findByText("No leads yet")).toBeOnTheScreen();
+  // E 20a's placement: under the presets, not centred.
+  expect(flat(screen.getByTestId("empty-state")).justifyContent).toBe("flex-start");
   await fireEvent.changeText(screen.getByPlaceholderText("Search name, company, mobile"), "zz");
   expect(await screen.findByText("Nothing matches")).toBeOnTheScreen();
 });
