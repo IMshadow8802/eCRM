@@ -299,6 +299,24 @@ describe("20a–c · states", () => {
     expect(await screen.findByText(title)).toBeOnTheScreen();
   });
 
+  it("20a: a preset with nothing in any status draws no status pills (E 20a)", async () => {
+    rows = [];
+    jest.mocked(fetchTickets).mockImplementation(async () => envelope({ tickets: [], pagination: pagination(0) }));
+    await mount();
+    expect(await screen.findByText("Nothing assigned to you")).toBeOnTheScreen();
+    expect(screen.queryByTestId("status-pills")).toBeNull();
+  });
+
+  it("20a: an empty Active with closed ones behind it keeps the pills, so they can be reached", async () => {
+    rows = [];
+    jest.mocked(fetchTickets).mockImplementation(async (p = {}) =>
+      envelope({ tickets: [], pagination: pagination(p.StatusId === 3 ? 2 : 0) }),
+    );
+    await mount();
+    expect(await screen.findByRole("radio", { name: "Resolved, 2" })).toBeOnTheScreen();
+    expect(screen.getByTestId("status-pills")).toBeOnTheScreen();
+  });
+
   it("a narrowed list that is empty says so", async () => {
     rows = [];
     await mount();

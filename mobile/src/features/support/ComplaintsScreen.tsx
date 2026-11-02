@@ -187,6 +187,7 @@ export default function ComplaintsScreen({ navigation, route }: Props) {
     />
   );
 
+  const nothingAtAll = !term && status === "active" && pillCounts.every((c) => c === 0);
   const pillBleed = { marginRight: layout.isTwoPane ? layout.gutter - metrics.gutter : 0 };
   const empty = EMPTY[queue];
   let body;
@@ -201,10 +202,13 @@ export default function ComplaintsScreen({ navigation, route }: Props) {
   } else {
     body = (
       <>
-        {/* The pills bleed by the window gutter; in the 420 pane the edge is 16 in. */}
-        <View style={pillBleed}>
-          <FilterPills label="Filter by status" value={status} options={pills} onChange={setStatus} testID="status-pills" />
-        </View>
+        {/* The pills bleed by the window gutter; in the 420 pane the edge is 16 in.
+            E 20a: a preset with nothing in any status has nothing to filter — no pills. */}
+        {nothingAtAll ? null : (
+          <View style={pillBleed}>
+            <FilterPills label="Filter by status" value={status} options={pills} onChange={setStatus} testID="status-pills" />
+          </View>
+        )}
         <FlatList
           testID="complaints-list"
           style={styles.list}
