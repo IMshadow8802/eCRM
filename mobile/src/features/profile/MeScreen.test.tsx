@@ -4,8 +4,8 @@ import { logout } from "../../api/authQueries";
 import { fetchTasks } from "../../api/taskQueries";
 import { fetchWorkspaces } from "../../api/workspaceQueries";
 import useAuthStore from "../../stores/useAuthStore";
-import type { Company, Task, Workspace } from "../../types/api";
-import { envelope, pagination } from "../../test/fixtures";
+import type { Company } from "../../types/api";
+import { assigneesJson, envelope, makeTask, makeWorkspace, pagination } from "../../test/fixtures";
 import { renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import MeScreen from "./MeScreen";
 
@@ -16,25 +16,23 @@ jest.mock("../../api/workspaceQueries");
 // parity: ME-01 — no edit-profile / change-password UI yet; only display + sign out are tested.
 // parity: ME-03 — the "v1.0.0" footer is hardcoded; not asserted.
 
-const task = (patch: Partial<Task>) => ({ AssigneesJson: null, AssignedToUserId: null, IsCompleted: false, ...patch }) as Task;
-const ws = (patch: Partial<Workspace>) => ({ Id: 1, IsArchived: false, MyInviteStatus: "accepted", ...patch }) as Workspace;
 
 beforeEach(() => {
   jest.mocked(logout).mockResolvedValue(envelope({}));
   jest.mocked(fetchTasks).mockResolvedValue(
     envelope({
       tasks: [
-        task({ Id: 1, AssignedToUserId: 7, IsCompleted: true }),
-        task({ Id: 2, AssigneesJson: JSON.stringify([{ UserId: 7, FullName: "Asha", Avatar: null }]) }),
-        task({ Id: 3, AssignedToUserId: 99, IsCompleted: true }),
+        makeTask({ Id: 1, AssignedToUserId: 7, IsCompleted: true }),
+        makeTask({ Id: 2, AssigneesJson: assigneesJson([7, "Asha"]) }),
+        makeTask({ Id: 3, AssignedToUserId: 99, IsCompleted: true }),
       ],
       pagination: pagination(3),
     }),
   );
   jest.mocked(fetchWorkspaces).mockResolvedValue([
-    ws({ Id: 1 }),
-    ws({ Id: 2, IsArchived: true }),
-    ws({ Id: 3, MyInviteStatus: "pending" }),
+    makeWorkspace({ Id: 1 }),
+    makeWorkspace({ Id: 2, IsArchived: true }),
+    makeWorkspace({ Id: 3, MyInviteStatus: "pending" }),
   ]);
 });
 
@@ -43,7 +41,8 @@ const statTile = (label: string) => screen.getByText(label).parent;
 
 it("shows who is signed in, their account details and their work counts", async () => {
   seedAuth({
-    user: { Id: 7, FullName: "Asha Patel", JobTitle: "Field engineer", IsAdmin: true, Email: "asha@x.in", Mobile: "9825012345", Username: "asha" },
+    user: { Id: 7, FullName: "Asha Patel", JobTitle: "Field engineer", Email: "asha@x.in", Mobile: "9825012345", Username: "asha" },
+    access: { isAdmin: true },
   });
   useAuthStore.setState({ company: { CompName: "PRD Infotech" } as Company });
   await renderWithProviders(<MeScreen />);
@@ -61,6 +60,14 @@ it("shows who is signed in, their account details and their work counts", async 
   expect(statTile("Completed")).toHaveTextContent(/^1\s*Completed$/);
   expect(statTile("Boards")).toHaveTextContent(/^1\s*Boards$/);
   expect(fetchTasks).toHaveBeenCalledWith({ WorkspaceId: null, PageSize: 200 });
+});
+
+// CLAUDE.md §3: IsAdmin is read from the server's access, never from the login-time user.
+it("the admin badge follows access, not the user record", async () => {
+  seedAuth({ user: { Id: 7, FullName: "Asha", IsAdmin: true } });
+  await renderWithProviders(<MeScreen />);
+  await waitFor(() => expect(fetchWorkspaces).toHaveBeenCalled());
+  expect(screen.queryByText("Administrator")).toBeNull();
 });
 
 it("leaves out the rows a user has no value for", async () => {

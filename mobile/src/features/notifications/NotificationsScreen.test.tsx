@@ -1,5 +1,5 @@
 import type { QueryClient } from "@tanstack/react-query";
-import { act, fireEvent, screen, waitFor } from "@testing-library/react-native";
+import { fireEvent, screen, waitFor } from "@testing-library/react-native";
 
 import {
   fetchNotifications,
@@ -45,15 +45,17 @@ const mountInbox = async () => {
   return r;
 };
 
+// FlatList renders new rows in a batch on a timer; under load it fired between
+// waitFor polls, outside act(). Fake timers park it (RNTL's waitFor/findBy
+// advance them), as in BoardsScreen.test.
+jest.useFakeTimers();
+
 // A write invalidates the list; let that refetch land inside the test, not after it.
 let client: QueryClient | null = null;
 afterEach(async () => {
   const c = client;
   client = null;
   if (c) await waitFor(() => expect(c.isFetching() + c.isMutating()).toBe(0));
-  // FlatList renders new rows in a batch on a 50ms timer; let it fire inside act.
-  // Deterministic: a later-due timer always runs after an earlier-due one.
-  await act(() => new Promise((resolve) => setTimeout(resolve, 60)));
 });
 
 beforeEach(() => {

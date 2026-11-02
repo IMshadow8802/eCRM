@@ -34,6 +34,8 @@ export default function MeScreen() {
   const user = useAuthStore((s) => s.user);
   const company = useAuthStore((s) => s.company);
   const userId = useAuthStore((s) => s.UserId);
+  // From the server's access, never the login-time user (CLAUDE.md §3).
+  const isAdmin = useAuthStore((s) => s.isAdmin());
   const insets = useSafeAreaInsets();
   const signOut = useSignOut();
 
@@ -78,7 +80,7 @@ export default function MeScreen() {
               <Text variant="secondary">{user.JobTitle}</Text>
             </View>
           ) : null}
-          {user?.IsAdmin ? (
+          {isAdmin ? (
             <View style={styles.adminBadge}>
               <ShieldCheck size={13} color={colors.textOnBrand} />
               <Text variant="caption" color="textOnBrand">Administrator</Text>

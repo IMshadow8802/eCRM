@@ -3,7 +3,7 @@ import { fireEvent, screen } from "@testing-library/react-native";
 import { fetchTickets } from "../../api/ticketQueries";
 import { fetchWorkspaces } from "../../api/workspaceQueries";
 import type { MenuItem, Workspace } from "../../types/api";
-import { envelope, pagination } from "../../test/fixtures";
+import { envelope, makeWorkspace, pagination } from "../../test/fixtures";
 import { makeNavigation, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import WorkHubScreen from "./WorkHubScreen";
 
@@ -19,13 +19,22 @@ jest.mock("@react-navigation/native", () => ({
 // parity: HUB-01 — the complaints count is fetched even for users without complaints; not pinned.
 // parity: HUB-02 — "/support/customers" also unlocks the Complaints row; not pinned.
 
-const row = (route: string, canView = true) =>
-  ({ route, permissions: { canView, canAdd: false, canEdit: false, canDelete: false } }) as MenuItem;
+const row = (route: string, canView = true): MenuItem => ({
+  menuid: 1,
+  parentid: 0,
+  description: route,
+  image: null,
+  route,
+  formname: null,
+  formclass: null,
+  openStyle: null,
+  permissions: { canView, canAdd: false, canEdit: false, canDelete: false },
+  groupName: null,
+});
 
 const signInWith = (routes: MenuItem[]) => seedAuth({ permissions: { rawPermissions: routes } });
 
-const ws = (Id: number, patch: Partial<Workspace> = {}) =>
-  ({ Id, IsArchived: false, MyInviteStatus: "accepted", ...patch }) as Workspace;
+const ws = (Id: number, patch: Partial<Workspace> = {}) => makeWorkspace({ Id, ...patch });
 
 beforeEach(() => {
   jest.mocked(fetchWorkspaces).mockResolvedValue([
@@ -34,7 +43,7 @@ beforeEach(() => {
   jest.mocked(fetchTickets).mockResolvedValue(envelope({ tickets: [], pagination: pagination(5) }));
 });
 
-it("an admin sees every module with its live count", async () => {
+it("a role with all three menus sees every module with its live count", async () => {
   signInWith([row("/tasks"), row("/support/tickets"), row("/sales/leads")]);
   await renderWithProviders(<WorkHubScreen />);
   expect(await screen.findByText("3 boards")).toBeOnTheScreen();
