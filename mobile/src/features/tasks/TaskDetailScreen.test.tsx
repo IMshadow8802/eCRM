@@ -22,6 +22,7 @@ import type { Lookup, Task, TaskChecklistItem, TaskTatClock, Workspace } from ".
 import { assigneesJson, envelope, localDay, makeTask, makeWorkspace, pagination, serverError } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import { spySheets } from "../../test/sheets";
+import { chipTones } from "../../theme";
 import TaskDetailScreen from "./TaskDetailScreen";
 
 jest.mock("../../api/taskQueries");
@@ -175,7 +176,8 @@ describe("summary", () => {
     await loaded();
     expect(screen.getByText("Ops board")).toBeOnTheScreen();
     expect(screen.getByText("Sector 4")).toBeOnTheScreen();
-    expect(screen.getByText("high")).toBeOnTheScreen();
+    // Priority is a sorbet chip in its own hue, not a fixed red flag.
+    expect(screen.getByText("high")).toHaveStyle({ color: chipTones.danger.text });
     expect(screen.getByText("1 day overdue")).toBeOnTheScreen();
     expect(screen.getByText("5h / 4h")).toBeOnTheScreen();
     expect(screen.getByText("2 blockers")).toBeOnTheScreen();

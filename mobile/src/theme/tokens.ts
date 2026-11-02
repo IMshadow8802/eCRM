@@ -41,6 +41,7 @@ export const palette = {
     500: "#EF4444",
     600: "#DC2626",
     700: "#B91C1C",
+    800: "#991B1B",
   },
   /**
    * Emerald, not the old grass green (#16A34A).
@@ -58,6 +59,7 @@ export const palette = {
     500: "#10B981",
     600: "#059669",
     700: "#047857",
+    800: "#065F46",
   },
   amber: {
     50: "#FFFBEB",
@@ -67,6 +69,7 @@ export const palette = {
     500: "#F59E0B",
     600: "#D97706",
     700: "#B45309",
+    800: "#92400E",
   },
   blue: {
     50: "#EFF6FF",
@@ -74,11 +77,32 @@ export const palette = {
     500: "#3B82F6",
     600: "#2563EB",
     700: "#1D4ED8",
+    800: "#1E40AF",
   },
   purple: {
     100: "#EDE9FE",
     400: "#A78BFA",
     500: "#8B5CF6",
+    800: "#5B21B6",
+  },
+  teal: {
+    100: "#CCFBF1",
+    800: "#115E59",
+  },
+  /**
+   * Avatar preset hues, keyed by the name stored in tblUser.Avatar
+   * ("color:violet") and mirrored from web/src/utils/avatarPresets.js. The
+   * keys are data and never change; only the hex may.
+   */
+  avatar: {
+    violet: "#7C3AED",
+    blue: "#2563EB",
+    cyan: "#0891B2",
+    green: "#059669",
+    amber: "#D97706",
+    red: "#DC2626",
+    pink: "#DB2777",
+    slate: "#475569",
   },
   white: "#FFFFFF",
   black: "#000000",
@@ -188,6 +212,25 @@ export const colors = {
   disabledBg: palette.gray[200],
   disabledText: palette.gray[500],
 } as const;
+
+/**
+ * "Sorbet" chip tones: a soft SOLID tint of the hue as the fill, the same hue's
+ * dark shade for text and icon. Every pair clears WCAG AA (4.5:1) for the small
+ * caption a chip carries; the old `*Soft` + 600 pairs did not (amber 3.1:1,
+ * green 3.6:1). `ui/Chip` is the only reader; screens pick a tone name.
+ */
+export const chipTones = {
+  neutral: { fill: palette.gray[100], text: palette.gray[700] }, // 9.4:1
+  primary: { fill: colors.primarySoft, text: palette.brand.dark }, // 8.6:1
+  success: { fill: palette.green[100], text: palette.green[800] }, // 6.8:1
+  warning: { fill: palette.amber[100], text: palette.amber[800] }, // 6.4:1
+  danger: { fill: palette.red[100], text: palette.red[800] }, // 6.8:1
+  info: { fill: palette.blue[100], text: palette.blue[800] }, // 7.2:1
+  purple: { fill: palette.purple[100], text: palette.purple[800] }, // 7.6:1
+  teal: { fill: palette.teal[100], text: palette.teal[800] }, // 6.7:1
+} as const;
+
+export type ChipTone = keyof typeof chipTones;
 
 /** Brand gradient, dark -> light. The auth backdrop. */
 export const gradients = {

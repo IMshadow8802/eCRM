@@ -93,6 +93,15 @@ it("greets with a fallback name when the user has none", async () => {
   expect(screen.getByText("there")).toBeOnTheScreen();
 });
 
+it("the greeting's wave is a lucide icon, not an emoji in the text", async () => {
+  await renderWithProviders(<MyWorkScreen />);
+  await screen.findByText("Late task");
+  const greet = screen.getByText(/^(Good|Working)/);
+  expect(greet).toHaveTextContent(/^[A-Za-z ]+,$/);
+  // Beside the text sits an SVG (lucide), not a glyph inside the string.
+  expect(greet.parent!.children.map((c) => (typeof c === "string" ? c : c.type))).toEqual(["Text", "RNSVGSvgView"]);
+});
+
 it("Unassigned shows only tasks nobody is on", async () => {
   await renderWithProviders(<MyWorkScreen />);
   await screen.findByText("Late task");

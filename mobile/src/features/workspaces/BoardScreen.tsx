@@ -22,6 +22,7 @@ import { colors, radius, spacing } from "../../theme";
 import {
   ActionSheet,
   BoardColumns,
+  Chip,
   EmptyState,
   Fab,
   Input,
@@ -290,14 +291,14 @@ export default function BoardScreen({ route, navigation }: Props) {
                     {column.Title}
                   </Text>
                   <View
-                    style={[styles.count, full && styles.countFull]}
                     accessibilityLabel={
                       full ? `${cards.length} of ${max} tasks, at the limit` : undefined
                     }
                   >
-                    <Text variant="caption" color={full ? "danger" : "textSecondary"}>
-                      {max ? `${cards.length} / ${max}` : cards.length}
-                    </Text>
+                    <Chip
+                      label={max ? `${cards.length} / ${max}` : String(cards.length)}
+                      tone={full ? "danger" : "neutral"}
+                    />
                   </View>
                 </View>
 
@@ -369,15 +370,6 @@ const styles = StyleSheet.create({
   },
   dot: { width: 10, height: 10, borderRadius: radius.full },
   columnTitle: { flex: 1 },
-  count: {
-    minWidth: 26,
-    paddingHorizontal: spacing[2],
-    paddingVertical: 1,
-    borderRadius: radius.full,
-    backgroundColor: colors.surface,
-    alignItems: "center",
-  },
-  countFull: { backgroundColor: colors.dangerSoft },
   search: { paddingHorizontal: spacing[4], paddingBottom: spacing[3] },
   // Clears the FAB so the last card in a full column stays reachable.
   // Cards on a board carry no shadow (see ui/boardSurface), so this gap is

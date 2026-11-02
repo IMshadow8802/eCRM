@@ -13,7 +13,7 @@ import type { ChipTone } from "../../ui";
 export const isActiveLead = (code: string | null | undefined): boolean => code === "open" || code === "qualified";
 
 const TONES: Record<string, ChipTone> = {
-  qualified: "info",
+  qualified: "purple",
   converted: "success",
   lost: "danger",
   junk: "neutral",

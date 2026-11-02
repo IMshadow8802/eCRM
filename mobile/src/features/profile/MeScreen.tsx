@@ -33,7 +33,7 @@ import {
   SCREEN_PADDING,
   TAB_BAR_CLEARANCE,
 } from "../../theme";
-import { Avatar, Button, Card, Dialog, Screen, Text } from "../../ui";
+import { Avatar, Button, Card, Chip, Dialog, Screen, Text } from "../../ui";
 
 export default function MeScreen() {
   const user = useAuthStore((s) => s.user);
@@ -92,8 +92,7 @@ export default function MeScreen() {
           ) : null}
           {isAdmin ? (
             <View style={styles.adminBadge}>
-              <ShieldCheck size={13} color={colors.textOnBrand} />
-              <Text variant="caption" color="textOnBrand">Administrator</Text>
+              <Chip label="Administrator" icon={ShieldCheck} tone="primary" />
             </View>
           ) : null}
         </View>
@@ -236,16 +235,7 @@ const styles = StyleSheet.create({
   },
   identity: { alignItems: "center", gap: spacing[2] },
   stat: { flexDirection: "row", alignItems: "center", gap: spacing[1] },
-  adminBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[1],
-    backgroundColor: colors.primary,
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[1],
-    borderRadius: radius.full,
-    marginTop: spacing[1],
-  },
+  adminBadge: { marginTop: spacing[1] },
   statRow: { flexDirection: "row", gap: spacing[3] },
   tile: { flex: 1, alignItems: "center" },
   tileGlyph: {

@@ -1,3 +1,4 @@
+import { StyleSheet } from "react-native";
 import { act, fireEvent, render, screen } from "@testing-library/react-native";
 
 import { Button } from "./Button";
@@ -18,6 +19,14 @@ it("an error shows the server's words and a tap dismisses it", async () => {
   expect(toast).toHaveAccessibleName("Not allowed");
   await fireEvent.press(toast);
   expect(screen.queryByRole("alert")).toBeNull();
+});
+
+it("slides in with a transform and never fades (no translucent frame)", async () => {
+  await renderWithProviders(<Trigger tone="success" message="Saved" />);
+  await fireEvent.press(screen.getByText("fire Saved"));
+  const wrap = StyleSheet.flatten(screen.getByRole("alert").parent!.props.style);
+  expect(wrap).not.toHaveProperty("opacity");
+  expect(wrap.transform).toEqual([{ translateY: expect.anything() }]);
 });
 
 it("a blank message shows nothing", async () => {

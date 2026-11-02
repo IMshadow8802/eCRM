@@ -8,7 +8,7 @@ import { fetchWorkspaces } from "../../api/workspaceQueries";
 import type { KanbanColumn, Task, Workspace, WorkspaceRole } from "../../types/api";
 import { access, envelope, pagination } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
-import { spacing } from "../../theme";
+import { chipTones, spacing } from "../../theme";
 import { BOARD_COLUMN_RATIO } from "../../ui/BoardColumns";
 import BoardScreen from "./BoardScreen";
 
@@ -229,7 +229,8 @@ it("a column with a limit shows n / max and flags when it is full (COL-02)", asy
   await screen.findByText("Fix the gate");
   expect(screen.getByText("1 / 1")).toBeOnTheScreen();
   expect(screen.getByLabelText("1 of 1 tasks, at the limit")).toBeOnTheScreen();
-  expect(screen.getByText("1 / 3")).toBeOnTheScreen();
+  expect(screen.getByText("1 / 1")).toHaveStyle({ color: chipTones.danger.text });
+  expect(screen.getByText("1 / 3")).toHaveStyle({ color: chipTones.neutral.text });
   expect(screen.queryByLabelText("1 of 3 tasks, at the limit")).toBeNull();
 });
 

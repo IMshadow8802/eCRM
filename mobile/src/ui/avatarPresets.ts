@@ -21,16 +21,9 @@ import {
   type LucideIcon,
 } from "lucide-react-native";
 
-export const AVATAR_COLORS: Record<string, string> = {
-  violet: "#7C3AED",
-  blue: "#2563EB",
-  cyan: "#0891B2",
-  green: "#059669",
-  amber: "#D97706",
-  red: "#DC2626",
-  pink: "#DB2777",
-  slate: "#475569",
-};
+import { palette } from "../theme";
+
+export const AVATAR_COLORS: Record<string, string> = palette.avatar;
 
 export const AVATAR_ICONS: Record<string, LucideIcon> = {
   rocket: Rocket, cat: Cat, dog: Dog, star: Star, heart: Heart, flame: Flame,

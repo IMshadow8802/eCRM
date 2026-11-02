@@ -126,7 +126,7 @@ export function FollowUpsTab({
                         ? "Done"
                         : "Skipped"
                   }
-                  tone={open ? (f.IsOverdue ? "danger" : "primary") : "neutral"}
+                  tone={open ? (f.IsOverdue ? "danger" : "teal") : "neutral"}
                 />
               </View>
               {f.Outcome || f.Remarks ? (

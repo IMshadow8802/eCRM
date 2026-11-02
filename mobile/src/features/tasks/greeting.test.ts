@@ -14,8 +14,7 @@ it("greets by the device's local hour", () => {
     [20, "Good evening"],
     [21, "Good night"],
   ];
-  for (const [hour, text] of cases) expect([hour, greetingFor(at(hour)).text]).toEqual([hour, text]);
-  expect(greetingFor(at(9)).emoji).toBe("👋");
+  for (const [hour, text] of cases) expect([hour, greetingFor(at(hour))]).toEqual([hour, text]);
 });
 
 it("longDate is the weekday, day and month", () => {

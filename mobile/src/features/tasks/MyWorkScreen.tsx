@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { Pressable, SectionList, StyleSheet, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
-import { ClipboardCheck, CloudOff, Power } from "lucide-react-native";
+import { ClipboardCheck, CloudOff, Hand, Power } from "lucide-react-native";
 import { useNavigation } from "@react-navigation/native";
 import type { StackNavigationProp } from "@react-navigation/stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -137,9 +137,10 @@ export default function MyWorkScreen() {
       <View style={[styles.header, { paddingTop: insets.top + spacing[3] }]}>
         <View style={styles.headerTop}>
           <View style={styles.greetBlock}>
-            <Text variant="secondary">
-              {greeting.text}, {greeting.emoji}
-            </Text>
+            <View style={styles.greetLine}>
+              <Text variant="secondary">{greeting},</Text>
+              <Hand size={16} color={colors.warning} />
+            </View>
             <Text variant="h1">{firstName}</Text>
             <Text variant="caption" color="textMuted">
               {longDate()}
@@ -296,6 +297,7 @@ const styles = StyleSheet.create({
     gap: spacing[3],
   },
   greetBlock: { flex: 1, gap: spacing[1] },
+  greetLine: { flexDirection: "row", alignItems: "center", gap: spacing[1] },
   signOut: {
     width: 42,
     height: 42,

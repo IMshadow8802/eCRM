@@ -38,7 +38,7 @@ describe("lifecycle", () => {
   it("gives every code its tone, primary when there is none", () => {
     expect(["open", "qualified", "converted", "lost", "junk", null].map(leadTone)).toEqual([
       "primary",
-      "info",
+      "purple",
       "success",
       "danger",
       "neutral",

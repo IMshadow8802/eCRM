@@ -59,7 +59,7 @@ import type {
   Lookup,
   TicketStatusCode,
 } from "../../types/api";
-import { colors, spacing, SCREEN_PADDING } from "../../theme";
+import { chipTones, colors, spacing, SCREEN_PADDING } from "../../theme";
 import {
   ActionSheet,
   Card,
@@ -1104,7 +1104,7 @@ function Fact({
   onPress?: () => void;
   actionLabel?: string;
 }) {
-  const ink = tone && tone !== "neutral" ? tone : undefined;
+  const ink = tone && tone !== "neutral" ? { color: chipTones[tone].text } : null;
   return (
     <Pressable
       disabled={!onPress}
@@ -1118,7 +1118,7 @@ function Fact({
         {label}
       </Text>
       <View style={styles.factValue}>
-        <Text variant="body" color={ink} numberOfLines={1} align="right">
+        <Text variant="body" style={ink} numberOfLines={1} align="right">
           {value}
         </Text>
         {sub ? (

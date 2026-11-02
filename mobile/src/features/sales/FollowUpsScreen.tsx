@@ -112,7 +112,7 @@ export default function FollowUpsScreen({ navigation }: Props) {
                 <Chip
                   label={`${followUpTypeLabel(f.Type)} · ${dayLabel(f.DueAt) ?? "—"}`}
                   icon={CalendarClock}
-                  tone={f.IsOverdue ? "danger" : f.Status === "open" ? "primary" : "neutral"}
+                  tone={f.IsOverdue ? "danger" : f.Status === "open" ? "teal" : "neutral"}
                 />
                 {f.Status !== "open" ? <Chip label={f.Status === "done" ? "Done" : "Skipped"} /> : null}
                 {f.LeadStatus ? <Chip label={f.LeadStatus} /> : null}

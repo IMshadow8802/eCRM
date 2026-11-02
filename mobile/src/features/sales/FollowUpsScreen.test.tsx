@@ -2,7 +2,7 @@ import { act, fireEvent, screen, waitFor } from "@testing-library/react-native";
 
 import { fetchFollowUps } from "../../api/followupQueries";
 import type { FollowUp } from "../../types/api";
-import { colors } from "../../theme";
+import { chipTones } from "../../theme";
 import { envelope, followUp, localDay, pagination } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders } from "../../test/renderWithProviders";
 import FollowUpsScreen from "./FollowUpsScreen";
@@ -182,13 +182,13 @@ it("a row shows the lead, the type and day, and goes danger when overdue", async
   );
   await mount();
   const chip = await screen.findByText("Visit · Yesterday");
-  expect(chip).toHaveStyle({ color: colors.danger });
+  expect(chip).toHaveStyle({ color: chipTones.danger.text });
   expect(screen.getByText("9825012345 · Patel Solar")).toBeOnTheScreen();
 });
 
 it("an on-time open row is not danger", async () => {
   await mount();
-  expect(await screen.findByText("Call · Today")).not.toHaveStyle({ color: colors.danger });
+  expect(await screen.findByText("Call · Today")).not.toHaveStyle({ color: chipTones.danger.text });
 });
 
 it("closed rows carry a Done or Skipped chip", async () => {

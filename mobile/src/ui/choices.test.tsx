@@ -3,23 +3,38 @@ import { StyleSheet } from "react-native";
 import { fireEvent, render, screen } from "@testing-library/react-native";
 import { Flag } from "lucide-react-native";
 
-import { colors } from "../theme";
+import { chipTones } from "../theme";
 import { Checkbox } from "./Checkbox";
 import { Chip } from "./Chip";
 import { ChipGroup } from "./ChipGroup";
 import { Segmented } from "./Segmented";
 
 describe("Chip", () => {
-  it("shows its label in the tone's soft fill", async () => {
+  it("shows its label as a sorbet pill: soft fill, the hue's dark ink on text and icon", async () => {
     await render(<Chip label="Overdue" tone="danger" icon={Flag} />);
-    const pill = screen.getByText("Overdue").parent!;
-    expect(StyleSheet.flatten(pill.props.style).backgroundColor).toBe(colors.dangerSoft);
+    const label = screen.getByText("Overdue");
+    expect(StyleSheet.flatten(label.parent!.props.style).backgroundColor).toBe(chipTones.danger.fill);
+    expect(label).toHaveStyle({ color: chipTones.danger.text });
+    expect(JSON.stringify(label.parent!.children[0])).toContain(`"stroke":"${chipTones.danger.text}"`);
   });
 
-  it("a data colour overrides the tone, and maxWidth caps it", async () => {
-    await render(<Chip label="Hot" tone="info" color="#123456" maxWidth={80} />);
+  it("defaults to neutral, and maxWidth caps it", async () => {
+    await render(<Chip label="Hot" maxWidth={80} />);
     const style = StyleSheet.flatten(screen.getByText("Hot").parent!.props.style);
-    expect(style).toMatchObject({ backgroundColor: "#123456", maxWidth: 80 });
+    expect(style).toMatchObject({ backgroundColor: chipTones.neutral.fill, maxWidth: 80 });
+  });
+
+  // WCAG relative luminance — every tone must stay legible as a 12px caption.
+  const lum = (hex: string) => {
+    const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+      .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * c[0]! + 0.7152 * c[1]! + 0.0722 * c[2]!;
+  };
+  it.each(Object.entries(chipTones))("%s: solid fill and text at least 4.5:1", (_, { fill, text }) => {
+    expect(fill).toMatch(/^#[0-9A-F]{6}$/i);
+    expect(text).toMatch(/^#[0-9A-F]{6}$/i);
+    const [hi, lo] = [lum(fill), lum(text)].sort((a, b) => b - a);
+    expect((hi! + 0.05) / (lo! + 0.05)).toBeGreaterThanOrEqual(4.5);
   });
 });
 

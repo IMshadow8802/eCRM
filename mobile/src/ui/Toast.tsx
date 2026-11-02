@@ -58,6 +58,9 @@ const ToastContext = createContext<ToastApi | null>(null);
  */
 const DURATION: Record<ToastTone, number> = { danger: 5000, success: 2500 };
 
+/** How far above its resting place the bar starts — taller than any toast. */
+const SLIDE_DISTANCE = 160;
+
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toast, setToast] = useState<ToastState | null>(null);
   const seq = useRef(0);
@@ -153,19 +156,19 @@ function ToastBar({
 
   return (
     <Animated.View
-      // Only transform and the container's own opacity animate. The background
-      // stays a SOLID token throughout (§9.3) — a translucent bar takes on
-      // whatever screen is behind it and reads as washed out.
+      // Slides in from above the screen edge and back out — transform only, no
+      // opacity fade. The bar is SOLID at every frame (§9.3): a fading bar is
+      // translucent mid-animation and takes on whatever screen is behind it.
       style={[
         styles.wrap,
         {
           top: insets.top + spacing[2],
-          opacity: anim,
           transform: [
             {
               translateY: anim.interpolate({
                 inputRange: [0, 1],
-                outputRange: [-16, 0],
+                // Clears the safe area plus a two-line bar, so at 0 it is fully off screen.
+                outputRange: [-(insets.top + SLIDE_DISTANCE), 0],
               }),
             },
           ],
