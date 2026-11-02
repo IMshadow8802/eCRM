@@ -156,11 +156,13 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   const [composeSeed, setComposeSeed] = useState<Record<string, string>>({});
   // Comment deletes/pins in flight, keyed per comment. A ref, not state: a
   // double-tap lands before any re-render could show the first was pending.
+  // Freed in the hooks' own onSettled — a callback passed to mutate() runs
+  // only for the latest call, so tapping B would leave A locked for good.
   const inFlight = useRef(new Set<string>());
-  const once = (key: string, run: (settled: () => void) => void) => {
+  const once = (key: string, run: () => void) => {
     if (inFlight.current.has(key)) return;
     inFlight.current.add(key);
-    run(() => inFlight.current.delete(key));
+    run();
   };
   // One picker for both directions: "blocker" = a task this one waits on,
   // "dependent" = a task that waits on this one.
@@ -269,11 +271,13 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
     mutationFn: deleteTaskComment,
     onError: (err) => toast.error(apiErrorMessage(err, "Could not delete that comment.")),
     onSuccess: refreshComments,
+    onSettled: (_data, _err, vars) => inFlight.current.delete(`delete-${vars.Id}`),
   });
   const pinComment = useMutation({
     mutationFn: pinTaskComment,
     onError: (err) => toast.error(apiErrorMessage(err, "Could not pin that comment.")),
     onSuccess: refreshComments,
+    onSettled: (_data, _err, vars) => inFlight.current.delete(`pin-${vars.CommentId}`),
   });
   const logTime = useMutation({
     mutationFn: logTaskTime,
@@ -551,11 +555,12 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
                 icon: Trash2,
                 tone: "danger",
                 onPress: () =>
-                  once(`delete-${picked.Id}`, (settled) =>
-                    removeComment.mutate(
-                      { Id: picked.Id, TaskId: taskId, WorkspaceId: task.WorkspaceId },
-                      { onSettled: settled },
-                    ),
+                  once(`delete-${picked.Id}`, () =>
+                    removeComment.mutate({
+                      Id: picked.Id,
+                      TaskId: taskId,
+                      WorkspaceId: task.WorkspaceId,
+                    }),
                   ),
               } satisfies SheetAction,
             ]
@@ -567,16 +572,13 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
                 label: picked.IsPinned ? "Unpin comment" : "Pin comment",
                 icon: picked.IsPinned ? PinOff : Pin,
                 onPress: () =>
-                  once(`pin-${picked.Id}`, (settled) =>
-                    pinComment.mutate(
-                      {
-                        CommentId: picked.Id,
-                        IsPinned: !picked.IsPinned,
-                        TaskId: taskId,
-                        WorkspaceId: task.WorkspaceId,
-                      },
-                      { onSettled: settled },
-                    ),
+                  once(`pin-${picked.Id}`, () =>
+                    pinComment.mutate({
+                      CommentId: picked.Id,
+                      IsPinned: !picked.IsPinned,
+                      TaskId: taskId,
+                      WorkspaceId: task.WorkspaceId,
+                    }),
                   ),
               } satisfies SheetAction,
             ]

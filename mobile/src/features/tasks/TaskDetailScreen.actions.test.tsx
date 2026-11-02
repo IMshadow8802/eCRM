@@ -410,9 +410,9 @@ describe("comment thread", () => {
     makeComment({ Id: 6, Comment: "[deleted]", UserId: ME, IsDeleted: true, CreatedDate: "2026-10-01T14:00:00" }),
   ];
 
-  const openThread = async (role: Workspace["MyRole"] = "member") => {
+  const openThread = async (role: Workspace["MyRole"] = "member", thread = THREAD) => {
     serve({ ws: makeWorkspace({ Id: 10, MyRole: role }) });
-    jest.mocked(getTaskComments).mockResolvedValue(THREAD);
+    jest.mocked(getTaskComments).mockResolvedValue(thread);
     await mount();
     await fireEvent.press(screen.getByText("Comments"));
     await screen.findByText("Pinned note");
@@ -589,5 +589,42 @@ describe("comment thread", () => {
 
     await fireEvent.press(screen.getByLabelText("Write a comment"));
     expect(input()).toHaveDisplayValue("");
+  });
+
+  // One useMutation serves every comment, and TanStack runs a per-call
+  // callback only for the latest mutate — so the lock must be freed by the
+  // hook-level onSettled, or comment A stays locked after B was tapped.
+  it("pinning B while A is in flight does not leave A locked", async () => {
+    await openThread("owner");
+    const a = held();
+    const b = held();
+    jest.mocked(pinTaskComment).mockReturnValueOnce(a.promise).mockReturnValueOnce(b.promise);
+    await longPress("Later root");
+    await fireEvent.press(screen.getByText("Pin comment"));
+    await longPress("Mine, first");
+    await fireEvent.press(screen.getByText("Pin comment"));
+    a.release();
+    b.release();
+    await waitFor(() => expect(getTaskComments).toHaveBeenCalledTimes(3));
+    await longPress("Later root");
+    await fireEvent.press(screen.getByText("Pin comment"));
+    expect(pinTaskComment).toHaveBeenCalledTimes(3);
+  });
+
+  it("deleting B while A is in flight does not leave A locked", async () => {
+    await openThread("member", [...THREAD, makeComment({ Id: 7, Comment: "Mine, second", UserId: ME })]);
+    const a = held();
+    const b = held();
+    jest.mocked(deleteTaskComment).mockReturnValueOnce(a.promise).mockReturnValueOnce(b.promise);
+    await longPress("Mine, first");
+    await fireEvent.press(screen.getByText("Delete comment"));
+    await longPress("Mine, second");
+    await fireEvent.press(screen.getByText("Delete comment"));
+    a.release();
+    b.release();
+    await waitFor(() => expect(getTaskComments).toHaveBeenCalledTimes(3));
+    await longPress("Mine, first");
+    await fireEvent.press(screen.getByText("Delete comment"));
+    expect(deleteTaskComment).toHaveBeenCalledTimes(3);
   });
 });
