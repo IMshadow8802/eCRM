@@ -7,9 +7,10 @@ import type { StackNavigationProp } from "@react-navigation/stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { fetchTasks } from "../../api/taskQueries";
+import { fetchMyDay } from "../../api/todayQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
-import type { Task } from "../../types/api";
+import type { DayTask, Task } from "../../types/api";
 import {
   colors,
   radius,
@@ -17,7 +18,7 @@ import {
   SCREEN_PADDING,
   TAB_BAR_CLEARANCE,
 } from "../../theme";
-import { ChipGroup, Dialog, EmptyState, Refresher, Screen, Text } from "../../ui";
+import { Card, ChipGroup, Dialog, EmptyState, Refresher, Screen, Text } from "../../ui";
 import { useSignOut } from "../auth/useSignOut";
 import { TaskCard } from "./TaskCard";
 import { greetingFor, longDate } from "./greeting";
@@ -56,6 +57,18 @@ export default function MyWorkScreen() {
     queryFn: () => fetchTasks({ WorkspaceId: null, OnlyOpen: true, PageSize: 200 }),
     enabled: filter !== "mine",
   });
+  // TAT-06: the server's Today flags, not a DueDate guess — the only place a
+  // finished-late task still owing a reason shows up. ["tasks"] prefix so task
+  // writes refresh it. A failure only hides the section.
+  const myDay = useQuery({ queryKey: ["tasks", "today", "mine"], queryFn: fetchMyDay });
+  const needs = useMemo(() => {
+    const day = myDay.data?.data;
+    if (!day?.day.live) return [];
+    return (day.me?.tasks ?? [])
+      .filter((t) => t.flags.reasonOwed || t.flags.overdue || t.flags.atRisk)
+      .sort(byUrgency);
+  }, [myDay.data]);
+
   const active = filter === "mine" ? mine : everyone;
   const { isLoading, isRefetching, refetch, isError } = active;
 
@@ -99,6 +112,12 @@ export default function MyWorkScreen() {
         taskId: task.Id,
         workspaceId: task.WorkspaceId,
       }),
+    [navigation],
+  );
+
+  const openNeed = useCallback(
+    (t: DayTask) =>
+      navigation.navigate("TaskDetail", { taskId: t.TaskId, workspaceId: t.WorkspaceId, tab: "tat" }),
     [navigation],
   );
 
@@ -173,7 +192,32 @@ export default function MyWorkScreen() {
         ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <Refresher refreshing={isRefetching && !isLoading} onRefresh={refetch} />
+          <Refresher
+            refreshing={isRefetching && !isLoading}
+            onRefresh={() => {
+              void refetch();
+              void myDay.refetch();
+            }}
+          />
+        }
+        ListHeaderComponent={
+          filter === "mine" && needs.length > 0 ? (
+            <View style={styles.needs}>
+              <Text variant="label" color="danger">
+                Needs you
+              </Text>
+              {needs.map((t) => (
+                <View key={t.TaskId} testID="needs-you-row">
+                  <Card onPress={() => openNeed(t)} gap={1}>
+                    <Text variant="bodyStrong">{t.Title}</Text>
+                    <Text variant="caption" color={rank(t) === 2 ? "warning" : "danger"}>
+                      {needLabel(t)}
+                    </Text>
+                  </Card>
+                </View>
+              ))}
+            </View>
+          ) : null
         }
         renderItem={({ item }) => (
           <View style={styles.cardWrap}>
@@ -206,6 +250,15 @@ export default function MyWorkScreen() {
     </Screen>
   );
 }
+
+// Most urgent first, as on the web's My Day: a reason owed, then overdue, then
+// close to the deadline; least time left first within each.
+const rank = (t: DayTask) => (t.flags.reasonOwed ? 0 : t.flags.overdue ? 1 : 2);
+const byUrgency = (a: DayTask, b: DayTask) =>
+  rank(a) - rank(b) || (a.timeLeftMin ?? Infinity) - (b.timeLeftMin ?? Infinity);
+
+const needLabel = (t: DayTask) =>
+  ["Tell your manager why", "Past its deadline", "Close to its deadline"][rank(t)];
 
 const emptyTitle = (filter: Filter) =>
   filter === "mine"
@@ -248,6 +301,7 @@ const styles = StyleSheet.create({
   },
   signOutPressed: { backgroundColor: colors.surfacePressed },
   summaryRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap" },
+  needs: { paddingHorizontal: SCREEN_PADDING, paddingBottom: spacing[5], gap: spacing[3] },
   // The gap the section header used to provide, now that there is none.
   content: { paddingTop: spacing[4], paddingBottom: TAB_BAR_CLEARANCE },
   contentEmpty: { flexGrow: 1 },

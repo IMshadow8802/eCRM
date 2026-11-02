@@ -128,7 +128,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   const userId = useAuthStore((s) => s.UserId);
   const isAdmin = useAuthStore((s) => Boolean(s.access?.isAdmin));
 
-  const [tab, setTab] = useState<Tab>("checklist");
+  const [tab, setTab] = useState<Tab>(route.params.tab ?? "checklist");
   const [compose, setCompose] = useState<Compose>("checklist");
   // Why the last compose submit failed. Cleared when the sheet is opened
   // again, so a stale reason never greets the next entry.

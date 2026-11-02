@@ -1,15 +1,17 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react-native";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react-native";
 
 import { logout } from "../../api/authQueries";
 import { fetchTasks } from "../../api/taskQueries";
+import { fetchMyDay } from "../../api/todayQueries";
 import useAuthStore from "../../stores/useAuthStore";
-import type { Task } from "../../types/api";
+import type { DayTask, DayTaskFlags, Task } from "../../types/api";
 import { assigneesJson, envelope, localDay, makeTask, pagination } from "../../test/fixtures";
 import { makeNavigation, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import MyWorkScreen from "./MyWorkScreen";
 
 jest.mock("../../api/taskQueries");
 jest.mock("../../api/authQueries");
+jest.mock("../../api/todayQueries");
 
 const mockNavigation = makeNavigation<"Tabs">();
 jest.mock("@react-navigation/native", () => ({
@@ -35,10 +37,26 @@ function serve(mine: Task[], all: Task[] = []) {
   jest.mocked(fetchTasks).mockImplementation(async (p = {}) => reply(p.AssigneeUserId ? mine : all));
 }
 
+const NO_FLAGS: DayTaskFlags = {
+  given: false, done: false, doneLate: false, open: true, working: false, notStarted: true, dueToday: false,
+  overdue: false, atRisk: false, onHold: false, reasonOwed: false, toRule: false,
+};
+const dayTask = (TaskId: number, Title: string, flags: Partial<DayTaskFlags>, timeLeftMin: number | null = null): DayTask => ({
+  TaskId, TatId: TaskId * 100, Title, WorkspaceId: 20 + TaskId, WorkspaceName: "Ops", AssignedByName: null, Priority: null,
+  StepsTotal: 0, StepsDone: 0, HoldReason: null, CompletedDate: null, BreachedAt: null, due: null, timer: "clock",
+  timeLeftMin, flags: { ...NO_FLAGS, ...flags },
+});
+function serveDay(tasks: DayTask[], live = true) {
+  jest.mocked(fetchMyDay).mockResolvedValue(
+    envelope({ day: { key: "2026-11-02", live }, me: { UserId: ME, FullName: "Asha Rao", tasks } }),
+  );
+}
+
 beforeEach(() => {
   seedAuth({ UserId: ME, user: { FullName: "Asha Rao" } });
   serve([dueToday, late], [dueToday, late, nobodys, lateButDone]);
   jest.mocked(logout).mockResolvedValue(envelope(null));
+  serveDay([]);
 });
 
 it("lists my open tasks, overdue first, with the counts in the header", async () => {
@@ -134,4 +152,77 @@ it("sign out asks first, then signs out", async () => {
   await fireEvent.press(screen.getByText("Sign out"));
   await waitFor(() => expect(logout).toHaveBeenCalled());
   await waitFor(() => expect(useAuthStore.getState().isAuthenticated).toBe(false));
+});
+
+// TAT-06: My Work counted overdue by DueDate day only, from OnlyOpen tasks, so
+// a task finished late that still owes a reason was invisible on mobile.
+describe("Needs you", () => {
+  const nearlyDue = dayTask(7, "Nearly due", { atRisk: true }, 30);
+  const runningLate = dayTask(8, "Running late", { overdue: true }, -15);
+  const lateLater = dayTask(9, "Later still", { overdue: true }, -5);
+  const owesReason = dayTask(6, "Owes a reason", { reasonOwed: true, done: true, open: false });
+  const fine = dayTask(5, "On track", { dueToday: true }, 120);
+
+  it("lists reason-owed (finished too), overdue and at-risk tasks, most urgent first", async () => {
+    serveDay([nearlyDue, fine, lateLater, runningLate, owesReason]);
+    await renderWithProviders(<MyWorkScreen />);
+    expect(await screen.findByText("Needs you")).toBeOnTheScreen();
+    expect(fetchMyDay).toHaveBeenCalled();
+
+    const rows = screen.getAllByTestId("needs-you-row").map((r) => within(r).getAllByText(/./)[0]!.props.children);
+    expect(rows).toEqual(["Owes a reason", "Running late", "Later still", "Nearly due"]);
+    expect(screen.queryByText("On track")).toBeNull();
+    expect(screen.getByText("Tell your manager why")).toBeOnTheScreen();
+    expect(screen.getAllByText("Past its deadline")).toHaveLength(2);
+    expect(screen.getByText("Close to its deadline")).toBeOnTheScreen();
+    // The rest of My Work is still there.
+    expect(screen.getByText("Late task")).toBeOnTheScreen();
+  });
+
+  it("a row opens the task on its Deadline tab", async () => {
+    serveDay([owesReason]);
+    await renderWithProviders(<MyWorkScreen />);
+    await fireEvent.press(await screen.findByText("Owes a reason"));
+    expect(mockNavigation.navigate).toHaveBeenCalledWith("TaskDetail", { taskId: 6, workspaceId: 26, tab: "tat" });
+  });
+
+  it("is hidden when nothing needs you", async () => {
+    serveDay([fine]);
+    await renderWithProviders(<MyWorkScreen />);
+    await screen.findByText("Late task");
+    await waitFor(() => expect(fetchMyDay).toHaveBeenCalled());
+    expect(screen.queryByText("Needs you")).toBeNull();
+  });
+
+  it("is hidden on a day without live flags, and when there is no day at all", async () => {
+    serveDay([runningLate], false);
+    const { unmount } = await renderWithProviders(<MyWorkScreen />);
+    await screen.findByText("Late task");
+    await waitFor(() => expect(fetchMyDay).toHaveBeenCalled());
+    expect(screen.queryByText("Needs you")).toBeNull();
+    await unmount();
+
+    jest.mocked(fetchMyDay).mockResolvedValue(envelope({ day: { key: "2026-11-02", live: true }, me: null }));
+    await renderWithProviders(<MyWorkScreen />);
+    await screen.findByText("Late task");
+    expect(screen.queryByText("Needs you")).toBeNull();
+  });
+
+  it("a failed Today load leaves the rest of My Work working", async () => {
+    jest.mocked(fetchMyDay).mockRejectedValue(new Error("boom"));
+    await renderWithProviders(<MyWorkScreen />);
+    expect(await screen.findByText("Late task")).toBeOnTheScreen();
+    await waitFor(() => expect(fetchMyDay).toHaveBeenCalled());
+    expect(screen.queryByText("Needs you")).toBeNull();
+    expect(screen.queryByText("Couldn't load your tasks")).toBeNull();
+  });
+
+  it("hides under Unassigned and All: it is about you", async () => {
+    serveDay([runningLate]);
+    await renderWithProviders(<MyWorkScreen />);
+    await screen.findByText("Needs you");
+    await fireEvent.press(screen.getByText("All"));
+    await screen.findByText("Nobody's task");
+    expect(screen.queryByText("Needs you")).toBeNull();
+  });
 });

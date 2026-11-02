@@ -97,10 +97,10 @@ function serve({ task = TASK, ws = makeWorkspace({ Id: 10 }), items = [item(1, "
   jest.mocked(saveTatReason).mockResolvedValue(envelope(null));
 }
 
-const mount = async () => {
+const mount = async (extra: { tab?: "tat" } = {}) => {
   const navigation = makeNavigation<"TaskDetail">();
   await renderWithProviders(
-    <TaskDetailScreen navigation={navigation} route={makeRoute("TaskDetail", { taskId: 1, workspaceId: 10 })} />,
+    <TaskDetailScreen navigation={navigation} route={makeRoute("TaskDetail", { taskId: 1, workspaceId: 10, ...extra })} />,
   );
   return navigation;
 };
@@ -133,6 +133,13 @@ describe("loading", () => {
     await mount();
     expect(await screen.findByText("Task not available")).toBeOnTheScreen();
     expect(screen.queryByText("Try again")).toBeNull();
+  });
+
+  // TAT-06: My Work's "Needs you" rows land on the deadline, not the checklist.
+  it("opens on the Deadline tab when asked to", async () => {
+    await mount({ tab: "tat" });
+    expect(await screen.findByText("No deadline on you")).toBeOnTheScreen();
+    expect(screen.queryByText("Order parts")).toBeNull();
   });
 });
 

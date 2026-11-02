@@ -25,7 +25,8 @@ export type RootStackParamList = {
   Login: undefined;
   Tabs: NavigatorScreenParams<TabParamList> | undefined;
   /** Pushed from any tab. Only the id travels — the screen fetches the task. */
-  TaskDetail: { taskId: number; workspaceId: number | null };
+  /** `tab: "tat"` opens on the Deadline tab (My Work's "Needs you"). */
+  TaskDetail: { taskId: number; workspaceId: number | null; tab?: "tat" };
   /** Boards moved off the tab bar and is now reached through the Work hub. */
   Boards: undefined;
   /** One workspace's kanban. `name` is passed so the header has a title

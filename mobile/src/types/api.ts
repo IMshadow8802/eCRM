@@ -273,6 +273,52 @@ export interface TaskTat {
   events: TaskTatEvent[];
 }
 
+/** describeTask's flags (backend/src/utils/dayBuckets.js). Live ones are false on a past day. */
+export interface DayTaskFlags {
+  given: boolean;
+  done: boolean;
+  doneLate: boolean;
+  open: boolean;
+  working: boolean;
+  notStarted: boolean;
+  dueToday: boolean;
+  overdue: boolean;
+  atRisk: boolean;
+  onHold: boolean;
+  reasonOwed: boolean;
+  toRule: boolean;
+}
+
+/** One task on a Today row, from describeTask. */
+export interface DayTask {
+  TaskId: number;
+  TatId: number | null;
+  Title: string;
+  WorkspaceId: number;
+  WorkspaceName: string | null;
+  AssignedByName: string | null;
+  Priority: string | null;
+  StepsTotal: number;
+  StepsDone: number;
+  HoldReason: string | null;
+  CompletedDate: string | null;
+  BreachedAt: string | null;
+  due: string | null;
+  timer: "clock" | "none";
+  /** Working minutes to the deadline (negative = past it); null when finished or no deadline. */
+  timeLeftMin: number | null;
+  flags: DayTaskFlags;
+}
+
+/**
+ * POST /api/today/mine (todayController.mine). `me` also carries the caller's
+ * presence fields (shift, sessions, counts); mobile reads only `tasks`.
+ */
+export interface MyDay {
+  day: { key: string; live: boolean };
+  me: { UserId: number; FullName: string | null; tasks: DayTask[] } | null;
+}
+
 export interface TaskChecklistItem {
   Id: number;
   TaskId: number;
