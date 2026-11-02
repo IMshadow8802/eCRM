@@ -1,0 +1,23 @@
+# The queue across every visible lead: views, search, and a row opens its lead.
+appId: com.shadowider.eCRM
+---
+- runFlow: common/open-work.yaml
+- tapOn: "Follow-ups"
+- assertVisible: "\\d+ follow-ups"
+- tapOn: "Overdue"
+- assertVisible: "\\d+ follow-ups"
+- tapOn: "Upcoming"
+- tapOn: "Lead name, company or mobile"
+- inputText: "MAESTRO Lead"
+- hideKeyboard
+- assertVisible:
+    text: "MAESTRO Lead \\d+"
+    index: 0
+- takeScreenshot: followups-upcoming
+- tapOn:
+    text: "MAESTRO Lead \\d+"
+    index: 0
+- assertVisible: "Lead actions"
+- assertVisible: "Log follow-up"
+- back
+- assertVisible: "\\d+ follow-ups"
