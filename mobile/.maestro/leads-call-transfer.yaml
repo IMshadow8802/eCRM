@@ -1,0 +1,33 @@
+# Log a call on a lead, then hand it to another owner with reason + remarks.
+appId: com.shadowider.eCRM
+---
+- runFlow: common/new-lead.yaml
+- tapOn: "Lead actions"
+- tapOn: "Log a call"
+- assertVisible: "Log a call"
+- tapOn: "Outgoing"
+- tapOn: "Connected"
+- tapOn: "What was said"
+- inputText: "MAESTRO lead call ${output.stamp}"
+- tapOn: "0"
+- inputText: "3"
+- tapOn: "Log call"
+- assertNotVisible: "Log call"
+- waitForAnimationToEnd
+
+- tapOn: "Lead actions"
+- tapOn: "Transfer"
+- assertVisible: "Transfer to…"
+- takeScreenshot: lead-transfer-picker
+- tapOn: "Amit Singh \\(Exec HO, under Neha\\)"
+- assertVisible: "Transfer to Amit Singh.*"
+- tapOn: "Overloaded"
+- tapOn: "Anything the next person should know"
+- inputText: "MAESTRO lead transfer ${output.stamp}"
+- tapOn: "Transfer"
+- waitForAnimationToEnd
+- assertVisible: "Amit Singh \\(Exec HO, under Neha\\)"
+- tapOn: "History"
+- assertVisible: ".*MAESTRO lead call ${output.stamp}.*"
+- assertVisible: ".*MAESTRO lead transfer ${output.stamp}.*"
+- takeScreenshot: lead-call-transfer-history

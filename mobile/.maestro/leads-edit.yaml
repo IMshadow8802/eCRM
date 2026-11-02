@@ -1,0 +1,25 @@
+# Changing the company on edit is saved: the detail shows it, and it is
+# still there after leaving and reopening the lead.
+appId: com.shadowider.eCRM
+---
+- runFlow: common/new-lead.yaml
+- tapOn: "Lead actions"
+- tapOn: "Edit lead"
+- assertVisible: "Edit lead"
+- assertVisible: "MAESTRO Co ${output.stamp}"
+- tapOn: "MAESTRO Co ${output.stamp}"
+- eraseText: 40
+- inputText: "MAESTRO Edited ${output.stamp}"
+- hideKeyboard
+- scrollUntilVisible:
+    element: "Save changes"
+- tapOn: "Save changes"
+- assertVisible: "MAESTRO Edited ${output.stamp} · New"
+- assertVisible: "MAESTRO Edited ${output.stamp}"
+- back
+- tapOn: "Name, company or mobile"
+- inputText: "${output.stamp}"
+- hideKeyboard
+- tapOn: "MAESTRO Lead ${output.stamp}"
+- assertVisible: "MAESTRO Edited ${output.stamp} · New"
+- takeScreenshot: lead-edited

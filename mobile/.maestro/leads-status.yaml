@@ -1,0 +1,35 @@
+# Qualified in one tap; Lost cannot be saved without a reason; Won for
+# 50000 shows the won banner.
+appId: com.shadowider.eCRM
+---
+- runFlow: common/new-lead.yaml
+- tapOn: "Lead actions"
+- tapOn: "Change status"
+- tapOn: "Qualified"
+- assertVisible: "MAESTRO Co ${output.stamp} · Qualified"
+- waitForAnimationToEnd
+
+- tapOn: "Lead actions"
+- tapOn: "Change status"
+- tapOn: "Lost"
+- assertVisible: "Mark as Lost"
+- assertVisible: "Why was it lost\\? \\*"
+- assertVisible:
+    text: "Mark lost"
+    enabled: false
+- takeScreenshot: status-lost-blocked
+- back
+- waitForAnimationToEnd
+- assertVisible: "MAESTRO Co ${output.stamp} · Qualified"
+
+- tapOn: "Lead actions"
+- tapOn: "Change status"
+- tapOn: "Won"
+- assertVisible: "Mark as Won"
+- tapOn: "e.g. 50,000"
+- inputText: "50000"
+- tapOn: "Mark won"
+- waitForAnimationToEnd
+- assertVisible: "Won for ₹50,000"
+- assertVisible: "MAESTRO Co ${output.stamp} · Won"
+- takeScreenshot: status-won
