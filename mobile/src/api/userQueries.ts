@@ -14,15 +14,10 @@ export const USER_ENDPOINTS = {
 /**
  * Non-admin-safe name/avatar lookup for assignee pickers and comment authors.
  * `fetchUsers` is admin-only; this is the endpoint an ordinary member may call.
+ * The whole company roster: the controller takes no filter, so search locally.
  */
-export const fetchUserDirectory = (
-  params: { SearchTerm?: string | null } = {},
-): Promise<DirectoryUser[]> =>
-  postData<DirectoryUser>(
-    USER_ENDPOINTS.directory,
-    { SearchTerm: null, ...params },
-    "users",
-  );
+export const fetchUserDirectory = (): Promise<DirectoryUser[]> =>
+  postData<DirectoryUser>(USER_ENDPOINTS.directory, {}, "users");
 
 /**
  * Who the caller may hand a record to, for the given module (the roster
@@ -39,17 +34,16 @@ export const fetchAssignableUsers = (
     "users",
   );
 
+/** userController.updateMyProfile reads only these four; anything else is dropped. */
 export const updateMyProfile = (params: {
   FullName: string;
   Email?: string | null;
   Mobile?: string | null;
-  JobTitle?: string | null;
   Avatar?: string | null;
 }): Promise<ApiEnvelope<unknown>> =>
   post(USER_ENDPOINTS.updateProfile, {
     Email: null,
     Mobile: null,
-    JobTitle: null,
     Avatar: null,
     ...params,
   });

@@ -3,6 +3,10 @@ module.exports = {
   setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
   // Call history resets per test; implementations set in jest.setup survive.
   clearMocks: true,
+  // Read only when coverage is collected (`pnpm test:coverage`); `pnpm test` ignores both.
+  collectCoverageFrom: ["src/**/*.{ts,tsx}", "!src/**/*.test.*", "!src/test/**", "!src/types/**"],
+  // ponytail: measured 2026-11-02 (21.73/13.97/21/22.91), rounded down; Tasks 2–7 raise it to 60.
+  coverageThreshold: { global: { statements: 21, branches: 13, functions: 21, lines: 22 } },
   testPathIgnorePatterns: ["/node_modules/", "/android/", "/ios/"],
   // pnpm keeps packages under node_modules/.pnpm, so the allowlist matches the
   // package name after any "node_modules/" segment.

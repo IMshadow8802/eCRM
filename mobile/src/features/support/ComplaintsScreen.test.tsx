@@ -4,6 +4,7 @@ import { fetchLookups } from "../../api/configQueries";
 import { fetchTickets } from "../../api/ticketQueries";
 import { fetchAssignableUsers } from "../../api/userQueries";
 import type { Ticket } from "../../types/api";
+import { envelope, pagination } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import ComplaintsScreen from "./ComplaintsScreen";
 
@@ -21,10 +22,7 @@ const ticket = {
   DueAt: null,
 } as Ticket;
 
-const envelope = (tickets: Ticket[]) => ({
-  success: true,
-  data: { tickets, pagination: { totalRecords: tickets.length } },
-});
+const ticketsReply = (tickets: Ticket[]) => envelope({ tickets, pagination: pagination(tickets.length) });
 
 const mount = (navigation = makeNavigation<"Complaints">()) =>
   renderWithProviders(
@@ -35,7 +33,7 @@ const mount = (navigation = makeNavigation<"Complaints">()) =>
   );
 
 beforeEach(() => {
-  jest.mocked(fetchTickets).mockResolvedValue(envelope([ticket]) as never);
+  jest.mocked(fetchTickets).mockResolvedValue(ticketsReply([ticket]));
   jest.mocked(fetchLookups).mockResolvedValue([]);
   jest.mocked(fetchAssignableUsers).mockResolvedValue([]);
   seedAuth({ UserId: 42 });
@@ -65,6 +63,8 @@ it("shows an error state when the fetch rejects", async () => {
 it("the FAB opens a blank complaint form", async () => {
   const navigation = makeNavigation<"Complaints">();
   await mount(navigation);
+  // Let the list settle first, or its late render lands outside act().
+  await screen.findByText("Inverter keeps tripping");
   await fireEvent.press(screen.getByLabelText("Log a complaint"));
   expect(navigation.navigate).toHaveBeenCalledWith("ComplaintForm", {});
 });
