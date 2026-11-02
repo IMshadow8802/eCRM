@@ -198,7 +198,7 @@ export default function LeadsScreen({ navigation, route }: Props) {
         count={`${total} ${SUBTITLE[queue]}`}
         actions={
           // Courtesy only: a create needs the add grant, so hide what would 403.
-          canAdd ? <HeaderButton label="New" icon={Plus} onPress={() => navigation.navigate("LeadForm", {})} /> : null
+          canAdd ? <HeaderButton label="New" icon={Plus} onPress={() => navigation.navigate("LeadForm", {})} accessibilityLabel="New lead" /> : null
         }
         search={{ value: search, onChangeText: setSearch, placeholder: "Search name, company, mobile" }}
         tabs={{

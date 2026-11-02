@@ -283,7 +283,7 @@ it("New in the band opens a blank lead form; no add grant, no New", async () => 
   const navigation = makeNavigation<"Leads">();
   await mount(navigation);
   await screen.findByText("Ravi Patel");
-  await fireEvent.press(screen.getByRole("button", { name: "New" }));
+  await fireEvent.press(screen.getByRole("button", { name: "New lead" }));
   expect(navigation.navigate).toHaveBeenCalledWith("LeadForm", {});
 });
 
@@ -291,7 +291,7 @@ it("no add grant, no New — the server would refuse the create", async () => {
   seedAuth({ UserId: 42, access: leadsGrant(false) });
   await mount();
   await screen.findByText("Ravi Patel");
-  expect(screen.queryByRole("button", { name: "New" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "New lead" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Go back" })).toBeNull();
 });
 
