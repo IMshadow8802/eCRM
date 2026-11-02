@@ -1,27 +1,26 @@
-import { useState } from "react";
-import {
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  View,
-} from "react-native";
-import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
+import { useState, type ReactNode } from "react";
+import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { StatusBar } from "expo-status-bar";
-import { Building2, CircleAlert, LayoutDashboard, Lock, Repeat2, User } from "lucide-react-native";
+import { Building2, Hexagon, LogOut, Lock, OctagonAlert, User } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { login as loginRequest } from "../../api/authQueries";
 import { fetchClientConfig } from "../../api/centralQueries";
 import useAuthStore from "../../stores/useAuthStore";
 import { colors, gradients, radius, spacing } from "../../theme";
-import { Button, Input, Text } from "../../ui";
-import { FALLBACK_ERROR, REASONS } from "./authMessages";
-import FloatingShapes from "./FloatingShapes";
+import { Button, InfoNote, Input, StatusBadge, Text } from "../../ui";
+import { appVersion } from "./appVersion";
+import { REASONS, UNREACHABLE, loginError, type AuthError } from "./authMessages";
 
+/** A field-level prompt (on the field) or a server answer (the box, E 03). */
+type FormError = { field: "code" | "identifier" | "password"; message: string } | { box: AuthError };
+
+/**
+ * E 01–03. The gradient is the only one in the app; the form sits on a solid
+ * white panel that rides the keyboard. Step 1 binds the company (Central),
+ * step 2 signs in against that company's backend.
+ */
 export default function LoginScreen() {
   const setSession = useAuthStore((s) => s.login);
   const isClientConfigured = useAuthStore((s) => s.isClientConfigured);
@@ -34,31 +33,34 @@ export default function LoginScreen() {
   const sessionEndedMessage = useAuthStore((s) => s.sessionEndedMessage);
   const insets = useSafeAreaInsets();
 
-  // Step 1 — which backend. Typed once per install; the store persists it.
   const [compCode, setCompCode] = useState("");
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<FormError | null>(null);
   const [busy, setBusy] = useState(false);
-  // A dead LogoURL in Central must not leave a broken image on the sign-in
-  // screen of every user at that company.
+  // A dead LogoURL in Central must not leave a broken image on every user's sign-in.
   const [logoBroken, setLogoBroken] = useState(false);
 
-  const showLogo = isClientConfigured && Boolean(logoURL) && !logoBroken;
+  const fieldError = (field: "code" | "identifier" | "password") =>
+    error && "field" in error && error.field === field ? error.message : null;
+  const box = error && "box" in error ? error.box : null;
+  const typed = (set: (v: string) => void) => (v: string) => {
+    set(v);
+    if (error) setError(null);
+  };
 
   const verifyCompany = async () => {
     if (busy) return;
-    if (!compCode.trim()) {
-      setError("Enter your company code.");
-      return;
-    }
+    if (!compCode.trim()) return setError({ field: "code", message: "Enter your company code." });
     setBusy(true);
     setError(null);
     try {
-      setClientConfig(await fetchClientConfig(compCode));
+      // Central's fetcher upper-cases; "Not case-sensitive" is its promise.
+      setClientConfig(await fetchClientConfig(compCode.trim()));
       setCompCode("");
     } catch (err: any) {
-      setError(err?.message ?? FALLBACK_ERROR);
+      // Central's lookup always explains itself (centralQueries.ts).
+      setError({ box: err?.message ? { title: err.message } : UNREACHABLE });
     } finally {
       setBusy(false);
     }
@@ -72,239 +74,215 @@ export default function LoginScreen() {
     setError(null);
   };
 
-  // No disabled state on the button. A greyed-out control that never explains
-  // itself is worse than one that tells you what is missing when you tap it.
+  // No disabled state on the button: one that tells you what is missing when
+  // tapped beats a greyed-out control that never explains itself.
   const submit = async () => {
     if (busy) return;
-
-    if (!identifier.trim()) {
-      setError("Enter your username, email or mobile.");
-      return;
-    }
-    if (!password) {
-      setError("Enter your password.");
-      return;
-    }
-
+    if (!identifier.trim()) return setError({ field: "identifier", message: "Enter your username, email or mobile." });
+    if (!password) return setError({ field: "password", message: "Enter your password." });
     setBusy(true);
     setError(null);
     try {
-      const body = await loginRequest({
-        identifier: identifier.trim(),
-        password,
-      });
+      const body = await loginRequest({ identifier: identifier.trim(), password });
       if (body.success && body.data) {
-        // The store hands the token to the api client; every later request
-        // picks it up from the interceptor.
+        // The store hands the token to the api client.
         setSession(body.data);
         return;
       }
-      setError(body.message || "Login failed");
-    } catch (err: any) {
-      // A 401 here is a wrong password, not an expired session — the client's
-      // shouldSkipAuthRedirect keeps it off the logout path, so showing the
-      // server's message is safe.
-      setError(err?.response?.data?.message ?? FALLBACK_ERROR);
+      setError({ box: { title: body.message || "Login failed" } });
+    } catch (err) {
+      // A 401 here is a wrong password, not an expired session: the client's
+      // shouldSkipAuthRedirect keeps login off the logout path.
+      setError({ box: loginError(err) });
     } finally {
       setBusy(false);
     }
   };
 
+  const tenant = companyName ?? boundCode ?? null;
+  const showLogo = Boolean(logoURL) && !logoBroken;
+  const endedWhy = sessionEndedReason
+    ? sessionEndedMessage || (REASONS[sessionEndedReason] ?? "Please sign in again.")
+    : null;
+
   return (
     <View style={styles.root}>
       <StatusBar style="light" />
       <LinearGradient
-        colors={gradients.brand}
-        start={{ x: 0.1, y: 0 }}
-        end={{ x: 0.9, y: 1 }}
+        colors={gradients.auth}
+        start={gradients.authStart}
+        end={gradients.authEnd}
         style={StyleSheet.absoluteFill}
       />
-      <FloatingShapes />
-
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView
-          contentContainerStyle={[
-            styles.scroll,
-            {
-              paddingTop: insets.top + spacing[10],
-              paddingBottom: insets.bottom + spacing[5],
-            },
-          ]}
+          contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          bounces={false}
         >
-          {/* Type carries the screen — no card. A panel over a gradient just
-              hides the thing that makes it look good.
-
-              The mark is the tenant's logo once we know who they are. That is
-              the payoff for typing a company code: the app becomes theirs,
-              rather than showing the same generic tile to everyone. */}
-          <Animated.View entering={FadeInDown.duration(500)} style={styles.head}>
-            {showLogo ? (
-              <Image
-                source={{ uri: logoURL as string }}
-                style={styles.logo}
-                resizeMode="contain"
-                accessibilityLabel={companyName ?? "Company logo"}
-                onError={() => setLogoBroken(true)}
-              />
-            ) : (
-              <View style={styles.mark}>
-                <LayoutDashboard size={26} color={colors.textOnBrand} />
-              </View>
-            )}
-            <Text variant="h1" color="textOnBrand" style={styles.hello}>
-              {isClientConfigured
-                ? (companyName ?? boundCode ?? "Welcome back")
-                : "Which company?"}
-            </Text>
-          </Animated.View>
-
           {!isClientConfigured ? (
-            <Animated.View
-              entering={FadeInDown.delay(120).duration(500)}
-              style={styles.form}
-            >
-              <Input
-                tone="onBrand"
-                label="Company code"
-                value={compCode}
-                onChangeText={(t) => {
-                  setCompCode(t.toUpperCase());
-                  if (error) setError(null);
-                }}
-                autoCapitalize="characters"
-                autoCorrect={false}
-                autoComplete="off"
-                placeholder="e.g. PRD"
-                leftIcon={Building2}
-                editable={!busy}
-                onSubmitEditing={verifyCompany}
-                returnKeyType="go"
-              />
-
-              {error ? (
-                <Animated.View entering={FadeIn.duration(200)} style={styles.error}>
-                  <CircleAlert size={18} color={colors.textOnBrand} />
-                  <Text variant="caption" color="textOnBrand" style={styles.errorText}>
-                    {error}
-                  </Text>
-                </Animated.View>
-              ) : null}
-
-              <Button
-                title="Continue"
-                variant="onBrand"
-                onPress={verifyCompany}
-                loading={busy}
-                fullWidth
-                style={styles.submit}
-              />
-            </Animated.View>
+            // 01: the product, since we do not know the company yet.
+            <View style={[styles.brand, { paddingTop: insets.top + 56 }]}>
+              <View style={styles.logoTile}>
+                <Hexagon size={32} color={colors.primary} />
+              </View>
+              <Text variant="display" color="textOnBrand" style={styles.productName}>Nexus CRM</Text>
+              <Text variant="bodyLg" color="onBrandMuted" style={styles.tagline}>
+                Tasks, complaints and leads for your whole team, in one place.
+              </Text>
+            </View>
           ) : (
-          <Animated.View
-            entering={FadeInDown.delay(120).duration(500)}
-            style={styles.form}
-          >
-            {sessionEndedReason ? (
-              <Text variant="caption" color="textOnBrandMuted">
-                {sessionEndedMessage || (REASONS[sessionEndedReason] ?? "Please sign in again.")}
+            // 02: the tenant — the payoff for typing a company code.
+            <View style={[styles.brand, styles.brandCenter, { paddingTop: insets.top + spacing[10] }]}>
+              <View style={styles.logoFrame}>
+                {showLogo ? (
+                  <Image
+                    source={{ uri: logoURL as string }}
+                    style={styles.logo}
+                    resizeMode="contain"
+                    accessibilityLabel={companyName ?? "Company logo"}
+                    onError={() => setLogoBroken(true)}
+                  />
+                ) : (
+                  <StatusBadge testID="tenant-placeholder" tone="slate" icon={Building2} size={52} iconSize={28} />
+                )}
+              </View>
+              <Text variant="h1" color="textOnBrand" align="center" style={styles.tenant}>
+                {tenant ?? "Welcome back"}
               </Text>
-            ) : null}
-
-            <Input
-              tone="onBrand"
-              label="Username, email or mobile"
-              value={identifier}
-              onChangeText={(t) => {
-                setIdentifier(t);
-                if (error) setError(null);
-              }}
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoComplete="username"
-              placeholder="Enter username, email or mobile"
-              leftIcon={User}
-              editable={!busy}
-            />
-
-            <Input
-              tone="onBrand"
-              label="Password"
-              value={password}
-              onChangeText={(t) => {
-                setPassword(t);
-                if (error) setError(null);
-              }}
-              password
-              autoCapitalize="none"
-              autoComplete="password"
-              placeholder="Enter password"
-              leftIcon={Lock}
-              editable={!busy}
-              onSubmitEditing={submit}
-              returnKeyType="go"
-            />
-
-            {error ? (
-              <Animated.View entering={FadeIn.duration(200)} style={styles.error}>
-                <CircleAlert
-                  size={18}
-                  color={colors.textOnBrand}
-                />
-                <Text
-                  variant="caption"
-                  color="textOnBrand"
-                  style={styles.errorText}
-                >
-                  {error}
+              {boundCode ? (
+                <Text variant="text" color="onBrandMuted" align="center" style={styles.code}>
+                  Company code {boundCode}
                 </Text>
-              </Animated.View>
-            ) : null}
-
-            <Button
-              title="Sign in"
-              variant="onBrand"
-              onPress={submit}
-              loading={busy}
-              fullWidth
-              style={styles.submit}
-            />
-
-            {/* A visible way out beats a secret gesture: switching company is
-                rare, but it is the only escape from a mistyped code, so it gets
-                to be a control rather than a line of small print. */}
-            <Pressable
-              onPress={switchCompany}
-              disabled={busy}
-              accessibilityRole="button"
-              accessibilityLabel="Switch company"
-              style={styles.switchRow}
-            >
-              <Repeat2 size={16} color={colors.textOnBrandMuted} />
-              <Text variant="caption" color="textOnBrandMuted">
-                Not {companyName ?? boundCode ?? "this company"}? Switch company
-              </Text>
-            </Pressable>
-          </Animated.View>
+              ) : null}
+            </View>
           )}
 
-          <Animated.View
-            entering={FadeIn.delay(400).duration(600)}
-            style={styles.footer}
+          <View
+            style={[
+              styles.panel,
+              isClientConfigured ? styles.panelLogin : styles.panelCode,
+              { paddingBottom: Math.max(44, insets.bottom + spacing[3]) },
+            ]}
           >
-            <Text variant="caption" color="textOnBrand" align="center">
-              PRD Infotech Pvt Ltd
-            </Text>
-            <Text variant="caption" color="textOnBrandMuted" align="center">
-              Nexus CRM · v1.0.0
-            </Text>
-          </Animated.View>
+            {!isClientConfigured ? (
+              <>
+                <Text variant="h1">Enter your company code</Text>
+                <Text variant="text" color="textSecondary" style={styles.sub6}>
+                  Your admin gives you this code. You only enter it once on this phone.
+                </Text>
+                {box ? <ErrorBox error={box} /> : null}
+                <Input
+                  label="Company code"
+                  accessibilityLabel="Company code"
+                  value={compCode}
+                  onChangeText={typed(setCompCode)}
+                  leftIcon={Building2}
+                  hint="Not case-sensitive. Example: TestCRM"
+                  error={fieldError("code")}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="off"
+                  autoFocus
+                  editable={!busy}
+                  onSubmitEditing={verifyCompany}
+                  returnKeyType="go"
+                  containerStyle={styles.firstField}
+                />
+                <Button title="Continue" onPress={verifyCompany} loading={busy} fullWidth style={styles.button} />
+              </>
+            ) : (
+              <>
+                <Text variant="h1">Sign in</Text>
+                {box ? (
+                  <ErrorBox error={box} />
+                ) : (
+                  <Text variant="text" color="textSecondary" style={styles.sub4}>
+                    Use the username your admin set up for you.
+                  </Text>
+                )}
+                {endedWhy && !box ? (
+                  <View style={styles.notice}>
+                    <InfoNote icon={LogOut}>{endedWhy}</InfoNote>
+                  </View>
+                ) : null}
+                <Input
+                  label="Username"
+                  accessibilityLabel="Username"
+                  value={identifier}
+                  onChangeText={typed(setIdentifier)}
+                  leftIcon={User}
+                  error={fieldError("identifier")}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="username"
+                  editable={!busy}
+                  containerStyle={box ? styles.fieldAfterBox : styles.firstFieldLogin}
+                />
+                <Input
+                  label="Password"
+                  accessibilityLabel="Password"
+                  value={password}
+                  onChangeText={typed(setPassword)}
+                  password
+                  leftIcon={Lock}
+                  error={fieldError("password")}
+                  autoCapitalize="none"
+                  autoComplete="password"
+                  editable={!busy}
+                  onSubmitEditing={submit}
+                  returnKeyType="go"
+                  containerStyle={styles.nextField}
+                />
+                <Button
+                  title="Sign in"
+                  onPress={submit}
+                  loading={busy}
+                  fullWidth
+                  style={box ? styles.buttonAfterBox : styles.button}
+                />
+                {/* The only escape from a mistyped code, so a control, not small print. */}
+                <Pressable
+                  onPress={switchCompany}
+                  disabled={busy}
+                  accessibilityRole="button"
+                  accessibilityLabel="Switch company"
+                  hitSlop={spacing[3]}
+                  style={box ? styles.switchAfterBox : styles.switch}
+                >
+                  <Text variant="text" color="textSecondary" align="center">
+                    {`Not ${tenant ?? "this company"}? `}
+                    <Text variant="rowTitle" color="primary">Switch company</Text>
+                  </Text>
+                </Pressable>
+              </>
+            )}
+            <Footer>{appVersion()}</Footer>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
+    </View>
+  );
+}
+
+/** E 03: dangerSoft box, a red octagon badge, title + body in `dangerText`. Never only a toast. */
+function ErrorBox({ error }: { error: AuthError }) {
+  return (
+    <View testID="auth-error" style={styles.errorBox} accessibilityRole="alert">
+      <StatusBadge tone="red" icon={OctagonAlert} size={36} />
+      <View style={styles.flex}>
+        <Text variant="rowTitle" color="dangerText">{error.title}</Text>
+        {error.body ? <Text variant="meta" color="dangerText" style={styles.errorBody}>{error.body}</Text> : null}
+      </View>
+    </View>
+  );
+}
+
+function Footer({ children }: { children: ReactNode }) {
+  return (
+    <View style={styles.footer}>
+      <Text variant="small" align="center">{children}</Text>
     </View>
   );
 }
@@ -312,48 +290,63 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.primary },
   flex: { flex: 1 },
-  scroll: {
-    flexGrow: 1,
-    justifyContent: "center",
-    paddingHorizontal: spacing[6],
-  },
-  head: { marginBottom: spacing[8] },
-  mark: {
+  scroll: { flexGrow: 1 },
+  brand: { paddingHorizontal: spacing[7], paddingBottom: spacing[6] },
+  brandCenter: { alignItems: "center" },
+  logoTile: {
     width: 56,
     height: 56,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surfaceOnBrand,
+    borderRadius: radius.card,
+    backgroundColor: colors.surface,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: spacing[4],
   },
-  hello: { letterSpacing: -0.5 },
-  form: { gap: spacing[4] },
-  error: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[2],
-    backgroundColor: colors.danger,
-    borderRadius: radius.base,
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[3],
-  },
-  errorText: { flex: 1 },
-  submit: { marginTop: spacing[2] },
-  logo: {
-    width: 56,
-    height: 56,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surfaceOnBrand,
-    marginBottom: spacing[4],
-  },
-  switchRow: {
-    marginTop: spacing[3],
-    paddingVertical: spacing[2],
-    flexDirection: "row",
+  productName: { marginTop: spacing[6] },
+  tagline: { marginTop: 6, maxWidth: 280 },
+  logoFrame: {
+    width: 72,
+    height: 72,
+    borderRadius: radius.sheet,
+    backgroundColor: colors.surface,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing[2],
   },
-  footer: { marginTop: spacing[10], gap: spacing[1] },
+  logo: { width: 56, height: 56, borderRadius: radius.badgeLg },
+  tenant: { marginTop: spacing[4] },
+  code: { marginTop: spacing[1] },
+  // E: absolute at the bottom, 420 / 540 tall. Here it sits at the foot of the
+  // scroll with that as a minimum, so the keyboard pushes it up, never over it.
+  panel: {
+    marginTop: "auto",
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: radius.modal,
+    borderTopRightRadius: radius.modal,
+    paddingTop: spacing[7],
+    paddingHorizontal: spacing[5],
+  },
+  panelCode: { minHeight: 420 },
+  panelLogin: { minHeight: 540 },
+  sub6: { marginTop: 6 },
+  sub4: { marginTop: spacing[1] },
+  notice: { marginTop: spacing[4] },
+  firstField: { marginTop: spacing[6] },
+  firstFieldLogin: { marginTop: 22 },
+  fieldAfterBox: { marginTop: spacing[4] },
+  // E `.fl` keeps 12 under every field; the button adds its own 20 (16 after an error).
+  nextField: { marginTop: spacing[3] },
+  button: { marginTop: spacing[8] },
+  buttonAfterBox: { marginTop: spacing[7] },
+  switch: { marginTop: spacing[5] },
+  switchAfterBox: { marginTop: 18 },
+  errorBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing[3],
+    marginTop: spacing[4],
+    padding: spacing[3],
+    borderRadius: radius.card,
+    backgroundColor: colors.dangerSoft,
+  },
+  errorBody: { marginTop: 2 },
+  footer: { marginTop: "auto", paddingTop: spacing[6] },
 });

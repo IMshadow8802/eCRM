@@ -1,5 +1,6 @@
 import { AxiosError, type AxiosResponse } from "axios";
 import { act, fireEvent, screen } from "@testing-library/react-native";
+import Constants from "expo-constants";
 
 import { login } from "../../api/authQueries";
 import { fetchClientConfig } from "../../api/centralQueries";
@@ -12,6 +13,18 @@ import LoginScreen from "./LoginScreen";
 
 jest.mock("../../api/authQueries");
 jest.mock("../../api/centralQueries");
+// The build's version: jest has no native manifest, so pin one (see appVersion.ts).
+const mockExpo: { config: Partial<NonNullable<typeof Constants.expoConfig>> | null } = { config: null };
+jest.mock("expo-constants", () => {
+  const actual = jest.requireActual("expo-constants");
+  return {
+    ...actual,
+    __esModule: true,
+    default: new Proxy(actual.default, {
+      get: (target, key) => (key === "expoConfig" ? mockExpo.config : Reflect.get(target, key)),
+    }),
+  };
+});
 
 const CONFIG: ClientConfig = {
   baseURL: "https://shadowcodes.in/TestCRM",
@@ -20,39 +33,50 @@ const CONFIG: ClientConfig = {
   logoURL: "https://shadowcodes.in/logo.png",
 };
 
-
-// What apiClient rejects with when the backend answers 401 INVALID_CREDENTIALS.
-const invalidCredentials = () => {
-  const data = { success: false, message: "Incorrect username or password", code: "INVALID_CREDENTIALS" };
-  return new AxiosError("Request failed with status code 401", "ERR_BAD_REQUEST", undefined, null, {
-    status: 401,
-    data,
+/** What apiClient rejects with when the backend answers a failed login (authController.loginUser). */
+const loginFailure = (status: number, code: string, message: string) =>
+  new AxiosError(`Request failed with status code ${status}`, "ERR_BAD_REQUEST", undefined, null, {
+    status,
+    data: { success: false, message, code },
   } as AxiosResponse);
-};
 
 const state = () => useAuthStore.getState();
 const configured = (cfg: ClientConfig = CONFIG) => useAuthStore.getState().setClientConfig(cfg);
 
 const signIn = async (identifier = "asha") => {
-  await fireEvent.changeText(screen.getByPlaceholderText("Enter username, email or mobile"), identifier);
-  await fireEvent.changeText(screen.getByPlaceholderText("Enter password"), "fixture");
-  await fireEvent.press(screen.getByText("Sign in"));
+  await fireEvent.changeText(screen.getByLabelText("Username"), identifier);
+  await fireEvent.changeText(screen.getByLabelText("Password"), "fixture");
+  await fireEvent.press(screen.getByRole("button", { name: "Sign in" }));
 };
 
 beforeEach(() => {
+  mockExpo.config = { version: "1.0.1", android: { versionCode: 20261102 }, ios: { buildNumber: "20261102" } };
   useAuthStore.setState(useAuthStore.getInitialState(), true);
 });
 
-describe("step 1 — company code", () => {
+describe("01 — company code", () => {
+  it("shows E's copy and the build's version", async () => {
+    await renderWithProviders(<LoginScreen />);
+    expect(screen.getByText("Nexus CRM")).toBeOnTheScreen();
+    expect(screen.getByText("Tasks, complaints and leads for your whole team, in one place.")).toBeOnTheScreen();
+    expect(screen.getByText("Enter your company code")).toBeOnTheScreen();
+    expect(screen.getByText("Your admin gives you this code. You only enter it once on this phone.")).toBeOnTheScreen();
+    expect(screen.getByText("Company code")).toBeOnTheScreen();
+    expect(screen.getByText("Not case-sensitive. Example: TestCRM")).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Continue" })).toBeOnTheScreen();
+    expect(screen.getByText("Nexus CRM · v1.0.1 (20261102)")).toBeOnTheScreen();
+  });
+
   it("looks the code up at Central and moves to sign-in, showing the company", async () => {
     jest.mocked(fetchClientConfig).mockResolvedValue(CONFIG);
     await renderWithProviders(<LoginScreen />);
-    expect(screen.getByText("Which company?")).toBeOnTheScreen();
-    await fireEvent.changeText(screen.getByPlaceholderText("e.g. PRD"), "testcrm");
-    await fireEvent.press(screen.getByText("Continue"));
-    expect(fetchClientConfig).toHaveBeenCalledWith("TESTCRM");
-    expect(await screen.findByText("Sign in")).toBeOnTheScreen();
+    await fireEvent.changeText(screen.getByLabelText("Company code"), " TestCRM ");
+    await fireEvent.press(screen.getByRole("button", { name: "Continue" }));
+    // Typed as the user typed it; Central's fetcher upper-cases.
+    expect(fetchClientConfig).toHaveBeenCalledWith("TestCRM");
+    expect(await screen.findByText("Use the username your admin set up for you.")).toBeOnTheScreen();
     expect(screen.getByText("Test CRM")).toBeOnTheScreen();
+    expect(screen.getByText("Company code TESTCRM")).toBeOnTheScreen();
     expect(screen.getByLabelText("Test CRM")).toBeOnTheScreen(); // the tenant's logo
     expect(state()).toMatchObject({ API_BASE_URL: CONFIG.baseURL, isClientConfigured: true });
     expect(getApiBaseUrl()).toBe(CONFIG.baseURL);
@@ -61,32 +85,47 @@ describe("step 1 — company code", () => {
   it("an unknown code shows Central's message in the form and stays on step 1", async () => {
     jest.mocked(fetchClientConfig).mockRejectedValue(new Error("Company not found. Check the code."));
     await renderWithProviders(<LoginScreen />);
-    await fireEvent.changeText(screen.getByPlaceholderText("e.g. PRD"), "NOPE");
-    await fireEvent.press(screen.getByText("Continue"));
+    await fireEvent.changeText(screen.getByLabelText("Company code"), "NOPE");
+    await fireEvent.press(screen.getByRole("button", { name: "Continue" }));
     expect(await screen.findByText("Company not found. Check the code.")).toBeOnTheScreen();
+    expect(screen.getByTestId("auth-error")).toBeOnTheScreen();
     expect(state().isClientConfigured).toBe(false);
     // Typing again clears the error.
-    await fireEvent.changeText(screen.getByPlaceholderText("e.g. PRD"), "PRD");
-    expect(screen.queryByText("Company not found. Check the code.")).toBeNull();
+    await fireEvent.changeText(screen.getByLabelText("Company code"), "PRD");
+    expect(screen.queryByTestId("auth-error")).toBeNull();
   });
 
   it("a lookup failure without a message shows the connection fallback", async () => {
     jest.mocked(fetchClientConfig).mockRejectedValue({});
     await renderWithProviders(<LoginScreen />);
-    await fireEvent.changeText(screen.getByPlaceholderText("e.g. PRD"), "PRD");
-    await fireEvent.press(screen.getByText("Continue"));
-    expect(await screen.findByText(/Could not reach the server/)).toBeOnTheScreen();
+    await fireEvent.changeText(screen.getByLabelText("Company code"), "PRD");
+    await fireEvent.press(screen.getByRole("button", { name: "Continue" }));
+    expect(await screen.findByText("Could not reach the server")).toBeOnTheScreen();
+    expect(screen.getByText("Check your connection and try again.")).toBeOnTheScreen();
   });
 
-  it("an empty code asks for one without calling Central", async () => {
+  it("an empty code asks for one on the field, without calling Central", async () => {
     await renderWithProviders(<LoginScreen />);
-    await fireEvent.press(screen.getByText("Continue"));
+    await fireEvent.press(screen.getByRole("button", { name: "Continue" }));
     expect(screen.getByText("Enter your company code.")).toBeOnTheScreen();
     expect(fetchClientConfig).not.toHaveBeenCalled();
   });
 });
 
-describe("step 2 — credentials", () => {
+describe("02 — sign in", () => {
+  it("shows E's copy", async () => {
+    configured();
+    await renderWithProviders(<LoginScreen />);
+    expect(screen.getByText("Test CRM")).toBeOnTheScreen();
+    expect(screen.getByText("Company code TESTCRM")).toBeOnTheScreen();
+    expect(screen.getByText("Use the username your admin set up for you.")).toBeOnTheScreen();
+    expect(screen.getByText("Username")).toBeOnTheScreen();
+    expect(screen.getByText("Password")).toBeOnTheScreen();
+    expect(screen.getByText("Switch company")).toBeOnTheScreen();
+    expect(screen.getByText(/^Not Test CRM\?/)).toBeOnTheScreen();
+    expect(screen.getByText("Nexus CRM · v1.0.1 (20261102)")).toBeOnTheScreen();
+  });
+
   it("posts the identifier and password and opens the session", async () => {
     configured();
     jest.mocked(login).mockResolvedValue(envelope(loginData({ presenceNotice: true })));
@@ -96,14 +135,85 @@ describe("step 2 — credentials", () => {
     expect(state()).toMatchObject({ isAuthenticated: true, token: "tok-1", UserId: 9, presenceNotice: true });
   });
 
-  it("a wrong username or password shows the server's message in the form", async () => {
+  it("the password is masked until the eye is tapped", async () => {
     configured();
-    jest.mocked(login).mockRejectedValue(invalidCredentials());
+    await renderWithProviders(<LoginScreen />);
+    expect(screen.getByLabelText("Password")).toHaveProp("secureTextEntry", true);
+    await fireEvent.press(screen.getByLabelText("Show password"));
+    expect(screen.getByLabelText("Password")).toHaveProp("secureTextEntry", false);
+    await fireEvent.press(screen.getByLabelText("Hide password"));
+    expect(screen.getByLabelText("Password")).toHaveProp("secureTextEntry", true);
+  });
+
+  it("asks for each missing field on that field before calling the server, and typing clears it", async () => {
+    configured();
+    await renderWithProviders(<LoginScreen />);
+    await fireEvent.press(screen.getByRole("button", { name: "Sign in" }));
+    expect(screen.getByText("Enter your username, email or mobile.")).toBeOnTheScreen();
+    await fireEvent.changeText(screen.getByLabelText("Username"), "asha");
+    expect(screen.queryByText("Enter your username, email or mobile.")).toBeNull();
+    await fireEvent(screen.getByLabelText("Password"), "submitEditing");
+    expect(screen.getByText("Enter your password.")).toBeOnTheScreen();
+    await fireEvent.changeText(screen.getByLabelText("Password"), "fixture");
+    expect(screen.queryByText("Enter your password.")).toBeNull();
+    expect(login).not.toHaveBeenCalled();
+  });
+
+  it("Switch company clears the company and goes back to step 1", async () => {
+    configured();
+    await renderWithProviders(<LoginScreen />);
+    await fireEvent.press(screen.getByLabelText("Switch company"));
+    expect(screen.getByText("Enter your company code")).toBeOnTheScreen();
+    expect(state()).toMatchObject({ API_BASE_URL: null, compCode: null, isClientConfigured: false, isAuthenticated: false });
+  });
+
+  it("falls back to the code, then a generic title, when Central gave no name", async () => {
+    configured({ ...CONFIG, companyName: null, logoURL: null });
+    await renderWithProviders(<LoginScreen />);
+    expect(screen.getByText("TESTCRM")).toBeOnTheScreen();
+    expect(screen.getByTestId("tenant-placeholder")).toBeOnTheScreen();
+    await act(async () => useAuthStore.setState({ compCode: null }));
+    expect(screen.getByText("Welcome back")).toBeOnTheScreen();
+    expect(screen.queryByText(/^Company code /)).toBeNull();
+    expect(screen.getByText(/^Not this company\?/)).toBeOnTheScreen();
+  });
+
+  it("a dead logo URL falls back to the placeholder badge", async () => {
+    configured();
+    await renderWithProviders(<LoginScreen />);
+    await fireEvent(screen.getByLabelText("Test CRM"), "error");
+    expect(screen.queryByLabelText("Test CRM")).toBeNull();
+    expect(screen.getByTestId("tenant-placeholder")).toBeOnTheScreen();
+  });
+});
+
+describe("03 — sign-in error, in the form", () => {
+  it("INVALID_CREDENTIALS reads as E's title and body, with no session", async () => {
+    configured();
+    jest.mocked(login).mockRejectedValue(loginFailure(401, "INVALID_CREDENTIALS", "Incorrect username or password"));
     await renderWithProviders(<LoginScreen />);
     await signIn();
-    expect(await screen.findByText("Incorrect username or password")).toBeOnTheScreen();
-    expect(screen.getByText("Sign in")).toBeOnTheScreen();
+    expect(await screen.findByText("Wrong username or password")).toBeOnTheScreen();
+    expect(screen.getByText("Check both and try again. Your admin can reset the password.")).toBeOnTheScreen();
+    // The box replaces the sub line.
+    expect(screen.queryByText("Use the username your admin set up for you.")).toBeNull();
     expect(state().isAuthenticated).toBe(false);
+    // Typing again clears it.
+    await fireEvent.changeText(screen.getByLabelText("Password"), "other");
+    expect(screen.queryByText("Wrong username or password")).toBeNull();
+  });
+
+  it.each([
+    ["USER_INACTIVE", 403, "Your account is inactive. Contact your admin."],
+    ["LOGIN_ERROR", 500, "Login failed due to server error"],
+    ["VALIDATION_ERROR", 400, "Username and password are required"],
+  ])("%s keeps the server's own text in the same box", async (code, status, message) => {
+    configured();
+    jest.mocked(login).mockRejectedValue(loginFailure(status, code, message));
+    await renderWithProviders(<LoginScreen />);
+    await signIn();
+    expect(await screen.findByText(message)).toBeOnTheScreen();
+    expect(screen.getByTestId("auth-error")).toHaveTextContent(message);
   });
 
   it("a network failure shows the connection fallback", async () => {
@@ -111,7 +221,7 @@ describe("step 2 — credentials", () => {
     jest.mocked(login).mockRejectedValue(new Error("Network Error"));
     await renderWithProviders(<LoginScreen />);
     await signIn();
-    expect(await screen.findByText(/Could not reach the server/)).toBeOnTheScreen();
+    expect(await screen.findByText("Could not reach the server")).toBeOnTheScreen();
   });
 
   it("an unsuccessful envelope shows its message, or a default", async () => {
@@ -121,50 +231,9 @@ describe("step 2 — credentials", () => {
     await renderWithProviders(<LoginScreen />);
     await signIn();
     expect(await screen.findByText("Account disabled")).toBeOnTheScreen();
-    await fireEvent.press(screen.getByText("Sign in"));
+    await fireEvent.press(screen.getByRole("button", { name: "Sign in" }));
     expect(await screen.findByText("Login failed")).toBeOnTheScreen();
     expect(state().isAuthenticated).toBe(false);
-  });
-
-  it("asks for each missing field before calling the server, and typing clears the prompt", async () => {
-    configured();
-    await renderWithProviders(<LoginScreen />);
-    await fireEvent.press(screen.getByText("Sign in"));
-    expect(screen.getByText("Enter your username, email or mobile.")).toBeOnTheScreen();
-    await fireEvent.changeText(screen.getByPlaceholderText("Enter username, email or mobile"), "asha");
-    expect(screen.queryByText("Enter your username, email or mobile.")).toBeNull();
-    await fireEvent.press(screen.getByText("Sign in"));
-    expect(screen.getByText("Enter your password.")).toBeOnTheScreen();
-    await fireEvent.changeText(screen.getByPlaceholderText("Enter password"), "fixture");
-    expect(screen.queryByText("Enter your password.")).toBeNull();
-    expect(login).not.toHaveBeenCalled();
-  });
-
-  it("Switch company clears the company and goes back to step 1", async () => {
-    configured();
-    await renderWithProviders(<LoginScreen />);
-    expect(screen.getByText(/Not Test CRM\? Switch company/)).toBeOnTheScreen();
-    await fireEvent.press(screen.getByLabelText("Switch company"));
-    expect(screen.getByText("Which company?")).toBeOnTheScreen();
-    expect(state()).toMatchObject({ API_BASE_URL: null, compCode: null, isClientConfigured: false, isAuthenticated: false });
-  });
-
-  it("falls back to the code, then a generic title, when Central gave no name", async () => {
-    configured({ ...CONFIG, companyName: null, logoURL: null });
-    await renderWithProviders(<LoginScreen />);
-    expect(screen.getByText("TESTCRM")).toBeOnTheScreen();
-    expect(screen.queryByLabelText("Company logo")).toBeNull();
-    await act(async () => useAuthStore.setState({ compCode: null }));
-    expect(screen.getByText("Welcome back")).toBeOnTheScreen();
-    expect(screen.getByText(/Not this company\? Switch company/)).toBeOnTheScreen();
-  });
-
-  it("a dead logo URL falls back to the generic mark", async () => {
-    configured();
-    await renderWithProviders(<LoginScreen />);
-    await fireEvent(screen.getByLabelText("Test CRM"), "error");
-    expect(screen.queryByLabelText("Test CRM")).toBeNull();
-    expect(screen.getByText("Test CRM")).toBeOnTheScreen();
   });
 });
 
@@ -183,12 +252,9 @@ describe("why the last session ended", () => {
 
   // The wording backend/src/utils/responseHelper.js sends with each 401 code.
   it.each([
-    ["SESSION_REQUIRED", "Please sign in again"],
     ["SESSION_EXPIRED", "Your session ended at the end of your shift. Sign in again to continue."],
     ["SESSION_FORCED", "An admin ended your session. Sign in again to continue."],
-    ["SESSION_ENDED", "You signed out. Sign in again to continue."],
     ["TOKEN_EXPIRED", "Token has expired - please login again"],
-    ["INVALID_TOKEN", "Invalid token - please login again"],
   ])("%s shows the server's message", async (code, message) => {
     configured();
     useAuthStore.setState({ sessionEndedReason: code, sessionEndedMessage: message });

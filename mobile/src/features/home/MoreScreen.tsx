@@ -1,92 +1,198 @@
-import { ScrollView, StyleSheet, View } from "react-native";
-import { Bell, CalendarClock, LayoutDashboard, UserRound } from "lucide-react-native";
+import { useState } from "react";
+import { StyleSheet, View } from "react-native";
+import { useQuery } from "@tanstack/react-query";
+import { CalendarClock, Inbox, Key, LayoutDashboard, LogOut, ShieldCheck, User } from "lucide-react-native";
 import { useNavigation } from "@react-navigation/native";
 import type { StackNavigationProp } from "@react-navigation/stack";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { fetchFollowUps } from "../../api/followupQueries";
+import { fetchBranches } from "../../api/userQueries";
+import { fetchWorkspaces } from "../../api/workspaceQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import { useTabs } from "../../navigation/tabs";
-import { colors, spacing, SCREEN_PADDING, TAB_BAR_CLEARANCE } from "../../theme";
-import { MenuList, Screen, Text, type MenuListRow } from "../../ui";
+import useAuthStore from "../../stores/useAuthStore";
+import { moduleTones, spacing, type ChipTone } from "../../theme";
+import type { Workspace } from "../../types/api";
+import {
+  Avatar, Band, BandSheet, Chip, CountBadge, Dialog, Footnote, ListGroup, ListRow, Screen, Text,
+} from "../../ui";
+import { appVersion } from "../auth/appVersion";
 import { useAccess } from "../auth/useAccess";
+import { useSignOut } from "../auth/useSignOut";
 import { useUnreadCount } from "../notifications/useUnreadCount";
+import { clockTime } from "../notifications/timeLabels";
+import { ChangePasswordDialog } from "../profile/AccountForms";
+import { followUpViewParams } from "../sales/leadHelpers";
 
 type Nav = StackNavigationProp<RootStackParamList>;
 
+/** Same rule as Boards' "Your boards": live, accepted, and not seen only through the admin bypass. */
+const isMine = (w: Workspace) =>
+  w.MyInviteStatus !== "pending" && !w.IsArchived && (w.MyRole != null || w.MyInviteStatus != null);
+
+/** "A", "A and B", "A, B and C". */
+const listOf = (names: string[]) =>
+  names.length < 2 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+
 /**
- * Everything that is not a tab: the Inbox, task workspaces (boards live only
- * inside Tasks), Follow-ups when the bar has no room for it, and Profile.
- * Each opens on the stack, with a back button.
+ * E 19 / 26: the profile hub. Everything that is not a tab — the Inbox,
+ * workspaces, Follow-ups when the bar has no room — then the account rows.
  */
 export default function MoreScreen() {
   const navigation = useNavigation<Nav>();
-  const insets = useSafeAreaInsets();
   const unread = useUnreadCount();
-  const canTasks = useAccess("tasks").view;
-  const canLeads = useAccess("leads").view;
+  const user = useAuthStore((s) => s.user);
+  const userId = useAuthStore((s) => s.UserId);
+  const branchId = useAuthStore((s) => s.BranchId);
+  const companyName = useAuthStore((s) => s.companyName);
+  const loginTimestamp = useAuthStore((s) => s.loginTimestamp);
+  const sessionExpiresAt = useAuthStore((s) => s.sessionExpiresAt);
+  const isAdmin = useAuthStore((s) => s.isAdmin());
+  const can = {
+    tasks: useAccess("tasks").view,
+    complaints: useAccess("complaints").view,
+    leads: useAccess("leads").view,
+  };
   const followUpsIsTab = useTabs().includes("FollowUps");
+  const showFollowUps = can.leads && !followUpsIsTab;
+  const signOut = useSignOut();
+  const [changingPassword, setChangingPassword] = useState(false);
 
-  const rows: MenuListRow[] = [
-    {
-      key: "inbox",
-      icon: Bell,
-      tint: "primary",
-      label: "Inbox",
-      detail: unread > 0 ? `${unread} unread` : "Your notifications",
-      onPress: () => navigation.navigate("Inbox"),
-    },
-    ...(canTasks
-      ? [
-          {
-            key: "workspaces",
-            icon: LayoutDashboard,
-            tint: "primary" as const,
-            label: "Workspaces",
-            detail: "Boards, members and columns",
-            onPress: () => navigation.navigate("Boards"),
-          },
-        ]
-      : []),
-    ...(canLeads && !followUpsIsTab
-      ? [
-          {
-            key: "followups",
-            icon: CalendarClock,
-            tint: "warning" as const,
-            label: "Follow-ups",
-            detail: "Calls and visits to make",
-            onPress: () => navigation.navigate("FollowUps", undefined),
-          },
-        ]
-      : []),
-    {
-      key: "profile",
-      icon: UserRound,
-      tint: "primary",
-      label: "Profile",
-      detail: "Your account and password",
-      onPress: () => navigation.navigate("Me"),
-    },
+  // Shared caches: Boards and the complaint form read the same keys.
+  const { data: workspaces } = useQuery({
+    queryKey: ["workspaces", false],
+    queryFn: () => fetchWorkspaces({ PageSize: 100 }),
+    enabled: can.tasks,
+  });
+  const todayParams = followUpViewParams("today");
+  const { data: followUpsToday = 0 } = useQuery({
+    queryKey: ["followups", "count", todayParams],
+    queryFn: () => fetchFollowUps({ ...todayParams, PageSize: 1 }),
+    select: (r) => r.data?.pagination.totalRecords ?? 0,
+    enabled: showFollowUps,
+  });
+  // G24: AuthUser has only the id.
+  const { data: branches } = useQuery({ queryKey: ["branches"], queryFn: fetchBranches });
+  const office = branches?.find((b) => b.Id === branchId)?.BranchName;
+
+  // G23: no group name in the login payload.
+  const modules = (["tasks", "complaints", "leads"] as const).filter((m) => can[m]);
+  const roleLabel = user?.JobTitle || (isAdmin ? "Admin" : null);
+  const roleTone: ChipTone = isAdmin ? "lilac" : modules.length === 1 ? moduleTones[modules[0]!].chip : "indigo";
+
+  const NAMES = { tasks: "Tasks", complaints: "Complaints", leads: "Leads" } as const;
+  const missing = [
+    ...(["tasks", "complaints", "leads"] as const).filter((m) => !can[m]).map((m) => NAMES[m]),
+    ...(can.tasks ? [] : ["Workspaces"]),
+    ...(can.leads ? [] : ["Follow-ups"]),
   ];
+  const covers = modules.length ? `${listOf(modules.map((m) => NAMES[m]))} only` : "none of the modules";
+
+  const session = loginTimestamp
+    ? `Signed in since ${clockTime(new Date(loginTimestamp))}${
+        sessionExpiresAt ? ` · session ends ${clockTime(new Date(sessionExpiresAt))}` : ""
+      }`
+    : null;
 
   return (
-    <Screen>
-      <View style={[styles.header, { paddingTop: insets.top + spacing[3] }]}>
-        <Text variant="h1">More</Text>
-      </View>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <MenuList rows={rows} />
-      </ScrollView>
+    <Screen band>
+      <Band variant="profile" align="center">
+        <Avatar name={user?.FullName} uri={user?.Avatar} userId={userId} size={88} ring="bandField" />
+        <Text variant="recordTitle" color="textOnBrand" align="center" style={styles.name}>
+          {user?.FullName ?? "—"}
+        </Text>
+        <View style={styles.roleRow}>
+          {roleLabel ? <Chip label={roleLabel} tone={roleTone} /> : null}
+          <Text variant="meta" color="onBandMuted" numberOfLines={1} style={styles.shrink}>
+            {[office, companyName].filter(Boolean).join(" · ")}
+          </Text>
+        </View>
+      </Band>
+
+      <BandSheet scroll>
+        <ListGroup>
+          <ListRow
+            badge={{ tone: "indigo", icon: Inbox }}
+            title="Inbox"
+            trailing={<CountBadge count={unread} ringColor="surface" />}
+            chevron
+            noSeparator
+            onPress={() => navigation.navigate("Inbox")}
+          />
+          {can.tasks ? (
+            <ListRow
+              badge={{ tone: "lilac", icon: LayoutDashboard }}
+              title="Workspaces"
+              right={workspaces ? { text: String(workspaces.filter(isMine).length) } : undefined}
+              chevron
+              onPress={() => navigation.navigate("Boards")}
+            />
+          ) : null}
+          {showFollowUps ? (
+            <ListRow
+              badge={{ tone: "butter", icon: CalendarClock }}
+              title="Follow-ups"
+              trailing={followUpsToday > 0 ? <Chip label={`${followUpsToday} today`} tone="butter" /> : null}
+              chevron
+              onPress={() => navigation.navigate("FollowUps", undefined)}
+            />
+          ) : null}
+        </ListGroup>
+
+        <ListGroup style={styles.group2}>
+          <ListRow
+            badge={{ tone: "slate", icon: User }}
+            title="Profile"
+            chevron
+            noSeparator
+            onPress={() => navigation.navigate("Me")}
+          />
+          <ListRow
+            badge={{ tone: "slate", icon: Key }}
+            title="Change password"
+            chevron
+            onPress={() => setChangingPassword(true)}
+          />
+          <ListRow
+            badge={{ tone: "red", icon: LogOut }}
+            title="Sign out"
+            titleTone="danger"
+            onPress={() => signOut.setConfirming(true)}
+          />
+        </ListGroup>
+
+        {missing.length ? (
+          <Footnote icon={ShieldCheck}>
+            {`Your role covers ${covers}, so ${listOf(missing)} ${missing.length === 1 ? "does" : "do"} not appear. Ask your admin if that is wrong.`}
+          </Footnote>
+        ) : null}
+
+        <View style={styles.footer}>
+          <Text variant="small" align="center">{appVersion()}</Text>
+          {session ? <Text variant="small" align="center">{session}</Text> : null}
+        </View>
+      </BandSheet>
+
+      <ChangePasswordDialog visible={changingPassword} onClose={() => setChangingPassword(false)} />
+      <Dialog
+        visible={signOut.confirming}
+        title="Sign out?"
+        message="You will need your password to sign back in."
+        badge={{ tone: "red", icon: LogOut }}
+        confirmLabel="Sign out"
+        destructive
+        loading={signOut.busy}
+        onConfirm={signOut.signOut}
+        onCancel={() => signOut.setConfirming(false)}
+      />
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  header: {
-    paddingHorizontal: SCREEN_PADDING,
-    paddingBottom: spacing[3],
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.divider,
-  },
-  content: { padding: SCREEN_PADDING, paddingBottom: TAB_BAR_CLEARANCE },
+  name: { marginTop: spacing[3] },
+  roleRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing[2], marginTop: 6 },
+  shrink: { flexShrink: 1 },
+  group2: { marginTop: spacing[3] },
+  footer: { marginTop: spacing[5] },
 });

@@ -1,19 +1,7 @@
 import { useCallback } from "react";
-import { FlatList, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  Bell,
-  CheckCheck,
-  CircleCheck,
-  CloudOff,
-  MessageCircle,
-  RotateCcw,
-  Ticket,
-  Unlock,
-  UserPlus,
-  Users,
-  type LucideIcon,
-} from "lucide-react-native";
+import { Bell, CheckCheck } from "lucide-react-native";
 import { useNavigation } from "@react-navigation/native";
 import type { StackNavigationProp } from "@react-navigation/stack";
 
@@ -24,24 +12,17 @@ import {
 } from "../../api/notificationQueries";
 import { apiErrorMessage } from "../../api/errors";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
+import { colors, notificationBadge } from "../../theme";
 import type { AppNotification } from "../../types/api";
-import { colors, radius, spacing, SCREEN_PADDING, TAB_BAR_CLEARANCE } from "../../theme";
-import { Card, EmptyState, Refresher, Screen, ScreenHeader, Text, useToast } from "../../ui";
-import { relativeTime } from "../tasks/taskHelpers";
+import {
+  Band, BandSheet, EmptyState, ErrorCard, GroupHeader, HeaderButton, ListGroup, ListRow, Screen, SkeletonRows, Text,
+  useToast,
+} from "../../ui";
+import { clockTime, sameDay, shortDate } from "./timeLabels";
 
 const QUERY_KEY = ["notifications"];
 
-function iconFor(type: string): LucideIcon {
-  if (type.includes("assigned") && type.startsWith("task")) return UserPlus;
-  if (type.includes("completed")) return CircleCheck;
-  if (type.includes("reopened")) return RotateCcw;
-  if (type.includes("unblocked")) return Unlock;
-  if (type.includes("comment") || type === "reply") return MessageCircle;
-  if (type.startsWith("ticket")) return Ticket;
-  if (type.startsWith("workspace")) return Users;
-  return Bell;
-}
-
+/** E 18: the band, then Today and Earlier as grouped rows. */
 export default function NotificationsScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const queryClient = useQueryClient();
@@ -91,65 +72,81 @@ export default function NotificationsScreen() {
     }
   };
 
+  // The local day: a 00:10 IST row is today even though it is yesterday in UTC.
+  const now = new Date();
+  const today = items.filter((n) => sameDay(new Date(n.CreatedDate), now));
+  const earlier = items.filter((n) => !sameDay(new Date(n.CreatedDate), now));
+
+  const row = (n: AppNotification, i: number, isToday: boolean) => {
+    const at = new Date(n.CreatedDate);
+    return (
+      <ListRow
+        key={n.Id}
+        testID={`notification-${n.Id}`}
+        badge={{ ...notificationBadge(n.Type), testID: `badge-${n.Id}` }}
+        title={n.Title}
+        titleTone={n.IsRead ? "muted" : "default"}
+        titleWeight={n.IsRead ? "read" : "strong"}
+        right={{ text: isToday ? clockTime(at) : shortDate(at) }}
+        meta={n.Body ?? undefined}
+        // ponytail: E puts the dot at the end of line 2; ListRow has no slot there, so it trails the row.
+        trailing={n.IsRead ? null : <View testID="unread-dot" style={styles.dot} />}
+        align="top"
+        unread={!n.IsRead}
+        noSeparator={i === 0}
+        onPress={() => open(n)}
+      />
+    );
+  };
+
+  const body = query.isLoading ? (
+    <ListGroup><SkeletonRows /></ListGroup>
+  ) : query.isError ? (
+    <ErrorCard onRetry={() => void query.refetch()} />
+  ) : !items.length ? (
+    <EmptyState module="inbox" icon={Bell} title="You're all caught up" />
+  ) : (
+    <>
+      {today.length ? (
+        <>
+          <GroupHeader title="Today" first />
+          <ListGroup testID="inbox-today">{today.map((n, i) => row(n, i, true))}</ListGroup>
+        </>
+      ) : null}
+      {earlier.length ? (
+        <>
+          <GroupHeader title="Earlier" first={!today.length} />
+          <ListGroup testID="inbox-earlier">{earlier.map((n, i) => row(n, i, false))}</ListGroup>
+        </>
+      ) : null}
+    </>
+  );
+
   return (
-    <Screen>
-      <ScreenHeader
+    <Screen band>
+      <Band
+        variant="record"
         title="Inbox"
         onBack={navigation.goBack}
-        subtitle={unreadCount > 0 ? `${unreadCount} unread` : undefined}
         actions={
-          unreadCount > 0
-            ? [{ icon: CheckCheck, label: "Mark all read", onPress: () => markAll.mutate() }]
-            : undefined
+          unreadCount > 0 ? (
+            <HeaderButton variant="ghost" icon={CheckCheck} label="Mark all read" onPress={() => markAll.mutate()} />
+          ) : null
         }
-      />
-      <FlatList
-        data={items}
-        keyExtractor={(n) => String(n.Id)}
-        contentContainerStyle={[styles.list, !items.length && styles.listEmpty]}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <Refresher refreshing={query.isRefetching && !query.isLoading} onRefresh={query.refetch} />
-        }
-        renderItem={({ item }) => {
-          const Icon = iconFor(item.Type);
-          return (
-            <View style={styles.cardWrap}>
-              <Card onPress={() => open(item)} gap={1}>
-                <View style={styles.row}>
-                  <Icon size={18} color={item.IsRead ? colors.textMuted : colors.primary} />
-                  <Text variant="h3" style={styles.title}>
-                    {item.Title}
-                  </Text>
-                  {!item.IsRead ? <View style={styles.dot} /> : null}
-                </View>
-                {item.Body ? <Text variant="secondary">{item.Body}</Text> : null}
-                <Text variant="caption" color="textMuted">
-                  {relativeTime(item.CreatedDate)}
-                </Text>
-              </Card>
-            </View>
-          );
-        }}
-        ListEmptyComponent={
-          query.isLoading ? null : (
-            <EmptyState
-              icon={query.isError ? CloudOff : Bell}
-              title={query.isError ? "Couldn't load your inbox" : "You're all caught up"}
-              message={query.isError ? "Pull down to try again." : undefined}
-            />
-          )
-        }
-      />
+      >
+        {unreadCount > 0 ? <Text variant="meta" color="onBandMuted" tabular>{`${unreadCount} unread`}</Text> : null}
+      </Band>
+      <BandSheet
+        scroll
+        center={!query.isLoading && !query.isError && !items.length}
+        refresh={{ refreshing: query.isRefetching && !query.isLoading, onRefresh: () => void query.refetch() }}
+      >
+        {body}
+      </BandSheet>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  list: { paddingTop: spacing[4], paddingBottom: TAB_BAR_CLEARANCE },
-  listEmpty: { flexGrow: 1 },
-  cardWrap: { paddingHorizontal: SCREEN_PADDING, paddingBottom: spacing[4] },
-  row: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
-  title: { flex: 1 },
-  dot: { width: spacing[2], height: spacing[2], borderRadius: radius.full, backgroundColor: colors.primary },
+  dot: { width: 8, height: 8, borderRadius: 4, marginTop: 6, backgroundColor: colors.primary },
 });

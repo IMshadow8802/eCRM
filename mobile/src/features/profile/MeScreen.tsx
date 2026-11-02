@@ -1,271 +1,119 @@
-import { useMemo, useState } from "react";
-import { Platform, ScrollView, StyleSheet, View } from "react-native";
-import { useQuery } from "@tanstack/react-query";
-import Constants from "expo-constants";
-import {
-  Briefcase,
-  Building2,
-  CircleCheckBig,
-  ClipboardList,
-  Contact,
-  KeyRound,
-  LayoutDashboard,
-  LogOut,
-  Mail,
-  Pencil,
-  ShieldCheck,
-  Smartphone,
-  type LucideIcon,
-} from "lucide-react-native";
+import { useState } from "react";
+import { StyleSheet, View } from "react-native";
+import { useMutation } from "@tanstack/react-query";
 import type { StackScreenProps } from "@react-navigation/stack";
 
-import { ChangePasswordForm, EditProfileForm } from "./AccountForms";
-
-import { fetchTasks } from "../../api/taskQueries";
-import { fetchWorkspaces } from "../../api/workspaceQueries";
+import { apiErrorMessage } from "../../api/errors";
+import { updateMyProfile } from "../../api/userQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
-import { isAssignee } from "../tasks/taskHelpers";
-import { useAccess } from "../auth/useAccess";
-import { useSignOut } from "../auth/useSignOut";
-import {
-  colors,
-  radius,
-  spacing,
-  SCREEN_PADDING,
-  TAB_BAR_CLEARANCE,
-} from "../../theme";
-import { Avatar, Button, Card, Chip, Dialog, Screen, ScreenHeader, Text } from "../../ui";
+import { metrics } from "../../theme";
+import { normalizeMobile } from "../../utils/mobile";
+import { Avatar, Band, BandSheet, Card, HeaderButton, Input, MobileInput, Screen, Text, useToast } from "../../ui";
+import { AvatarPicker, parsePreset, presetValue } from "./AccountForms";
 
-/** Pushed from More; `navigation` is the stack's (absent in a bare render). */
-export default function MeScreen({ navigation }: Partial<StackScreenProps<RootStackParamList, "Me">>) {
+type Props = StackScreenProps<RootStackParamList, "Me">;
+
+/**
+ * Your own profile (no E frame; spec §4.1 19, proposed): the profile band with
+ * the avatar, and the form on a card with Save in the band (16's pattern).
+ * Password and sign-out live on More.
+ */
+export default function MeScreen({ navigation }: Props) {
   const user = useAuthStore((s) => s.user);
-  const company = useAuthStore((s) => s.company);
   const userId = useAuthStore((s) => s.UserId);
-  // From the server's access, never the login-time user (CLAUDE.md §3).
-  const isAdmin = useAuthStore((s) => s.isAdmin());
-  const signOut = useSignOut();
-  const [editing, setEditing] = useState<"profile" | "password" | null>(null);
+  const companyName = useAuthStore((s) => s.companyName);
+  const updateUser = useAuthStore((s) => s.updateUser);
+  const toast = useToast();
 
-  // Both already cached by My Work and Boards, so opening this is free. Both
-  // routes need tasks:view — without it there are no work counts to show.
-  const canTasks = useAccess("tasks").view;
-  const { data: taskData } = useQuery({
-    queryKey: ["tasks", "all-workspaces"],
-    queryFn: () => fetchTasks({ WorkspaceId: null, PageSize: 200 }),
-    enabled: canTasks,
-  });
-  const { data: workspaces } = useQuery({
-    queryKey: ["workspaces", false],
-    queryFn: () => fetchWorkspaces({ PageSize: 100 }),
-    enabled: canTasks,
+  const [fullName, setFullName] = useState(user?.FullName ?? "");
+  const [email, setEmail] = useState(user?.Email ?? "");
+  const [mobile, setMobile] = useState(user?.Mobile ?? "");
+  const [preset, setPreset] = useState(() => parsePreset(user?.Avatar));
+  const [error, setError] = useState<{ field: "name" | "mobile" | "form"; message: string } | null>(null);
+
+  const avatar = presetValue(preset, user?.Avatar ?? null);
+
+  const save = useMutation({
+    mutationFn: (p: Parameters<typeof updateMyProfile>[0]) => updateMyProfile(p),
+    onSuccess: (_r, sent) => {
+      updateUser(sent);
+      toast.success("Profile updated");
+      navigation.goBack();
+    },
+    onError: (err) => setError({ field: "form", message: apiErrorMessage(err, "Could not save your profile.") }),
   });
 
-  const stats = useMemo(() => {
-    const tasks = taskData?.data?.tasks ?? [];
-    const mine = tasks.filter((t) => isAssignee(t, userId));
-    return {
-      assigned: mine.length,
-      done: mine.filter((t) => t.IsCompleted).length,
-      // Same rule as Boards' "Your boards": admin-bypass boards are not yours.
-      boards: (workspaces ?? []).filter(
-        (w) =>
-          w.MyInviteStatus !== "pending" &&
-          !w.IsArchived &&
-          (w.MyRole != null || w.MyInviteStatus != null),
-      ).length,
-    };
-  }, [taskData, workspaces, userId]);
+  const submit = () => {
+    const name = fullName.trim();
+    if (!name) return setError({ field: "name", message: "Your name cannot be blank." });
+    const digits = mobile.trim();
+    if (digits && !normalizeMobile(digits)) return setError({ field: "mobile", message: "A mobile number is ten digits." });
+    setError(null);
+    // All four, always: sp_UpdateOwnProfile writes every column (ME-02).
+    save.mutate({
+      FullName: name,
+      Email: email.trim() || null,
+      Mobile: digits ? normalizeMobile(digits) : null,
+      Avatar: avatar,
+    });
+  };
+
+  const line = [user?.Username, companyName].filter(Boolean).join(" · ");
 
   return (
-    <Screen>
-      <ScreenHeader title="Profile" onBack={navigation?.goBack} />
-
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        showsVerticalScrollIndicator={false}
+    <Screen band>
+      <Band
+        variant="profile"
+        align="center"
+        title="Profile"
+        onBack={navigation.goBack}
+        actions={<HeaderButton label="Save" onPress={submit} disabled={save.isPending} />}
       >
-        <View style={styles.identity}>
-          <Avatar name={user?.FullName} uri={user?.Avatar} size={80} />
-          <Text variant="h1">{user?.FullName ?? "—"}</Text>
-          {user?.JobTitle ? (
-            <View style={styles.stat}>
-              <Briefcase size={14} color={colors.textSecondary} />
-              <Text variant="secondary">{user.JobTitle}</Text>
-            </View>
-          ) : null}
-          {isAdmin ? (
-            <View style={styles.adminBadge}>
-              <Chip label="Administrator" icon={ShieldCheck} tone="primary" />
-            </View>
-          ) : null}
+        <View style={styles.avatar}>
+          <Avatar name={fullName || user?.FullName} uri={avatar} userId={userId} size={88} ring="bandField" />
         </View>
-
-        {canTasks ? (
-          <View style={styles.statRow}>
-            <StatTile Icon={ClipboardList} tint="primary" value={stats.assigned} label="Assigned" />
-            <StatTile Icon={CircleCheckBig} tint="success" value={stats.done} label="Completed" />
-            <StatTile Icon={LayoutDashboard} tint="info" value={stats.boards} label="Boards" />
-          </View>
-        ) : null}
-
-        <View style={styles.group}>
-          <Text variant="overline" color="textMuted" style={styles.groupTitle}>
-            {editing === "password" ? "Change password" : "Account"}
-          </Text>
-          {editing === "profile" ? (
-            <EditProfileForm onDone={() => setEditing(null)} />
-          ) : editing === "password" ? (
-            <ChangePasswordForm onDone={() => setEditing(null)} />
-          ) : (
-          <Card padded={false} gap={0}>
-            {user?.Email ? (
-              <Row Icon={Mail} tint="info" label="Email" value={user.Email} />
-            ) : null}
-            {user?.Mobile ? (
-              <Row Icon={Smartphone} tint="success" label="Mobile" value={user.Mobile} />
-            ) : null}
-            {user?.Username ? (
-              <Row Icon={Contact} tint="primary" label="Username" value={user.Username} last={!company?.CompName} />
-            ) : null}
-            {company?.CompName ? (
-              <Row Icon={Building2} tint="neutralIcon" label="Company" value={company.CompName} last />
-            ) : null}
-          </Card>
-          )}
-          {editing ? null : (
-            <View style={styles.actions}>
-              <Button title="Edit profile" variant="secondary" icon={Pencil} onPress={() => setEditing("profile")} fullWidth />
-              <Button title="Change password" variant="secondary" icon={KeyRound} onPress={() => setEditing("password")} fullWidth />
-            </View>
-          )}
-        </View>
-
-        <Button
-          title="Sign out"
-          variant="danger"
-          icon={LogOut}
-          onPress={() => signOut.setConfirming(true)}
-          fullWidth
-        />
-
-        <View style={styles.footer}>
-          <Text variant="caption" align="center">PRD Infotech Pvt Ltd</Text>
-          <Text variant="caption" color="textMuted" align="center">
-            {appVersion()}
-          </Text>
-        </View>
-      </ScrollView>
-
-      <Dialog
-        visible={signOut.confirming}
-        title="Sign out?"
-        message="You will need your password to sign back in."
-        confirmLabel="Sign out"
-        destructive
-        loading={signOut.busy}
-        onConfirm={signOut.signOut}
-        onCancel={() => signOut.setConfirming(false)}
-      />
+        <Text variant="recordTitle" color="textOnBrand" align="center" style={styles.name}>
+          {user?.FullName ?? "—"}
+        </Text>
+        {line ? <Text variant="meta" color="onBandMuted" align="center" style={styles.line}>{line}</Text> : null}
+      </Band>
+      <BandSheet scroll>
+        <Card gap={4}>
+          <AvatarPicker value={preset} onChange={setPreset} />
+          <Input
+            label="Display name"
+            accessibilityLabel="Display name"
+            required
+            value={fullName}
+            onChangeText={setFullName}
+            error={error?.field === "name" ? error.message : null}
+          />
+          <Input
+            label="Email"
+            accessibilityLabel="Email"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            placeholder="you@example.com"
+          />
+          <MobileInput
+            label="Mobile"
+            accessibilityLabel="Mobile"
+            value={mobile}
+            onChangeText={setMobile}
+            error={error?.field === "mobile" ? error.message : null}
+          />
+          {error?.field === "form" ? <Text variant="label" color="dangerText">{error.message}</Text> : null}
+        </Card>
+      </BandSheet>
     </Screen>
   );
 }
 
-/** From app.config.ts as built (version + the date-stamped build number), never a literal. */
-function appVersion(): string {
-  const config = Constants.expoConfig;
-  if (!config?.version) return "Nexus CRM";
-  const build = Platform.OS === "android" ? config.android?.versionCode : config.ios?.buildNumber;
-  return `Nexus CRM · v${config.version}${build ? ` (${build})` : ""}`;
-}
-
-function StatTile({
-  Icon,
-  tint,
-  value,
-  label,
-}: {
-  Icon: LucideIcon;
-  tint: keyof typeof colors;
-  value: number;
-  label: string;
-}) {
-  return (
-    <Card style={styles.tile} gap={1}>
-      <View style={[styles.tileGlyph, { backgroundColor: colors[tint] }]}>
-        <Icon size={18} color={colors.textOnBrand} />
-      </View>
-      <Text variant="h2">{value}</Text>
-      <Text variant="caption" color="textMuted">{label}</Text>
-    </Card>
-  );
-}
-
-function Row({
-  Icon,
-  tint,
-  label,
-  value,
-  last = false,
-}: {
-  Icon: LucideIcon;
-  tint: keyof typeof colors;
-  label: string;
-  value: string;
-  last?: boolean;
-}) {
-  return (
-    <View style={[styles.row, !last && styles.rowDivider]}>
-      <View style={[styles.rowGlyph, { backgroundColor: colors[tint] }]}>
-        <Icon size={16} color={colors.textOnBrand} />
-      </View>
-      <View style={styles.rowText}>
-        <Text variant="caption" color="textMuted">{label}</Text>
-        <Text variant="body" numberOfLines={1}>{value}</Text>
-      </View>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  scroll: {
-    padding: SCREEN_PADDING,
-    gap: spacing[5],
-    paddingBottom: TAB_BAR_CLEARANCE,
-  },
-  identity: { alignItems: "center", gap: spacing[2] },
-  stat: { flexDirection: "row", alignItems: "center", gap: spacing[1] },
-  adminBadge: { marginTop: spacing[1] },
-  statRow: { flexDirection: "row", gap: spacing[3] },
-  tile: { flex: 1, alignItems: "center" },
-  tileGlyph: {
-    width: 36,
-    height: 36,
-    borderRadius: radius.full,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: spacing[1],
-  },
-  group: { gap: spacing[2] },
-  groupTitle: { paddingHorizontal: spacing[1] },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[3],
-    padding: spacing[4],
-  },
-  rowDivider: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.divider,
-  },
-  rowGlyph: {
-    width: 32,
-    height: 32,
-    borderRadius: radius.full,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  rowText: { flex: 1 },
-  footer: { gap: spacing[1] },
-  actions: { gap: spacing[2] },
+  avatar: { marginTop: metrics.sheetPadTop },
+  name: { marginTop: 12 },
+  line: { marginTop: 6 },
 });

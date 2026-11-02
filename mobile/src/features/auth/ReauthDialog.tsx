@@ -64,7 +64,7 @@ function ReauthPrompt({ reauth }: { reauth: { code: string; message: string | nu
       onConfirm={submit}
       onCancel={logout}
     >
-      <Text variant="secondary">Your work on this screen is kept. Signed in as {username}.</Text>
+      <Text variant="meta">Your work on this screen is kept. Signed in as {username}.</Text>
       <Input
         label="Password"
         accessibilityLabel="Password"
