@@ -118,13 +118,25 @@ export default function FileViewer({ attachment, onClose }: FileViewerProps) {
     >
       <View style={styles.root}>
         <View style={[styles.bar, { paddingTop: insets.top + spacing[2] }]}>
-          <Pressable onPress={onClose} hitSlop={spacing[2]} style={styles.iconButton}>
+          <Pressable
+            onPress={onClose}
+            hitSlop={spacing[2]}
+            style={styles.iconButton}
+            accessibilityLabel="Close"
+            accessibilityRole="button"
+          >
             <X size={24} color={colors.text} />
           </Pressable>
           <Text variant="h3" numberOfLines={1} style={styles.title}>
             {attachment?.FileName ?? ""}
           </Text>
-          <Pressable onPress={share} hitSlop={spacing[2]} style={styles.iconButton}>
+          <Pressable
+            onPress={share}
+            hitSlop={spacing[2]}
+            style={styles.iconButton}
+            accessibilityLabel="Share"
+            accessibilityRole="button"
+          >
             <Share2 size={22} color={colors.text} />
           </Pressable>
         </View>
@@ -143,7 +155,12 @@ export default function FileViewer({ attachment, onClose }: FileViewerProps) {
           ) : null}
 
           {!loading && !failed && uri && kind === "image" ? (
-            <Image source={{ uri }} style={styles.image} resizeMode="contain" />
+            <Image
+              source={{ uri }}
+              style={styles.image}
+              resizeMode="contain"
+              accessibilityLabel={`Preview of ${attachment?.FileName ?? "file"}`}
+            />
           ) : null}
 
           {!loading && !failed && uri && kind === "pdf" && canRenderInApp ? (
