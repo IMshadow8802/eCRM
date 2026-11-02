@@ -140,7 +140,7 @@ describe("loading", () => {
   // TAT-06: My Work's "Needs you" rows land on the deadline, not the checklist.
   it("opens on the Deadline tab when asked to", async () => {
     await mount({ tab: "tat" });
-    expect(await screen.findByText("No deadline on you")).toBeOnTheScreen();
+    expect(await screen.findByText("No deadline on this task")).toBeOnTheScreen();
     expect(screen.queryByText("Order parts")).toBeNull();
   });
 

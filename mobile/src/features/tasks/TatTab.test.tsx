@@ -219,6 +219,7 @@ it("a missed deadline asks for a reason and sends it against the clock", async (
   await fireEvent.press(screen.getByText("Save reason"));
 
   await waitFor(() => expect(saveTatReason).toHaveBeenCalled());
+  // "Explain delay" names no clock: the reason falls back to the clock shown (never TatId 0).
   expect(jest.mocked(saveTatReason).mock.calls[0]![0]).toEqual({
     TaskId: TASK,
     TatId: 500,
@@ -374,7 +375,7 @@ describe("judging someone else's missed deadline", () => {
     expect(screen.getByText("Accept the delay")).toBeOnTheScreen();
     const save = () => screen.getByRole("button", { name: "Save decision" });
     expect(save()).toBeDisabled();
-    await fireEvent.changeText(screen.getByPlaceholderText("Remarks"), "Vendor strike");
+    await fireEvent.changeText(screen.getByPlaceholderText("Remarks (needed to accept)"), "Vendor strike");
     await fireEvent.press(save());
     await waitFor(() => expect(saveVerdict).toHaveBeenCalled());
     expect(jest.mocked(saveVerdict).mock.calls[0]![0]).toEqual({

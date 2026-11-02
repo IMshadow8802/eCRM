@@ -180,7 +180,7 @@ export function TatTab({
   const hold = clock && holdOf(clock);
   const openClocks = clocks.filter((c) => !c.ClosedAt).length;
 
-  const present = (f: Form, tatId: number) => {
+  const present = (f: Form, tatId: number | null = null) => {
     setForm(f);
     setTarget(tatId);
     setFormError(null);
@@ -216,7 +216,9 @@ export function TatTab({
     excused: {
       title: "Accept the delay",
       submitLabel: "Save decision",
-      fields: [{ key: "remarks", placeholder: "Remarks", label: "Remarks", multiline: true, required: true }],
+      fields: [
+        { key: "remarks", placeholder: "Remarks (needed to accept)", label: "Remarks", multiline: true, required: true },
+      ],
     },
     not_excused: {
       title: "Reject the delay",
@@ -238,7 +240,7 @@ export function TatTab({
                 onPress={() => quick.mutate(() => acknowledgeTat(taskId))} />
             ) : null}
             {open && !hold ? (
-              <Button title="Put on hold" variant="secondary" onPress={() => present("hold", clock.Id)} />
+              <Button title="Put on hold" variant="secondary" onPress={() => present("hold")} />
             ) : null}
             {open && hold?.Kind === "manual" && Number(hold.StartedBy) === Number(userId) ? (
               <Button title="Resume" variant="secondary" loading={quick.isPending}
@@ -249,7 +251,7 @@ export function TatTab({
                 onPress={() => quick.mutate(() => myPartDone(taskId))} />
             ) : null}
             {clock.BreachedAt && !clock.BreachReasonId && !clock.Verdict ? (
-              <Button title="Explain delay" variant="secondary" onPress={() => present("reason", clock.Id)} />
+              <Button title="Explain delay" variant="secondary" onPress={() => present("reason")} />
             ) : null}
           </View>
 
@@ -296,14 +298,17 @@ export function TatTab({
         error={formError}
         onSubmit={(v, c) => {
           const Remarks = v.remarks || null;
-          // present() or explainTatId always sets the target before the sheet opens.
-          const TatId = Number(target);
+          if (form === "hold") {
+            sheet.mutate(() => holdMine({ TaskId: taskId, ReasonId: Number(c.reasonId), Remarks }));
+            return;
+          }
+          // A reason with no named clock is for the one shown; a verdict always names its clock.
+          const TatId = verdict ? target : (target ?? clock?.Id ?? null);
+          if (TatId == null) return;
           sheet.mutate(() =>
             verdict
               ? saveVerdict({ TaskId: taskId, TatId, Verdict: form, Remarks })
-              : form === "hold"
-                ? holdMine({ TaskId: taskId, ReasonId: Number(c.reasonId), Remarks })
-                : saveTatReason({ TaskId: taskId, TatId, ReasonId: Number(c.reasonId), Remarks }),
+              : saveTatReason({ TaskId: taskId, TatId, ReasonId: Number(c.reasonId), Remarks }),
           );
         }}
       />
