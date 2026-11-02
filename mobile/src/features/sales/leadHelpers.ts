@@ -1,5 +1,5 @@
 import type { FetchFollowUpsParams } from "../../api/followupQueries";
-import type { FetchLeadsParams } from "../../api/leadQueries";
+import { fetchLeads, type FetchLeadsParams } from "../../api/leadQueries";
 import type { FollowUp, FollowUpType, Lead, Lookup } from "../../types/api";
 import { leadBadge, type BadgeSpec } from "../../theme/statusBadges";
 
@@ -69,6 +69,17 @@ export const leadQueueParams = (
   Overdue: queue === "overdue",
   Unassigned: queue === "unassigned",
   StatusId: queue === "new" ? newStatusId : status === "all" ? null : status,
+});
+
+/**
+ * A count (G13): one PageSize 1 request per preset or pill, cached by its params —
+ * Leads' presets and Home's team card read this, so a number equals the list it opens.
+ */
+export const leadCountQuery = (params: FetchLeadsParams | null, idle: string) => ({
+  // A not-yet-askable count is keyed by its name, so two of them are not one query.
+  queryKey: ["leads", "count", params ?? idle],
+  queryFn: () => fetchLeads({ ...params, PageSize: 1, PageNumber: 1 }),
+  enabled: params != null,
 });
 
 /** G3: one page this big is summed; a longer list has no open value. */

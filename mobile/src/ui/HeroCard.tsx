@@ -25,48 +25,60 @@ export interface HeroCardProps {
   stats?: HeroStat[];
   children?: ReactNode;
   size?: "phone" | "tablet";
+  /** `plain` = a surface card with ink figures (Home's "My team", §7.9), so the indigo hero stays mine. */
+  tone?: "hero" | "plain";
+  testID?: string;
 }
 
 /**
  * The indigo stat hero (E `.hero`, 04 / 27 / T1): a white circle icon, a
  * title, an "Open" link and up to four tappable figures.
  */
-export function HeroCard({ icon: Icon, title, subtitle, onOpen, right, stats, children, size = "phone" }: HeroCardProps) {
+export function HeroCard({
+  icon: Icon, title, subtitle, onOpen, right, stats, children, size = "phone", tone = "hero", testID,
+}: HeroCardProps) {
   const tablet = size === "tablet";
+  const plain = tone === "plain";
   return (
-    <View style={[styles.hero, tablet && styles.heroTablet]}>
+    <View testID={testID} style={[styles.hero, tablet && styles.heroTablet, plain && styles.plain]}>
       <View style={styles.head}>
-        <View style={styles.wc}>
+        <View style={[styles.wc, plain && styles.wcPlain]}>
           <Icon size={20} color={colors.primary} />
         </View>
         <View style={styles.flex}>
-          <Text variant={tablet ? "h2" : "cardTitle"} color="textOnBrand" numberOfLines={1}>{title}</Text>
-          {subtitle ? <Text variant="meta" color="onBrandMuted" numberOfLines={1}>{subtitle}</Text> : null}
+          <Text variant={tablet ? "h2" : "cardTitle"} color={plain ? "text" : "textOnBrand"} numberOfLines={1}>{title}</Text>
+          {subtitle ? <Text variant="meta" color={plain ? "textMuted" : "onBrandMuted"} numberOfLines={1}>{subtitle}</Text> : null}
         </View>
         {right ?? null}
         {onOpen && !right ? (
           <Pressable onPress={onOpen} hitSlop={12} accessibilityRole="link" accessibilityLabel={`Open ${title}`} style={styles.open}>
-            <Text variant="metaStrong" color="textOnBrand">Open</Text>
-            <ArrowRight size={16} color={colors.textOnBrand} />
+            <Text variant="metaStrong" color={plain ? "primary" : "textOnBrand"}>Open</Text>
+            <ArrowRight size={16} color={plain ? colors.primary : colors.textOnBrand} />
           </Pressable>
         ) : null}
       </View>
-      {stats?.length ? <StatGrid stats={stats} size={size} /> : null}
+      {stats?.length ? <StatGrid stats={stats} size={size} tone={tone} /> : null}
       {children}
     </View>
   );
 }
 
 /** Four equal figures on the hero: label 12/500, value 32 (tablet 40). */
-export function StatGrid({ stats, size = "phone" }: { stats: HeroStat[]; size?: "phone" | "tablet" }) {
+export function StatGrid({ stats, size = "phone", tone = "hero" }: { stats: HeroStat[]; size?: "phone" | "tablet"; tone?: "hero" | "plain" }) {
+  const plain = tone === "plain";
   return (
     <View style={[styles.grid, size === "tablet" && styles.gridTablet]}>
       {stats.map((s) => {
         const value = s.value == null ? "—" : String(s.value);
         const body = (
           <>
-            <Text variant="smallMedium" color="onBrandMuted" numberOfLines={1}>{s.label}</Text>
-            <Text variant={size === "tablet" ? "statLg" : "stat"} color={s.warn ? "onBrandWarn" : "textOnBrand"}>{value}</Text>
+            <Text variant="smallMedium" color={plain ? "textMuted" : "onBrandMuted"} numberOfLines={1}>{s.label}</Text>
+            <Text
+              variant={size === "tablet" ? "statLg" : "stat"}
+              color={plain ? (s.warn ? "danger" : "text") : s.warn ? "onBrandWarn" : "textOnBrand"}
+            >
+              {value}
+            </Text>
           </>
         );
         return s.onPress ? (
@@ -167,6 +179,7 @@ export function ModuleTile({ module, title, subtitle, value, unit, onPress, size
 
 const styles = StyleSheet.create({
   hero: { backgroundColor: colors.primary, borderRadius: radius.sheet, paddingTop: 14, paddingHorizontal: spacing[4], paddingBottom: spacing[3] },
+  plain: { backgroundColor: colors.surface },
   heroTablet: { paddingTop: 18, paddingHorizontal: spacing[5], paddingBottom: spacing[4] },
   head: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
   wc: {
@@ -177,6 +190,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  wcPlain: { backgroundColor: colors.primarySoft },
   wc36: { width: 36, height: 36, borderRadius: 18 },
   flex: { flex: 1, minWidth: 0 },
   open: { flexDirection: "row", alignItems: "center", gap: 4 },

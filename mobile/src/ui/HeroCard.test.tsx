@@ -11,6 +11,26 @@ import { Timeline } from "./Timeline";
 import { flat } from "../test/style";
 
 describe("HeroCard (E .hero)", () => {
+  it("plain tone (Home's team card, §7.9): surface card, ink figures, danger for warn", async () => {
+    await render(
+      <HeroCard
+        tone="plain"
+        icon={Headset}
+        title="My team"
+        subtitle="Across your reach"
+        onOpen={jest.fn()}
+        stats={[{ label: "Escalated", value: 30 }, { label: "Overdue", value: 43, warn: true }]}
+      />,
+    );
+    expect(flat(screen.getByText("My team").parent!.parent!.parent!)).toMatchObject({ backgroundColor: colors.surface, borderRadius: 20 });
+    expect(flat(screen.getByText("My team")).color).toBe(colors.text);
+    expect(flat(screen.getByText("Across your reach")).color).toBe(colors.textMuted);
+    expect(flat(screen.getByText("Escalated")).color).toBe(colors.textMuted);
+    expect(flat(screen.getByText("30")).color).toBe(colors.text);
+    expect(flat(screen.getByText("43")).color).toBe(colors.danger);
+    expect(flat(screen.getByText("Open")).color).toBe(colors.primary);
+  });
+
   it("indigo card, title, subtitle, Open link, four stats in order; overdue in warn; each stat opens", async () => {
     const onOpen = jest.fn();
     const onOverdue = jest.fn();

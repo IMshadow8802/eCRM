@@ -10,12 +10,11 @@ import useAuthStore from "../stores/useAuthStore";
 import type { RailItem } from "./tabs";
 
 /**
- * The Overdue complaints count. Same key as Home's current "Overdue" row
- * (complaintQueueParams("overdue", "active", …)), so the two share one
- * request; Phase 2's Home hero must read this factory to keep sharing it.
+ * MY overdue complaints (§7.9): assigned to me, active, past TAT. The bar badge
+ * and Home's hero both read this factory, so they share one request.
  */
 export const overdueTicketsCountQuery = (userId: number | null) => {
-  const params = complaintQueueParams("overdue", "active", userId, "");
+  const params = { ...complaintQueueParams("overdue", "active", userId, ""), AssignedTo: userId };
   return { queryKey: ["tickets", "count", params], queryFn: () => fetchTickets({ ...params, PageSize: 1 }) };
 };
 
@@ -27,7 +26,7 @@ export const overdueFollowUpsCountQuery = () => {
 
 /**
  * Badge counts for the bar and rail (spec §3.3): Tasks = "Needs you",
- * Complaints = Overdue, Follow-ups = overdue, Inbox = unread. Each query runs
+ * Complaints = my overdue, Follow-ups = overdue, Inbox = unread. Each query runs
  * only for a module the role can view. Tasks and Complaints share Home's
  * cache keys; Follow-ups and Inbox share the factories above / useUnreadCount.
  */

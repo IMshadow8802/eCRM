@@ -300,7 +300,7 @@ describe("the docked bar", () => {
     expect(screen.queryByTestId("indicator-Home")).toBeNull();
   });
 
-  it("badges come from Home's queries: needs-you tasks, overdue complaints", async () => {
+  it("badges come from Home's queries: needs-you tasks, MY overdue complaints (§7.9)", async () => {
     signInWith("tasks", "complaints", "leads");
     await mountApp();
     expect(await screen.findByText("2")).toBeOnTheScreen();
@@ -308,7 +308,10 @@ describe("the docked bar", () => {
     expect(badgeOf("Complaints")).toBe("3 new");
     expect(badgeOf("Leads")).toBeUndefined();
     expect(badgeOf("Today")).toBeUndefined();
-    expect(jest.mocked(fetchTickets)).toHaveBeenCalledWith(expect.objectContaining({ Overdue: true, PageSize: 1 }));
+    expect(jest.mocked(fetchTickets)).toHaveBeenCalledWith(
+      expect.objectContaining({ Overdue: true, AssignedTo: useAuthStore.getState().UserId, PageSize: 1 }),
+    );
+    expect(useAuthStore.getState().UserId).not.toBeNull();
   });
 
   it("leads-only: Follow-ups carries the overdue follow-ups badge", async () => {

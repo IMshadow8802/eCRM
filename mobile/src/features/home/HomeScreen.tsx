@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { useNavigation } from "@react-navigation/native";
 import type { StackNavigationProp } from "@react-navigation/stack";
-import { Bell, Clock, Hand, Headset, ListChecks, Lock, Plus, Search, Target, Timer } from "lucide-react-native";
+import { Bell, Clock, Hand, Headset, ListChecks, Lock, Plus, Search, Target, Timer, Users } from "lucide-react-native";
 
 import { fetchLookups, LOOKUP_KIND } from "../../api/configQueries";
 import { fetchFollowUps } from "../../api/followupQueries";
@@ -24,8 +24,8 @@ import {
 } from "../../ui";
 import { useAccess } from "../auth/useAccess";
 import { useUnreadCount } from "../notifications/useUnreadCount";
-import { followUpTypeLabel, followUpViewParams, leadQueueParams, rupees } from "../sales/leadHelpers";
-import { complaintQueueParams } from "../support/ticketHelpers";
+import { firstOpenStatus, followUpTypeLabel, followUpViewParams, leadCountQuery, leadQueueParams, rupees, type LeadQueue } from "../sales/leadHelpers";
+import { complaintCountQuery, complaintQueueParams, type ComplaintQueue } from "../support/ticketHelpers";
 import { greetingFor, longDate } from "../tasks/greeting";
 import { parseIst } from "../tasks/tatChip";
 import { doneThisWeek, dueBucket, MY_DAY_QUERY, myDoneQuery, myTasksQuery, needsYou, shortSpan } from "../tasks/taskHelpers";
@@ -80,8 +80,12 @@ export default function HomeScreen() {
   const unread = useUnreadCount();
 
   const canTasks = useAccess("tasks").view;
-  const canComplaints = useAccess("complaints").view;
-  const canLeads = useAccess("leads").view;
+  const complaintsAccess = useAccess("complaints");
+  const leadsAccess = useAccess("leads");
+  const canComplaints = complaintsAccess.view;
+  const canLeads = leadsAccess.view;
+  // §7.9: a team card only when the reach is wider than Own.
+  const wide = (r: string | null) => r != null && r !== "Own";
   // Without a user id a "mine" filter is null — the whole reach, not yours.
   const me = userId != null;
   const hero: "complaints" | "leads" | "tasks" | null = canComplaints ? "complaints" : canLeads ? "leads" : canTasks ? "tasks" : null;
@@ -100,7 +104,17 @@ export default function HomeScreen() {
     queryFn: () => fetchTickets(mineTicketParams),
     enabled: canComplaints && me,
   });
-  const ticketsOverdue = useQuery({ ...overdueTicketsCountQuery(userId), enabled: canComplaints });
+  // Mine and overdue: the bar badge's request.
+  const ticketsOverdue = useQuery({ ...overdueTicketsCountQuery(userId), enabled: canComplaints && me });
+  // §7.9 team card: each figure is its preset's own count query (ComplaintsScreen), so it equals the list it opens.
+  const teamComplaints = hero === "complaints" && me && wide(complaintsAccess.reach);
+  const TEAM_TICKET_QUEUES = ["team", "overdue", "escalated"] as const;
+  const ticketsTeam = useQueries({
+    queries: TEAM_TICKET_QUEUES.map((q) => ({
+      ...complaintCountQuery(complaintQueueParams(q, "active", userId, "")),
+      enabled: teamComplaints,
+    })),
+  });
   const resolvedParams = { AssignedTo: userId, ...resolvedWindow(), PageSize: 1 };
   // Until SQL 118 is applied the SP rejects the params: the figure stays "—" (§7.6).
   const ticketsResolved = useQuery({
@@ -124,19 +138,20 @@ export default function HomeScreen() {
     queryFn: () => fetchLeads(mineLeadParams),
     enabled: canLeads && me,
   });
-  const overdueLeadParams = { ...leadQueueParams("overdue", "all", userId ?? 0, ""), PageSize: 1 };
+  // Mine and overdue (§7.9).
+  const overdueLeadParams = { ...leadQueueParams("overdue", "all", userId ?? 0, ""), OwnerId: userId, PageSize: 1 };
   const leadsOverdue = useQuery({
     queryKey: ["leads", "count", overdueLeadParams],
     queryFn: () => fetchLeads(overdueLeadParams),
-    enabled: hero === "leads",
+    enabled: hero === "leads" && me,
   });
   const statuses = useQuery({
     queryKey: ["lookups", LOOKUP_KIND.leadStatus],
     queryFn: () => fetchLookups({ Kind: LOOKUP_KIND.leadStatus }),
     enabled: hero === "leads",
   });
-  // G1: "New" is the first open-coded status by SortOrder.
-  const newStatusId = statuses.data?.find((s) => s.Code === "open")?.Id;
+  // G1: "New" is the first open-coded status by SortOrder — the Leads screen's own rule.
+  const newStatusId = statuses.data ? (firstOpenStatus(statuses.data) ?? undefined) : undefined;
   const newParams = { OwnerId: userId, StatusId: newStatusId ?? null, PageSize: 1 };
   const leadsNew = useQuery({
     queryKey: ["leads", "count", newParams],
@@ -148,6 +163,16 @@ export default function HomeScreen() {
     queryKey: ["leads", "count", wonParams],
     queryFn: () => fetchLeads(wonParams),
     enabled: hero === "leads" && me,
+  });
+  // §7.9 team card: the Leads presets' own count queries (All · Overdue · New).
+  const teamLeads = hero === "leads" && me && wide(leadsAccess.reach);
+  const TEAM_LEAD_QUEUES = ["all", "overdue", "new"] as const;
+  const leadsTeam = useQueries({
+    queries: TEAM_LEAD_QUEUES.map((q) => {
+      const params = q === "new" && newStatusId == null ? null : leadQueueParams(q, "all", userId ?? 0, "", newStatusId ?? null);
+      const c = leadCountQuery(params, q);
+      return { ...c, enabled: c.enabled && teamLeads };
+    }),
   });
   const leadsPage = leadsMine.data?.data;
   // G3: open + qualified value over Mine, hidden past one 200-row page.
@@ -180,8 +205,8 @@ export default function HomeScreen() {
 
   // ------------------------------------------------------------ navigation
   const toTasks = () => navigation.navigate("Tabs", { screen: "Tasks", params: { filter: "mine" } });
-  const toComplaints = (queue: "mine" | "overdue") => navigation.navigate("Complaints", { queue });
-  const toLeads = (queue: "mine" | "overdue") => navigation.navigate("Leads", { queue });
+  const toComplaints = (queue: ComplaintQueue) => navigation.navigate("Complaints", { queue });
+  const toLeads = (queue: LeadQueue) => navigation.navigate("Leads", { queue });
   // A tab, or pushed when the bar has no room — the navigator that has the route answers.
   const toFollowUps = () => navigation.navigate("FollowUps", { view: "today" });
 
@@ -199,7 +224,8 @@ export default function HomeScreen() {
         size={tablet ? "tablet" : "phone"}
         stats={[
           { label: "Open", value: total(ticketsMine.data), onPress: () => toComplaints("mine") },
-          { label: "Overdue", value: overdue, warn: true, onPress: () => toComplaints("overdue") },
+          // Mine and overdue: no list shows exactly this set, so it is not tappable.
+          { label: "Overdue", value: overdue, warn: true },
           { label: "Escalated", value: escalated },
           { label: "Resolved", value: ticketsResolved.isError ? undefined : total(ticketsResolved.data) },
         ]}
@@ -216,7 +242,7 @@ export default function HomeScreen() {
         stats={[
           // All my leads, whatever the status: the same count as the tile ("yours").
           { label: "Yours", value: total(leadsMine.data), onPress: () => toLeads("mine") },
-          { label: "Overdue", value: total(leadsOverdue.data), warn: true, onPress: () => toLeads("overdue") },
+          { label: "Overdue", value: total(leadsOverdue.data), warn: true },
           { label: "New", value: total(leadsNew.data) },
           { label: "Won", value: total(leadsWon.data) },
         ]}
@@ -244,6 +270,42 @@ export default function HomeScreen() {
         onOpen={toTasks}
         size={tablet ? "tablet" : "phone"}
         stats={stats}
+      />
+    );
+  }
+
+  // ------------------------------------------------------------ team card (§7.9)
+  let teamCard: ReactNode = null;
+  if (teamComplaints) {
+    teamCard = (
+      <HeroCard
+        tone="plain"
+        testID="team-card"
+        icon={Users}
+        title="My team"
+        onOpen={() => toComplaints("team")}
+        size={tablet ? "tablet" : "phone"}
+        stats={[
+          { label: "Open", value: total(ticketsTeam[0]?.data), onPress: () => toComplaints("team") },
+          { label: "Overdue", value: total(ticketsTeam[1]?.data), warn: true, onPress: () => toComplaints("overdue") },
+          { label: "Escalated", value: total(ticketsTeam[2]?.data), onPress: () => toComplaints("escalated") },
+        ]}
+      />
+    );
+  } else if (teamLeads) {
+    teamCard = (
+      <HeroCard
+        tone="plain"
+        testID="team-card"
+        icon={Users}
+        title="My team"
+        onOpen={() => toLeads("all")}
+        size={tablet ? "tablet" : "phone"}
+        stats={[
+          { label: "All", value: total(leadsTeam[0]?.data), onPress: () => toLeads("all") },
+          { label: "Overdue", value: total(leadsTeam[1]?.data), warn: true, onPress: () => toLeads("overdue") },
+          { label: "New", value: total(leadsTeam[2]?.data), onPress: () => toLeads("new") },
+        ]}
       />
     );
   }
@@ -362,7 +424,7 @@ export default function HomeScreen() {
 
   // ------------------------------------------------------------ refresh
   const refreshable = [myTasks, myDone, myDay, ticketsMine, ticketsOverdue, ticketsResolved, leadsMine, leadsOverdue,
-    leadsNew, leadsWon, dueToday, fuOverdue, fuOverdueRows, inbox];
+    leadsNew, leadsWon, dueToday, fuOverdue, fuOverdueRows, inbox, ...ticketsTeam, ...leadsTeam];
   const refreshing = refreshable.some((q) => q.isRefetching && !q.isLoading);
   const refresh = () => {
     for (const q of refreshable) if (q.isFetched || q.isError) void q.refetch();
@@ -452,7 +514,7 @@ export default function HomeScreen() {
     body = (
       <View style={{ gap }}>
         <View style={[styles.row, { gap }]}>
-          <View style={styles.flex2}>{heroCard}</View>
+          <View style={[styles.flex2, { gap }]}>{heroCard}{teamCard}</View>
           {tiles[0] ? tileNode(tiles[0]) : <View style={styles.flex} />}
         </View>
         {rows(tiles.slice(1), 3)}
@@ -479,6 +541,7 @@ export default function HomeScreen() {
     body = (
       <View style={{ gap }}>
         {heroCard}
+        {teamCard}
         {rows(tiles, 2)}
         {needsBlock}
       </View>

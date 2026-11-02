@@ -158,8 +158,9 @@ describe("04 · complaints, tasks and leads", () => {
     signInWith("tasks", "complaints", "leads");
     await renderWithProviders(<HomeScreen />);
     expect(await screen.findByRole("button", { name: "Open 7" })).toBeOnTheScreen();
-    expect(await screen.findByRole("button", { name: "Overdue 2" })).toBeOnTheScreen();
-    expect(flat(within(screen.getByRole("button", { name: "Overdue 2" })).getByText("2")).color).toBe(colors.onBrandWarn);
+    // §7.9: mine and overdue — no list shows exactly that set, so it is not tappable.
+    await waitFor(() => expect(flat(screen.getByText("2")).color).toBe(colors.onBrandWarn));
+    expect(screen.queryByRole("button", { name: /^Overdue/ })).toBeNull();
     // G12: one of my active complaints carries EscalatedTo. G11: the 118 count.
     expect(await screen.findByText("Escalated")).toBeOnTheScreen();
     await waitFor(() => expect(screen.getByText("11")).toBeOnTheScreen());
@@ -173,12 +174,12 @@ describe("04 · complaints, tasks and leads", () => {
     await screen.findByText("Needs you");
     expect(fetchTasks).toHaveBeenCalledWith({ WorkspaceId: null, AssigneeUserId: ME, OnlyOpen: true, PageSize: 200 });
     expect(fetchTickets).toHaveBeenCalledWith({ ...complaintQueueParams("mine", "active", ME, ""), PageSize: 200 });
-    expect(fetchTickets).toHaveBeenCalledWith({ ...complaintQueueParams("overdue", "active", ME, ""), PageSize: 1 });
+    expect(fetchTickets).toHaveBeenCalledWith({ ...complaintQueueParams("overdue", "active", ME, ""), AssignedTo: ME, PageSize: 1 });
     expect(fetchTickets).toHaveBeenCalledWith({ AssignedTo: ME, ...resolvedWindow(NOW), PageSize: 1 });
     expect(fetchLeads).toHaveBeenCalledWith({ ...leadQueueParams("mine", "all", ME, ""), PageSize: 200 });
     expect(fetchFollowUps).toHaveBeenCalledWith({ ...followUpViewParams("today"), PageSize: 3 });
     expect(fetchFollowUps).toHaveBeenCalledWith({ ...followUpViewParams("overdue"), PageSize: 1 });
-    expect(overdueTicketsCountQuery(ME).queryKey).toEqual(["tickets", "count", complaintQueueParams("overdue", "active", ME, "")]);
+    expect(overdueTicketsCountQuery(ME).queryKey).toEqual(["tickets", "count", { ...complaintQueueParams("overdue", "active", ME, ""), AssignedTo: ME }]);
     expect(overdueFollowUpsCountQuery().queryKey).toEqual(["followups", "count", followUpViewParams("overdue")]);
   });
 
@@ -236,7 +237,6 @@ describe("04 · complaints, tasks and leads", () => {
     await screen.findByRole("button", { name: "Inbox, 63 unread" });
     for (const [name, ...target] of [
       ["Open 7", "Complaints", { queue: "mine" }],
-      ["Overdue 2", "Complaints", { queue: "overdue" }],
       ["Open My complaints", "Complaints", { queue: "mine" }],
       ["Tasks, 3 assigned to you", "Tabs", { screen: "Tasks", params: { filter: "mine" } }],
       ["Follow-ups, 4 due today", "FollowUps", { view: "today" }],
@@ -332,7 +332,8 @@ describe("27 · leads only", () => {
     expect(await screen.findByText("My leads")).toBeOnTheScreen();
     expect(await screen.findByText("₹14,30,000 open value")).toBeOnTheScreen();
     expect(await screen.findByRole("button", { name: "Yours 12" })).toBeOnTheScreen();
-    expect(await screen.findByRole("button", { name: "Overdue 3" })).toBeOnTheScreen();
+    expect(await screen.findByText("Overdue")).toBeOnTheScreen();
+    expect(screen.queryByRole("button", { name: /^Overdue/ })).toBeNull();
     expect(screen.getByText("New")).toBeOnTheScreen();
     expect(screen.getByText("Won")).toBeOnTheScreen();
     await waitFor(() => expect(screen.getAllByText("5").length).toBeGreaterThan(0));
@@ -347,8 +348,10 @@ describe("27 · leads only", () => {
     expect(within(group).getByText("3:00 pm")).toBeOnTheScreen();
     expect(within(group).getByText("Call · Khanna Packaging")).toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "New lead" })).toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "Overdue 3" }));
-    expect(mockNav.navigate).toHaveBeenLastCalledWith("Leads", { queue: "overdue" });
+    // §7.9: my overdue leads, asked server-side.
+    expect(fetchLeads).toHaveBeenCalledWith({ ...leadQueueParams("overdue", "all", ME, ""), OwnerId: ME, PageSize: 1 });
+    // Reach Own: no team card.
+    expect(screen.queryByText("My team")).toBeNull();
     await fireEvent.press(screen.getByRole("link", { name: "See all" }));
     expect(mockNav.navigate).toHaveBeenLastCalledWith("FollowUps", { view: "today" });
     expect(fetchTickets).not.toHaveBeenCalled();
@@ -429,5 +432,81 @@ describe("T1 · tablet", () => {
     signInWith("leads");
     await renderWithProviders(<HomeScreen />);
     expect(await screen.findByText("Nothing due today.")).toBeOnTheScreen();
+  });
+});
+
+describe("§7.9 · mine and team kept apart", () => {
+  const TEAM = { ...VIEW, reach: "Team" as const };
+  const signInTeam = (...modules: ModuleKey[]) =>
+    seedAuth({ UserId: ME, user: { FullName: "Ayush Mishra" }, access: { modules: Object.fromEntries(modules.map((m) => [m, TEAM])) } });
+
+  beforeEach(() => {
+    // Mine: 7 active, 2 of them overdue. Team (reach-wide): 30 active, 43 overdue, 4 escalated.
+    jest.mocked(fetchTickets).mockImplementation(async (p = {}) => {
+      if (isResolved(p)) return envelope({ tickets: [], pagination: pagination(11) });
+      if (p.Escalated) return envelope({ tickets: [], pagination: pagination(4) });
+      if (p.Overdue) return envelope({ tickets: [], pagination: pagination(p.AssignedTo === ME ? 2 : 43) });
+      if (p.AssignedTo === ME) return envelope({ tickets: [ticket({ Id: 1, EscalatedTo: 9 })], pagination: pagination(7) });
+      return envelope({ tickets: [], pagination: pagination(30) });
+    });
+  });
+
+  it("the complaints hero counts only mine; the team figures are a separate plain card under it", async () => {
+    signInTeam("complaints");
+    await renderWithProviders(<HomeScreen />);
+    expect(await screen.findByText("This week · 2 past their TAT")).toBeOnTheScreen();
+    expect(await screen.findByRole("button", { name: "Open 7" })).toBeOnTheScreen();
+    expect(await screen.findByText("My team")).toBeOnTheScreen();
+    const team = screen.getByTestId("team-card");
+    expect(await within(team).findByRole("button", { name: "Open 30" })).toBeOnTheScreen();
+    expect(await within(team).findByRole("button", { name: "Overdue 43" })).toBeOnTheScreen();
+    expect(await within(team).findByRole("button", { name: "Escalated 4" })).toBeOnTheScreen();
+    expect(flat(within(team).getByText("43")).color).toBe(colors.danger);
+    // Directly under the hero.
+    const all = screen.getAllByText(/./).map((n) => n.props.children);
+    expect(all.indexOf("My team")).toBe(all.indexOf("Resolved") + 2);
+  });
+
+  it("each team figure is its preset's own count query, so it equals the list it opens", async () => {
+    signInTeam("complaints");
+    await renderWithProviders(<HomeScreen />);
+    const team = await screen.findByTestId("team-card");
+    for (const [name, queue] of [["Open 30", "team"], ["Overdue 43", "overdue"], ["Escalated 4", "escalated"]] as const) {
+      await fireEvent.press(await within(team).findByRole("button", { name }));
+      expect(mockNav.navigate).toHaveBeenLastCalledWith("Complaints", { queue });
+      // The exact request ComplaintsScreen makes for that preset's count.
+      expect(fetchTickets).toHaveBeenCalledWith({ ...complaintQueueParams(queue, "active", ME, ""), PageSize: 1 });
+    }
+    await fireEvent.press(within(team).getByRole("link", { name: "Open My team" }));
+    expect(mockNav.navigate).toHaveBeenLastCalledWith("Complaints", { queue: "team" });
+  });
+
+  it("reach Own: no team card, and no team requests", async () => {
+    signInWith("complaints");
+    await renderWithProviders(<HomeScreen />);
+    await screen.findByRole("button", { name: "Open 7" });
+    expect(screen.queryByText("My team")).toBeNull();
+    expect(fetchTickets).not.toHaveBeenCalledWith(expect.objectContaining({ Escalated: true }));
+  });
+
+  it("leads: the hero is mine (Overdue = my overdue); a team card counts All · Overdue · New from the presets", async () => {
+    mockCreate.label = "Lead";
+    jest.mocked(fetchLeads).mockImplementation(async (p = {}) => {
+      if (p.PageSize !== 1) return envelope({ leads: [], pagination: pagination(12) });
+      if (p.Overdue) return envelope({ leads: [], pagination: pagination(p.OwnerId === ME ? 3 : 9) });
+      if (p.StatusId === 31 && p.OwnerId == null) return envelope({ leads: [], pagination: pagination(6) });
+      if (p.OwnerId == null && !p.StatusCode) return envelope({ leads: [], pagination: pagination(40) });
+      return envelope({ leads: [], pagination: pagination(1) });
+    });
+    signInTeam("leads");
+    await renderWithProviders(<HomeScreen />);
+    expect(await screen.findByText("My leads")).toBeOnTheScreen();
+    await waitFor(() => expect(flat(screen.getByText("3")).color).toBe(colors.onBrandWarn));
+    const team = await screen.findByTestId("team-card");
+    for (const [name, queue] of [["All 40", "all"], ["Overdue 9", "overdue"], ["New 6", "new"]] as const) {
+      await fireEvent.press(await within(team).findByRole("button", { name }));
+      expect(mockNav.navigate).toHaveBeenLastCalledWith("Leads", { queue });
+      expect(fetchLeads).toHaveBeenCalledWith({ ...leadQueueParams(queue, "all", ME, "", 31), PageSize: 1, PageNumber: 1 });
+    }
   });
 });

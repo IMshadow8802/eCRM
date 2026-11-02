@@ -4,7 +4,7 @@ import { keepPreviousData, useInfiniteQuery, useQueries, useQuery } from "@tanst
 import { Plus } from "lucide-react-native";
 import type { StackScreenProps } from "@react-navigation/stack";
 
-import { fetchLeads, type FetchLeadsParams } from "../../api/leadQueries";
+import { fetchLeads } from "../../api/leadQueries";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { useParamState } from "../../hooks/useParamState";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
@@ -30,6 +30,7 @@ import { LeadDetailBody } from "./LeadDetailBody";
 import {
   firstOpenStatus,
   LEAD_QUEUES,
+  leadCountQuery,
   leadQueueParams,
   leadStatusBadge,
   OPEN_VALUE_PAGE,
@@ -61,14 +62,6 @@ const EMPTY: Record<LeadQueue, { title: string; message: string }> = {
 
 /** The T3 pane's band is the record's; it publishes no action bar (the rail is up). */
 const inPane = () => ({ inBand: true });
-
-/** A count (G13): one PageSize 1 request per preset or pill, cached by its params. */
-const countQuery = (params: FetchLeadsParams | null, idle: string) => ({
-  // A not-yet-askable count is keyed by its name, so two of them are not one query.
-  queryKey: ["leads", "count", params ?? idle],
-  queryFn: () => fetchLeads({ ...params, PageSize: 1, PageNumber: 1 }),
-  enabled: params != null,
-});
 
 /**
  * Leads (E 14): presets in the band with counts — Mine · All · Overdue · New,
@@ -118,11 +111,11 @@ export default function LeadsScreen({ navigation, route }: Props) {
     placeholderData: keepPreviousData,
   });
 
-  const presetCounts = useQueries({ queries: LEAD_QUEUES.map((q) => countQuery(build(q.value, "all"), q.value)) });
-  const pillQueries: ReturnType<typeof countQuery>[] =
+  const presetCounts = useQueries({ queries: LEAD_QUEUES.map((q) => leadCountQuery(build(q.value, "all"), q.value)) });
+  const pillQueries: ReturnType<typeof leadCountQuery>[] =
     // While a search is set the pills go without counts: N requests per typed term
     // is a storm for little use. The presets' counts follow the (debounced) term.
-    queue === "new" || term ? [] : statuses.map((s) => countQuery(build(queue, s.Id), `status-${s.Id}`));
+    queue === "new" || term ? [] : statuses.map((s) => leadCountQuery(build(queue, s.Id), `status-${s.Id}`));
   const pillCounts = useQueries({ queries: pillQueries });
   const totalOf = (r: { data?: { data?: { pagination?: { totalRecords?: number } } | null } }) =>
     r.data?.data?.pagination?.totalRecords;
