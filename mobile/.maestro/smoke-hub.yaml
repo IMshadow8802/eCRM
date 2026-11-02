@@ -1,0 +1,9 @@
+appId: com.shadowider.eCRM
+---
+- runFlow: common/open-work.yaml
+- assertVisible: "Boards"
+- assertVisible: "Complaints"
+- assertVisible: "Leads"
+- assertVisible: "Follow-ups"
+- assertNotVisible: "Coming soon"
+- takeScreenshot: smoke-hub

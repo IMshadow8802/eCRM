@@ -1,0 +1,16 @@
+# Maestro E2E for the mobile app. Run from mobile/:
+#   maestro test .maestro            (every flow below, in this order)
+# Needs the app signed in to company TestCRM once by hand (flows never type a
+# password and never clear app state). Records they create start "MAESTRO ".
+flows:
+  - smoke-hub.yaml
+  - complaints-list.yaml
+  - complaints-create.yaml
+  - complaints-lifecycle.yaml
+  - leads-list.yaml
+  - leads-create.yaml
+  - leads-followup.yaml
+  - leads-status.yaml
+  - leads-edit.yaml
+  - leads-call-transfer.yaml
+  - followups-queue.yaml

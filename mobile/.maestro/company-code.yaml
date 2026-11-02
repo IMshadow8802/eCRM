@@ -1,0 +1,15 @@
+# Setup, not a test: dismisses the dev menu and picks company TestCRM.
+# The user then signs in by hand — flows never type a password.
+appId: com.shadowider.eCRM
+---
+- tapOn:
+    point: "91%,30%"
+    optional: true
+- runFlow:
+    when:
+      visible: "Which company?"
+    commands:
+      - tapOn: "e.g. PRD"
+      - inputText: "TestCRM"
+      - tapOn: "Continue"
+- takeScreenshot: company-code

@@ -1,0 +1,332 @@
+diff --git a/mobile/src/api/configQueries.ts b/mobile/src/api/configQueries.ts
+index 0ce7f3d..e1afb45 100644
+--- a/mobile/src/api/configQueries.ts
++++ b/mobile/src/api/configQueries.ts
+@@ -30,6 +30,7 @@ export const LOOKUP_KIND = {
+   resolution: "resolution",
+   callOutcome: "call_outcome",
+   transferReason: "transfer_reason",
++  leadStatus: "lead_status",
+   leadSource: "lead_source",
+   lostReason: "lost_reason",
+   taskHoldReason: "task_hold_reason",
+diff --git a/mobile/src/features/_sales/README.md b/mobile/src/features/_sales/README.md
+deleted file mode 100644
+index 28f6021..0000000
+--- a/mobile/src/features/_sales/README.md
++++ /dev/null
+@@ -1 +0,0 @@
+-Phase C — Sales leads. Intentionally empty. See _support/README.md.
+diff --git a/mobile/src/features/_support/README.md b/mobile/src/features/_support/README.md
+deleted file mode 100644
+index 1fc2b69..0000000
+--- a/mobile/src/features/_support/README.md
++++ /dev/null
+@@ -1,5 +0,0 @@
+-Phase B — Support / complaints. Intentionally empty.
+-
+-Kept as a placeholder so adding the complaints module is a new folder plus a
+-new tab, never a restructure of the feature tree. See
+-docs/superpowers/specs/2026-08-02-mobile-task-app-rewrite-design.md §2.2.
+diff --git a/mobile/src/features/hub/ComingSoonScreen.tsx b/mobile/src/features/hub/ComingSoonScreen.tsx
+deleted file mode 100644
+index dcfa979..0000000
+--- a/mobile/src/features/hub/ComingSoonScreen.tsx
++++ /dev/null
+@@ -1,59 +0,0 @@
+-import { StyleSheet, View } from "react-native";
+-import { Construction } from "lucide-react-native";
+-import type { StackScreenProps } from "@react-navigation/stack";
+-
+-import type { RootStackParamList } from "../../navigation/RootNavigator";
+-import { colors, radius, spacing } from "../../theme";
+-import { Screen, ScreenHeader, Text } from "../../ui";
+-
+-type Props = StackScreenProps<RootStackParamList, "ComingSoon">;
+-
+-/**
+- * Placeholder for a module the hub already lists but that is not built yet.
+- *
+- * Listing it early is deliberate: it shows where the app is going, and it lets
+- * the navigation be shaped now — while the module is cheap to move — rather
+- * than after two more are bolted on.
+- */
+-export default function ComingSoonScreen({ route, navigation }: Props) {
+-  const { title, blurb } = route.params;
+-
+-  return (
+-    <Screen>
+-      <ScreenHeader title={title} onBack={navigation.goBack} />
+-      <View style={styles.body}>
+-        <View style={styles.glyph}>
+-          <Construction size={30} color={colors.primary} />
+-        </View>
+-        <Text variant="h2" align="center">
+-          {title} is on the way
+-        </Text>
+-        <Text variant="secondary" align="center">
+-          {blurb}
+-        </Text>
+-        <Text variant="caption" color="textMuted" align="center">
+-          Available on the web today.
+-        </Text>
+-      </View>
+-    </Screen>
+-  );
+-}
+-
+-const styles = StyleSheet.create({
+-  body: {
+-    flex: 1,
+-    alignItems: "center",
+-    justifyContent: "center",
+-    gap: spacing[3],
+-    padding: spacing[8],
+-  },
+-  glyph: {
+-    width: 72,
+-    height: 72,
+-    borderRadius: radius.full,
+-    backgroundColor: colors.surfaceSunken,
+-    alignItems: "center",
+-    justifyContent: "center",
+-    marginBottom: spacing[2],
+-  },
+-});
+diff --git a/mobile/src/features/hub/WorkHubScreen.tsx b/mobile/src/features/hub/WorkHubScreen.tsx
+index c863a02..12453e8 100644
+--- a/mobile/src/features/hub/WorkHubScreen.tsx
++++ b/mobile/src/features/hub/WorkHubScreen.tsx
+@@ -2,6 +2,7 @@ import { useMemo } from "react";
+ import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+ import { useQuery } from "@tanstack/react-query";
+ import {
++  CalendarClock,
+   ChevronRight,
+   Headset,
+   LayoutDashboard,
+@@ -13,7 +14,10 @@ import { useNavigation } from "@react-navigation/native";
+ import { useSafeAreaInsets } from "react-native-safe-area-context";
+ import type { StackNavigationProp } from "@react-navigation/stack";
+ 
++import { fetchFollowUps } from "../../api/followupQueries";
++import { fetchLeads } from "../../api/leadQueries";
+ import { fetchTickets } from "../../api/ticketQueries";
++import { followUpViewParams } from "../sales/leadHelpers";
+ import { fetchWorkspaces } from "../../api/workspaceQueries";
+ import type { RootStackParamList } from "../../navigation/RootNavigator";
+ import useAuthStore from "../../stores/useAuthStore";
+@@ -82,6 +86,20 @@ export default function WorkHubScreen() {
+   });
+   const openComplaints = activeTickets?.data?.pagination.totalRecords ?? 0;
+ 
++  // Counts only (PageSize 1, read the total), each under its own key so they
++  // never share parameters with the list screens.
++  const userId = useAuthStore((s) => s.UserId);
++  const { data: myLeads } = useQuery({
++    queryKey: ["leads", "mine-count", userId],
++    queryFn: () => fetchLeads({ OwnerId: userId, PageSize: 1 }),
++  });
++  const leadCount = myLeads?.data?.pagination.totalRecords ?? 0;
++  const { data: dueToday } = useQuery({
++    queryKey: ["followups", "today-count"],
++    queryFn: () => fetchFollowUps({ ...followUpViewParams("today"), PageSize: 1 }),
++  });
++  const dueCount = dueToday?.data?.pagination.totalRecords ?? 0;
++
+   const boardCount = (workspaces ?? []).filter(
+     (w) => w.MyInviteStatus !== "pending" && !w.IsArchived,
+   ).length;
+@@ -129,15 +147,20 @@ export default function WorkHubScreen() {
+           Icon: TrendingUp,
+           tint: "success",
+           label: "Leads",
+-          detail: "Pipeline, calls and follow-ups",
++          detail: leadCount ? `${leadCount} yours` : "Your leads, calls and status",
+           routes: ["/sales", "/sales/leads", "/sales/pipeline"],
+-          ready: false,
+-          go: (nav) =>
+-            nav.navigate("ComingSoon", {
+-              title: "Leads",
+-              blurb:
+-                "Your leads, log a call the moment it ends, and follow-ups due today.",
+-            }),
++          ready: true,
++          go: (nav) => nav.navigate("Leads"),
++        },
++        {
++          key: "followups",
++          Icon: CalendarClock,
++          tint: "warning",
++          label: "Follow-ups",
++          detail: dueCount ? `${dueCount} due today` : "Nothing due today",
++          routes: ["/sales", "/sales/leads", "/sales/followups"],
++          ready: true,
++          go: (nav) => nav.navigate("FollowUps"),
+         },
+       ],
+     },
+diff --git a/mobile/src/navigation/RootNavigator.tsx b/mobile/src/navigation/RootNavigator.tsx
+index caf8e45..480dafb 100644
+--- a/mobile/src/navigation/RootNavigator.tsx
++++ b/mobile/src/navigation/RootNavigator.tsx
+@@ -13,8 +13,11 @@ import TaskFormScreen from "../features/tasks/TaskFormScreen";
+ import ComplaintsScreen from "../features/support/ComplaintsScreen";
+ import ComplaintDetailScreen from "../features/support/ComplaintDetailScreen";
+ import ComplaintFormScreen from "../features/support/ComplaintFormScreen";
++import LeadsScreen from "../features/sales/LeadsScreen";
++import LeadDetailScreen from "../features/sales/LeadDetailScreen";
++import LeadFormScreen from "../features/sales/LeadFormScreen";
++import FollowUpsScreen from "../features/sales/FollowUpsScreen";
+ import WorkHubScreen from "../features/hub/WorkHubScreen";
+-import ComingSoonScreen from "../features/hub/ComingSoonScreen";
+ import NotificationsScreen from "../features/notifications/NotificationsScreen";
+ import MeScreen from "../features/profile/MeScreen";
+ import TaskDetailScreen from "../features/tasks/TaskDetailScreen";
+@@ -43,7 +46,12 @@ export type RootStackParamList = {
+   ComplaintDetail: { ticketId: number };
+   /** Omit `ticketId` to log a new one. */
+   ComplaintForm: { ticketId?: number };
+-  ComingSoon: { title: string; blurb: string };
++  /** Sales — Phase C. */
++  Leads: undefined;
++  LeadDetail: { leadId: number };
++  /** Omit `leadId` to add a new one. */
++  LeadForm: { leadId?: number };
++  FollowUps: undefined;
+ };
+ 
+ export type TabParamList = {
+@@ -122,7 +130,10 @@ export default function RootNavigator() {
+               component={ComplaintDetailScreen}
+             />
+             <Stack.Screen name="ComplaintForm" component={ComplaintFormScreen} />
+-            <Stack.Screen name="ComingSoon" component={ComingSoonScreen} />
++            <Stack.Screen name="Leads" component={LeadsScreen} />
++            <Stack.Screen name="LeadDetail" component={LeadDetailScreen} />
++            <Stack.Screen name="LeadForm" component={LeadFormScreen} />
++            <Stack.Screen name="FollowUps" component={FollowUpsScreen} />
+           </>
+         ) : (
+           <Stack.Screen name="Login" component={LoginScreen} />
+diff --git a/mobile/src/types/api.ts b/mobile/src/types/api.ts
+index e83b5f5..542af0c 100644
+--- a/mobile/src/types/api.ts
++++ b/mobile/src/types/api.ts
+@@ -596,6 +596,116 @@ export interface TicketDetail {
+   linkedLead: LinkedLead | null;
+ }
+ 
++// ------------------------------------------------------------------- lead
++
++/**
++ * tblLookup Kind='lead_status' codes. Active = open | qualified. `converted`
++ * (Won) is written only by sp_ConvertLead; sp_SetLeadStatus refuses it.
++ */
++export type LeadStatusCode = "open" | "qualified" | "converted" | "lost" | "junk";
++
++/** A row of sp_FetchLeads (and RS1 of sp_FetchLeadDetail) — names joined. */
++export interface Lead {
++  Id: number;
++  BranchId: number | null;
++  BranchName: string | null;
++  Name: string;
++  Company: string | null;
++  MobileNo: string | null;
++  AltMobile: string | null;
++  Email: string | null;
++  Address: string | null;
++  City: string | null;
++  State: string | null;
++  Pincode: string | null;
++  SourceId: number | null;
++  SourceName: string | null;
++  PartnerId: number | null;
++  PartnerName: string | null;
++  ProductId: number | null;
++  ProductName: string | null;
++  StatusId: number;
++  StatusName: string | null;
++  StatusCode: string | null;
++  OwnerId: number | null;
++  OwnerName: string | null;
++  OwnerAvatar: string | null;
++  EstValue: number | null;
++  Remarks: string | null;
++  NextFollowupDate: string | null;
++  /** Computed by the SP: next follow-up before today on an active lead. */
++  IsOverdue: boolean;
++  LostReasonId: number | null;
++  /** Detail only. */
++  LostReason?: string | null;
++  WonAt: string | null;
++  WonValue: number | null;
++  CustomerId: number | null;
++  /** Detail only. */
++  CustomerName?: string | null;
++  LostAt: string | null;
++  AssignedAt: string | null;
++  CreatedBy: number | null;
++  CreatedAt: string;
++  UpdatedAt: string | null;
++}
++
++/** A row of tblLeadActivity (sp_FetchLeadDetail RS3), author joined. */
++export interface LeadActivityEntry {
++  Id: number;
++  LeadId: number;
++  UserId: number | null;
++  UserName: string | null;
++  Type: string;
++  Summary: string | null;
++  CreatedAt: string;
++}
++
++/** A row of tblLeadAssignment (RS5) — same shape as a ticket transfer. */
++export type LeadAssignment = TicketAssignment;
++
++export type FollowUpType = "call" | "visit" | "meeting" | "other";
++export type FollowUpStatus = "open" | "done" | "skipped";
++
++/**
++ * A row of tblFollowUp. The queue (sp_FetchFollowUps without a LeadId) adds
++ * the lead's name, company, mobile and status; the per-lead list does not.
++ */
++export interface FollowUp {
++  Id: number;
++  LeadId: number;
++  Type: FollowUpType;
++  DueAt: string;
++  Status: FollowUpStatus;
++  AssignedTo: number | null;
++  AssignedToName: string | null;
++  DoneAt: string | null;
++  DoneBy: number | null;
++  DoneByName: string | null;
++  OutcomeId: number | null;
++  Outcome: string | null;
++  Remarks: string | null;
++  Direction: "in" | "out" | null;
++  Duration: number | null;
++  /** Computed by the SP: open and due before today. */
++  IsOverdue: boolean;
++  CreatedAt: string;
++  LeadName?: string | null;
++  LeadCompany?: string | null;
++  LeadMobile?: string | null;
++  LeadStatus?: string | null;
++  LeadStatusCode?: string | null;
++}
++
++/** sp_FetchLeadDetail's result sets, named by the controller. */
++export interface LeadDetail {
++  lead: Lead | null;
++  fields: CustomFieldValue[];
++  activity: LeadActivityEntry[];
++  followups: FollowUp[];
++  assignments: LeadAssignment[];
++}
++
+ /** A row of sp_FetchCustomers RS1 — tblCustomer plus branch name and counts. */
+ export interface Customer {
+   Id: number;

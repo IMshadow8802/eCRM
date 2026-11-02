@@ -1,0 +1,19 @@
+appId: com.shadowider.eCRM
+---
+- runFlow: common/open-work.yaml
+- tapOn: "Complaints"
+- assertVisible: "Log and track|\\d+ assigned to you"
+- tapOn: "Team"
+- assertVisible: ".*in your team"
+- tapOn: "Overdue"
+- assertVisible: ".*overdue"
+- tapOn: "Escalated"
+- assertVisible: ".*escalated"
+- tapOn: "Mine"
+- tapOn: "Ticket no., subject, customer or mobile"
+- inputText: "zzzz-no-match"
+- assertVisible: "Nothing matches"
+- eraseText: 20
+- hideKeyboard
+- takeScreenshot: complaints-list
+- back

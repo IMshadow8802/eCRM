@@ -1,0 +1,8 @@
+appId: com.shadowider.eCRM
+---
+- launchApp:
+    stopApp: false
+- tapOn:
+    text: "Work"
+    index: 0
+- assertVisible: "Everything you have access to"
