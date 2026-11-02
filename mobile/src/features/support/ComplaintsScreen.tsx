@@ -1,6 +1,6 @@
 import { useCallback, useDeferredValue, useMemo, useState } from "react";
 import { FlatList, StyleSheet, View } from "react-native";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { CloudOff, Headset, Plus, Search } from "lucide-react-native";
 import type { StackScreenProps } from "@react-navigation/stack";
 
@@ -82,6 +82,9 @@ type StatusFilter = "active" | number;
  * A status chip other than "Active" replaces StatusCode with StatusId: sending
  * both would AND them, and "Resolved" within "active" is the empty set.
  */
+/** Rows per page. The controller caps PageSize at 200 (controllerKit.js). */
+const PAGE_SIZE = 50;
+
 function queueParams(
   queue: Queue,
   status: StatusFilter,
@@ -89,7 +92,7 @@ function queueParams(
   term: string,
 ): FetchTicketsParams {
   return {
-    PageSize: 200,
+    PageSize: PAGE_SIZE,
     SearchTerm: term || null,
     AssignedTo: queue === "mine" ? userId : null,
     StatusCode: status === "active" ? "active" : null,
@@ -126,9 +129,12 @@ export default function ComplaintsScreen({ navigation }: Props) {
     [queue, status, userId, term],
   );
 
-  const ticketsQuery = useQuery({
+  const ticketsQuery = useInfiniteQuery({
     queryKey: ["tickets", params],
-    queryFn: () => fetchTickets(params),
+    queryFn: ({ pageParam }) => fetchTickets({ ...params, PageNumber: pageParam }),
+    initialPageParam: 1,
+    getNextPageParam: (last, _all, page) =>
+      page < (last.data?.pagination.totalPages ?? 1) ? page + 1 : undefined,
   });
 
   // Only the status list is needed here — every name on a card is on the row.
@@ -142,8 +148,15 @@ export default function ComplaintsScreen({ navigation }: Props) {
     [statuses],
   );
 
-  const tickets = ticketsQuery.data?.data?.tickets ?? [];
-  const total = ticketsQuery.data?.data?.pagination.totalRecords ?? tickets.length;
+  const tickets = useMemo(
+    () => ticketsQuery.data?.pages.flatMap((p) => p.data?.tickets ?? []) ?? [],
+    [ticketsQuery.data],
+  );
+  const total = ticketsQuery.data?.pages[0]?.data?.pagination.totalRecords ?? tickets.length;
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = ticketsQuery;
+  const loadMore = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
   const narrowed = status !== "active" || term.length > 0;
 
   const openTicket = useCallback(
@@ -180,7 +193,10 @@ export default function ComplaintsScreen({ navigation }: Props) {
       </View>
 
       <FlatList
+        testID="complaints-list"
         data={tickets}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.5}
         keyExtractor={(ticket) => String(ticket.Id)}
         contentContainerStyle={[styles.list, !tickets.length && styles.listEmpty]}
         showsVerticalScrollIndicator={false}

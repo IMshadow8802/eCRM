@@ -740,6 +740,26 @@ export interface Customer {
   UpdatedAt: string | null;
 }
 
+/** sp_FetchCustomerDetail RS2 row — the columns the customer's history shows. */
+export type CustomerTicket = Pick<
+  Ticket,
+  | "Id" | "TicketNo" | "Subject" | "StatusName" | "StatusCode" | "PriorityName"
+  | "DueAt" | "IsOverdue" | "AssigneeName" | "CreatedAt"
+>;
+
+/** /api/customers/fetchCustomerDetail — RS1 the customer, RS2 their complaints. */
+export interface CustomerDetail {
+  customer: Customer;
+  tickets: CustomerTicket[];
+}
+
+/** A row of sp_FetchBranches (the fields the office pick-list reads). */
+export interface Branch {
+  Id: number;
+  BranchName: string;
+  IsActive?: boolean;
+}
+
 /** sp_FetchEscalationTargets — the chain of command above a user, nearest first. */
 export interface EscalationTarget {
   Id: number;

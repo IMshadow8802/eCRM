@@ -1,17 +1,23 @@
 import { useDeferredValue, useMemo, useState } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, Lock, Search, UserPlus } from "lucide-react-native";
+import { Building2, Lock, Paperclip, Search, UserPlus, X } from "lucide-react-native";
+import * as DocumentPicker from "expo-document-picker";
 import type {
   StackNavigationProp,
   StackScreenProps,
 } from "@react-navigation/stack";
 
+import { uploadAttachment, type PickedFile } from "../../api/attachmentQueries";
 import { fetchCustomFields } from "../../api/configQueries";
 import { fetchCustomers, saveCustomer } from "../../api/customerQueries";
 import { fetchProducts } from "../../api/productQueries";
 import { fetchTicketDetail, saveTicket } from "../../api/ticketQueries";
+import { fetchBranches } from "../../api/userQueries";
 import { apiErrorMessage } from "../../api/errors";
+import { useAccess } from "../auth/useAccess";
+import { MAX_UPLOAD_BYTES } from "../attachments/attachmentHelpers";
+import useAuthStore from "../../stores/useAuthStore";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import type {
   Customer,
@@ -32,6 +38,7 @@ import {
   ScreenLoader,
   Select,
   Text,
+  useToast,
 } from "../../ui";
 import {
   asOptions,
@@ -60,6 +67,9 @@ type PickedCustomer = Pick<
 
 /** A mobile number as typed: digits, a leading +, and the separators people use. */
 const LOOKS_LIKE_A_NUMBER = /^[0-9+\s-]+$/;
+
+/** Reaches that span more than one office — only they get an office choice (web: useAccess.wide). */
+const WIDE_REACH = new Set(["Office", "OfficeTree", "Company"]);
 
 /** The web's check (CustomerFormModal): something@something.tld, no spaces. */
 const LOOKS_LIKE_AN_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -123,6 +133,7 @@ interface ComplaintFormProps {
 
 function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const editing = ticket != null;
 
   // --- the customer -------------------------------------------------------
@@ -152,6 +163,31 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
     Address: "",
     City: "",
   });
+
+  // A new customer's office. Only a reach wider than one office gets a choice
+  // (web: CustomerFormModal); everyone else sends null and the server files
+  // the customer under the caller's home office.
+  const customersAccess = useAccess("customers");
+  const wideCustomers = WIDE_REACH.has(customersAccess.reach ?? "");
+  const homeOffice = useAuthStore((s) => s.BranchId);
+  const [office, setOffice] = useState<number | null>(homeOffice);
+  const { data: branchRows } = useQuery({
+    queryKey: ["branches"],
+    queryFn: fetchBranches,
+    enabled: wideCustomers && creatingCustomer,
+  });
+  const officeOptions = useMemo(
+    () =>
+      (branchRows ?? [])
+        .filter((b) => b.IsActive !== false)
+        .map((b) => ({ value: b.Id, label: b.BranchName })),
+    [branchRows],
+  );
+  const showOffice = wideCustomers && officeOptions.length > 1;
+
+  // Files picked before the complaint exists. They upload after the save,
+  // against the returned Id — create only; on edit the record has a Files tab.
+  const [files, setFiles] = useState<PickedFile[]>([]);
 
   // --- the complaint ------------------------------------------------------
   const [subject, setSubject] = useState(ticket?.Subject ?? "");
@@ -301,13 +337,32 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
 
   const createCustomer = useMutation({ mutationFn: saveCustomer });
 
+  /**
+   * One at a time, after the complaint is saved. A failure never undoes the
+   * complaint: it is already a real record, so the agent is told how many to
+   * add from it (web: TicketCreateModal).
+   */
+  const uploadStaged = async (ticketId: number) => {
+    let failed = 0;
+    for (const file of files) {
+      try {
+        await uploadAttachment({ Entity: "ticket", EntityId: ticketId, file });
+      } catch {
+        failed += 1;
+      }
+    }
+    if (failed) toast.error(`${failed} file(s) failed to upload — add them from the complaint`);
+  };
+
   const save = useMutation({
     mutationFn: saveTicket,
-    onSuccess: (response) => {
+    onSuccess: async (response) => {
       if (!response.success) {
         setError(response.message || "Could not save this complaint.");
         return;
       }
+      const newId = response.data?.Id;
+      if (!ticket && newId && files.length) await uploadStaged(newId);
       queryClient.invalidateQueries({ queryKey: ["tickets"] });
       if (ticket) queryClient.invalidateQueries({ queryKey: ["ticket", ticket.Id] });
       navigation.goBack();
@@ -339,7 +394,10 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
       City: newCustomer.City.trim() || null,
     };
     try {
-      const response = await createCustomer.mutateAsync(fields);
+      const response = await createCustomer.mutateAsync({
+        ...fields,
+        BranchId: showOffice ? office : null,
+      });
       const id = response.data?.Id;
       if (!response.success || !id) {
         setError(response.message || "Could not save that customer.");
@@ -353,6 +411,22 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
       setError(apiErrorMessage(err, "Could not save that customer."));
       return null;
     }
+  };
+
+  const pickFiles = async () => {
+    const picked = await DocumentPicker.getDocumentAsync({
+      // Copy into the app's cache: the original may live behind a provider URI
+      // that the upload cannot read.
+      copyToCacheDirectory: true,
+      multiple: true,
+    });
+    if (picked.canceled || !picked.assets) return;
+    const tooBig = picked.assets.find((a) => (a.size ?? 0) > MAX_UPLOAD_BYTES);
+    if (tooBig) setError(`"${tooBig.name}" is larger than the 200MB limit.`);
+    const ok = picked.assets
+      .filter((a) => (a.size ?? 0) <= MAX_UPLOAD_BYTES)
+      .map((a) => ({ uri: a.uri, name: a.name, type: a.mimeType ?? "application/octet-stream" }));
+    setFiles((prev) => [...prev, ...ok]);
   };
 
   const submit = async () => {
@@ -497,6 +571,16 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
                 onChangeText={(v) => setNewField("City", v)}
                 placeholder="Town or city"
               />
+              {showOffice ? (
+                <Select
+                  label="Office"
+                  value={office}
+                  options={officeOptions}
+                  onChange={(v) => setOffice(v as number)}
+                  placeholder="Your office"
+                  sheetTitle="Which office is the customer with?"
+                />
+              ) : null}
               <Button
                 title="Search instead"
                 variant="ghost"
@@ -528,6 +612,7 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
                     {[
                       row.Mobile,
                       row.City,
+                      row.BranchName,
                       row.OpenTickets ? `${row.OpenTickets} open` : null,
                     ]
                       .filter(Boolean)
@@ -652,6 +737,38 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
           />
         </View>
 
+        {editing ? null : (
+          <View style={styles.block}>
+            <Text variant="overline" color="textMuted">
+              Files
+            </Text>
+            {files.map((f, i) => (
+              <View key={`${f.uri}-${i}`} style={styles.fileRow}>
+                <Paperclip size={16} color={colors.textMuted} />
+                <Text variant="body" numberOfLines={1} style={styles.fileName}>
+                  {f.name}
+                </Text>
+                <Pressable
+                  hitSlop={spacing[2]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${f.name}`}
+                  onPress={() => setFiles((prev) => prev.filter((_, j) => j !== i))}
+                >
+                  <X size={16} color={colors.textMuted} />
+                </Pressable>
+              </View>
+            ))}
+            <Button
+              title="Attach files"
+              variant="ghost"
+              size="sm"
+              icon={Paperclip}
+              onPress={() => void pickFiles()}
+              style={styles.link}
+            />
+          </View>
+        )}
+
         {fieldDefs.length ? (
           <View style={styles.block}>
             <Text variant="overline" color="textMuted">
@@ -710,4 +827,6 @@ const styles = StyleSheet.create({
   // reads as a second primary action. These are links.
   link: { alignSelf: "flex-start" },
   actions: { paddingTop: spacing[2] },
+  fileRow: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
+  fileName: { flex: 1 },
 });

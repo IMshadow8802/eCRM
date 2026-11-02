@@ -12,6 +12,9 @@ jest.mock("../../api/ticketQueries");
 jest.mock("../../api/configQueries");
 jest.mock("../../api/userQueries");
 
+// FlatList schedules its batches on timers; real ones leak past the test.
+jest.useFakeTimers();
+
 const row = ticket();
 
 const ticketsReply = (tickets: Ticket[]) => envelope({ tickets, pagination: pagination(tickets.length) });
@@ -73,4 +76,33 @@ it("the FAB opens a blank complaint form", async () => {
   await screen.findByText("Inverter keeps tripping");
   await fireEvent.press(screen.getByLabelText("Log a complaint"));
   expect(navigation.navigate).toHaveBeenCalledWith("ComplaintForm", {});
+});
+
+describe("paging (CMP-05)", () => {
+  const many = (from: number, n: number) =>
+    Array.from({ length: n }, (_, i) => ticket({ Id: from + i, Subject: `Complaint ${from + i}` }));
+
+  it("asks for 50 at a time and loads the next page at the end of the list", async () => {
+    jest.mocked(fetchTickets)
+      .mockResolvedValueOnce(envelope({ tickets: many(1, 50), pagination: pagination(120, { totalPages: 3 }) }))
+      .mockResolvedValueOnce(envelope({ tickets: many(51, 50), pagination: pagination(120, { currentPage: 2, totalPages: 3 }) }));
+    await mount();
+    await screen.findByText("Complaint 1");
+    // The header is the server's total, not the rows on screen.
+    expect(screen.getByText("120 assigned to you")).toBeOnTheScreen();
+    expect(fetchTickets).toHaveBeenLastCalledWith(expect.objectContaining({ PageNumber: 1, PageSize: 50 }));
+
+    await fireEvent(screen.getByTestId("complaints-list"), "onEndReached");
+    await waitFor(() =>
+      expect(fetchTickets).toHaveBeenLastCalledWith(expect.objectContaining({ PageNumber: 2, PageSize: 50 })),
+    );
+  });
+
+  it("does not ask past the last page", async () => {
+    jest.mocked(fetchTickets).mockResolvedValue(envelope({ tickets: many(1, 3), pagination: pagination(3) }));
+    await mount();
+    await screen.findByText("Complaint 1");
+    await fireEvent(screen.getByTestId("complaints-list"), "onEndReached");
+    expect(fetchTickets).toHaveBeenCalledTimes(1);
+  });
 });

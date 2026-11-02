@@ -3,14 +3,18 @@
 // backend/src/controllers/customerController.js.
 //
 // Mobile has no Customers screen — the complaint form embeds a search-or-create
-// picker, so only the two calls it needs live here. Customer detail and delete
-// are desk work and stay on the web.
+// picker and the complaint detail lists a customer's history, so only those
+// calls live here. Editing and deleting a customer are desk work on the web.
+//
+// Customers belong to an office: mobile is unique per (CompId, BranchId,
+// Mobile), and what a caller sees and writes follows the `customers` reach.
 import { post, postData } from "./client";
-import type { ApiEnvelope, Customer } from "../types/api";
+import type { ApiEnvelope, Customer, CustomerDetail } from "../types/api";
 
 export const CUSTOMER_ENDPOINTS = {
   fetchCustomers: "/api/customers/fetchCustomers",
   saveCustomer: "/api/customers/saveCustomer",
+  fetchCustomerDetail: "/api/customers/fetchCustomerDetail",
 } as const;
 
 /**
@@ -47,6 +51,12 @@ export interface SaveCustomerPayload {
   State?: string | null;
   Pincode?: string | null;
   Remarks?: string | null;
+  /**
+   * Create: the office the customer belongs to; null = the caller's home
+   * office. On an edit the server reads a different office as a move, so only
+   * send it when the office really changes.
+   */
+  BranchId?: number | null;
 }
 
 /** Mobile OR email is required — the SP answers 400 with neither. `data.Id` is the row. */
@@ -62,6 +72,7 @@ export const saveCustomer = ({
   State = null,
   Pincode = null,
   Remarks = null,
+  BranchId = null,
 }: SaveCustomerPayload): Promise<ApiEnvelope<{ Id: number }>> =>
   post(CUSTOMER_ENDPOINTS.saveCustomer, {
     Id,
@@ -75,4 +86,15 @@ export const saveCustomer = ({
     State,
     Pincode,
     Remarks,
+    BranchId,
   });
+
+/**
+ * The customer (gated by `customers` reach; 403 outside it) and their
+ * complaints, newest first — the complaints filtered by the caller's
+ * `complaints` reach, so a role without it gets an empty list.
+ */
+export const fetchCustomerDetail = (params: {
+  CustomerId: number;
+}): Promise<ApiEnvelope<CustomerDetail>> =>
+  post<CustomerDetail>(CUSTOMER_ENDPOINTS.fetchCustomerDetail, params);

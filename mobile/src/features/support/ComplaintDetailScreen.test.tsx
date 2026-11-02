@@ -3,6 +3,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react-nativ
 
 import { fetchAttachments } from "../../api/attachmentQueries";
 import { fetchCalls, logCall } from "../../api/callQueries";
+import { fetchCustomerDetail } from "../../api/customerQueries";
 import { fetchLookups, LOOKUP_KIND } from "../../api/configQueries";
 import {
   deleteTicket,
@@ -14,12 +15,14 @@ import {
 } from "../../api/ticketQueries";
 import { fetchAssignableUsers, fetchUserDirectory } from "../../api/userQueries";
 import type { AssignableUser, Lookup, Ticket, TicketDetail } from "../../types/api";
-import { envelope, serverError, ticket } from "../../test/fixtures";
+import { customer, envelope, serverError, ticket } from "../../test/fixtures";
+import { spySheets } from "../../test/sheets";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import ComplaintDetailScreen from "./ComplaintDetailScreen";
 
 jest.mock("../../api/ticketQueries");
 jest.mock("../../api/callQueries");
+jest.mock("../../api/customerQueries");
 jest.mock("../../api/configQueries");
 jest.mock("../../api/userQueries");
 jest.mock("../../api/attachmentQueries");
@@ -569,5 +572,54 @@ describe("a terminal complaint", () => {
         expect.anything(),
       ),
     );
+  });
+});
+
+describe("the customer's history (CUST-04)", () => {
+  const CUSTOMERS = { view: true, add: false, edit: false, delete: false, reach: "Company" as const };
+  const history = envelope({
+    customer: customer(),
+    tickets: [
+      ticket(),
+      ticket({ Id: 4, TicketNo: "T-4", Subject: "Battery swelling", StatusName: "Resolved", StatusCode: "resolved", AssigneeName: "Priya Shah", CreatedAt: "2026-10-02T09:15:00" }),
+    ],
+  });
+
+  beforeEach(() => {
+    seedAuth({ UserId: 42, access: { modules: { complaints: FULL, customers: CUSTOMERS } } });
+    jest.mocked(fetchTicketDetail).mockResolvedValue(detail(ticket({ PreviousTickets: 2 })));
+    jest.mocked(fetchCustomerDetail).mockResolvedValue(history);
+  });
+
+  it("'N previous' lists that customer's other complaints and opens one", async () => {
+    const navigation = makeNavigation<"ComplaintDetail">();
+    const { present } = spySheets();
+    await mount(navigation);
+    await loaded();
+    expect(fetchCustomerDetail).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByLabelText("Show 2 previous complaints"));
+    expect(present).toHaveBeenCalled();
+    expect(fetchCustomerDetail).toHaveBeenCalledWith({ CustomerId: 3 });
+    expect(await screen.findByText("T-4 · Battery swelling")).toBeOnTheScreen();
+    // The complaint already on screen is not its own history.
+    expect(screen.queryByText("T-7 · Inverter keeps tripping")).toBeNull();
+    await fireEvent.press(screen.getByText("T-4 · Battery swelling"));
+    expect(navigation.push).toHaveBeenCalledWith("ComplaintDetail", { ticketId: 4 });
+  });
+
+  it("a failed history fetch says so in the sheet", async () => {
+    jest.mocked(fetchCustomerDetail).mockRejectedValue(serverError(403, "You do not have access to this customer"));
+    await mount();
+    await loaded();
+    await fireEvent.press(screen.getByLabelText("Show 2 previous complaints"));
+    expect(await screen.findByText("You do not have access to this customer")).toBeOnTheScreen();
+  });
+
+  it("without the customers grant the count is plain text", async () => {
+    seedAuth({ UserId: 42, access: { modules: { complaints: FULL } } });
+    await mount();
+    await loaded();
+    expect(screen.getByText("2 previous")).toBeOnTheScreen();
+    expect(screen.queryByLabelText("Show 2 previous complaints")).toBeNull();
   });
 });

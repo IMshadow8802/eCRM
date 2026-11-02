@@ -47,6 +47,7 @@ import {
   transferTicket,
 } from "../../api/ticketQueries";
 import { fetchCalls, logCall, type CallDirection } from "../../api/callQueries";
+import { fetchCustomerDetail } from "../../api/customerQueries";
 import { fetchUserDirectory } from "../../api/userQueries";
 import { apiErrorMessage } from "../../api/errors";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
@@ -161,6 +162,10 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
   const escalatePickRef = useRef<SheetRef>(null);
   const escalateRef = useRef<SheetRef>(null);
   const callRef = useRef<SheetRef>(null);
+  const historyRef = useRef<SheetRef>(null);
+  // fetchCustomerDetail needs customers view; without it the count stays text.
+  const canSeeCustomers = useAccess("customers").view;
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const detailQuery = useQuery({
     queryKey: ["ticket", ticketId],
@@ -193,6 +198,13 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
     queryKey: ["escalation-targets", forUserId],
     queryFn: () => fetchEscalationTargets(forUserId),
     enabled: can.edit && !!ticket && isActive(lifecycleOf(ticket)),
+  });
+
+  // The customer's complaints (CUST-04) — only once "N previous" is tapped.
+  const historyQuery = useQuery({
+    queryKey: ["customer-detail", ticket?.CustomerId],
+    queryFn: () => fetchCustomerDetail({ CustomerId: ticket!.CustomerId }),
+    enabled: historyOpen && !!ticket?.CustomerId,
   });
 
   const outcomeNames = useMemo(() => lookupMap(callOutcomes), [callOutcomes]);
@@ -567,6 +579,24 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
   ];
 
   const customerSub = ticket.PreviousTickets ? `${ticket.PreviousTickets} previous` : undefined;
+  const hasHistory = Boolean(customerSub && canSeeCustomers);
+  // The complaint on screen is not part of its own history.
+  const historyActions: SheetAction[] = (historyQuery.data?.data?.tickets ?? [])
+    .filter((t) => t.Id !== ticket.Id)
+    .map((t) => ({
+      key: `h-${t.Id}`,
+      label: `${t.TicketNo} · ${t.Subject}`,
+      sublabel: [t.StatusName, t.AssigneeName ?? "Unassigned", dateTime(t.CreatedAt)]
+        .filter(Boolean)
+        .join(" · "),
+      icon: CircleDot,
+      onPress: () => navigation.push("ComplaintDetail", { ticketId: t.Id }),
+    }));
+  const historyEmpty = historyQuery.isError
+    ? apiErrorMessage(historyQuery.error, "Couldn't load this customer's complaints.")
+    : historyQuery.isLoading
+      ? "Loading…"
+      : "No other complaints you can see.";
   const where = [ticket.CustomerAddress, ticket.CustomerCity].filter(Boolean).join(", ");
 
   // sp_FetchTicketDetail RS4 — every hand-over, as the web's Assignments card.
@@ -661,6 +691,15 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
               label="Customer"
               value={ticket.CustomerName ?? "—"}
               sub={customerSub}
+              onPress={
+                hasHistory
+                  ? () => {
+                      setHistoryOpen(true);
+                      historyRef.current?.present();
+                    }
+                  : undefined
+              }
+              actionLabel={hasHistory ? `Show ${customerSub} complaints` : undefined}
             />
             {ticket.CustomerContactPerson ? (
               <Fact Icon={Contact} label="Contact person" value={ticket.CustomerContactPerson} />
@@ -821,6 +860,13 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
       ) : null}
 
       <ActionSheet ref={menuRef} title="Complaint actions" actions={menuActions} />
+
+      <ActionSheet
+        ref={historyRef}
+        title={`${ticket.CustomerName ?? "Customer"} · complaints`}
+        actions={historyActions}
+        emptyMessage={historyEmpty}
+      />
 
       {/* Every sheet below writes to the complaint — setTicketStatus,
           transfer and escalate need the edit grant (ticketRoutes.js), and

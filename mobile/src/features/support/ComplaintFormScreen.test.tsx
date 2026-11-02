@@ -1,15 +1,19 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react-native";
+import * as DocumentPicker from "expo-document-picker";
+
+import { uploadAttachment } from "../../api/attachmentQueries";
 
 import { fetchCustomFields, fetchLookups, LOOKUP_KIND } from "../../api/configQueries";
 import { fetchCustomers, saveCustomer } from "../../api/customerQueries";
 import { fetchProducts } from "../../api/productQueries";
 import { fetchTicketDetail, saveTicket } from "../../api/ticketQueries";
-import { fetchAssignableUsers } from "../../api/userQueries";
+import { fetchAssignableUsers, fetchBranches } from "../../api/userQueries";
 import type { Lookup } from "../../types/api";
 import { customer, envelope, serverError, ticket } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import ComplaintFormScreen from "./ComplaintFormScreen";
 
+jest.mock("../../api/attachmentQueries");
 jest.mock("../../api/configQueries");
 jest.mock("../../api/customerQueries");
 jest.mock("../../api/productQueries");
@@ -60,6 +64,11 @@ beforeEach(() => {
   jest.mocked(fetchCustomers).mockResolvedValue([sharma]);
   jest.mocked(saveTicket).mockResolvedValue(envelope({ Id: 101, TicketNo: "T-101" }));
   jest.mocked(saveCustomer).mockResolvedValue(envelope({ Id: 55 }));
+  jest.mocked(fetchBranches).mockResolvedValue([
+    { Id: 1, BranchName: "Head Office", IsActive: true },
+    { Id: 2, BranchName: "Old Town", IsActive: true },
+  ]);
+  jest.mocked(uploadAttachment).mockResolvedValue(envelope({ attachmentId: 1 }));
 });
 
 it("will not save without a customer", async () => {
@@ -182,7 +191,7 @@ it("an unknown search offers to add the customer, carrying the typed number over
 
   await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
   expect(saveCustomer).toHaveBeenCalledWith(
-    { Name: "Patel Stores", ContactPerson: null, Mobile: "9825099999", Email: null, Address: null, City: null },
+    { Name: "Patel Stores", ContactPerson: null, Mobile: "9825099999", Email: null, Address: null, City: null, BranchId: null },
     expect.anything(),
   );
   expect(saveTicket).toHaveBeenCalledWith(
@@ -260,7 +269,7 @@ it("a pasted +91 mobile is saved as its ten digits, not cut at the country code"
   await fireEvent.press(screen.getByText("Log complaint"));
   await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
   expect(saveCustomer).toHaveBeenCalledWith(
-    { Name: "Patel Stores", ContactPerson: null, Mobile: "9825099999", Email: null, Address: "Ring Road", City: "Surat" },
+    { Name: "Patel Stores", ContactPerson: null, Mobile: "9825099999", Email: null, Address: "Ring Road", City: "Surat", BranchId: null },
     expect.anything(),
   );
 });
@@ -355,5 +364,155 @@ describe("editing", () => {
     await fireEvent.press(screen.getByText("Try again"));
     await waitFor(() => expect(fetchTicketDetail).toHaveBeenCalledTimes(2));
     expect(fetchTicketDetail).toHaveBeenCalledWith({ TicketId: 7 });
+  });
+});
+
+describe("customers belong to an office (CUST-02)", () => {
+  const wide = { modules: { customers: { view: true, add: true, edit: true, delete: false, reach: "Company" as const } } };
+
+  const newCustomer = async () => {
+    await mount();
+    await screen.findByText("Wiring");
+    await fireEvent.press(screen.getByText("New customer"));
+    await fireEvent.changeText(screen.getByPlaceholderText("Shop, company or person"), "Patel Stores");
+    await fireEvent.changeText(screen.getByPlaceholderText("10-digit number"), "9825099999");
+    await fireEvent.changeText(screen.getByPlaceholderText("One line — what is wrong"), "No power");
+  };
+
+  it("search results name the customer's office", async () => {
+    await mount();
+    await screen.findByText("Wiring");
+    await fireEvent.changeText(screen.getByPlaceholderText("Search customer (mobile or name)"), "Sharma");
+    expect(await screen.findByText("9825012345 · Surat · Head Office · 1 open")).toBeOnTheScreen();
+  });
+
+  it("a wide customers reach picks the office, home office first, and the create sends it", async () => {
+    seedAuth({ UserId: 42, BranchId: 1, access: wide });
+    await newCustomer();
+    expect(await screen.findByText("Office")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByText("Old Town"));
+    await fireEvent.press(screen.getByText("Log complaint"));
+    await waitFor(() =>
+      expect(saveCustomer).toHaveBeenCalledWith(expect.objectContaining({ BranchId: 2 }), expect.anything()),
+    );
+  });
+
+  it("left alone, the office is the caller's home office", async () => {
+    seedAuth({ UserId: 42, BranchId: 1, access: wide });
+    await newCustomer();
+    await screen.findByText("Office");
+    await fireEvent.press(screen.getByText("Log complaint"));
+    await waitFor(() =>
+      expect(saveCustomer).toHaveBeenCalledWith(expect.objectContaining({ BranchId: 1 }), expect.anything()),
+    );
+  });
+
+  it("a closed office is not offered", async () => {
+    seedAuth({ UserId: 42, BranchId: 1, access: wide });
+    jest.mocked(fetchBranches).mockResolvedValue([
+      { Id: 1, BranchName: "Head Office", IsActive: true },
+      { Id: 2, BranchName: "Old Town", IsActive: true },
+      { Id: 3, BranchName: "Shut Depot", IsActive: false },
+    ]);
+    await newCustomer();
+    await screen.findByText("Office");
+    expect(screen.queryByText("Shut Depot")).toBeNull();
+  });
+
+  it("an own-office reach gets no office choice and never asks for the list", async () => {
+    seedAuth({ UserId: 42, access: { modules: { customers: { ...wide.modules.customers, reach: "Own" } } } });
+    await newCustomer();
+    await fireEvent.press(screen.getByText("Log complaint"));
+    await waitFor(() =>
+      expect(saveCustomer).toHaveBeenCalledWith(expect.objectContaining({ BranchId: null }), expect.anything()),
+    );
+    expect(screen.queryByText("Office")).toBeNull();
+    expect(fetchBranches).not.toHaveBeenCalled();
+  });
+
+  it("a company with one office shows no choice", async () => {
+    seedAuth({ UserId: 42, access: wide });
+    jest.mocked(fetchBranches).mockResolvedValue([{ Id: 1, BranchName: "Head Office", IsActive: true }]);
+    await newCustomer();
+    await waitFor(() => expect(fetchBranches).toHaveBeenCalled());
+    expect(screen.queryByText("Office")).toBeNull();
+  });
+});
+
+describe("files picked on create (CMP-08)", () => {
+  const doc = (name: string) => ({ uri: `file:///${name}`, name, mimeType: "image/jpeg", lastModified: 0, size: 10 });
+
+  const pickFiles = async (...names: string[]) => {
+    jest.mocked(DocumentPicker.getDocumentAsync).mockResolvedValueOnce({ canceled: false, assets: names.map(doc) });
+    await fireEvent.press(screen.getByText("Attach files"));
+    await screen.findByText(names[0]!);
+  };
+
+  it("upload after the save, against the new complaint's Id", async () => {
+    const navigation = makeNavigation<"ComplaintForm">();
+    await mount(undefined, navigation);
+    await screen.findByText("Wiring");
+    await fillValidComplaint();
+    await pickFiles("meter.jpg", "bill.jpg");
+    expect(uploadAttachment).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByText("Log complaint"));
+
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+    expect(uploadAttachment).toHaveBeenCalledTimes(2);
+    expect(uploadAttachment).toHaveBeenCalledWith({
+      Entity: "ticket",
+      EntityId: 101,
+      file: { uri: "file:///meter.jpg", name: "meter.jpg", type: "image/jpeg" },
+    });
+    expect(jest.mocked(saveTicket).mock.invocationCallOrder[0]!).toBeLessThan(
+      jest.mocked(uploadAttachment).mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("a removed file is not uploaded", async () => {
+    const navigation = makeNavigation<"ComplaintForm">();
+    await mount(undefined, navigation);
+    await screen.findByText("Wiring");
+    await fillValidComplaint();
+    await pickFiles("meter.jpg", "bill.jpg");
+    await fireEvent.press(screen.getByLabelText("Remove meter.jpg"));
+    await fireEvent.press(screen.getByText("Log complaint"));
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+    expect(uploadAttachment).toHaveBeenCalledTimes(1);
+    expect(uploadAttachment).toHaveBeenCalledWith(expect.objectContaining({ file: expect.objectContaining({ name: "bill.jpg" }) }));
+  });
+
+  it("a failed upload keeps the complaint and says how many to add from the record", async () => {
+    jest.mocked(uploadAttachment)
+      .mockRejectedValueOnce(new Error("timeout"))
+      .mockResolvedValueOnce(envelope({ attachmentId: 2 }));
+    const navigation = makeNavigation<"ComplaintForm">();
+    await mount(undefined, navigation);
+    await screen.findByText("Wiring");
+    await fillValidComplaint();
+    await pickFiles("meter.jpg", "bill.jpg");
+    await fireEvent.press(screen.getByText("Log complaint"));
+    expect(await screen.findByText("1 file(s) failed to upload — add them from the complaint")).toBeOnTheScreen();
+    expect(navigation.goBack).toHaveBeenCalled();
+    expect(saveTicket).toHaveBeenCalledTimes(1);
+  });
+
+  it("a file over the size limit is refused at the pick", async () => {
+    jest.mocked(DocumentPicker.getDocumentAsync).mockResolvedValueOnce({
+      canceled: false, assets: [{ ...doc("huge.mov"), size: 300 * 1024 * 1024 }],
+    });
+    await mount();
+    await screen.findByText("Wiring");
+    await fireEvent.press(screen.getByText("Attach files"));
+    expect(await screen.findByText('"huge.mov" is larger than the 200MB limit.')).toBeOnTheScreen();
+  });
+
+  it("editing a complaint offers no staging — files go on the record", async () => {
+    jest.mocked(fetchTicketDetail).mockResolvedValue({
+      ticket: ticket(), fields: [], activity: [], assignments: [], linkedLead: null,
+    });
+    await mount(7);
+    await screen.findByText("Edit complaint");
+    expect(screen.queryByText("Attach files")).toBeNull();
   });
 });

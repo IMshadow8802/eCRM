@@ -65,7 +65,10 @@ const CASES: [string, Case][] = [
   ["fetchCalls ticket", { call: () => calls.fetchCalls({ TicketId: 5 }), url: "/api/calls/fetchCalls", key: "calls", body: { LeadId: null, TicketId: 5 } }],
   ["fetchCustomers", { call: () => customers.fetchCustomers(), url: "/api/customers/fetchCustomers", key: "customers", body: { PageNumber: 1, PageSize: 10, SearchTerm: null, BranchId: null, IsActive: true } }],
   ["fetchCustomers search", { call: () => customers.fetchCustomers({ SearchTerm: "98250", PageSize: 5 }), url: "/api/customers/fetchCustomers", key: "customers", body: { PageNumber: 1, PageSize: 5, SearchTerm: "98250", BranchId: null, IsActive: true } }],
-  ["saveCustomer", { call: () => customers.saveCustomer({ Name: "Ravi", Mobile: "9825012345" }), url: "/api/customers/saveCustomer", body: { Id: 0, Name: "Ravi", ContactPerson: null, Mobile: "9825012345", AltMobile: null, Email: null, Address: null, City: null, State: null, Pincode: null, Remarks: null } }],
+  ["saveCustomer", { call: () => customers.saveCustomer({ Name: "Ravi", Mobile: "9825012345" }), url: "/api/customers/saveCustomer", body: { Id: 0, Name: "Ravi", ContactPerson: null, Mobile: "9825012345", AltMobile: null, Email: null, Address: null, City: null, State: null, Pincode: null, Remarks: null, BranchId: null } }],
+  ["saveCustomer office", { call: () => customers.saveCustomer({ Name: "Ravi", Mobile: "9825012345", BranchId: 2 }), url: "/api/customers/saveCustomer", body: { Id: 0, Name: "Ravi", ContactPerson: null, Mobile: "9825012345", AltMobile: null, Email: null, Address: null, City: null, State: null, Pincode: null, Remarks: null, BranchId: 2 } }],
+  ["fetchCustomerDetail", { call: () => customers.fetchCustomerDetail({ CustomerId: 3 }), url: "/api/customers/fetchCustomerDetail", body: { CustomerId: 3 } }],
+  ["fetchBranches", { call: users.fetchBranches, url: "/api/users/fetchBranches", key: "branches", body: {} }],
 
   // ------------------------------------------------------------- kanban
   ["fetchKanbanColumns", { call: () => kanban.fetchKanbanColumns({ WorkspaceId: 3 }), url: "/api/kanban/fetchKanbanColumns", key: "columns", body: { Id: 0, WorkspaceId: 3, PageNumber: 1, PageSize: 200, SearchTerm: null } }],

@@ -2,11 +2,12 @@
 // Only what a phone needs. User administration (saveUser/deleteUser) is
 // deliberately absent — admin-gated desk work, stays on web.
 import { post, postData } from "./client";
-import type { ApiEnvelope, AssignableUser, DirectoryUser } from "../types/api";
+import type { ApiEnvelope, AssignableUser, Branch, DirectoryUser } from "../types/api";
 
 export const USER_ENDPOINTS = {
   directory: "/api/users/directory",
   fetchAssignableUsers: "/api/users/fetchAssignableUsers",
+  fetchBranches: "/api/users/fetchBranches",
   updateProfile: "/api/users/me/updateProfile",
   changePassword: "/api/users/me/changePassword",
 } as const;
@@ -33,6 +34,10 @@ export const fetchAssignableUsers = (
     { BranchId: null, Module: "leads", ...params },
     "users",
   );
+
+/** Every office in the company, open to any signed-in user (the office pick-list). */
+export const fetchBranches = (): Promise<Branch[]> =>
+  postData<Branch>(USER_ENDPOINTS.fetchBranches, {}, "branches");
 
 /** userController.updateMyProfile reads only these four; anything else is dropped. */
 export const updateMyProfile = (params: {
