@@ -47,6 +47,10 @@ export const ROUTE_OWNER: Record<StackRoute, RouteOwner> = {
 
 /** Until a record screen publishes its actions, the bar keeps showing its list's tab. */
 const ACTION_FALLBACK: Partial<Record<StackRoute, TabName>> = { ComplaintDetail: "Complaints", LeadDetail: "Leads" };
+/** A form has no bar, but on the rail its module stays the active item (E T4). */
+const FORM_MODULE: Partial<Record<StackRoute, TabName>> = {
+  TaskForm: "Tasks", WorkspaceForm: "Tasks", ComplaintForm: "Complaints", LeadForm: "Leads",
+};
 
 /** The focused route: the stack route, its key, and the focused tab when it is Tabs. */
 export interface FocusedRoute { name: StackRoute; key: string; tab: TabName | null }
@@ -183,7 +187,8 @@ export function Shell({ route, navigator, children }: ShellProps) {
     owner === "action" ? (ACTION_FALLBACK[at.name] ?? null) : owner === "none" ? null : owner;
   // The rail carries Inbox and Follow-ups as items of their own, so a pushed
   // one is its own item there (on the bar they stay under Today / More).
-  const railActive: RailItem | null = at.name === "Inbox" ? "Inbox" : at.name === "FollowUps" ? "FollowUps" : activeTab;
+  const railActive: RailItem | null =
+    at.name === "Inbox" ? "Inbox" : at.name === "FollowUps" ? "FollowUps" : (activeTab ?? FORM_MODULE[at.name] ?? null);
 
   const pressItem = (item: RailItem) => {
     // Follow-ups is a tab only while the bar has room; navigate() lands on the

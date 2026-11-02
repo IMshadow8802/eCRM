@@ -425,6 +425,15 @@ describe("the rail (tablet, ≥ medium)", () => {
     expect(screen.getByRole("tab", { name: "More" })).toBeSelected();
   });
 
+  it("a form keeps its module's rail item active (E T4: Leads)", async () => {
+    setWindow(...TABLET);
+    signInWith("tasks", "complaints", "leads");
+    await mountApp();
+    await openFromHome("LeadForm");
+    expect(await screen.findByText("LeadForm")).toBeOnTheScreen();
+    expect(screen.getByRole("tab", { name: "Leads" })).toBeSelected();
+  });
+
   it("a record at the rail has no action bar (actions go in its band)", async () => {
     setWindow(...TABLET);
     signInWith("complaints");
