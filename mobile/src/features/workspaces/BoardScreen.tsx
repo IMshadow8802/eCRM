@@ -284,7 +284,7 @@ export default function BoardScreen({ route, navigation }: Props) {
         ref={moveRef}
         title={canMove ? "Move to column" : "Cannot move this task"}
         actions={moveActions}
-        emptyMessage="You can only move tasks assigned to you, unless you manage this board."
+        emptyMessage="You can only move tasks you created or are assigned to."
       />
     </Screen>
   );
