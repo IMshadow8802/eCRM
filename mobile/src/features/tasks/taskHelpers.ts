@@ -1,6 +1,9 @@
 import { fetchTasks } from "../../api/taskQueries";
+import { fetchMyDay } from "../../api/todayQueries";
 import type { ChipTone } from "../../theme";
 import type {
+  DayTask,
+  MyDay,
   Task,
   TaskAssignee,
   TaskComment,
@@ -20,6 +23,40 @@ export function boardQuery(workspaceId: number | null, term = "") {
     queryKey: term ? ["tasks", "board", workspaceId, term] : ["tasks", "board", workspaceId],
     queryFn: () => fetchTasks({ WorkspaceId: workspaceId, PageSize: 200, SearchTerm: term || null }),
   };
+}
+
+/**
+ * My open tasks across every workspace — My Work's "Mine" list. Home counts
+ * the same query, so the two numbers cannot disagree and share one request.
+ */
+export function myTasksQuery(userId: number | null) {
+  return {
+    queryKey: ["tasks", "mine", userId],
+    queryFn: () =>
+      fetchTasks({ WorkspaceId: null, AssigneeUserId: userId, OnlyOpen: true, PageSize: 200 }),
+    enabled: userId != null,
+  };
+}
+
+/** TAT-06: the server's Today flags. ["tasks"] prefix so task writes refresh it. */
+export const MY_DAY_QUERY = { queryKey: ["tasks", "today", "mine"], queryFn: fetchMyDay };
+
+/** 0 = a reason owed, 1 = overdue, 2 = close to its deadline. */
+export const needRank = (t: DayTask) => (t.flags.reasonOwed ? 0 : t.flags.overdue ? 1 : 2);
+
+/**
+ * My Work's "Needs you": most urgent first, as on the web's My Day — a reason
+ * owed, then overdue, then close to the deadline; least time left first within
+ * each. Nothing before go-live.
+ */
+export function needsYou(day: MyDay | null | undefined): DayTask[] {
+  if (!day?.day.live) return [];
+  return (day.me?.tasks ?? [])
+    .filter((t) => t.flags.reasonOwed || t.flags.overdue || t.flags.atRisk)
+    .sort(
+      (a, b) =>
+        needRank(a) - needRank(b) || (a.timeLeftMin ?? Infinity) - (b.timeLeftMin ?? Infinity),
+    );
 }
 
 /**

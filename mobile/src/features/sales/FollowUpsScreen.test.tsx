@@ -238,3 +238,29 @@ it("search waits for typing to pause, and keeps the list up meanwhile", async ()
   // The new page is still in flight: the old rows stay instead of blanking.
   expect(screen.getByText("Ramesh Patel")).toBeOnTheScreen();
 });
+
+// Task 32: a tab for a leads-only role (no back), pushed from More otherwise.
+describe("tab or pushed", () => {
+  it("opens on the view a navigate() asks for", async () => {
+    await renderWithProviders(
+      <FollowUpsScreen navigation={makeNavigation<"FollowUps">()} route={makeRoute("FollowUps", { view: "overdue" })} />,
+    );
+    await waitFor(() => expect(fetchFollowUps).toHaveBeenCalledWith(expect.objectContaining({ Overdue: true })));
+    expect(fetchFollowUps).not.toHaveBeenCalledWith(expect.objectContaining({ DueTo: today }));
+  });
+
+  it("as a tab it has no back button", async () => {
+    await mount();
+    await screen.findByText("Ramesh Patel");
+    expect(screen.queryByRole("button", { name: "Go back" })).toBeNull();
+  });
+
+  it("pushed, its back button goes back", async () => {
+    const navigation = makeNavigation<"FollowUps">();
+    await renderWithProviders(
+      <FollowUpsScreen navigation={navigation} route={makeRoute("FollowUps", undefined)} pushed />,
+    );
+    await fireEvent.press(await screen.findByRole("button", { name: "Go back" }));
+    expect(navigation.goBack).toHaveBeenCalled();
+  });
+});

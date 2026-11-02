@@ -1,10 +1,12 @@
 import { Pressable, StyleSheet, View } from "react-native";
 import {
-  Bell,
+  CalendarClock,
   ClipboardCheck,
   Circle,
-  LayoutGrid,
-  UserRound,
+  Headset,
+  House,
+  Menu,
+  TrendingUp,
   type LucideIcon,
 } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -13,7 +15,6 @@ import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import {
   colors,
   fontFamily,
-  radius,
   shadows,
   spacing,
   TAB_BAR_HEIGHT,
@@ -30,10 +31,12 @@ import { Text } from "../ui";
  * tab — which stays legible for anyone who cannot separate the two hues.
  */
 const TAB_ICONS: Record<string, LucideIcon> = {
-  MyWork: ClipboardCheck,
-  Inbox: Bell,
-  Work: LayoutGrid,
-  Me: UserRound,
+  Home: House,
+  Tasks: ClipboardCheck,
+  Complaints: Headset,
+  Leads: TrendingUp,
+  FollowUps: CalendarClock,
+  More: Menu,
 };
 
 /**
@@ -70,7 +73,6 @@ export default function FloatingTabBar({
         const focused = state.index === index;
         const label = options.title ?? route.name;
         const Icon = TAB_ICONS[route.name] ?? Circle;
-        const badge = options.tabBarBadge;
 
         const onPress = () => {
           // Emit first: a screen may cancel navigation (scroll-to-top etc).
@@ -91,7 +93,6 @@ export default function FloatingTabBar({
             accessibilityRole="tab"
             accessibilityState={{ selected: focused }}
             accessibilityLabel={label}
-            accessibilityValue={badge != null ? { text: `${badge} unread` } : undefined}
             style={[styles.item, { width: itemWidth }]}
           >
             <View style={styles.stack}>
@@ -100,13 +101,6 @@ export default function FloatingTabBar({
                 strokeWidth={focused ? 2.4 : 1.8}
                 color={focused ? colors.primary : colors.textMuted}
               />
-              {badge != null ? (
-                <View style={styles.badge}>
-                  <Text variant="caption" color="textOnBrand" style={styles.badgeText}>
-                    {typeof badge === "number" && badge > 99 ? "99+" : String(badge)}
-                  </Text>
-                </View>
-              ) : null}
               <Text
                 variant="caption"
                 color={focused ? "primary" : "textMuted"}
@@ -166,19 +160,6 @@ const styles = StyleSheet.create({
     gap: spacing[1],
     paddingHorizontal: spacing[1],
   },
-  // Over the icon's top-right corner, as the stock tab bar draws it.
-  badge: {
-    position: "absolute",
-    top: 0,
-    left: "50%",
-    marginLeft: spacing[2],
-    minWidth: spacing[5],
-    paddingHorizontal: spacing[1],
-    borderRadius: radius.full,
-    backgroundColor: colors.danger,
-    alignItems: "center",
-  },
-  badgeText: { fontFamily: fontFamily.semibold },
   label: {
     maxWidth: "100%",
     // Tightened: the caption's 16px line box leaves dead space under an 11px

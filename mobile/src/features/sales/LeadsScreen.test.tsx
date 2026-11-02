@@ -1,3 +1,4 @@
+import { StyleSheet } from "react-native";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react-native";
 
 import { fetchLookups } from "../../api/configQueries";
@@ -8,6 +9,7 @@ import useAuthStore from "../../stores/useAuthStore";
 import type { Access, Lead, Lookup } from "../../types/api";
 import { envelope, lead, pagination } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
+import { TAB_BAR_HEIGHT } from "../../theme";
 import LeadsScreen from "./LeadsScreen";
 
 jest.mock("../../api/leadQueries");
@@ -253,4 +255,33 @@ it("no add grant, no FAB — the server would refuse the create", async () => {
   await mount();
   await screen.findByText("Ravi Patel");
   expect(screen.queryByLabelText("Add a lead")).toBeNull();
+});
+
+// Task 32: Leads is a tab. Home's row opens it on a queue; a tab root has no back.
+describe("as a tab", () => {
+  it("opens on the queue a navigate() asks for", async () => {
+    seedAuth({ UserId: 7, access: leadsGrant(true) });
+    await renderWithProviders(
+      <LeadsScreen navigation={makeNavigation<"Leads">()} route={makeRoute("Leads", { queue: "overdue" })} />,
+    );
+    await waitFor(() =>
+      expect(fetchLeads).toHaveBeenCalledWith(expect.objectContaining({ Overdue: true, OwnerId: null })),
+    );
+    expect(fetchLeads).not.toHaveBeenCalledWith(expect.objectContaining({ OwnerId: 7 }));
+  });
+
+  it("has no back button", async () => {
+    seedAuth({ UserId: 7, access: leadsGrant(true) });
+    await mount();
+    await waitFor(() => expect(fetchLeads).toHaveBeenCalled());
+    expect(screen.queryByRole("button", { name: "Go back" })).toBeNull();
+  });
+});
+
+// Task 32 regression: as a tab, the + must sit above the floating tab bar, not under it.
+it("the + clears the tab bar", async () => {
+  seedAuth({ UserId: 7, access: leadsGrant(true) });
+  await mount();
+  const fab = await screen.findByRole("button", { name: "Add a lead" });
+  expect(StyleSheet.flatten(fab.props.style).bottom).toBeGreaterThan(TAB_BAR_HEIGHT);
 });

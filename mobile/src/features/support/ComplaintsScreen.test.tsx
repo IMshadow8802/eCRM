@@ -1,3 +1,4 @@
+import { StyleSheet } from "react-native";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react-native";
 
 import { fetchLookups } from "../../api/configQueries";
@@ -6,6 +7,7 @@ import { fetchAssignableUsers } from "../../api/userQueries";
 import type { Ticket } from "../../types/api";
 import { envelope, pagination, ticket } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
+import { TAB_BAR_HEIGHT } from "../../theme";
 import ComplaintsScreen from "./ComplaintsScreen";
 
 jest.mock("../../api/ticketQueries");
@@ -151,4 +153,31 @@ describe("search", () => {
     await act(async () => { jest.advanceTimersByTime(50); });
     expect(fetchTickets).toHaveBeenCalledTimes(calls);
   });
+});
+
+// Task 32: Complaints is a tab. Home's rows open it on a queue; a tab root has no back.
+describe("as a tab", () => {
+  it("opens on the queue a navigate() asks for", async () => {
+    await renderWithProviders(
+      <ComplaintsScreen navigation={makeNavigation<"Complaints">()} route={makeRoute("Complaints", { queue: "overdue" })} />,
+    );
+    await waitFor(() =>
+      expect(fetchTickets).toHaveBeenCalledWith(expect.objectContaining({ Overdue: true, AssignedTo: null })),
+    );
+    expect(await screen.findByText("1 overdue")).toBeOnTheScreen();
+    expect(fetchTickets).not.toHaveBeenCalledWith(expect.objectContaining({ AssignedTo: 42 }));
+  });
+
+  it("has no back button", async () => {
+    await mount();
+    await screen.findByText("Inverter keeps tripping");
+    expect(screen.queryByRole("button", { name: "Go back" })).toBeNull();
+  });
+});
+
+// Task 32 regression: as a tab, the + must sit above the floating tab bar, not under it.
+it("the + clears the tab bar", async () => {
+  await mount();
+  const fab = await screen.findByRole("button", { name: "Log a complaint" });
+  expect(StyleSheet.flatten(fab.props.style).bottom).toBeGreaterThan(TAB_BAR_HEIGHT);
 });

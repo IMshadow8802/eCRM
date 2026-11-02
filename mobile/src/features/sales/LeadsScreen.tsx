@@ -6,10 +6,11 @@ import type { StackScreenProps } from "@react-navigation/stack";
 
 import { fetchLeads } from "../../api/leadQueries";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
+import { useParamState } from "../../hooks/useParamState";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
 import type { Lead } from "../../types/api";
-import { colors, spacing, SCREEN_PADDING } from "../../theme";
+import { colors, spacing, SCREEN_PADDING, TAB_BAR_CLEARANCE, TAB_BAR_HEIGHT } from "../../theme";
 import { ChipGroup, EmptyState, Fab, Input, Refresher, Screen, ScreenHeader, Segmented } from "../../ui";
 import { useAccess } from "../auth/useAccess";
 import { LeadCard } from "./LeadCard";
@@ -33,11 +34,12 @@ const EMPTY: Record<LeadQueue, { title: string; message: string }> = {
 };
 
 /** The leads list — same shape as Complaints: queue, status chips, search. */
-export default function LeadsScreen({ navigation }: Props) {
+export default function LeadsScreen({ navigation, route }: Props) {
   const userId = useAuthStore((s) => s.UserId);
   const { add: canAdd } = useAccess("leads");
 
-  const [queue, setQueue] = useState<LeadQueue>("mine");
+  // "Mine" unless a navigate() (Home's rows) asks for another queue.
+  const [queue, setQueue] = useParamState<LeadQueue>(route.params, route.params?.queue, "mine");
   const [status, setStatus] = useState<LeadStatusFilter>("all");
   const [search, setSearch] = useState("");
   // Debounced: one request once typing pauses, not one per key.
@@ -101,7 +103,6 @@ export default function LeadsScreen({ navigation }: Props) {
         title="Leads"
         subtitle={`${total} ${SUBTITLE[queue]}`}
         tint="success"
-        onBack={navigation.goBack}
       />
 
       <View style={styles.controls}>
@@ -160,7 +161,13 @@ export default function LeadsScreen({ navigation }: Props) {
 
       {/* Courtesy only: saveLeads create needs the add grant, so hide what would 403. */}
       {canAdd ? (
-        <Fab icon={Plus} accessibilityLabel="Add a lead" onPress={() => navigation.navigate("LeadForm", {})} />
+        // A tab now: lift it over the floating tab bar.
+        <Fab
+          icon={Plus}
+          accessibilityLabel="Add a lead"
+          onPress={() => navigation.navigate("LeadForm", {})}
+          offsetBottom={TAB_BAR_HEIGHT}
+        />
       ) : null}
     </Screen>
   );
@@ -176,7 +183,8 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.divider,
   },
   // Clears the FAB so the last card stays reachable.
-  list: { paddingTop: spacing[4], paddingBottom: spacing[20] },
+  // The last card clears the floating tab bar and the + above it.
+  list: { paddingTop: spacing[4], paddingBottom: TAB_BAR_CLEARANCE + spacing[16] },
   listEmpty: { flexGrow: 1 },
   cardWrap: { paddingHorizontal: SCREEN_PADDING, paddingBottom: spacing[5] },
 });

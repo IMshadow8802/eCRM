@@ -1,11 +1,10 @@
 import { NavigationContainer, type NavigatorScreenParams } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { createStackNavigator } from "@react-navigation/stack";
-import { useQuery } from "@tanstack/react-query";
-
-import { fetchNotifications } from "../api/notificationQueries";
+import { createStackNavigator, type StackScreenProps } from "@react-navigation/stack";
 
 import LoginScreen from "../features/auth/LoginScreen";
+import HomeScreen from "../features/home/HomeScreen";
+import MoreScreen from "../features/home/MoreScreen";
 import MyWorkScreen from "../features/tasks/MyWorkScreen";
 import BoardsScreen from "../features/workspaces/BoardsScreen";
 import BoardScreen from "../features/workspaces/BoardScreen";
@@ -16,7 +15,6 @@ import TaskFormScreen from "../features/tasks/TaskFormScreen";
 import ComplaintsScreen from "../features/support/ComplaintsScreen";
 import ComplaintDetailScreen from "../features/support/ComplaintDetailScreen";
 import ComplaintFormScreen from "../features/support/ComplaintFormScreen";
-import WorkHubScreen from "../features/hub/WorkHubScreen";
 import LeadsScreen from "../features/sales/LeadsScreen";
 import LeadDetailScreen from "../features/sales/LeadDetailScreen";
 import LeadFormScreen from "../features/sales/LeadFormScreen";
@@ -26,6 +24,9 @@ import MeScreen from "../features/profile/MeScreen";
 import TaskDetailScreen from "../features/tasks/TaskDetailScreen";
 import useAuthStore from "../stores/useAuthStore";
 import FloatingTabBar from "./FloatingTabBar";
+import { useTabs, type TabName } from "./tabs";
+import type { ComplaintQueue } from "../features/support/ticketHelpers";
+import type { FollowUpView, LeadQueue } from "../features/sales/leadHelpers";
 
 export type RootStackParamList = {
   Login: undefined;
@@ -36,7 +37,7 @@ export type RootStackParamList = {
    * `explainTatId` also opens the reason sheet on that clock.
    */
   TaskDetail: { taskId: number; workspaceId: number | null; tab?: "tat"; explainTatId?: number };
-  /** Boards moved off the tab bar and is now reached through the Work hub. */
+  /** Workspaces, reached from More. Boards live only inside Tasks. */
   Boards: undefined;
   /** One workspace's kanban. `name` is passed so the header has a title
    *  before the columns arrive. */
@@ -48,41 +49,46 @@ export type RootStackParamList = {
   WorkspaceForm: { workspaceId?: number };
   WorkspaceSettings: { workspaceId: number };
   Columns: { workspaceId: number };
-  /** Support / complaints — Phase B. */
-  Complaints: undefined;
+  /**
+   * Complaints and Leads are TABS (TabParamList); they are listed here too so
+   * any screen can navigate() to them with a filter — the tab navigator
+   * answers. Follow-ups is both: a tab when the bar has room, else pushed.
+   */
+  Complaints: { queue?: ComplaintQueue } | undefined;
   ComplaintDetail: { ticketId: number };
   /** Omit `ticketId` to log a new one. */
   ComplaintForm: { ticketId?: number };
-  /** Sales leads — Phase C. */
-  Leads: undefined;
+  Leads: { queue?: LeadQueue } | undefined;
   LeadDetail: { leadId: number };
   /** Omit `leadId` to add a new one. */
   LeadForm: { leadId?: number };
-  FollowUps: undefined;
+  FollowUps: { view?: FollowUpView } | undefined;
+  /** Pushed from More (and Home's bell). */
+  Inbox: undefined;
+  Me: undefined;
 };
 
 export type TabParamList = {
-  MyWork: undefined;
-  Inbox: undefined;
-  Work: undefined;
-  Me: undefined;
+  Home: undefined;
+  Tasks: undefined;
+  Complaints: RootStackParamList["Complaints"];
+  Leads: RootStackParamList["Leads"];
+  FollowUps: RootStackParamList["FollowUps"];
+  More: undefined;
 };
 
 const Stack = createStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
 
 
-function Tabs() {
-  // The web bell's badge (NotificationBell.jsx). A count, not a list: PageSize 1.
-  // Refetches on app focus (focusManager, App.tsx) and every minute while the
-  // app is in front; the Inbox's own refresh invalidates ["notifications"] too.
-  const { data: unread = 0 } = useQuery({
-    queryKey: ["notifications", "unread-count"],
-    queryFn: () => fetchNotifications({ PageSize: 1 }),
-    select: (r) => r.data?.unreadCount ?? 0,
-    refetchInterval: 60_000,
-  });
+/** Follow-ups opened from More: same screen, with a back button. */
+function PushedFollowUps(props: StackScreenProps<RootStackParamList, "FollowUps">) {
+  return <FollowUpsScreen {...props} pushed />;
+}
 
+function Tabs() {
+  const tabs = useTabs();
+  const has = (name: TabName) => tabs.includes(name);
   return (
     <Tab.Navigator
       // The bar itself lives in FloatingTabBar — the default item layout does
@@ -94,26 +100,17 @@ function Tabs() {
         headerShown: false,
       }}
     >
-      <Tab.Screen
-        name="MyWork"
-        component={MyWorkScreen}
-        options={{ title: "My Work" }}
-      />
-      <Tab.Screen
-        name="Inbox"
-        component={NotificationsScreen}
-        options={{ title: "Inbox", tabBarBadge: unread > 0 ? unread : undefined }}
-      />
-      <Tab.Screen
-        name="Work"
-        component={WorkHubScreen}
-        options={{ title: "Work" }}
-      />
-      <Tab.Screen
-        name="Me"
-        component={MeScreen}
-        options={{ title: "Profile" }}
-      />
+      {/* Which tabs mount is useTabs()'s call; the order here is its order. */}
+      <Tab.Screen name="Home" component={HomeScreen} options={{ title: "Home" }} />
+      {has("Tasks") ? <Tab.Screen name="Tasks" component={MyWorkScreen} options={{ title: "Tasks" }} /> : null}
+      {has("Complaints") ? (
+        <Tab.Screen name="Complaints" component={ComplaintsScreen} options={{ title: "Complaints" }} />
+      ) : null}
+      {has("Leads") ? <Tab.Screen name="Leads" component={LeadsScreen} options={{ title: "Leads" }} /> : null}
+      {has("FollowUps") ? (
+        <Tab.Screen name="FollowUps" component={FollowUpsScreen} options={{ title: "Follow-ups" }} />
+      ) : null}
+      <Tab.Screen name="More" component={MoreScreen} options={{ title: "More" }} />
     </Tab.Navigator>
   );
 }
@@ -141,16 +138,16 @@ export default function RootNavigator() {
               component={WorkspaceSettingsScreen}
             />
             <Stack.Screen name="Columns" component={ColumnsScreen} />
-            <Stack.Screen name="Complaints" component={ComplaintsScreen} />
             <Stack.Screen
               name="ComplaintDetail"
               component={ComplaintDetailScreen}
             />
             <Stack.Screen name="ComplaintForm" component={ComplaintFormScreen} />
-            <Stack.Screen name="Leads" component={LeadsScreen} />
             <Stack.Screen name="LeadDetail" component={LeadDetailScreen} />
             <Stack.Screen name="LeadForm" component={LeadFormScreen} />
-            <Stack.Screen name="FollowUps" component={FollowUpsScreen} />
+            <Stack.Screen name="FollowUps" component={PushedFollowUps} />
+            <Stack.Screen name="Inbox" component={NotificationsScreen} />
+            <Stack.Screen name="Me" component={MeScreen} />
           </>
         ) : (
           <Stack.Screen name="Login" component={LoginScreen} />

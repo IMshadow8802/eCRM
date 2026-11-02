@@ -7,7 +7,6 @@ import type { StackNavigationProp } from "@react-navigation/stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { fetchTasks } from "../../api/taskQueries";
-import { fetchMyDay } from "../../api/todayQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
 import type { DayTask, Task } from "../../types/api";
@@ -22,7 +21,15 @@ import { Card, ChipGroup, Dialog, EmptyState, Refresher, Screen, Text } from "..
 import { useSignOut } from "../auth/useSignOut";
 import { TaskCard } from "./TaskCard";
 import { greetingFor, longDate } from "./greeting";
-import { dueBucket, groupByDue, isUnassigned } from "./taskHelpers";
+import {
+  dueBucket,
+  groupByDue,
+  isUnassigned,
+  MY_DAY_QUERY,
+  myTasksQuery,
+  needRank,
+  needsYou,
+} from "./taskHelpers";
 
 type Filter = "mine" | "unassigned" | "all";
 
@@ -45,12 +52,7 @@ export default function MyWorkScreen() {
   // on the server (AssigneeUserId + OnlyOpen); All/Unassigned need the whole
   // window, so that query only runs when one of them is up. Open tasks only:
   // a finished one has no place under Unassigned or in a due bucket.
-  const mine = useQuery({
-    queryKey: ["tasks", "mine", userId],
-    queryFn: () =>
-      fetchTasks({ WorkspaceId: null, AssigneeUserId: userId, OnlyOpen: true, PageSize: 200 }),
-    enabled: userId != null,
-  });
+  const mine = useQuery(myTasksQuery(userId));
   const everyone = useQuery({
     // Not Me's ["tasks", "all-workspaces"]: that one counts finished tasks.
     queryKey: ["tasks", "all-workspaces", "open"],
@@ -58,16 +60,10 @@ export default function MyWorkScreen() {
     enabled: filter !== "mine",
   });
   // TAT-06: the server's Today flags, not a DueDate guess — the only place a
-  // finished-late task still owing a reason shows up. ["tasks"] prefix so task
-  // writes refresh it. A failure only hides the section.
-  const myDay = useQuery({ queryKey: ["tasks", "today", "mine"], queryFn: fetchMyDay });
-  const needs = useMemo(() => {
-    const day = myDay.data?.data;
-    if (!day?.day.live) return [];
-    return (day.me?.tasks ?? [])
-      .filter((t) => t.flags.reasonOwed || t.flags.overdue || t.flags.atRisk)
-      .sort(byUrgency);
-  }, [myDay.data]);
+  // finished-late task still owing a reason shows up. A failure only hides
+  // the section.
+  const myDay = useQuery(MY_DAY_QUERY);
+  const needs = useMemo(() => needsYou(myDay.data?.data), [myDay.data]);
 
   const active = filter === "mine" ? mine : everyone;
   const { isLoading, isRefetching, refetch, isError } = active;
@@ -146,7 +142,7 @@ export default function MyWorkScreen() {
               {longDate()}
             </Text>
           </View>
-          {/* Sign-out lives here as well as on the profile tab: it is the one
+          {/* Sign-out lives here as well as on Profile: it is the one
               action people hunt for, and a decorative avatar was occupying the
               only obvious slot for it. */}
           <Pressable
@@ -218,7 +214,7 @@ export default function MyWorkScreen() {
                 <View key={t.TaskId} testID="needs-you-row">
                   <Card onPress={() => openNeed(t)} gap={1}>
                     <Text variant="bodyStrong">{t.Title}</Text>
-                    <Text variant="caption" color={rank(t) === 2 ? "warning" : "danger"}>
+                    <Text variant="caption" color={needRank(t) === 2 ? "warning" : "danger"}>
                       {needLabel(t)}
                     </Text>
                   </Card>
@@ -259,14 +255,8 @@ export default function MyWorkScreen() {
   );
 }
 
-// Most urgent first, as on the web's My Day: a reason owed, then overdue, then
-// close to the deadline; least time left first within each.
-const rank = (t: DayTask) => (t.flags.reasonOwed ? 0 : t.flags.overdue ? 1 : 2);
-const byUrgency = (a: DayTask, b: DayTask) =>
-  rank(a) - rank(b) || (a.timeLeftMin ?? Infinity) - (b.timeLeftMin ?? Infinity);
-
 const needLabel = (t: DayTask) =>
-  ["Tell your manager why", "Past its deadline", "Close to its deadline"][rank(t)];
+  ["Tell your manager why", "Past its deadline", "Close to its deadline"][needRank(t)];
 
 const emptyTitle = (filter: Filter) =>
   filter === "mine"

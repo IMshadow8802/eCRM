@@ -5,7 +5,7 @@
 # Needs the app signed in to company TestCRM once by hand (flows never type a
 # password and never clear app state). Records they create start "MAESTRO ".
 flows:
-  - smoke-hub.yaml
+  - smoke-home.yaml
   - complaints-list.yaml
   - complaints-create.yaml
   - complaints-lifecycle.yaml

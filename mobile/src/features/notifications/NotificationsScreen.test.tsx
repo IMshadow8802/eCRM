@@ -113,7 +113,7 @@ it("shows an error state when the inbox cannot load", async () => {
 it.each([
   ["a task", { EntityType: "task", EntityId: 10 }, ["TaskDetail", { taskId: 10, workspaceId: null }]],
   ["a TAT warning, whatever its EntityType", { Type: "tat_warn", EntityType: "ticket", EntityId: 11 }, ["TaskDetail", { taskId: 11, workspaceId: null }]],
-  ["a sweep covering several tasks", { Type: "tat_breach", EntityType: "task", EntityId: 0 }, ["Tabs", { screen: "MyWork" }]],
+  ["a sweep covering several tasks", { Type: "tat_breach", EntityType: "task", EntityId: 0 }, ["Tabs", { screen: "Tasks" }]],
   ["a ticket", { Type: "ticket_assigned", EntityType: "ticket", EntityId: 12 }, ["ComplaintDetail", { ticketId: 12 }]],
   ["a workspace (mixed-case EntityType)", { Type: "workspace_invite", EntityType: "Workspace", EntityId: 3 }, ["Boards"]],
 ] as const)("tapping %s marks it read and opens it", async (_label, patch, target) => {
@@ -127,15 +127,15 @@ it.each([
   await waitFor(() => expect(fetchNotifications).toHaveBeenCalledTimes(2));
 });
 
-// parity: NOTIF-03 — a `user` notification (not signed in yet) opens My Work; the
-// phone has no Today screen, so this is the nearest place to act on it.
-it("tapping a presence notification opens My Work", async () => {
+// parity: NOTIF-03 — a `user` notification (not signed in yet) opens Home, the
+// phone's Today and the one tab every role has.
+it("tapping a presence notification opens Home", async () => {
   jest.mocked(fetchNotifications).mockResolvedValue(
     reply([note({ Type: "presence_not_signed_in", EntityType: "user", EntityId: 4, Title: "Ravi has not signed in" })]),
   );
   await mountInbox();
   await fireEvent.press(await screen.findByText("Ravi has not signed in"));
-  expect(mockNav.navigate).toHaveBeenCalledWith("Tabs", { screen: "MyWork" });
+  expect(mockNav.navigate).toHaveBeenCalledWith("Tabs", { screen: "Home" });
 });
 
 // parity: NOTIF-03 — a read row is not marked read again (NotificationBell.jsx:58-61).
@@ -184,4 +184,12 @@ it("mark all read shows the server's message when it fails", async () => {
   await fireEvent.press(screen.getByLabelText("Mark all read"));
   expect(await screen.findByText("Inbox is locked")).toBeOnTheScreen();
   expect(fetchNotifications).toHaveBeenCalledTimes(1);
+});
+
+// Task 32: the Inbox moved off the tab bar; it is pushed from Home's bell or More.
+it("its back button goes back", async () => {
+  jest.mocked(fetchNotifications).mockResolvedValue(reply([]));
+  await mountInbox();
+  await fireEvent.press(await screen.findByRole("button", { name: "Go back" }));
+  expect(mockNav.goBack).toHaveBeenCalled();
 });

@@ -9,14 +9,16 @@ appId: com.shadowider.eCRM
 - repeat:
     times: 6
     while:
-      notVisible: "Profile"
+      notVisible: "More"
     commands:
       - hideKeyboard
       - back
       - launchApp:
           stopApp: false
       - waitForAnimationToEnd
+# Lands on More: the module tabs (Complaints, Leads, ...) are on the bar for
+# the next tap, and Follow-ups / Workspaces / Inbox / Profile are on screen.
 - tapOn:
-    text: "Work"
+    text: "More"
     index: 0
-- assertVisible: "Everything you have access to"
+- assertVisible: "Profile"

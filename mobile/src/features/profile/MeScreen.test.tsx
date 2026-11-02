@@ -8,7 +8,7 @@ import { fetchWorkspaces } from "../../api/workspaceQueries";
 import useAuthStore from "../../stores/useAuthStore";
 import type { Company } from "../../types/api";
 import { assigneesJson, envelope, makeTask, makeWorkspace, pagination, serverError } from "../../test/fixtures";
-import { renderWithProviders, seedAuth } from "../../test/renderWithProviders";
+import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import MeScreen from "./MeScreen";
 
 jest.mock("../../api/authQueries");
@@ -281,4 +281,14 @@ describe("Change password", () => {
     expect(await screen.findByText("Current password is incorrect")).toBeOnTheScreen();
     expect(screen.getByText("Save password")).toBeOnTheScreen();
   });
+});
+
+// Task 32: Profile moved under More and is pushed on the stack.
+it("pushed from More, its back button goes back", async () => {
+  seedAuth();
+  const navigation = makeNavigation<"Me">();
+  await renderWithProviders(<MeScreen navigation={navigation} route={makeRoute("Me", undefined)} />);
+  expect(screen.getByText("Profile")).toBeOnTheScreen();
+  await fireEvent.press(screen.getByRole("button", { name: "Go back" }));
+  expect(navigation.goBack).toHaveBeenCalled();
 });

@@ -1,3 +1,4 @@
+import type { FetchTicketsParams } from "../../api/ticketQueries";
 import type {
   CustomFieldDef,
   CustomFieldValue,
@@ -15,6 +16,46 @@ export const lookupMap = (lookups: Lookup[] | undefined): Map<number, string> =>
 
 export const asOptions = (lookups: Lookup[] | undefined) =>
   (lookups ?? []).map((l) => ({ value: l.Id, label: l.Value }));
+
+// ------------------------------------------------------------------ queues
+
+/** The complaint queues — WHICH rows. A status chip then narrows within one. */
+export type ComplaintQueue = "mine" | "team" | "unassigned" | "overdue" | "escalated";
+
+/** "active" = every open/onhold status; a number = one ticket_status id. */
+export type ComplaintStatusFilter = "active" | number;
+
+/**
+ * Which server-side filters each queue is, in one place, so the list, its
+ * header count and Home's numbers cannot disagree about what "Mine" means.
+ *
+ *   mine       assigned to me, still active
+ *   team       everything I can see, still active — scope is the SP's
+ *   unassigned active and nobody has it (web's preset of the same name)
+ *   overdue    non-terminal and past DueAt (the SP computes it; never stored)
+ *   escalated  non-terminal and (escalated to me OR overdue) — a manager's queue
+ *
+ * A status chip other than "Active" replaces StatusCode with StatusId: sending
+ * both would AND them, and "Resolved" within "active" is the empty set.
+ * PageSize 50 (the controller caps it at 200); a count overrides it with 1.
+ */
+export function complaintQueueParams(
+  queue: ComplaintQueue,
+  status: ComplaintStatusFilter,
+  userId: number | null,
+  term: string,
+): FetchTicketsParams {
+  return {
+    PageSize: 50,
+    SearchTerm: term || null,
+    AssignedTo: queue === "mine" ? userId : null,
+    StatusCode: status === "active" ? "active" : null,
+    StatusId: status === "active" ? null : status,
+    Unassigned: queue === "unassigned",
+    Overdue: queue === "overdue",
+    Escalated: queue === "escalated",
+  };
+}
 
 // --------------------------------------------------------------- lifecycle
 

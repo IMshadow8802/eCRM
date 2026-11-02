@@ -6,12 +6,17 @@ import type { StackScreenProps } from "@react-navigation/stack";
 
 import { fetchFollowUps } from "../../api/followupQueries";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
+import { useParamState } from "../../hooks/useParamState";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
-import { colors, spacing, SCREEN_PADDING } from "../../theme";
+import { colors, spacing, SCREEN_PADDING, TAB_BAR_CLEARANCE } from "../../theme";
 import { Card, Chip, EmptyState, Input, Refresher, Screen, ScreenHeader, Segmented, Text } from "../../ui";
 import { dayLabel, FOLLOWUP_VIEWS, followUpTypeLabel, followUpViewParams, type FollowUpView } from "./leadHelpers";
 
-type Props = StackScreenProps<RootStackParamList, "FollowUps">;
+/**
+ * A tab for a leads-only role; pushed from More (with a back button) when the
+ * bar has no room for it.
+ */
+type Props = StackScreenProps<RootStackParamList, "FollowUps"> & { pushed?: boolean };
 
 const EMPTY: Record<FollowUpView, { title: string; message: string }> = {
   today: { title: "Nothing due today", message: "Follow-ups due today show up here." },
@@ -24,8 +29,9 @@ const EMPTY: Record<FollowUpView, { title: string; message: string }> = {
  * The follow-up queue across every lead the caller can see — the morning
  * list. Logging happens on the lead, where the history is; a row opens it.
  */
-export default function FollowUpsScreen({ navigation }: Props) {
-  const [view, setView] = useState<FollowUpView>("today");
+export default function FollowUpsScreen({ navigation, route, pushed = false }: Props) {
+  // "Today" unless a navigate() asks for another view.
+  const [view, setView] = useParamState<FollowUpView>(route.params, route.params?.view, "today");
   const [search, setSearch] = useState("");
   const term = useDebouncedValue(search.trim());
 
@@ -65,7 +71,7 @@ export default function FollowUpsScreen({ navigation }: Props) {
         title="Follow-ups"
         subtitle={`${total} follow-ups`}
         tint="success"
-        onBack={navigation.goBack}
+        onBack={pushed ? navigation.goBack : undefined}
       />
 
       <View style={styles.controls}>
@@ -149,7 +155,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.divider,
   },
-  list: { paddingTop: spacing[4], paddingBottom: spacing[20] },
+  // Clears the floating tab bar when it is a tab.
+  list: { paddingTop: spacing[4], paddingBottom: TAB_BAR_CLEARANCE },
   listEmpty: { flexGrow: 1 },
   cardWrap: { paddingHorizontal: SCREEN_PADDING, paddingBottom: spacing[5] },
   row: { flexDirection: "row", alignItems: "center", gap: spacing[1] },

@@ -5,14 +5,14 @@ import { renderWithProviders } from "../test/renderWithProviders";
 import FloatingTabBar from "./FloatingTabBar";
 
 const routes = [
-  { key: "MyWork-1", name: "MyWork", params: undefined },
-  { key: "Inbox-1", name: "Inbox", params: undefined },
-  { key: "Work-1", name: "Work", params: undefined },
-  { key: "Me-1", name: "Me", params: undefined },
+  { key: "Home-1", name: "Home", params: undefined },
+  { key: "Tasks-1", name: "Tasks", params: undefined },
+  { key: "Complaints-1", name: "Complaints", params: undefined },
+  { key: "More-1", name: "More", params: undefined },
   // A route with no icon of its own and no title still renders.
   { key: "Extra-1", name: "Extra", params: { from: "test" } },
 ];
-const titles: Record<string, string | undefined> = { MyWork: "My Work", Inbox: "Inbox", Work: "Work", Me: "Profile" };
+const titles: Record<string, string | undefined> = { Home: "Home", Tasks: "Tasks", Complaints: "Complaints", More: "More" };
 
 const mountBar = (index: number, defaultPrevented = false) => {
   const navigation = {
@@ -31,9 +31,9 @@ const mountBar = (index: number, defaultPrevented = false) => {
 it("shows one tab per route, labelled by title, with the focused one selected", async () => {
   await mountBar(1);
   const tabs = screen.getAllByRole("tab");
-  expect(tabs.map((t) => t.props.accessibilityLabel)).toEqual(["My Work", "Inbox", "Work", "Profile", "Extra"]);
-  expect(screen.getByRole("tab", { name: "Inbox" })).toBeSelected();
-  expect(screen.getByRole("tab", { name: "My Work" })).not.toBeSelected();
+  expect(tabs.map((t) => t.props.accessibilityLabel)).toEqual(["Home", "Tasks", "Complaints", "More", "Extra"]);
+  expect(screen.getByRole("tab", { name: "Tasks" })).toBeSelected();
+  expect(screen.getByRole("tab", { name: "Home" })).not.toBeSelected();
 });
 
 it("pressing another tab announces it, then navigates to it", async () => {
@@ -45,27 +45,13 @@ it("pressing another tab announces it, then navigates to it", async () => {
 
 it("pressing the tab you are on does not navigate", async () => {
   const navigation = await mountBar(2);
-  await fireEvent.press(screen.getByRole("tab", { name: "Work" }));
+  await fireEvent.press(screen.getByRole("tab", { name: "Complaints" }));
   expect(navigation.emit).toHaveBeenCalled();
   expect(navigation.navigate).not.toHaveBeenCalled();
 });
 
 it("a screen that cancels the tab press keeps the user where they are", async () => {
   const navigation = await mountBar(0, true);
-  await fireEvent.press(screen.getByRole("tab", { name: "Profile" }));
+  await fireEvent.press(screen.getByRole("tab", { name: "More" }));
   expect(navigation.navigate).not.toHaveBeenCalled();
-});
-
-// parity: NOTIF-01 — the Inbox tab carries the unread count.
-it("draws a tab's badge, and none when it has no badge", async () => {
-  const navigation = { emit: jest.fn(() => ({ defaultPrevented: false })), navigate: jest.fn() };
-  const descriptors = Object.fromEntries(
-    routes.map((r) => [r.key, { options: { title: titles[r.name], tabBarBadge: r.name === "Inbox" ? 3 : undefined } }]),
-  );
-  await renderWithProviders(
-    <FloatingTabBar {...({ state: { index: 0, routes }, descriptors, navigation } as unknown as BottomTabBarProps)} />,
-  );
-  expect(screen.getByRole("tab", { name: "Inbox" })).toHaveTextContent(/3/);
-  expect(screen.getByRole("tab", { name: "Inbox" }).props.accessibilityValue).toEqual({ text: "3 unread" });
-  expect(screen.getByRole("tab", { name: "Work" })).not.toHaveTextContent(/\d/);
 });

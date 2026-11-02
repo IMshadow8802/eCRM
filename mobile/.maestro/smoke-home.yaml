@@ -1,0 +1,21 @@
+appId: com.shadowider.eCRM
+---
+# The test user has every module: Home · Tasks · Complaints · Leads · More,
+# with Follow-ups under More.
+- runFlow: common/open-work.yaml
+- assertVisible: "Inbox"
+- assertVisible: "Workspaces"
+- assertVisible: "Follow-ups"
+- assertVisible: "Profile"
+- tapOn:
+    text: "Home"
+    index: 0
+- assertVisible: "Today"
+- assertVisible: "My tasks"
+- assertVisible: "My complaints"
+- assertVisible: "My leads"
+- assertVisible: "Follow-ups due today"
+- assertVisible: "Tasks"
+- assertVisible: "Complaints"
+- assertVisible: "Leads"
+- takeScreenshot: smoke-home

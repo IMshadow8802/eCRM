@@ -4,12 +4,13 @@ import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { CloudOff, Headset, Plus, Search } from "lucide-react-native";
 import type { StackScreenProps } from "@react-navigation/stack";
 
-import { fetchTickets, type FetchTicketsParams } from "../../api/ticketQueries";
+import { fetchTickets } from "../../api/ticketQueries";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
+import { useParamState } from "../../hooks/useParamState";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
 import type { Ticket } from "../../types/api";
-import { colors, spacing, SCREEN_PADDING } from "../../theme";
+import { colors, spacing, SCREEN_PADDING, TAB_BAR_CLEARANCE, TAB_BAR_HEIGHT } from "../../theme";
 import {
   ChipGroup,
   EmptyState,
@@ -21,14 +22,16 @@ import {
   Segmented,
 } from "../../ui";
 import { ComplaintCard } from "./ComplaintCard";
+import {
+  complaintQueueParams,
+  type ComplaintQueue,
+  type ComplaintStatusFilter,
+} from "./ticketHelpers";
 import { useTicketRefData } from "./useTicketRefData";
 
 type Props = StackScreenProps<RootStackParamList, "Complaints">;
 
-/** The queues — WHICH rows. A status chip then narrows within one. */
-type Queue = "mine" | "team" | "unassigned" | "overdue" | "escalated";
-
-const QUEUES: { value: Queue; label: string }[] = [
+const QUEUES: { value: ComplaintQueue; label: string }[] = [
   { value: "mine", label: "Mine" },
   { value: "team", label: "Team" },
   { value: "unassigned", label: "Unassigned" },
@@ -36,7 +39,7 @@ const QUEUES: { value: Queue; label: string }[] = [
   { value: "escalated", label: "Escalated" },
 ];
 
-const SUBTITLE: Record<Queue, string> = {
+const SUBTITLE: Record<ComplaintQueue, string> = {
   mine: "assigned to you",
   team: "in your team",
   unassigned: "unassigned",
@@ -44,7 +47,7 @@ const SUBTITLE: Record<Queue, string> = {
   escalated: "escalated",
 };
 
-const EMPTY: Record<Queue, { title: string; message: string }> = {
+const EMPTY: Record<ComplaintQueue, { title: string; message: string }> = {
   mine: {
     title: "Nothing on your plate",
     message: "Complaints assigned to you that are still open show up here.",
@@ -67,43 +70,6 @@ const EMPTY: Record<Queue, { title: string; message: string }> = {
   },
 };
 
-/** "active" = every open/onhold status; a number = one ticket_status id. */
-type StatusFilter = "active" | number;
-
-/** Rows per page. The controller caps PageSize at 200 (controllerKit.js). */
-const PAGE_SIZE = 50;
-
-/**
- * Which server-side filters each queue is, in one place, so the header count
- * and the list cannot disagree about what "Mine" means.
- *
- *   mine       assigned to me, still active
- *   team       everything I can see, still active — scope is the SP's
- *   unassigned active and nobody has it (web's preset of the same name)
- *   overdue    non-terminal and past DueAt (the SP computes it; never stored)
- *   escalated  non-terminal and (escalated to me OR overdue) — a manager's queue
- *
- * A status chip other than "Active" replaces StatusCode with StatusId: sending
- * both would AND them, and "Resolved" within "active" is the empty set.
- */
-function queueParams(
-  queue: Queue,
-  status: StatusFilter,
-  userId: number | null,
-  term: string,
-): FetchTicketsParams {
-  return {
-    PageSize: PAGE_SIZE,
-    SearchTerm: term || null,
-    AssignedTo: queue === "mine" ? userId : null,
-    StatusCode: status === "active" ? "active" : null,
-    StatusId: status === "active" ? null : status,
-    Unassigned: queue === "unassigned",
-    Overdue: queue === "overdue",
-    Escalated: queue === "escalated",
-  };
-}
-
 /**
  * The complaints queue — a list, not a board.
  *
@@ -113,11 +79,12 @@ function queueParams(
  * what has been pushed up to me — and those are the segments. Sorting is the server's: newest
  * first, except Overdue and Escalated, which go most-overdue first (092).
  */
-export default function ComplaintsScreen({ navigation }: Props) {
+export default function ComplaintsScreen({ navigation, route }: Props) {
   const userId = useAuthStore((s) => s.UserId);
 
-  const [queue, setQueue] = useState<Queue>("mine");
-  const [status, setStatus] = useState<StatusFilter>("active");
+  // "Mine" unless a navigate() (Home's rows) asks for another queue.
+  const [queue, setQueue] = useParamState<ComplaintQueue>(route.params, route.params?.queue, "mine");
+  const [status, setStatus] = useState<ComplaintStatusFilter>("active");
   const [search, setSearch] = useState("");
 
   // Debounced: one request once typing pauses, not one per keystroke (each
@@ -126,7 +93,7 @@ export default function ComplaintsScreen({ navigation }: Props) {
   const term = useDebouncedValue(search.trim());
 
   const params = useMemo(
-    () => queueParams(queue, status, userId, term),
+    () => complaintQueueParams(queue, status, userId, term),
     [queue, status, userId, term],
   );
 
@@ -145,8 +112,8 @@ export default function ComplaintsScreen({ navigation }: Props) {
 
   const statusOptions = useMemo(
     () => [
-      { value: "active" as StatusFilter, label: "Active" },
-      ...statuses.map((s) => ({ value: s.Id as StatusFilter, label: s.Value })),
+      { value: "active" as ComplaintStatusFilter, label: "Active" },
+      ...statuses.map((s) => ({ value: s.Id as ComplaintStatusFilter, label: s.Value })),
     ],
     [statuses],
   );
@@ -176,7 +143,6 @@ export default function ComplaintsScreen({ navigation }: Props) {
         title="Complaints"
         subtitle={`${total} ${SUBTITLE[queue]}`}
         tint="danger"
-        onBack={navigation.goBack}
       />
 
       <View style={styles.controls}>
@@ -246,6 +212,8 @@ export default function ComplaintsScreen({ navigation }: Props) {
         icon={Plus}
         accessibilityLabel="Log a complaint"
         onPress={() => navigation.navigate("ComplaintForm", {})}
+        // A tab now: lift it over the floating tab bar.
+        offsetBottom={TAB_BAR_HEIGHT}
       />
     </Screen>
   );
@@ -261,7 +229,8 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.divider,
   },
   // Clears the FAB so the last card stays reachable.
-  list: { paddingTop: spacing[4], paddingBottom: spacing[20] },
+  // The last card clears the floating tab bar and the + above it.
+  list: { paddingTop: spacing[4], paddingBottom: TAB_BAR_CLEARANCE + spacing[16] },
   listEmpty: { flexGrow: 1 },
   // 20 between cards: the gap has to out-reach the card shadow, or stacked
   // shadows meet and the list reads as one grey slab (My Work does the same).

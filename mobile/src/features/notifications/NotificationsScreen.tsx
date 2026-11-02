@@ -72,7 +72,7 @@ export default function NotificationsScreen() {
       case "task":
         // A sweep notification covers several tasks: EntityId 0, so show the list.
         if (!(n.EntityId > 0)) {
-          navigation.navigate("Tabs", { screen: "MyWork" });
+          navigation.navigate("Tabs", { screen: "Tasks" });
           break;
         }
         navigation.navigate("TaskDetail", { taskId: n.EntityId, workspaceId: null });
@@ -84,9 +84,9 @@ export default function NotificationsScreen() {
         navigation.navigate("Boards");
         break;
       // "Not signed in yet" is about a person. The web opens Today's team tab;
-      // the phone has no Today, so My Work is the nearest place to act.
+      // the phone's Today is Home — the one tab every role has.
       case "user":
-        navigation.navigate("Tabs", { screen: "MyWork" });
+        navigation.navigate("Tabs", { screen: "Home" });
         break;
     }
   };
@@ -95,6 +95,7 @@ export default function NotificationsScreen() {
     <Screen>
       <ScreenHeader
         title="Inbox"
+        onBack={navigation.goBack}
         subtitle={unreadCount > 0 ? `${unreadCount} unread` : undefined}
         actions={
           unreadCount > 0

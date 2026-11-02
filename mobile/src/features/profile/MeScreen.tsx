@@ -17,12 +17,13 @@ import {
   Smartphone,
   type LucideIcon,
 } from "lucide-react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import type { StackScreenProps } from "@react-navigation/stack";
 
 import { ChangePasswordForm, EditProfileForm } from "./AccountForms";
 
 import { fetchTasks } from "../../api/taskQueries";
 import { fetchWorkspaces } from "../../api/workspaceQueries";
+import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
 import { isAssignee } from "../tasks/taskHelpers";
 import { useSignOut } from "../auth/useSignOut";
@@ -33,15 +34,15 @@ import {
   SCREEN_PADDING,
   TAB_BAR_CLEARANCE,
 } from "../../theme";
-import { Avatar, Button, Card, Chip, Dialog, Screen, Text } from "../../ui";
+import { Avatar, Button, Card, Chip, Dialog, Screen, ScreenHeader, Text } from "../../ui";
 
-export default function MeScreen() {
+/** Pushed from More; `navigation` is the stack's (absent in a bare render). */
+export default function MeScreen({ navigation }: Partial<StackScreenProps<RootStackParamList, "Me">>) {
   const user = useAuthStore((s) => s.user);
   const company = useAuthStore((s) => s.company);
   const userId = useAuthStore((s) => s.UserId);
   // From the server's access, never the login-time user (CLAUDE.md §3).
   const isAdmin = useAuthStore((s) => s.isAdmin());
-  const insets = useSafeAreaInsets();
   const signOut = useSignOut();
   const [editing, setEditing] = useState<"profile" | "password" | null>(null);
 
@@ -73,9 +74,7 @@ export default function MeScreen() {
 
   return (
     <Screen>
-      <View style={[styles.header, { paddingTop: insets.top + spacing[3] }]}>
-        <Text variant="h1">Profile</Text>
-      </View>
+      <ScreenHeader title="Profile" onBack={navigation?.goBack} />
 
       <ScrollView
         contentContainerStyle={styles.scroll}
@@ -222,12 +221,6 @@ function Row({
 }
 
 const styles = StyleSheet.create({
-  header: {
-    paddingHorizontal: SCREEN_PADDING,
-    paddingBottom: spacing[3],
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.divider,
-  },
   scroll: {
     padding: SCREEN_PADDING,
     gap: spacing[5],
