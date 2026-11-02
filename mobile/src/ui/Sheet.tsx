@@ -12,7 +12,7 @@ import {
 import { X } from "lucide-react-native";
 
 import { colors, metrics, radius, spacing } from "../theme";
-import { InSheetContext } from "./sheetContext";
+import { InSheetContext, useInSheet } from "./sheetContext";
 import { StatusBadge, type StatusBadgeProps } from "./StatusBadge";
 import { Text } from "./Text";
 
@@ -90,6 +90,10 @@ export const Sheet = forwardRef<SheetRef, SheetProps>(function Sheet(
     [],
   );
   const showClose = closable ?? !!(subtitle || badge);
+  // A sheet opened from a sheet (a Select inside Resolve) lives in the parent's
+  // content. gorhom's default "replace" closes the parent, which unmounts that
+  // content — the picker with it, so both vanished. "push" stacks it on top.
+  const nested = useInSheet();
 
   return (
     <BottomSheetModal
@@ -98,6 +102,7 @@ export const Sheet = forwardRef<SheetRef, SheetProps>(function Sheet(
       enableDynamicSizing={!points}
       backdropComponent={renderBackdrop}
       onDismiss={onDismiss}
+      stackBehavior={nested ? "push" : undefined}
       // No android_keyboardInputMode="adjustResize": edge-to-edge Android never
       // resizes, so gorhom would wait forever. The default (pan) lifts the sheet.
       keyboardBehavior={keyboardAware ? "interactive" : undefined}

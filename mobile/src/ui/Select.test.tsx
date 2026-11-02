@@ -64,3 +64,25 @@ it("disabled never opens; required, error and an empty list are shown", async ()
   await fireEvent.press(screen.getByText("Select…"));
   expect(present).not.toHaveBeenCalled();
 });
+
+it("inside a Sheet, its picker stacks on top (push) instead of replacing — and so unmounting — the parent", async () => {
+  // Device bug 2026-11-03: Resolve's Resolution picker closed Resolve and itself.
+  const behaviours: unknown[] = [];
+  present.mockImplementation(function (this: unknown) {
+    behaviours.push((this as { props: { stackBehavior?: string } }).props.stackBehavior);
+  });
+  const { Sheet } = jest.requireActual<typeof import("./Sheet")>("./Sheet");
+  await renderWithProviders(
+    <Sheet title="Resolve complaint">
+      <Select label="Resolution" placeholder="How was it fixed?" value={null} options={OPTIONS} onChange={jest.fn()} />
+    </Sheet>,
+  );
+  await fireEvent.press(screen.getByText("How was it fixed?"));
+  expect(behaviours).toEqual(["push"]);
+  behaviours.length = 0;
+  // A top-level picker keeps gorhom's default.
+  await renderWithProviders(<Select label="Status" placeholder="Top level" value={null} options={OPTIONS} onChange={jest.fn()} />);
+  await fireEvent.press(screen.getByText("Top level"));
+  expect(behaviours).toEqual([undefined]);
+  present.mockReset();
+});
