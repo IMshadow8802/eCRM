@@ -269,6 +269,26 @@ Source: `.superpowers/sdd/2026-11-01-mobile-sales-and-complaints/parity-audit.md
 - [ ] Write each flow against the real screen text; run `maestro test --test-output-dir <scratch> .maestro/<flow>.yaml`; on failure read screenshot + Metro log, fix the app code **with a unit/screen test that reproduces the bug first**, re-run. Also inspect every screenshot for clipped text, overlapping chips, keyboard covering a submit button; each such fix also gets a test where a test can express it.
 - [ ] Done when the whole suite passes twice in a row. Report the `MAESTRO %` records created. Commit flows + fixes.
 
+### Task 32: Role-based navigation + visual pass (user-approved 2026-11-02)
+
+Why: Complaints/Leads sit three taps deep (My Work → Work → section → list). People who only handle complaints or only leads must reach their list in one tap. Boards suit tasks only. Pattern: HubSpot / Salesforce / Zoho / Freshdesk mobile — bottom tabs = the modules you use + Home + More; no drawer.
+
+**Navigation**
+- Bottom tabs built from `useAccess(module).view` (server decides; hiding is a courtesy), max 5, in this order: **Home** · Tasks · Complaints · Leads · Follow-ups (leads-only users; for users with ≥4 module tabs Follow-ups moves under More) · **More**.
+  - Complaints-only → Home · Complaints · More. Leads-only → Home · Leads · Follow-ups · More. Everything → Home · Tasks · Complaints · Leads · More.
+- **Home = "Today"** across what the person has: tasks due / Needs you, my open + overdue complaints, follow-ups due today. Each number navigates to its list pre-filtered (one tap). Inbox = bell with badge in the Home header.
+- Module tabs open straight to their list, default filter "Mine", + to add. Boards live only inside Tasks.
+- **More:** Inbox, Workspaces, Follow-ups (when not a tab), Profile.
+- Delete `features/hub/WorkHubScreen` and its route; hub counts move to Home.
+- Tests: per role (complaints-only, leads-only, tasks-only, all, admin) the exact tab set; no access → tab absent and its counts never requested; Home numbers come from the same params as each list's filter; each Home row navigates with the filter; tab order stable; ≤5 tabs.
+- Maestro: only `common/open-work.yaml` (and any hub step) changes; re-run the whole suite twice.
+
+**Visual pass (user rule: lucide only, solid colours only, "sorbet" chips)**
+- Icons: lucide everywhere; no emoji in UI (greeting `👋` in `features/tasks/greeting.ts` → lucide `Hand`); avatar emoji presets are user data, keep.
+- No translucency: no `rgba`/`opacity` anywhere except `colors.overlay` (scrim) — Toast fades with transform (slide) instead of animating opacity. Shadow opacity in tokens is a shadow, not a fill — keep.
+- "Sorbet" chips: every chip uses a solid soft tint of its hue as fill with the same hue's dark shade as text/icon (e.g. `successSoft` + `success`), all through `ui/Chip` tones — status, priority, lead status, ticket status, TAT. No ad-hoc chip colours in screens; add missing tones (e.g. purple/teal) to `tokens.ts` as solid hexes.
+- Guard test (`src/test/designRules.test.ts`): scans `src/` (excluding tests and `theme/`) and fails on `rgba(`, `opacity:` (style), emoji in JSX text, any icon import other than `lucide-react-native`, and hex colour literals. Eslint already bans literals; this catches what eslint can't.
+
 ### Task 31: Docs and cleanup
 
 - [ ] CLAUDE.md §9: Phase C status (what is on mobile, what stays web), `mobile/.maestro/` usage. Delete `docs/superpowers/plans/2026-11-01-mobile-sales-reference/`. Commit.
