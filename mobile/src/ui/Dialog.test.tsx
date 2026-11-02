@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react-native";
 
 import { Dialog } from "./Dialog";
+import { Text } from "./Text";
 
 const handlers = () => ({ onConfirm: jest.fn(), onCancel: jest.fn() });
 
@@ -42,6 +43,21 @@ it("a tap on the backdrop cancels; a tap inside the card does not", async () => 
   // Android's back button.
   await fireEvent(screen.root!, "requestClose");
   expect(h.onCancel).toHaveBeenCalledTimes(2);
+});
+
+it("not dismissable: backdrop and back button do nothing; children render inside the card", async () => {
+  const h = handlers();
+  await render(
+    <Dialog visible title="Sign in again" dismissable={false} {...h}>
+      <Text>field goes here</Text>
+    </Dialog>,
+  );
+  expect(screen.getByText("field goes here")).toBeOnTheScreen();
+  await fireEvent.press(screen.getByText("Sign in again").parent!.parent!);
+  await fireEvent(screen.root!, "requestClose");
+  expect(h.onCancel).not.toHaveBeenCalled();
+  await fireEvent.press(screen.getByRole("button", { name: "Cancel" }));
+  expect(h.onCancel).toHaveBeenCalledTimes(1);
 });
 
 it("a notice has a single OK button", async () => {

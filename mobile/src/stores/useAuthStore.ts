@@ -11,7 +11,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { fetchMyAccess } from "../api/authQueries";
-import { setApiBaseUrl, setAuthToken, setUnauthorizedHandler } from "../api/client";
+import { setApiBaseUrl, setAuthToken, setReauthHandler, setUnauthorizedHandler } from "../api/client";
 import { queryClient } from "../api/queryClient";
 import { DEV_API_BASE_URL, isTrustedApiUrl } from "../config/env";
 import type { Access, AuthUser, ClientConfig, Company, LoginData, Permissions } from "../types/api";
@@ -50,6 +50,10 @@ interface AuthState {
   sessionEndedReason: string | null;
   /** The server's own wording for that 401, shown before any local fallback. */
   sessionEndedMessage: string | null;
+  /** A closed session waiting on the re-sign-in dialog (never persisted). */
+  reauth: { code: string; message: string | null } | null;
+  /** Re-sign-in answered: same person resumes in place; anyone else gets a full logout. */
+  resumeSession: (data: LoginData) => void;
   /** Login said the one-time presence notice has not been acknowledged. */
   presenceNotice: boolean;
   ackPresenceNotice: () => void;
@@ -81,7 +85,12 @@ const EMPTY = {
   BranchId: null,
   loginTimestamp: null,
   presenceNotice: false,
+  reauth: null,
 } as const;
+
+// The dialog's answer for the requests parked in the api client. Module-level:
+// a promise cannot live in persisted state.
+let pendingReauth: { resolve: (token: string) => void; reject: (err: Error) => void } | null = null;
 
 const useAuthStore = create<AuthState>()(
   persist(
@@ -134,9 +143,37 @@ const useAuthStore = create<AuthState>()(
       ackPresenceNotice: () => set({ presenceNotice: false }),
 
       logout: () => {
+        // Parked requests fail with their original 401; the navigator drops to login.
+        pendingReauth?.reject(new Error("Signed out"));
+        pendingReauth = null;
         setAuthToken(null);
         queryClient.clear();
         set({ ...EMPTY });
+      },
+
+      resumeSession: (data) => {
+        // A different person must not inherit this screen or its parked requests.
+        if (Number(data.user?.Id) !== Number(get().UserId)) {
+          get().logout();
+          return;
+        }
+        // Not login(): that clears the query cache, and the screen underneath is still using it.
+        setAuthToken(data.token);
+        set({
+          token: data.token,
+          user: data.user,
+          // Same person, but an admin may have moved their office meanwhile.
+          BranchId: data.user?.BranchId ?? get().BranchId,
+          company: data.company,
+          permissions: data.permissions,
+          access: data.access ?? get().access,
+          accessCheckedAt: data.access ? Date.now() : get().accessCheckedAt,
+          loginTimestamp: Date.now(),
+          presenceNotice: Boolean(data.presenceNotice),
+          reauth: null,
+        });
+        pendingReauth?.resolve(data.token);
+        pendingReauth = null;
       },
 
       refreshAccess: async () => {
@@ -170,7 +207,8 @@ const useAuthStore = create<AuthState>()(
       name: "nexus-crm-auth",
       storage: createJSONStorage(() => AsyncStorage),
       // The throttle stamp is per process: a cold start always re-reads access, as the web does on load.
-      partialize: ({ accessCheckedAt: _, ...rest }) => rest,
+      // The dialog is per process too: its parked requests died with the old one.
+      partialize: ({ accessCheckedAt: _, reauth: __, ...rest }) => rest,
       // Only a base URL on a Central-hosted origin survives a reload; anything
       // else (a tampered AsyncStorage value) drops the company binding AND the
       // session, since the token would otherwise be sent to that host.
@@ -206,6 +244,16 @@ setUnauthorizedHandler((code, message) => {
     useAuthStore.setState({ sessionEndedReason: code, sessionEndedMessage: message || null });
   }
   logout();
+});
+
+// A closed server session (SESSION_* codes) is saved by signing in again over
+// the screen; the client parks every request in the burst on this one promise.
+setReauthHandler((code, message) => {
+  if (!useAuthStore.getState().isAuthenticated) return Promise.reject(new Error("Signed out"));
+  return new Promise<string>((resolve, reject) => {
+    pendingReauth = { resolve, reject };
+    useAuthStore.setState({ reauth: { code, message: message || null } });
+  });
 });
 
 export default useAuthStore;

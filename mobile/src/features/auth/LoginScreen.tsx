@@ -22,13 +22,13 @@ import { Button, Input, Text } from "../../ui";
 import FloatingShapes from "./FloatingShapes";
 
 // Fallback only: the 401 normally carries its own message (sessionEndedMessage).
-const REASONS: Record<string, string> = {
+export const REASONS: Record<string, string> = {
   SESSION_EXPIRED: "Your session ended at the end of your shift. Sign in again.",
   SESSION_FORCED: "An admin ended your session.",
 };
 
 /** Anything the API didn't explain — network down, DNS, timeout. */
-const FALLBACK_ERROR =
+export const FALLBACK_ERROR =
   "Could not reach the server. Check your connection and try again.";
 
 export default function LoginScreen() {

@@ -38,6 +38,20 @@ export const setUnauthorizedHandler = (handler: ((code?: string, message?: strin
   onUnauthorized = handler;
 };
 
+// A closed server session (CLAUDE.md §3 Sessions) can be saved by signing in
+// again over the screen; a bad/expired JWT cannot. Mirrors web/src/utils/reauth.js.
+export const SESSION_CODES = ["SESSION_REQUIRED", "SESSION_EXPIRED", "SESSION_FORCED", "SESSION_ENDED"];
+
+// Wired by the auth store: shows the re-sign-in dialog and resolves with the
+// new token (rejects when the person signs in as someone else).
+let reauthHandler: ((code: string, message?: string) => Promise<string>) | null = null;
+// One dialog for a burst of 401s: every request in it awaits this.
+let reauthInFlight: Promise<string> | null = null;
+
+export const setReauthHandler = (handler: typeof reauthHandler): void => {
+  reauthHandler = handler;
+};
+
 // A 401 from the login endpoint means "wrong password" — it must show an error
 // on the login form, not trigger the session-expired logout path. Mirrors
 // web/src/utils/authRedirectGuard.js.
@@ -65,11 +79,32 @@ apiClient.interceptors.request.use((config) => {
 
 apiClient.interceptors.response.use(
   (response) => response,
-  (error) => {
-    const status = error?.response?.status;
-    if (status === 401 && !shouldSkipAuthRedirect(error?.config?.url)) {
-      onUnauthorized?.(error?.response?.data?.code, error?.response?.data?.message);
+  async (error) => {
+    const config = error?.config;
+    if (error?.response?.status !== 401 || shouldSkipAuthRedirect(config?.url)) return Promise.reject(error);
+    const { code, message } = error.response.data ?? {};
+    // `_retried` survives axios's config merge on the retry, so a second 401 is final.
+    if (reauthHandler && config && !config._retried && SESSION_CODES.includes(code)) {
+      // Sent with an older token than we now hold (in flight across a re-sign-in)?
+      // Retry with the current one rather than asking for the password twice.
+      const sent = config.headers?.Authorization;
+      const stale = Boolean(authToken && sent && sent !== `Bearer ${authToken}`);
+      try {
+        const handler = reauthHandler;
+        const token = stale
+          ? authToken
+          : await (reauthInFlight ??= handler(code, message).finally(() => {
+              reauthInFlight = null;
+            }));
+        config._retried = true;
+        config.headers.Authorization = `Bearer ${token}`;
+        return apiClient(config);
+      } catch {
+        // Signed in as someone else: the store has already ended the session.
+        return Promise.reject(error);
+      }
     }
+    onUnauthorized?.(code, message);
     return Promise.reject(error);
   },
 );

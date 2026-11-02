@@ -4,7 +4,8 @@ import * as authQueries from "../api/authQueries";
 import { getApiBaseUrl, getAuthToken, post } from "../api/client";
 import { queryClient } from "../api/queryClient";
 import { access, envelope, loginData } from "../test/fixtures";
-import { fail } from "../test/transport";
+import { fail, lastRequest, respond } from "../test/transport";
+import { waitFor } from "@testing-library/react-native";
 import { seedAuth } from "../test/renderWithProviders";
 import useAuthStore from "./useAuthStore";
 
@@ -135,10 +136,10 @@ describe("the query cache never outlives a session", () => {
     expect(cached()).toBeUndefined();
   });
 
-  it("a session 401 drops it", async () => {
+  it("a dead-token 401 drops it", async () => {
     seedAuth();
     seeded();
-    fail(401, { code: "SESSION_FORCED" });
+    fail(401, { code: "TOKEN_EXPIRED" });
     await expect(post("/api/tasks/fetchTasks")).rejects.toBeTruthy();
     expect(cached()).toBeUndefined();
   });
@@ -268,7 +269,7 @@ describe("refreshAccess", () => {
 });
 
 describe("a 401 from the API", () => {
-  it.each(["SESSION_ENDED", "SESSION_EXPIRED", "SESSION_FORCED", "SESSION_REQUIRED", "TOKEN_EXPIRED", "INVALID_TOKEN"])(
+  it.each(["TOKEN_EXPIRED", "INVALID_TOKEN"])(
     "%s logs the user out and keeps the server's code and message",
     async (code) => {
       seedAuth();
@@ -307,6 +308,71 @@ describe("a 401 from the API", () => {
     fail(503, { code: "SESSION_CHECK_FAILED" });
     await expect(post("/api/tasks/fetchTasks")).rejects.toBeTruthy();
     expect(state()).toMatchObject({ isAuthenticated: true, sessionEndedReason: null });
+  });
+});
+
+describe("a closed session asks for the password instead of logging out", () => {
+  afterEach(() => queryClient.clear());
+
+  // The request is parked until the dialog settles; wait for the store to show it.
+  // Wrapped in an object: an async function returning the bare promise would await it.
+  const parkedOn = async (code: string, message?: string) => {
+    fail(401, { code, message });
+    const request = post("/api/tickets/saveTicket", { Title: "half typed" });
+    await waitFor(() => expect(state().reauth).not.toBeNull());
+    return { request };
+  };
+
+  it.each(["SESSION_ENDED", "SESSION_EXPIRED", "SESSION_FORCED", "SESSION_REQUIRED"])(
+    "%s opens re-sign-in with the server's message and keeps the session and cache",
+    async (code) => {
+      seedAuth();
+      queryClient.setQueryData(["tasks", "mine"], [{ Id: 1 }]);
+      const { request } = await parkedOn(code, `server says ${code}`);
+      expect(state()).toMatchObject({ isAuthenticated: true, reauth: { code, message: `server says ${code}` } });
+      expect(queryClient.getQueryData(["tasks", "mine"])).toEqual([{ Id: 1 }]);
+      state().logout();
+      await expect(request).rejects.toBeTruthy();
+    },
+  );
+
+  it("signing in again as the same person swaps the token, keeps the cache, and retries the request once", async () => {
+    seedAuth({ UserId: 9 });
+    queryClient.setQueryData(["tasks", "mine"], [{ Id: 1 }]);
+    const { request } = await parkedOn("SESSION_EXPIRED");
+    respond({ success: true, data: { saved: true } });
+    state().resumeSession(loginData({ token: "tok-2" }));
+    await expect(request).resolves.toMatchObject({ data: { saved: true } });
+    expect(lastRequest().config.headers.Authorization).toBe("Bearer tok-2");
+    expect(lastRequest().body).toEqual({ Title: "half typed" });
+    expect(state()).toMatchObject({ isAuthenticated: true, token: "tok-2", reauth: null, UserId: 9, BranchId: 4 });
+    expect(queryClient.getQueryData(["tasks", "mine"])).toEqual([{ Id: 1 }]);
+  });
+
+  it("a different person signing in gets a clean slate: full logout, cache cleared, request rejected", async () => {
+    seedAuth({ UserId: 5 });
+    queryClient.setQueryData(["tasks", "mine"], [{ Id: 1 }]);
+    const { request } = await parkedOn("SESSION_EXPIRED");
+    respond({ success: true, data: {} }); // a retry would succeed: only the user check stops it
+    state().resumeSession(loginData()); // user 9
+    await expect(request).rejects.toMatchObject({ response: { status: 401 } });
+    expect(state()).toMatchObject({ isAuthenticated: false, token: null, reauth: null });
+    expect(queryClient.getQueryData(["tasks", "mine"])).toBeUndefined();
+  });
+
+  it("a stale session 401 after logout opens nothing", async () => {
+    fail(401, { code: "SESSION_EXPIRED" });
+    await expect(post("/api/tasks/fetchTasks")).rejects.toBeTruthy();
+    expect(state()).toMatchObject({ reauth: null, sessionEndedReason: null });
+  });
+
+  it("the dialog is never saved: a cold start with a dead token just 401s again", async () => {
+    seedAuth();
+    const { request } = await parkedOn("SESSION_EXPIRED");
+    const saved = JSON.parse((await AsyncStorage.getItem("nexus-crm-auth")) ?? "{}");
+    expect(saved.state).not.toHaveProperty("reauth");
+    state().logout();
+    await expect(request).rejects.toBeTruthy();
   });
 });
 

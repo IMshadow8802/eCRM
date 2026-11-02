@@ -5,7 +5,7 @@ import { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 
 
 import { apiClient } from "../api/client";
 
-const adapter = jest.fn<Promise<AxiosResponse>, [InternalAxiosRequestConfig]>();
+export const adapter = jest.fn<Promise<AxiosResponse>, [InternalAxiosRequestConfig]>();
 apiClient.defaults.adapter = adapter;
 
 const ok = (config: InternalAxiosRequestConfig, data: unknown): AxiosResponse => ({

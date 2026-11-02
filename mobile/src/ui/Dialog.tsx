@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Modal, Pressable, StyleSheet, View } from "react-native";
 
 import { colors, radius, shadows, spacing } from "../theme";
@@ -14,6 +15,10 @@ export interface DialogProps {
   /** Notice-style dialog: a single confirm button. */
   hideCancel?: boolean;
   loading?: boolean;
+  /** False: only the buttons close it — no backdrop tap, no Android back. */
+  dismissable?: boolean;
+  /** Extra content (a field) between the message and the buttons. */
+  children?: ReactNode;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -31,21 +36,25 @@ export function Dialog({
   destructive = false,
   hideCancel = false,
   loading = false,
+  dismissable = true,
+  children,
   onConfirm,
   onCancel,
 }: DialogProps) {
+  const dismiss = dismissable && !loading ? onCancel : undefined;
   return (
     <Modal
       visible={visible}
       transparent
       animationType="fade"
-      onRequestClose={onCancel}
+      onRequestClose={dismissable ? onCancel : () => {}}
     >
-      <Pressable style={styles.backdrop} onPress={loading ? undefined : onCancel}>
+      <Pressable style={styles.backdrop} onPress={dismiss}>
         {/* Stops a tap inside the card from closing the dialog. */}
         <Pressable style={styles.card} onPress={(e) => e.stopPropagation()}>
           <Text variant="h2">{title}</Text>
           {message ? <Text variant="secondary">{message}</Text> : null}
+          {children}
           <View style={styles.actions}>
             {hideCancel ? null : (
               <Button

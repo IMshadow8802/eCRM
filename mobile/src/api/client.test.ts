@@ -1,4 +1,6 @@
-import { fail, lastRequest, respond } from "../test/transport";
+import { AxiosError } from "axios";
+
+import { adapter, fail, lastRequest, respond } from "../test/transport";
 import {
   getApiBaseUrl,
   getAuthToken,
@@ -6,6 +8,7 @@ import {
   postData,
   setApiBaseUrl,
   setAuthToken,
+  setReauthHandler,
   setUnauthorizedHandler,
   shouldSkipAuthRedirect,
 } from "./client";
@@ -16,6 +19,7 @@ beforeEach(() => {
   setAuthToken(null);
   setApiBaseUrl(null);
   setUnauthorizedHandler(onUnauthorized);
+  setReauthHandler(null);
   respond({ success: true, data: {} });
 });
 
@@ -102,5 +106,97 @@ describe("post / postData", () => {
   ])("postData maps %s to []", async (_label, body) => {
     respond(body);
     await expect(postData("/api/x", {}, "rows")).resolves.toEqual([]);
+  });
+});
+
+describe("re-sign-in on a closed session", () => {
+  const SESSION_401 = { code: "SESSION_EXPIRED", message: "Your shift ended" };
+  const authOf = (call: number) => adapter.mock.calls[call]![0].headers.Authorization;
+
+  /** A request carrying `new-token` answers 200; anything else 401s with a session code. */
+  const sessionEndsOnce = () => {
+    adapter.mockImplementation(async (config) => {
+      const response = { data: { success: true, data: { ok: config.url } }, status: 200, statusText: "OK", headers: {}, config };
+      if (config.headers.Authorization === "Bearer new-token") return response;
+      throw new AxiosError("401", "ERR_BAD_REQUEST", config, null, { ...response, status: 401, data: SESSION_401 });
+    });
+  };
+
+  it("waits for the handler, then retries once with the new token and resolves", async () => {
+    setAuthToken("old-token");
+    sessionEndsOnce();
+    const reauth = jest.fn(async () => {
+      setAuthToken("new-token");
+      return "new-token";
+    });
+    setReauthHandler(reauth);
+    await expect(post("/api/tickets/saveTicket", { Title: "half typed" })).resolves.toMatchObject({ data: { ok: "/api/tickets/saveTicket" } });
+    expect(reauth).toHaveBeenCalledWith("SESSION_EXPIRED", "Your shift ended");
+    expect(adapter).toHaveBeenCalledTimes(2);
+    expect(authOf(1)).toBe("Bearer new-token");
+    expect(lastRequest().body).toEqual({ Title: "half typed" });
+    expect(onUnauthorized).not.toHaveBeenCalled();
+  });
+
+  it("concurrent 401s share one handler call", async () => {
+    setAuthToken("old-token");
+    let release!: (t: string) => void;
+    const reauth = jest.fn(() => new Promise<string>((res) => (release = res)));
+    setReauthHandler(reauth);
+    sessionEndsOnce();
+    const a = post("/api/a");
+    const b = post("/api/b");
+    await new Promise((r) => setTimeout(r, 0));
+    setAuthToken("new-token");
+    release("new-token");
+    await expect(Promise.all([a, b])).resolves.toHaveLength(2);
+    expect(reauth).toHaveBeenCalledTimes(1);
+  });
+
+  it("a request sent with an older token than the current one retries without asking", async () => {
+    setAuthToken("old-token");
+    const reauth = jest.fn();
+    setReauthHandler(reauth);
+    sessionEndsOnce();
+    const answer = adapter.getMockImplementation()!;
+    adapter.mockImplementationOnce(async (config) => {
+      setAuthToken("new-token"); // someone re-signed in while this one was in flight
+      return answer(config);
+    });
+    await expect(post("/api/slow")).resolves.toBeTruthy();
+    expect(reauth).not.toHaveBeenCalled();
+  });
+
+  it("a cancelled re-sign-in rejects the original error", async () => {
+    fail(401, SESSION_401);
+    setReauthHandler(() => Promise.reject(new Error("cancelled")));
+    await expect(post("/api/x")).rejects.toMatchObject({ response: { status: 401 } });
+    expect(onUnauthorized).not.toHaveBeenCalled();
+  });
+
+  it("a retry that 401s again is not saved: the unauthorized handler runs", async () => {
+    fail(401, SESSION_401);
+    const reauth = jest.fn(async () => "new-token");
+    setReauthHandler(reauth);
+    await expect(post("/api/x")).rejects.toMatchObject({ response: { status: 401 } });
+    expect(reauth).toHaveBeenCalledTimes(1);
+    expect(onUnauthorized).toHaveBeenCalledWith("SESSION_EXPIRED", "Your shift ended");
+  });
+
+  it.each(["TOKEN_EXPIRED", "INVALID_TOKEN", undefined])("%s is not a session to save", async (code) => {
+    fail(401, { code });
+    const reauth = jest.fn();
+    setReauthHandler(reauth);
+    await expect(post("/api/x")).rejects.toBeTruthy();
+    expect(reauth).not.toHaveBeenCalled();
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+  });
+
+  it("a login 401 never asks", async () => {
+    fail(401, SESSION_401);
+    const reauth = jest.fn();
+    setReauthHandler(reauth);
+    await expect(post("/api/auth/loginUser")).rejects.toBeTruthy();
+    expect(reauth).not.toHaveBeenCalled();
   });
 });

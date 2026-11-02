@@ -11,6 +11,7 @@ import { LucideProvider } from "lucide-react-native";
 import { queryClient } from "./src/api/queryClient";
 import { heartbeat } from "./src/api/presenceQueries";
 import PresenceNoticeDialog from "./src/features/auth/PresenceNoticeDialog";
+import ReauthDialog from "./src/features/auth/ReauthDialog";
 import { useAccessRefresh } from "./src/features/auth/useAccess";
 import useAuthStore from "./src/stores/useAuthStore";
 import RootNavigator from "./src/navigation/RootNavigator";
@@ -86,6 +87,8 @@ export default function App() {
               <ToastProvider>
                 <RootNavigator />
                 <PresenceNoticeDialog />
+                {/* Above the navigator: a closed session is answered in place, the screen kept. */}
+                <ReauthDialog />
                 <StatusBar style="dark" />
               </ToastProvider>
             </BottomSheetModalProvider>
