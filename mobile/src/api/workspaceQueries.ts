@@ -142,7 +142,9 @@ export const transferWorkspaceOwnership = (params: {
 
 export const syncProjectWorkspaceMembers = (params: {
   WorkspaceId: number;
-}): Promise<ApiEnvelope<unknown>> =>
+}): Promise<
+  ApiEnvelope<{ workspaceId: number; membersAddedOrRestored: number; membersDeactivated: number }>
+> =>
   post(WORKSPACE_ENDPOINTS.syncProjectWorkspaceMembers, params);
 
 /** Idempotent — safe on every login. Seeds a personal workspace if missing. */

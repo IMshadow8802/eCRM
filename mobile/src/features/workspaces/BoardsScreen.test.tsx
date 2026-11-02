@@ -45,11 +45,32 @@ it("lists joined boards and an invitations block, and keeps archived boards out 
   expect(screen.getByText("Secret project")).toBeOnTheScreen();
   // Archived and pending boards are not counted as boards you are in.
   expect(screen.getByText("2 boards · 1 invite")).toBeOnTheScreen();
-  // parity: WS-04 — the list is fetched without IncludeArchived, so a real
-  // server never returns this row; only where it would land is pinned here.
+  // WS-04: sp_FetchWorkspaces drops archived rows unless asked for them.
+  expect(fetchWorkspaces).toHaveBeenCalledWith(expect.objectContaining({ IncludeArchived: true }));
   expect(screen.getByText("Archived")).toBeOnTheScreen();
   expect(screen.getByText("Old board")).toBeOnTheScreen();
-  // parity: WS-15 — "Invited as …" claims a role the SP never returns; not pinned.
+  // WS-15: the SP returns no role for a pending row, so the card claims none.
+  expect(screen.queryByText(/Invited as/)).toBeNull();
+  expect(screen.getByText(/Decline hides the invite for good/)).toBeOnTheScreen();
+});
+
+it("an archived board opens its settings, where it is restored or deleted (WS-04)", async () => {
+  const navigation = makeNavigation<"Boards">();
+  await mount(navigation);
+  await fireEvent.press(await screen.findByText("Old board"));
+  expect(navigation.navigate).toHaveBeenCalledWith("WorkspaceSettings", { workspaceId: 4 });
+});
+
+it("boards an admin sees without being a member get their own read-only section (WS-08)", async () => {
+  const adminOnly = ws({ Id: 5, Name: "Their board", MyRole: null, MyInviteStatus: null });
+  jest.mocked(fetchWorkspaces).mockResolvedValue([mine, adminOnly]);
+  const navigation = makeNavigation<"Boards">();
+  await mount(navigation);
+  expect(await screen.findByText("Admin view (read-only)")).toBeOnTheScreen();
+  // Only boards you are in count as yours.
+  expect(screen.getByText("1 board")).toBeOnTheScreen();
+  await fireEvent.press(screen.getByText("Their board"));
+  expect(navigation.navigate).toHaveBeenCalledWith("Board", { workspaceId: 5, name: "Their board" });
 });
 
 it("accepting an invite answers the server", async () => {

@@ -85,6 +85,7 @@ export default function WorkHubScreen() {
   const boardCount = (workspaces ?? []).filter(
     (w) => w.MyInviteStatus !== "pending" && !w.IsArchived,
   ).length;
+  const inviteCount = (workspaces ?? []).filter((w) => w.MyInviteStatus === "pending").length;
 
   const sections: HubSection[] = [
     {
@@ -95,9 +96,11 @@ export default function WorkHubScreen() {
           Icon: LayoutDashboard,
           tint: "primary",
           label: "Boards",
-          detail: boardCount
-            ? `${boardCount} board${boardCount === 1 ? "" : "s"}`
-            : "Your task workspaces",
+          detail:
+            (boardCount
+              ? `${boardCount} board${boardCount === 1 ? "" : "s"}`
+              : "Your task workspaces") +
+            (inviteCount ? ` · ${inviteCount} invite${inviteCount === 1 ? "" : "s"}` : ""),
           routes: ["/tasks"],
           ready: true,
           go: (nav) => nav.navigate("Boards"),

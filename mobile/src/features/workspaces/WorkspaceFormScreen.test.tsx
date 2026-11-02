@@ -49,6 +49,8 @@ it("creates a shared board with the people picked as invites, then goes back", a
     Id: 0,
     Name: "Plant visit",
     Type: "shared",
+    TeamId: null,
+    ProjectId: null,
     Color: null,
     Icon: null,
     Members: [5],
@@ -118,12 +120,23 @@ it("renaming keeps Color and Icon and never re-sends invites", async () => {
   await fireEvent.changeText(screen.getByDisplayValue("Site works"), "Site works 2");
   await fireEvent.press(screen.getByText("Save changes"));
   await waitFor(() => expect(saveWorkspace).toHaveBeenCalled());
-  // parity: WS-01 — TeamId/ProjectId are not sent back today; not pinned.
+  // WS-01: sp_SaveWorkspace writes TeamId/ProjectId on update, so they travel back.
   expect(jest.mocked(saveWorkspace).mock.calls[0]![0]).toEqual(
-    expect.objectContaining({ Id: 9, Name: "Site works 2", Type: "shared", Color: "#abcdef", Icon: "hammer", Members: [] }),
+    expect.objectContaining({ Id: 9, Name: "Site works 2", Type: "shared", Color: "#abcdef", Icon: "hammer", TeamId: 3, ProjectId: null, Members: [] }),
   );
   expect(fetchWorkspaces).toHaveBeenCalledWith(expect.objectContaining({ IncludeArchived: true }));
   expect(fetchUserDirectory).not.toHaveBeenCalled();
+});
+
+it("renaming a project board re-sends its ProjectId (WS-01)", async () => {
+  jest.mocked(fetchWorkspaces).mockResolvedValue([{ ...existing, Type: "project", TeamId: null, ProjectId: 77 }]);
+  await mount({ workspaceId: 9 });
+  await fireEvent.changeText(await screen.findByDisplayValue("Site works"), "Site works 3");
+  await fireEvent.press(screen.getByText("Save changes"));
+  await waitFor(() => expect(saveWorkspace).toHaveBeenCalled());
+  expect(jest.mocked(saveWorkspace).mock.calls[0]![0]).toEqual(
+    expect.objectContaining({ Id: 9, Type: "project", TeamId: null, ProjectId: 77 }),
+  );
 });
 
 it("an edit whose board fails to load offers a retry", async () => {

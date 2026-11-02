@@ -4,7 +4,7 @@ import { fetchKanbanColumns } from "../../api/kanbanQueries";
 import { fetchTasks, moveTaskColumn } from "../../api/taskQueries";
 import { fetchWorkspaces } from "../../api/workspaceQueries";
 import type { KanbanColumn, Task, Workspace, WorkspaceRole } from "../../types/api";
-import { envelope, pagination } from "../../test/fixtures";
+import { access, envelope, pagination } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import BoardScreen from "./BoardScreen";
 
@@ -138,9 +138,9 @@ it("a member sees no management shortcuts, a viewer cannot add tasks", async () 
   jest.mocked(fetchWorkspaces).mockResolvedValue([board("member")]);
   const { unmount } = await mount();
   await screen.findByText("Fix the gate");
-  // parity: WS-05 — members should reach a read-only settings screen; only the
-  // absence of column management is pinned.
+  // WS-05: every member reaches settings (read-only roster, Leave); columns stay managers'.
   expect(screen.queryByLabelText("Manage columns")).toBeNull();
+  expect(screen.getByLabelText("Workspace settings")).toBeOnTheScreen();
   expect(screen.getByLabelText("Add a task to this column")).toBeOnTheScreen();
   await unmount();
 
@@ -148,6 +148,15 @@ it("a member sees no management shortcuts, a viewer cannot add tasks", async () 
   await mount();
   await screen.findByText("Fix the gate");
   expect(screen.queryByLabelText("Add a task to this column")).toBeNull();
+});
+
+it("an admin outside the board gets both shortcuts on a shared board (WS-07)", async () => {
+  seedAuth({ UserId: ME, access: access({ isAdmin: true }) });
+  jest.mocked(fetchWorkspaces).mockResolvedValue([board(null, { MyInviteStatus: null })]);
+  await mount();
+  await screen.findByText("Fix the gate");
+  expect(screen.getByLabelText("Manage columns")).toBeOnTheScreen();
+  expect(screen.getByLabelText("Workspace settings")).toBeOnTheScreen();
 });
 
 it("the FAB adds a task to the column on screen", async () => {

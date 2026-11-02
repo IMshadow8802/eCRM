@@ -30,8 +30,10 @@ export default function BoardsScreen({ navigation }: Props) {
   const toast = useToast();
 
   const { data, isLoading, isRefetching, refetch, isError } = useQuery({
-    queryKey: ["workspaces", false],
-    queryFn: () => fetchWorkspaces({ PageSize: 100 }),
+    // Archived boards come back only when asked for; without them the Archived
+    // section never fills and an archived board can't be restored or deleted.
+    queryKey: ["workspaces", true],
+    queryFn: () => fetchWorkspaces({ PageSize: 100, IncludeArchived: true }),
   });
 
   const invite = useMutation({
@@ -54,31 +56,32 @@ export default function BoardsScreen({ navigation }: Props) {
     [workspaces],
   );
 
-  const sections = useMemo(() => {
-    const joined = workspaces.filter(
-      (w) => w.MyInviteStatus !== "pending" && !w.IsArchived,
-    );
-    const archived = workspaces.filter(
-      (w) => w.MyInviteStatus !== "pending" && w.IsArchived,
-    );
+  const { sections, activeCount } = useMemo(() => {
+    const listed = workspaces.filter((w) => w.MyInviteStatus !== "pending");
+    const live = listed.filter((w) => !w.IsArchived);
+    // No role and no invite = visible only through the admin bypass.
+    const joined = live.filter((w) => w.MyRole != null || w.MyInviteStatus != null);
+    const adminView = live.filter((w) => w.MyRole == null && w.MyInviteStatus == null);
+    const archived = listed.filter((w) => w.IsArchived);
     const out: { title: string; data: Workspace[] }[] = [];
     if (joined.length) out.push({ title: "Your boards", data: joined });
+    if (adminView.length) out.push({ title: "Admin view (read-only)", data: adminView });
     if (archived.length) out.push({ title: "Archived", data: archived });
-    return out;
+    return { sections: out, activeCount: joined.length };
   }, [workspaces]);
 
+  // An archived board opens its settings — that is where Restore and Delete
+  // live, as on the web.
   const openWorkspace = useCallback(
     (workspace: Workspace) =>
-      navigation.navigate("Board", {
-        workspaceId: workspace.Id,
-        name: workspace.Name,
-      }),
+      workspace.IsArchived
+        ? navigation.navigate("WorkspaceSettings", { workspaceId: workspace.Id })
+        : navigation.navigate("Board", {
+            workspaceId: workspace.Id,
+            name: workspace.Name,
+          }),
     [navigation],
   );
-
-  const activeCount = workspaces.filter(
-    (w) => w.MyInviteStatus !== "pending" && !w.IsArchived,
-  ).length;
 
   return (
     <Screen>
@@ -128,7 +131,8 @@ export default function BoardsScreen({ navigation }: Props) {
                         {w.Name}
                       </Text>
                       <Text variant="caption" color="textMuted">
-                        Invited as {w.MyRole ?? "member"}
+                        Accept to see every task on it. Decline hides the
+                        invite for good.
                       </Text>
                     </View>
                   </View>

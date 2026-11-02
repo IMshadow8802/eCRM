@@ -171,14 +171,19 @@ export default function BoardScreen({ route, navigation }: Props) {
         title={workspace?.Name ?? name}
         subtitle={`${tasks.length} task${tasks.length === 1 ? "" : "s"} · ${columns.length} column${columns.length === 1 ? "" : "s"}`}
         onBack={navigation.goBack}
+        // Every member gets settings (roster + Leave); columns are managers'.
         actions={
-          manages
+          manages || role != null
             ? [
-                {
-                  icon: Columns3,
-                  label: "Manage columns",
-                  onPress: () => navigation.navigate("Columns", { workspaceId }),
-                },
+                ...(manages
+                  ? [
+                      {
+                        icon: Columns3,
+                        label: "Manage columns",
+                        onPress: () => navigation.navigate("Columns", { workspaceId }),
+                      },
+                    ]
+                  : []),
                 {
                   icon: Settings,
                   label: "Workspace settings",

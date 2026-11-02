@@ -129,12 +129,15 @@ function WorkspaceForm({ navigation, workspace }: WorkspaceFormProps) {
       return;
     }
     setError(null);
-    // sp_SaveWorkspace is a full upsert: Color and Icon have to travel back or
-    // a rename silently blanks whatever was set on the web.
+    // sp_SaveWorkspace is a full upsert: TeamId, ProjectId, Color and Icon have
+    // to travel back or a rename blanks them (a project board without its
+    // ProjectId is refused outright).
     save.mutate({
       Id: workspace?.Id ?? 0,
       Name: trimmed,
       Type: type,
+      TeamId: workspace?.TeamId ?? null,
+      ProjectId: workspace?.ProjectId ?? null,
       Color: workspace?.Color ?? null,
       Icon: workspace?.Icon ?? null,
       // Members are invitations, and only shared boards have them. Sending them
