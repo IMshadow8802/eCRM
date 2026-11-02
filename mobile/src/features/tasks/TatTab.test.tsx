@@ -84,6 +84,7 @@ beforeEach(() => {
 });
 
 it("with no clock of mine, says there is no deadline on me", async () => {
+  // parity: TAT-05 — other assignees' clocks are not listed (and no verdicts) on mobile yet.
   serve({ clocks: [clock({ UserId: 7 })] });
   await mount();
   expect(await screen.findByText("No deadline on you")).toBeOnTheScreen();

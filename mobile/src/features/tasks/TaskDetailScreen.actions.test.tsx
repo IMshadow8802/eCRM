@@ -24,6 +24,7 @@ import { fetchWorkspaces } from "../../api/workspaceQueries";
 import type { KanbanColumn, Task, Workspace } from "../../types/api";
 import { assigneesJson, envelope, makeTask, makeWorkspace, pagination, serverError } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
+import { spySheets } from "../../test/sheets";
 import TaskDetailScreen from "./TaskDetailScreen";
 
 jest.mock("../../api/taskQueries");
@@ -103,7 +104,9 @@ beforeEach(() => {
 describe("menu", () => {
   it("an owner sees every action except taking an assigned task", async () => {
     await mount();
-    expect(screen.getByLabelText("Task actions")).toBeOnTheScreen();
+    const { present } = spySheets();
+    await fireEvent.press(screen.getByLabelText("Task actions"));
+    expect(present).toHaveBeenCalledTimes(1);
     for (const label of ["Log time", "Edit task", "Add a blocker", "Delete task"]) {
       expect(screen.getByText(label)).toBeOnTheScreen();
     }
@@ -207,21 +210,27 @@ describe("menu", () => {
 });
 
 describe("log time", () => {
+  /** Opens the time form; returns the sheet spies, cleared of the menu's own dismiss. */
   const openLogTime = async () => {
     await mount();
+    const sheets = spySheets();
     await fireEvent.press(screen.getByText("Log time"));
     // The compose sheet now carries the time form.
     await screen.findByPlaceholderText("1.5");
+    expect(sheets.present).toHaveBeenCalled();
+    sheets.dismiss.mockClear();
+    return sheets;
   };
 
   it("logs hours with a note", async () => {
-    await openLogTime();
+    const { dismiss } = await openLogTime();
     await fireEvent.changeText(screen.getByPlaceholderText("1.5"), "2.5");
     await fireEvent.changeText(screen.getByPlaceholderText("What did you work on?"), "Wiring");
     await fireEvent.press(screen.getByRole("button", { name: "Log time" }));
     await waitFor(() => expect(logTaskTime).toHaveBeenCalled());
     // parity: TASK-01 — WorkDate is not sent (falls back to the server's UTC day); not pinned.
     expect(body(logTaskTime)).toMatchObject({ TaskId: 1, Hours: 2.5, Description: "Wiring", WorkspaceId: 10 });
+    await waitFor(() => expect(dismiss).toHaveBeenCalledTimes(1));
   });
 
   it("refuses hours that are not a number above zero, before the server", async () => {
@@ -237,11 +246,12 @@ describe("log time", () => {
 
   it("a refused entry keeps the sheet and shows why", async () => {
     jest.mocked(logTaskTime).mockRejectedValue(serverError(403, "Only assignees can log time"));
-    await openLogTime();
+    const { dismiss } = await openLogTime();
     await fireEvent.changeText(screen.getByPlaceholderText("1.5"), "1");
     await fireEvent.press(screen.getByRole("button", { name: "Log time" }));
     expect(await screen.findByText("Only assignees can log time")).toBeOnTheScreen();
     expect(screen.getByDisplayValue("1")).toBeOnTheScreen();
+    expect(dismiss).not.toHaveBeenCalled();
   });
 });
 
@@ -250,22 +260,26 @@ describe("comments", () => {
     await mount();
     await fireEvent.press(screen.getByText("Comments"));
     expect(screen.getByText("No comments yet.")).toBeOnTheScreen();
+    const { dismiss } = spySheets();
     await fireEvent.press(screen.getByLabelText("Write a comment"));
     await fireEvent.changeText(screen.getByPlaceholderText("Share an update…"), "On site now");
     await fireEvent.press(screen.getByText("Post comment"));
     await waitFor(() => expect(addTaskComment).toHaveBeenCalled());
     expect(body(addTaskComment)).toEqual({ TaskId: 1, Comment: "On site now", WorkspaceId: 10 });
+    await waitFor(() => expect(dismiss).toHaveBeenCalledTimes(1));
   });
 
   it("a refused comment keeps the text and shows why", async () => {
     jest.mocked(addTaskComment).mockRejectedValue(serverError(403, "You are no longer on this board"));
     await mount();
     await fireEvent.press(screen.getByText("Comments"));
+    const { dismiss } = spySheets();
     await fireEvent.press(screen.getByLabelText("Write a comment"));
     await fireEvent.changeText(screen.getByPlaceholderText("Share an update…"), "On site now");
     await fireEvent.press(screen.getByText("Post comment"));
     expect(await screen.findByText("You are no longer on this board")).toBeOnTheScreen();
     expect(screen.getByDisplayValue("On site now")).toBeOnTheScreen();
+    expect(dismiss).not.toHaveBeenCalled();
   });
 
   it("a viewer may still comment", async () => {

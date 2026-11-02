@@ -1,6 +1,5 @@
 // The detail screen's read side and its checklist. Menu actions, comments and
 // time are in TaskDetailScreen.actions.test.tsx.
-import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react-native";
 
 import { fetchAttachments } from "../../api/attachmentQueries";
@@ -22,6 +21,7 @@ import { fetchWorkspaces } from "../../api/workspaceQueries";
 import type { Task, TaskChecklistItem, Workspace } from "../../types/api";
 import { assigneesJson, envelope, localDay, makeTask, makeWorkspace, pagination, serverError } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
+import { spySheets } from "../../test/sheets";
 import TaskDetailScreen from "./TaskDetailScreen";
 
 jest.mock("../../api/taskQueries");
@@ -147,11 +147,10 @@ describe("summary", () => {
     expect(screen.getByText("Unassigned")).toBeOnTheScreen();
     // The two tappable facts open their sheets. parity: TASK-08 — the time
     // sheet is only reachable through this chip, i.e. only once LoggedHours > 0.
-    const present = jest.spyOn(BottomSheetModal.prototype, "present");
+    const { present } = spySheets();
     await fireEvent.press(screen.getByText("2h"));
     await fireEvent.press(screen.getByText("1 blocker"));
     expect(present).toHaveBeenCalledTimes(2);
-    present.mockRestore();
   });
 
   it("falls back to 'Task' with no board name", async () => {
@@ -222,10 +221,14 @@ describe("checklist", () => {
   it("the FAB adds a step at the end of the list", async () => {
     await mount();
     await loaded();
+    const { present, dismiss } = spySheets();
     await fireEvent.press(screen.getByLabelText("Add a checklist item"));
+    expect(present).toHaveBeenCalledTimes(1);
     await fireEvent.changeText(screen.getByPlaceholderText("What needs doing?"), " Test run ");
     await fireEvent.press(screen.getByText("Add item"));
     await waitFor(() => expect(saveTaskChecklist).toHaveBeenCalled());
+    // Success closes the sheet.
+    await waitFor(() => expect(dismiss).toHaveBeenCalledTimes(1));
     expect(jest.mocked(saveTaskChecklist).mock.calls[0]![0]).toEqual({
       TaskId: 1,
       ItemText: "Test run",
@@ -238,11 +241,14 @@ describe("checklist", () => {
     jest.mocked(saveTaskChecklist).mockRejectedValue(serverError(403, "You cannot edit this task"));
     await mount();
     await loaded();
+    const { dismiss } = spySheets();
     await fireEvent.press(screen.getByLabelText("Add a checklist item"));
     await fireEvent.changeText(screen.getByPlaceholderText("What needs doing?"), "Test run");
     await fireEvent.press(screen.getByText("Add item"));
     expect(await screen.findByText("You cannot edit this task")).toBeOnTheScreen();
     expect(screen.getByDisplayValue("Test run")).toBeOnTheScreen();
+    // A refusal leaves the sheet open (the mock keeps it mounted either way).
+    expect(dismiss).not.toHaveBeenCalled();
   });
 });
 

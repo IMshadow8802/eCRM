@@ -104,4 +104,6 @@ export const serverError = (status: number, message: string) =>
   new AxiosError(`Request failed with status code ${status}`, "ERR_BAD_REQUEST", undefined, null, {
     status,
     data: envelope(null, { success: false, message, responseCode: status }),
+    // ponytail: only `status` and `data` are real; headers/config/request are
+    // absent. Add them if code under test ever reads them.
   } as AxiosResponse);

@@ -45,10 +45,10 @@ const mount = async (params: Params = { workspaceId: 10, columnId: 100 }) => {
   return navigation;
 };
 
-/** The form is ready once the board type is known — the submit button waits for it. */
 /** The body of the last saveTask call (useMutation passes a context second). */
 const sent = () => jest.mocked(saveTask).mock.calls.at(-1)?.[0];
 
+/** The form is ready once the board type is known — the submit button waits for it. */
 const ready = (label: string) =>
   waitFor(() => expect(screen.getByRole("button", { name: label })).toBeEnabled());
 
