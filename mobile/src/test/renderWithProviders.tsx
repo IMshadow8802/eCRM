@@ -22,7 +22,8 @@ type Rendered = Awaited<ReturnType<typeof render>>;
 
 /**
  * Mounts `ui` inside the providers App.tsx gives a screen, in the same order.
- * A fresh QueryClient per call (no retries, no cache) unless one is passed.
+ * A fresh QueryClient per call (no retries, no cache, no lingering mutations)
+ * unless one is passed.
  */
 export async function renderWithProviders(
   ui: ReactElement,
@@ -30,7 +31,10 @@ export async function renderWithProviders(
 ): Promise<Rendered & { queryClient: QueryClient }> {
   const queryClient =
     opts.queryClient ??
-    new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    // Mutations too: their default 5-minute gcTime timer keeps jest from exiting.
+    new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { gcTime: 0 } },
+    });
   const result = await render(
     <QueryClientProvider client={queryClient}>
       <SafeAreaProvider initialMetrics={METRICS}>

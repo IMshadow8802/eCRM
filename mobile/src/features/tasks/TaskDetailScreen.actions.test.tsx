@@ -1,0 +1,277 @@
+// The detail screen's menu actions, comments and time logging. The read side
+// and the checklist are in TaskDetailScreen.test.tsx.
+import { fireEvent, screen, waitFor } from "@testing-library/react-native";
+
+import { fetchAttachments } from "../../api/attachmentQueries";
+import { fetchKanbanColumns } from "../../api/kanbanQueries";
+import { fetchTaskTat } from "../../api/tatQueries";
+import {
+  addTaskComment,
+  addTaskDependency,
+  claimTask,
+  deleteTask,
+  fetchTaskById,
+  fetchTaskDependencies,
+  fetchTasks,
+  getTaskActivity,
+  getTaskChecklist,
+  getTaskComments,
+  getTaskTimeEntries,
+  logTaskTime,
+  moveTaskColumn,
+} from "../../api/taskQueries";
+import { fetchWorkspaces } from "../../api/workspaceQueries";
+import type { KanbanColumn, Task, Workspace } from "../../types/api";
+import { assigneesJson, envelope, makeTask, makeWorkspace, pagination, serverError } from "../../test/fixtures";
+import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
+import TaskDetailScreen from "./TaskDetailScreen";
+
+jest.mock("../../api/taskQueries");
+jest.mock("../../api/attachmentQueries");
+jest.mock("../../api/kanbanQueries");
+jest.mock("../../api/workspaceQueries");
+jest.mock("../../api/tatQueries");
+
+const ME = 42;
+
+const column = (Id: number, Title: string): KanbanColumn => ({
+  Id,
+  WorkspaceId: 10,
+  Title,
+  Color: null,
+  SortOrder: Id,
+  MaxTasks: null,
+  IsActive: true,
+  CompId: 1,
+  BranchId: 1,
+  CreatedDate: null,
+  IsCompanyWide: false,
+});
+
+const TASK = makeTask({
+  Id: 1,
+  Title: "Fit the inverter",
+  WorkspaceId: 10,
+  ColumnId: 100,
+  ColumnTitle: "To do",
+  CreatedByUserId: ME,
+  AssigneesJson: assigneesJson([ME, "Asha Rao"]),
+});
+const SIBLING = makeTask({ Id: 2, Title: "Order parts", ColumnTitle: null });
+
+function serve({ task = TASK, ws = makeWorkspace({ Id: 10 }), siblings = [TASK, SIBLING] }: {
+  task?: Task;
+  ws?: Workspace;
+  siblings?: Task[];
+} = {}) {
+  jest.mocked(fetchTaskById).mockResolvedValue(task);
+  jest.mocked(fetchWorkspaces).mockResolvedValue([ws]);
+  jest.mocked(getTaskChecklist).mockResolvedValue([]);
+  jest.mocked(getTaskComments).mockResolvedValue([]);
+  jest.mocked(fetchAttachments).mockResolvedValue([]);
+  jest.mocked(fetchKanbanColumns).mockResolvedValue([column(100, "To do"), column(101, "Doing")]);
+  jest.mocked(fetchTasks).mockResolvedValue(envelope({ tasks: siblings, pagination: pagination(siblings.length) }));
+  jest.mocked(fetchTaskDependencies).mockResolvedValue({ blockers: [], dependents: [] });
+  jest.mocked(getTaskTimeEntries).mockResolvedValue([]);
+  jest.mocked(getTaskActivity).mockResolvedValue([]);
+  jest.mocked(fetchTaskTat).mockResolvedValue({ clocks: [], holds: [], events: [] });
+  for (const fn of [addTaskComment, addTaskDependency, claimTask, deleteTask, logTaskTime, moveTaskColumn]) {
+    jest.mocked(fn).mockResolvedValue(envelope(null));
+  }
+}
+
+const mount = async () => {
+  const navigation = makeNavigation<"TaskDetail">();
+  await renderWithProviders(
+    <TaskDetailScreen navigation={navigation} route={makeRoute("TaskDetail", { taskId: 1, workspaceId: 10 })} />,
+  );
+  // Wait for the task, the board role and the board's columns/tasks: the menu is built from all three.
+  await screen.findByText("Fit the inverter");
+  await screen.findByText("Doing");
+  await screen.findByText("Order parts");
+  return navigation;
+};
+
+/** The body a mutation sent (useMutation passes a context second). */
+const body = (fn: (...args: never[]) => unknown) => jest.mocked(fn).mock.calls.at(-1)?.[0];
+
+beforeEach(() => {
+  seedAuth({ UserId: ME });
+  serve();
+});
+
+describe("menu", () => {
+  it("an owner sees every action except taking an assigned task", async () => {
+    await mount();
+    expect(screen.getByLabelText("Task actions")).toBeOnTheScreen();
+    for (const label of ["Log time", "Edit task", "Add a blocker", "Delete task"]) {
+      expect(screen.getByText(label)).toBeOnTheScreen();
+    }
+    expect(screen.queryByText("Take this task")).toBeNull();
+  });
+
+  it("a member on someone else's unassigned task can take it — and not edit it", async () => {
+    serve({ task: { ...TASK, CreatedByUserId: 1, AssigneesJson: null }, ws: makeWorkspace({ Id: 10, MyRole: "member" }) });
+    await mount();
+    expect(screen.queryByText("Edit task")).toBeNull();
+    expect(screen.queryByText("Delete task")).toBeNull();
+    await fireEvent.press(screen.getByText("Take this task"));
+    await waitFor(() => expect(claimTask).toHaveBeenCalled());
+    expect(body(claimTask)).toEqual({ TaskId: 1, WorkspaceId: 10 });
+  });
+
+  it("a finished task cannot be taken", async () => {
+    serve({
+      task: { ...TASK, CreatedByUserId: 1, AssigneesJson: null, IsCompleted: true },
+      ws: makeWorkspace({ Id: 10, MyRole: "member" }),
+    });
+    await mount();
+    expect(screen.queryByText("Take this task")).toBeNull();
+  });
+
+  it("a refused claim says why", async () => {
+    serve({ task: { ...TASK, CreatedByUserId: 1, AssigneesJson: null }, ws: makeWorkspace({ Id: 10, MyRole: "member" }) });
+    jest.mocked(claimTask).mockRejectedValue(serverError(400, "Only a member of this board can take its tasks"));
+    await mount();
+    await fireEvent.press(screen.getByText("Take this task"));
+    expect(await screen.findByText("Only a member of this board can take its tasks")).toBeOnTheScreen();
+  });
+
+  it("moving to a column posts the move, the current one ticked", async () => {
+    await mount();
+    await fireEvent.press(screen.getByText("Doing"));
+    await waitFor(() => expect(moveTaskColumn).toHaveBeenCalled());
+    expect(body(moveTaskColumn)).toEqual({ TaskId: 1, ColumnId: 101, WorkspaceId: 10 });
+  });
+
+  it("a refused move says why", async () => {
+    jest.mocked(moveTaskColumn).mockRejectedValue(serverError(400, "Finish the checklist first"));
+    await mount();
+    await fireEvent.press(screen.getByText("Doing"));
+    expect(await screen.findByText("Finish the checklist first")).toBeOnTheScreen();
+  });
+
+  it("edit opens the form on this task", async () => {
+    const navigation = await mount();
+    await fireEvent.press(screen.getByText("Edit task"));
+    expect(navigation.navigate).toHaveBeenCalledWith("TaskForm", { workspaceId: 10, taskId: 1 });
+  });
+
+  it("a blocker is picked from the board's other tasks, never itself", async () => {
+    await mount();
+    // The task's own title appears once — as the heading — not as a blocker candidate.
+    expect(screen.getAllByText("Fit the inverter")).toHaveLength(1);
+    await fireEvent.press(screen.getByText("Order parts"));
+    await waitFor(() => expect(addTaskDependency).toHaveBeenCalled());
+    // parity: TASK-05 — existing blockers are not filtered out of the picker yet.
+    expect(body(addTaskDependency)).toEqual({ TaskId: 1, DependsOnTaskId: 2, WorkspaceId: 10 });
+  });
+
+  it("a refused blocker says why", async () => {
+    jest.mocked(addTaskDependency).mockRejectedValue(serverError(400, "That would create a cycle"));
+    await mount();
+    await fireEvent.press(screen.getByText("Order parts"));
+    expect(await screen.findByText("That would create a cycle")).toBeOnTheScreen();
+  });
+
+  it("a board with no other tasks has nothing to depend on", async () => {
+    serve({ siblings: [TASK] });
+    const navigation = makeNavigation<"TaskDetail">();
+    await renderWithProviders(
+      <TaskDetailScreen navigation={navigation} route={makeRoute("TaskDetail", { taskId: 1, workspaceId: 10 })} />,
+    );
+    expect(await screen.findByText("This board has no other tasks to depend on.")).toBeOnTheScreen();
+  });
+
+  it("delete asks first, then deletes and leaves", async () => {
+    const navigation = await mount();
+    await fireEvent.press(screen.getByText("Delete task"));
+    expect(screen.getByText("Delete this task?")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByText("Cancel"));
+    expect(deleteTask).not.toHaveBeenCalled();
+
+    await fireEvent.press(screen.getByText("Delete task"));
+    await fireEvent.press(screen.getByText("Delete"));
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+    expect(body(deleteTask)).toEqual({ Id: 1, WorkspaceId: 10 });
+  });
+
+  it("a refused delete stays put and says why", async () => {
+    jest.mocked(deleteTask).mockRejectedValue(serverError(403, "Someone else has commented on this task"));
+    const navigation = await mount();
+    await fireEvent.press(screen.getByText("Delete task"));
+    await fireEvent.press(screen.getByText("Delete"));
+    expect(await screen.findByText("Someone else has commented on this task")).toBeOnTheScreen();
+    expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+});
+
+describe("log time", () => {
+  const openLogTime = async () => {
+    await mount();
+    await fireEvent.press(screen.getByText("Log time"));
+    // The compose sheet now carries the time form.
+    await screen.findByPlaceholderText("1.5");
+  };
+
+  it("logs hours with a note", async () => {
+    await openLogTime();
+    await fireEvent.changeText(screen.getByPlaceholderText("1.5"), "2.5");
+    await fireEvent.changeText(screen.getByPlaceholderText("What did you work on?"), "Wiring");
+    await fireEvent.press(screen.getByRole("button", { name: "Log time" }));
+    await waitFor(() => expect(logTaskTime).toHaveBeenCalled());
+    // parity: TASK-01 — WorkDate is not sent (falls back to the server's UTC day); not pinned.
+    expect(body(logTaskTime)).toMatchObject({ TaskId: 1, Hours: 2.5, Description: "Wiring", WorkspaceId: 10 });
+  });
+
+  it("refuses hours that are not a number above zero, before the server", async () => {
+    await openLogTime();
+    await fireEvent.changeText(screen.getByPlaceholderText("1.5"), "0");
+    await fireEvent.press(screen.getByRole("button", { name: "Log time" }));
+    expect(screen.getByText("Enter how many hours, as a number above zero.")).toBeOnTheScreen();
+    await fireEvent.changeText(screen.getByPlaceholderText("1.5"), "lots");
+    await fireEvent.press(screen.getByRole("button", { name: "Log time" }));
+    expect(screen.getByText("Enter how many hours, as a number above zero.")).toBeOnTheScreen();
+    expect(logTaskTime).not.toHaveBeenCalled();
+  });
+
+  it("a refused entry keeps the sheet and shows why", async () => {
+    jest.mocked(logTaskTime).mockRejectedValue(serverError(403, "Only assignees can log time"));
+    await openLogTime();
+    await fireEvent.changeText(screen.getByPlaceholderText("1.5"), "1");
+    await fireEvent.press(screen.getByRole("button", { name: "Log time" }));
+    expect(await screen.findByText("Only assignees can log time")).toBeOnTheScreen();
+    expect(screen.getByDisplayValue("1")).toBeOnTheScreen();
+  });
+});
+
+describe("comments", () => {
+  it("posts a comment from the Comments tab", async () => {
+    await mount();
+    await fireEvent.press(screen.getByText("Comments"));
+    expect(screen.getByText("No comments yet.")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByLabelText("Write a comment"));
+    await fireEvent.changeText(screen.getByPlaceholderText("Share an update…"), "On site now");
+    await fireEvent.press(screen.getByText("Post comment"));
+    await waitFor(() => expect(addTaskComment).toHaveBeenCalled());
+    expect(body(addTaskComment)).toEqual({ TaskId: 1, Comment: "On site now", WorkspaceId: 10 });
+  });
+
+  it("a refused comment keeps the text and shows why", async () => {
+    jest.mocked(addTaskComment).mockRejectedValue(serverError(403, "You are no longer on this board"));
+    await mount();
+    await fireEvent.press(screen.getByText("Comments"));
+    await fireEvent.press(screen.getByLabelText("Write a comment"));
+    await fireEvent.changeText(screen.getByPlaceholderText("Share an update…"), "On site now");
+    await fireEvent.press(screen.getByText("Post comment"));
+    expect(await screen.findByText("You are no longer on this board")).toBeOnTheScreen();
+    expect(screen.getByDisplayValue("On site now")).toBeOnTheScreen();
+  });
+
+  it("a viewer may still comment", async () => {
+    serve({ task: { ...TASK, CreatedByUserId: 1, AssigneesJson: null }, ws: makeWorkspace({ Id: 10, MyRole: "viewer" }) });
+    await mount();
+    await fireEvent.press(screen.getByText("Comments"));
+    expect(screen.getByLabelText("Write a comment")).toBeOnTheScreen();
+  });
+});
