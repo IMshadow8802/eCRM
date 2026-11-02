@@ -1,30 +1,28 @@
 import { useMemo, useRef, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowDown,
   ArrowRightLeft,
+  ArrowUp,
   Ban,
-  Calendar,
-  CircleAlert,
+  ChevronRight,
+  EllipsisVertical,
   Eye,
   Flag,
   GitBranch,
   Link2,
   Lock,
   MessageCircle,
-  MoreVertical,
+  Paperclip,
   Pencil,
   Pin,
   PinOff,
-  Plus,
   Reply,
   Timer,
   Trash2,
   UserCheck,
-  UserX,
-  type LucideIcon,
 } from "lucide-react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { StackScreenProps } from "@react-navigation/stack";
 
 import {
@@ -46,24 +44,31 @@ import {
 import { apiErrorMessage } from "../../api/errors";
 import { fetchAttachments } from "../../api/attachmentQueries";
 import { fetchKanbanColumns } from "../../api/kanbanQueries";
-import { fetchWorkspaces } from "../../api/workspaceQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
-import type { TaskComment } from "../../types/api";
+import type { TaskChecklistItem, TaskComment } from "../../types/api";
 import useAuthStore from "../../stores/useAuthStore";
-import { colors, radius, shadows, spacing, SCREEN_PADDING } from "../../theme";
+import { colors, priorityChip } from "../../theme";
 import {
   ActionSheet,
   Avatar,
+  AvatarStack,
+  Band,
+  BandSheet,
+  Button,
+  Card,
   Chip,
   ComposeSheet,
   Dialog,
-  Fab,
+  EmptyState,
+  ErrorCard,
+  Facts,
+  GroupHeader,
+  IconButton,
+  InfoNote,
   Screen,
-  ScreenHeader,
-  ScreenLoader,
-  Segmented,
+  SegmentedTabs,
+  SkeletonRows,
   Text,
-  Timeline,
   type ComposeField,
   type SheetAction,
   type SheetRef,
@@ -76,21 +81,22 @@ import { Checklist } from "./Checklist";
 import { DependencySheet } from "./DependencySheet";
 import { TatTab } from "./TatTab";
 import { TimeSheet } from "./TimeSheet";
-import { istDay } from "./tatChip";
+import { hm, istDay } from "./tatChip";
 import {
   abilitiesFor,
   assigneesOf,
   boardQuery,
-  taskPriorityTone,
-  dueBucket,
-  dueLabel,
   formatHours,
   relativeTime,
+  shortDay,
+  taskDueChip,
   threadComments,
+  WORKSPACES_QUERY,
 } from "./taskHelpers";
 
 type Props = StackScreenProps<RootStackParamList, "TaskDetail">;
-type Tab = "checklist" | "files" | "chat" | "tat" | "activity";
+/** E 08: four tabs; Files is a drill-in from Details, History lives in Details. */
+type Tab = "details" | "checklist" | "chat" | "tat" | "files";
 /** Which form the one compose sheet is currently showing. */
 type Compose = "checklist" | "comment" | "reply" | "edit" | "time";
 
@@ -123,7 +129,6 @@ const COMPOSE_FORM: Record<
 
 export default function TaskDetailScreen({ route, navigation }: Props) {
   const { taskId, workspaceId } = route.params;
-  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const toast = useToast();
   const userId = useAuthStore((s) => s.UserId);
@@ -150,6 +155,10 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   const timeRef = useRef<SheetRef>(null);
   const dependencyRef = useRef<SheetRef>(null);
   const commentMenuRef = useRef<SheetRef>(null);
+  const stepMenuRef = useRef<SheetRef>(null);
+  // The step a long-press picked, and the comment waiting on the delete dialog (21).
+  const [step, setStep] = useState<TaskChecklistItem | null>(null);
+  const [deleting, setDeleting] = useState<TaskComment | null>(null);
   // The comment a long-press picked: its actions, then the reply/edit target.
   const [picked, setPicked] = useState<TaskComment | null>(null);
   // A new object per open, so the compose sheet reseeds (see ComposeSheet):
@@ -187,10 +196,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   });
   // Authority comes from the caller's role in THIS task's workspace, which the
   // task row does not carry. Already cached by Boards, so this costs nothing.
-  const { data: workspaces } = useQuery({
-    queryKey: ["workspaces", false],
-    queryFn: () => fetchWorkspaces({ PageSize: 100 }),
-  });
+  const { data: workspaces } = useQuery(WORKSPACES_QUERY);
 
   const task = taskQuery.data;
   const boardId = task?.WorkspaceId ?? workspaceId;
@@ -249,6 +255,15 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
     onError: (err) => toast.error(apiErrorMessage(err, "Could not remove that step.")),
     onSuccess: invalidate,
   });
+  // Two saves: the step and the neighbour it swaps with take each other's place.
+  const reorder = useMutation({
+    mutationFn: (rows: TaskChecklistItem[]) =>
+      Promise.all(rows.map((r) =>
+        saveTaskChecklist({ Id: r.Id, TaskId: taskId, ItemText: r.ItemText, IsCompleted: r.IsCompleted, SortOrder: r.SortOrder ?? 0, WorkspaceId: taskQuery.data?.WorkspaceId ?? null }),
+      )),
+    onError: (err) => toast.error(apiErrorMessage(err, "Could not move that step.")),
+    onSettled: invalidate,
+  });
   const addItem = useMutation({
     mutationFn: saveTaskChecklist,
     onError: (err) => setComposeError(apiErrorMessage(err, "Could not add that step.")),
@@ -270,7 +285,10 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   const removeComment = useMutation({
     mutationFn: deleteTaskComment,
     onError: (err) => toast.error(apiErrorMessage(err, "Could not delete that comment.")),
-    onSuccess: refreshComments,
+    onSuccess: () => {
+      setDeleting(null);
+      void refreshComments();
+    },
     onSettled: (_data, _err, vars) => inFlight.current.delete(`delete-${vars.Id}`),
   });
   const pinComment = useMutation({
@@ -321,46 +339,35 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   const comments = commentsQuery.data ?? [];
   const assignees = task ? assigneesOf(task) : [];
 
-  // The header renders in every one of these states on purpose: a loading or
-  // failed screen with no back button is a dead end, and force-quitting the app
-  // was the only way out of it.
-  if (taskQuery.isLoading || taskQuery.isError) {
+  // The band renders in every one of these states on purpose: a loading or
+  // failed screen with no back button is a dead end.
+  if (taskQuery.isLoading || taskQuery.isError || !task) {
     return (
-      <Screen>
-        <ScreenHeader title="Task" onBack={navigation.goBack} />
-        <ScreenLoader
-          failed={taskQuery.isError}
-          onRetry={taskQuery.refetch}
-          message={
-            taskQuery.isError
-              ? "The task could not be loaded. Check your connection and try again."
-              : undefined
-          }
-        />
+      <Screen band>
+        <Band variant="record" title="Task" onBack={navigation.goBack} />
+        <BandSheet scroll center={!taskQuery.isLoading && !taskQuery.isError}>
+          {taskQuery.isLoading ? (
+            <SkeletonRows rows={4} />
+          ) : taskQuery.isError ? (
+            <ErrorCard
+              message="The task could not be loaded. Check your connection and try again."
+              onRetry={() => void taskQuery.refetch()}
+            />
+          ) : (
+            // Loaded fine, but no row — deleted, or access revoked. No retry.
+            <EmptyState
+              module="tasks"
+              icon={Lock}
+              title="Task not available"
+              message="It may have been deleted, or you no longer have access to its board."
+            />
+          )}
+        </BandSheet>
       </Screen>
     );
   }
 
-  // Loaded fine, but there is no row — deleted, or access was revoked. That is
-  // a different thing from a failed request and must not offer a retry.
-  if (!task) {
-    return (
-      <Screen>
-        <ScreenHeader title="Task" onBack={navigation.goBack} />
-        <View style={styles.centre}>
-          <Lock size={30} color={colors.textMuted} />
-          <Text variant="h3">Task not available</Text>
-          <Text variant="secondary" align="center">
-            It may have been deleted, or you no longer have access to its board.
-          </Text>
-        </View>
-      </Screen>
-    );
-  }
-
-  const overdue = dueBucket(task.DueDate) === "overdue";
   const doneOn = istDay(task.CompletedDate);
-  const due = dueLabel(task.DueDate);
   const logged = task.LoggedHours ?? 0;
   const estimated = task.EstimatedHours ?? 0;
   const blockers = task.BlockerCount ?? 0;
@@ -368,10 +375,6 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   // claim_task: an open task nobody is on, for someone who may hold one. A
   // viewer can't hold a task (094), so can.claim is false for them.
   const canClaim = can.claim && !task.IsCompleted;
-
-  // Files brings its own FAB (it needs the camera/library/file picker sheet).
-  const showFab =
-    (tab === "checklist" && can.manageArtifacts) || (tab === "chat" && can.comment);
 
   const openCompose = (kind: Compose, seed: Record<string, string> = {}) => {
     setComposeSeed(seed);
@@ -466,17 +469,6 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
     ...(can.editFields
       ? [
           {
-            key: "edit",
-            label: "Edit task",
-            icon: Pencil,
-            onPress: () =>
-              task.WorkspaceId != null &&
-              navigation.navigate("TaskForm", {
-                workspaceId: task.WorkspaceId,
-                taskId: task.Id,
-              }),
-          } satisfies SheetAction,
-          {
             key: "blocker",
             label: "Add a blocker",
             icon: Link2,
@@ -554,14 +546,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
                 label: "Delete comment",
                 icon: Trash2,
                 tone: "danger",
-                onPress: () =>
-                  once(`delete-${picked.Id}`, () =>
-                    removeComment.mutate({
-                      Id: picked.Id,
-                      TaskId: taskId,
-                      WorkspaceId: task.WorkspaceId,
-                    }),
-                  ),
+                onPress: () => setDeleting(picked),
               } satisfies SheetAction,
             ]
           : []),
@@ -619,219 +604,216 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
         }),
     }));
 
-  return (
-    <Screen>
-      <ScreenHeader
-        title={task.WorkspaceName ?? "Task"}
-        subtitle={task.ColumnTitle ?? undefined}
-        onBack={navigation.goBack}
-        // Always shown: "Time logged" is on the menu for everyone.
-        actions={[
-          {
-            icon: MoreVertical,
-            label: "Task actions",
-            onPress: () => menuRef.current?.present(),
-          },
-        ]}
-      />
+  const editTask = () =>
+    task.WorkspaceId != null && navigation.navigate("TaskForm", { workspaceId: task.WorkspaceId, taskId: task.Id });
 
-      <View style={styles.summary}>
-        <Text variant="h2">{task.Title}</Text>
+  // Long-press a step: move it, or remove it (the last step stays — 094).
+  const stepIndex = step ? checklist.findIndex((i) => i.Id === step.Id) : -1;
+  const swapWith = (j: number) => {
+    const other = checklist[j];
+    if (!step || !other) return;
+    reorder.mutate([
+      { ...step, SortOrder: j },
+      { ...other, SortOrder: stepIndex },
+    ]);
+  };
+  const stepActions: SheetAction[] = step
+    ? [
+        ...(stepIndex > 0
+          ? [{ key: "up", label: "Move up", icon: ArrowUp, onPress: () => swapWith(stepIndex - 1) } satisfies SheetAction]
+          : []),
+        ...(stepIndex < checklist.length - 1
+          ? [{ key: "down", label: "Move down", icon: ArrowDown, onPress: () => swapWith(stepIndex + 1) } satisfies SheetAction]
+          : []),
+        ...(checklist.length > 1
+          ? [{
+              key: "remove",
+              label: "Remove step",
+              icon: Trash2,
+              tone: "danger",
+              onPress: () => removeItem.mutate({ Id: step.Id, TaskId: taskId, WorkspaceId: task.WorkspaceId }),
+            } satisfies SheetAction]
+          : []),
+      ]
+    : [];
 
-        {task.Description ? (
-          <Text variant="secondary" numberOfLines={3}>
-            {task.Description}
-          </Text>
-        ) : null}
+  const dueChip = taskDueChip(task, false);
+  const people = assignees.map((a) => ({ name: a.FullName, uri: a.Avatar, userId: a.UserId }));
+  const personal = ws?.Type === "personal";
+  const segment = tab === "files" ? "details" : tab;
 
-        {/* One dense row instead of a four-row fact card — same information,
-            a fifth of the height. The time and blocker entries are tappable;
-            they open the only two panels that have nowhere else to live. */}
-        <View style={styles.metaRow}>
-          {task.IsCompleted ? (
-            <Chip
-              label={doneOn ? `Done ${doneOn}` : "Done"}
-              tone="success"
-            />
-          ) : null}
-          {task.IsBlocked ? <Chip label="Blocked" tone="danger" /> : null}
-          {task.Priority ? (
-            <Chip label={task.Priority} icon={Flag} tone={taskPriorityTone(task.Priority)} />
-          ) : null}
-          {due ? (
-            <Meta
-              Icon={overdue ? CircleAlert : Calendar}
-              text={due}
-              tone={overdue ? "danger" : "textSecondary"}
-            />
-          ) : null}
-          {logged > 0 ? (
-            <Meta
-              Icon={Timer}
-              text={
-                estimated > 0
-                  ? `${formatHours(logged)} / ${formatHours(estimated)}`
-                  : formatHours(logged)
-              }
-              tone={
-                estimated > 0 && logged > estimated ? "danger" : "textSecondary"
-              }
-              onPress={() => timeRef.current?.present()}
-            />
-          ) : null}
-          {blockers > 0 ? (
-            <Meta
-              Icon={Ban}
-              text={`${blockers} blocker${blockers === 1 ? "" : "s"}`}
-              tone="danger"
-              onPress={() => dependencyRef.current?.present()}
-            />
-          ) : null}
-          {assignees.length ? (
-            <View style={styles.avatars}>
-              {assignees.slice(0, 3).map((a, i) => (
-                <View key={a.UserId} style={i > 0 ? styles.overlap : undefined}>
-                  <Avatar name={a.FullName} uri={a.Avatar} size={24} />
-                </View>
-              ))}
-            </View>
-          ) : (
-            <Meta Icon={UserX} text="Unassigned" tone="textMuted" />
-          )}
-        </View>
-
-        <Segmented
-          value={tab}
-          onChange={switchTab}
-          options={[
-            { value: "checklist", label: "Checklist", count: checklist.length },
+  const details = (
+    <View>
+      {task.Description ? (
+        <Card gap={0}>
+          <Text variant="text">{task.Description}</Text>
+        </Card>
+      ) : null}
+      <Card style={task.Description ? styles.gapTop : undefined} gap={0}>
+        <Facts
+          items={[
+            { label: "Workspace", value: task.WorkspaceName ?? undefined },
+            { label: "Column", value: task.ColumnTitle ?? undefined },
+            { label: "Due", value: task.DueDate ? `${shortDay(task.DueDate)}${task.DueTime ? ` · ${task.DueTime}` : ""}` : undefined },
+            { label: "Time allowed", value: task.TatMinutes ? hm(task.TatMinutes * 60_000) : undefined },
+            { label: "Logged time", value: logged > 0 ? (estimated > 0 ? `${formatHours(logged)} of ${formatHours(estimated)}` : formatHours(logged)) : undefined },
             {
-              value: "files",
-              label: "Files",
-              count: attachmentsQuery.data?.length ?? 0,
+              label: "Blocked by",
+              value: blockers > 0 ? `${blockers} task${blockers === 1 ? "" : "s"}` : "Nothing",
+              tone: blockers > 0 ? "danger" : undefined,
             },
-            { value: "chat", label: "Comments", count: comments.length },
-            // Personal boards run no deadline clocks.
-            ...(ws?.Type === "personal" ? [] : [{ value: "tat" as const, label: "Deadline" }]),
-            { value: "activity", label: "History" },
           ]}
         />
-      </View>
+      </Card>
+      <GroupHeader label="Files" />
+      <Pressable
+        onPress={() => setTab("files")}
+        accessibilityRole="button"
+        accessibilityLabel="Files"
+        style={({ pressed }) => [styles.filesRow, pressed && styles.sink]}
+      >
+        <Paperclip size={18} color={colors.textSecondary} />
+        <Text variant="rowTitle" style={styles.flex}>
+          {`${attachmentsQuery.data?.length ?? 0} file${attachmentsQuery.data?.length === 1 ? "" : "s"}`}
+        </Text>
+        <ChevronRight size={18} color={colors.textMuted} />
+      </Pressable>
+      <GroupHeader label="History" />
+      <ActivityTab taskId={taskId} />
+    </View>
+  );
 
-      {tab === "checklist" ? (
-        <Checklist
-          items={checklist}
-          canToggle={can.changeStatus && !toggleItem.isPending}
-          canManage={can.manageArtifacts}
-          onToggle={(item) =>
-            toggleItem.mutate({
-              Id: item.Id,
-              TaskId: taskId,
-              ItemText: item.ItemText,
-              IsCompleted: !item.IsCompleted,
-              SortOrder: item.SortOrder ?? 0,
-              WorkspaceId: task.WorkspaceId,
-            })
-          }
-          onDelete={(item) =>
-            removeItem.mutate({
-              Id: item.Id,
-              TaskId: taskId,
-              WorkspaceId: task.WorkspaceId,
-            })
-          }
-        />
+  const thread = (
+    <View>
+      {comments.length ? (
+        threadComments(comments).map(({ comment: c, reply }) => {
+          const allows = commentAllows(c);
+          const tags = [
+            ...(c.IsEdited && !c.IsDeleted ? ["edited"] : []),
+            ...(c.IsPinned ? ["pinned"] : []),
+          ];
+          return (
+            <Card
+              key={c.Id}
+              testID={`comment-${c.Id}`}
+              tone={deleting?.Id === c.Id ? "danger" : "surface"}
+              gap={0}
+              style={reply ? styles.replyComment : styles.comment}
+              onLongPress={
+                allows.reply || allows.own || allows.pin
+                  ? () => {
+                      setPicked(c);
+                      commentMenuRef.current?.present();
+                    }
+                  : undefined
+              }
+            >
+              <View style={styles.commentHead}>
+                <Avatar name={c.UserName} uri={c.Avatar} size={28} ring={null} />
+                <Text variant="rowTitleBold" numberOfLines={1} style={styles.flex}>{c.UserName ?? "Someone"}</Text>
+                <Text variant="label" tabular>{relativeTime(c.CreatedDate)}</Text>
+              </View>
+              <Text
+                variant="text"
+                color={c.IsDeleted ? "textMuted" : "text"}
+                style={[styles.commentText, c.IsDeleted ? styles.deleted : null]}
+              >
+                {c.Comment}
+              </Text>
+              {tags.length ? <Text variant="small" style={styles.commentText}>{tags.join(" · ")}</Text> : null}
+            </Card>
+          );
+        })
+      ) : (
+        <EmptyState module="tasks" icon={MessageCircle} title="No comments yet" message="Updates on this task, from anyone on the board." />
+      )}
+      {can.comment ? (
+        <Button title="Write a comment" icon={MessageCircle} variant="secondary" fullWidth style={styles.gapTop} onPress={() => openCompose("comment")} />
       ) : null}
+    </View>
+  );
 
+  return (
+    <Screen band>
+      <Band
+        variant="record"
+        onBack={navigation.goBack}
+        subtitle={[task.WorkspaceName ?? "Task", task.ColumnTitle].filter(Boolean).join(" · ")}
+        actions={
+          <>
+            {can.editFields ? <IconButton icon={Pencil} accessibilityLabel="Edit task" onPress={editTask} /> : null}
+            <IconButton icon={EllipsisVertical} accessibilityLabel="Task actions" onPress={() => menuRef.current?.present()} />
+          </>
+        }
+      >
+        <Text variant="recordTitle" color="textOnBrand" accessibilityRole="header" style={styles.title}>{task.Title}</Text>
+        <View style={styles.chips}>
+          {people.length ? <AvatarStack people={people} ring="band" /> : <Chip label="Unassigned" tone="slate" />}
+          {task.Priority ? <Chip label={task.Priority} icon={Flag} tone={priorityChip(task.Priority).tone} /> : null}
+          {task.IsCompleted ? <Chip label={doneOn ? `Done ${doneOn}` : "Done"} tone="green" /> : null}
+          {dueChip ? <Chip label={dueChip.label === "Missed" ? "Missed deadline" : dueChip.label} tone={dueChip.tone} icon={dueChip.icon} /> : null}
+          {task.IsBlocked ? <Chip label="Blocked" tone="red" icon={Ban} /> : null}
+        </View>
+      </Band>
 
       {tab === "files" ? (
-        <AttachmentList
-          entity="task"
-          entityId={taskId}
-          canManage={can.manageArtifacts}
-        />
-      ) : null}
-
-      {/* Comments are a conversation in time, exactly like the history — so
-          they use the same rail rather than a stack of cards. The avatar IS
-          the node, which is why Timeline takes one. */}
-      {tab === "chat" ? (
-        <ScrollView
-          contentContainerStyle={styles.list}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {comments.length ? (
-            <Timeline
-              entries={threadComments(comments).map(({ comment: c, reply }) => {
-                const allows = commentAllows(c);
-                return {
-                  key: String(c.Id),
-                  testID: `comment-${c.Id}`,
-                  title: c.Comment,
-                  meta: [
-                    c.UserName ?? "Someone",
-                    relativeTime(c.CreatedDate),
-                    ...(c.IsEdited && !c.IsDeleted ? ["edited"] : []),
-                    ...(c.IsPinned ? ["pinned"] : []),
-                  ].join(" · "),
-                  node: <Avatar name={c.UserName} uri={c.Avatar} size={24} />,
-                  indent: reply,
-                  muted: Boolean(c.IsDeleted),
-                  onLongPress:
-                    allows.reply || allows.own || allows.pin
-                      ? () => {
-                          setPicked(c);
-                          commentMenuRef.current?.present();
-                        }
-                      : undefined,
-                };
-              })}
-            />
-          ) : (
-            <Text variant="secondary">No comments yet.</Text>
-          )}
-        </ScrollView>
-      ) : null}
-
-      {tab === "tat" ? (
-        <TatTab
-          taskId={taskId}
-          userId={userId}
-          explainTatId={explainTatId}
-        />
-      ) : null}
-
-      {tab === "activity" ? <ActivityTab taskId={taskId} /> : null}
-
-      {showFab ? (
-        <Fab
-          icon={tab === "checklist" ? Plus : MessageCircle}
-          accessibilityLabel={
-            tab === "checklist" ? "Add a checklist item" : "Write a comment"
-          }
-          onPress={() => openCompose(tab === "checklist" ? "checklist" : "comment")}
-        />
-      ) : null}
-
-      {!can.changeStatus ? (
-        <View
-          style={[styles.readOnly, { paddingBottom: insets.bottom + spacing[2] }]}
-        >
-          <Eye size={15} color={colors.textMuted} />
-          <Text variant="caption" color="textMuted" style={styles.flex}>
-            View only — ask an owner to assign you this task to work on it.
-          </Text>
-        </View>
-      ) : null}
+        <BandSheet>
+          <GroupHeader label="Files" first link={{ label: "Back to details", onPress: () => setTab("details") }} />
+          <AttachmentList entity="task" entityId={taskId} canManage={can.manageArtifacts} />
+        </BandSheet>
+      ) : (
+        <BandSheet scroll>
+          {!can.changeStatus ? (
+            <View style={styles.note}>
+              <InfoNote icon={Eye}>View only — ask an owner to assign you this task to work on it.</InfoNote>
+            </View>
+          ) : null}
+          <SegmentedTabs
+            value={segment}
+            onChange={switchTab}
+            options={[
+              { value: "details", label: "Details" },
+              { value: "checklist", label: "Checklist" },
+              { value: "chat", label: "Comments", count: comments.length },
+              // Personal boards run no deadline clocks.
+              ...(personal ? [] : [{ value: "tat" as const, label: "Deadline" }]),
+            ]}
+          />
+          <View style={styles.panel}>
+            {tab === "details" ? details : null}
+            {tab === "checklist" ? (
+              <Checklist
+                items={checklist}
+                canToggle={can.changeStatus && !toggleItem.isPending}
+                canManage={can.manageArtifacts}
+                onAdd={() => openCompose("checklist")}
+                onLongPress={(item) => {
+                  setStep(item);
+                  stepMenuRef.current?.present();
+                }}
+                onToggle={(item) =>
+                  toggleItem.mutate({
+                    Id: item.Id,
+                    TaskId: taskId,
+                    ItemText: item.ItemText,
+                    IsCompleted: !item.IsCompleted,
+                    SortOrder: item.SortOrder ?? 0,
+                    WorkspaceId: task.WorkspaceId,
+                  })
+                }
+              />
+            ) : null}
+            {tab === "chat" ? thread : null}
+            {tab === "tat" ? (
+              <TatTab taskId={taskId} userId={userId} tatMinutes={task.TatMinutes} explainTatId={explainTatId} />
+            ) : null}
+          </View>
+        </BandSheet>
+      )}
 
       <ComposeSheet
         ref={composeRef}
-        title={
-          compose === "reply" && picked
-            ? `Reply to ${picked.UserName ?? "comment"}`
-            : COMPOSE_FORM[compose].title
-        }
+        title={compose === "reply" && picked ? `Reply to ${picked.UserName ?? "comment"}` : COMPOSE_FORM[compose].title}
         submitLabel={COMPOSE_FORM[compose].submitLabel}
         fields={COMPOSE_FORM[compose].fields}
         initialValues={composeSeed}
@@ -842,6 +824,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
 
       <ActionSheet ref={menuRef} title="Task actions" actions={menuActions} />
       <ActionSheet ref={commentMenuRef} title="Comment" actions={commentActions} />
+      <ActionSheet ref={stepMenuRef} title={step?.ItemText ?? "Step"} actions={stepActions} />
       <ActionSheet ref={moveRef} title="Move to column" actions={moveActions} />
       <ActionSheet
         ref={blockerRef}
@@ -850,123 +833,60 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
         emptyMessage="This board has no other tasks to depend on."
       />
 
-      <TimeSheet
-        ref={timeRef}
-        taskId={taskId}
-        workspaceId={task.WorkspaceId}
-        userId={userId}
-        canManageAny={can.editFields}
-        scopedToMe={!isAdmin}
-      />
-      <DependencySheet
-        ref={dependencyRef}
-        taskId={taskId}
-        workspaceId={task.WorkspaceId}
-        canEdit={can.editFields}
-      />
+      <TimeSheet ref={timeRef} taskId={taskId} workspaceId={task.WorkspaceId} userId={userId} canManageAny={can.editFields} scopedToMe={!isAdmin} />
+      <DependencySheet ref={dependencyRef} taskId={taskId} workspaceId={task.WorkspaceId} canEdit={can.editFields} />
 
       <Dialog
+        visible={deleting != null}
+        badge={{ tone: "red", icon: Trash2 }}
+        title="Delete this comment?"
+        message={`"${deleting?.Comment ?? ""}" is removed for everyone in ${task.WorkspaceName ?? "this workspace"}. This cannot be undone.`}
+        confirmLabel="Delete"
+        destructive
+        loading={removeComment.isPending}
+        onConfirm={() =>
+          deleting &&
+          once(`delete-${deleting.Id}`, () =>
+            removeComment.mutate({ Id: deleting.Id, TaskId: taskId, WorkspaceId: task.WorkspaceId }),
+          )
+        }
+        onCancel={() => setDeleting(null)}
+      />
+      <Dialog
         visible={confirmingDelete}
+        badge={{ tone: "red", icon: Trash2 }}
         title="Delete this task?"
         message="It disappears from every board and list. Its history is kept."
         confirmLabel="Delete"
         destructive
         loading={removeTask.isPending}
-        onConfirm={() =>
-          removeTask.mutate({ Id: taskId, WorkspaceId: task.WorkspaceId })
-        }
+        onConfirm={() => removeTask.mutate({ Id: taskId, WorkspaceId: task.WorkspaceId })}
         onCancel={() => setConfirmingDelete(false)}
       />
     </Screen>
   );
 }
 
-function Meta({
-  Icon,
-  text,
-  tone,
-  onPress,
-}: {
-  Icon: LucideIcon;
-  text: string;
-  tone: keyof typeof colors;
-  onPress?: () => void;
-}) {
-  const body = (
-    <>
-      <Icon size={14} color={colors[tone]} />
-      <Text variant="caption" color={tone}>
-        {text}
-      </Text>
-    </>
-  );
-
-  if (!onPress) return <View style={styles.meta}>{body}</View>;
-
-  return (
-    <Pressable
-      onPress={onPress}
-      hitSlop={spacing[2]}
-      accessibilityRole="button"
-      style={({ pressed }) => [
-        styles.meta,
-        styles.metaTappable,
-        pressed && styles.metaPressed,
-      ]}
-    >
-      {body}
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  centre: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing[2],
-    padding: spacing[6],
-  },
-  summary: {
-    paddingHorizontal: SCREEN_PADDING,
-    paddingTop: spacing[4],
-    paddingBottom: spacing[3],
-    gap: spacing[3],
-  },
-  metaRow: {
+  flex: { flex: 1, minWidth: 0 },
+  title: { marginTop: 2 },
+  chips: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 12 },
+  note: { marginBottom: 12 },
+  panel: { marginTop: 12 },
+  gapTop: { marginTop: 12 },
+  filesRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[4],
-    flexWrap: "wrap",
-  },
-  meta: { flexDirection: "row", alignItems: "center", gap: spacing[1] },
-  // A tappable fact needs to look like a control, or nobody finds the panel
-  // behind it.
-  metaTappable: {
-    paddingHorizontal: spacing[2],
-    paddingVertical: spacing[1],
-    borderRadius: radius.full,
-    backgroundColor: colors.surface,
-    ...shadows.sm,
-  },
-  metaPressed: { transform: [{ translateY: 1 }] },
-  avatars: { flexDirection: "row", alignItems: "center" },
-  overlap: { marginLeft: -spacing[2] },
-  list: {
-    paddingHorizontal: SCREEN_PADDING,
-    // Clears the FAB so the last row is never hidden behind it.
-    paddingBottom: spacing[20],
-    gap: spacing[3],
-  },
-  readOnly: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[2],
-    paddingHorizontal: SCREEN_PADDING,
-    paddingTop: spacing[3],
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
+    gap: 12,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    borderRadius: 16,
     backgroundColor: colors.surface,
   },
+  sink: { transform: [{ scale: 0.98 }] },
+  comment: { paddingVertical: 12, paddingHorizontal: 14, marginBottom: 8 },
+  replyComment: { paddingVertical: 12, paddingHorizontal: 14, marginBottom: 8, marginLeft: 24 },
+  commentHead: { flexDirection: "row", alignItems: "center", gap: 10 },
+  commentText: { marginTop: 2, marginLeft: 38 },
+  deleted: { fontStyle: "italic" },
 });

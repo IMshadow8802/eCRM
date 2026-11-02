@@ -1,15 +1,6 @@
 // Port of web/src/utils/tatChip.js. All times are shown in IST, computed by
 // hand (fixed +05:30, no DST) so it does not depend on Hermes' Intl timeZone.
-import {
-  CirclePause,
-  Clock,
-  OctagonAlert,
-  TriangleAlert,
-  type LucideIcon,
-} from "lucide-react-native";
-
 import type { TaskTatEvent } from "../../types/api";
-import type { ChipTone } from "../../ui";
 
 const IST_MS = 330 * 60000;
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -105,31 +96,24 @@ export function eventText(e: Pick<TaskTatEvent, "Kind" | "OldValue" | "NewValue"
   }
 }
 
-interface TatFields {
-  TatDueAt?: string | null;
-  TatWarnAt?: string | null;
-  TatHeldSince?: string | null;
-  TatHoldReason?: string | null;
+/** "8 h 00 m" — E's deadline figures (09). */
+export function hm(ms: number): string {
+  const mins = Math.max(0, Math.floor(ms / 60000));
+  return `${Math.floor(mins / 60)} h ${p2(mins % 60)} m`;
 }
 
-export interface TatChipSpec {
-  tone: ChipTone;
-  text: string;
-  icon: LucideIcon;
+/** "Sat, 31 Oct" in IST; "" when there is no parseable date. */
+export function dayIst(value: string | Date | null | undefined): string {
+  const d = parseIst(value);
+  if (!d) return "";
+  const a = ist(d);
+  return `${a.weekday}, ${Number(a.day)} ${a.month}`;
 }
 
-export function tatChip(task: TatFields | null | undefined, now = new Date()): TatChipSpec | null {
-  if (!task || (!task.TatDueAt && !task.TatHeldSince)) return null;
-  if (task.TatHeldSince) {
-    return { tone: "neutral", text: `On hold: ${task.TatHoldReason || "Blocked"}`, icon: CirclePause };
-  }
-  const due = parseIst(task.TatDueAt);
-  if (!due) return null;
-  if (now > due) return { tone: "danger", text: `Late by ${overBy(now.getTime() - due.getTime())}`, icon: OctagonAlert };
-  const warn = parseIst(task.TatWarnAt);
-  return {
-    tone: warn && warn <= now ? "warning" : "info",
-    text: `Due ${istShort(due, now)}`,
-    icon: warn && warn <= now ? TriangleAlert : Clock,
-  };
+/** "Mon, 2 Nov · 11:00 am" in IST (E 09's timeline and footer). */
+export function whenIst(value: string | Date | null | undefined): string {
+  const d = parseIst(value);
+  if (!d) return "";
+  const [h, m] = ist(d).time.split(":").map(Number) as [number, number];
+  return `${dayIst(d)} · ${h % 12 || 12}:${p2(m)} ${h < 12 ? "am" : "pm"}`;
 }

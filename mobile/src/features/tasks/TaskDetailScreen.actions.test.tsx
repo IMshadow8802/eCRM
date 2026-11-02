@@ -118,9 +118,11 @@ describe("menu", () => {
     const { present } = spySheets();
     await fireEvent.press(screen.getByLabelText("Task actions"));
     expect(present).toHaveBeenCalledTimes(1);
-    for (const label of ["Log time", "Edit task", "Add a blocker", "Blocks another task", "Delete task"]) {
+    for (const label of ["Log time", "Add a blocker", "Blocks another task", "Delete task"]) {
       expect(screen.getByText(label)).toBeOnTheScreen();
     }
+    // Edit is the band's pencil (08), not a menu row.
+    expect(screen.getByRole("button", { name: "Edit task" })).toBeOnTheScreen();
     expect(screen.queryByText("Take this task")).toBeNull();
   });
 
@@ -178,7 +180,7 @@ describe("menu", () => {
 
   it("edit opens the form on this task", async () => {
     const navigation = await mount();
-    await fireEvent.press(screen.getByText("Edit task"));
+    await fireEvent.press(screen.getByRole("button", { name: "Edit task" }));
     expect(navigation.navigate).toHaveBeenCalledWith("TaskForm", { workspaceId: 10, taskId: 1 });
   });
 
@@ -365,7 +367,7 @@ describe("comments", () => {
   it("posts a comment from the Comments tab", async () => {
     await mount();
     await fireEvent.press(screen.getByText("Comments"));
-    expect(screen.getByText("No comments yet.")).toBeOnTheScreen();
+    expect(screen.getByText("No comments yet")).toBeOnTheScreen();
     const { dismiss } = spySheets();
     await fireEvent.press(screen.getByLabelText("Write a comment"));
     await fireEvent.changeText(screen.getByPlaceholderText("Share an update…"), "On site now");
@@ -424,11 +426,11 @@ describe("comment thread", () => {
     expect(screen.getAllByTestId(/^comment-/).map((n) => n.props.testID)).toEqual([
       "comment-3", "comment-1", "comment-4", "comment-5", "comment-2", "comment-6",
     ]);
-    expect(screen.getByTestId("comment-4")).toHaveStyle({ marginLeft: 36 });
-    expect(screen.getByTestId("comment-5")).toHaveStyle({ marginLeft: 36 });
-    expect(screen.getByTestId("comment-1")).not.toHaveStyle({ marginLeft: 36 });
-    expect(screen.getByText(/^Me · .* · edited$/)).toBeOnTheScreen();
-    expect(screen.getByText(/· pinned$/)).toBeOnTheScreen();
+    expect(screen.getByTestId("comment-4")).toHaveStyle({ marginLeft: 24 });
+    expect(screen.getByTestId("comment-5")).toHaveStyle({ marginLeft: 24 });
+    expect(screen.getByTestId("comment-1")).not.toHaveStyle({ marginLeft: 24 });
+    expect(screen.getByText("edited")).toBeOnTheScreen();
+    expect(screen.getByText("pinned")).toBeOnTheScreen();
     expect(screen.getByText("[deleted]")).toHaveStyle({ fontStyle: "italic", color: colors.textMuted });
   });
 
@@ -496,10 +498,26 @@ describe("comment thread", () => {
     expect(dismiss).toHaveBeenCalledTimes(1);
   });
 
+  const confirmDelete = () => fireEvent.press(screen.getByRole("button", { name: "Delete" }));
+
+  it("21: delete asks first — the comment is tinted, the dialog quotes it and names the workspace", async () => {
+    await openThread();
+    await longPress("Mine, first");
+    await fireEvent.press(screen.getByText("Delete comment"));
+    expect(screen.getByText("Delete this comment?")).toBeOnTheScreen();
+    expect(screen.getByText('"Mine, first" is removed for everyone in Ops board. This cannot be undone.')).toBeOnTheScreen();
+    expect(screen.getByTestId("comment-1")).toHaveStyle({ backgroundColor: colors.dangerCardTint });
+    expect(deleteTaskComment).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByText("Delete this comment?")).toBeNull();
+    expect(screen.getByTestId("comment-1")).toHaveStyle({ backgroundColor: colors.surface });
+  });
+
   it("deletes your own comment and reloads the thread", async () => {
     await openThread();
     await longPress("Mine, first");
     await fireEvent.press(screen.getByText("Delete comment"));
+    await confirmDelete();
     await waitFor(() => expect(deleteTaskComment).toHaveBeenCalled());
     expect(body(deleteTaskComment)).toEqual({ Id: 1, TaskId: 1, WorkspaceId: 10 });
     await waitFor(() => expect(getTaskComments).toHaveBeenCalledTimes(2));
@@ -511,6 +529,7 @@ describe("comment thread", () => {
     jest.mocked(deleteTaskComment).mockRejectedValue(serverError(403, "Not your comment"));
     await longPress("Mine, first");
     await fireEvent.press(screen.getByText("Delete comment"));
+    await confirmDelete();
     expect(await screen.findByText("Not your comment")).toBeOnTheScreen();
   });
 
@@ -551,12 +570,15 @@ describe("comment thread", () => {
     jest.mocked(deleteTaskComment).mockReturnValueOnce(first.promise);
     await longPress("Mine, first");
     await fireEvent.press(screen.getByText("Delete comment"));
-    await fireEvent.press(screen.getByText("Delete comment"));
+    await confirmDelete();
+    await confirmDelete();
     expect(deleteTaskComment).toHaveBeenCalledTimes(1);
     first.release();
     // Once it settles the comment can be acted on again.
     await waitFor(() => expect(getTaskComments).toHaveBeenCalledTimes(2));
+    await longPress("Mine, first");
     await fireEvent.press(screen.getByText("Delete comment"));
+    await confirmDelete();
     expect(deleteTaskComment).toHaveBeenCalledTimes(2);
   });
 
@@ -621,13 +643,16 @@ describe("comment thread", () => {
     jest.mocked(deleteTaskComment).mockReturnValueOnce(a.promise).mockReturnValueOnce(b.promise);
     await longPress("Mine, first");
     await fireEvent.press(screen.getByText("Delete comment"));
+    await confirmDelete();
     await longPress("Mine, second");
     await fireEvent.press(screen.getByText("Delete comment"));
+    await confirmDelete();
     a.release();
     b.release();
-    await longPress("Mine, first");
     await waitFor(async () => {
+      await longPress("Mine, first");
       await fireEvent.press(screen.getByText("Delete comment"));
+      await confirmDelete();
       expect(deleteTaskComment).toHaveBeenCalledTimes(3);
     });
   });

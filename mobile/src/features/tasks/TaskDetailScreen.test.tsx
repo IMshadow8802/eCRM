@@ -1,6 +1,6 @@
 // The detail screen's read side and its checklist. Menu actions, comments and
 // time are in TaskDetailScreen.actions.test.tsx.
-import { fireEvent, screen, waitFor, within } from "@testing-library/react-native";
+import { fireEvent, screen, waitFor } from "@testing-library/react-native";
 
 import { fetchAttachments } from "../../api/attachmentQueries";
 import { fetchLookups } from "../../api/configQueries";
@@ -23,6 +23,7 @@ import { assigneesJson, envelope, localDay, makeTask, makeWorkspace, pagination,
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import { spySheets } from "../../test/sheets";
 import { chipTones } from "../../theme";
+import { shortDay } from "./taskHelpers";
 import TaskDetailScreen from "./TaskDetailScreen";
 
 jest.mock("../../api/taskQueries");
@@ -174,14 +175,18 @@ describe("summary", () => {
     });
     await mount();
     await loaded();
-    expect(screen.getByText("Ops board")).toBeOnTheScreen();
-    expect(screen.getByText("Sector 4")).toBeOnTheScreen();
-    // Priority is a sorbet chip in its own hue, not a fixed red flag.
-    expect(screen.getByText("high")).toHaveStyle({ color: chipTones.danger.text });
-    expect(screen.getByText("1 day overdue")).toBeOnTheScreen();
-    expect(screen.getByText("5h / 4h")).toBeOnTheScreen();
-    expect(screen.getByText("2 blockers")).toBeOnTheScreen();
+    // 08: the band leads with "Workspace · Column", the title, then the chip row.
+    expect(screen.getByText("Ops board · To do")).toBeOnTheScreen();
+    expect(screen.getByRole("header", { name: "Fit the inverter" })).toBeOnTheScreen();
+    expect(screen.getByText("high")).toHaveStyle({ color: chipTones.red.text });
+    // A past due date is a red date chip in the band.
+    expect(screen.getByText(shortDay(localDay(-1)))).toHaveStyle({ color: chipTones.red.text });
     expect(screen.getByText("AR")).toBeOnTheScreen();
+    // Details: the description and the facts.
+    await fireEvent.press(screen.getByRole("tab", { name: "Details" }));
+    expect(screen.getByText("Sector 4")).toBeOnTheScreen();
+    expect(screen.getByText("5h of 4h")).toBeOnTheScreen();
+    expect(screen.getByText("2 tasks")).toBeOnTheScreen();
   });
 
   // E §1.4: urgent has no tone of its own; it wears high's red, with its own label.
@@ -196,14 +201,10 @@ describe("summary", () => {
     serve({ task: { ...TASK, AssigneesJson: null, BlockerCount: 1, LoggedHours: 2, DueDate: localDay(3) } });
     await mount();
     await loaded();
-    expect(screen.getByText("1 blocker")).toBeOnTheScreen();
-    expect(screen.getByText("2h")).toBeOnTheScreen();
     expect(screen.getByText("Unassigned")).toBeOnTheScreen();
-    // The two tappable facts open their sheets (the time sheet is also on the menu).
-    const { present } = spySheets();
-    await fireEvent.press(screen.getByText("2h"));
-    await fireEvent.press(screen.getByText("1 blocker"));
-    expect(present).toHaveBeenCalledTimes(2);
+    await fireEvent.press(screen.getByRole("tab", { name: "Details" }));
+    expect(screen.getByText("1 task")).toBeOnTheScreen();
+    expect(screen.getByText("2h")).toBeOnTheScreen();
   });
 
   // TASK-07: the web's header shows Done (with the date) and Blocked.
@@ -228,6 +229,10 @@ describe("summary", () => {
     await mount();
     await loaded();
     expect(screen.getByText("Task")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("tab", { name: "Details" }));
+    // No facts to give: dashes, and an empty blocker reads Nothing.
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+    expect(screen.getByText("Nothing")).toBeOnTheScreen();
   });
 });
 
@@ -235,7 +240,8 @@ describe("checklist", () => {
   it("shows completion derived from the checklist", async () => {
     await mount();
     await loaded();
-    expect(screen.getByText("1 of 2 done")).toBeOnTheScreen();
+    expect(screen.getByText("1 of 2")).toBeOnTheScreen();
+    expect(screen.getByText("50%")).toBeOnTheScreen();
     expect(getTaskChecklist).toHaveBeenCalledWith({ TaskId: 1 });
   });
 
@@ -293,7 +299,7 @@ describe("checklist", () => {
     await loaded();
     await fireEvent.press(screen.getByRole("checkbox", { name: "Fit it" }));
     expect(await screen.findByText("Task completed — the creator has been told")).toBeOnTheScreen();
-    expect(screen.getByText("1 of 2 done")).toBeOnTheScreen();
+    expect(screen.getByText("1 of 2")).toBeOnTheScreen();
     expect(fetchTaskTat).not.toHaveBeenCalled();
   });
 
@@ -317,7 +323,8 @@ describe("checklist", () => {
   it("removing a step deletes it on the server", async () => {
     await mount();
     await loaded();
-    await fireEvent.press(screen.getByLabelText("Remove Fit it"));
+    await fireEvent(screen.getByRole("checkbox", { name: "Fit it" }), "longPress");
+    await fireEvent.press(screen.getByText("Remove step"));
     await waitFor(() => expect(deleteTaskChecklist).toHaveBeenCalled());
     expect(jest.mocked(deleteTaskChecklist).mock.calls[0]![0]).toEqual({ Id: 2, TaskId: 1, WorkspaceId: 10 });
   });
@@ -326,15 +333,44 @@ describe("checklist", () => {
     jest.mocked(deleteTaskChecklist).mockRejectedValue(serverError(400, "A task needs at least one step"));
     await mount();
     await loaded();
-    await fireEvent.press(screen.getByLabelText("Remove Fit it"));
+    await fireEvent(screen.getByRole("checkbox", { name: "Fit it" }), "longPress");
+    await fireEvent.press(screen.getByText("Remove step"));
     expect(await screen.findByText("A task needs at least one step")).toBeOnTheScreen();
+  });
+
+  it("a step moves down or up by swapping places with its neighbour", async () => {
+    await mount();
+    await loaded();
+    await fireEvent(screen.getByRole("checkbox", { name: "Order parts" }), "longPress");
+    // The first step cannot go up.
+    expect(screen.queryByText("Move up")).toBeNull();
+    await fireEvent.press(screen.getByText("Move down"));
+    await waitFor(() => expect(saveTaskChecklist).toHaveBeenCalledTimes(2));
+    expect(jest.mocked(saveTaskChecklist).mock.calls.map((c) => c[0])).toEqual([
+      { Id: 1, TaskId: 1, ItemText: "Order parts", IsCompleted: true, SortOrder: 1, WorkspaceId: 10 },
+      { Id: 2, TaskId: 1, ItemText: "Fit it", IsCompleted: false, SortOrder: 0, WorkspaceId: 10 },
+    ]);
+    await fireEvent(screen.getByRole("checkbox", { name: "Fit it" }), "longPress");
+    expect(screen.queryByText("Move down")).toBeNull();
+    await fireEvent.press(screen.getByText("Move up"));
+    await waitFor(() => expect(saveTaskChecklist).toHaveBeenCalledTimes(4));
+  });
+
+  it("a refused move says why; the last step cannot be removed", async () => {
+    serve({ items: [item(1, "Only step")] });
+    jest.mocked(saveTaskChecklist).mockRejectedValue(serverError(400, "Nope"));
+    await mount();
+    await screen.findByText("Only step");
+    await fireEvent(screen.getByRole("checkbox", { name: "Only step" }), "longPress");
+    expect(screen.queryByText("Remove step")).toBeNull();
+    expect(screen.queryByText("Move up")).toBeNull();
   });
 
   it("the FAB adds a step at the end of the list", async () => {
     await mount();
     await loaded();
     const { present, dismiss } = spySheets();
-    await fireEvent.press(screen.getByLabelText("Add a checklist item"));
+    await fireEvent.press(screen.getByRole("button", { name: "Add a step" }));
     expect(present).toHaveBeenCalledTimes(1);
     await fireEvent.changeText(screen.getByPlaceholderText("What needs doing?"), " Test run ");
     await fireEvent.press(screen.getByText("Add item"));
@@ -354,7 +390,7 @@ describe("checklist", () => {
     await mount();
     await loaded();
     const { dismiss } = spySheets();
-    await fireEvent.press(screen.getByLabelText("Add a checklist item"));
+    await fireEvent.press(screen.getByRole("button", { name: "Add a step" }));
     await fireEvent.changeText(screen.getByPlaceholderText("What needs doing?"), "Test run");
     await fireEvent.press(screen.getByText("Add item"));
     expect(await screen.findByText("You cannot edit this task")).toBeOnTheScreen();
@@ -379,8 +415,9 @@ describe("who may do what", () => {
     for (const label of ["Log time", "Edit task", "Delete task", "Take this task"]) {
       expect(screen.queryByText(label)).toBeNull();
     }
-    expect(screen.queryByRole("checkbox")).toBeNull();
-    expect(screen.queryByLabelText("Add a checklist item")).toBeNull();
+    expect(screen.getByRole("checkbox", { name: "Fit it" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Add a step" })).toBeNull();
+    expect(screen.queryByLabelText("Edit task")).toBeNull();
   });
 
   it("a personal board is private even from an admin", async () => {
@@ -423,7 +460,7 @@ describe("tabs", () => {
     serve({ ws: makeWorkspace({ Id: 10, Type: "personal", MyRole: "owner" }) });
     await mount();
     await loaded();
-    expect(screen.getByText("History")).toBeOnTheScreen();
+    expect(screen.getByRole("tab", { name: "Details" })).toBeOnTheScreen();
     expect(screen.queryByText("Deadline")).toBeNull();
   });
 
@@ -446,21 +483,25 @@ describe("tabs", () => {
     ]);
     await mount();
     await loaded();
-    const tabs = screen.getAllByRole("tab");
-    expect(within(tabs[0]!).getByText("2")).toBeOnTheScreen();
-    expect(within(tabs[2]!).getByText("1")).toBeOnTheScreen();
+    // E 08: Details · Checklist · Comments n · Deadline — Files and History live in Details.
+    expect(screen.getAllByRole("tab").map((t) => t.props.accessibilityLabel)).toEqual([
+      "Details", "Checklist", "Comments, 1", "Deadline",
+    ]);
+    expect(screen.getByRole("tab", { name: "Checklist", selected: true })).toBeOnTheScreen();
 
-    await fireEvent.press(screen.getByText("Files"));
+    await fireEvent.press(screen.getByRole("tab", { name: "Details" }));
+    expect(await screen.findByText("No history yet")).toBeOnTheScreen();
+    expect(screen.getByText("0 files")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Files" }));
     await waitFor(() => expect(fetchAttachments).toHaveBeenCalledWith({ Entity: "task", EntityId: 1 }));
+    await fireEvent.press(screen.getByRole("link", { name: "Back to details" }));
+    expect(screen.getByRole("tab", { name: "Details", selected: true })).toBeOnTheScreen();
 
-    await fireEvent.press(screen.getByText("Comments"));
+    await fireEvent.press(screen.getByRole("tab", { name: "Comments, 1" }));
     expect(screen.getByText("Parts arrive Monday")).toBeOnTheScreen();
-    expect(screen.getByText(/^Someone · /)).toBeOnTheScreen();
+    expect(screen.getByText("Someone")).toBeOnTheScreen();
 
     await fireEvent.press(screen.getByText("Deadline"));
     expect(await screen.findByText("No deadline on this task")).toBeOnTheScreen();
-
-    await fireEvent.press(screen.getByText("History"));
-    expect(await screen.findByText("No history yet")).toBeOnTheScreen();
   });
 });

@@ -1,202 +1,123 @@
-import { Fragment } from "react";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { ListChecks, Trash2 } from "lucide-react-native";
+import { Pressable, StyleSheet, View } from "react-native";
+import { GripVertical, Plus } from "lucide-react-native";
 
+import { colors, metrics } from "../../theme";
 import type { TaskChecklistItem } from "../../types/api";
-import { colors, radius, spacing, SCREEN_PADDING } from "../../theme";
-import { Card, Checkbox, Divider, EmptyState, Text } from "../../ui";
+import { Card, Checkbox, EmptyState, ListGroup, ProgressBar, Text } from "../../ui";
 
 export interface ChecklistProps {
   items: TaskChecklistItem[];
   onToggle: (item: TaskChecklistItem) => void;
-  onDelete: (item: TaskChecklistItem) => void;
+  /** Long-press a step: its actions (move up / down, remove). */
+  onLongPress?: (item: TaskChecklistItem) => void;
+  /** "Add a step" — the last row. */
+  onAdd: () => void;
   /** Workspace role allows ticking items off. */
   canToggle: boolean;
-  /** Workspace role allows adding and removing them. */
+  /** Workspace role allows adding, ordering and removing them. */
   canManage: boolean;
 }
 
-const BAR_HEIGHT = 6;
-
 /**
- * The task's checklist — one card holding every item, not one card per item.
- *
- * A card means "here is a thing you can act on", and twelve of them stacked for
- * what is a single list turns a checklist into a stack of buttons — the same
- * mistake `Timeline` exists to avoid for history. The list is one object: it
- * owns the task's completion, so it gets one surface, and the items are rows
- * inside it separated by a hairline.
- *
- * **Nothing is struck through.** A line through the text is a word-processor
- * artifact: React Native has no `textDecorationThickness`, `textDecorationColor`
- * is iOS-only, and at 15px the result is a hairline that reads as damage rather
- * than as completion. The filled checkbox and the muted label already say done,
- * and they say it identically on both platforms.
- *
- * The progress bar is not decoration. Task completion is DERIVED from this list
- * (`tblTaskChecklist`; the `IsDone` column was retired), so the bar is the
- * task's actual state — which is why it replaced the sentence that used to
- * explain that in words.
+ * The task's steps (E 08): a summary card ("3 of 5 steps done", the bar, and
+ * why it matters), then one group of rows — done rows struck through and
+ * muted, open rows with a grip — ending in "Add a step". Completion is derived
+ * from this list (the IsDone column is retired). Step meta (who ticked it,
+ * when) is not on the API (G7), so a row is its text alone.
  */
-export function Checklist({
-  items,
-  onToggle,
-  onDelete,
-  canToggle,
-  canManage,
-}: ChecklistProps) {
+export function Checklist({ items, onToggle, onLongPress, onAdd, canToggle, canManage }: ChecklistProps) {
   const total = items.length;
   const done = items.filter((i) => i.IsCompleted).length;
-  const complete = total > 0 && done === total;
 
   if (!total) {
     return (
       <EmptyState
-        icon={ListChecks}
+        module="tasks"
         title="Nothing to do yet"
         message={
           canManage
             ? "Add the steps this task needs. Ticking them all off is what marks it complete."
             : "This task has no checklist. Completion is driven by that list."
         }
+        actionLabel={canManage ? "Add a step" : undefined}
+        onAction={canManage ? onAdd : undefined}
       />
     );
   }
 
   return (
-    <ScrollView
-      contentContainerStyle={styles.page}
-      keyboardShouldPersistTaps="handled"
-      showsVerticalScrollIndicator={false}
-    >
-      {/* Unpadded: the rows pad themselves, so a divider can run the full width
-          of the card instead of stopping short at a gutter. */}
-      <Card padded={false} gap={0}>
-        <View style={styles.progress}>
-          <View style={styles.progressText}>
-            <Text variant="label" color={complete ? "success" : "textSecondary"}>
-              {done} of {total} done
-            </Text>
-            <Text variant="label" color={complete ? "success" : "textSecondary"}>
-              {Math.round((done / total) * 100)}%
-            </Text>
-          </View>
-          {/* Track and fill are siblings, not parent/child with overflow —
-              clipping a rounded fill inside a rounded track needs
-              `overflow: hidden`, which on iOS would take the card's shadow with
-              it. The fill just rounds its own corners. */}
-          <View style={styles.track}>
-            <View
-              style={[
-                styles.fill,
-                { width: `${(done / total) * 100}%` },
-                complete && styles.fillComplete,
-              ]}
-            />
-          </View>
+    <View>
+      <Card gap={0} style={styles.summary}>
+        <View style={styles.line}>
+          <Text variant="h1" tabular>{`${done} of ${total}`}</Text>
+          <Text variant="meta" style={styles.flex}>steps done</Text>
+          <Text variant="metaStrong" color="primary" tabular>{`${Math.round((done / total) * 100)}%`}</Text>
         </View>
-
-        {items.map((item) => (
-          // A divider above every row, none below the last — a line sitting on
-          // the card's rounded bottom edge reads as a crack in it.
-          <Fragment key={item.Id}>
-            <Divider />
-            <View style={styles.row}>
-              <Checkbox
-                checked={item.IsCompleted}
-                accessibilityLabel={item.ItemText}
-                onPress={canToggle ? () => onToggle(item) : undefined}
-              />
-              {/* The whole label is the target too — a 22px box is a mean
-                  thing to ask someone to hit on a moving train. */}
-              <Pressable
-                style={styles.label}
-                disabled={!canToggle}
-                onPress={() => onToggle(item)}
-              >
-                <Text
-                  variant="body"
-                  color={item.IsCompleted ? "textMuted" : "text"}
-                  style={item.IsCompleted ? styles.struck : undefined}
-                >
-                  {item.ItemText}
-                </Text>
-              </Pressable>
-              {/* The last step stays — a task with no steps can never complete (094). */}
-              {canManage && total > 1 ? (
-                <Pressable
-                  hitSlop={spacing[2]}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Remove ${item.ItemText}`}
-                  onPress={() => onDelete(item)}
-                  style={({ pressed }) => [
-                    styles.remove,
-                    pressed && styles.removePressed,
-                  ]}
-                >
-                  {/* A bin, because it destroys the item — a cross would mean
-                      dismiss. Muted at rest and red only under the finger: one
-                      red glyph per row down a list of twelve is the loudest
-                      thing on screen for the least-used action on it. */}
-                  <Trash2 size={16} color={colors.textMuted} />
-                </Pressable>
-              ) : null}
-            </View>
-          </Fragment>
-        ))}
+        <View style={styles.bar}>
+          <ProgressBar value={done / total} size="lg" />
+        </View>
+        <Text variant="small" style={styles.why}>The task completes itself when every step is ticked.</Text>
       </Card>
-    </ScrollView>
+
+      <ListGroup style={styles.group} testID="checklist">
+        {items.map((item, i) => (
+          <Pressable
+            key={item.Id}
+            disabled={!canToggle && !(canManage && onLongPress)}
+            onPress={canToggle ? () => onToggle(item) : undefined}
+            onLongPress={canManage && onLongPress ? () => onLongPress(item) : undefined}
+            delayLongPress={300}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: item.IsCompleted, disabled: !canToggle }}
+            accessibilityLabel={item.ItemText}
+            style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+          >
+            {i > 0 ? <View style={styles.separator} /> : null}
+            {/* Presentational: the whole row is the 44 dp target. */}
+            <Checkbox checked={item.IsCompleted} />
+            <Text
+              variant={item.IsCompleted ? "text" : "rowTitle"}
+              color={item.IsCompleted ? "textMuted" : "text"}
+              style={[styles.flex, item.IsCompleted && styles.struck]}
+            >
+              {item.ItemText}
+            </Text>
+            {canManage && !item.IsCompleted ? <GripVertical size={18} color={colors.iconFaint} /> : null}
+          </Pressable>
+        ))}
+        {canManage ? (
+          <Pressable
+            onPress={onAdd}
+            accessibilityRole="button"
+            accessibilityLabel="Add a step"
+            style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+          >
+            <View style={styles.separator} />
+            <Plus size={22} color={colors.primary} />
+            <Text variant="rowTitle" color="primary">Add a step</Text>
+          </Pressable>
+        ) : null}
+      </ListGroup>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  page: {
-    paddingHorizontal: SCREEN_PADDING,
-    // Clears the FAB so the last row is never hidden behind it.
-    paddingBottom: spacing[20],
-  },
-  progress: { padding: spacing[4], gap: spacing[2] },
-  progressText: { flexDirection: "row", justifyContent: "space-between" },
-  track: {
-    height: BAR_HEIGHT,
-    borderRadius: radius.full,
-    backgroundColor: colors.surfaceSunken,
-  },
-  fill: {
-    height: BAR_HEIGHT,
-    borderRadius: radius.full,
-    backgroundColor: colors.primary,
-  },
-  fillComplete: { backgroundColor: colors.success },
+  summary: { padding: 14 },
+  line: { flexDirection: "row", alignItems: "baseline", gap: metrics.inlineGap },
+  flex: { flex: 1, minWidth: 0 },
+  bar: { marginTop: 10 },
+  why: { marginTop: 8 },
+  group: { marginTop: 12 },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing[3],
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[3],
+    gap: metrics.rowGap,
+    paddingVertical: metrics.rowPadV,
+    paddingHorizontal: metrics.rowPadH,
+    backgroundColor: colors.surface,
   },
-  label: { flex: 1 },
-  /**
-   * A struck item, and ONLY here.
-   *
-   * A checklist is the one place the line is literally what the gesture means —
-   * you tick a thing off and cross it out. On a task card the same line reads as
-   * damage to a title you still have to read, which is why the completed card
-   * mutes its title instead.
-   *
-   * No `textDecorationColor`: it is iOS-only, so setting it would give the two
-   * platforms different-coloured lines. Left to inherit, the line comes through
-   * muted alongside the text on both.
-   */
+  pressed: { backgroundColor: colors.fieldTint },
+  separator: { position: "absolute", top: 0, right: 0, left: metrics.sepInset.check, height: 1, backgroundColor: colors.divider },
   struck: { textDecorationLine: "line-through" },
-  remove: {
-    width: spacing[7],
-    height: spacing[7],
-    borderRadius: radius.full,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  removePressed: { backgroundColor: colors.dangerSoft },
 });
-
-export default Checklist;

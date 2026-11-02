@@ -1,63 +1,43 @@
 import { useMemo } from "react";
-import { ScrollView, StyleSheet } from "react-native";
+import { StyleSheet } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import {
-  ArrowRightLeft,
-  CircleCheck,
-  History,
-  ListChecks,
-  MessageCircle,
-  Paperclip,
-  Pencil,
-  Plus,
-  Timer,
-  Trash2,
-  UserPlus,
+  ArrowRightLeft, CircleCheck, History, ListChecks, MessageCircle, Paperclip, Pencil, Plus, Timer, Trash2, UserPlus,
   type LucideIcon,
 } from "lucide-react-native";
 
 import { getTaskActivity } from "../../api/taskQueries";
-import { colors, spacing, SCREEN_PADDING } from "../../theme";
-import { EmptyState, Text, Timeline, type TimelineEntry } from "../../ui";
+import type { BadgeTone } from "../../theme";
+import { Card, EmptyState, Text, Timeline, type TimelineEntry } from "../../ui";
 import { relativeTime } from "./taskHelpers";
 
 /**
  * tblActivityLog.Action is a free-ish verb written by whichever SP logged the
- * row, so this matches on a substring rather than an exact set — an action the
- * backend adds later still lands on a sensible node instead of vanishing.
+ * row, so this matches on a substring — an action the backend adds later still
+ * lands on a sensible badge instead of vanishing.
  */
-const ACTION_NODE: { match: string; Icon: LucideIcon; tone: keyof typeof colors }[] = [
-  { match: "creat", Icon: Plus, tone: "success" },
-  { match: "complet", Icon: CircleCheck, tone: "success" },
-  { match: "checklist", Icon: ListChecks, tone: "primary" },
-  { match: "comment", Icon: MessageCircle, tone: "info" },
-  { match: "attach", Icon: Paperclip, tone: "info" },
-  { match: "file", Icon: Paperclip, tone: "info" },
-  { match: "assign", Icon: UserPlus, tone: "primary" },
-  { match: "move", Icon: ArrowRightLeft, tone: "primary" },
-  { match: "column", Icon: ArrowRightLeft, tone: "primary" },
-  { match: "time", Icon: Timer, tone: "warning" },
-  { match: "delete", Icon: Trash2, tone: "danger" },
-  { match: "remove", Icon: Trash2, tone: "danger" },
-  { match: "statuschang", Icon: CircleCheck, tone: "success" },
-  { match: "updat", Icon: Pencil, tone: "textSecondary" },
+const ACTION_BADGE: { match: string; icon: LucideIcon; tone: BadgeTone }[] = [
+  { match: "creat", icon: Plus, tone: "slate" },
+  { match: "complet", icon: CircleCheck, tone: "green" },
+  { match: "checklist", icon: ListChecks, tone: "lilac" },
+  { match: "comment", icon: MessageCircle, tone: "teal" },
+  { match: "attach", icon: Paperclip, tone: "sky" },
+  { match: "file", icon: Paperclip, tone: "sky" },
+  { match: "assign", icon: UserPlus, tone: "indigo" },
+  { match: "move", icon: ArrowRightLeft, tone: "indigo" },
+  { match: "column", icon: ArrowRightLeft, tone: "indigo" },
+  { match: "time", icon: Timer, tone: "butter" },
+  { match: "delete", icon: Trash2, tone: "red" },
+  { match: "remove", icon: Trash2, tone: "red" },
+  { match: "statuschang", icon: CircleCheck, tone: "green" },
+  { match: "updat", icon: Pencil, tone: "slate" },
 ];
 
-function nodeFor(action: string) {
-  return (
-    ACTION_NODE.find((entry) => action.toLowerCase().includes(entry.match)) ?? {
-      Icon: History,
-      tone: "textSecondary" as keyof typeof colors,
-    }
-  );
-}
+const badgeFor = (action: string) =>
+  ACTION_BADGE.find((e) => action.toLowerCase().includes(e.match)) ?? { icon: History, tone: "slate" as const };
 
-interface ActivityTabProps {
-  taskId: number;
-}
-
-/** Read-only audit trail. Nothing here is editable — it is what happened. */
-export default function ActivityTab({ taskId }: ActivityTabProps) {
+/** A task's audit trail, inside Details (E 08): read-only — it is what happened. */
+export default function ActivityTab({ taskId }: { taskId: number }) {
   const { data, isLoading } = useQuery({
     queryKey: ["task", taskId, "activity"],
     queryFn: () => getTaskActivity({ TaskId: taskId }),
@@ -66,17 +46,14 @@ export default function ActivityTab({ taskId }: ActivityTabProps) {
   const entries: TimelineEntry[] = useMemo(
     () =>
       (data ?? []).map((item) => {
-        const node = nodeFor(item.Action);
+        const { icon, tone } = badgeFor(item.Action);
         const change =
-          item.OldValue && item.NewValue && item.OldValue !== item.NewValue
-            ? ` · ${item.OldValue} → ${item.NewValue}`
-            : "";
+          item.OldValue && item.NewValue && item.OldValue !== item.NewValue ? ` · ${item.OldValue} → ${item.NewValue}` : "";
         return {
           key: String(item.Id),
           title: (item.Description ?? item.Action) + change,
           meta: `${item.UserName ?? "System"} · ${relativeTime(item.CreatedDate)}`,
-          icon: node.Icon,
-          tone: node.tone,
+          badge: { tone, icon },
         };
       }),
     [data],
@@ -84,35 +61,19 @@ export default function ActivityTab({ taskId }: ActivityTabProps) {
 
   if (!entries.length) {
     return isLoading ? null : (
-      <EmptyState
-        icon={History}
-        title="No history yet"
-        message="Edits, moves and completions on this task get recorded here."
-      />
+      <EmptyState module="tasks" icon={History} title="No history yet" message="Edits, moves and completions on this task get recorded here." />
     );
   }
 
   return (
-    <ScrollView
-      contentContainerStyle={styles.list}
-      showsVerticalScrollIndicator={false}
-    >
+    <Card>
       <Timeline entries={entries} />
-      {/* The rail stops at the last node; this says the log does too, rather
-          than leaving it looking truncated. */}
-      <Text variant="caption" color="textMuted" style={styles.end}>
-        Start of history
-      </Text>
-    </ScrollView>
+      {/* The track stops at the last node; this says the log does too. */}
+      <Text variant="small" style={styles.end}>Start of history</Text>
+    </Card>
   );
 }
 
 const styles = StyleSheet.create({
-  list: {
-    paddingHorizontal: SCREEN_PADDING,
-    paddingTop: spacing[2],
-    paddingBottom: spacing[20],
-  },
-  // Lines up under the entry text, not under the rail.
-  end: { paddingLeft: spacing[10] },
+  end: { paddingLeft: 40 },
 });

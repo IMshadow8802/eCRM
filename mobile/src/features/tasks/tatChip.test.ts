@@ -1,5 +1,3 @@
-import { CirclePause, Clock, OctagonAlert, TriangleAlert } from "lucide-react-native";
-
 import type { TaskTatEvent } from "../../types/api";
 import {
   eventText,
@@ -7,10 +5,12 @@ import {
   istDay,
   istShort,
   istStamp,
+  dayIst,
+  hm,
   overBy,
   parseIst,
-  tatChip,
   VERDICT_LABEL,
+  whenIst,
 } from "./tatChip";
 
 // 2026-10-08 12:00 IST.
@@ -62,38 +62,27 @@ it("overBy rounds down to minutes, hours, days — never zero", () => {
   expect(overBy(52 * 60 * m)).toBe("2d 4h");
 });
 
-describe("tatChip", () => {
-  it("no clock, no chip", () => {
-    expect(tatChip(null, NOW)).toBeNull();
-    expect(tatChip({}, NOW)).toBeNull();
-    expect(tatChip({ TatDueAt: "whenever" }, NOW)).toBeNull();
+describe("hm", () => {
+  it("'8 h 00 m' — hours and zero-padded minutes, never below a minute", () => {
+    const m = 60_000;
+    expect(hm(480 * m)).toBe("8 h 00 m");
+    expect(hm(221 * m)).toBe("3 h 41 m");
+    expect(hm(5 * m)).toBe("0 h 05 m");
+    expect(hm(27 * 60 * m)).toBe("27 h 00 m");
+    expect(hm(-5)).toBe("0 h 00 m");
   });
+});
 
-  it("a hold wins over the due time", () => {
-    expect(tatChip({ TatHeldSince: "2026-10-08 09:00:00", TatHoldReason: "Waiting on client", TatDueAt: "2026-10-01 10:00:00" }, NOW))
-      .toEqual({ tone: "neutral", text: "On hold: Waiting on client", icon: CirclePause });
-    expect(tatChip({ TatHeldSince: "2026-10-08 09:00:00" }, NOW)!.text).toBe("On hold: Blocked");
+describe("whenIst", () => {
+  it("'Mon, 2 Nov · 11:00 am' in IST; '' for nothing", () => {
+    expect(whenIst("2026-11-02 11:00:00")).toBe("Mon, 2 Nov · 11:00 am");
+    expect(whenIst("2026-10-30T18:30:00Z")).toBe("Sat, 31 Oct · 12:00 am");
+    expect(whenIst("2026-10-31 15:05:00")).toBe("Sat, 31 Oct · 3:05 pm");
+    expect(whenIst(null)).toBe("");
   });
-
-  it("past due reads late, in danger", () => {
-    expect(tatChip({ TatDueAt: "2026-10-08 10:30:00" }, NOW)).toEqual({
-      tone: "danger",
-      text: "Late by 1h 30m",
-      icon: OctagonAlert,
-    });
-  });
-
-  it("warns once the warn time has passed, otherwise just shows the due time", () => {
-    expect(tatChip({ TatDueAt: "2026-10-08 17:30:00", TatWarnAt: "2026-10-08 11:00:00" }, NOW)).toEqual({
-      tone: "warning",
-      text: "Due 17:30 IST",
-      icon: TriangleAlert,
-    });
-    expect(tatChip({ TatDueAt: "2026-10-08 17:30:00", TatWarnAt: "2026-10-08 16:00:00" }, NOW)).toEqual({
-      tone: "info",
-      text: "Due 17:30 IST",
-      icon: Clock,
-    });
+  it("the day alone", () => {
+    expect(dayIst("2026-10-31 15:05:00")).toBe("Sat, 31 Oct");
+    expect(dayIst(undefined)).toBe("");
   });
 });
 
