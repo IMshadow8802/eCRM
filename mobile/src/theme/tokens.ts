@@ -312,6 +312,21 @@ export const metrics = Object.freeze({
   countBadge: Object.freeze({ minWidth: 20, height: 18, border: 2 }),
   countPill: Object.freeze({ minWidth: 20, height: 18 }),
   escalatedDot: 20,
+  // Off-grid values E uses inside components (Task 37b).
+  /** The small title/shift nudge (E `margin-top:2px`). */
+  nudge: 2,
+  /** Card/figure gap inside a card (E 10). */
+  stackGap: 10,
+  /** Inline icon on a row's third line (E `.i14`). */
+  iconSm: 14,
+  /** Card padding (E `padding:14px`). */
+  cardPad: 14,
+  /** Space above a sheet's action button (E 14). */
+  sheetActionGap: 14,
+  /** The load-failed card sits 72 down the sheet (E 20c). */
+  errorTop: 72,
+  /** Tablet two-pane gutters (E T2/T3): list band 20 / sheet 16, detail band 28 / sheet 24. */
+  pane: Object.freeze({ listBand: 20, listSheet: 16, detailBand: 28, detailSheet: 24 }),
 });
 
 /** Radius by E's use (§1.9). The pre-E names stay as aliases until Task 40. */

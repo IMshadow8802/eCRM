@@ -143,6 +143,8 @@ describe("E §1.8–1.10 sizes and depth", () => {
       buttonHeight: { md: 48, sm: 36, xs: 32 }, iconButton: 40, searchHeight: 40, pillHeight: 32,
       segmentHeight: 34, bandTabHeight: 44, bottomBarContent: 58, railWidth: 92, railItem: 62,
       listPaneWidth: 420, formMaxWidth: 640, tileHeight: 112, sepInset: { badge: 66, check: 48, none: 14 },
+      nudge: 2, stackGap: 10, iconSm: 14, cardPad: 14, sheetActionGap: 14, errorTop: 72,
+      pane: { listBand: 20, listSheet: 16, detailBand: 28, detailSheet: 24 },
     });
     expect(Object.isFrozen(metrics)).toBe(true);
     expect(tokens.CONTROL_HEIGHT).toBe(44);
