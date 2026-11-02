@@ -56,11 +56,24 @@ it("honours a custom delay", async () => {
   expect(result.current).toBe("x");
 });
 
-it("unmounting clears the pending timer", async () => {
-  const { rerender, unmount } = await mount("");
+it("unmounting drops the pending value: no update lands afterwards", async () => {
+  let renders = 0;
+  const { result, rerender, unmount } = await renderHook(
+    ({ value }: { value: string }) => {
+      renders += 1;
+      return useDebouncedValue(value);
+    },
+    { initialProps: { value: "" } },
+  );
   await rerender({ value: "cem" });
+  const rendersBefore = renders;
   const clear = jest.spyOn(globalThis, "clearTimeout");
   await unmount();
+  await act(() => jest.advanceTimersByTime(300));
+  expect(result.current).toBe("");
+  expect(renders).toBe(rendersBefore);
+  // React 19 silently ignores a late setState on an unmounted hook, so the
+  // cancelled timer is the only trace of the cleanup.
   expect(clear).toHaveBeenCalled();
   clear.mockRestore();
 });

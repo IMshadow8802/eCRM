@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
  * Clearing (`""`) applies at once: an emptied search box should show the full
  * list now, not after a pause.
  */
-export function useDebouncedValue<T>(value: T, delayMs = 300): T {
+export function useDebouncedValue<T extends string>(value: T, delayMs = 300): T {
   const [settled, setSettled] = useState(value);
   // Set during render, not in the effect, so the cleared value is what this
   // very render returns. React re-renders before committing.
