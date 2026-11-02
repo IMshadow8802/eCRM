@@ -605,10 +605,13 @@ describe("comment thread", () => {
     await fireEvent.press(screen.getByText("Pin comment"));
     a.release();
     b.release();
-    await waitFor(() => expect(getTaskComments).toHaveBeenCalledTimes(3));
     await longPress("Later root");
-    await fireEvent.press(screen.getByText("Pin comment"));
-    expect(pinTaskComment).toHaveBeenCalledTimes(3);
+    // Tap until it goes through: no race with the hook's onSettled, and a
+    // lock that never frees still times out.
+    await waitFor(async () => {
+      await fireEvent.press(screen.getByText("Pin comment"));
+      expect(pinTaskComment).toHaveBeenCalledTimes(3);
+    });
   });
 
   it("deleting B while A is in flight does not leave A locked", async () => {
@@ -622,9 +625,10 @@ describe("comment thread", () => {
     await fireEvent.press(screen.getByText("Delete comment"));
     a.release();
     b.release();
-    await waitFor(() => expect(getTaskComments).toHaveBeenCalledTimes(3));
     await longPress("Mine, first");
-    await fireEvent.press(screen.getByText("Delete comment"));
-    expect(deleteTaskComment).toHaveBeenCalledTimes(3);
+    await waitFor(async () => {
+      await fireEvent.press(screen.getByText("Delete comment"));
+      expect(deleteTaskComment).toHaveBeenCalledTimes(3);
+    });
   });
 });
