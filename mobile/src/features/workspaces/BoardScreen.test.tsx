@@ -1,5 +1,6 @@
 import { Dimensions } from "react-native";
-import { fireEvent, screen, waitFor } from "@testing-library/react-native";
+import { QueryClient } from "@tanstack/react-query";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react-native";
 
 import { fetchKanbanColumns } from "../../api/kanbanQueries";
 import { fetchTasks, moveTaskColumn } from "../../api/taskQueries";
@@ -49,9 +50,10 @@ const board = (MyRole: WorkspaceRole | null, patch: Partial<Workspace> = {}) =>
 
 const tasksReply = (tasks: Task[]) => envelope({ tasks, pagination: pagination(tasks.length) });
 
-const mount = (navigation = makeNavigation<"Board">()) =>
+const mount = (navigation = makeNavigation<"Board">(), queryClient?: QueryClient) =>
   renderWithProviders(
     <BoardScreen navigation={navigation} route={makeRoute("Board", { workspaceId: WS, name: "Site works" })} />,
+    { queryClient },
   );
 
 beforeEach(() => {
@@ -242,6 +244,41 @@ it("searching the board asks the server with SearchTerm (COL-04)", async () => {
   );
   await waitFor(() => expect(screen.queryByText("Fix the gate")).toBeNull());
   expect(screen.getByText("Order cement")).toBeOnTheScreen();
+});
+
+it("quick typing sends one search, for the final term", async () => {
+  await mount();
+  await screen.findByText("Fix the gate");
+  const box = screen.getByPlaceholderText("Search this board");
+  await fireEvent.changeText(box, "c");
+  await act(() => jest.advanceTimersByTime(100));
+  await fireEvent.changeText(box, "ce");
+  await act(() => jest.advanceTimersByTime(100));
+  await fireEvent.changeText(box, "cem");
+  await waitFor(() => expect(fetchTasks).toHaveBeenLastCalledWith(expect.objectContaining({ SearchTerm: "cem" })));
+  const terms = jest.mocked(fetchTasks).mock.calls.map(([p]) => p?.SearchTerm);
+  expect(terms).toEqual([null, "cem"]);
+});
+
+it("the old cards stay on screen while a search loads", async () => {
+  await mount();
+  await screen.findByText("Fix the gate");
+  jest.mocked(fetchTasks).mockReturnValue(new Promise(() => {}));
+  await fireEvent.changeText(screen.getByPlaceholderText("Search this board"), "cement");
+  await waitFor(() => expect(fetchTasks).toHaveBeenLastCalledWith(expect.objectContaining({ SearchTerm: "cement" })));
+  expect(screen.getByText("Fix the gate")).toBeOnTheScreen();
+  expect(screen.getByText("Order cement")).toBeOnTheScreen();
+  expect(screen.queryByText("Nothing here yet.")).toBeNull();
+});
+
+it("with no search the board shares the task screen's cache entry", async () => {
+  // gcTime Infinity: no collection timer, and the seeded entry survives to mount.
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  queryClient.setQueryData(["tasks", "board", WS], tasksReply([task({ Id: 200, Title: "Cached card" })]));
+  jest.mocked(fetchTasks).mockReturnValue(new Promise(() => {}));
+  await mount(makeNavigation<"Board">(), queryClient);
+  expect(await screen.findByText("Cached card")).toBeOnTheScreen();
+  queryClient.clear();
 });
 
 it("a move shows at once, before the server answers (COL-05)", async () => {

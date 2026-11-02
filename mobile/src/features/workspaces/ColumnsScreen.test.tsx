@@ -110,11 +110,27 @@ it("a limit that is not a whole number is refused before any request (COL-02)", 
   expect(saveKanbanColumn).not.toHaveBeenCalled();
 });
 
+it("a limit over 1000 is refused before it can overflow the column (COL-02)", async () => {
+  await mount();
+  await screen.findByText("2 tasks");
+  await fireEvent.press(screen.getByLabelText("Add a column"));
+  await fireEvent.changeText(screen.getByPlaceholderText("To do"), "Review");
+  await fireEvent.changeText(screen.getByPlaceholderText("Task limit (blank = none)"), "99999999999");
+  await fireEvent.press(screen.getByText("Add column"));
+  expect(screen.getByText("A limit can be at most 1000 tasks.")).toBeOnTheScreen();
+  expect(saveKanbanColumn).not.toHaveBeenCalled();
+  // 1000 itself is fine.
+  await fireEvent.changeText(screen.getByPlaceholderText("Task limit (blank = none)"), "1000");
+  await fireEvent.press(screen.getByText("Add column"));
+  await waitFor(() => expect(saveKanbanColumn).toHaveBeenCalled());
+  expect(jest.mocked(saveKanbanColumn).mock.calls[0]![0]).toEqual(expect.objectContaining({ MaxTasks: 1000 }));
+});
+
 it("renaming sends every field back so nothing is blanked", async () => {
   await mount();
   await screen.findByText("2 tasks");
   await fireEvent.press(screen.getByLabelText("Rename Backlog"));
-  expect(screen.getByText("Rename column")).toBeOnTheScreen();
+  expect(screen.getByText("Edit column")).toBeOnTheScreen();
   // The old name is the placeholder; the add-column default is gone.
   expect(screen.queryByPlaceholderText("To do")).toBeNull();
   await fireEvent.changeText(screen.getByPlaceholderText("Backlog"), "Icebox");

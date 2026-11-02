@@ -31,6 +31,8 @@ import {
 
 type Props = StackScreenProps<RootStackParamList, "Columns">;
 
+const MAX_TASK_LIMIT = 1000;
+
 /**
  * Add, rename and delete a board's columns.
  *
@@ -107,6 +109,11 @@ export default function ColumnsScreen({ route, navigation }: Props) {
     const limit = (values.limit ?? "").trim();
     if (limit && !/^\d+$/.test(limit)) {
       setComposeError("The limit is a whole number of tasks, or 0 for none.");
+      return;
+    }
+    // MaxTasks is an INT; a pasted run of digits would overflow it server-side.
+    if (Number(limit) > MAX_TASK_LIMIT) {
+      setComposeError(`A limit can be at most ${MAX_TASK_LIMIT} tasks.`);
       return;
     }
     const maxTasks = limit ? Number(limit) || null : (editing?.MaxTasks ?? null);
@@ -226,7 +233,7 @@ export default function ColumnsScreen({ route, navigation }: Props) {
 
       <ComposeSheet
         ref={composeRef}
-        title={editing ? "Rename column" : "New column"}
+        title={editing ? "Edit column" : "New column"}
         submitLabel={editing ? "Save" : "Add column"}
         fields={[
           {
