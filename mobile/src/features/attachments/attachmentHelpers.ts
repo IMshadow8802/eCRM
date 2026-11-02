@@ -55,19 +55,53 @@ export const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
  * What upload.js accepts, by extension — web's TYPES (components/Attachments.jsx).
  * Checked before sending, so a refused type does not upload in full first.
  */
-const ALLOWED_EXTENSIONS = new Set([
-  "png", "jpg", "jpeg", "gif", "webp",
-  "mp4", "webm", "mov",
-  "pdf", "xls", "xlsx", "doc", "docx",
-  "apk", "aab", "zip",
-]);
+// Extension → the mime upload.js pairs it with (its ALLOWED). null = EXT_ONLY:
+// the server ignores the mime for builds and archives.
+const EXT_MIME: Record<string, string | null> = {
+  png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp",
+  mp4: "video/mp4", webm: "video/webm", mov: "video/quicktime",
+  pdf: "application/pdf",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  apk: null, aab: null, zip: null,
+};
 
 const extOf = (name: string) => (name.includes(".") ? name.split(".").pop()!.toLowerCase() : "");
 
 /** Why the server would refuse this file's type, in web's words — or null when it is allowed. */
 export function refusedType(name: string): string | null {
   const ext = extOf(name);
-  return ALLOWED_EXTENSIONS.has(ext) ? null : `"${name}" — file type .${ext} is not allowed`;
+  return ext in EXT_MIME ? null : `"${name}" — file type .${ext} is not allowed`;
+}
+
+/** What a picker hands back, whichever picker it was. */
+export interface PickedAsset {
+  uri: string;
+  name: string;
+  mimeType?: string | null;
+  size?: number | null;
+}
+
+/**
+ * The one gate every picker goes through before anything uploads: type, then
+ * size. What passes is named so upload.js accepts it — a .HEIC-named JPEG
+ * becomes .jpg, and the mime is the one the server pairs with the extension
+ * (pickers often give none, or application/octet-stream, which it refuses).
+ */
+export function screenPicked(assets: PickedAsset[]): { files: { uri: string; name: string; type: string }[]; refused: string[] } {
+  const files: { uri: string; name: string; type: string }[] = [];
+  const refused: string[] = [];
+  for (const a of assets) {
+    const name = uploadName(a.name, a.mimeType);
+    const reason =
+      refusedType(name) ??
+      (a.size != null && a.size > MAX_UPLOAD_BYTES ? `"${a.name}" is larger than the ${humanSize(MAX_UPLOAD_BYTES)} limit.` : null);
+    if (reason) refused.push(reason);
+    else files.push({ uri: a.uri, name, type: EXT_MIME[extOf(name)] ?? a.mimeType ?? "application/octet-stream" });
+  }
+  return { files, refused };
 }
 
 /**

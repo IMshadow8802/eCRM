@@ -139,6 +139,17 @@ it("tapping a presence notification opens My Work", async () => {
 });
 
 // parity: NOTIF-03 — a read row is not marked read again (NotificationBell.jsx:58-61).
+// parity: NOTIF-02 — the column is NOT NULL today (010), but the web guards it
+// (TopNav.jsx:188): a null type must not crash the tap.
+it("tapping a notification with no EntityType marks it read and goes nowhere", async () => {
+  const n = note({ Type: "custom", EntityType: null as unknown as string, Title: "Odd one" });
+  jest.mocked(fetchNotifications).mockResolvedValue(reply([n]));
+  await mountInbox();
+  await fireEvent.press(await screen.findByText("Odd one"));
+  expect(markNotificationRead).toHaveBeenCalledWith(n.Id);
+  expect(mockNav.navigate).not.toHaveBeenCalled();
+});
+
 it("tapping a read notification opens it without a read receipt", async () => {
   jest.mocked(fetchNotifications).mockResolvedValue(reply([note({ Title: "Seen it", IsRead: true })]));
   await mountInbox();

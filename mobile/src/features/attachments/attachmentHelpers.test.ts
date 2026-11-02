@@ -1,6 +1,6 @@
 import { FileArchive, FileText, Film, File as FileIcon, Image as ImageIcon, Smartphone, Table } from "lucide-react-native";
 
-import { fileMeta, humanSize, MAX_UPLOAD_BYTES, refusedType, uploadName } from "./attachmentHelpers";
+import { fileMeta, humanSize, MAX_UPLOAD_BYTES, refusedType, screenPicked, uploadName } from "./attachmentHelpers";
 
 // csv/rar/7z are not listed: the backend refuses them, so no row ever carries one.
 it.each([
@@ -59,4 +59,29 @@ it.each([
   ["doc.pdf", null, "doc.pdf"],
 ])("uploadName(%s, %s) is %s", (name, mime, expected) => {
   expect(uploadName(name, mime)).toBe(expected);
+});
+
+// One gate for every picker (attachments list, complaint form): type, then size;
+// the name iOS gives a JPEG is fixed; the mime is what upload.js expects for the extension.
+it("screenPicked keeps what the server takes and names the rest", () => {
+  const { files, refused } = screenPicked([
+    { uri: "file:///1", name: "IMG_1.HEIC", mimeType: "image/jpeg", size: 10 },
+    { uri: "file:///2", name: "c.docx", mimeType: null },
+    { uri: "file:///3", name: "q.pdf", mimeType: "application/octet-stream", size: 10 },
+    { uri: "file:///4", name: "b.apk" },
+    { uri: "file:///5", name: "w.aab", mimeType: "application/x-aab" },
+    { uri: "file:///6", name: "notes.txt", mimeType: "text/plain" },
+    { uri: "file:///7", name: "huge.mov", mimeType: "video/quicktime", size: MAX_UPLOAD_BYTES + 1 },
+  ]);
+  expect(files).toEqual([
+    { uri: "file:///1", name: "IMG_1.jpg", type: "image/jpeg" },
+    { uri: "file:///2", name: "c.docx", type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" },
+    { uri: "file:///3", name: "q.pdf", type: "application/pdf" },
+    { uri: "file:///4", name: "b.apk", type: "application/octet-stream" },
+    { uri: "file:///5", name: "w.aab", type: "application/x-aab" },
+  ]);
+  expect(refused).toEqual([
+    '"notes.txt" — file type .txt is not allowed',
+    '"huge.mov" is larger than the 200 MB limit.',
+  ]);
 });

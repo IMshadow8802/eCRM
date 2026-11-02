@@ -68,6 +68,20 @@ describe("401 handling", () => {
     expect(onUnauthorized).not.toHaveBeenCalled();
   });
 
+  // userController.changeMyPassword answers a wrong current password with 401
+  // WRONG_PASSWORD. That is a form error, not a dead session: no sign-out, no dialog.
+  it("a wrong current password is a plain rejection with the server's message", async () => {
+    const reauth = jest.fn();
+    setReauthHandler(reauth);
+    setAuthToken("tok-1");
+    fail(401, { code: "WRONG_PASSWORD", message: "Current password is incorrect" });
+    await expect(post("/api/users/me/changePassword", { CurrentPassword: "x", NewPassword: "y-fixture" })).rejects.toMatchObject({
+      response: { status: 401, data: { message: "Current password is incorrect" } },
+    });
+    expect(onUnauthorized).not.toHaveBeenCalled();
+    expect(reauth).not.toHaveBeenCalled();
+  });
+
   it("does not fire for other statuses", async () => {
     fail(403);
     await expect(post("/api/x")).rejects.toBeTruthy();

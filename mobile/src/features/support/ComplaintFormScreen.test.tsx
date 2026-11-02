@@ -11,6 +11,7 @@ import { fetchAssignableUsers, fetchBranches } from "../../api/userQueries";
 import type { Lookup } from "../../types/api";
 import { customer, envelope, serverError, ticket } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
+import { PICKER_TYPES } from "../attachments/attachmentHelpers";
 import ComplaintFormScreen from "./ComplaintFormScreen";
 
 jest.mock("../../api/attachmentQueries");
@@ -532,6 +533,21 @@ describe("files picked on create (CMP-08)", () => {
     await screen.findByText("Wiring");
     await fireEvent.press(screen.getByText("Attach files"));
     expect(await screen.findByText('"huge.mov" is larger than the 200 MB limit.')).toBeOnTheScreen();
+  });
+
+  // Same gate as the attachments list (ATT-01): only types upload.js takes, offered and checked.
+  it("a type the server refuses is stopped at the pick; the picker offers only allowed types", async () => {
+    jest.mocked(DocumentPicker.getDocumentAsync).mockResolvedValueOnce({
+      canceled: false,
+      assets: [{ ...doc("notes.txt"), mimeType: "text/plain" }, { ...doc("spec.docx"), mimeType: undefined }],
+    });
+    await mount();
+    await screen.findByText("Wiring");
+    await fireEvent.press(screen.getByText("Attach files"));
+    expect(await screen.findByText('"notes.txt" — file type .txt is not allowed')).toBeOnTheScreen();
+    expect(screen.getByText("spec.docx")).toBeOnTheScreen();
+    expect(screen.queryByText("notes.txt")).toBeNull();
+    expect(DocumentPicker.getDocumentAsync).toHaveBeenCalledWith({ copyToCacheDirectory: true, multiple: true, type: PICKER_TYPES });
   });
 
   it("editing a complaint offers no staging — files go on the record", async () => {

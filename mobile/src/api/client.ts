@@ -66,7 +66,13 @@ export const setReauthHandler = (handler: typeof reauthHandler): void => {
 // web/src/utils/authRedirectGuard.js.
 const AUTH_ENDPOINTS = ["/api/auth/loginUser", "/api/auth/logoutUser"];
 
-export const shouldSkipAuthRedirect = (url = ""): boolean =>
+// A 401 that judges what the user typed, not the token: changeMyPassword's
+// wrong current password. Not the URL — a dead session on that call must still
+// reach the re-sign-in path. (Its AUTH_ERROR — the account itself is gone —
+// stays on the normal path: signing out is right there.)
+const CREDENTIAL_CODES = ["WRONG_PASSWORD"];
+
+export const shouldSkipAuthRedirect =(url = ""): boolean =>
   AUTH_ENDPOINTS.some((endpoint) => String(url).includes(endpoint));
 
 export const apiClient = axios.create({
@@ -94,6 +100,8 @@ apiClient.interceptors.response.use(
     if (error?.response?.status !== 401 || shouldSkipAuthRedirect(config?.url)) return Promise.reject(error);
     if (config?._lineage !== lineage) return Promise.reject(error);
     const { code, message } = error.response.data ?? {};
+    // A credential check, not the session: the form shows the server's message.
+    if (CREDENTIAL_CODES.includes(code)) return Promise.reject(error);
     // `_retried` survives axios's config merge on the retry, so a second 401 is final.
     if (reauthHandler && config && !config._retried && SESSION_CODES.includes(code)) {
       // Sent with an older token than we now hold (in flight across a re-sign-in)?

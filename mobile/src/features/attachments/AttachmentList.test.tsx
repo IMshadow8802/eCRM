@@ -1,5 +1,5 @@
 import type { QueryClient } from "@tanstack/react-query";
-import { fireEvent, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react-native";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 
@@ -97,7 +97,6 @@ it("a photo from the camera is uploaded against this record, then the list reloa
   await waitFor(() =>
     expect(uploadAttachment).toHaveBeenCalledWith(
       { Entity: "ticket", EntityId: 7, file: { uri: "file:///shot.jpg", name: "IMG_1.jpg", type: "image/jpeg" } },
-      expect.anything(),
     ),
   );
   await waitFor(() => expect(fetchAttachments).toHaveBeenCalledTimes(2));
@@ -114,7 +113,6 @@ it.each([
   await waitFor(() =>
     expect(uploadAttachment).toHaveBeenCalledWith(
       expect.objectContaining({ file: { uri: "file:///shot.jpg", name, type: "image/jpeg" } }),
-      expect.anything(),
     ),
   );
 });
@@ -148,7 +146,6 @@ it("an image from the library is uploaded", async () => {
   await waitFor(() =>
     expect(uploadAttachment).toHaveBeenCalledWith(
       expect.objectContaining({ file: { uri: "file:///lib.png", name: "site.png", type: "image/png" } }),
-      expect.anything(),
     ),
   );
 });
@@ -161,7 +158,6 @@ it("a library image with no name or type falls back to a JPEG name", async () =>
   await waitFor(() =>
     expect(uploadAttachment).toHaveBeenCalledWith(
       expect.objectContaining({ file: { uri: "file:///lib", name: "image.jpg", type: "image/jpeg" } }),
-      expect.anything(),
     ),
   );
 });
@@ -186,7 +182,6 @@ it("a document is copied to cache and uploaded with its type", async () => {
   await waitFor(() =>
     expect(uploadAttachment).toHaveBeenCalledWith(
       expect.objectContaining({ file: { uri: "file:///q.pdf", name: "q.pdf", type: "application/pdf" } }),
-      expect.anything(),
     ),
   );
   // ATT-01 + ATT-03: the picker offers only types the server takes, several at once.
@@ -217,7 +212,6 @@ it("a JPEG the library names .HEIC is uploaded as .jpg", async () => {
   await waitFor(() =>
     expect(uploadAttachment).toHaveBeenCalledWith(
       expect.objectContaining({ file: { uri: "file:///lib/IMG_2.jpg", name: "IMG_2.jpg", type: "image/jpeg" } }),
-      expect.anything(),
     ),
   );
 });
@@ -253,7 +247,33 @@ it("several documents: the allowed ones upload, the refused one is named", async
   await fireEvent.press(screen.getByText("Choose a file"));
   expect(await screen.findByText('"b.csv" — file type .csv is not allowed')).toBeOnTheScreen();
   await waitFor(() => expect(uploadAttachment).toHaveBeenCalledTimes(2));
-  expect(jest.mocked(uploadAttachment).mock.calls.map(([v]) => v.file.name)).toEqual(["a.pdf", "c.docx"]);
+  // A document with no mime goes with the one upload.js pairs with its extension.
+  expect(jest.mocked(uploadAttachment).mock.calls.map(([v]) => v.file)).toEqual([
+    { uri: "file:///a.pdf", name: "a.pdf", type: "application/pdf" },
+    { uri: "file:///c.docx", name: "c.docx", type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" },
+  ]);
+});
+
+// One at a time, so the spinner means "still uploading" and a failure can be named.
+it("several files upload one after another, and the failed ones are named", async () => {
+  let finishFirst!: () => void;
+  jest.mocked(uploadAttachment)
+    .mockImplementationOnce(() => new Promise((resolve) => { finishFirst = () => resolve(envelope({ attachmentId: 1 })); }))
+    .mockRejectedValueOnce(new Error("Disk full"))
+    .mockRejectedValueOnce(new Error("Disk full"));
+  jest.mocked(DocumentPicker.getDocumentAsync).mockResolvedValue({
+    canceled: false,
+    assets: ["a.pdf", "b.pdf", "c.pdf"].map((name) => ({ uri: `file:///${name}`, name, mimeType: "application/pdf", size: 10, lastModified: 0 })),
+  });
+  await mount();
+  await screen.findByText("invoice.pdf");
+  await fireEvent.press(screen.getByText("Choose a file"));
+  await waitFor(() => expect(uploadAttachment).toHaveBeenCalledTimes(1));
+  expect(uploadAttachment).toHaveBeenCalledTimes(1);
+  await act(async () => finishFirst());
+  expect(await screen.findByText("2 files failed to upload: b.pdf, c.pdf")).toBeOnTheScreen();
+  expect(uploadAttachment).toHaveBeenCalledTimes(3);
+  await waitFor(() => expect(fetchAttachments).toHaveBeenCalledTimes(2));
 });
 
 it("a document with no type or size is sent as a generic binary", async () => {
@@ -267,7 +287,6 @@ it("a document with no type or size is sent as a generic binary", async () => {
   await waitFor(() =>
     expect(uploadAttachment).toHaveBeenCalledWith(
       expect.objectContaining({ file: { uri: "file:///b.apk", name: "b.apk", type: "application/octet-stream" } }),
-      expect.anything(),
     ),
   );
 });
@@ -280,7 +299,7 @@ it("a file over 200MB is refused before any upload", async () => {
   await mount();
   await screen.findByText("invoice.pdf");
   await fireEvent.press(screen.getByText("Choose a file"));
-  expect(await screen.findByText('"big.apk" is larger than the 200MB limit.')).toBeOnTheScreen();
+  expect(await screen.findByText('"big.apk" is larger than the 200 MB limit.')).toBeOnTheScreen();
   expect(uploadAttachment).not.toHaveBeenCalled();
 });
 
@@ -290,7 +309,7 @@ it("a refused upload shows the server's reason", async () => {
   await mount();
   await screen.findByText("invoice.pdf");
   await fireEvent.press(screen.getByText("Take a photo"));
-  expect(await screen.findByText("File type not allowed")).toBeOnTheScreen();
+  expect(await screen.findByText('Could not upload "a.jpg": File type not allowed')).toBeOnTheScreen();
 });
 
 it("delete asks first, then removes the file and reloads", async () => {

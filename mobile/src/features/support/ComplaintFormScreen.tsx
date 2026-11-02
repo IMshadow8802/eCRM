@@ -16,7 +16,7 @@ import { fetchTicketDetail, saveTicket } from "../../api/ticketQueries";
 import { fetchBranches } from "../../api/userQueries";
 import { apiErrorMessage } from "../../api/errors";
 import { useAccess } from "../auth/useAccess";
-import { humanSize, MAX_UPLOAD_BYTES } from "../attachments/attachmentHelpers";
+import { PICKER_TYPES, screenPicked } from "../attachments/attachmentHelpers";
 import useAuthStore from "../../stores/useAuthStore";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import type {
@@ -420,13 +420,12 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
       // that the upload cannot read.
       copyToCacheDirectory: true,
       multiple: true,
+      type: PICKER_TYPES,
     });
     if (picked.canceled || !picked.assets) return;
-    const tooBig = picked.assets.find((a) => (a.size ?? 0) > MAX_UPLOAD_BYTES);
-    if (tooBig) setError(`"${tooBig.name}" is larger than the ${humanSize(MAX_UPLOAD_BYTES)} limit.`);
-    const ok = picked.assets
-      .filter((a) => (a.size ?? 0) <= MAX_UPLOAD_BYTES)
-      .map((a) => ({ uri: a.uri, name: a.name, type: a.mimeType ?? "application/octet-stream" }));
+    // The attachments list's gate: type, then size; named so upload.js takes it.
+    const { files: ok, refused } = screenPicked(picked.assets);
+    if (refused.length) setError(refused.join("\n"));
     setFiles((prev) => [...prev, ...ok]);
   };
 

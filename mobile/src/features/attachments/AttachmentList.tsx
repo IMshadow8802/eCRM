@@ -24,7 +24,6 @@ import {
   deleteAttachment,
   fetchAttachments,
   uploadAttachment,
-  type PickedFile,
 } from "../../api/attachmentQueries";
 import { apiErrorMessage } from "../../api/errors";
 import type { Attachment, AttachmentEntity } from "../../types/api";
@@ -40,7 +39,7 @@ import {
   type SheetRef,
 } from "../../ui";
 import FileViewer from "./FileViewer";
-import { fileMeta, humanSize, MAX_UPLOAD_BYTES, PICKER_TYPES, refusedType, uploadName } from "./attachmentHelpers";
+import { fileMeta, humanSize, PICKER_TYPES, screenPicked, type PickedAsset } from "./attachmentHelpers";
 import { useDownloadAttachment } from "./useDownloadAttachment";
 
 interface AttachmentListProps {
@@ -69,11 +68,7 @@ export default function AttachmentList({
     queryFn: () => fetchAttachments({ Entity: entity, EntityId: entityId }),
   });
 
-  const upload = useMutation({
-    mutationFn: uploadAttachment,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
-    onError: (err) => toast.error(apiErrorMessage(err, "Upload failed.")),
-  });
+  const [uploading, setUploading] = useState(false);
 
   const remove = useMutation({
     mutationFn: deleteAttachment,
@@ -86,23 +81,36 @@ export default function AttachmentList({
 
   const attachments = data ?? [];
 
-  /** Checks every picked file first (type, then size), uploads the ones that pass, names the rest. */
-  const send = (picked: { file: PickedFile; size?: number | null }[]) => {
-    const refused: string[] = [];
-    for (const { file, size } of picked) {
-      const reason =
-        refusedType(file.name) ??
-        (size != null && size > MAX_UPLOAD_BYTES ? `"${file.name}" is larger than the 200MB limit.` : null);
-      if (reason) refused.push(reason);
-      else upload.mutate({ Entity: entity, EntityId: entityId, file });
-    }
+  /**
+   * Screens every picked file (type, then size), names the refused ones, then
+   * uploads the rest ONE AT A TIME — so the spinner means "still uploading"
+   * and a failure can say which file it was.
+   */
+  const send = async (assets: PickedAsset[]) => {
+    const { files, refused } = screenPicked(assets);
     setError(refused.length ? refused.join("\n") : null);
+    if (!files.length) return;
+    setUploading(true);
+    const failed: { name: string; reason: string }[] = [];
+    for (const file of files) {
+      try {
+        await uploadAttachment({ Entity: entity, EntityId: entityId, file });
+      } catch (err) {
+        failed.push({ name: file.name, reason: apiErrorMessage(err, "Upload failed.") });
+      }
+    }
+    setUploading(false);
+    void queryClient.invalidateQueries({ queryKey });
+    if (failed.length === 1) toast.error(`Could not upload "${failed[0]!.name}": ${failed[0]!.reason}`);
+    else if (failed.length) toast.error(`${failed.length} files failed to upload: ${failed.map((f) => f.name).join(", ")}`);
   };
 
-  const image = (asset: ImagePicker.ImagePickerAsset, fallbackName: string) => {
-    const type = asset.mimeType ?? "image/jpeg";
-    return { file: { uri: asset.uri, name: uploadName(asset.fileName ?? fallbackName, type), type }, size: asset.fileSize };
-  };
+  const image = (asset: ImagePicker.ImagePickerAsset, fallbackName: string): PickedAsset => ({
+    uri: asset.uri,
+    name: asset.fileName ?? fallbackName,
+    mimeType: asset.mimeType ?? "image/jpeg",
+    size: asset.fileSize,
+  });
 
   const takePhoto = async () => {
     sheetRef.current?.dismiss();
@@ -139,12 +147,7 @@ export default function AttachmentList({
       type: PICKER_TYPES,
     });
     if (picked.canceled || !picked.assets?.length) return;
-    send(
-      picked.assets.map((asset) => ({
-        file: { uri: asset.uri, name: asset.name, type: asset.mimeType ?? "application/octet-stream" },
-        size: asset.size,
-      })),
-    );
+    send(picked.assets);
   };
 
   return (
@@ -235,7 +238,7 @@ export default function AttachmentList({
         <Fab
           icon={Plus}
           accessibilityLabel="Add a file"
-          loading={upload.isPending}
+          loading={uploading}
           onPress={() => sheetRef.current?.present()}
         />
       ) : null}

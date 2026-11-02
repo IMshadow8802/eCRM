@@ -67,7 +67,7 @@ export default function NotificationsScreen() {
     // A read row needs no receipt (as NotificationBell.jsx).
     if (!n.IsRead) markNotificationRead(n.Id).then(refresh, () => {});
     // TAT warnings, breaches and holds are about a task whatever EntityType says.
-    const entity = n.Type?.startsWith("tat_") ? "task" : n.EntityType.toLowerCase();
+    const entity = n.Type?.startsWith("tat_") ? "task" : String(n.EntityType ?? "").toLowerCase();
     switch (entity) {
       case "task":
         // A sweep notification covers several tasks: EntityId 0, so show the list.
