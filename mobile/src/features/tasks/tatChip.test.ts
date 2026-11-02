@@ -1,6 +1,6 @@
 import { CirclePause, Clock, OctagonAlert, TriangleAlert } from "lucide-react-native";
 
-import { istShort, istStamp, overBy, parseIst, tatChip } from "./tatChip";
+import { istDay, istShort, istStamp, overBy, parseIst, tatChip } from "./tatChip";
 
 // 2026-10-08 12:00 IST.
 const NOW = new Date("2026-10-08T06:30:00Z");
@@ -27,6 +27,13 @@ it("istShort drops the weekday on the same IST day only", () => {
   // 23:30 UTC on the 8th is already the 9th in IST.
   expect(istShort("2026-10-08T23:30:00Z", NOW)).toBe("Fri 05:00 IST");
   expect(istShort(null, NOW)).toBe("");
+});
+
+it("istDay prints the IST day, and nothing for a missing or unparseable date", () => {
+  // 19:00Z on 2 Nov is 00:30 IST on 3 Nov.
+  expect(istDay("2026-11-02T19:00:00.000Z")).toBe("03 Nov 2026");
+  expect(istDay(null)).toBe("");
+  expect(istDay("not a date")).toBe("");
 });
 
 it("istStamp prints the full IST stamp", () => {

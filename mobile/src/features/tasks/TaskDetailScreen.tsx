@@ -47,6 +47,7 @@ import { colors, radius, shadows, spacing, SCREEN_PADDING } from "../../theme";
 import {
   ActionSheet,
   Avatar,
+  Chip,
   ComposeSheet,
   Dialog,
   Fab,
@@ -59,6 +60,7 @@ import {
   type ComposeField,
   type SheetAction,
   type SheetRef,
+  toISODate,
   useToast,
 } from "../../ui";
 import AttachmentList from "../attachments/AttachmentList";
@@ -67,6 +69,7 @@ import { Checklist } from "./Checklist";
 import { DependencySheet } from "./DependencySheet";
 import { TatTab } from "./TatTab";
 import { TimeSheet } from "./TimeSheet";
+import { istDay } from "./tatChip";
 import {
   abilitiesFor,
   assigneesOf,
@@ -121,6 +124,13 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   // again, so a stale reason never greets the next entry.
   const [composeError, setComposeError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // The clock a just-finished tick owes a reason on. TatTab opens its sheet;
+  // leaving the tab drops the request, so coming back does not pop it again.
+  const [explainTatId, setExplainTatId] = useState<number | null>(null);
+  const switchTab = (next: Tab) => {
+    setTab(next);
+    setExplainTatId(null);
+  };
 
   const composeRef = useRef<SheetRef>(null);
   const menuRef = useRef<SheetRef>(null);
@@ -187,7 +197,17 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   const toggleItem = useMutation({
     mutationFn: saveTaskChecklist,
     onError: (err) => toast.error(apiErrorMessage(err, "Could not update that step.")),
-    onSuccess: invalidate,
+    onSuccess: (res) => {
+      invalidate();
+      if (res.data?.completionChange === "completed") {
+        toast.success("Task completed — the creator has been told");
+      }
+      // Finishing a task you ran over on asks why, while it is fresh.
+      if (res.data?.tatReasonNeeded) {
+        setExplainTatId(res.data.tatReasonNeeded);
+        setTab("tat");
+      }
+    },
   });
   const removeItem = useMutation({
     mutationFn: deleteTaskChecklist,
@@ -289,6 +309,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
   }
 
   const overdue = dueBucket(task.DueDate) === "overdue";
+  const doneOn = istDay(task.CompletedDate);
   const due = dueLabel(task.DueDate);
   const logged = task.LoggedHours ?? 0;
   const estimated = task.EstimatedHours ?? 0;
@@ -338,6 +359,9 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
       TaskId: taskId,
       Hours: hours,
       Description: values.note ?? "",
+      // The phone's own day: left to the server it was the UTC day, so time
+      // logged 00:00–05:30 IST went under yesterday.
+      WorkDate: toISODate(new Date()),
       WorkspaceId: task.WorkspaceId,
     });
   };
@@ -366,6 +390,13 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
           } satisfies SheetAction,
         ]
       : []),
+    // Always here: the meta chip only shows once something is logged.
+    {
+      key: "time-logged",
+      label: "Time logged",
+      icon: Timer,
+      onPress: () => timeRef.current?.present(),
+    },
     ...(can.changeStatus && columns.length
       ? [
           {
@@ -445,20 +476,14 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
         title={task.WorkspaceName ?? "Task"}
         subtitle={task.ColumnTitle ?? undefined}
         onBack={navigation.goBack}
-        actions={
-          // Derived from the abilities, not from menuActions.length: reading
-          // that array during render counts as reading the refs its handlers
-          // close over.
-          can.changeStatus || can.editFields || can.deleteTask || canClaim
-            ? [
-                {
-                  icon: MoreVertical,
-                  label: "Task actions",
-                  onPress: () => menuRef.current?.present(),
-                },
-              ]
-            : undefined
-        }
+        // Always shown: "Time logged" is on the menu for everyone.
+        actions={[
+          {
+            icon: MoreVertical,
+            label: "Task actions",
+            onPress: () => menuRef.current?.present(),
+          },
+        ]}
       />
 
       <View style={styles.summary}>
@@ -474,6 +499,13 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
             a fifth of the height. The time and blocker entries are tappable;
             they open the only two panels that have nowhere else to live. */}
         <View style={styles.metaRow}>
+          {task.IsCompleted ? (
+            <Chip
+              label={doneOn ? `Done ${doneOn}` : "Done"}
+              tone="success"
+            />
+          ) : null}
+          {task.IsBlocked ? <Chip label="Blocked" tone="danger" /> : null}
           {task.Priority ? (
             <Meta Icon={Flag} text={task.Priority} tone="priorityHigh" />
           ) : null}
@@ -521,7 +553,7 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
 
         <Segmented
           value={tab}
-          onChange={setTab}
+          onChange={switchTab}
           options={[
             { value: "checklist", label: "Checklist", count: checklist.length },
             {
@@ -530,7 +562,8 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
               count: attachmentsQuery.data?.length ?? 0,
             },
             { value: "chat", label: "Comments", count: comments.length },
-            { value: "tat", label: "Deadline" },
+            // Personal boards run no deadline clocks.
+            ...(ws?.Type === "personal" ? [] : [{ value: "tat" as const, label: "Deadline" }]),
             { value: "activity", label: "History" },
           ]}
         />
@@ -594,7 +627,13 @@ export default function TaskDetailScreen({ route, navigation }: Props) {
         </ScrollView>
       ) : null}
 
-      {tab === "tat" ? <TatTab taskId={taskId} userId={userId} /> : null}
+      {tab === "tat" ? (
+        <TatTab
+          taskId={taskId}
+          userId={userId}
+          explainTatId={explainTatId}
+        />
+      ) : null}
 
       {tab === "activity" ? <ActivityTab taskId={taskId} /> : null}
 

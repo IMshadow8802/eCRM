@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Timer } from "lucide-react-native";
@@ -44,11 +44,22 @@ type Form = "hold" | "reason";
  * (acknowledge, hold/release own, my part done, give a breach reason). No
  * verdicts and no hold-everyone on mobile. The server is the judge.
  */
-export function TatTab({ taskId, userId }: { taskId: number; userId: number | null }) {
+export function TatTab({
+  taskId,
+  userId,
+  explainTatId = null,
+}: {
+  taskId: number;
+  userId: number | null;
+  /** Open the reason sheet for this clock once the tab loads (a tick just finished a breached task). */
+  explainTatId?: number | null;
+}) {
   const qc = useQueryClient();
   const toast = useToast();
   const sheetRef = useRef<SheetRef>(null);
-  const [form, setForm] = useState<Form>("hold");
+  const [form, setForm] = useState<Form>(explainTatId ? "reason" : "hold");
+  // Which clock a reason is for: the one the server named, else the one shown.
+  const [reasonFor, setReasonFor] = useState<number | null>(explainTatId);
   const [formError, setFormError] = useState<string | null>(null);
 
   const key = ["task", taskId, "tat"];
@@ -80,6 +91,15 @@ export function TatTab({ taskId, userId }: { taskId: number; userId: number | nu
     onError: (err) => setFormError(apiErrorMessage(err, "Could not save that.")),
     onSuccess: done,
   });
+
+  // Present once per clock: a refetch must not pop the sheet again.
+  const shownFor = useRef<number | null>(null);
+  const loaded = tatQuery.data != null;
+  useEffect(() => {
+    if (!explainTatId || !loaded || shownFor.current === explainTatId) return;
+    shownFor.current = explainTatId;
+    sheetRef.current?.present();
+  }, [explainTatId, loaded]);
 
   if (tatQuery.isLoading || tatQuery.isError) {
     return <ScreenLoader failed={tatQuery.isError} onRetry={tatQuery.refetch} />;
@@ -136,6 +156,7 @@ export function TatTab({ taskId, userId }: { taskId: number; userId: number | nu
 
   const present = (f: Form) => {
     setForm(f);
+    setReasonFor(null);
     setFormError(null);
     sheetRef.current?.present();
   };
@@ -204,7 +225,7 @@ export function TatTab({ taskId, userId }: { taskId: number; userId: number | nu
         onSubmit={(v, c) => {
           const body = { TaskId: taskId, ReasonId: Number(c.reasonId), Remarks: v.remarks || null };
           sheet.mutate(() =>
-            form === "hold" ? holdMine(body) : saveTatReason({ ...body, TatId: clock.Id }),
+            form === "hold" ? holdMine(body) : saveTatReason({ ...body, TatId: reasonFor ?? clock.Id }),
           );
         }}
       />

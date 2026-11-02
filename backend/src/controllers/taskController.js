@@ -6,6 +6,7 @@ const { SCOPES } = require("../realtime/contract");
 const { assertRecordAccess, scopeJson, taskAllowed } = require("../middleware/permission");
 const { validationError } = require("../utils/responseHelper");
 const tatService = require("../services/tatService");
+const { dateKey } = require("../utils/workCalendar");
 const {
   asyncRoute,
   firstRow,
@@ -756,8 +757,8 @@ class TaskController {
         UserId: req.user.UserId,
         Hours,
         Description,
-        WorkDate:
-          WorkDate || LogDate || new Date().toISOString().split("T")[0],
+        // IST day: the UTC day filed 00:00–05:30 IST entries under yesterday.
+        WorkDate: WorkDate || LogDate || dateKey(new Date()),
         CompId: req.user.CompId,
         BranchId: req.user.BranchId,
         // sp_SaveTimeEntry now delegates to sp_CheckTaskPermission (062), which

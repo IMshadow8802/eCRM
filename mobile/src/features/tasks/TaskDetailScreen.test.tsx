@@ -5,7 +5,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react-nativ
 import { fetchAttachments } from "../../api/attachmentQueries";
 import { fetchLookups } from "../../api/configQueries";
 import { fetchKanbanColumns } from "../../api/kanbanQueries";
-import { fetchTaskTat } from "../../api/tatQueries";
+import { fetchTaskTat, saveTatReason } from "../../api/tatQueries";
 import {
   deleteTaskChecklist,
   fetchTaskById,
@@ -18,7 +18,7 @@ import {
   saveTaskChecklist,
 } from "../../api/taskQueries";
 import { fetchWorkspaces } from "../../api/workspaceQueries";
-import type { Task, TaskChecklistItem, Workspace } from "../../types/api";
+import type { Lookup, Task, TaskChecklistItem, TaskTatClock, Workspace } from "../../types/api";
 import { assigneesJson, envelope, localDay, makeTask, makeWorkspace, pagination, serverError } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import { spySheets } from "../../test/sheets";
@@ -43,6 +43,27 @@ const item = (Id: number, ItemText: string, IsCompleted = false): TaskChecklistI
   IsCompleted,
   SortOrder: Id,
 });
+
+const breachedClock: TaskTatClock = {
+  Id: 500,
+  UserId: ME,
+  FullName: "Asha Rao",
+  AssignedAt: "2026-10-08 09:00:00",
+  FirstSeenAt: null,
+  AcknowledgedAt: "2026-10-08 09:10:00",
+  DueAt: "2026-10-08 17:00:00",
+  ClosedAt: "2026-10-09 10:00:00",
+  CloseReason: "completed",
+  BreachedAt: "2026-10-08 17:00:00",
+  BreachReasonId: null,
+  BreachReason: null,
+  BreachRemarks: null,
+  ReasonAt: null,
+  Verdict: null,
+  VerdictByName: null,
+  VerdictRemarks: null,
+};
+const reasonLookup: Lookup = { Id: 2, CompId: 1, Kind: "task_breach_reason", Value: "Parts late", SortOrder: 1, IsActive: true, Code: null };
 
 const TASK = makeTask({
   Id: 1,
@@ -73,6 +94,7 @@ function serve({ task = TASK, ws = makeWorkspace({ Id: 10 }), items = [item(1, "
   jest.mocked(fetchLookups).mockResolvedValue([]);
   jest.mocked(saveTaskChecklist).mockResolvedValue(envelope(null));
   jest.mocked(deleteTaskChecklist).mockResolvedValue(envelope(null));
+  jest.mocked(saveTatReason).mockResolvedValue(envelope(null));
 }
 
 const mount = async () => {
@@ -145,12 +167,28 @@ describe("summary", () => {
     expect(screen.getByText("1 blocker")).toBeOnTheScreen();
     expect(screen.getByText("2h")).toBeOnTheScreen();
     expect(screen.getByText("Unassigned")).toBeOnTheScreen();
-    // The two tappable facts open their sheets. parity: TASK-08 — the time
-    // sheet is only reachable through this chip, i.e. only once LoggedHours > 0.
+    // The two tappable facts open their sheets (the time sheet is also on the menu).
     const { present } = spySheets();
     await fireEvent.press(screen.getByText("2h"));
     await fireEvent.press(screen.getByText("1 blocker"));
     expect(present).toHaveBeenCalledTimes(2);
+  });
+
+  // TASK-07: the web's header shows Done (with the date) and Blocked.
+  it("a finished task shows Done with its IST date; a blocked one says Blocked", async () => {
+    serve({ task: { ...TASK, IsCompleted: true, CompletedDate: "2026-11-02T19:00:00.000Z", IsBlocked: true } });
+    await mount();
+    await loaded();
+    expect(screen.getByText("Done 03 Nov 2026")).toBeOnTheScreen();
+    expect(screen.getByText("Blocked")).toBeOnTheScreen();
+  });
+
+  it("Done without a date, and no Blocked on an unblocked task", async () => {
+    serve({ task: { ...TASK, IsCompleted: true, CompletedDate: null } });
+    await mount();
+    await loaded();
+    expect(screen.getByText("Done")).toBeOnTheScreen();
+    expect(screen.queryByText("Blocked")).toBeNull();
   });
 
   it("falls back to 'Task' with no board name", async () => {
@@ -174,7 +212,6 @@ describe("checklist", () => {
     await loaded();
     await fireEvent.press(screen.getByRole("checkbox", { name: "Fit it" }));
     await waitFor(() => expect(saveTaskChecklist).toHaveBeenCalled());
-    // parity: TASK-03 — the reply's completionChange / tatReasonNeeded are not read yet.
     expect(jest.mocked(saveTaskChecklist).mock.calls[0]![0]).toEqual({
       Id: 2,
       TaskId: 1,
@@ -183,6 +220,49 @@ describe("checklist", () => {
       SortOrder: 2,
       WorkspaceId: 10,
     });
+  });
+
+  // TASK-03: the reply says the task just finished, and — when the caller ran
+  // over — which of their clocks owes a reason. Both used to be dropped.
+  it("finishing the task says so, and asks at once why the deadline was missed", async () => {
+    jest.mocked(saveTaskChecklist).mockResolvedValue(
+      envelope({ checklistId: 2, completionChange: "completed", tatReasonNeeded: 500 }),
+    );
+    jest.mocked(fetchTaskTat).mockResolvedValue({ clocks: [breachedClock], holds: [], events: [] });
+    jest.mocked(fetchLookups).mockResolvedValue([reasonLookup]);
+    await mount();
+    await loaded();
+    const { present } = spySheets();
+    await fireEvent.press(screen.getByRole("checkbox", { name: "Fit it" }));
+    expect(await screen.findByText("Task completed — the creator has been told")).toBeOnTheScreen();
+    // Switched to Deadline with the reason sheet up.
+    expect(await screen.findByText("Why was the deadline missed?")).toBeOnTheScreen();
+    expect(screen.getByText("Explain delay")).toBeOnTheScreen();
+    await waitFor(() => expect(present).toHaveBeenCalledTimes(1));
+
+    // The reason is saved against the clock the server named.
+    await fireEvent.press(await screen.findByText("Parts late"));
+    await fireEvent.press(screen.getByText("Save reason"));
+    await waitFor(() => expect(saveTatReason).toHaveBeenCalled());
+    expect(jest.mocked(saveTatReason).mock.calls[0]![0]).toEqual({ TaskId: 1, TatId: 500, ReasonId: 2, Remarks: null });
+
+    // Coming back to the tab later does not pop the sheet again.
+    await fireEvent.press(screen.getByText("Checklist"));
+    await fireEvent.press(screen.getByText("Deadline"));
+    await screen.findByText("Explain delay");
+    expect(present).toHaveBeenCalledTimes(1);
+  });
+
+  it("finishing on time only toasts and stays on the checklist", async () => {
+    jest.mocked(saveTaskChecklist).mockResolvedValueOnce(
+      envelope({ checklistId: 2, completionChange: "completed", tatReasonNeeded: null }),
+    );
+    await mount();
+    await loaded();
+    await fireEvent.press(screen.getByRole("checkbox", { name: "Fit it" }));
+    expect(await screen.findByText("Task completed — the creator has been told")).toBeOnTheScreen();
+    expect(screen.getByText("1 of 2 done")).toBeOnTheScreen();
+    expect(fetchTaskTat).not.toHaveBeenCalled();
   });
 
   it("unticking sends IsCompleted false; a step with no order sends 0", async () => {
@@ -261,7 +341,12 @@ describe("who may do what", () => {
     await mount();
     await loaded();
     expect(screen.getByText(/View only/)).toBeOnTheScreen();
-    expect(screen.queryByLabelText("Task actions")).toBeNull();
+    // TASK-08: the menu is always there, for the time log; nothing else on it.
+    expect(screen.getByLabelText("Task actions")).toBeOnTheScreen();
+    expect(screen.getByText("Time logged")).toBeOnTheScreen();
+    for (const label of ["Log time", "Edit task", "Delete task", "Take this task"]) {
+      expect(screen.queryByText(label)).toBeNull();
+    }
     expect(screen.queryByRole("checkbox")).toBeNull();
     expect(screen.queryByLabelText("Add a checklist item")).toBeNull();
   });
@@ -272,10 +357,19 @@ describe("who may do what", () => {
       task: { ...TASK, CreatedByUserId: 1, AssigneesJson: assigneesJson([1, "Owner"]) },
       ws: makeWorkspace({ Id: 10, Type: "personal", MyRole: null }),
     });
+    // A column to move to, so a wrongly-granted "Move to column" would show.
+    jest.mocked(fetchKanbanColumns).mockResolvedValue([
+      { Id: 101, WorkspaceId: 10, Title: "Doing", Color: null, SortOrder: 1, MaxTasks: null, IsActive: true, CompId: 1, BranchId: 1, CreatedDate: null, IsCompanyWide: false },
+    ]);
     await mount();
     await loaded();
+    await screen.findByText("Doing");
     expect(screen.getByText(/View only/)).toBeOnTheScreen();
-    expect(screen.queryByLabelText("Task actions")).toBeNull();
+    for (const label of ["Log time", "Edit task", "Delete task", "Take this task"]) {
+      expect(screen.queryByText(label)).toBeNull();
+    }
+    // "Move to column" also titles the (always-mounted) move sheet; only that one may show.
+    expect(screen.getAllByText("Move to column")).toHaveLength(1);
   });
 
   it("an admin works any task on a shared board", async () => {
@@ -292,6 +386,15 @@ describe("who may do what", () => {
 });
 
 describe("tabs", () => {
+  // TASK-07: a personal board has no deadline clocks, so the tab was always empty there.
+  it("a personal board has no Deadline tab", async () => {
+    serve({ ws: makeWorkspace({ Id: 10, Type: "personal", MyRole: "owner" }) });
+    await mount();
+    await loaded();
+    expect(screen.getByText("History")).toBeOnTheScreen();
+    expect(screen.queryByText("Deadline")).toBeNull();
+  });
+
   it("each tab shows its own panel, with counts on the badges", async () => {
     jest.mocked(getTaskComments).mockResolvedValue([
       {
@@ -320,7 +423,6 @@ describe("tabs", () => {
     expect(screen.getByText("Parts arrive Monday")).toBeOnTheScreen();
     expect(screen.getByText(/^Someone · /)).toBeOnTheScreen();
 
-    // parity: TASK-07 — the Deadline tab shows on personal boards too; not pinned either way.
     await fireEvent.press(screen.getByText("Deadline"));
     expect(await screen.findByText("No deadline on you")).toBeOnTheScreen();
 

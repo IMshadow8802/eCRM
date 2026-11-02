@@ -42,7 +42,8 @@ export default function MyWorkScreen() {
 
   // WorkspaceId: null = every workspace the caller can see. "Mine" is filtered
   // on the server (AssigneeUserId + OnlyOpen); All/Unassigned need the whole
-  // window, so that query only runs when one of them is up.
+  // window, so that query only runs when one of them is up. Open tasks only:
+  // a finished one has no place under Unassigned or in a due bucket.
   const mine = useQuery({
     queryKey: ["tasks", "mine", userId],
     queryFn: () =>
@@ -50,8 +51,9 @@ export default function MyWorkScreen() {
     enabled: userId != null,
   });
   const everyone = useQuery({
-    queryKey: ["tasks", "all-workspaces"],
-    queryFn: () => fetchTasks({ WorkspaceId: null, PageSize: 200 }),
+    // Not Me's ["tasks", "all-workspaces"]: that one counts finished tasks.
+    queryKey: ["tasks", "all-workspaces", "open"],
+    queryFn: () => fetchTasks({ WorkspaceId: null, OnlyOpen: true, PageSize: 200 }),
     enabled: filter !== "mine",
   });
   const active = filter === "mine" ? mine : everyone;

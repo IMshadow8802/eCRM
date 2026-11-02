@@ -17,7 +17,7 @@ export { default as Checkbox } from "./Checkbox";
 export { default as ComposeSheet } from "./ComposeSheet";
 export { default as Chip } from "./Chip";
 export { default as ChipGroup } from "./ChipGroup";
-export { default as DateField } from "./DateField";
+export { default as DateField, toISODate } from "./DateField";
 export { default as Dialog } from "./Dialog";
 export { default as DynamicField } from "./DynamicField";
 export { default as Divider } from "./Divider";

@@ -17,6 +17,11 @@ jest.mock("@react-navigation/native", () => ({
   useNavigation: () => mockNavigation,
 }));
 
+// Lists arm VirtualizedList's 50 ms batch timer on every data change; under
+// load it fired between waitFor polls, outside act(). Fake timers park it
+// (RNTL's waitFor/findBy advance them).
+jest.useFakeTimers();
+
 const ME = 42;
 const reply = (tasks: Task[]) => envelope({ tasks, pagination: pagination(tasks.length) });
 
@@ -76,9 +81,9 @@ it("Unassigned shows only tasks nobody is on", async () => {
 
   expect(await screen.findByText("Nobody's task")).toBeOnTheScreen();
   expect(screen.queryByText("Late task")).toBeNull();
-  // parity: TASK-06 — this query omits OnlyOpen, so finished tasks leak in;
-  // only WorkspaceId/PageSize are pinned until Phase B fixes it.
-  expect(fetchTasks).toHaveBeenCalledWith(expect.objectContaining({ WorkspaceId: null, PageSize: 200 }));
+  // TASK-06: without OnlyOpen, finished tasks leaked into Unassigned/All and
+  // into the due buckets, Overdue included.
+  expect(fetchTasks).toHaveBeenCalledWith({ WorkspaceId: null, OnlyOpen: true, PageSize: 200 });
 });
 
 it("All shows every task, and the overdue count ignores finished ones", async () => {

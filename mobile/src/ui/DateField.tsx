@@ -21,7 +21,7 @@ export interface DateFieldProps {
   clearable?: boolean;
 }
 
-const toISODate = (d: Date) => {
+export const toISODate = (d: Date) => {
   // Local Y/M/D, NOT toISOString() — that converts to UTC and rolls the date
   // back a day for anyone east of Greenwich, which is every user here (IST).
   const pad = (n: number) => String(n).padStart(2, "0");

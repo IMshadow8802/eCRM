@@ -1,7 +1,7 @@
 import { Platform } from "react-native";
 import { fireEvent, render, screen } from "@testing-library/react-native";
 
-import { DateField } from "./DateField";
+import { DateField, toISODate } from "./DateField";
 
 // The suite runs in IST (jest.config.js), so a UTC conversion rolls a
 // just-past-midnight pick back a day — the bug the first test guards.
@@ -18,6 +18,11 @@ it("a pick just after midnight IST is sent as that local day, never the UTC day 
   const { onChange, picker } = await openPicker();
   await fireEvent(picker, "valueChange", { nativeEvent }, new Date(2026, 10, 2, 0, 30));
   expect(onChange).toHaveBeenCalledWith("2026-11-02");
+});
+
+it("toISODate is the local day, never the UTC one", () => {
+  // 00:30 IST on 3 Nov is still 2 Nov in UTC.
+  expect(toISODate(new Date(2026, 10, 3, 0, 30))).toBe("2026-11-03");
 });
 
 it("shows the stored day formatted, opens the picker on it, and clears to null", async () => {

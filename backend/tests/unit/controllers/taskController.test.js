@@ -39,7 +39,7 @@ jest.mock("../../../src/services/tatService", () => ({
 
 const database = require("../../../src/config/database");
 const tatService = require("../../../src/services/tatService");
-const { emitToUser } = require("../../../src/realtime/events");
+const { emitToUser, emitToWorkspace } = require("../../../src/realtime/events");
 const { SCOPES } = require("../../../src/realtime/contract");
 const { logActivity } = require("../../../src/utils/activityLogger");
 const { assertRecordAccess, taskAllowed } = require("../../../src/middleware/permission");
@@ -922,6 +922,33 @@ describe("taskController time-tracking + checklist + activity", () => {
     const call = database.executeStoredProcedure.mock.calls[0][1];
     expect(call.WorkDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(logActivity).toHaveBeenCalled();
+  });
+
+  // REGRESSION: the fallback was the UTC day, so time logged 00:00–05:30 IST
+  // was filed under yesterday. 19:00Z on 2 Nov is 00:30 IST on 3 Nov.
+  it("logTime defaults WorkDate to the IST day, not the UTC day", async () => {
+    jest.useFakeTimers({
+      now: new Date("2026-11-02T19:00:00Z"),
+      doNotFake: ["nextTick", "setImmediate", "queueMicrotask", "setTimeout", "setInterval", "clearTimeout", "clearInterval"],
+    });
+    try {
+      mockSequence([{ ResponseCode: 201, ResponseMess: "ok", TimeEntryId: 1 }]);
+      await taskController.logTime(baseReq({ body: { TaskId: 1, Hours: 1, WorkspaceId: 5 } }), mockRes());
+      expect(database.executeStoredProcedure.mock.calls[0][1].WorkDate).toBe("2026-11-03");
+      expect(emitToWorkspace).toHaveBeenCalledWith(5, SCOPES.TASK_DETAIL, { workspaceId: 5, taskId: 1 });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("logTime passes a refusal through without logging or emitting", async () => {
+    mockSequence([{ ResponseCode: 403, ResponseMess: "no" }]);
+    const res = mockRes();
+    await taskController.logTime(baseReq({ body: { TaskId: 1, Hours: 1, WorkspaceId: 5 } }), res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json.mock.calls[0][0].data).toBeNull();
+    expect(logActivity).not.toHaveBeenCalled();
+    expect(emitToWorkspace).not.toHaveBeenCalled();
   });
 
   it("logTime rejects a missing TaskId with 400 and runs no query", async () => {

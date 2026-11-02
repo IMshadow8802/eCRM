@@ -277,6 +277,15 @@ export const markTaskCommentRead = (params: {
  * assignee may do it; adding, renaming and reordering are `manage_checklist`
  * — the server keeps text and order as they are for a tick-only caller.
  */
+/** taskController.saveChecklist's `data` on success. */
+export interface ChecklistSaveResult {
+  checklistId: number;
+  /** Set when this tick finished or reopened the task. */
+  completionChange: "completed" | "reopened" | null;
+  /** The caller's own breached clock (TatId) that now owes a reason. */
+  tatReasonNeeded: number | null;
+}
+
 export const saveTaskChecklist = (params: {
   Id?: number;
   TaskId: number;
@@ -284,7 +293,7 @@ export const saveTaskChecklist = (params: {
   IsCompleted?: boolean;
   SortOrder?: number;
   WorkspaceId?: number | null;
-}): Promise<ApiEnvelope<unknown>> =>
+}): Promise<ApiEnvelope<ChecklistSaveResult | null>> =>
   post(TASK_ENDPOINTS.saveTaskChecklist, {
     Id: 0,
     IsCompleted: false,

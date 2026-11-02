@@ -93,6 +93,14 @@ const mount = async () => {
   return navigation;
 };
 
+/** Fake only Date: the screen's own timers and promises keep running. */
+type TimersConfig = Extract<Parameters<typeof jest.useFakeTimers>[0], { doNotFake?: unknown }>;
+const REAL_TIMERS: NonNullable<TimersConfig["doNotFake"]> = [
+  "hrtime", "nextTick", "performance", "queueMicrotask", "requestAnimationFrame", "cancelAnimationFrame",
+  "requestIdleCallback", "cancelIdleCallback", "setImmediate", "clearImmediate", "setInterval",
+  "clearInterval", "setTimeout", "clearTimeout",
+];
+
 /** The body a mutation sent (useMutation passes a context second). */
 const body = (fn: (...args: never[]) => unknown) => jest.mocked(fn).mock.calls.at(-1)?.[0];
 
@@ -111,6 +119,17 @@ describe("menu", () => {
       expect(screen.getByText(label)).toBeOnTheScreen();
     }
     expect(screen.queryByText("Take this task")).toBeNull();
+  });
+
+  // TASK-08: the time sheet used to open only from the meta chip, which shows
+  // only once LoggedHours > 0 — so with nothing logged it was unreachable.
+  it("'Time logged' opens the time sheet even with nothing logged", async () => {
+    await mount();
+    expect(screen.queryByText("0h")).toBeNull();
+    const { present } = spySheets();
+    await fireEvent.press(screen.getByText("Time logged"));
+    expect(present).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(getTaskTimeEntries).toHaveBeenCalled());
   });
 
   it("a member on someone else's unassigned task can take it — and not edit it", async () => {
@@ -228,9 +247,24 @@ describe("log time", () => {
     await fireEvent.changeText(screen.getByPlaceholderText("What did you work on?"), "Wiring");
     await fireEvent.press(screen.getByRole("button", { name: "Log time" }));
     await waitFor(() => expect(logTaskTime).toHaveBeenCalled());
-    // parity: TASK-01 — WorkDate is not sent (falls back to the server's UTC day); not pinned.
     expect(body(logTaskTime)).toMatchObject({ TaskId: 1, Hours: 2.5, Description: "Wiring", WorkspaceId: 10 });
     await waitFor(() => expect(dismiss).toHaveBeenCalledTimes(1));
+  });
+
+  // TASK-01: no WorkDate meant the server's day, which was UTC — 00:30 IST went
+  // under yesterday. The phone sends its own local day.
+  it("files the entry under the local day, even just after midnight", async () => {
+    await openLogTime();
+    // 00:30 local on 3 Nov; in IST that instant is still 2 Nov in UTC.
+    jest.useFakeTimers({ now: new Date(2026, 10, 3, 0, 30), doNotFake: REAL_TIMERS });
+    try {
+      await fireEvent.changeText(screen.getByPlaceholderText("1.5"), "1");
+      await fireEvent.press(screen.getByRole("button", { name: "Log time" }));
+      await waitFor(() => expect(logTaskTime).toHaveBeenCalled());
+      expect(body(logTaskTime)).toMatchObject({ WorkDate: "2026-11-03" });
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("refuses hours that are not a number above zero, before the server", async () => {

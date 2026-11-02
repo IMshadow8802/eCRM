@@ -53,6 +53,14 @@ export function istStamp(value: string | Date | null | undefined): string {
   return `${a.day} ${a.month} ${a.year}, ${a.time} IST`;
 }
 
+/** "08 Oct 2026" — the IST day; "" when there is no parseable date. */
+export function istDay(value: string | Date | null | undefined): string {
+  const d = parseIst(value);
+  if (!d) return "";
+  const a = ist(d);
+  return `${a.day} ${a.month} ${a.year}`;
+}
+
 /** 25m · 3h 10m · 2d 4h. */
 export function overBy(ms: number): string {
   const mins = Math.max(1, Math.floor(ms / 60000));
