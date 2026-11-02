@@ -289,6 +289,200 @@ Why: Complaints/Leads sit three taps deep (My Work → Work → section → list
 - "Sorbet" chips: every chip uses a solid soft tint of its hue as fill with the same hue's dark shade as text/icon (e.g. `successSoft` + `success`), all through `ui/Chip` tones — status, priority, lead status, ticket status, TAT. No ad-hoc chip colours in screens; add missing tones (e.g. purple/teal) to `tokens.ts` as solid hexes.
 - Guard test (`src/test/designRules.test.ts`): scans `src/` (excluding tests and `theme/`) and fails on `rgba(`, `opacity:` (style), emoji in JSX text, any icon import other than `lucide-react-native`, and hex colour literals. Eslint already bans literals; this catches what eslint can't.
 
+<!-- Redesign tasks 33–40: full spec in docs/superpowers/specs/2026-11-02-mobile-redesign/implementation.md (approved design: direction-e-blend.html; user decisions §7) -->
+### Task 33: Foundation — tokens, type, layout, ui kit, navigation shell (Phase 1)
+
+Why: every Phase 2 task builds on these. Phase 2 tasks may **not** edit any file this task owns. If one needs a change here, it reports back and Task 33's owner makes it.
+
+**Owns:**
+- `mobile/src/theme/**`
+- `mobile/src/ui/**`
+- `mobile/src/navigation/**`
+- `mobile/src/stores/useAuthStore.ts`
+- `mobile/src/types/api.ts`
+- `mobile/src/api/presenceQueries.ts` (only where the heartbeat feeds the store)
+- `mobile/src/hooks/**`
+- `mobile/src/test/**`
+- `mobile/src/features/search/**` (new)
+- `mobile/app.config.ts` (orientation)
+- `mobile/.gitignore` (`e2e-shots/`)
+
+**Steps**
+- [ ] `theme/tokens.test.ts` first: E's hex table (§1.1–1.5), contrast ≥ 4.5 for every chip/badge pair, the single rgba. Watch it fail.
+- [ ] Then `tokens.ts`:
+  - retuned and new `colors` (§1.2);
+  - `palette` ramps;
+  - `chipTones` re-keyed with the old-name aliases;
+  - `badgeTones`, `moduleTones`, `metrics`, `radius` (+ aliases), `elevation` (+ the `shadows.md` alias);
+  - `gradients.auth`, `fontScaleCap`;
+  - `CONTROL_HEIGHT` 44, `TAB_BAR_CLEARANCE` 0.
+- [ ] `theme/statusBadges.ts` (§1.6): pure maps plus `leadBadge(status, openRank)` (G1), `taskStage(task)` (G8), `notificationBadge(type)` (G26). Tests cover every row of §1.6 and the fallbacks.
+- [ ] `typography.ts` (§1.7): new variants, the old names retuned. `Text`: `tabular`, the `scaleCap` default by group. Tests: every variant names a loaded family; `Text` sets `fontVariant` and `maxFontSizeMultiplier`.
+- [ ] `ui/useLayout.ts`: tests for `layoutFor` at 390 × 844, 700 × 1000, 1194 × 834, 834 × 1194 (single pane, rule 5), 844 × 390 (capped medium).
+- [ ] UI kit per §3, each with a `*.test.tsx`: Band, BandSheet, Screen (navy top), BandTabs, CountPill, SegmentedTabs, FilterPills, SearchField, Button / IconButton / HeaderButton / CircleAction, CountBadge, StatusBadge, Chip (sizes, iconOnly), ListGroup / ListRow / GroupHeader / SwipeRow, HeroCard / StatGrid / FigureBox, ModuleTile, Fields (Input, Select, DateField, MobileInput, FieldLabel, FieldRow), Sheet / SheetHeader / ChoiceList / Radio / Stepper, ComposeSheet / ActionSheet restyle, LogCallSheet (§4 frame 24), Dialog, EmptyState / SkeletonRows / ErrorCard (ScreenLoader on them), Avatar / AvatarStack (preset → tone map), Timeline, FactsGrid / FactsList, Card tones, ProgressBar, Checkbox, InfoNote, Footnote, PageDots, Toast, BoardColumns width rule.
+- [ ] Tests assert the load-bearing numbers from §3: badge sizes and radii, row separator insets, pill height, active states by token, the a11y role/state on tabs and radios, and that a swipe only calls `onPress` of the chosen action.
+- [ ] Navigation:
+  - `tabs.ts` `railTabsFor` + tests;
+  - `BottomBar`, `ActionBar`, `Rail`, `Shell` (`ROUTE_OWNER`, `useActionBar`, rail at ≥ medium, `popTo` on press);
+  - `CreateSheet` (add grants; single-module shortcut);
+  - `RootNavigator` registers `Search` and wraps the stack in `Shell`; `FloatingTabBar` is no longer mounted.
+  - Tests per role (all / complaints-only / leads-only / tasks-only): bar items, rail items, badges wired from the shared query keys, owner tab active on pushed routes, ActionBar on detail routes, none on forms.
+- [ ] Store: `sessionExpiresAt` from login + heartbeat (G22). Types: `MyDay.me` shift fields (G21), field names verified in backend `services/` (read only). Tests.
+- [ ] `features/search/SearchScreen.tsx` (G25) + tests: debounce, a group per module with access only, "See all" params, the 2-character minimum.
+- [ ] `designRules.test.ts`: the Task 33 rows of §5.3, each with a planted case.
+- [ ] `app.config.ts` `orientation: "default"`; `pnpm exec expo prebuild --clean`; verify `boxShadow` renders on the Android AVD (else the §1.10 fallback).
+- [ ] Gate. Coverage ≥ 80 % on every file above.
+
+**E frames this task must match:** 04b, the bottom bar and action bar in every phone frame, the rail in T1–T4, 20a–c (components), 21 (Dialog), 24 (LogCallSheet), plus the §3 visuals as they appear across all frames.
+
+### Task 34: (a) Auth, More / Profile, Inbox (Phase 2)
+
+**Owns:** `features/auth/**`, `features/home/MoreScreen.tsx` (+ test), `features/profile/**`, `features/notifications/**`.
+
+**Steps**
+- [ ] LoginScreen 01–03:
+  - tests for the copy, the step switch, the inline error for each `authMessages` code, Switch company, the password eye, the version footer;
+  - `FloatingShapes` deleted (with its test, if any).
+- [ ] MoreScreen 19 + 26:
+  - tests for rows by access, the role chip tone (G23), branch name (G24), the session footer (G22), the missing-modules footnote, Sign out → Dialog → `useSignOut`.
+- [ ] MeScreen + AccountForms on the band/form pattern; tests keep existing behaviour (edit profile, change password; HR rules unchanged).
+- [ ] NotificationsScreen 18:
+  - tests for Today/Earlier grouping (IST local day), unread tint/weight/dot, badge mapping (G26), Mark all read hidden at 0, tap → read + navigate.
+- [ ] ReauthDialog and PresenceNoticeDialog on the new Dialog.
+- [ ] Gate. Coverage ≥ 80 % on touched files.
+
+**E frames this task must match:** 01, 02, 03, 18, 19, 26.
+
+### Task 35: (b) Home, Tasks / My Work, Workspaces, Board, Task detail + Deadline (Phase 2)
+
+**Owns:** `features/home/HomeScreen.tsx` (+ test), `features/tasks/**`, `features/workspaces/**`.
+
+**Steps**
+- [ ] HomeScreen 04, 27, T1:
+  - hero choice by access;
+  - tile set rules;
+  - stats/tiles navigate with the params they count (keep the existing guarantees);
+  - G3 sum hidden > 200;
+  - Needs-you merge (≤ 3) and "See all" target;
+  - shift row (G21);
+  - "+ New" vs "+ Lead";
+  - expanded grid (3 columns, hero span 2, 2fr/1fr row).
+  - Tests per role.
+- [ ] MyWorkScreen + TaskRow 05:
+  - BandTabs counts, stage pills (G8), Done pill and "Completed this week" (G10), personal chip (G9), "Updated" time, the Needs-you group (**flag** decision), band "+ New";
+  - the sign-out dialog removed.
+- [ ] BoardsScreen 06: rows, G4/G5/G6, Accept + long-press Decline, the client-side search, the footnote.
+- [ ] BoardScreen 07: BandTabs ↔ paging sync, column header, Add task, PageDots, Move to… unchanged.
+- [ ] TaskDetailScreen 08, 21 + Checklist + TatTab 09:
+  - the 4 tabs (Details absorbs Files/History);
+  - checklist summary, reorder, "Add a step";
+  - comment cards, tint-on-delete + Dialog copy;
+  - deadline hero maths (target, over-by G28, bar split);
+  - hold card; timeline order;
+  - Explain delay gating.
+- [ ] TaskForm, WorkspaceForm, WorkspaceSettings, Columns, DependencySheet, TimeSheet on the form / Sheet patterns (§4 "no frame").
+- [ ] Gate. Coverage ≥ 80 %.
+
+**E frames this task must match:** 04, 05, 06, 07, 08, 09, 21, 27, T1.
+
+### Task 36: (c) Complaints — list, detail, form, sheets, states (Phase 2)
+
+**Owns:** `features/support/**`, `features/attachments/**`.
+
+**Steps**
+- [ ] `ticketHelpers`:
+  - presets Mine/Team/Overdue/Escalated (Unassigned removed, **flag**);
+  - status "All" = no filter;
+  - E's due wording ("Overdue 2 h", "Due 5:30 pm", "Tue, 3 Nov", "Done 1:10 pm");
+  - count params (G13).
+  - Tests per wording branch.
+- [ ] ComplaintsScreen + ComplaintRow 10, 20a–c, 22:
+  - preset and pill counts, row anatomy, corner dot;
+  - swipe actions open the right sheet and never mutate;
+  - the one-time InfoNote;
+  - empty copy per preset; skeleton; error + retry.
+- [ ] ComplaintDetailScreen → `ComplaintDetailBody` 11, T2:
+  - the action bar via `useActionBar` + variants (on hold / terminal / no edit);
+  - customer card call; facts; activity mapping + "All n";
+  - ⋮ menu (Edit, Close, Reject, Reopen, Files, Delete);
+  - tablet band actions.
+- [ ] Sheets 13, 23, 24 (LogCallSheet from `ui/` with complaint "Then" options; G15 outcome mapping), escalate:
+  - tests for required fields, the payloads copied from the controllers, the chained status change after Log call.
+- [ ] ComplaintFormScreen 12: field order, customer dropdown + "Add new customer", attachments block (AttachmentList restyle), fixed footer, "More details".
+- [ ] Two-pane T2: selection param, the "Pick a complaint" empty pane, the selected tint.
+- [ ] Gate. Coverage ≥ 80 %.
+
+**E frames this task must match:** 10, 11, 12, 13, 20a, 20b, 20c, 22, 23, 24, T2.
+
+### Task 37: (d) Leads, Lead detail / form, Follow-ups (Phase 2)
+
+**Owns:** `features/sales/**`.
+
+**Steps**
+- [ ] `leadHelpers`:
+  - presets Mine/All/Overdue/New (Unassigned removed, **flag**);
+  - `openRank` for G1;
+  - follow-up text (G2);
+  - the G3 sum;
+  - follow-up views Today/Overdue/Upcoming (All removed, **flag**).
+  - Tests.
+- [ ] LeadsScreen + LeadRow 14: GH + open value, row anatomy incl. lost, status pills removed (**flag**), counts.
+- [ ] LeadDetailScreen → `LeadDetailBody` 15, T3:
+  - band (name, value, status, Change status);
+  - contact card actions (G30); tabs; next card (G18); action bar;
+  - ⋮ menu; tablet layout (300 facts column).
+- [ ] StatusSheet 25: every status, Lost reason required (G16/G17), Won → `convertLead`, never `setLeadStatus(converted)`.
+- [ ] LeadFormScreen 16, T4: band Save, field order, follow-up presets + help, custom fields; the 640 card at ≥ medium.
+- [ ] FollowUpsScreen 17: views, Done chip, swipe right/left → sheets, Done-today group (G20), the band calendar pick.
+- [ ] Log call on a lead uses `ui/LogCallSheet` with no "Then".
+- [ ] Gate. Coverage ≥ 80 %.
+
+**E frames this task must match:** 14, 15, 16, 17, 25, T3, T4.
+
+**(e) Tablet layouts:** folded into Tasks 35–37 (T1 → 35, T2 → 36, T3/T4 → 37). The shared tablet primitives (useLayout, Rail, Shell, two-pane rules, 640 card) are Task 33's. No separate task is needed.
+
+### Task 38: Maestro flows updated and run twice (Phase 3)
+
+**Owns:** `mobile/.maestro/**`.
+
+**Steps**
+- [ ] Update selectors for the changed copy and structure:
+  - presets (Unassigned gone), "+ New" in the band (Fab gone), action-bar labels, the Create sheet;
+  - the More hub (sign-out moved), "Save" in the band, the status sheet;
+  - `common/open-work.yaml`, `new-complaint.yaml`, `new-lead.yaml`.
+- [ ] Add `screens/*.yaml` that reach each frame state and `takeScreenshot` (feeds Task 39).
+- [ ] Run the whole suite twice in a row on the phone AVD against TestCRM. Records created start `MAESTRO `. Fix in a loop (app bugs go back to the owning area's files) until both runs are green.
+
+**E frames this task must match:** all phone frames reachable by flow (01–27).
+
+### Task 39: Emulator screenshots vs E, phone + tablet, with a fix loop (Phase 3)
+
+**Owns:** `mobile/scripts/e-frames.mjs`, `mobile/e2e-shots/` (git-ignored).
+
+**Steps**
+- [ ] Generate E references (§5.2 step 2) and app shots on the 390 × 844 phone and the 1194 × 834 tablet AVDs (§5.2 step 1).
+- [ ] Build side-by-side images. Walk the §5.1 [S] items frame by frame and log each mismatch with: frame, element, expected token or size, actual.
+- [ ] Fix each mismatch in the owning file, with a test where the item is testable. Re-shoot. Loop until the list is empty, or every remaining item is an accepted difference (status-bar height, data) written down in the report.
+- [ ] Show the user the side-by-side set before Task 40.
+
+**E frames this task must match:** all 34.
+
+### Task 40: Retire the old kit, tighten the guard, docs (Phase 3)
+
+**Owns:** everything left over (after 34–39 are merged).
+
+**Steps**
+- [ ] Delete:
+  - `ui/Glyph`, `MenuList`, `Fab`, `ChipGroup`, `Segmented`, `ScreenHeader`;
+  - `navigation/FloatingTabBar` (+ tests);
+  - the token and typography aliases; retired colours; `shadows`; `TAB_BAR_*`.
+- [ ] Add the Task 40 rows of §5.3 (no outlines, no type, no shadow in features; the retired imports) with planted cases. The scan must stay green.
+- [ ] Update CLAUDE.md §9.3–9.5 to the new kit list and the E rules: navy band + sheet, the docked bar/rail, no Fab, `badgeTones` / `moduleTones`, `boxShadow` whisper. Docs only, and only with the user's go-ahead.
+- [ ] Add a Notion entry (CLAUDE.md §0.5) after the user accepts.
+- [ ] Gate. Full suite with coverage.
+
+**E frames this task must match:** all (regression: re-run Task 39's shots once after the deletions).
+
 ### Task 31: Docs and cleanup
 
 - [ ] CLAUDE.md §9: Phase C status (what is on mobile, what stays web), `mobile/.maestro/` usage. Delete `docs/superpowers/plans/2026-11-01-mobile-sales-reference/`. Commit.
