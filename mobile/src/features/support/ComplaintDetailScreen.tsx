@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { isAxiosError } from "axios";
 import {
@@ -7,19 +7,24 @@ import {
   ArrowUpRight,
   Ban,
   Building2,
+  CalendarCheck,
   CircleCheck,
   CircleCheckBig,
   CircleDot,
   CirclePause,
   Clock,
+  Contact,
   EllipsisVertical,
   Flag,
   History,
   Link2,
   Lock,
+  Mail,
+  MapPin,
   MessageSquare,
   Package,
   Pencil,
+  Phone,
   PhoneCall,
   PhoneIncoming,
   PhoneOutgoing,
@@ -73,9 +78,11 @@ import {
   useToast,
 } from "../../ui";
 import AttachmentList from "../attachments/AttachmentList";
+import { useAccess } from "../auth/useAccess";
 import { relativeTime } from "../tasks/taskHelpers";
 import {
   asStatusCode,
+  dateTime,
   dueLabel,
   isActive,
   isTerminal,
@@ -135,6 +142,8 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
   const queryClient = useQueryClient();
   const toast = useToast();
   const userId = useAuthStore((s) => s.UserId);
+  // Courtesy only (CLAUDE.md §3): the routes 403 without these grants anyway.
+  const can = useAccess("complaints");
 
   const [tab, setTab] = useState<Tab>("details");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -208,9 +217,11 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
     mutationFn: setTicketStatus,
     onError: (err) =>
       toast.error(apiErrorMessage(err, "Could not change the status.")),
-    onSuccess: () => {
+    onSuccess: (_reply, vars) => {
       moveRef.current?.dismiss();
       setPending(null);
+      const to = statuses.find((s) => s.Id === vars.StatusId)?.Value;
+      toast.success(to ? `Status changed to ${to}` : "Status changed");
       invalidate();
     },
   });
@@ -221,6 +232,7 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
       toast.error(apiErrorMessage(err, "Could not transfer this complaint.")),
     onSuccess: () => {
       transferRef.current?.dismiss();
+      toast.success(transferTo ? `Transferred to ${transferTo.FullName}` : "Transferred");
       setTransferTo(null);
       invalidate();
     },
@@ -232,6 +244,7 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
       toast.error(apiErrorMessage(err, "Could not escalate this complaint.")),
     onSuccess: () => {
       escalateRef.current?.dismiss();
+      toast.success(escalateTo ? `Escalated to ${escalateTo.FullName}` : "Escalated");
       setEscalateTo(null);
       invalidate();
     },
@@ -311,6 +324,7 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
   const due = dueLabel(ticket);
   const fields = detailQuery.data?.fields ?? [];
   const activity = detailQuery.data?.activity ?? [];
+  const assignments = detailQuery.data?.assignments ?? [];
   const linkedLead = detailQuery.data?.linkedLead ?? null;
 
   const who = (id: number | null) => people.get(id ?? -1) ?? "System";
@@ -408,8 +422,10 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
       return {
         key: String(s.Id),
         label: s.Value,
+        // The web's words (TicketDetail): what a reopen does, and who may.
+        // Who may is still the server's call — the row is never hidden.
         sublabel: reopen
-          ? "Reopens the complaint — remarks required"
+          ? "The due date restarts from now. Only a manager may do this."
           : STATUS_HINT[to],
         icon: reopen ? RotateCcw : STATUS_ICON[to],
         tone: to === "rejected" ? "danger" : undefined,
@@ -460,7 +476,60 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
       ]
     : [];
 
+  // The web's primary button on an active complaint: one tap to the resolve
+  // sheet on the company's first `resolved`-coded status (Code, not label).
+  const resolvedStatus = active
+    ? statuses.find((s) => asStatusCode(s.Code) === "resolved")
+    : undefined;
+  const resolveEntry: SheetAction[] = resolvedStatus
+    ? [
+        {
+          key: "resolve",
+          label: "Resolve",
+          sublabel: "Needs a resolution and remarks",
+          icon: CircleCheck,
+          onPress: () => pickStatus(resolvedStatus),
+        },
+      ]
+    : [];
+
+  const transferEntry: SheetAction[] = can.edit
+    ? [
+        {
+          key: "transfer",
+          label: "Transfer",
+          sublabel: ticket.AssigneeName ? `Now with ${ticket.AssigneeName}` : "Unassigned",
+          icon: UserPlus,
+          onPress: () => transferPickRef.current?.present(),
+        },
+      ]
+    : [];
+
+  const editEntry: SheetAction[] = can.edit
+    ? [
+        {
+          key: "edit",
+          label: "Edit complaint",
+          icon: Pencil,
+          onPress: () => navigation.navigate("ComplaintForm", { ticketId }),
+        },
+      ]
+    : [];
+
+  const deleteEntry: SheetAction[] = can.delete
+    ? [
+        {
+          key: "delete",
+          label: "Delete complaint",
+          icon: Trash2,
+          tone: "danger",
+          onPress: () => setConfirmingDelete(true),
+        },
+      ]
+    : [];
+
   const menuActions: SheetAction[] = [
+    ...resolveEntry,
     {
       key: "status",
       label: "Change status",
@@ -468,13 +537,7 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
       icon: ArrowRightLeft,
       onPress: () => statusRef.current?.present(),
     },
-    {
-      key: "transfer",
-      label: "Transfer",
-      sublabel: ticket.AssigneeName ? `Now with ${ticket.AssigneeName}` : "Unassigned",
-      icon: UserPlus,
-      onPress: () => transferPickRef.current?.present(),
-    },
+    ...transferEntry,
     ...escalateEntry,
     {
       key: "call",
@@ -486,27 +549,30 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
         callRef.current?.present();
       },
     },
-    {
-      key: "edit",
-      label: "Edit complaint",
-      icon: Pencil,
-      onPress: () => navigation.navigate("ComplaintForm", { ticketId }),
-    },
-    {
-      key: "delete",
-      label: "Delete complaint",
-      icon: Trash2,
-      tone: "danger",
-      onPress: () => setConfirmingDelete(true),
-    },
+    ...editEntry,
+    ...deleteEntry,
   ];
 
-  const customerSub = [
-    ticket.CustomerMobile,
-    ticket.PreviousTickets ? `${ticket.PreviousTickets} previous` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const customerSub = ticket.PreviousTickets ? `${ticket.PreviousTickets} previous` : undefined;
+  const where = [ticket.CustomerAddress, ticket.CustomerCity].filter(Boolean).join(", ");
+
+  // sp_FetchTicketDetail RS4 — every hand-over, as the web's Assignments card.
+  const handovers: TimelineEntry[] = assignments.map((a) => ({
+    key: `t-${a.Id}`,
+    title:
+      `${a.FromUserName ?? "Unassigned"} → ${a.ToUserName ?? "Unassigned"}` +
+      (a.ToBranchName && a.FromBranchName !== a.ToBranchName ? ` (${a.ToBranchName})` : ""),
+    meta: [
+      a.Reason,
+      a.Remarks,
+      a.AssignedByName ? `by ${a.AssignedByName}` : null,
+      relativeTime(a.AssignedAt),
+    ]
+      .filter(Boolean)
+      .join(" · "),
+    icon: UserPlus,
+    tone: "info",
+  }));
 
   return (
     <Screen>
@@ -576,8 +642,32 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
               Icon={Building2}
               label="Customer"
               value={ticket.CustomerName ?? "—"}
-              sub={customerSub || undefined}
+              sub={customerSub}
             />
+            {ticket.CustomerContactPerson ? (
+              <Fact Icon={Contact} label="Contact person" value={ticket.CustomerContactPerson} />
+            ) : null}
+            {ticket.CustomerMobile ? (
+              <Fact
+                Icon={Phone}
+                label="Mobile"
+                value={ticket.CustomerMobile}
+                tone="primary"
+                onPress={() => void Linking.openURL(`tel:${ticket.CustomerMobile}`)}
+                actionLabel={`Call ${ticket.CustomerMobile}`}
+              />
+            ) : null}
+            {ticket.CustomerEmail ? (
+              <Fact
+                Icon={Mail}
+                label="Email"
+                value={ticket.CustomerEmail}
+                tone="primary"
+                onPress={() => void Linking.openURL(`mailto:${ticket.CustomerEmail}`)}
+                actionLabel={`Email ${ticket.CustomerEmail}`}
+              />
+            ) : null}
+            {where ? <Fact Icon={MapPin} label="Where" value={where} /> : null}
             <Fact
               Icon={User}
               label="Reported by"
@@ -592,10 +682,13 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
               value={ticket.PriorityName ?? "—"}
               tone={priorityTone(ticket.PriorityName)}
             />
+            {/* The absolute time stays once terminal — the relative "in 4h"
+                stops with the clock, the date it was due does not. */}
             <Fact
               Icon={Clock}
               label="Due"
-              value={due?.label ?? "—"}
+              value={dateTime(ticket.DueAt) ?? "—"}
+              sub={due?.label}
               tone={due?.overdue ? "danger" : undefined}
             />
             <Fact
@@ -607,7 +700,9 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
               Icon={UserPlus}
               label="Assigned to"
               value={ticket.AssigneeName ?? "Unassigned"}
+              sub={ticket.AssignedAt ? `since ${dateTime(ticket.AssignedAt)}` : undefined}
             />
+            <Fact Icon={Building2} label="Office" value={ticket.BranchName ?? "—"} />
             <Fact Icon={Tag} label="Category" value={ticket.CategoryName ?? "—"} />
             <Fact
               Icon={MessageSquare}
@@ -618,10 +713,17 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
             {ticket.ResolutionName ? (
               <Fact Icon={CircleCheck} label="Resolution" value={ticket.ResolutionName} />
             ) : null}
+            {ticket.ResolvedAt ? (
+              <Fact Icon={CalendarCheck} label="Resolved" value={dateTime(ticket.ResolvedAt) ?? "—"} />
+            ) : null}
+            {ticket.ClosedAt ? (
+              <Fact Icon={CircleCheckBig} label="Closed" value={dateTime(ticket.ClosedAt) ?? "—"} />
+            ) : null}
             <Fact
               Icon={History}
               label="Logged"
-              value={relativeTime(ticket.CreatedAt)}
+              value={dateTime(ticket.CreatedAt) ?? "—"}
+              sub={relativeTime(ticket.CreatedAt)}
               last
             />
           </Card>
@@ -671,7 +773,7 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
       ) : null}
 
       {tab === "files" ? (
-        <AttachmentList entity="ticket" entityId={ticketId} canManage />
+        <AttachmentList entity="ticket" entityId={ticketId} canManage={can.edit} />
       ) : null}
 
       {tab === "history" ? (
@@ -679,6 +781,14 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
         >
+          {handovers.length ? (
+            <View style={styles.block}>
+              <Text variant="overline" color="textMuted">
+                Assignments
+              </Text>
+              <Timeline entries={handovers} />
+            </View>
+          ) : null}
           {timeline.length ? (
             <>
               <Timeline entries={timeline} />
@@ -686,7 +796,7 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
                 Complaint logged
               </Text>
             </>
-          ) : (
+          ) : handovers.length ? null : (
             <Text variant="secondary">Nothing has happened yet.</Text>
           )}
         </ScrollView>
@@ -750,50 +860,54 @@ export default function ComplaintDetailScreen({ route, navigation }: Props) {
         }}
       />
 
-      <ActionSheet
-        ref={transferPickRef}
-        title="Transfer to…"
-        actions={transferActions}
-        emptyMessage="There is nobody else you can hand this to."
-      />
-      <ComposeSheet
-        ref={transferRef}
-        title={transferTo ? `Transfer to ${transferTo.FullName}` : "Transfer"}
-        submitLabel="Transfer"
-        busy={transfer.isPending}
-        choices={[
-          {
-            key: "reason",
-            label: "Reason",
-            required: true,
-            options: transferReasons.map((r) => ({ value: r.Id, label: r.Value })),
-          },
-        ]}
-        fields={[
-          {
-            key: "remarks",
-            label: "Remarks",
-            placeholder: "Anything the next person should know",
-            multiline: true,
-            required: true,
-          },
-        ]}
-        onSubmit={(values, picked) => {
-          if (!transferTo) return;
-          transfer.mutate({
-            TicketId: ticketId,
-            ToUserId: transferTo.Id,
-            // Only when the target sits in another branch. Whether the caller
-            // MAY move it there is the server's call (wide scopes only).
-            ToBranchId:
-              transferTo.BranchId != null && transferTo.BranchId !== ticket.BranchId
-                ? transferTo.BranchId
-                : null,
-            ReasonId: picked.reason as number,
-            Remarks: values.remarks ?? "",
-          });
-        }}
-      />
+      {/* Hidden without the edit grant — transferTicket 403s anyway. */}
+      {can.edit ? (
+        <>
+          <ActionSheet
+            ref={transferPickRef}
+            title="Transfer to…"
+            actions={transferActions}
+            emptyMessage="There is nobody else you can hand this to."
+          />
+          <ComposeSheet
+            ref={transferRef}
+            title={transferTo ? `Transfer to ${transferTo.FullName}` : "Transfer"}
+            submitLabel="Transfer"
+            busy={transfer.isPending}
+            choices={[
+              {
+                key: "reason",
+                label: "Reason",
+                required: true,
+                options: transferReasons.map((r) => ({ value: r.Id, label: r.Value })),
+              },
+            ]}
+            fields={[
+              {
+                key: "remarks",
+                label: "Remarks",
+                placeholder: "Anything the next person should know",
+                multiline: true,
+                required: true,
+              },
+            ]}
+            onSubmit={(values, picked) => {
+              if (!transferTo) return;
+              transfer.mutate({
+                TicketId: ticketId,
+                ToUserId: transferTo.Id,
+                // Never inferred from the assignee's office (web: only on an
+                // explicit office pick). assertCanAssign 403s a non-wide caller
+                // that sends one, and a wide caller would silently move the
+                // complaint to another office. ponytail: no office picker yet.
+                ToBranchId: null,
+                ReasonId: picked.reason as number,
+                Remarks: values.remarks ?? "",
+              });
+            }}
+          />
+        </>
+      ) : null}
 
       <ActionSheet
         ref={escalatePickRef}
@@ -908,6 +1022,8 @@ function Fact({
   sub,
   tone,
   last = false,
+  onPress,
+  actionLabel,
 }: {
   Icon: LucideIcon;
   label: string;
@@ -917,10 +1033,19 @@ function Fact({
   /** A chip tone; "neutral" means plain ink. */
   tone?: ChipTone;
   last?: boolean;
+  /** Makes the row a link (tap-to-call / mail); `actionLabel` names it. */
+  onPress?: () => void;
+  actionLabel?: string;
 }) {
   const ink = tone && tone !== "neutral" ? tone : undefined;
   return (
-    <View style={[styles.fact, !last && styles.factDivider]}>
+    <Pressable
+      disabled={!onPress}
+      onPress={onPress}
+      accessibilityRole={onPress ? "link" : undefined}
+      accessibilityLabel={actionLabel}
+      style={[styles.fact, !last && styles.factDivider]}
+    >
       <Icon size={16} color={colors.textMuted} />
       <Text variant="caption" color="textMuted" style={styles.factLabel}>
         {label}
@@ -935,7 +1060,7 @@ function Fact({
           </Text>
         ) : null}
       </View>
-    </View>
+    </Pressable>
   );
 }
 

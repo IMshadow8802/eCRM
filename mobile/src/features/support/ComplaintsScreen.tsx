@@ -24,12 +24,13 @@ import { useTicketRefData } from "./useTicketRefData";
 
 type Props = StackScreenProps<RootStackParamList, "Complaints">;
 
-/** The four queues — WHICH rows. A status chip then narrows within one. */
-type Queue = "mine" | "team" | "overdue" | "escalated";
+/** The queues — WHICH rows. A status chip then narrows within one. */
+type Queue = "mine" | "team" | "unassigned" | "overdue" | "escalated";
 
 const QUEUES: { value: Queue; label: string }[] = [
   { value: "mine", label: "Mine" },
   { value: "team", label: "Team" },
+  { value: "unassigned", label: "Unassigned" },
   { value: "overdue", label: "Overdue" },
   { value: "escalated", label: "Escalated" },
 ];
@@ -37,6 +38,7 @@ const QUEUES: { value: Queue; label: string }[] = [
 const SUBTITLE: Record<Queue, string> = {
   mine: "assigned to you",
   team: "in your team",
+  unassigned: "unassigned",
   overdue: "overdue",
   escalated: "escalated",
 };
@@ -49,6 +51,10 @@ const EMPTY: Record<Queue, { title: string; message: string }> = {
   team: {
     title: "No open complaints",
     message: "Everything you can see is resolved, closed or rejected.",
+  },
+  unassigned: {
+    title: "Nobody is waiting",
+    message: "Open complaints that nobody has picked up show up here.",
   },
   overdue: {
     title: "Nothing overdue",
@@ -69,6 +75,7 @@ type StatusFilter = "active" | number;
  *
  *   mine       assigned to me, still active
  *   team       everything I can see, still active — scope is the SP's
+ *   unassigned active and nobody has it (web's preset of the same name)
  *   overdue    non-terminal and past DueAt (the SP computes it; never stored)
  *   escalated  non-terminal and (escalated to me OR overdue) — a manager's queue
  *
@@ -87,6 +94,7 @@ function queueParams(
     AssignedTo: queue === "mine" ? userId : null,
     StatusCode: status === "active" ? "active" : null,
     StatusId: status === "active" ? null : status,
+    Unassigned: queue === "unassigned",
     Overdue: queue === "overdue",
     Escalated: queue === "escalated",
   };
@@ -97,8 +105,8 @@ function queueParams(
  *
  * The board went with the pipeline engine (086). A stage column answered
  * "what is where"; a flat status with a due date answers the question a phone
- * is actually asked — what is mine, what is late, what has been pushed up to
- * me — and those are the four segments. Sorting is the server's: newest
+ * is actually asked — what is mine, what is late, what nobody has picked up,
+ * what has been pushed up to me — and those are the segments. Sorting is the server's: newest
  * first, except Overdue and Escalated, which go most-overdue first (092).
  */
 export default function ComplaintsScreen({ navigation }: Props) {

@@ -46,6 +46,20 @@ it("Team drops the AssignedTo filter", async () => {
   );
 });
 
+it("Unassigned asks for the active complaints nobody has picked up", async () => {
+  // CMP-04: the web's Unassigned preset.
+  await mount();
+  await screen.findByText("Inverter keeps tripping");
+  // The segment comes before the card's own "Unassigned" line.
+  await fireEvent.press(screen.getAllByText("Unassigned")[0]!);
+  await waitFor(() =>
+    expect(fetchTickets).toHaveBeenLastCalledWith(
+      expect.objectContaining({ Unassigned: true, AssignedTo: null, StatusCode: "active" }),
+    ),
+  );
+  expect(await screen.findByText("1 unassigned")).toBeOnTheScreen();
+});
+
 it("shows an error state when the fetch rejects", async () => {
   jest.mocked(fetchTickets).mockRejectedValue(new Error("boom"));
   await mount();

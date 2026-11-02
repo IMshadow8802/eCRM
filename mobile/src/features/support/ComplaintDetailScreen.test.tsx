@@ -1,5 +1,7 @@
+import { Linking } from "react-native";
 import { fireEvent, screen, waitFor } from "@testing-library/react-native";
 
+import { fetchAttachments } from "../../api/attachmentQueries";
 import { fetchCalls, logCall } from "../../api/callQueries";
 import { fetchLookups, LOOKUP_KIND } from "../../api/configQueries";
 import {
@@ -20,6 +22,10 @@ jest.mock("../../api/ticketQueries");
 jest.mock("../../api/callQueries");
 jest.mock("../../api/configQueries");
 jest.mock("../../api/userQueries");
+jest.mock("../../api/attachmentQueries");
+
+/** A role that may do everything to complaints — the default for these tests. */
+const FULL = { view: true, add: true, edit: true, delete: true, reach: "Company" as const };
 
 const lookup = (Id: number, Kind: string, Value: string, Code: string | null = null): Lookup => ({
   Id, CompId: 1, Kind, Value, Code, SortOrder: Id, IsActive: true,
@@ -66,7 +72,8 @@ const loaded = async () => {
 };
 
 beforeEach(() => {
-  seedAuth({ UserId: 42 });
+  seedAuth({ UserId: 42, access: { modules: { complaints: FULL } } });
+  jest.mocked(fetchAttachments).mockResolvedValue([]);
   jest.mocked(fetchTicketDetail).mockResolvedValue(detail());
   jest.mocked(fetchLookups).mockImplementation(async ({ Kind }) => LOOKUPS[Kind] ?? []);
   jest.mocked(fetchAssignableUsers).mockResolvedValue([priya]);
@@ -143,7 +150,7 @@ describe("an open complaint", () => {
     // The chip, and the menu's Escalate sublabel.
     expect(screen.getAllByText("Escalated to Ravi Mehta")).toHaveLength(2);
     expect(screen.getByText("Sharma Traders")).toBeOnTheScreen();
-    expect(screen.getByText("9825012345 · 2 previous")).toBeOnTheScreen();
+    expect(screen.getByText("2 previous")).toBeOnTheScreen();
     expect(screen.getByText("Mr Sharma · 9825012345")).toBeOnTheScreen();
     expect(screen.getByText("Wiring")).toBeOnTheScreen();
     expect(screen.getByText("Trips every evening")).toBeOnTheScreen();
@@ -153,6 +160,138 @@ describe("an open complaint", () => {
     expect(screen.getByText("2026-01-05")).toBeOnTheScreen();
     expect(screen.getByText("Sharma lead")).toBeOnTheScreen();
     expect(screen.getByText("s@x.in")).toBeOnTheScreen();
+  });
+
+  it("shows the customer's own contact facts, and a tap calls or mails them", async () => {
+    // CMP-03: web's customer card + core facts.
+    const openURL = jest.spyOn(Linking, "openURL").mockResolvedValue(true);
+    jest.mocked(fetchTicketDetail).mockResolvedValue(
+      detail(
+        ticket({
+          CustomerContactPerson: "Mr Sharma",
+          CustomerEmail: "sharma@traders.in",
+          CustomerAddress: "Ring Road",
+          CustomerCity: "Surat",
+          BranchName: "Surat Office",
+          AssignedTo: 9,
+          AssigneeName: "Priya Shah",
+          AssignedAt: "2026-11-01T11:15:00",
+          DueAt: "2026-11-02T18:00:00",
+        }),
+      ),
+    );
+    await mount();
+    expect(await screen.findByText("Mr Sharma")).toBeOnTheScreen();
+    expect(screen.getByText("Ring Road, Surat")).toBeOnTheScreen();
+    expect(screen.getByText("Surat Office")).toBeOnTheScreen();
+    expect(screen.getByText("since 01-11-2026 11:15")).toBeOnTheScreen();
+    expect(screen.getByText("02-11-2026 18:00")).toBeOnTheScreen();
+    expect(screen.getByText("01-11-2026 10:00")).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByLabelText("Call 9825012345"));
+    expect(openURL).toHaveBeenCalledWith("tel:9825012345");
+    await fireEvent.press(screen.getByLabelText("Email sharma@traders.in"));
+    expect(openURL).toHaveBeenCalledWith("mailto:sharma@traders.in");
+    openURL.mockRestore();
+  });
+
+  it("transfer never sends an office, even when the assignee sits in another one", async () => {
+    // CMP-01: assertCanAssign 403s a non-wide caller that sends ToBranchId,
+    // and a wide one would silently move the complaint's office.
+    jest.mocked(fetchAssignableUsers).mockResolvedValue([
+      { ...priya, BranchId: 2, BranchName: "Surat Office" },
+    ]);
+    await mount();
+    await loaded();
+    await fireEvent.press(screen.getByText("Priya Shah"));
+    await fireEvent.press(screen.getByText("On leave"));
+    await fireEvent.changeText(screen.getByPlaceholderText("Anything the next person should know"), "covering");
+    await fireEvent.press(screen.getAllByText("Transfer").at(-1)!);
+    await waitFor(() =>
+      expect(transferTicket).toHaveBeenCalledWith(
+        expect.objectContaining({ ToUserId: 9, ToBranchId: null }),
+        expect.anything(),
+      ),
+    );
+    // CMP-09: and says it worked.
+    expect(await screen.findByLabelText("Transferred to Priya Shah")).toBeOnTheScreen();
+  });
+
+  it("a status move and an escalation each say they worked", async () => {
+    // CMP-09
+    jest.mocked(fetchEscalationTargets).mockResolvedValue([
+      { Id: 50, FullName: "Ravi Mehta", JobTitle: null, BranchId: 1, BranchName: null, Depth: 1 },
+    ]);
+    await mount();
+    await loaded();
+    await fireEvent.press(screen.getByText("On hold"));
+    expect(await screen.findByLabelText("Status changed to On hold")).toBeOnTheScreen();
+    await fireEvent.press(await screen.findByText("Ravi Mehta"));
+    await fireEvent.changeText(
+      screen.getByPlaceholderText("What they need to know — they get a notification"),
+      "late",
+    );
+    await fireEvent.press(screen.getAllByText("Escalate").at(-1)!);
+    expect(await screen.findByLabelText("Escalated to Ravi Mehta")).toBeOnTheScreen();
+  });
+
+  it("Resolve is the first action and opens the resolve sheet on the resolved status", async () => {
+    // CMP-10: web shows Resolve as the primary button on an active complaint.
+    await mount();
+    await loaded();
+    expect(screen.getAllByText(/^(Resolve|Change status)$/)[0]).toHaveTextContent("Resolve");
+    await fireEvent.press(screen.getByText("Resolve"));
+    expect(await screen.findByText("Mark as Resolved")).toBeOnTheScreen();
+  });
+
+  it("History lists who handed it to whom, with the reason and remarks", async () => {
+    // CMP-02: sp_FetchTicketDetail RS4, rendered like the web's Assignments card.
+    jest.mocked(fetchTicketDetail).mockResolvedValue(
+      detail(ticket(), {
+        assignments: [
+          {
+            Id: 1, FromUserId: null, FromUserName: null, ToUserId: 9, ToUserName: "Priya Shah",
+            FromBranchId: 1, FromBranchName: "Head Office", ToBranchId: 2, ToBranchName: "Surat Office",
+            ReasonId: 30, Reason: "On leave", Remarks: "covering", AssignedBy: 42,
+            AssignedByName: "Test User", AssignedAt: "2026-11-01T11:00:00",
+          },
+        ],
+      }),
+    );
+    await mount();
+    await loaded();
+    await fireEvent.press(screen.getByText("History"));
+    expect(await screen.findByText("Unassigned → Priya Shah (Surat Office)")).toBeOnTheScreen();
+    expect(screen.getByText(/^On leave · covering · by Test User · /)).toBeOnTheScreen();
+    expect(screen.queryByText("Nothing has happened yet.")).toBeNull();
+  });
+
+  describe("by role (CMP-12)", () => {
+    it("without edit or delete, Edit, Transfer, Delete and file uploads are hidden", async () => {
+      seedAuth({ UserId: 42, access: { modules: { complaints: { ...FULL, edit: false, delete: false } } } });
+      await mount();
+      // Not `loaded()`: it waits on the transfer sheet's people, which is gone.
+      await screen.findByText("Rejected");
+      await screen.findByText("Reached");
+      expect(screen.queryByText("Edit complaint")).toBeNull();
+      expect(screen.queryByText("Delete complaint")).toBeNull();
+      expect(screen.queryByText("Transfer")).toBeNull();
+      expect(screen.queryByText("Transfer to…")).toBeNull();
+      await fireEvent.press(screen.getByText("Files"));
+      await waitFor(() => expect(fetchAttachments).toHaveBeenCalled());
+      expect(screen.queryByLabelText("Add a file")).toBeNull();
+    });
+
+    it("edit without delete keeps Edit, Transfer and uploads, hides Delete", async () => {
+      seedAuth({ UserId: 42, access: { modules: { complaints: { ...FULL, delete: false } } } });
+      await mount();
+      await loaded();
+      expect(screen.getByText("Edit complaint")).toBeOnTheScreen();
+      expect(screen.getByText("Transfer to…")).toBeOnTheScreen();
+      expect(screen.queryByText("Delete complaint")).toBeNull();
+      await fireEvent.press(screen.getByText("Files"));
+      expect(await screen.findByLabelText("Add a file")).toBeOnTheScreen();
+    });
   });
 
   it("picking an active status moves it straight away", async () => {
@@ -213,7 +352,6 @@ describe("an open complaint", () => {
     await fireEvent.press(screen.getByText("On leave"));
     await fireEvent.changeText(screen.getByPlaceholderText("Anything the next person should know"), "covering");
     await fireEvent.press(screen.getAllByText("Transfer").at(-1)!);
-    // parity: CMP-01 — same-office assignee only; the cross-office auto-ToBranchId is a known bug, not pinned.
     await waitFor(() =>
       expect(transferTicket).toHaveBeenCalledWith(
         { TicketId: 7, ToUserId: 9, ToBranchId: null, ReasonId: 30, Remarks: "covering" },
@@ -379,6 +517,12 @@ describe("a terminal complaint", () => {
     expect(screen.queryByText("Flag a senior — it stays with the assignee")).toBeNull();
     expect(fetchEscalationTargets).not.toHaveBeenCalled();
 
+    // CMP-11: the web's words — what a reopen does, and who may.
+    expect(
+      screen.getAllByText("The due date restarts from now. Only a manager may do this.").length,
+    ).toBeGreaterThan(0);
+    // No Resolve shortcut on a terminal complaint.
+    expect(screen.queryByText("Resolve")).toBeNull();
     await fireEvent.press(screen.getByText("Open"));
     expect(await screen.findByText("Reopen as Open")).toBeOnTheScreen();
     await fireEvent.changeText(screen.getByPlaceholderText("Why — this goes on the history"), "back again");

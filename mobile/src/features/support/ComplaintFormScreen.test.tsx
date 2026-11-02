@@ -6,7 +6,7 @@ import { fetchProducts } from "../../api/productQueries";
 import { fetchTicketDetail, saveTicket } from "../../api/ticketQueries";
 import { fetchAssignableUsers } from "../../api/userQueries";
 import type { Lookup } from "../../types/api";
-import { customer, envelope, ticket } from "../../test/fixtures";
+import { customer, envelope, serverError, ticket } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import ComplaintFormScreen from "./ComplaintFormScreen";
 
@@ -46,7 +46,6 @@ const fillValidComplaint = async () => {
   await fireEvent.changeText(screen.getByPlaceholderText("One line — what is wrong"), "Trips at night");
   await fireEvent.press(screen.getByText("Wiring"));
   await fireEvent.press(screen.getByText("Urgent"));
-  // parity: CMP-06 — category, priority and description are demanded here; web needs only customer + subject.
   await fireEvent.changeText(screen.getByPlaceholderText("The complaint in the customer's words"), "Every evening");
 };
 
@@ -71,11 +70,33 @@ it("will not save without a customer", async () => {
   expect(saveTicket).not.toHaveBeenCalled();
 });
 
-it("shows each priority's TAT where it is chosen", async () => {
+it("shows each priority's TAT in working hours where it is chosen", async () => {
   await mount();
-  expect(await screen.findByText("Due in 4h")).toBeOnTheScreen();
-  expect(screen.getByText("Due in 3 days")).toBeOnTheScreen();
+  // CMP-07: TatHours are working hours on the assignee's shift since P4.
+  expect(await screen.findByText("Due in 4 working hours")).toBeOnTheScreen();
+  expect(screen.getByText("Due in 72 working hours")).toBeOnTheScreen();
   expect(screen.getByText("No due time")).toBeOnTheScreen();
+  expect(screen.getByText("The priority sets the due date")).toBeOnTheScreen();
+  await fireEvent.press(screen.getByText("Urgent"));
+  expect(screen.getByText("Due 4 working hours from when it is logged")).toBeOnTheScreen();
+  await fireEvent.press(screen.getByText("Someday"));
+  expect(screen.getByText("This priority has no due date")).toBeOnTheScreen();
+});
+
+it("only the customer and the subject are required", async () => {
+  // CMP-06: web and sp_SaveTicket need nothing more.
+  const navigation = makeNavigation<"ComplaintForm">();
+  await mount(undefined, navigation);
+  await screen.findByText("Wiring");
+  await fireEvent.changeText(screen.getByPlaceholderText("Search customer (mobile or name)"), "Sharma");
+  await fireEvent.press(await screen.findByText("Sharma Traders"));
+  await fireEvent.changeText(screen.getByPlaceholderText("One line — what is wrong"), "Trips at night");
+  await fireEvent.press(screen.getByText("Log complaint"));
+  await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+  expect(saveTicket).toHaveBeenCalledWith(
+    expect.objectContaining({ CategoryId: null, Priority: null, Description: null }),
+    expect.anything(),
+  );
 });
 
 it("a valid create posts Id 0 with the picked ids, prefills 'reported by', and goes back", async () => {
@@ -148,7 +169,6 @@ it("an unknown search offers to add the customer, carrying the typed number over
   expect(await screen.findByText("Nobody matches “9825099999”. Add them as a new customer.")).toBeOnTheScreen();
   await fireEvent.press(screen.getByText("New customer"));
 
-  // parity: CUST-01 — a plain ten-digit number, so the slice/maxLength bug is neither hit nor pinned.
   expect(screen.getByPlaceholderText("10-digit number").props.value).toBe("9825099999");
   await fireEvent.press(screen.getByText("Log complaint"));
   expect(await screen.findByText("The new customer needs a name.")).toBeOnTheScreen();
@@ -162,7 +182,7 @@ it("an unknown search offers to add the customer, carrying the typed number over
 
   await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
   expect(saveCustomer).toHaveBeenCalledWith(
-    { Name: "Patel Stores", ContactPerson: null, Mobile: "9825099999", Email: null },
+    { Name: "Patel Stores", ContactPerson: null, Mobile: "9825099999", Email: null, Address: null, City: null },
     expect.anything(),
   );
   expect(saveTicket).toHaveBeenCalledWith(
@@ -202,7 +222,7 @@ it("a new customer answered success:false says why", async () => {
   await screen.findByText("Wiring");
   await fireEvent.press(screen.getByText("New customer"));
   await fireEvent.changeText(screen.getByPlaceholderText("Shop, company or person"), "Patel");
-  await fireEvent.changeText(screen.getByPlaceholderText("name@company.com"), "p@");
+  await fireEvent.changeText(screen.getByPlaceholderText("name@company.com"), "p@x.in");
   await fireEvent.changeText(screen.getByPlaceholderText("One line — what is wrong"), "No power");
   await fireEvent.press(screen.getByText("Wiring"));
   await fireEvent.press(screen.getByText("Urgent"));
@@ -224,12 +244,69 @@ it("Search instead and Change go back to the search", async () => {
   expect(screen.getByPlaceholderText("Search customer (mobile or name)")).toBeOnTheScreen();
 });
 
+it("a pasted +91 mobile is saved as its ten digits, not cut at the country code", async () => {
+  // CUST-01: the old slice(0, 10) + maxLength turned this into 9198250999.
+  const navigation = makeNavigation<"ComplaintForm">();
+  await mount(undefined, navigation);
+  await screen.findByText("Wiring");
+  await fireEvent.press(screen.getByText("New customer"));
+  await fireEvent.changeText(screen.getByPlaceholderText("Shop, company or person"), "Patel Stores");
+  const mobile = screen.getByPlaceholderText("10-digit number");
+  expect(mobile.props.maxLength).toBeUndefined();
+  await fireEvent.changeText(mobile, "+91 98250 99999");
+  await fireEvent.changeText(screen.getByPlaceholderText("Area, street"), " Ring Road ");
+  await fireEvent.changeText(screen.getByPlaceholderText("Town or city"), "Surat");
+  await fireEvent.changeText(screen.getByPlaceholderText("One line — what is wrong"), "No power");
+  await fireEvent.press(screen.getByText("Log complaint"));
+  await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+  expect(saveCustomer).toHaveBeenCalledWith(
+    { Name: "Patel Stores", ContactPerson: null, Mobile: "9825099999", Email: null, Address: "Ring Road", City: "Surat" },
+    expect.anything(),
+  );
+});
+
+it("a searched +91 number carries over as ten digits", async () => {
+  jest.mocked(fetchCustomers).mockResolvedValue([]);
+  await mount();
+  await screen.findByText("Wiring");
+  await fireEvent.changeText(screen.getByPlaceholderText("Search customer (mobile or name)"), "+91 98250 99999");
+  await fireEvent.press(screen.getByText("New customer"));
+  expect(screen.getByPlaceholderText("10-digit number").props.value).toBe("9825099999");
+});
+
+it("a mobile the server refuses shows its message", async () => {
+  jest.mocked(saveCustomer).mockRejectedValue(serverError(400, "Mobile must be 10 digits"));
+  await mount();
+  await screen.findByText("Wiring");
+  await fireEvent.press(screen.getByText("New customer"));
+  await fireEvent.changeText(screen.getByPlaceholderText("Shop, company or person"), "Patel");
+  await fireEvent.changeText(screen.getByPlaceholderText("10-digit number"), "98250");
+  await fireEvent.changeText(screen.getByPlaceholderText("One line — what is wrong"), "No power");
+  await fireEvent.press(screen.getByText("Log complaint"));
+  expect(await screen.findByText("Mobile must be 10 digits")).toBeOnTheScreen();
+  expect(saveTicket).not.toHaveBeenCalled();
+});
+
+it("a malformed email is caught before anything is sent", async () => {
+  // CUST-03: web checks the format; the phone used to post "p@" as-is.
+  await mount();
+  await screen.findByText("Wiring");
+  await fireEvent.press(screen.getByText("New customer"));
+  await fireEvent.changeText(screen.getByPlaceholderText("Shop, company or person"), "Patel");
+  await fireEvent.changeText(screen.getByPlaceholderText("name@company.com"), "p@");
+  await fireEvent.changeText(screen.getByPlaceholderText("One line — what is wrong"), "No power");
+  await fireEvent.press(screen.getByText("Log complaint"));
+  expect(await screen.findByText("That email does not look right.")).toBeOnTheScreen();
+  expect(saveCustomer).not.toHaveBeenCalled();
+});
+
 describe("editing", () => {
   it("opens on the complaint's own customer and saves its Id, with no assignee picker", async () => {
     jest.mocked(fetchTicketDetail).mockResolvedValue({
       ticket: ticket({
         CategoryId: 10,
         Priority: 20,
+        DueAt: "2026-11-03T15:30:00",
         Description: "Old text",
         ContactPerson: "Mr Sharma",
         Contact: "9825012345",
@@ -247,6 +324,13 @@ describe("editing", () => {
     expect(screen.getByText("Edit complaint")).toBeOnTheScreen();
     expect(screen.getByText("9825012345 · s@x.in")).toBeOnTheScreen();
     expect(screen.queryByText("Assign to")).toBeNull();
+    // CMP-07: on edit the due date is the stored one, and a new priority
+    // re-stamps it from when the complaint was raised — not from now.
+    expect(screen.getByText("Due 03-11-2026 15:30")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByText("Low"));
+    expect(
+      screen.getByText("Due date re-stamped to 72 working hours from when it was raised"),
+    ).toBeOnTheScreen();
 
     await fireEvent.press(screen.getByText("Save changes"));
     await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());

@@ -115,13 +115,22 @@ export function dueLabel(
   };
 }
 
-/** "4h" / "3 days" for a priority's TatHours — the form's hint. Null = no clock. */
+/**
+ * "4 working hours" for a priority's TatHours — the form's hint. Null = no
+ * clock. Never "3 days": since P4 they are hours on the assignee's shift, so
+ * 72 of them is far more than three calendar days.
+ */
 export const tatLabel = (hours: number | null | undefined): string | null =>
-  hours == null
-    ? null
-    : hours < 48
-      ? `${hours}h`
-      : `${Math.round(hours / 24)} days`;
+  hours == null ? null : `${hours} working hour${hours === 1 ? "" : "s"}`;
+
+/** "03-11-2026 15:30" (DD-MM-YYYY HH:mm, the web's format), or null. */
+export function dateTime(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getDate())}-${p(d.getMonth() + 1)}-${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
 
 // ------------------------------------------------------------ custom fields
 

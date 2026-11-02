@@ -3,6 +3,7 @@ import {
   asOptions,
   asStatusCode,
   blankDraft,
+  dateTime,
   draftFromValues,
   dueLabel,
   isActive,
@@ -72,10 +73,15 @@ describe("dueLabel", () => {
     expect(due(10 * 60_000)).toBe("Due in 10m");
     expect(due(72 * HOUR)).toBe("Due in 3d");
   });
-  it("labels a priority's TAT hours", () => {
+  it("labels a priority's TAT as working hours, never calendar days", () => {
     expect(tatLabel(null)).toBeNull();
-    expect(tatLabel(4)).toBe("4h");
-    expect(tatLabel(72)).toBe("3 days");
+    expect(tatLabel(1)).toBe("1 working hour");
+    expect(tatLabel(72)).toBe("72 working hours");
+  });
+  it("prints a timestamp DD-MM-YYYY HH:mm, or null", () => {
+    expect(dateTime("2026-01-05T09:07:00")).toBe("05-01-2026 09:07");
+    expect(dateTime(null)).toBeNull();
+    expect(dateTime("garbage")).toBeNull();
   });
   it("is null for a terminal ticket, no DueAt, or a bad date", () => {
     expect(dueLabel({ DueAt: at(HOUR), IsOverdue: false, StatusCode: "closed" }, now)).toBeNull();

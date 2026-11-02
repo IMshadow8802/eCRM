@@ -150,7 +150,8 @@ export interface SaveTicketPayload {
   /** Create only — the SP ignores it on update. Reassigning is transferTicket. */
   AssignedTo?: number | null;
   LinkedLeadId?: number | null;
-  Description: string;
+  /** Optional, like the web's (only CustomerId + Subject are required). */
+  Description: string | null;
   /** `[{fieldId, type, value}]`, serialised. Null when the company has none. */
   CustomJSON?: string | null;
 }

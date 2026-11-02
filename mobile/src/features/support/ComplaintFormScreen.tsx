@@ -20,11 +20,13 @@ import type {
   TicketDetail,
 } from "../../types/api";
 import { colors, spacing, SCREEN_PADDING } from "../../theme";
+import { normalizeMobile } from "../../utils/mobile";
 import {
   Button,
   Card,
   DynamicField,
   Input,
+  MobileInput,
   Screen,
   ScreenHeader,
   ScreenLoader,
@@ -34,6 +36,7 @@ import {
 import {
   asOptions,
   blankDraft,
+  dateTime,
   draftFromValues,
   missingRequired,
   serialiseCustomFields,
@@ -57,6 +60,9 @@ type PickedCustomer = Pick<
 
 /** A mobile number as typed: digits, a leading +, and the separators people use. */
 const LOOKS_LIKE_A_NUMBER = /^[0-9+\s-]+$/;
+
+/** The web's check (CustomerFormModal): something@something.tld, no spaces. */
+const LOOKS_LIKE_AN_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
  * Log or edit a complaint.
@@ -143,6 +149,8 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
     ContactPerson: "",
     Mobile: "",
     Email: "",
+    Address: "",
+    City: "",
   });
 
   // --- the complaint ------------------------------------------------------
@@ -219,6 +227,21 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
     [priorities],
   );
 
+  // What the pick does to DueAt (web: TicketCreateModal). The phone cannot
+  // know the assignee's shift, so on create it says "working hours" rather
+  // than inventing a wall-clock time; on edit sp_SaveTicket re-anchors a new
+  // priority from when the complaint was raised, not from now.
+  const pickedTat = tatLabel(priorities.find((p) => p.Id === priority)?.TatHours);
+  const dueHint = !priority
+    ? "The priority sets the due date"
+    : !pickedTat
+      ? "This priority has no due date"
+      : !editing
+        ? `Due ${pickedTat} from when it is logged`
+        : priority === ticket?.Priority
+          ? `Due ${dateTime(ticket?.DueAt) ?? "—"}`
+          : `Due date re-stamped to ${pickedTat} from when it was raised`;
+
   const productOptions = useMemo(
     () =>
       (products ?? []).map((p) => ({
@@ -267,10 +290,11 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
   const startNewCustomer = () => {
     const typed = search.trim();
     const isNumber = LOOKS_LIKE_A_NUMBER.test(typed);
+    const digits = typed.replace(/\D/g, "");
     setNewCustomer((prev) => ({
       ...prev,
       Name: prev.Name || (isNumber ? "" : typed),
-      Mobile: prev.Mobile || (isNumber ? typed : ""),
+      Mobile: prev.Mobile || (isNumber ? (normalizeMobile(digits) ?? digits) : ""),
     }));
     setCreatingCustomer(true);
   };
@@ -311,6 +335,8 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
       ContactPerson: newCustomer.ContactPerson.trim() || null,
       Mobile: newCustomer.Mobile.trim() || null,
       Email: newCustomer.Email.trim() || null,
+      Address: newCustomer.Address.trim() || null,
+      City: newCustomer.City.trim() || null,
     };
     try {
       const response = await createCustomer.mutateAsync(fields);
@@ -341,11 +367,16 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
       if (!newCustomer.Mobile.trim() && !newCustomer.Email.trim()) {
         return setError("A mobile number or an email is required for a new customer.");
       }
+      const email = newCustomer.Email.trim();
+      if (email && !LOOKS_LIKE_AN_EMAIL.test(email)) {
+        return setError("That email does not look right.");
+      }
+      // The mobile is not checked here: sp_SaveCustomer's 400 says it, word
+      // for word as the web does, and MobileInput already cleaned what it can.
     }
+    // Customer + subject are all the SP needs (web: TicketCreateModal). An old
+    // complaint without a category must stay editable without inventing one.
     if (!subjectText) return setError("What is the complaint about?");
-    if (!category) return setError("Pick a category.");
-    if (!priority) return setError("Pick a priority.");
-    if (!descriptionText) return setError("Describe the complaint.");
 
     const missing = missingRequired(fieldDefs, values);
     if (missing.length) return setError(`${missing[0]!.Label} is required.`);
@@ -369,7 +400,7 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
       Priority: priority,
       ProductId: product,
       AssignedTo: assignee,
-      Description: descriptionText,
+      Description: descriptionText || null,
       CustomJSON: serialiseCustomFields(fieldDefs, values),
       // LinkedLeadId stays out. The SP updates it as
       // ISNULL(@LinkedLeadId, LinkedLeadId) precisely so a client that cannot
@@ -439,13 +470,10 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
                 onChangeText={(v) => setNewField("ContactPerson", v)}
                 placeholder="Who to ask for"
               />
-              <Input
+              <MobileInput
                 label="Mobile"
                 value={newCustomer.Mobile}
-                onChangeText={(v) => setNewField("Mobile", v.replace(/\D/g, "").slice(0, 10))}
-                placeholder="10-digit number"
-                keyboardType="number-pad"
-                maxLength={10}
+                onChangeText={(v) => setNewField("Mobile", v)}
                 hint="A mobile number or an email is required."
               />
               <Input
@@ -456,6 +484,18 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
                 autoCapitalize="none"
                 autoCorrect={false}
                 keyboardType="email-address"
+              />
+              <Input
+                label="Address"
+                value={newCustomer.Address}
+                onChangeText={(v) => setNewField("Address", v)}
+                placeholder="Area, street"
+              />
+              <Input
+                label="City"
+                value={newCustomer.City}
+                onChangeText={(v) => setNewField("City", v)}
+                placeholder="Town or city"
               />
               <Button
                 title="Search instead"
@@ -530,21 +570,26 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
 
           <Select
             label="Category"
-            required
             value={category}
             options={asOptions(categories)}
             onChange={(v) => setCategory(v as number)}
+            placeholder="Not set"
             sheetTitle="What kind of complaint?"
           />
 
-          <Select
-            label="Priority"
-            required
-            value={priority}
-            options={priorityOptions}
-            onChange={(v) => setPriority(v as number)}
-            sheetTitle="How urgent is it?"
-          />
+          <View style={styles.hinted}>
+            <Select
+              label="Priority"
+              value={priority}
+              options={priorityOptions}
+              onChange={(v) => setPriority(v as number)}
+              placeholder="Not set"
+              sheetTitle="How urgent is it?"
+            />
+            <Text variant="caption" color="textMuted">
+              {dueHint}
+            </Text>
+          </View>
 
           {/* Optional: the channel list is company data now and can be empty,
               and @ChannelId is nullable. Same for Product. */}
@@ -599,7 +644,6 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
 
           <Input
             label="What happened"
-            required
             value={description}
             onChangeText={setDescription}
             placeholder="The complaint in the customer's words"
@@ -659,6 +703,7 @@ const styles = StyleSheet.create({
     gap: spacing[6],
   },
   block: { gap: spacing[4] },
+  hinted: { gap: spacing[1] },
   pickedRow: { flexDirection: "row", alignItems: "center", gap: spacing[3] },
   pickedText: { flex: 1, gap: spacing[1] },
   // A ghost button in a column stretches to the full width by default, which
