@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Keyboard, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { ChevronDown, type LucideIcon } from "lucide-react-native";
 
 import { colors, type BadgeTone, type ChipTone } from "../theme";
@@ -57,6 +57,9 @@ export function Select<T extends string | number>({
 
   const open = () => {
     if (disabled) return;
+    // A sheet's autofocused remarks keep the keyboard up; the picker would open
+    // under it, and the first tap on a choice only closed the keyboard.
+    Keyboard.dismiss();
     setDraft(selected);
     sheetRef.current?.present();
   };
@@ -102,7 +105,7 @@ export function Select<T extends string | number>({
       <FieldHelp error={error} />
 
       <Sheet ref={sheetRef} title={sheetTitle ?? label ?? "Select"} padded>
-        <ScrollView style={styles.list} bounces={false}>
+        <ScrollView testID="select-list" style={styles.list} bounces={false} keyboardShouldPersistTaps="handled">
           <ChoiceList
             value={multiple ? draft : value}
             multiple={multiple}

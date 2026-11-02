@@ -86,3 +86,14 @@ it("inside a Sheet, its picker stacks on top (push) instead of replacing — and
   expect(behaviours).toEqual([undefined]);
   present.mockReset();
 });
+
+it("opening closes the keyboard, and a choice counts on the first tap even if one is up", async () => {
+  // Device bug 2026-11-03: Resolve autofocuses its remarks; the first tap in the
+  // Resolution picker only dismissed the keyboard.
+  const { Keyboard } = jest.requireActual<typeof import("react-native")>("react-native");
+  const hide = jest.spyOn(Keyboard, "dismiss");
+  await renderWithProviders(<Select label="Status" value={null} options={OPTIONS} onChange={jest.fn()} />);
+  await fireEvent.press(screen.getByText("Select…"));
+  expect(hide).toHaveBeenCalledTimes(1);
+  expect(screen.getByTestId("select-list").props.keyboardShouldPersistTaps).toBe("handled");
+});
