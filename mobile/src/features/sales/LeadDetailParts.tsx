@@ -209,7 +209,7 @@ function Fact({
   );
 }
 
-export const styles = StyleSheet.create({
+const styles = StyleSheet.create({
   list: {
     paddingHorizontal: SCREEN_PADDING,
     paddingBottom: spacing[20],

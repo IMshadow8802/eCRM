@@ -54,7 +54,7 @@ import AttachmentList from "../attachments/AttachmentList";
 import { useAccess } from "../auth/useAccess";
 import { lookupMap } from "../support/ticketHelpers";
 import { relativeTime } from "../tasks/taskHelpers";
-import { FollowUpsTab, LeadDetailsTab, styles as parts } from "./LeadDetailParts";
+import { FollowUpsTab, LeadDetailsTab } from "./LeadDetailParts";
 import {
   dayLabel,
   dueFromChoice,
@@ -79,6 +79,12 @@ const DIRECTIONS = [
 ];
 const WHEN_OPTIONS = WHEN_CHOICES.map((w) => ({ value: w.value, label: w.label }));
 const NO_LOST_REASONS = "No lost reasons are set up. Add them on the web first.";
+const NO_TRANSFER_REASONS = "No transfer reasons are set up. Add them on the web first.";
+/** Whole minutes: completeFollowUp's positiveInt drops a fraction, so both sheets round. */
+const wholeMinutes = (text: string | undefined): number | null => {
+  const minutes = Math.round(Number(text));
+  return minutes > 0 ? minutes : null;
+};
 
 /** Timeline node per tblLeadActivity.Type; unmapped types still get a node. */
 const ACTIVITY_NODE: Record<string, { Icon: LucideIcon; tone: keyof typeof colors }> = {
@@ -148,7 +154,8 @@ export default function LeadDetailScreen({ route, navigation }: Props) {
   });
   const lead = detailQuery.data?.lead;
 
-  const { statuses, lostReasons, transferReasons, callOutcomes, users } = useLeadRefData();
+  const { statuses, lostReasons, transferReasons, callOutcomes, users, lostReasonsLoaded, transferReasonsLoaded } =
+    useLeadRefData();
   // tblCall rows carry only a UserId; the directory turns it into a name.
   const { data: directory } = useQuery({
     queryKey: ["users", "directory"],
@@ -356,15 +363,19 @@ export default function LeadDetailScreen({ route, navigation }: Props) {
           <Chip label={lead.OwnerName ?? "Unassigned"} icon={User} maxWidth={200} />
         </View>
 
-        <View style={parts.buttons}>
+        <View style={styles.buttons}>
           {lead.MobileNo ? (
             <Button
               title="Call"
               icon={Phone}
               variant="secondary"
               size="sm"
-              onPress={() => void Linking.openURL(`tel:${lead.MobileNo}`)}
-              style={parts.grow}
+              onPress={() =>
+                Linking.openURL(`tel:${lead.MobileNo}`).catch(() =>
+                  toast.error("Can't open the dialer on this device"),
+                )
+              }
+              style={styles.grow}
             />
           ) : null}
           {can.edit ? (
@@ -374,7 +385,7 @@ export default function LeadDetailScreen({ route, navigation }: Props) {
                 icon={CircleCheck}
                 size="sm"
                 onPress={() => startComplete(pendingFollowUp)}
-                style={parts.grow}
+                style={styles.grow}
               />
             ) : (
               <Button
@@ -382,7 +393,7 @@ export default function LeadDetailScreen({ route, navigation }: Props) {
                 icon={CalendarPlus}
                 size="sm"
                 onPress={() => openSheet(scheduleRef)}
-                style={parts.grow}
+                style={styles.grow}
               />
             )
           ) : null}
@@ -413,7 +424,7 @@ export default function LeadDetailScreen({ route, navigation }: Props) {
       {tab === "files" ? <AttachmentList entity="lead" entityId={leadId} canManage={can.edit} /> : null}
 
       {tab === "history" ? (
-        <ScrollView contentContainerStyle={parts.list} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
           {timeline.length ? (
             <Timeline entries={timeline} />
           ) : (
@@ -438,7 +449,7 @@ export default function LeadDetailScreen({ route, navigation }: Props) {
             title={`Mark as ${lostStatus?.Value ?? "lost"}`}
             submitLabel="Mark lost"
             busy={lost.isPending}
-            error={failed("lost") ?? (lostReasons.length ? null : NO_LOST_REASONS)}
+            error={failed("lost") ?? (lostReasonsLoaded && !lostReasons.length ? NO_LOST_REASONS : null)}
             choices={[
               {
                 key: "reason",
@@ -519,13 +530,12 @@ export default function LeadDetailScreen({ route, navigation }: Props) {
             ]}
             onSubmit={(values, picked) => {
               if (!followUp) return;
-              const minutes = Number(values.minutes);
               complete.mutate({
                 Id: followUp.Id,
                 Remarks: values.remarks ?? "",
                 OutcomeId: (picked.outcome as number | undefined) ?? null,
                 Direction: isCall ? ((picked.direction as CallDirection | undefined) ?? "out") : null,
-                Duration: isCall && minutes > 0 ? minutes : null,
+                Duration: isCall ? wholeMinutes(values.minutes) : null,
                 // ponytail: the next step is always a call, as the web's default; no type picker.
                 NextType: picked.next ? "call" : null,
                 NextDueAt: picked.next ? dueFromChoice(picked.next as WhenChoice) : null,
@@ -565,13 +575,12 @@ export default function LeadDetailScreen({ route, navigation }: Props) {
               { key: "minutes", label: "Minutes", placeholder: "0", numeric: true },
             ]}
             onSubmit={(values, picked) => {
-              const minutes = Number(values.minutes);
               call.mutate({
                 LeadId: leadId,
                 Direction: picked.direction as CallDirection,
                 OutcomeId: (picked.outcome as number | undefined) ?? null,
                 Notes: values.notes || null,
-                Duration: minutes > 0 ? minutes : null,
+                Duration: wholeMinutes(values.minutes),
               });
             }}
           />
@@ -587,7 +596,7 @@ export default function LeadDetailScreen({ route, navigation }: Props) {
             title={transferTo ? `Transfer to ${transferTo.FullName}` : "Transfer"}
             submitLabel="Transfer"
             busy={transfer.isPending}
-            error={failed("transfer")}
+            error={failed("transfer") ?? (transferReasonsLoaded && !transferReasons.length ? NO_TRANSFER_REASONS : null)}
             choices={[
               {
                 key: "reason",
@@ -640,4 +649,7 @@ const styles = StyleSheet.create({
     gap: spacing[3],
   },
   chips: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: spacing[2] },
+  buttons: { flexDirection: "row", gap: spacing[2] },
+  grow: { flex: 1 },
+  list: { paddingHorizontal: SCREEN_PADDING, paddingBottom: spacing[20], gap: spacing[4] },
 });

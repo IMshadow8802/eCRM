@@ -20,6 +20,9 @@ export interface LeadRefData {
   /** Who the caller may assign a lead to — server-scoped by the leads reach. */
   users: AssignableUser[];
   products: Product[];
+  /** True once the lookup has arrived — an empty list before then means "loading", not "none configured". */
+  lostReasonsLoaded: boolean;
+  transferReasonsLoaded: boolean;
 }
 
 const lookup = (kind: string) => ({
@@ -49,6 +52,8 @@ export function useLeadRefData(): LeadRefData {
       callOutcomes: r[4]?.data ?? [],
       users: r[5]?.data ?? [],
       products: r[6]?.data ?? [],
+      lostReasonsLoaded: !!r[2]?.isSuccess,
+      transferReasonsLoaded: !!r[3]?.isSuccess,
     }),
   });
 }

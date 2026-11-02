@@ -41,6 +41,8 @@ it("returns each list under its name, users scoped to the leads module", async (
       callOutcomes: row("call_outcome"),
       users,
       products,
+      lostReasonsLoaded: true,
+      transferReasonsLoaded: true,
     }),
   );
   expect(fetchAssignableUsers).toHaveBeenCalledWith({ Module: "leads" });
@@ -61,5 +63,8 @@ it("is empty lists while loading, never undefined", async () => {
     callOutcomes: [],
     users: [],
     products: [],
+    // An empty list while loading is not "none configured".
+    lostReasonsLoaded: false,
+    transferReasonsLoaded: false,
   });
 });

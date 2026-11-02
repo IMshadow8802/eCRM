@@ -9,7 +9,7 @@ import { convertLead, fetchLeadDetail, setLeadStatus, transferLead } from "../..
 import { fetchProducts } from "../../api/productQueries";
 import { fetchAssignableUsers, fetchUserDirectory } from "../../api/userQueries";
 import type { AssignableUser, FollowUp, Lead, LeadDetail, Lookup } from "../../types/api";
-import { envelope, localDay, serverError } from "../../test/fixtures";
+import { envelope, followUp as fixtureFollowUp, lead as fixtureLead, localDay, serverError } from "../../test/fixtures";
 import { spySheets } from "../../test/sheets";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import LeadDetailScreen from "./LeadDetailScreen";
@@ -47,23 +47,25 @@ const user = (Id: number, FullName: string, JobTitle: string, BranchId = 1): Ass
 const ravi = user(5, "Ravi Mehta", "Manager");
 const priya = user(9, "Priya Shah", "Sales");
 
-const lead = (patch: Partial<Lead> = {}): Lead => ({
-  Id: 11, BranchId: 1, BranchName: "Head Office", Name: "Anil Kumar", Company: "Sharma Traders",
-  MobileNo: "9825012345", AltMobile: null, Email: "anil@sharma.in", Address: null, City: null, State: null,
-  Pincode: null, SourceId: 1, SourceName: "Walk-in", PartnerId: null, PartnerName: null, ProductId: 1,
-  ProductName: "Solar 5kW", StatusId: 1, StatusName: "Open", StatusCode: "open", OwnerId: 5,
-  OwnerName: "Ravi Mehta", OwnerAvatar: null, EstValue: 250000, Remarks: null, NextFollowupDate: null,
-  IsOverdue: false, LostReasonId: null, WonAt: null, WonValue: null, CustomerId: null, LostAt: null,
-  AssignedAt: null, CreatedBy: 42, CreatedAt: "2026-11-01T10:00:00", UpdatedAt: null,
-  ...patch,
-});
+// Thin wrappers over the shared fixtures with this file's defaults spelled out:
+// Ravi (5) owns the lead, so the owner-exclusion and transfer tests mean what
+// they say; the follow-up is due far ahead, so it is never overdue by accident.
+const lead = (patch: Partial<Lead> = {}): Lead =>
+  fixtureLead({
+    Id: 11, BranchId: 1, BranchName: "Head Office", Name: "Anil Kumar", Company: "Sharma Traders",
+    MobileNo: "9825012345", AltMobile: null, Email: "anil@sharma.in", SourceId: 1, SourceName: "Walk-in",
+    PartnerName: null, ProductId: 1, ProductName: "Solar 5kW", StatusId: 1, StatusName: "Open",
+    StatusCode: "open", OwnerId: 5, OwnerName: "Ravi Mehta", EstValue: 250000, Remarks: null,
+    NextFollowupDate: null, IsOverdue: false, WonAt: null, WonValue: null, CreatedAt: "2026-11-01T10:00:00",
+    ...patch,
+  });
 
-const followUp = (patch: Partial<FollowUp> = {}): FollowUp => ({
-  Id: 70, LeadId: 11, Type: "call", DueAt: "2099-01-01T10:00:00", Status: "open", AssignedTo: 5,
-  AssignedToName: "Ravi Mehta", DoneAt: null, DoneBy: null, DoneByName: null, OutcomeId: null, Outcome: null,
-  Remarks: null, Direction: null, Duration: null, IsOverdue: false, CreatedBy: 42, CreatedAt: "2026-11-01T10:00:00",
-  ...patch,
-});
+const followUp = (patch: Partial<FollowUp> = {}): FollowUp =>
+  fixtureFollowUp({
+    Id: 70, LeadId: 11, Type: "call", DueAt: "2099-01-01T10:00:00", Status: "open", AssignedTo: 5,
+    AssignedToName: "Ravi Mehta", DoneAt: null, DoneByName: null, Outcome: null, Remarks: null, IsOverdue: false,
+    ...patch,
+  });
 
 const detail = (row: Lead | null = lead(), extra: Partial<LeadDetail> = {}): LeadDetail => ({
   lead: row, fields: [], activity: [], followups: [], assignments: [], ...extra,
@@ -247,6 +249,15 @@ describe("details", () => {
     openURL.mockRestore();
   });
 
+  it("a phone with no dialer says so instead of failing silently", async () => {
+    const openURL = jest.spyOn(Linking, "openURL").mockRejectedValue(new Error("no handler"));
+    await mount();
+    await loaded();
+    await fireEvent.press(screen.getByRole("button", { name: "Call" }));
+    expect(await screen.findByLabelText("Can't open the dialer on this device")).toBeOnTheScreen();
+    openURL.mockRestore();
+  });
+
   it("no mobile, no Call button", async () => {
     jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead({ MobileNo: null })));
     await mount();
@@ -306,6 +317,16 @@ describe("status", () => {
     // In the sheet, not a toast.
     expect(screen.queryByLabelText("Lost reason is required")).toBeNull();
     expect(dismiss).not.toHaveBeenCalled();
+  });
+
+  it("says nothing about lost reasons while they are still loading", async () => {
+    jest.mocked(fetchLookups).mockImplementation(async ({ Kind }) =>
+      Kind === LOOKUP_KIND.lostReason ? new Promise<Lookup[]>(() => {}) : (LOOKUPS[Kind] ?? []),
+    );
+    await mount();
+    await screen.findByText("Qualified");
+    await screen.findByText("On leave");
+    expect(screen.queryByText("No lost reasons are set up. Add them on the web first.")).toBeNull();
   });
 
   it("with no lost reasons configured the sheet says so", async () => {
@@ -420,6 +441,19 @@ describe("follow-ups", () => {
     expect(await screen.findByText(/^No follow-ups yet/)).toBeOnTheScreen();
   });
 
+  it("a call follow-up's fractional minutes are rounded, not dropped by the server", async () => {
+    jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead(), { followups: [followUp()] }));
+    await mount();
+    await loaded();
+    await fireEvent.press(screen.getByRole("button", { name: "Log follow-up" }));
+    await fireEvent.changeText(screen.getByPlaceholderText("What was discussed — the next person reads this"), "ok");
+    await fireEvent.changeText(screen.getByPlaceholderText("Call minutes"), "4.5");
+    await fireEvent.press(screen.getByText("Mark done"));
+    await waitFor(() =>
+      expect(completeFollowUp).toHaveBeenCalledWith(expect.objectContaining({ Duration: 5 }), expect.anything()),
+    );
+  });
+
   it("logging a call needs remarks, defaults Direction to out and books the next one", async () => {
     jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead(), { followups: [followUp()] }));
     const { dismiss } = spySheets();
@@ -499,6 +533,17 @@ describe("follow-ups", () => {
 });
 
 describe("calls", () => {
+  it("rounds fractional minutes to whole ones", async () => {
+    await mount();
+    await loaded();
+    await fireEvent.press(screen.getAllByRole("radio", { name: "Outgoing" }).at(-1)!);
+    await fireEvent.changeText(screen.getByPlaceholderText("0"), "2.6");
+    await fireEvent.press(screen.getByText("Log call"));
+    await waitFor(() =>
+      expect(logCall).toHaveBeenCalledWith(expect.objectContaining({ Duration: 3 }), expect.anything()),
+    );
+  });
+
   it("logs a call with direction, outcome, notes and minutes", async () => {
     await mount();
     await loaded();
@@ -538,6 +583,25 @@ describe("transfer", () => {
     await loaded();
     expect(screen.getByText("Sales · Head Office")).toBeOnTheScreen();
     expect(screen.queryByText("Manager · Head Office")).toBeNull();
+  });
+
+  it("with no transfer reasons configured the sheet says so, but not while loading", async () => {
+    jest.mocked(fetchLookups).mockImplementation(async ({ Kind }) =>
+      Kind === LOOKUP_KIND.transferReason ? [] : (LOOKUPS[Kind] ?? []),
+    );
+    await mount();
+    expect(
+      await screen.findByText("No transfer reasons are set up. Add them on the web first."),
+    ).toBeOnTheScreen();
+  });
+
+  it("says nothing about transfer reasons while they are still loading", async () => {
+    jest.mocked(fetchLookups).mockImplementation(async ({ Kind }) =>
+      Kind === LOOKUP_KIND.transferReason ? new Promise<Lookup[]>(() => {}) : (LOOKUPS[Kind] ?? []),
+    );
+    await mount();
+    await screen.findByText("Price too high");
+    expect(screen.queryByText("No transfer reasons are set up. Add them on the web first.")).toBeNull();
   });
 
   it("needs a reason and remarks, and never sends an office", async () => {
