@@ -1723,3 +1723,11 @@ Why: every Phase 2 task builds on these. Phase 2 tasks may **not** edit any file
 8. **G20 "Done today" on Follow-ups** uses the same server change (`118`), with a completed-date filter on follow-ups. It shows "—" until the script is applied.
 
 All other G-items use the mobile-only workarounds in §4.0. Their server fixes are collected later as a separate backend list, outside this redesign.
+
+9. **Home complaints: mine and team kept apart** (user, 2026-11-03).
+   - **The "My complaints" hero counts mine only.** All four figures are mine: Open (assigned to me, active), Overdue (mine and overdue), Escalated (mine, escalated), Resolved (mine, last 7 days).
+   - **Team figures sit in a separate "My team" card** directly under the hero. It shows only when the user can see a team, i.e. their complaints reach is wider than Own.
+     - Figures: Open · Overdue · Escalated, each opening the Team / Overdue / Escalated presets.
+     - Built from the same StatGrid/card pieces as the hero, as a lighter card (surface background, ink figures), so the hero stays the user's own work.
+   - The same split applies to the leads hero (Mine vs Team) when leads reach is wider than Own.
+   - **The bottom-bar Complaints badge** stays my own overdue count.
