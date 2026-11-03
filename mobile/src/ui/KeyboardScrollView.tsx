@@ -1,4 +1,4 @@
-import { createContext, forwardRef, useCallback, useContext, useEffect, useImperativeHandle, useRef } from "react";
+import { createContext, forwardRef, useCallback, useContext, useEffect, useImperativeHandle, useRef, type ComponentType } from "react";
 import { Keyboard, ScrollView, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent, type ScrollViewProps, type View } from "react-native";
 
 import { spacing } from "../theme";
@@ -17,8 +17,18 @@ const GAP = spacing[4];
  * The app-level KeyboardAvoidingView (App.tsx) has already shrunk this view to
  * end at the keyboard, so "in view" is simply "inside the viewport".
  */
-export const KeyboardScrollView = forwardRef<ScrollView, ScrollViewProps>(function KeyboardScrollView(
-  { children, onLayout, onScroll, scrollEventThrottle, ...rest },
+export interface KeyboardScrollViewProps extends ScrollViewProps {
+  /** The scroll component to render (a sheet passes gorhom's BottomSheetScrollView). */
+  as?: ComponentType<ScrollViewProps & { ref?: unknown }>;
+  /**
+   * A sheet: when the field and everything after it fit, show the foot too —
+   * the sheet's submit button is its last child.
+   */
+  revealToEnd?: boolean;
+}
+
+export const KeyboardScrollView = forwardRef<ScrollView, KeyboardScrollViewProps>(function KeyboardScrollView(
+  { children, onLayout, onScroll, onContentSizeChange, scrollEventThrottle, as: Scroll = ScrollView, revealToEnd = false, ...rest },
   ref,
 ) {
   const scroller = useRef<ScrollView>(null);
@@ -26,6 +36,7 @@ export const KeyboardScrollView = forwardRef<ScrollView, ScrollViewProps>(functi
   const focused = useRef<View | null>(null);
   const offset = useRef(0);
   const viewport = useRef(0);
+  const content = useRef(0);
 
   const reveal = useCallback(() => {
     const field = focused.current;
@@ -34,12 +45,16 @@ export const KeyboardScrollView = forwardRef<ScrollView, ScrollViewProps>(functi
     const inner = (scroll as unknown as { getInnerViewRef?: () => View | null } | null)?.getInnerViewRef?.();
     if (!field || !scroll || !inner || !Keyboard.isVisible()) return;
     field.measureLayout(inner, (_x, y, _w, h) => {
+      if (revealToEnd && content.current - y + GAP <= viewport.current) {
+        scroll.scrollToEnd({ animated: true });
+        return;
+      }
       const top = offset.current;
       const bottom = top + viewport.current;
       if (y + h + GAP > bottom) scroll.scrollTo({ y: Math.min(y - GAP, y + h + GAP - viewport.current), animated: true });
       else if (y < top) scroll.scrollTo({ y: Math.max(0, y - GAP), animated: true });
     });
-  }, []);
+  }, [revealToEnd]);
 
   useEffect(() => {
     const show = Keyboard.addListener("keyboardDidShow", reveal);
@@ -56,7 +71,7 @@ export const KeyboardScrollView = forwardRef<ScrollView, ScrollViewProps>(functi
 
   return (
     <KeyboardRevealContext.Provider value={report}>
-      <ScrollView
+      <Scroll
         ref={scroller}
         keyboardShouldPersistTaps="handled"
         scrollEventThrottle={scrollEventThrottle ?? 16}
@@ -70,10 +85,14 @@ export const KeyboardScrollView = forwardRef<ScrollView, ScrollViewProps>(functi
           offset.current = e.nativeEvent.contentOffset.y;
           onScroll?.(e);
         }}
+        onContentSizeChange={(w: number, h: number) => {
+          content.current = h;
+          onContentSizeChange?.(w, h);
+        }}
         {...rest}
       >
         {children}
-      </ScrollView>
+      </Scroll>
     </KeyboardRevealContext.Provider>
   );
 });

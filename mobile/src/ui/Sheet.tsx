@@ -1,9 +1,10 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, type ReactNode } from "react";
-import { BackHandler, Pressable, StyleSheet, View } from "react-native";
+import { BackHandler, Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   BottomSheetModal,
   BottomSheetBackdrop,
+  BottomSheetScrollView,
   BottomSheetView,
   type BottomSheetBackdropProps,
   type BottomSheetModal as BottomSheetModalType,
@@ -12,9 +13,14 @@ import {
 import { X } from "lucide-react-native";
 
 import { colors, metrics, radius, spacing } from "../theme";
+import { KeyboardScrollView } from "./KeyboardScrollView";
 import { InSheetContext, useInSheet } from "./sheetContext";
 import { StatusBadge, type StatusBadgeProps } from "./StatusBadge";
 import { Text } from "./Text";
+import { useKeyboardHeight } from "./useKeyboardOpen";
+
+/** The grabber row above the content: 8 + the grabber + 14 (styles.handleArea). */
+const HANDLE_AREA = spacing[2] + metrics.grabber.height + 14;
 
 export type SheetRef = BottomSheetModalType;
 
@@ -94,12 +100,36 @@ export const Sheet = forwardRef<SheetRef, SheetProps>(function Sheet(
   // content. gorhom's default "replace" closes the parent, which unmounts that
   // content — the picker with it, so both vanished. "push" stacks it on top.
   const nested = useInSheet();
+  // With the keyboard up a keyboard-aware sheet is capped to the room above
+  // it and its content scrolls: gorhom only lifts the sheet, so a tall one
+  // (Status with Won's fields, Transfer's list) kept its submit button under
+  // the keyboard. The focused field, and the foot when it fits, stay in view.
+  const keyboard = useKeyboardHeight();
+  const { height: windowHeight } = useWindowDimensions();
+  const room = keyboardAware && keyboard > 0 ? windowHeight - insets.top - keyboard - HANDLE_AREA : undefined;
+  const bodyStyle = [padded && styles.padded, { paddingBottom: insets.bottom + spacing[4] }];
+  const body = (
+    <>
+      {title ? (
+        <View style={padded ? styles.headerGap : styles.headerLegacy}>
+          <SheetHeader
+            title={title}
+            subtitle={subtitle}
+            badge={badge}
+            onClose={showClose ? () => inner.current?.dismiss() : undefined}
+          />
+        </View>
+      ) : null}
+      <InSheetContext.Provider value>{children}</InSheetContext.Provider>
+    </>
+  );
 
   return (
     <BottomSheetModal
       ref={inner}
       snapPoints={points}
       enableDynamicSizing={!points}
+      maxDynamicContentSize={room}
       backdropComponent={renderBackdrop}
       onDismiss={onDismiss}
       stackBehavior={nested ? "push" : undefined}
@@ -111,21 +141,19 @@ export const Sheet = forwardRef<SheetRef, SheetProps>(function Sheet(
       handleIndicatorStyle={styles.handle}
       backgroundStyle={styles.background}
     >
-      <BottomSheetView
-        style={[padded && styles.padded, { paddingBottom: insets.bottom + spacing[4] }]}
-      >
-        {title ? (
-          <View style={padded ? styles.headerGap : styles.headerLegacy}>
-            <SheetHeader
-              title={title}
-              subtitle={subtitle}
-              badge={badge}
-              onClose={showClose ? () => inner.current?.dismiss() : undefined}
-            />
-          </View>
-        ) : null}
-        <InSheetContext.Provider value>{children}</InSheetContext.Provider>
-      </BottomSheetView>
+      {keyboardAware ? (
+        <KeyboardScrollView
+          testID="sheet-scroll"
+          as={BottomSheetScrollView as never}
+          revealToEnd
+          bounces={false}
+          contentContainerStyle={bodyStyle}
+        >
+          {body}
+        </KeyboardScrollView>
+      ) : (
+        <BottomSheetView style={bodyStyle}>{body}</BottomSheetView>
+      )}
     </BottomSheetModal>
   );
 });

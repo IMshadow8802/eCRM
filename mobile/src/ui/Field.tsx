@@ -63,7 +63,9 @@ export const fieldBox = StyleSheet.create({
     includeFontPadding: false,
     textAlignVertical: "center",
   },
-  inputMultiline: { lineHeight: 20, textAlignVertical: "top" },
+  // Stretch: the box is 72+ tall but a TextInput is one line tall by default, so a tap
+  // in the lower part of the box landed on the box and never focused.
+  inputMultiline: { lineHeight: 20, textAlignVertical: "top", alignSelf: "stretch" },
 });
 
 const styles = StyleSheet.create({

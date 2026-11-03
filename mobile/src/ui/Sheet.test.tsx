@@ -1,7 +1,9 @@
-import { BackHandler } from "react-native";
+import { BackHandler, Dimensions, DeviceEventEmitter } from "react-native";
+import { act, screen } from "@testing-library/react-native";
 
 import { renderWithProviders } from "../test/renderWithProviders";
-import { SheetBackHandler } from "./Sheet";
+import { Sheet, SheetBackHandler } from "./Sheet";
+import { Text } from "./Text";
 
 // Found on the emulator (Task 30): Android Back with a sheet open popped the
 // whole screen (lead detail -> list) instead of closing the sheet.
@@ -35,4 +37,52 @@ it("with no sheet open, Back falls through to navigation", async () => {
   const pressBack = backButton();
   await renderWithProviders(<SheetBackHandler />);
   expect(pressBack()).toBe(false);
+});
+
+// Found on the device pass (2026-11-03): gorhom only lifts a sheet by the
+// keyboard's height, so a tall keyboard-aware sheet (Status with Won's
+// fields) kept its Save button under the keyboard, and a tap with the
+// keyboard up was spent dismissing it.
+describe("a keyboard-aware sheet with the keyboard up", () => {
+  type Props = { maxDynamicContentSize?: number };
+  type Host = { props: Props };
+  const Modal = BottomSheet.BottomSheetModal as unknown as { prototype: { render(this: Host): unknown } };
+  const keyboard = (event: "keyboardDidShow" | "keyboardDidHide") =>
+    act(() => {
+      DeviceEventEmitter.emit(event, { endCoordinates: { screenX: 0, screenY: 500, width: 400, height: 300 } });
+    });
+
+  it("is capped to the room above the keyboard, and its body scrolls with taps kept", async () => {
+    const original = Modal.prototype.render;
+    let props: Props | undefined;
+    jest.spyOn(Modal.prototype, "render").mockImplementation(function (this: Host) {
+      props = this.props;
+      return original.call(this);
+    });
+    await renderWithProviders(
+      <Sheet keyboardAware title="Change status">
+        <Text>body</Text>
+      </Sheet>,
+    );
+    expect(props?.maxDynamicContentSize).toBeUndefined();
+    expect(screen.getByTestId("sheet-scroll").props.keyboardShouldPersistTaps).toBe("handled");
+
+    await keyboard("keyboardDidShow");
+    const room = props?.maxDynamicContentSize ?? 0;
+    expect(room).toBeGreaterThan(0);
+    expect(room).toBeLessThanOrEqual(Dimensions.get("window").height - 300 - 26);
+
+    await keyboard("keyboardDidHide");
+    expect(props?.maxDynamicContentSize).toBeUndefined();
+    jest.restoreAllMocks();
+  });
+
+  it("a sheet without inputs keeps its plain body", async () => {
+    await renderWithProviders(
+      <Sheet title="Pick">
+        <Text>body</Text>
+      </Sheet>,
+    );
+    expect(screen.queryByTestId("sheet-scroll")).toBeNull();
+  });
 });

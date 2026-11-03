@@ -149,6 +149,11 @@ describe("E field (§3.14)", () => {
     expect(box("Username")).toMatchObject({ height: 52, borderWidth: 2, paddingHorizontal: 13 });
   });
 
+  it("a multiline's text area fills the box, so a tap anywhere in it focuses (regression: the lower half was dead)", async () => {
+    await render(<Input placeholder="Remarks" multiline fieldHeight={84} />);
+    expect(StyleSheet.flatten(screen.getByPlaceholderText("Remarks").props.style)).toMatchObject({ alignSelf: "stretch" });
+  });
+
   it("a right slot sits inside the field, straight after the text (E 12 clear X)", async () => {
     await render(<Input placeholder="Customer" right={<RNText>clear</RNText>} />);
     const kids = screen.getByPlaceholderText("Customer").parent!.children;
