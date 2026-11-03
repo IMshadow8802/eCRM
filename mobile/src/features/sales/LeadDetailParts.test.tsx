@@ -66,6 +66,18 @@ it("follow-ups: no planner, no remarks, view-only rows; a skipped one reads skip
   expect(screen.queryByText("Mark done")).toBeNull();
 });
 
+it("a follow-up cancelled by a won/lost lead (119) reads Cancelled, not done", async () => {
+  await render(
+    <FollowUpsTab
+      followups={[followUp({ Id: 3, Status: "cancelled", Type: "visit", Remarks: null, DueAt: "2099-01-02", DoneAt: "2099-01-01T10:00:00" })]}
+      next={undefined}
+      plannedBy={() => null}
+      wide={false}
+    />,
+  );
+  expect(screen.getByText("Visit · Thu, 1 Jan · Cancelled")).toBeOnTheScreen();
+});
+
 it("follow-ups with only closed ones: no next card", async () => {
   await render(<FollowUpsTab followups={[followUp({ Status: "done" })]} next={undefined} plannedBy={() => "X"} wide={false} />);
   expect(screen.queryByTestId("next-followup")).toBeNull();

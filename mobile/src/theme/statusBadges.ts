@@ -101,10 +101,14 @@ const FOLLOW_UP: Record<string, BadgeSpec> = {
   visit: b("teal", MapPin),
   meeting: b("lilac", Users),
 };
-/** By type; a done row is a green check; an overdue one keeps its type icon on red. */
-export function followUpBadge(type: string | null | undefined, state: "open" | "done" | "overdue" = "open"): BadgeSpec {
+/** By type; a done row is a green check; an overdue one keeps its type icon on red, a cancelled one (119) on slate. */
+export function followUpBadge(
+  type: string | null | undefined,
+  state: "open" | "done" | "overdue" | "cancelled" = "open",
+): BadgeSpec {
   if (state === "done") return b("green", Check);
   const spec = FOLLOW_UP[(type ?? "").toLowerCase()] ?? b("slate", CalendarClock);
+  if (state === "cancelled") return b("slate", spec.icon);
   return state === "overdue" ? b("red", spec.icon) : spec;
 }
 

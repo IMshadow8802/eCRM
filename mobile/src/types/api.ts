@@ -741,7 +741,8 @@ export type LeadAssignment = TicketAssignment;
 export type CallDirection = "in" | "out";
 
 export type FollowUpType = "call" | "visit" | "meeting" | "other";
-export type FollowUpStatus = "open" | "done" | "skipped";
+/** `cancelled` (119): closed by the lead being won / lost / junked — neither open nor done. */
+export type FollowUpStatus = "open" | "done" | "skipped" | "cancelled";
 
 /**
  * A row of tblFollowUp. The queue (sp_FetchFollowUps without a LeadId) adds

@@ -127,6 +127,7 @@ it("closed rows in All carry Done / Skipped and no Done pill", async () => {
       reply([
         followUp({ Id: 1, Status: "done", LeadName: "Done lead", DoneAt: "2026-10-30T09:00:00", DueAt: "2026-10-30" }),
         followUp({ Id: 2, Status: "skipped", LeadName: "Skipped lead", DueAt: "2026-10-30" }),
+        followUp({ Id: 3, Status: "cancelled", LeadName: "Won lead", DueAt: "2026-10-31" }),
       ]),
     ),
   );
@@ -134,6 +135,8 @@ it("closed rows in All carry Done / Skipped and no Done pill", async () => {
   await screen.findByText("Done lead");
   expect(within(screen.getByTestId("followup-row-1")).getByText("Done")).toBeOnTheScreen();
   expect(within(screen.getByTestId("followup-row-2")).getByText("Skipped")).toBeOnTheScreen();
+  // 119: cancelled by a won/lost lead.
+  expect(within(screen.getByTestId("followup-row-3")).getByText("Cancelled")).toBeOnTheScreen();
   expect(screen.queryByRole("button", { name: /^Mark .+ done$/ })).toBeNull();
   expect(screen.getByText("Fri, 30 Oct 9:00 am")).toBeOnTheScreen();
 });

@@ -197,6 +197,27 @@ describe("LeadDetail (spec 1)", () => {
     );
   });
 
+  // 119: a won/lost lead's open follow-ups become 'cancelled' (no DoneBy).
+  it("a cancelled follow-up reads Cancelled with its date and no 'by'", async () => {
+    mocks();
+    server.use(
+      http.post("*/api/leads/fetchLeadDetail", async () => json({
+        lead: { Id: 9, Name: "Won one", StatusId: 5, StatusName: "Won", StatusCode: "converted" },
+        fields: [], activity: [], assignments: [],
+        followups: [{ Id: 24, Type: "visit", DueAt: "2026-11-05T00:00:00Z", Status: "cancelled",
+                      DoneAt: "2026-11-03T10:00:00", Remarks: "Lead won" }],
+      })),
+    );
+    renderDetail();
+    await screen.findByTestId("lead-detail");
+    await userEvent.setup().click(screen.getByText(/Follow-ups/));
+    const item = screen.getByTestId("followup-item");
+    expect(item).toHaveTextContent("Visit · cancelled 03-11-2026 10:00");
+    expect(item).toHaveTextContent("Cancelled");
+    expect(item).not.toHaveTextContent("by —");
+    expect(item).not.toHaveTextContent("Skipped");
+  });
+
   it("the header logs the open follow-up and opens the editor", async () => {
     mocks();
     renderDetail();

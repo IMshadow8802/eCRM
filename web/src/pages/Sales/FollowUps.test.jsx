@@ -158,6 +158,9 @@ describe("Follow-ups queue", () => {
     expect(screen.getByText("open")).toBeInTheDocument();
     withTheme(cellOf("Status")({ cell: { getValue: () => "done" } }));
     expect(screen.getByText("done")).toBeInTheDocument();
+    // 119: a lead closed as won/lost cancels its open follow-ups.
+    withTheme(cellOf("Status")({ cell: { getValue: () => "cancelled" } }));
+    expect(screen.getByText("cancelled")).toBeInTheDocument();
 
     expect(cellOf("Remarks")({ row: { original: { Outcome: "Connected", Remarks: "ok" } } })).toBe("Connected — ok");
     expect(cellOf("Remarks")({ row: { original: {} } })).toBe("—");

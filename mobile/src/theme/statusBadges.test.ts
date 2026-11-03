@@ -69,6 +69,9 @@ describe("E §1.6 status → badge", () => {
     ["call", "done", "green", Check],
     ["call", "overdue", "red", Phone],
     ["visit", "overdue", "red", MapPin],
+    // 119: cancelled when the lead was won/lost — its type, in slate.
+    ["visit", "cancelled", "slate", MapPin],
+    ["other", "cancelled", "slate", CalendarClock],
   ] as const)("follow-up %s (%s)", (type, state, tone, icon) => expect(followUpBadge(type, state)).toEqual({ tone, icon }));
 
   it.each([

@@ -185,6 +185,15 @@ describe("the lead row's follow-up line (G2)", () => {
     expect(followUpLine(lead(), now)).toEqual({ text: "No follow-up planned", tone: "muted" });
     expect(followUpLine(lead({ StatusCode: "converted", NextFollowupDate: at(3) }), now).text).toBe("No follow-up planned");
   });
+  it("names the type when sp_FetchLeads sends it (119); other / none read Follow-up", () => {
+    expect(followUpLine(lead({ NextFollowupDate: at(3, 11), NextFollowupType: "call" }), now).text).toBe("Call tomorrow 11:00 am");
+    expect(followUpLine(lead({ NextFollowupDate: at(1, 17), IsOverdue: true, NextFollowupType: "visit" }), now).text).toBe(
+      "Visit overdue · Sun, 1 Nov 5:00 pm",
+    );
+    expect(followUpLine(lead({ NextFollowupDate: at(4), NextFollowupType: "meeting" }), now).text).toBe("Meeting Wed, 4 Nov");
+    expect(followUpLine(lead({ NextFollowupDate: at(4), NextFollowupType: "other" }), now).text).toBe("Follow-up Wed, 4 Nov");
+    expect(followUpLine(lead({ NextFollowupDate: at(4), NextFollowupType: null }), now).text).toBe("Follow-up Wed, 4 Nov");
+  });
 });
 
 describe("open value (G3)", () => {
@@ -235,6 +244,8 @@ describe("dates and money", () => {
     expect(followUpMeta(f({ DueAt: "2026-11-07" }))).toBe("Visit · Sat, 7 Nov");
     expect(followUpMeta(f({ Type: "call", Status: "done", DoneAt: new Date(2026, 9, 29, 9).toISOString() }))).toBe("Call · Thu, 29 Oct · done");
     expect(followUpMeta(f({ Status: "skipped" }))).toBe("Visit · Sat, 7 Nov · skipped");
+    // 119: closed by a won/lost lead; dated when it was cancelled.
+    expect(followUpMeta(f({ Status: "cancelled", DoneAt: new Date(2026, 10, 3, 10).toISOString() }))).toBe("Visit · Tue, 3 Nov · Cancelled");
   });
 
   it("a re-booking keeps the old follow-up's time of day on the new day", () => {

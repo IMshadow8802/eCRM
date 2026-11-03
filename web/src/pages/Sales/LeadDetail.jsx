@@ -331,7 +331,7 @@ export default function LeadDetail({ leadId: leadIdProp }) {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "calc(12rem / 15)" }}>
                   <div>
                     <div style={{ fontSize: "calc(14rem / 15)", fontWeight: 600 }}>
-                      {FOLLOWUP_TYPES.find((t) => t.value === f.Type)?.label ?? f.Type} · {f.Status === "open" ? `due ${fmt(f.DueAt)}` : `${f.Status} ${fmt(f.DoneAt, "DD-MM-YYYY HH:mm")} by ${f.DoneByName ?? "—"}`}
+                      {FOLLOWUP_TYPES.find((t) => t.value === f.Type)?.label ?? f.Type} · {f.Status === "open" ? `due ${fmt(f.DueAt)}` : `${f.Status} ${fmt(f.DoneAt, "DD-MM-YYYY HH:mm")}${f.Status === "cancelled" ? "" : ` by ${f.DoneByName ?? "—"}`}`}
                       {f.IsOverdue ? " · overdue" : ""}
                     </div>
                     {(f.Outcome || f.Remarks) && <div style={{ fontSize: "calc(13rem / 15)", marginTop: 2 }}>{[f.Outcome, f.Remarks].filter(Boolean).join(" — ")}</div>}
@@ -339,7 +339,7 @@ export default function LeadDetail({ leadId: leadIdProp }) {
                   </div>
                   {f.Status === "open"
                     ? <Button size="sm" variant="primary" onClick={() => setLogging(f)} data-testid={`log-followup-${f.Id}`}>Log</Button>
-                    : <Chip label={f.Status === "done" ? "Done" : "Skipped"} size="sm" />}
+                    : <Chip label={{ done: "Done", cancelled: "Cancelled" }[f.Status] ?? "Skipped"} size="sm" />}
                   {f.Status === "open" && <Chip label="Open" size="sm" tone="primary" />}
                 </div>
               </Card>

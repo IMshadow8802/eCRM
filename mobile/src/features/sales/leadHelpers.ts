@@ -232,23 +232,25 @@ export function fromNow(iso: string | null | undefined, now = new Date()): strin
 }
 
 /**
- * G2: a lead row's third line. The API has only the date of the next
- * follow-up, not its type, so it reads "Follow-up …". A closed lead owes nothing.
+ * G2: a lead row's third line, "Call tomorrow 11:00 am". The type is the
+ * next follow-up's (sp_FetchLeads, 119); "other" or none (a DB without 119)
+ * reads "Follow-up …". A closed lead owes nothing.
  */
 export function followUpLine(lead: Lead, now = new Date()): { text: string; tone: "default" | "danger" | "muted" } {
   const d = isActiveLead(lead.StatusCode) ? parseDate(lead.NextFollowupDate) : null;
   if (!d) return { text: "No follow-up planned", tone: "muted" };
+  const word = lead.NextFollowupType && lead.NextFollowupType !== "other" ? followUpTypeLabel(lead.NextFollowupType) : "Follow-up";
   if (lead.IsOverdue) {
-    return { text: `Follow-up overdue · ${shortDay(d)}${hasTime(d) ? ` ${clock(d)}` : ""}`, tone: "danger" };
+    return { text: `${word} overdue · ${shortDay(d)}${hasTime(d) ? ` ${clock(d)}` : ""}`, tone: "danger" };
   }
-  return { text: `Follow-up ${whenText(lead.NextFollowupDate, now)}`, tone: "default" };
+  return { text: `${word} ${whenText(lead.NextFollowupDate, now)}`, tone: "default" };
 }
 
 /** A follow-up's meta (E 15): "Visit · Sat, 7 Nov · 3:00 pm", or "Call · Thu, 29 Oct · done". */
 export function followUpMeta(f: FollowUp): string {
   const open = f.Status === "open";
   const d = parseDate(open ? f.DueAt : (f.DoneAt ?? f.DueAt));
-  const tail = open ? (d && hasTime(d) ? clock(d) : null) : f.Status === "done" ? "done" : "skipped";
+  const tail = open ? (d && hasTime(d) ? clock(d) : null) : { done: "done", cancelled: "Cancelled" }[f.Status as string] ?? "skipped";
   return [followUpTypeLabel(f.Type), d ? shortDay(d) : null, tail].filter(Boolean).join(" · ");
 }
 

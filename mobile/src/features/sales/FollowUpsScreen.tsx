@@ -150,7 +150,7 @@ export default function FollowUpsScreen({ navigation, route, pushed = false }: P
 
   const row = (f: FollowUp, index: number, last: boolean) => {
     const open = f.Status === "open";
-    const badge = followUpBadge(f.Type, open ? (f.IsOverdue ? "overdue" : "open") : f.Status === "done" ? "done" : "open");
+    const badge = followUpBadge(f.Type, open ? (f.IsOverdue ? "overdue" : "open") : f.Status === "done" || f.Status === "cancelled" ? f.Status : "open");
     const actionable = open && can.edit;
     const body = (
       <ListRow
@@ -163,7 +163,7 @@ export default function FollowUpsScreen({ navigation, route, pushed = false }: P
           actionable ? (
             <Chip label="Done" icon={Check} tone="green" size="lg" accessibilityLabel={`Mark ${f.LeadName ?? "it"} done`} onPress={() => sheets.current?.done(f)} />
           ) : !open ? (
-            <Chip label={f.Status === "done" ? "Done" : "Skipped"} tone="slate" />
+            <Chip label={{ done: "Done", cancelled: "Cancelled" }[f.Status as string] ?? "Skipped"} tone="slate" />
           ) : null
         }
         noSeparator={index === 0}
