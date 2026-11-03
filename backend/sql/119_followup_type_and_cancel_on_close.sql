@@ -241,7 +241,7 @@ SELECT @lid AS lead_id, @expect AS expected_type;
 EXEC dbo.sp_FetchLeads @CompId = @c, @SearchTerm = @mob, @PageSize = 50;
 --    expect: the row with Id = lead_id has NextFollowupType = expected_type;
 --    a row with NextFollowupDate NULL has NextFollowupType NULL.
-GO
+-- GO  (run blocks one at a time; sqlcmd splits on GO even inside comments)
 
 -- 4. TestCRM ONLY. Stop after block 3 on eCRM+ / SolarCRM. Each block runs inside its own transaction and ends with a
 --    guarded ROLLBACK, so nothing stays. (If the proc itself fails it rolls the
@@ -265,7 +265,7 @@ SELECT (SELECT COUNT(*) FROM dbo.tblFollowUp WHERE LeadId = @lead AND Status = '
        (SELECT TOP 1 Summary FROM dbo.tblLeadActivity WHERE LeadId = @lead AND Type = 'followup' ORDER BY Id DESC) AS activity,     -- expect 'Follow-up cancelled: Lead marked <Lost>'
        (SELECT COUNT(*) FROM dbo.tblFollowUp WHERE CompId = @c4 AND Status = 'open' AND LeadId <> @lead) - @others AS others_diff;  -- expect 0
 IF @@TRANCOUNT > 0 ROLLBACK;
-GO
+-- GO
 -- 4b. Won: same, remark 'Lead won'; undoing the win reopens nothing.
 BEGIN TRAN;
 DECLARE @c4 INT = 1, @u INT = 1;
@@ -279,5 +279,5 @@ SELECT (SELECT COUNT(*) FROM dbo.tblFollowUp WHERE LeadId = @lead AND Status = '
 EXEC dbo.sp_SetLeadStatus @CompId = @c4, @LeadId = @lead, @StatusId = @back, @UserId = @u;             -- undo the win
 SELECT COUNT(*) AS open_after_undo FROM dbo.tblFollowUp WHERE LeadId = @lead AND Status = 'open';      -- expect 0
 IF @@TRANCOUNT > 0 ROLLBACK;
-GO
+-- GO
 */
