@@ -109,7 +109,7 @@ describe("Stepper (E 24)", () => {
 describe("Field parts", () => {
   it("label with star and tag; help or error; a pair row", async () => {
     await render(
-      <FieldRow>
+      <FieldRow testID="pair">
         <FieldLabel label="Owner" required tag="Custom" />
         <FieldHelp hint="Shows in the history" />
         <FieldHelp error="Required" />
@@ -120,6 +120,21 @@ describe("Field parts", () => {
     expect(screen.getByText("Custom")).toBeOnTheScreen();
     expect(flat(screen.getByText("Shows in the history")).color).toBe(colors.textMuted);
     expect(flat(screen.getByText("Required")).color).toBe(colors.dangerText);
-    expect(flat(screen.getByText("Owner", { exact: false }).parent!.parent!)).toMatchObject({ flexDirection: "row", gap: 10 });
+    expect(flat(screen.getByTestId("pair"))).toMatchObject({ flexDirection: "row", gap: 10 });
+  });
+
+  // Found on the device pass (2026-11-03): the task form's Priority/Type and
+  // Due date sat in a FieldRow as bare Selects, which shrank to their chevron
+  // and hid the value. Every child of a pair gets an equal half.
+  it("a pair row gives each field an equal, shrinkable half", async () => {
+    await render(
+      <FieldRow>
+        <RNText>Priority</RNText>
+        <RNText>Type</RNText>
+      </FieldRow>,
+    );
+    for (const name of ["Priority", "Type"]) {
+      expect(flat(screen.getByText(name).parent)).toMatchObject({ flex: 1, minWidth: 0 });
+    }
   });
 });

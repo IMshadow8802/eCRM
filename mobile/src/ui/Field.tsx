@@ -1,5 +1,5 @@
 /* eslint-disable react-native/no-unused-styles -- fieldBox is shared: Input, Select and DateField read it. */
-import type { ReactNode } from "react";
+import { Children, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 
 import { colors, metrics, radius, spacing, typography } from "../theme";
@@ -27,8 +27,14 @@ export function FieldHelp({ error, hint }: { error?: string | null; hint?: strin
 }
 
 /** Two fields side by side, 10 apart (E `.two`). */
-export function FieldRow({ children }: { children: ReactNode }) {
-  return <View style={styles.row}>{children}</View>;
+export function FieldRow({ children, testID }: { children: ReactNode; testID?: string }) {
+  // Each field gets an equal half; a bare Select or DateField otherwise
+  // shrinks to its chevron and hides its value (task form, 2026-11-03).
+  return (
+    <View testID={testID} style={styles.row}>
+      {Children.map(children, (child) => (child == null || child === false ? null : <View style={styles.cell}>{child}</View>))}
+    </View>
+  );
 }
 
 /**
@@ -73,6 +79,7 @@ const styles = StyleSheet.create({
   star: { fontFamily: typography.groupTitle.fontFamily },
   help: { marginTop: metrics.inlineGap },
   row: { flexDirection: "row", gap: metrics.pairGap },
+  cell: { flex: 1, minWidth: 0 },
 });
 
 /**
