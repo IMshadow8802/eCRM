@@ -209,75 +209,74 @@ BEGIN
 END
 GO
 
-/* ===========================================================================
-   VERIFY AFTER APPLY — 1-3 read-only on every DB; 4 on TestCRM only
-   ===========================================================================
--- 1. Constraint + markers                                     -- expect 1, then 5 rows all patched = 1
-SELECT COUNT(*) AS ck_allows_cancelled FROM sys.check_constraints
-WHERE name = 'CK_tblFollowUp_Status' AND definition LIKE '%cancelled%';
-SELECT p.name,
-       CASE WHEN CHARINDEX(CASE p.name WHEN 'sp_FetchLeads' THEN 'NextFollowupType'
-                                       WHEN 'sp_RptFollowUpCompliance' THEN '119: cancelled'
-                                       WHEN 'sp_RptLeaderboard' THEN '119: cancelled'
-                                       ELSE '/* 119: a closed lead' END,
-                           OBJECT_DEFINITION(p.object_id)) > 0 THEN 1 ELSE 0 END AS patched
-FROM sys.procedures p
-WHERE p.name IN ('sp_FetchLeads','sp_ConvertLead','sp_SetLeadStatus','sp_RptFollowUpCompliance','sp_RptLeaderboard');
-
--- 2. Scope arm intact                                         -- expect > 0
-SELECT CHARINDEX('l.OwnerId IS NULL AND l.CreatedBy = @UserId', OBJECT_DEFINITION(OBJECT_ID('dbo.sp_FetchLeads'))) AS leads_always_visible;
-
--- 3. NextFollowupType is the EARLIEST open follow-up's type. Takes the lead
---    whose open follow-ups have the most distinct types (so a wrong pick shows).
-DECLARE @c INT = 1;   -- CompId
-DECLARE @lid INT, @mob VARCHAR(20), @expect VARCHAR(20);
-SELECT TOP 1 @lid = f.LeadId FROM dbo.tblFollowUp f
-WHERE f.CompId = @c AND f.Status = 'open'
-GROUP BY f.LeadId ORDER BY COUNT(DISTINCT f.Type) DESC, COUNT(*) DESC;
-SELECT @mob = MobileNo FROM dbo.tblLeads WHERE Id = @lid;
-SELECT TOP 1 @expect = Type FROM dbo.tblFollowUp
-WHERE CompId = @c AND LeadId = @lid AND Status = 'open' ORDER BY DueAt, Id;
-SELECT @lid AS lead_id, @expect AS expected_type;
-EXEC dbo.sp_FetchLeads @CompId = @c, @SearchTerm = @mob, @PageSize = 50;
---    expect: the row with Id = lead_id has NextFollowupType = expected_type;
---    a row with NextFollowupDate NULL has NextFollowupType NULL.
--- GO  (run blocks one at a time; sqlcmd splits on GO even inside comments)
-
--- 4. TestCRM ONLY. Stop after block 3 on eCRM+ / SolarCRM. Each block runs inside its own transaction and ends with a
---    guarded ROLLBACK, so nothing stays. (If the proc itself fails it rolls the
---    whole thing back and prints error 266; the guard then skips — no 3903.)
--- 4a. Lost: open follow-ups -> cancelled, only on that lead.
-BEGIN TRAN;
-DECLARE @c4 INT = 1, @u INT = 1;   -- CompId, an acting UserId
-DECLARE @lead INT = (SELECT TOP 1 f.LeadId FROM dbo.tblFollowUp f JOIN dbo.tblLeads l ON l.Id = f.LeadId
-                     JOIN dbo.tblLookup st ON st.Id = l.StatusId
-                     WHERE f.CompId = @c4 AND f.Status = 'open' AND st.Code IN ('open','qualified'));
-DECLARE @lost INT = (SELECT TOP 1 Id FROM dbo.tblLookup WHERE CompId = @c4 AND Kind = 'lead_status' AND Code = 'lost' AND IsActive = 1);
-DECLARE @why  INT = (SELECT TOP 1 Id FROM dbo.tblLookup WHERE CompId = @c4 AND Kind = 'lost_reason');
-DECLARE @open0 INT = (SELECT COUNT(*) FROM dbo.tblFollowUp WHERE LeadId = @lead AND Status = 'open');
-DECLARE @others INT = (SELECT COUNT(*) FROM dbo.tblFollowUp WHERE CompId = @c4 AND Status = 'open' AND LeadId <> @lead);
-EXEC dbo.sp_SetLeadStatus @CompId = @c4, @LeadId = @lead, @StatusId = @lost, @LostReasonId = @why, @UserId = @u;  -- expect 200
-SELECT (SELECT COUNT(*) FROM dbo.tblFollowUp WHERE LeadId = @lead AND Status = 'open')                           AS open_left,       -- expect 0
-       (SELECT COUNT(*) FROM dbo.tblFollowUp WHERE LeadId = @lead AND Status = 'cancelled'
-           AND DoneBy IS NULL AND DoneAt IS NOT NULL AND Remarks = 'Lead marked ' +
-           (SELECT Value FROM dbo.tblLookup WHERE Id = @lost)) - @open0                                         AS cancelled_diff,  -- expect 0
-       (SELECT NextFollowupDate FROM dbo.tblLeads WHERE Id = @lead)                                             AS next_date,       -- expect NULL
-       (SELECT TOP 1 Summary FROM dbo.tblLeadActivity WHERE LeadId = @lead AND Type = 'followup' ORDER BY Id DESC) AS activity,     -- expect 'Follow-up cancelled: Lead marked <Lost>'
-       (SELECT COUNT(*) FROM dbo.tblFollowUp WHERE CompId = @c4 AND Status = 'open' AND LeadId <> @lead) - @others AS others_diff;  -- expect 0
-IF @@TRANCOUNT > 0 ROLLBACK;
--- GO
--- 4b. Won: same, remark 'Lead won'; undoing the win reopens nothing.
-BEGIN TRAN;
-DECLARE @c4 INT = 1, @u INT = 1;
-DECLARE @lead INT = (SELECT TOP 1 f.LeadId FROM dbo.tblFollowUp f JOIN dbo.tblLeads l ON l.Id = f.LeadId
-                     JOIN dbo.tblLookup st ON st.Id = l.StatusId
-                     WHERE f.CompId = @c4 AND f.Status = 'open' AND st.Code IN ('open','qualified'));
-DECLARE @back INT = (SELECT StatusId FROM dbo.tblLeads WHERE Id = @lead);
-EXEC dbo.sp_ConvertLead @CompId = @c4, @LeadId = @lead, @UserId = @u, @WonValue = 1000;                -- expect 200
-SELECT (SELECT COUNT(*) FROM dbo.tblFollowUp WHERE LeadId = @lead AND Status = 'open')                    AS open_left,   -- expect 0
-       (SELECT TOP 1 Remarks FROM dbo.tblFollowUp WHERE LeadId = @lead AND Status = 'cancelled' ORDER BY Id DESC) AS remark; -- expect 'Lead won'
-EXEC dbo.sp_SetLeadStatus @CompId = @c4, @LeadId = @lead, @StatusId = @back, @UserId = @u;             -- undo the win
-SELECT COUNT(*) AS open_after_undo FROM dbo.tblFollowUp WHERE LeadId = @lead AND Status = 'open';      -- expect 0
-IF @@TRANCOUNT > 0 ROLLBACK;
--- GO
-*/
+-- ===========================================================================
+--    VERIFY AFTER APPLY — 1-3 read-only on every DB; 4 on TestCRM only
+--    ===========================================================================
+-- -- 1. Constraint + markers                                     -- expect 1, then 5 rows all patched = 1
+-- SELECT COUNT(*) AS ck_allows_cancelled FROM sys.check_constraints
+-- WHERE name = 'CK_tblFollowUp_Status' AND definition LIKE '%cancelled%';
+-- SELECT p.name,
+--        CASE WHEN CHARINDEX(CASE p.name WHEN 'sp_FetchLeads' THEN 'NextFollowupType'
+--                                        WHEN 'sp_RptFollowUpCompliance' THEN '119: cancelled'
+--                                        WHEN 'sp_RptLeaderboard' THEN '119: cancelled'
+--                                        ELSE '/* 119: a closed lead' END,
+--                            OBJECT_DEFINITION(p.object_id)) > 0 THEN 1 ELSE 0 END AS patched
+-- FROM sys.procedures p
+-- WHERE p.name IN ('sp_FetchLeads','sp_ConvertLead','sp_SetLeadStatus','sp_RptFollowUpCompliance','sp_RptLeaderboard');
+--
+-- -- 2. Scope arm intact                                         -- expect > 0
+-- SELECT CHARINDEX('l.OwnerId IS NULL AND l.CreatedBy = @UserId', OBJECT_DEFINITION(OBJECT_ID('dbo.sp_FetchLeads'))) AS leads_always_visible;
+--
+-- -- 3. NextFollowupType is the EARLIEST open follow-up's type. Takes the lead
+-- --    whose open follow-ups have the most distinct types (so a wrong pick shows).
+-- DECLARE @c INT = 1;   -- CompId
+-- DECLARE @lid INT, @mob VARCHAR(20), @expect VARCHAR(20);
+-- SELECT TOP 1 @lid = f.LeadId FROM dbo.tblFollowUp f
+-- WHERE f.CompId = @c AND f.Status = 'open'
+-- GROUP BY f.LeadId ORDER BY COUNT(DISTINCT f.Type) DESC, COUNT(*) DESC;
+-- SELECT @mob = MobileNo FROM dbo.tblLeads WHERE Id = @lid;
+-- SELECT TOP 1 @expect = Type FROM dbo.tblFollowUp
+-- WHERE CompId = @c AND LeadId = @lid AND Status = 'open' ORDER BY DueAt, Id;
+-- SELECT @lid AS lead_id, @expect AS expected_type;
+-- EXEC dbo.sp_FetchLeads @CompId = @c, @SearchTerm = @mob, @PageSize = 50;
+-- --    expect: the row with Id = lead_id has NextFollowupType = expected_type;
+-- --    a row with NextFollowupDate NULL has NextFollowupType NULL.
+-- -- GO  (run blocks one at a time; sqlcmd splits on GO even inside comments)
+--
+-- -- 4. TestCRM ONLY. Stop after block 3 on eCRM+ / SolarCRM. Each block runs inside its own transaction and ends with a
+-- --    guarded ROLLBACK, so nothing stays. (If the proc itself fails it rolls the
+-- --    whole thing back and prints error 266; the guard then skips — no 3903.)
+-- -- 4a. Lost: open follow-ups -> cancelled, only on that lead.
+-- BEGIN TRAN;
+-- DECLARE @c4 INT = 1, @u INT = 1;   -- CompId, an acting UserId
+-- DECLARE @lead INT = (SELECT TOP 1 f.LeadId FROM dbo.tblFollowUp f JOIN dbo.tblLeads l ON l.Id = f.LeadId
+--                      JOIN dbo.tblLookup st ON st.Id = l.StatusId
+--                      WHERE f.CompId = @c4 AND f.Status = 'open' AND st.Code IN ('open','qualified'));
+-- DECLARE @lost INT = (SELECT TOP 1 Id FROM dbo.tblLookup WHERE CompId = @c4 AND Kind = 'lead_status' AND Code = 'lost' AND IsActive = 1);
+-- DECLARE @why  INT = (SELECT TOP 1 Id FROM dbo.tblLookup WHERE CompId = @c4 AND Kind = 'lost_reason');
+-- DECLARE @open0 INT = (SELECT COUNT(*) FROM dbo.tblFollowUp WHERE LeadId = @lead AND Status = 'open');
+-- DECLARE @others INT = (SELECT COUNT(*) FROM dbo.tblFollowUp WHERE CompId = @c4 AND Status = 'open' AND LeadId <> @lead);
+-- EXEC dbo.sp_SetLeadStatus @CompId = @c4, @LeadId = @lead, @StatusId = @lost, @LostReasonId = @why, @UserId = @u;  -- expect 200
+-- SELECT (SELECT COUNT(*) FROM dbo.tblFollowUp WHERE LeadId = @lead AND Status = 'open')                           AS open_left,       -- expect 0
+--        (SELECT COUNT(*) FROM dbo.tblFollowUp WHERE LeadId = @lead AND Status = 'cancelled'
+--            AND DoneBy IS NULL AND DoneAt IS NOT NULL AND Remarks = 'Lead marked ' +
+--            (SELECT Value FROM dbo.tblLookup WHERE Id = @lost)) - @open0                                         AS cancelled_diff,  -- expect 0
+--        (SELECT NextFollowupDate FROM dbo.tblLeads WHERE Id = @lead)                                             AS next_date,       -- expect NULL
+--        (SELECT TOP 1 Summary FROM dbo.tblLeadActivity WHERE LeadId = @lead AND Type = 'followup' ORDER BY Id DESC) AS activity,     -- expect 'Follow-up cancelled: Lead marked <Lost>'
+--        (SELECT COUNT(*) FROM dbo.tblFollowUp WHERE CompId = @c4 AND Status = 'open' AND LeadId <> @lead) - @others AS others_diff;  -- expect 0
+-- IF @@TRANCOUNT > 0 ROLLBACK;
+-- -- GO
+-- -- 4b. Won: same, remark 'Lead won'; undoing the win reopens nothing.
+-- BEGIN TRAN;
+-- DECLARE @c4 INT = 1, @u INT = 1;
+-- DECLARE @lead INT = (SELECT TOP 1 f.LeadId FROM dbo.tblFollowUp f JOIN dbo.tblLeads l ON l.Id = f.LeadId
+--                      JOIN dbo.tblLookup st ON st.Id = l.StatusId
+--                      WHERE f.CompId = @c4 AND f.Status = 'open' AND st.Code IN ('open','qualified'));
+-- DECLARE @back INT = (SELECT StatusId FROM dbo.tblLeads WHERE Id = @lead);
+-- EXEC dbo.sp_ConvertLead @CompId = @c4, @LeadId = @lead, @UserId = @u, @WonValue = 1000;                -- expect 200
+-- SELECT (SELECT COUNT(*) FROM dbo.tblFollowUp WHERE LeadId = @lead AND Status = 'open')                    AS open_left,   -- expect 0
+--        (SELECT TOP 1 Remarks FROM dbo.tblFollowUp WHERE LeadId = @lead AND Status = 'cancelled' ORDER BY Id DESC) AS remark; -- expect 'Lead won'
+-- EXEC dbo.sp_SetLeadStatus @CompId = @c4, @LeadId = @lead, @StatusId = @back, @UserId = @u;             -- undo the win
+-- SELECT COUNT(*) AS open_after_undo FROM dbo.tblFollowUp WHERE LeadId = @lead AND Status = 'open';      -- expect 0
+-- IF @@TRANCOUNT > 0 ROLLBACK;
+-- -- GO
