@@ -1,6 +1,6 @@
 import { AxiosError, type AxiosResponse } from "axios";
 import { act, fireEvent, screen } from "@testing-library/react-native";
-import { DeviceEventEmitter, Platform, ScrollView } from "react-native";
+import { DeviceEventEmitter, ScrollView } from "react-native";
 import Constants from "expo-constants";
 
 import { login } from "../../api/authQueries";
@@ -316,17 +316,6 @@ describe("keyboard (Android edge-to-edge ignores adjustResize)", () => {
     });
 
   afterEach(() => jest.restoreAllMocks());
-
-  it("lifts the form by the keyboard's overlap on Android too", async () => {
-    jest.replaceProperty(Platform, "OS", "android");
-    await renderWithProviders(<LoginScreen />);
-    const avoider = screen.getByTestId("login-keyboard");
-    await fireEvent(avoider, "layout", { nativeEvent: { layout: { x: 0, y: 0, width: 400, height: 800 } }, persist: () => {} });
-    await keyboard("keyboardDidShow");
-    expect(flat(screen.getByTestId("login-keyboard")).paddingBottom).toBe(300);
-    await keyboard("keyboardDidHide");
-    expect(flat(screen.getByTestId("login-keyboard")).paddingBottom).toBe(0);
-  });
 
   it("with the keyboard up the panel drops its minimum height and the scroll shows the form's foot", async () => {
     const toEnd = jest.spyOn(ScrollView.prototype, "scrollToEnd").mockImplementation(() => {});

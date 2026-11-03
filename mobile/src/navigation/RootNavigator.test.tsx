@@ -1,4 +1,4 @@
-import { StyleSheet } from "react-native";
+import { DeviceEventEmitter, StyleSheet } from "react-native";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, within } from "@testing-library/react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -364,6 +364,33 @@ describe("the docked bar", () => {
     expect(flatOf("action-main").backgroundColor).toBe("#3F4FAF");
     await fireEvent.press(screen.getByRole("button", { name: "Resolve" }));
     expect(mockResolve).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("with the keyboard up", () => {
+  const keyboard = (event: "keyboardDidShow" | "keyboardDidHide") =>
+    act(() => {
+      DeviceEventEmitter.emit(event, { endCoordinates: { screenX: 0, screenY: 500, width: 400, height: 300 } });
+    });
+
+  it("the tab bar steps aside (it would ride the keyboard and eat the list) and comes back after", async () => {
+    signInWith("tasks", "complaints");
+    await mountApp();
+    await screen.findByText("Home screen");
+    await keyboard("keyboardDidShow");
+    expect(screen.queryByTestId("bottom-bar")).toBeNull();
+    await keyboard("keyboardDidHide");
+    expect(screen.getByTestId("bottom-bar")).toBeOnTheScreen();
+  });
+
+  it("a record's action bar stays: its submit must be reachable over the keyboard", async () => {
+    signInWith("complaints");
+    await mountApp();
+    await openFromHome("ComplaintDetail");
+    expect(await screen.findByText("ComplaintDetail")).toBeOnTheScreen();
+    await keyboard("keyboardDidShow");
+    expect(screen.getByTestId("action-bar")).toBeOnTheScreen();
+    await keyboard("keyboardDidHide");
   });
 });
 

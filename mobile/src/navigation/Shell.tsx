@@ -8,7 +8,7 @@ import { apiErrorMessage } from "../api/errors";
 import { useAccess } from "../features/auth/useAccess";
 import { useHeartbeat } from "../hooks/useHeartbeat";
 import useAuthStore from "../stores/useAuthStore";
-import { ActionBar, useLayout, useToast, type BarAction, type SheetRef } from "../ui";
+import { ActionBar, useKeyboardOpen, useLayout, useToast, type BarAction, type SheetRef } from "../ui";
 import { useNavBadges } from "./badges";
 import { BottomBar } from "./BottomBar";
 import { CREATE_ROWS, CreateSheet, type CreateKind } from "./CreateSheet";
@@ -120,6 +120,7 @@ export interface ShellProps {
  */
 export function Shell({ route, navigator, children }: ShellProps) {
   const layout = useLayout();
+  const keyboardOpen = useKeyboardOpen();
   const can = useCan();
   const badges = useNavBadges(can);
   const toast = useToast();
@@ -202,7 +203,9 @@ export function Shell({ route, navigator, children }: ShellProps) {
     bottom =
       owner === "action" && routeActions?.length ? (
         <ActionBar actions={routeActions} />
-      ) : (
+      ) : keyboardOpen ? null : (
+        // The app lifts screens over the keyboard (App.tsx); the tab bar would
+        // ride up with them and eat the list, so it steps aside while typing.
         <BottomBar tabs={tabsFor(can)} active={activeTab} onPress={pressItem} badges={badges} />
       );
   }

@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { AppState, type AppStateStatus, Platform, StyleSheet } from "react-native";
+import { AppState, type AppStateStatus, KeyboardAvoidingView, Platform, StyleSheet } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -62,7 +62,14 @@ export default function App() {
               {/* Outside the navigator so a toast survives the screen that
                   raised it — a refused delete often closes its own sheet. */}
               <ToastProvider>
-                <RootNavigator />
+                {/* Android edge-to-edge (forced from API 35) ignores adjustResize, so
+                    nothing resized the screens: the lowest field and the submit bar
+                    sat under the keyboard. This is adjustResize, done in JS, once.
+                    Sheets render in the provider's host, outside it, and lift
+                    themselves (Sheet keyboardAware); Dialog has its own. */}
+                <KeyboardAvoidingView testID="app-keyboard" behavior="padding" style={styles.root}>
+                  <RootNavigator />
+                </KeyboardAvoidingView>
                 {/* After the navigator: the newest Back listener runs first, so
                     Back closes an open sheet before it can pop the screen. */}
                 <SheetBackHandler />

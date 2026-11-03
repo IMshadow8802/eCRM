@@ -1,5 +1,5 @@
 import { useRef, useState, type ReactNode } from "react";
-import { Image, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { StatusBar } from "expo-status-bar";
 import { ArrowRight, Building2, Hexagon, LogOut, Lock, OctagonAlert, User } from "lucide-react-native";
@@ -121,168 +121,165 @@ export default function LoginScreen() {
         end={gradients.authEnd}
         style={StyleSheet.absoluteFill}
       />
-      {/* "padding" on Android too: edge-to-edge (forced from API 35) ignores
-          adjustResize, so nothing else lifts the form over the keyboard. */}
-      <KeyboardAvoidingView testID="login-keyboard" style={styles.flex} behavior="padding">
-        <ScrollView
-          ref={scroller}
-          testID="login-scroll"
-          onLayout={keepFormInView}
-          onContentSizeChange={keepFormInView}
-          contentContainerStyle={styles.scroll}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          bounces={false}
+      {/* The app-level KeyboardAvoidingView (App.tsx) lifts this screen. */}
+      <ScrollView
+        ref={scroller}
+        testID="login-scroll"
+        onLayout={keepFormInView}
+        onContentSizeChange={keepFormInView}
+        contentContainerStyle={styles.scroll}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+      >
+        {!isClientConfigured ? (
+          // 01: the product, since we do not know the company yet.
+          <View style={[styles.brand, { paddingTop: insets.top + 56 }]}>
+            <View style={styles.logoTile}>
+              <Hexagon size={32} color={colors.primary} />
+            </View>
+            <Text variant="display" color="textOnBrand" style={styles.productName}>Nexus CRM</Text>
+            <Text variant="bodyLg" color="onBrandMuted" style={styles.tagline}>
+              Tasks, complaints and leads for your whole team, in one place.
+            </Text>
+          </View>
+        ) : (
+          // 02: the tenant — the payoff for typing a company code.
+          <View style={[styles.brand, styles.brandCenter, { paddingTop: insets.top + spacing[10] }]}>
+            <View style={styles.logoFrame}>
+              {showLogo ? (
+                <Image
+                  source={{ uri: logoURL as string }}
+                  style={styles.logo}
+                  resizeMode="contain"
+                  accessibilityLabel={companyName ?? "Company logo"}
+                  onError={() => setLogoBroken(true)}
+                />
+              ) : (
+                <StatusBadge testID="tenant-placeholder" tone="slate" icon={Building2} size={56} />
+              )}
+            </View>
+            <Text variant="h1" color="textOnBrand" align="center" style={styles.tenant}>
+              {tenant ?? "Welcome back"}
+            </Text>
+            {boundCode ? (
+              <Text variant="text" color="onBrandMuted" align="center" style={styles.code}>
+                Company code {boundCode}
+              </Text>
+            ) : null}
+          </View>
+        )}
+
+        <View
+          testID="login-panel"
+          style={[
+            styles.panel,
+            // The panel's minimum height is for the resting screen only; with
+            // the keyboard up it would push the button below the fold.
+            !keyboardOpen && (isClientConfigured ? styles.panelLogin : styles.panelCode),
+            { paddingBottom: Math.max(44, insets.bottom + spacing[3]) },
+          ]}
         >
           {!isClientConfigured ? (
-            // 01: the product, since we do not know the company yet.
-            <View style={[styles.brand, { paddingTop: insets.top + 56 }]}>
-              <View style={styles.logoTile}>
-                <Hexagon size={32} color={colors.primary} />
-              </View>
-              <Text variant="display" color="textOnBrand" style={styles.productName}>Nexus CRM</Text>
-              <Text variant="bodyLg" color="onBrandMuted" style={styles.tagline}>
-                Tasks, complaints and leads for your whole team, in one place.
+            <>
+              <Text variant="h1">Enter your company code</Text>
+              <Text variant="text" color="textSecondary" style={styles.sub6}>
+                Your admin gives you this code. You only enter it once on this phone.
               </Text>
-            </View>
+              {box ? <ErrorBox error={box} /> : null}
+              <Input
+                label="Company code"
+                accessibilityLabel="Company code"
+                value={compCode}
+                onChangeText={typed(setCompCode)}
+                leftIcon={Building2}
+                size="lg"
+                hint="Not case-sensitive. Example: TestCRM"
+                error={fieldError("code")}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="off"
+                autoFocus
+                editable={!busy}
+                onSubmitEditing={verifyCompany}
+                returnKeyType="go"
+                containerStyle={styles.firstField}
+              />
+              <Button title="Continue" trailingIcon={ArrowRight} onPress={verifyCompany} loading={busy} fullWidth style={styles.button} />
+            </>
           ) : (
-            // 02: the tenant — the payoff for typing a company code.
-            <View style={[styles.brand, styles.brandCenter, { paddingTop: insets.top + spacing[10] }]}>
-              <View style={styles.logoFrame}>
-                {showLogo ? (
-                  <Image
-                    source={{ uri: logoURL as string }}
-                    style={styles.logo}
-                    resizeMode="contain"
-                    accessibilityLabel={companyName ?? "Company logo"}
-                    onError={() => setLogoBroken(true)}
-                  />
-                ) : (
-                  <StatusBadge testID="tenant-placeholder" tone="slate" icon={Building2} size={56} />
-                )}
-              </View>
-              <Text variant="h1" color="textOnBrand" align="center" style={styles.tenant}>
-                {tenant ?? "Welcome back"}
-              </Text>
-              {boundCode ? (
-                <Text variant="text" color="onBrandMuted" align="center" style={styles.code}>
-                  Company code {boundCode}
+            <>
+              <Text variant="h1">Sign in</Text>
+              {box ? (
+                <ErrorBox error={box} />
+              ) : (
+                <Text variant="text" color="textSecondary" style={styles.sub4}>
+                  Use the username your admin set up for you.
                 </Text>
+              )}
+              {endedWhy && !box ? (
+                <View style={styles.notice}>
+                  <InfoNote icon={LogOut}>{endedWhy}</InfoNote>
+                </View>
               ) : null}
-            </View>
-          )}
-
-          <View
-            testID="login-panel"
-            style={[
-              styles.panel,
-              // The panel's minimum height is for the resting screen only; with
-              // the keyboard up it would push the button below the fold.
-              !keyboardOpen && (isClientConfigured ? styles.panelLogin : styles.panelCode),
-              { paddingBottom: Math.max(44, insets.bottom + spacing[3]) },
-            ]}
-          >
-            {!isClientConfigured ? (
-              <>
-                <Text variant="h1">Enter your company code</Text>
-                <Text variant="text" color="textSecondary" style={styles.sub6}>
-                  Your admin gives you this code. You only enter it once on this phone.
+              <Input
+                label="Username"
+                accessibilityLabel="Username"
+                value={identifier}
+                onChangeText={typed(setIdentifier)}
+                leftIcon={User}
+                size="lg"
+                error={fieldError("identifier")}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="username"
+                editable={!busy}
+                containerStyle={box ? styles.fieldAfterBox : styles.firstFieldLogin}
+              />
+              <Input
+                label="Password"
+                accessibilityLabel="Password"
+                value={password}
+                onChangeText={typed(setPassword)}
+                password
+                leftIcon={Lock}
+                size="lg"
+                error={fieldError("password")}
+                // E 03: wrong credentials ring the password; the box above says why.
+                invalid={box?.code === "INVALID_CREDENTIALS"}
+                autoCapitalize="none"
+                autoComplete="password"
+                editable={!busy}
+                onSubmitEditing={submit}
+                returnKeyType="go"
+                containerStyle={styles.nextField}
+              />
+              <Button
+                title="Sign in"
+                onPress={submit}
+                loading={busy}
+                fullWidth
+                style={box ? styles.buttonAfterBox : styles.button}
+              />
+              {/* The only escape from a mistyped code, so a control, not small print. */}
+              <Pressable
+                onPress={switchCompany}
+                disabled={busy}
+                accessibilityRole="button"
+                accessibilityLabel="Switch company"
+                hitSlop={spacing[3]}
+                style={box ? styles.switchAfterBox : styles.switch}
+              >
+                <Text variant="text" color="textSecondary" align="center">
+                  {`Not ${tenant ?? "this company"}? `}
+                  <Text variant="rowTitle" color="primary">Switch company</Text>
                 </Text>
-                {box ? <ErrorBox error={box} /> : null}
-                <Input
-                  label="Company code"
-                  accessibilityLabel="Company code"
-                  value={compCode}
-                  onChangeText={typed(setCompCode)}
-                  leftIcon={Building2}
-                  size="lg"
-                  hint="Not case-sensitive. Example: TestCRM"
-                  error={fieldError("code")}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  autoComplete="off"
-                  autoFocus
-                  editable={!busy}
-                  onSubmitEditing={verifyCompany}
-                  returnKeyType="go"
-                  containerStyle={styles.firstField}
-                />
-                <Button title="Continue" trailingIcon={ArrowRight} onPress={verifyCompany} loading={busy} fullWidth style={styles.button} />
-              </>
-            ) : (
-              <>
-                <Text variant="h1">Sign in</Text>
-                {box ? (
-                  <ErrorBox error={box} />
-                ) : (
-                  <Text variant="text" color="textSecondary" style={styles.sub4}>
-                    Use the username your admin set up for you.
-                  </Text>
-                )}
-                {endedWhy && !box ? (
-                  <View style={styles.notice}>
-                    <InfoNote icon={LogOut}>{endedWhy}</InfoNote>
-                  </View>
-                ) : null}
-                <Input
-                  label="Username"
-                  accessibilityLabel="Username"
-                  value={identifier}
-                  onChangeText={typed(setIdentifier)}
-                  leftIcon={User}
-                  size="lg"
-                  error={fieldError("identifier")}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  autoComplete="username"
-                  editable={!busy}
-                  containerStyle={box ? styles.fieldAfterBox : styles.firstFieldLogin}
-                />
-                <Input
-                  label="Password"
-                  accessibilityLabel="Password"
-                  value={password}
-                  onChangeText={typed(setPassword)}
-                  password
-                  leftIcon={Lock}
-                  size="lg"
-                  error={fieldError("password")}
-                  // E 03: wrong credentials ring the password; the box above says why.
-                  invalid={box?.code === "INVALID_CREDENTIALS"}
-                  autoCapitalize="none"
-                  autoComplete="password"
-                  editable={!busy}
-                  onSubmitEditing={submit}
-                  returnKeyType="go"
-                  containerStyle={styles.nextField}
-                />
-                <Button
-                  title="Sign in"
-                  onPress={submit}
-                  loading={busy}
-                  fullWidth
-                  style={box ? styles.buttonAfterBox : styles.button}
-                />
-                {/* The only escape from a mistyped code, so a control, not small print. */}
-                <Pressable
-                  onPress={switchCompany}
-                  disabled={busy}
-                  accessibilityRole="button"
-                  accessibilityLabel="Switch company"
-                  hitSlop={spacing[3]}
-                  style={box ? styles.switchAfterBox : styles.switch}
-                >
-                  <Text variant="text" color="textSecondary" align="center">
-                    {`Not ${tenant ?? "this company"}? `}
-                    <Text variant="rowTitle" color="primary">Switch company</Text>
-                  </Text>
-                </Pressable>
-              </>
-            )}
-            <Footer>{appVersion()}</Footer>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+              </Pressable>
+            </>
+          )}
+          <Footer>{appVersion()}</Footer>
+        </View>
+      </ScrollView>
     </View>
   );
 }
