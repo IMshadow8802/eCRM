@@ -379,3 +379,49 @@ it("a navigate() with a view clears the search the user left", async () => {
   expect(screen.getByPlaceholderText("Lead name, company or mobile").props.value).toBe("");
 });
 
+
+// Home counts MY follow-ups; opened from there the queue narrows to mine until the chip is cleared.
+describe("mine (from Home)", () => {
+  const counts = () =>
+    jest.mocked(fetchFollowUps).mock.calls.map(([p]) => p as FetchFollowUpsParams).filter((p) => p.PageSize === 1);
+
+  it("narrows the list and the tab counts to AssignedTo me and shows a Mine chip", async () => {
+    await renderWithProviders(<FollowUpsScreen navigation={makeNavigation<"FollowUps">()} route={makeRoute("FollowUps", { view: "today", mine: true })} />);
+    await screen.findByText("Ramesh Patel");
+    expect(lastList()).toEqual(expect.objectContaining({ Status: "open", DueFrom: today, AssignedTo: 42 }));
+    expect(counts().every((p) => p.AssignedTo === 42)).toBe(true);
+    expect(counts().some((p) => p.Overdue)).toBe(true);
+    expect(screen.getByRole("button", { name: "Mine only. Show everyone's" })).toBeOnTheScreen();
+  });
+
+  it("tapping the chip's x clears it: the whole reach again", async () => {
+    await renderWithProviders(<FollowUpsScreen navigation={makeNavigation<"FollowUps">()} route={makeRoute("FollowUps", { view: "today", mine: true })} />);
+    await screen.findByText("Ramesh Patel");
+    await fireEvent.press(screen.getByRole("button", { name: "Mine only. Show everyone's" }));
+    await waitFor(() => expect(lastList()?.AssignedTo).toBeUndefined());
+    expect(screen.queryByRole("button", { name: "Mine only. Show everyone's" })).toBeNull();
+  });
+
+  it("opened normally it is reach-wide with no chip", async () => {
+    await mount();
+    await screen.findByText("Ramesh Patel");
+    expect(lastList()?.AssignedTo).toBeUndefined();
+    expect(counts().every((p) => p.AssignedTo === undefined)).toBe(true);
+    expect(screen.queryByRole("button", { name: "Mine only. Show everyone's" })).toBeNull();
+  });
+
+  it("a navigate() without mine clears it", async () => {
+    let navigateTo: (params: { view: "today"; mine?: boolean }) => void = () => {};
+    function Harness() {
+      const [route, setRoute] = useState(makeRoute("FollowUps", { view: "today", mine: true }));
+      navigateTo = (params) => setRoute(makeRoute("FollowUps", params));
+      return <FollowUpsScreen navigation={makeNavigation<"FollowUps">()} route={route} />;
+    }
+    await renderWithProviders(<Harness />);
+    await screen.findByText("Ramesh Patel");
+    expect(lastList()?.AssignedTo).toBe(42);
+    await act(async () => navigateTo({ view: "today" }));
+    await waitFor(() => expect(lastList()?.AssignedTo).toBeUndefined());
+    expect(screen.queryByRole("button", { name: "Mine only. Show everyone's" })).toBeNull();
+  });
+});

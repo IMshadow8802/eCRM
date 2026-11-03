@@ -213,7 +213,7 @@ export default function HomeScreen() {
   const toComplaints = (queue: ComplaintQueue) => navigation.navigate("Complaints", { queue });
   const toLeads = (queue: LeadQueue) => navigation.navigate("Leads", { queue });
   // A tab, or pushed when the bar has no room — the navigator that has the route answers.
-  const toFollowUps = () => navigation.navigate("FollowUps", { view: "today" });
+  const toFollowUps = () => navigation.navigate("FollowUps", { view: "today", mine: true });
 
   // ------------------------------------------------------------ hero
   const now = new Date();
@@ -450,7 +450,8 @@ export default function HomeScreen() {
     </View>
   );
   // "New lead" for one module; with several the label is "New", read as "Create" (as the rail).
-  const newButton = create.can ? (
+  // The rail carries "+"; only the expanded T1 frame draws both (design E).
+  const newButton = create.can && (layout.nav === "bar" || tablet) ? (
     <HeaderButton
       label={create.label}
       icon={Plus}

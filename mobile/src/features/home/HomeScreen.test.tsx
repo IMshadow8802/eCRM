@@ -255,7 +255,7 @@ describe("04 · complaints, tasks and leads", () => {
       ["Open 7", "Complaints", { queue: "mine" }],
       ["Open My complaints", "Complaints", { queue: "mine" }],
       ["Tasks, 3 assigned to you", "Tabs", { screen: "Tasks", params: { filter: "mine" } }],
-      ["Follow-ups, 4 due today", "FollowUps", { view: "today" }],
+      ["Follow-ups, 4 due today", "FollowUps", { view: "today", mine: true }],
       ["Leads, 12 yours", "Leads", { queue: "mine" }],
       ["Inbox, 63 unread", "Inbox"],
       ["Search", "Search"],
@@ -369,7 +369,7 @@ describe("27 · leads only", () => {
     // Reach Own: no team card.
     expect(screen.queryByText("My team")).toBeNull();
     await fireEvent.press(screen.getByRole("link", { name: "See all" }));
-    expect(mockNav.navigate).toHaveBeenLastCalledWith("FollowUps", { view: "today" });
+    expect(mockNav.navigate).toHaveBeenLastCalledWith("FollowUps", { view: "today", mine: true });
     expect(fetchTickets).not.toHaveBeenCalled();
     expect(fetchTasks).not.toHaveBeenCalled();
   });
@@ -437,7 +437,7 @@ describe("T1 · tablet", () => {
     expect(await screen.findByText("Explain delay")).toBeOnTheScreen();
     expect(screen.getByText("Missed deadline")).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("link", { name: "Queue" }));
-    expect(mockNav.navigate).toHaveBeenLastCalledWith("FollowUps", { view: "today" });
+    expect(mockNav.navigate).toHaveBeenLastCalledWith("FollowUps", { view: "today", mine: true });
     // The hero spans two of three columns.
     expect(ancestor(screen.getByText("My complaints"), (n) => flat(n).flex === 2)).not.toBeNull();
   });
@@ -605,5 +605,20 @@ describe("B-I2 · Home follows layout.columns", () => {
     expect(first.getByText("Tasks")).toBeOnTheScreen();
     expect(first.getByText("Follow-ups")).toBeOnTheScreen();
     expect(first.queryByText("Leads")).toBeNull();
+  });
+
+  it("medium: the rail carries +, so Home has no New of its own", async () => {
+    setWindow(700, 1000);
+    signInWith("tasks", "complaints", "leads");
+    await renderWithProviders(<HomeScreen />);
+    expect(await screen.findByText("My complaints")).toBeOnTheScreen();
+    expect(screen.queryByRole("button", { name: "Create" })).toBeNull();
+  });
+
+  it("expanded (T1): Home keeps New beside the rail's +", async () => {
+    setWindow(...TABLET);
+    signInWith("tasks", "complaints", "leads");
+    await renderWithProviders(<HomeScreen />);
+    expect(await screen.findByRole("button", { name: "Create" })).toBeOnTheScreen();
   });
 });

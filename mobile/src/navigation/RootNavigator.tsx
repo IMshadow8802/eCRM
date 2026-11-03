@@ -72,7 +72,8 @@ export type RootStackParamList = {
   LeadDetail: { leadId: number };
   /** Omit `leadId` to add a new one. */
   LeadForm: { leadId?: number };
-  FollowUps: { view?: FollowUpView } | undefined;
+  /** `mine` = AssignedTo me (Home counts mine); a navigate without it clears it. */
+  FollowUps: { view?: FollowUpView; mine?: boolean } | undefined;
   /** Pushed from More (and Home's bell). */
   Inbox: undefined;
   Me: undefined;

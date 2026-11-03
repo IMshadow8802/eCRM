@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { FlatList, StyleSheet, View } from "react-native";
 import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { ArrowRight, Calendar, CalendarClock, Check, Search } from "lucide-react-native";
+import { ArrowRight, Calendar, CalendarClock, Check, Search, X } from "lucide-react-native";
 import type { StackScreenProps } from "@react-navigation/stack";
 
 import { fetchFollowUps, type FetchFollowUpsParams } from "../../api/followupQueries";
@@ -95,12 +95,17 @@ export default function FollowUpsScreen({ navigation, route, pushed = false }: P
     setSearch("");
     setDay(null);
   });
+  // Home's number is mine: opened from there, every fetch narrows to me until the chip is cleared.
+  // A navigate() without `mine` clears it; with no params (the tab opened normally) it stays off.
+  const [mineParam, setMine] = useParamState<boolean>(route.params, route.params ? !!route.params.mine : undefined, false);
+  const mine = mineParam && userId != null;
+  const assigned = mine ? { AssignedTo: userId } : null;
   const term = useDebouncedValue(search.trim());
 
   // A picked day (the band's calendar) replaces the view: every follow-up due that day.
   const params: FetchFollowUpsParams = useMemo(
-    () => ({ ...(day ? { DueFrom: day, DueTo: day } : followUpViewParams(view)), SearchTerm: term || null, PageSize: 50 }),
-    [view, day, term],
+    () => ({ ...(day ? { DueFrom: day, DueTo: day } : followUpViewParams(view)), ...(mine ? { AssignedTo: userId } : null), SearchTerm: term || null, PageSize: 50 }),
+    [view, day, term, mine, userId],
   );
 
   // Pages of 50, fetched as the list nears its end (as Leads and Complaints).
@@ -113,13 +118,13 @@ export default function FollowUpsScreen({ navigation, route, pushed = false }: P
     placeholderData: keepPreviousData,
   });
 
-  const todayParams = followUpViewParams("today");
+  const todayParams = { ...followUpViewParams("today"), ...assigned };
   const todayCount = useQuery({
     queryKey: ["followups", "count", todayParams],
     queryFn: () => fetchFollowUps({ ...todayParams, PageSize: 1 }),
   });
-  // Reach-wide: it labels this queue's Overdue view (the bar badge is mine, §7.9).
-  const overdueCount = useQuery(overdueFollowUpsCountQuery());
+  // Reach-wide unless mine: it labels this queue's Overdue view (the bar badge is mine, §7.9).
+  const overdueCount = useQuery(overdueFollowUpsCountQuery(mine ? userId : null));
   const showDone = view === "today" && !day && !term;
   const doneParams = doneTodayParams(userId);
   // G20: a DB without SQL 118 refuses DoneFrom/DoneTo; the group then reads "—".
@@ -206,6 +211,11 @@ export default function FollowUpsScreen({ navigation, route, pushed = false }: P
           countTone: v.value === "overdue" ? ("danger" as const) : undefined,
         }))}
       />
+      {mine ? (
+        <View style={styles.pick}>
+          <Chip label="Mine" icon={X} tone="primary" size="md" accessibilityLabel="Mine only. Show everyone's" onPress={() => setMine(false)} />
+        </View>
+      ) : null}
       {picking ? (
         <View style={styles.pick}>
           <DateField label="Due on" value={day} onChange={setDay} placeholder="Pick a day" clearable />
