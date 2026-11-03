@@ -17,6 +17,8 @@ const CASES: [string, Case][] = [
   ["fetchFollowUps window", { call: () => followups.fetchFollowUps({ Status: "open", DueFrom: "2026-11-02", DueTo: "2026-11-02", SearchTerm: "ravi", PageNumber: 3, PageSize: 20 }), url: "/api/followups/fetchFollowups", body: { LeadId: 0, Status: "open", DueFrom: "2026-11-02", DueTo: "2026-11-02", Overdue: false, SearchTerm: "ravi", PageNumber: 3, PageSize: 20 } }],
   // 118: a DoneAt bracket goes only when set, so a DB without 118 is never sent the keys.
   ["fetchFollowUps done today", { call: () => followups.fetchFollowUps({ Status: "done", DoneFrom: "2026-11-02", DoneTo: "2026-11-03" }), url: "/api/followups/fetchFollowups", body: { LeadId: 0, Status: "done", DueFrom: null, DueTo: null, DoneFrom: "2026-11-02", DoneTo: "2026-11-03", Overdue: false, SearchTerm: null, PageNumber: 1, PageSize: 50 } }],
+  // "Mine" (§7.9 ruling): AssignedTo goes only when set; the queue never sends it.
+  ["fetchFollowUps mine", { call: () => followups.fetchFollowUps({ Overdue: true, AssignedTo: 7 }), url: "/api/followups/fetchFollowups", body: { LeadId: 0, Status: null, DueFrom: null, DueTo: null, AssignedTo: 7, Overdue: true, SearchTerm: null, PageNumber: 1, PageSize: 50 } }],
   // A variable (not a literal) escapes TS's excess-property check; a LeadId in
   // it would flip the controller to per-lead mode, which has no pagination.
   ["fetchFollowUps pins the queue", { call: () => { const p = { Overdue: true, LeadId: 9 }; return followups.fetchFollowUps(p); }, url: "/api/followups/fetchFollowups", body: { LeadId: 0, Status: null, DueFrom: null, DueTo: null, Overdue: true, SearchTerm: null, PageNumber: 1, PageSize: 50 } }],

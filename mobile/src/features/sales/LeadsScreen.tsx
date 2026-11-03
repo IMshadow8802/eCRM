@@ -147,9 +147,13 @@ export default function LeadsScreen({ navigation, route }: Props) {
   const loadMore = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage && !isPlaceholderData) void fetchNextPage();
   }, [hasNextPage, isFetchingNextPage, isPlaceholderData, fetchNextPage]);
-  const narrowed = status !== "all" || term.length > 0;
+  // New hides the pills (and ignores the status), so a pill left from another preset is no narrowing.
+  const narrowed = (queue !== "new" && status !== "all") || term.length > 0;
 
-  const shown = isTwoPane ? (leads.find((l) => l.Id === selected) ?? leads[0] ?? null) : null;
+  // The picked lead stays in the pane even after it leaves the list (a transfer,
+  // a status move): jumping to another would make the next tap act on the wrong
+  // lead. The first row stands in only until something is picked.
+  const shownId = isTwoPane ? (selected ?? leads[0]?.Id ?? null) : null;
   const openLead = useCallback(
     (lead: Lead) => (isTwoPane ? setSelected(lead.Id) : navigation.navigate("LeadDetail", { leadId: lead.Id })),
     [isTwoPane, navigation],
@@ -246,7 +250,7 @@ export default function LeadsScreen({ navigation, route }: Props) {
             renderItem={({ item, index }) => (
               // One rounded white group, cut row by row so the list can page.
               <ListGroupCell first={index === 0} last={index === leads.length - 1}>
-                <LeadRow lead={item} statuses={statuses} onPress={openLead} first={index === 0} selected={shown?.Id === item.Id} />
+                <LeadRow lead={item} statuses={statuses} onPress={openLead} first={index === 0} selected={shownId === item.Id} />
               </ListGroupCell>
             )}
             ListEmptyComponent={
@@ -273,8 +277,8 @@ export default function LeadsScreen({ navigation, route }: Props) {
     <Screen band style={styles.row}>
       {list}
       <View style={styles.fill}>
-        {shown ? (
-          <LeadDetailBody key={shown.Id} leadId={shown.Id} navigation={navigation} useBar={inPane} pane />
+        {shownId != null ? (
+          <LeadDetailBody key={shownId} leadId={shownId} navigation={navigation} useBar={inPane} pane />
         ) : (
           <BandSheet center gutter={metrics.pane.detailSheet}>
             <EmptyState module="leads" title="No lead selected" message="Pick a lead on the left to see it here." />

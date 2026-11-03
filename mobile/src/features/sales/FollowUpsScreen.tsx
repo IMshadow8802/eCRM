@@ -9,6 +9,7 @@ import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { useParamState } from "../../hooks/useParamState";
 import { overdueFollowUpsCountQuery } from "../../navigation/badges";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
+import useAuthStore from "../../stores/useAuthStore";
 import type { FollowUp } from "../../types/api";
 import { followUpBadge } from "../../theme/statusBadges";
 import { metrics, spacing } from "../../theme";
@@ -82,6 +83,7 @@ function when(f: FollowUp, now = new Date()): string {
 export default function FollowUpsScreen({ navigation, route, pushed = false }: Props) {
   const { gutter } = useLayout();
   const can = useAccess("leads");
+  const userId = useAuthStore((s) => s.UserId);
   const sheets = useRef<FollowUpSheetsHandle>(null);
   const [search, setSearch] = useState("");
   const [searching, setSearching] = useState(false);
@@ -116,15 +118,16 @@ export default function FollowUpsScreen({ navigation, route, pushed = false }: P
     queryKey: ["followups", "count", todayParams],
     queryFn: () => fetchFollowUps({ ...todayParams, PageSize: 1 }),
   });
-  // The bar's overdue badge: one request for both.
+  // Reach-wide: it labels this queue's Overdue view (the bar badge is mine, §7.9).
   const overdueCount = useQuery(overdueFollowUpsCountQuery());
   const showDone = view === "today" && !day && !term;
-  const doneParams = doneTodayParams();
+  const doneParams = doneTodayParams(userId);
   // G20: a DB without SQL 118 refuses DoneFrom/DoneTo; the group then reads "—".
   const doneToday = useQuery({
     queryKey: ["followups", "done-today", doneParams],
     queryFn: () => fetchFollowUps({ ...doneParams, PageSize: 50 }),
-    enabled: showDone,
+    // Mine only (§7.9): without a user id the filter would be the whole reach.
+    enabled: showDone && userId != null,
     // Without 118 it can never succeed; retrying only delays the "—".
     retry: false,
   });
@@ -150,11 +153,11 @@ export default function FollowUpsScreen({ navigation, route, pushed = false }: P
 
   const row = (f: FollowUp, index: number, last: boolean) => {
     const open = f.Status === "open";
-    const badge = followUpBadge(f.Type, open ? (f.IsOverdue ? "overdue" : "open") : f.Status === "done" || f.Status === "cancelled" ? f.Status : "open");
+    const badge = followUpBadge(f.Type, open ? (f.IsOverdue ? "overdue" : "open") : f.Status);
     const actionable = open && can.edit;
     const body = (
       <ListRow
-        badge={{ tone: f.Status === "skipped" ? "slate" : badge.tone, icon: badge.icon }}
+        badge={{ tone: badge.tone, icon: badge.icon }}
         title={f.LeadName ?? "Lead"}
         titleTone={open ? "default" : "muted"}
         right={{ text: when(f, now), tone: open && f.IsOverdue ? "danger" : "default" }}

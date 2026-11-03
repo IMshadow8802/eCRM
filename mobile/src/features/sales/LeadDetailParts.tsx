@@ -192,7 +192,7 @@ export function FollowUpsTab({
         <ListGroup style={next ? styles.after : undefined}>
           {rest.map((f, i) => {
             const open = f.Status === "open";
-            const badge = followUpBadge(f.Type, open ? (f.IsOverdue ? "overdue" : "open") : f.Status === "cancelled" ? "cancelled" : "done");
+            const badge = followUpBadge(f.Type, open ? (f.IsOverdue ? "overdue" : "open") : f.Status === "cancelled" || f.Status === "skipped" ? f.Status : "done");
             return (
               <ListRow
                 key={f.Id}

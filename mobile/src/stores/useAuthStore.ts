@@ -191,7 +191,7 @@ const useAuthStore = create<AuthState>()(
       },
 
       refreshAccess: async () => {
-        const { isAuthenticated, accessCheckedAt, access, token } = get();
+        const { isAuthenticated, accessCheckedAt, access, UserId } = get();
         if (!isAuthenticated) return;
         // Unknown access (an old saved session, a failed first ask) retries on every foreground.
         if (access && accessCheckedAt != null && Date.now() - accessCheckedAt < ACCESS_REFRESH_MS) return;
@@ -199,8 +199,9 @@ const useAuthStore = create<AuthState>()(
         set({ accessCheckedAt: Date.now() });
         try {
           const { data } = await fetchMyAccess();
-          // A reply that lands after logout or another sign-in belongs to a session that is gone.
-          if (!data?.access || get().token !== token) return;
+          // A reply that lands after logout or another person's sign-in is not theirs. The
+          // same person re-signing in (only the token changed) still takes it.
+          if (!data?.access || !get().isAuthenticated || get().UserId !== UserId) return;
           set({
             access: data.access,
             permissions: { hasAdminAccess: false, ...get().permissions, ...data.permissions },

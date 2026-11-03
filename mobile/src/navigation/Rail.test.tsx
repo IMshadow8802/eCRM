@@ -85,3 +85,9 @@ it("Shell draws the bar on the first frame, before any route is known", async ()
   expect(screen.getByTestId("bottom-bar")).toBeOnTheScreen();
   expect(screen.getByRole("tab", { name: "Today" })).toBeSelected();
 });
+
+// Review B-M2: with nothing addable the "+" opened an empty Create sheet.
+it("without onCreate (nothing the role can add) there is no + at all", async () => {
+  await renderWithProviders(<Rail items={["Home", "More"]} active="Home" onPress={jest.fn()} badges={{}} createLabel="Create" />);
+  expect(screen.queryByRole("button", { name: "Create" })).toBeNull();
+});

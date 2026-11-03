@@ -14,6 +14,7 @@ import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../
 import { spySheets } from "../../test/sheets";
 import { flat } from "../../test/style";
 import { PHONE, TABLET, setWindow } from "../../test/window";
+import useAuthStore from "../../stores/useAuthStore";
 import { chipTones, colors } from "../../theme";
 import ComplaintsScreen, { SWIPE_HINT_KEY } from "./ComplaintsScreen";
 import { complaintQueueParams } from "./ticketHelpers";
@@ -377,6 +378,30 @@ describe("paging and search", () => {
     await waitFor(() => expect(listCalls()).toHaveLength(before + 1));
     expect(lastList()).toMatchObject({ SearchTerm: "sha", PageNumber: 1 });
   });
+});
+
+// Review C-M4: every settled term fired 1 + N(statuses) count requests (Leads drops them).
+it("while a search is set the status pills go without counts — no count storm per term", async () => {
+  await mount();
+  await screen.findByText("Inverter keeps tripping");
+  await fireEvent.changeText(screen.getByPlaceholderText("Search number, customer, mobile"), "sha");
+  await act(async () => { jest.advanceTimersByTime(300); });
+  await waitFor(() => expect(lastList()).toMatchObject({ SearchTerm: "sha" }));
+  const counts = jest.mocked(fetchTickets).mock.calls.map((c) => c[0]!).filter((p) => p.PageSize === 1 && p.SearchTerm === "sha");
+  expect(counts).toEqual([]);
+  expect(screen.getByRole("radio", { name: "Resolved" })).toBeOnTheScreen();
+});
+
+// Review C-M3: with no user id, "mine" sent AssignedTo null — the whole reach, labelled Mine.
+it("with no user id, Mine asks nothing rather than the whole reach", async () => {
+  useAuthStore.setState({ UserId: null });
+  await mount();
+  await act(async () => { jest.advanceTimersByTime(300); });
+  const mine = jest.mocked(fetchTickets).mock.calls.map((c) => c[0]!).filter((p) => !p.Overdue && !p.Escalated && !p.Unassigned && p.AssignedTo == null);
+  // Only the Team preset count goes out with no AssignedTo; no list and no pill counts posing as Mine.
+  expect(listCalls()).toEqual([]);
+  expect(mine.every((p) => p.StatusCode === "active" && p.StatusId == null)).toBe(true);
+  expect(mine).toHaveLength(1);
 });
 
 describe("count equality", () => {

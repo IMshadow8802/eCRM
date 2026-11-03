@@ -47,13 +47,17 @@ const wholeMinutes = (text: string | undefined): number | null => {
  * ponytail: the API has no reschedule — it is a new booking (same type,
  * assignee and time of day) and only then a skip of the old one with the
  * reason, so a failure never loses the follow-up. If the skip fails after the
- * booking, the sheet says so; add a reschedule endpoint if that ever bites.
+ * booking, the sheet says so and a retry only retries the skip (`rebooked`
+ * remembers which follow-up already has its replacement), so it never books
+ * twice; add a reschedule endpoint if that ever bites.
  */
 export const FollowUpSheets = forwardRef<FollowUpSheetsHandle>(function FollowUpSheets(_props, ref) {
   const queryClient = useQueryClient();
   const { callOutcomes } = useLeadRefData();
   const [current, setCurrent] = useState<FollowUp | null>(null);
   const [failure, setFailure] = useState<{ on: Key; message: string } | null>(null);
+  /** Id of the follow-up whose replacement is already booked (a half-done reschedule). */
+  const rebooked = useRef<{ id: number; due: string } | null>(null);
   const sheets = { done: useRef<SheetRef>(null), reschedule: useRef<SheetRef>(null), skip: useRef<SheetRef>(null) };
 
   const open = (on: Key) => (f: FollowUp) => {
@@ -85,18 +89,23 @@ export const FollowUpSheets = forwardRef<FollowUpSheetsHandle>(function FollowUp
   const skip = useMutation({ mutationFn: skipFollowUp, ...handlers("skip", "Could not skip the follow-up.") });
   const reschedule = useMutation({
     mutationFn: async ({ f, due, remarks }: { f: FollowUp; due: string; remarks: string }) => {
-      const booked = await scheduleFollowUp({
-        LeadId: f.LeadId,
-        Type: (f.Type ?? "call") as FollowUpType,
-        DueAt: onDayAtTimeOf(f.DueAt, due),
-        AssignedTo: f.AssignedTo,
-      });
+      let booked = rebooked.current?.id === f.Id ? rebooked.current : null;
+      if (!booked) {
+        await scheduleFollowUp({
+          LeadId: f.LeadId,
+          Type: (f.Type ?? "call") as FollowUpType,
+          DueAt: onDayAtTimeOf(f.DueAt, due),
+          AssignedTo: f.AssignedTo,
+        });
+        booked = rebooked.current = { id: f.Id, due };
+      }
+      // A retry names the day actually booked, even if the picker changed since.
+      const day = shortDay(parseDate(booked.due) as Date);
       try {
-        await skipFollowUp({ Id: f.Id, Remarks: `Rescheduled to ${shortDay(parseDate(due) as Date)}: ${remarks}` });
+        await skipFollowUp({ Id: f.Id, Remarks: `Rescheduled to ${day}: ${remarks}` });
       } catch {
         throw new Error("Booked the new follow-up, but the old one is still open — skip it from the lead.");
       }
-      return booked;
     },
     ...handlers("reschedule", "Could not reschedule the follow-up."),
   });

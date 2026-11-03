@@ -83,3 +83,35 @@ it("an Input outside one does nothing extra", async () => {
   await fireEvent(screen.getByPlaceholderText("Alone"), "focus");
   expect(scrollTo).not.toHaveBeenCalled();
 });
+
+// Review B-M5: the sheet path (c23e12e) — the submit button under the field stays above the keyboard.
+describe("revealToEnd (a sheet)", () => {
+  const mountSheet = async (contentHeight: number) => {
+    await render(
+      <KeyboardScrollView testID="scroll" revealToEnd>
+        <Input placeholder="Why" />
+      </KeyboardScrollView>,
+    );
+    await fireEvent(screen.getByTestId("scroll"), "contentSizeChange", 400, contentHeight);
+    await keyboard("keyboardDidShow");
+    await fireEvent(screen.getByTestId("scroll"), "layout", { nativeEvent: { layout: { x: 0, y: 0, width: 400, height: 400 } } });
+  };
+
+  it("when the field and everything after it fit, scrolls to the end so the submit shows", async () => {
+    const scrollToEnd = jest.spyOn(ScrollView.prototype, "scrollToEnd").mockImplementation(() => {});
+    fieldAt(300, 70);
+    await mountSheet(600); // 600 - 300 + 16 <= 400
+    await fireEvent(screen.getByPlaceholderText("Why"), "focus");
+    expect(scrollToEnd).toHaveBeenCalledWith({ animated: true });
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
+
+  it("when they do not fit, reveals the field alone", async () => {
+    const scrollToEnd = jest.spyOn(ScrollView.prototype, "scrollToEnd").mockImplementation(() => {});
+    fieldAt(600, 70);
+    await mountSheet(1400);
+    await fireEvent(screen.getByPlaceholderText("Why"), "focus");
+    expect(scrollToEnd).not.toHaveBeenCalled();
+    expect(scrollTo).toHaveBeenLastCalledWith({ y: 600 + 70 + 16 - 400, animated: true });
+  });
+});

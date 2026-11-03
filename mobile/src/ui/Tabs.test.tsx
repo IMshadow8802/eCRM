@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react-native";
+import { ScrollView } from "react-native";
 import { PhoneOutgoing } from "lucide-react-native";
 
 import { chipTones, colors } from "../theme";
@@ -45,6 +46,21 @@ describe("BandTabs (E .seg)", () => {
     expect(screen.getByTestId("tabs").props.scrollEnabled).toBe(true);
     await fireEvent(list, "contentSizeChange", 300, 44);
     expect(screen.getByTestId("tabs").props.scrollEnabled).toBe(false);
+  });
+
+  // Review B-M7: opened on an off-screen preset (Unassigned), the active tab stayed out of view.
+  it("an overflowing row scrolls the active tab into the middle, also when the value changes", async () => {
+    const scrollTo = jest.spyOn(ScrollView.prototype, "scrollTo").mockImplementation(() => {});
+    const view = await render(<BandTabs testID="tabs" value="escalated" options={PRESETS} onChange={jest.fn()} />);
+    const list = screen.getByTestId("tabs");
+    await fireEvent(list, "layout", { nativeEvent: { layout: { width: 300, height: 44 } } });
+    await fireEvent(list, "contentSizeChange", 500, 44);
+    await fireEvent(screen.getByRole("tab", { name: "Escalated, 1" }), "layout", { nativeEvent: { layout: { x: 380, y: 0, width: 80, height: 44 } } });
+    expect(scrollTo).toHaveBeenLastCalledWith({ x: 380 + 40 - 150, animated: true });
+    await fireEvent(screen.getByRole("tab", { name: "Mine, 7" }), "layout", { nativeEvent: { layout: { x: 0, y: 0, width: 60, height: 44 } } });
+    await view.rerender(<BandTabs testID="tabs" value="mine" options={PRESETS} onChange={jest.fn()} />);
+    expect(scrollTo).toHaveBeenLastCalledWith({ x: 0, animated: true });
+    scrollTo.mockRestore();
   });
 });
 

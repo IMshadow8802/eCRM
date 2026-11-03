@@ -72,7 +72,7 @@ const AUTH_ENDPOINTS = ["/api/auth/loginUser", "/api/auth/logoutUser"];
 // stays on the normal path: signing out is right there.)
 const CREDENTIAL_CODES = ["WRONG_PASSWORD"];
 
-export const shouldSkipAuthRedirect =(url = ""): boolean =>
+export const shouldSkipAuthRedirect = (url = ""): boolean =>
   AUTH_ENDPOINTS.some((endpoint) => String(url).includes(endpoint));
 
 export const apiClient = axios.create({

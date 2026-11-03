@@ -279,6 +279,19 @@ describe("Follow-ups: a tab while there is room, else pushed", () => {
     await openFromHome("FollowUps");
     expect(await screen.findByText("FollowUps screen (pushed) today")).toBeOnTheScreen();
   });
+
+  // Review A-I1: from a pushed screen, navigate("FollowUps") hit the stack and pushed a copy.
+  it("tasks+leads: the bar's Follow-ups from a pushed screen switches to the tab, not a pushed copy", async () => {
+    signInWith("tasks", "leads");
+    await mountApp();
+    await openFromHome("Boards");
+    expect(await screen.findByText("Boards screen")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("tab", { name: "Follow-ups" }));
+    await act(async () => { jest.runOnlyPendingTimers(); });
+    expect(await screen.findByText("FollowUps screen")).toBeOnTheScreen();
+    expect(screen.queryByText("FollowUps screen (pushed)")).toBeNull();
+    expect(screen.getByRole("tab", { name: "Follow-ups" })).toBeSelected();
+  });
 });
 
 // ------------------------------------------------------------------ the Shell (spec §3.3, §3.4)
@@ -473,6 +486,18 @@ describe("the rail (tablet, ≥ medium)", () => {
 });
 
 describe("Create (04b)", () => {
+  // Review B-M2: a view-only role's "+" opened an empty sheet.
+  it("the rail's + shows only when the role can add to something", async () => {
+    setWindow(...TABLET);
+    signInWith("tasks", "complaints");
+    await mountApp();
+    await screen.findByText("Home screen");
+    expect(screen.queryByRole("button", { name: "Create" })).toBeNull();
+    seedAuth({ access: { modules: { tasks: ADD, complaints: ADD } } });
+    await mountApp();
+    expect(await screen.findAllByRole("button", { name: "Create" })).not.toHaveLength(0);
+  });
+
   it("rows only for modules the role can add, in E's order, with the footnote", async () => {
     seedAuth({ access: { modules: { tasks: ADD, complaints: ADD, leads: { ...ADD, add: false } } } });
     await mountApp();

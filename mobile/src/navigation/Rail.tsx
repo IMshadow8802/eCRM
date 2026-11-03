@@ -14,7 +14,8 @@ export interface RailProps {
   onPress: (item: RailItem) => void;
   badges: Partial<Record<RailItem, number>>;
   /** The "+" tile: the Create sheet (or the one module's form). */
-  onCreate: () => void;
+  /** Omitted when the role can add to nothing: no "+" at all. */
+  onCreate?: () => void;
   createLabel: string;
 }
 
@@ -32,14 +33,16 @@ export function Rail({ items, active, onPress, badges, onCreate, createLabel }: 
       <View style={styles.logo}>
         <Hexagon size={24} color={colors.textOnBrand} />
       </View>
-      <Pressable
-        onPress={onCreate}
-        accessibilityRole="button"
-        accessibilityLabel={createLabel}
-        style={({ pressed }) => [styles.create, pressed && styles.createPressed]}
-      >
-        <Plus size={24} color={colors.textOnBrand} />
-      </Pressable>
+      {onCreate ? (
+        <Pressable
+          onPress={onCreate}
+          accessibilityRole="button"
+          accessibilityLabel={createLabel}
+          style={({ pressed }) => [styles.create, pressed && styles.createPressed]}
+        >
+          <Plus size={24} color={colors.textOnBrand} />
+        </Pressable>
+      ) : null}
       {main.map((item) => (
         <NavItem key={item} item={item} layout="rail" on={item === active} badge={badges[item]} onPress={() => onPress(item)} />
       ))}

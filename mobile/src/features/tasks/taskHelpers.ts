@@ -56,11 +56,11 @@ export function myDoneQuery(userId: number | null) {
   };
 }
 
-/** Every workspace the caller is in (not archived): Boards, TaskDetail, TaskForm, the Shell share it. */
 /** A board the caller is in (not pending, not archived, not seen only as an admin) — what Workspaces lists under the user's own. */
 export const isMyWorkspace = (w: Workspace) =>
   w.MyInviteStatus !== "pending" && !w.IsArchived && (w.MyRole != null || w.MyInviteStatus != null);
 
+/** Every workspace the caller is in (not archived): Boards, TaskDetail, TaskForm, the Shell share it. */
 export const WORKSPACES_QUERY = { queryKey: ["workspaces", false], queryFn: () => fetchWorkspaces({ PageSize: 100 }) };
 
 /** Monday 00:00, local. */

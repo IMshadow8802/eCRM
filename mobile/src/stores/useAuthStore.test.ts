@@ -289,6 +289,17 @@ describe("refreshAccess", () => {
       expect(state().access).toEqual(theirs);
       expect(state().permissions?.rawPermissions).toEqual([]);
     });
+
+    // Review A-M4: a same-user re-sign-in swaps only the token; the reply is still theirs.
+    it("the same user re-signing in mid-flight still takes the reply", async () => {
+      state().login(loginData());
+      now += 60_000;
+      const pending = state().refreshAccess();
+      state().resumeSession(loginData({ token: "tok-2", access: access() }));
+      release();
+      await pending;
+      expect(state().access).toEqual(fresh);
+    });
   });
 });
 

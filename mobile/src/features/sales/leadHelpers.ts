@@ -122,10 +122,12 @@ export function followUpViewParams(view: FollowUpView, now = new Date()): FetchF
  * stamps DoneAt too, which is why Status: done is sent. A DB without 118
  * rejects the call; the screen shows "—".
  */
-export const doneTodayParams = (now = new Date()): FetchFollowUpsParams => ({
+export const doneTodayParams = (assignedTo: number | null, now = new Date()): FetchFollowUpsParams => ({
   Status: "done",
   DoneFrom: localDay(now),
   DoneTo: localDay(addDays(now, 1)),
+  // Mine only (§7.9 ruling): what I closed today, not the team.
+  AssignedTo: assignedTo,
 });
 
 // ------------------------------------------------------------- follow-ups

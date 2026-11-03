@@ -103,9 +103,13 @@ export default function ComplaintsScreen({ navigation, route }: Props) {
   const term = useDebouncedValue(search.trim());
   const params = useMemo(() => complaintQueueParams(queue, status, userId, term), [queue, status, userId, term]);
 
+  // No user yet: a "mine" filter would be AssignedTo null — the whole reach,
+  // labelled Mine. Ask nothing until there is one (as Leads).
+  const known = (q: ComplaintQueue) => q !== "mine" || userId != null;
   const ticketsQuery = useInfiniteQuery({
     queryKey: ["tickets", params],
     queryFn: ({ pageParam }) => fetchTickets({ ...params, PageNumber: pageParam }),
+    enabled: known(queue),
     initialPageParam: 1,
     placeholderData: keepPreviousData,
     getNextPageParam: (last, _all, page) => (page < (last.data?.pagination.totalPages ?? 1) ? page + 1 : undefined),
@@ -116,16 +120,21 @@ export default function ComplaintsScreen({ navigation, route }: Props) {
   // G13: one PageSize-1 request per number, cached by its params.
   const total = (r: { data?: Awaited<ReturnType<typeof fetchTickets>> }) => r.data?.data?.pagination.totalRecords;
   const presetCounts = useQueries({
-    queries: QUEUES.map((q) => complaintCountQuery(complaintQueueParams(q.value, "active", userId, ""))),
+    queries: QUEUES.map((q) => ({
+      ...complaintCountQuery(complaintQueueParams(q.value, "active", userId, "")),
+      enabled: known(q.value),
+    })),
     combine: (rs) => rs.map(total),
   });
-  const pillCounts = useQueries({
-    queries: [
-      complaintCountQuery(complaintQueueParams(queue, "active", userId, term)),
-      ...statuses.map((s) => complaintCountQuery(complaintQueueParams(queue, s.Id, userId, term))),
-    ],
-    combine: (rs) => rs.map(total),
-  });
+  // While a search is set the pills go without counts, as on Leads: 1 + N
+  // requests per settled term is a storm for little use.
+  const pillQueries: ReturnType<typeof complaintCountQuery>[] = term || !known(queue)
+    ? []
+    : [
+      complaintCountQuery(complaintQueueParams(queue, "active", userId, "")),
+      ...statuses.map((s) => complaintCountQuery(complaintQueueParams(queue, s.Id, userId, ""))),
+    ];
+  const pillCounts = useQueries({ queries: pillQueries, combine: (rs) => rs.map(total) });
 
   const tabs: TabOption<ComplaintQueue>[] = QUEUES.map((q, i) => ({
     ...q,

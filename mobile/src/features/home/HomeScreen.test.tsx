@@ -32,7 +32,7 @@ jest.mock("@react-navigation/native", () => ({
   useNavigation: () => mockNav,
 }));
 
-const mockCreate = { open: jest.fn(), label: "New" };
+const mockCreate = { open: jest.fn(), label: "New", can: true };
 jest.mock("../../navigation/Shell", () => ({
   ...jest.requireActual("../../navigation/Shell"),
   useCreate: () => mockCreate,
@@ -66,6 +66,7 @@ beforeEach(() => {
   jest.setSystemTime(NOW);
   setWindow(...PHONE);
   mockCreate.label = "New";
+  mockCreate.can = true;
   jest.mocked(fetchTasks).mockResolvedValue(
     envelope({ tasks: [makeTask({ Id: 1 }), makeTask({ Id: 2 }), makeTask({ Id: 3 })], pagination: pagination(3) }),
   );
@@ -144,7 +145,7 @@ describe("04 · complaints, tasks and leads", () => {
     expect(await screen.findByText("Good afternoon, Ayush")).toBeOnTheScreen();
     expect(screen.getByText("Monday, 2 November")).toBeOnTheScreen();
     expect(await screen.findByText("On shift until 6:30 pm")).toBeOnTheScreen();
-    expect(screen.getByRole("button", { name: "New new" })).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Create" })).toBeOnTheScreen();
     expect(await screen.findByText("This week · 2 past their TAT")).toBeOnTheScreen();
     const order = ["Good afternoon, Ayush", "On shift until 6:30 pm", "My complaints", "Tasks", "Follow-ups", "Leads", "Inbox", "Needs you"];
     const all = screen.getAllByText(/./).map((n) => n.props.children);
@@ -189,9 +190,12 @@ describe("04 · complaints, tasks and leads", () => {
     expect(fetchTickets).toHaveBeenCalledWith({ ...complaintQueueParams("overdue", "active", ME, ""), AssignedTo: ME, PageSize: 1 });
     expect(fetchTickets).toHaveBeenCalledWith({ AssignedTo: ME, ...resolvedWindow(NOW), PageSize: 1 });
     expect(fetchLeads).toHaveBeenCalledWith({ ...leadQueueParams("mine", "all", ME, ""), PageSize: 200 });
-    expect(fetchFollowUps).toHaveBeenCalledWith({ ...followUpViewParams("today"), PageSize: 3 });
-    expect(fetchFollowUps).toHaveBeenCalledWith({ ...followUpViewParams("overdue"), PageSize: 1 });
+    // Home is mine (§7.9 ruling): every follow-up figure is AssignedTo me.
+    expect(fetchFollowUps).toHaveBeenCalledWith({ ...followUpViewParams("today"), AssignedTo: ME, PageSize: 3 });
+    expect(fetchFollowUps).toHaveBeenCalledWith({ ...followUpViewParams("overdue"), AssignedTo: ME, PageSize: 1 });
     expect(overdueTicketsCountQuery(ME).queryKey).toEqual(["tickets", "count", { ...complaintQueueParams("overdue", "active", ME, ""), AssignedTo: ME }]);
+    expect(overdueFollowUpsCountQuery(ME).queryKey).toEqual(["followups", "count", { ...followUpViewParams("overdue"), AssignedTo: ME }]);
+    // The queue's own Overdue count stays reach-wide: it labels the reach-wide list.
     expect(overdueFollowUpsCountQuery().queryKey).toEqual(["followups", "count", followUpViewParams("overdue")]);
   });
 
@@ -310,7 +314,7 @@ describe("04 · complaints, tasks and leads", () => {
     await renderWithProviders(<HomeScreen />);
     await screen.findByRole("button", { name: "Open 7" });
     expect(screen.queryByText(/On shift until/)).toBeNull();
-    await fireEvent.press(screen.getByRole("button", { name: "New new" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Create" }));
     expect(mockCreate.open).toHaveBeenCalled();
   });
 
@@ -548,5 +552,58 @@ describe("§7.9 · mine and team kept apart", () => {
       expect(mockNav.navigate).toHaveBeenLastCalledWith("Leads", { queue });
       expect(fetchLeads).toHaveBeenCalledWith({ ...leadQueueParams(queue, "all", ME, "", 31), PageSize: 1, PageNumber: 1 });
     }
+  });
+
+  // Review B-I1 (ruling §7.9): with a wide leads reach, the follow-up figures were the team's.
+  it("leads with a team reach: Needs you, its count and the overdue-calls subtitle are my follow-ups only", async () => {
+    jest.mocked(fetchFollowUps).mockImplementation(async (p = {}) => {
+      const mine = p.AssignedTo === ME;
+      if (p.Overdue) {
+        return envelope({
+          followups: mine ? [followUp({ Id: 90, LeadName: "Mine Overdue", IsOverdue: true })] : [followUp({ Id: 80, LeadName: "Team Overdue", IsOverdue: true })],
+          pagination: pagination(mine ? 1 : 25),
+        });
+      }
+      return envelope({
+        followups: mine ? [followUp({ Id: 91, LeadName: "Mine Today" })] : [followUp({ Id: 81, LeadName: "Team Today" })],
+        pagination: pagination(mine ? 1 : 30),
+      });
+    });
+    signInTeam("leads");
+    await renderWithProviders(<HomeScreen />);
+    const group = await screen.findByTestId("needs-you");
+    expect(await within(group).findByText("Mine Overdue")).toBeOnTheScreen();
+    expect(within(group).getByText("Mine Today")).toBeOnTheScreen();
+    expect(screen.queryByText(/^Team /)).toBeNull();
+    expect(await screen.findByText("1 overdue call")).toBeOnTheScreen();
+    for (const [p] of jest.mocked(fetchFollowUps).mock.calls) expect(p?.AssignedTo).toBe(ME);
+  });
+});
+
+describe("B-M2 · nothing to add", () => {
+  it("a role that can add to no module gets no + New (the Create sheet would be empty)", async () => {
+    mockCreate.can = false;
+    signInWith("complaints");
+    await renderWithProviders(<HomeScreen />);
+    expect(await screen.findByText("My complaints")).toBeOnTheScreen();
+    expect(screen.queryByRole("button", { name: /^(Create|New)/ })).toBeNull();
+  });
+});
+
+describe("B-I2 · Home follows layout.columns", () => {
+  it("medium (700 × 1000, the rail): the phone body — hero full width, tiles in twos, no inline search", async () => {
+    setWindow(700, 1000);
+    signInWith("tasks", "complaints", "leads");
+    await renderWithProviders(<HomeScreen />);
+    expect(await screen.findByText("My complaints")).toBeOnTheScreen();
+    expect(ancestor(screen.getByText("My complaints"), (n) => flat(n).flex === 2)).toBeNull();
+    expect(screen.queryByRole("search")).toBeNull();
+    expect(screen.getByRole("button", { name: "Search" })).toBeOnTheScreen();
+    expect(screen.queryByText("Follow-ups today")).toBeNull();
+    // Rows of two: Tasks and Follow-ups share a row.
+    const first = within(screen.getByTestId("tile-row-0"));
+    expect(first.getByText("Tasks")).toBeOnTheScreen();
+    expect(first.getByText("Follow-ups")).toBeOnTheScreen();
+    expect(first.queryByText("Leads")).toBeNull();
   });
 });

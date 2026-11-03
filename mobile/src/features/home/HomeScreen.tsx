@@ -24,7 +24,7 @@ import {
 } from "../../ui";
 import { useAccess } from "../auth/useAccess";
 import { useUnreadCount } from "../notifications/useUnreadCount";
-import { firstOpenStatus, followUpTypeLabel, followUpViewParams, leadCountQuery, leadQueueParams, rupees, type LeadQueue } from "../sales/leadHelpers";
+import { firstOpenStatus, followUpTypeLabel, openValue as sumOpenValue, followUpViewParams, leadCountQuery, leadQueueParams, rupees, type LeadQueue } from "../sales/leadHelpers";
 import { complaintCountQuery, complaintQueueParams, type ComplaintQueue } from "../support/ticketHelpers";
 import { greetingFor, longDate } from "../tasks/greeting";
 import { parseIst } from "../tasks/tatChip";
@@ -78,7 +78,9 @@ interface Tile {
 export default function HomeScreen() {
   const navigation = useNavigation<Nav>();
   const layout = useLayout();
-  const tablet = layout.nav === "rail";
+  // The T1 grid (and its tablet type) is expanded only; a medium window —
+  // rail or not, a landscape phone included — gets the phone body (spec §2.1).
+  const tablet = layout.columns === 3;
   const create = useCreate();
   const userId = useAuthStore((s) => s.UserId);
   const user = useAuthStore((s) => s.user);
@@ -181,24 +183,22 @@ export default function HomeScreen() {
   });
   const leadsPage = leadsMine.data?.data;
   // G3: open + qualified value over Mine, hidden past one 200-row page.
-  const openValue = leadsPage && leadsPage.pagination.totalRecords <= PAGE
-    ? rupees(leadsPage.leads
-      .filter((l) => l.StatusCode === "open" || l.StatusCode === "qualified")
-      .reduce((sum, l) => sum + (l.EstValue ?? 0), 0))
-    : null;
+  const openValue = leadsPage ? rupees(sumOpenValue(leadsPage.leads, leadsPage.pagination.totalRecords)) : null;
 
-  const todayParams = { ...followUpViewParams("today"), PageSize: 3 };
+  // Home is mine (§7.9 ruling): every follow-up figure is AssignedTo me; the
+  // team's live only in the My team card.
+  const todayParams = { ...followUpViewParams("today"), AssignedTo: userId, PageSize: 3 };
   const dueToday = useQuery({
     queryKey: ["followups", "home", todayParams],
     queryFn: () => fetchFollowUps(todayParams),
-    enabled: canLeads,
+    enabled: canLeads && me,
   });
-  const fuOverdue = useQuery({ ...overdueFollowUpsCountQuery(), enabled: canLeads });
-  const overdueRowParams = { ...followUpViewParams("overdue"), PageSize: 3 };
+  const fuOverdue = useQuery({ ...overdueFollowUpsCountQuery(userId), enabled: canLeads && me });
+  const overdueRowParams = { ...followUpViewParams("overdue"), AssignedTo: userId, PageSize: 3 };
   const fuOverdueRows = useQuery({
     queryKey: ["followups", "home", overdueRowParams],
     queryFn: () => fetchFollowUps(overdueRowParams),
-    enabled: canLeads,
+    enabled: canLeads && me,
   });
   const nextAt = dueClock(dueToday.data?.data?.followups[0]?.DueAt);
   const fuOverdueCount = total(fuOverdue.data);
@@ -449,7 +449,15 @@ export default function HomeScreen() {
       <Hand size={tablet ? 22 : 18} color={colors.greetIcon} />
     </View>
   );
-  const newButton = <HeaderButton label={create.label} icon={Plus} onPress={create.open} accessibilityLabel={`New ${create.label.toLowerCase()}`} />;
+  // "New lead" for one module; with several the label is "New", read as "Create" (as the rail).
+  const newButton = create.can ? (
+    <HeaderButton
+      label={create.label}
+      icon={Plus}
+      onPress={create.open}
+      accessibilityLabel={create.label === "New" ? "Create" : `New ${create.label.toLowerCase()}`}
+    />
+  ) : null;
   const bell = (
     <IconButton icon={Bell} accessibilityLabel={unread ? `Notifications, ${unread} unread` : "Notifications"} badge={unread} onPress={() => navigation.navigate("Inbox")} />
   );
@@ -504,7 +512,7 @@ export default function HomeScreen() {
   const gap = tablet ? metrics.bentoGapTablet : metrics.bentoGap;
   const rows = (list: Tile[], per: number) =>
     Array.from({ length: Math.ceil(list.length / per) }, (_, i) => (
-      <View key={i} style={[styles.row, { gap }]}>{list.slice(i * per, i * per + per).map(tileNode)}</View>
+      <View key={i} testID={`tile-row-${i}`} style={[styles.row, { gap }]}>{list.slice(i * per, i * per + per).map(tileNode)}</View>
     ));
 
   let body: ReactNode;

@@ -120,6 +120,17 @@ describe("moving to any company status (Change status)", () => {
     expect(present).not.toHaveBeenCalled();
   });
 
+  // Review C-M6: a second row of the same TERMINAL code skipped the inputs the SP demands.
+  it("another row of the same terminal code still asks (rejected → a second rejected row needs remarks)", async () => {
+    const { present } = spySheets();
+    const second = lookup(8, LOOKUP_KIND.ticketStatus, "Declined", "rejected");
+    const moveTo = await mountMove();
+    await moveTo(second, ticket({ StatusCode: "rejected", StatusId: 5 }));
+    expect(present).toHaveBeenCalled();
+    expect(setTicketStatus).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Reject" })).toBeDisabled();
+  });
+
   it("resolved asks for a resolution and remarks, and moves to THAT resolved row", async () => {
     const second = lookup(7, LOOKUP_KIND.ticketStatus, "Fixed remotely", "resolved");
     const moveTo = await mountMove();
@@ -251,6 +262,16 @@ describe("status moves", () => {
   });
 });
 
+// Review C-M1: a swipe Resolve with no resolved-coded status filled a sheet that then did nothing.
+it("Resolve when the company has no resolved status says so instead of opening a dead sheet", async () => {
+  lookups[LOOKUP_KIND.ticketStatus] = STATUSES.filter((s) => s.Code !== "resolved");
+  const { present } = spySheets();
+  const open = await mount();
+  await open("resolve");
+  expect(await screen.findByText("That status is not set up for your company. Add it on the web first.")).toBeOnTheScreen();
+  expect(present).not.toHaveBeenCalled();
+});
+
 describe("Transfer (23)", () => {
   it("person, reason and remarks are required, each said inline after a submit", async () => {
     const open = await mount();
@@ -311,6 +332,15 @@ describe("Escalate", () => {
       expect(escalateTicket).toHaveBeenCalledWith({ TicketId: 7, ToUserId: 5, Remarks: "Customer called twice" }),
     );
     expect(await screen.findByText("Escalated to Neha Kapoor")).toBeOnTheScreen();
+  });
+
+  // Review C-M2: while the chain loads the sheet said "nobody above".
+  it("while the chain is loading it says so, not 'nobody above'", async () => {
+    jest.mocked(fetchEscalationTargets).mockReturnValue(new Promise(() => {}));
+    const open = await mount();
+    await open("escalate");
+    expect(await screen.findByText("Loading who is above…")).toBeOnTheScreen();
+    expect(screen.queryByText("You have nobody above you in the reporting chain.")).toBeNull();
   });
 
   it("a failed escalation says why; nobody above says so", async () => {

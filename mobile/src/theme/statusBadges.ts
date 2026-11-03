@@ -4,7 +4,7 @@
 // only, never a colour, so `StatusBadge`/`Chip` resolve them through the theme.
 // Every branch keys on a machine code, never on a company's label.
 import {
-  Archive, BadgeCheck, Bell, Calendar, CalendarCheck, CalendarClock, ChevronsUp, Check, Circle,
+  Archive, BadgeCheck, Bell, Calendar, CalendarCheck, CalendarClock, CalendarX, ChevronsUp, Check, Circle,
   CircleCheck, CircleDot, CirclePause, CirclePlay, CircleX, Clock, Ellipsis, FileText, Flag, Headset,
   House, Inbox, LayoutDashboard, ListChecks, Lock, MapPin, MessageSquare, OctagonAlert, Pencil, Phone,
   PhoneCall, Plus, Sparkles, SquareCheckBig, Target, Timer, Trophy, UserCheck, UserPlus, Users,
@@ -101,12 +101,16 @@ const FOLLOW_UP: Record<string, BadgeSpec> = {
   visit: b("teal", MapPin),
   meeting: b("lilac", Users),
 };
-/** By type; a done row is a green check; an overdue one keeps its type icon on red, a cancelled one (119) on slate. */
+/**
+ * By type; a done row is a green check; an overdue one keeps its type icon on
+ * red, a cancelled one (119) on slate; a skipped one is the skip sheet's CalendarX on slate.
+ */
 export function followUpBadge(
   type: string | null | undefined,
-  state: "open" | "done" | "overdue" | "cancelled" = "open",
+  state: "open" | "done" | "overdue" | "cancelled" | "skipped" = "open",
 ): BadgeSpec {
   if (state === "done") return b("green", Check);
+  if (state === "skipped") return b("slate", CalendarX);
   const spec = FOLLOW_UP[(type ?? "").toLowerCase()] ?? b("slate", CalendarClock);
   if (state === "cancelled") return b("slate", spec.icon);
   return state === "overdue" ? b("red", spec.icon) : spec;

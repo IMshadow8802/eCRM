@@ -1,8 +1,10 @@
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { fireEvent, screen } from "@testing-library/react-native";
-import { Trash2 } from "lucide-react-native";
+import { CircleCheck, Pencil, Trash2 } from "lucide-react-native";
 
+import { colors } from "../theme";
 import { renderWithProviders } from "../test/renderWithProviders";
+import { flat } from "../test/style";
 import { ActionSheet } from "./ActionSheet";
 
 const dismiss = jest.spyOn(BottomSheetModal.prototype, "dismiss");
@@ -42,4 +44,21 @@ it("no actions shows the caller's empty message", async () => {
 it("no actions and no message shows a default", async () => {
   await renderWithProviders(<ActionSheet actions={[]} />);
   expect(screen.getByText("Nothing to choose from.")).toBeOnTheScreen();
+});
+
+it("a picker: badge, plain icon in its tone, chip; the selected danger row is tinted red", async () => {
+  await renderWithProviders(
+    <ActionSheet
+      actions={[
+        { key: "a", label: "Done", badge: { tone: "green", icon: CircleCheck }, chip: { label: "Current" }, selected: false, onPress: jest.fn() },
+        { key: "b", label: "Edit", icon: Pencil, selected: false, onPress: jest.fn() },
+        { key: "c", label: "Primary", icon: Pencil, tone: "primary", selected: false, onPress: jest.fn() },
+        { key: "d", label: "Lost", icon: Trash2, tone: "danger", selected: true, onPress: jest.fn() },
+      ]}
+    />,
+  );
+  expect(screen.getAllByRole("radio")).toHaveLength(4);
+  expect(screen.getByText("Current")).toBeOnTheScreen();
+  expect(flat(screen.getByRole("radio", { name: "Lost" })).backgroundColor).toBe(colors.dangerRowTint);
+  expect(flat(screen.getByRole("radio", { name: "Edit" })).backgroundColor).toBeUndefined();
 });

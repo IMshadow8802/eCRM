@@ -65,6 +65,8 @@ const first = (name: string) => name.split(" ")[0];
  * reopen. `setTicketStatus` is the one engine for every status move; a refusal
  * (the reopen gate, a 403) is the server's sentence in a toast — never pre-empted.
  */
+const NOT_SET_UP = "That status is not set up for your company. Add it on the web first.";
+
 export const ComplaintSheets = forwardRef<ComplaintSheetsHandle>(function ComplaintSheets(_props, ref) {
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -86,7 +88,7 @@ export const ComplaintSheets = forwardRef<ComplaintSheetsHandle>(function Compla
   // The chain above whoever is WORKING it — the assignee, else me. Same key as
   // the record's own query, so the two share one request.
   const forUserId = ticket?.AssignedTo ?? userId;
-  const { data: seniors } = useQuery({
+  const { data: seniors, isLoading: seniorsLoading } = useQuery({
     queryKey: ["escalation-targets", forUserId],
     queryFn: () => fetchEscalationTargets(forUserId),
     enabled: !!ticket && isActive(code),
@@ -171,6 +173,11 @@ export const ComplaintSheets = forwardRef<ComplaintSheetsHandle>(function Compla
         setCallError(null);
         callRef.current?.present();
       } else if (action === "resolve") {
+        // A company with no resolved-coded status: say so, not a sheet whose Save does nothing.
+        if (!statusFor(statuses, "resolved")) {
+          toast.error(NOT_SET_UP);
+          return;
+        }
         setResolveTarget(null);
         resolveRef.current?.present();
       } else if (action === "transfer") transferRef.current?.present();
@@ -178,7 +185,7 @@ export const ComplaintSheets = forwardRef<ComplaintSheetsHandle>(function Compla
       else {
         const target = statusFor(statuses, MOVE_TO[action]);
         if (!target) {
-          toast.error("That status is not set up for your company. Add it on the web first.");
+          toast.error(NOT_SET_UP);
           return;
         }
         ask(row, target, action);
@@ -188,8 +195,10 @@ export const ComplaintSheets = forwardRef<ComplaintSheetsHandle>(function Compla
       setTicket(row);
       const from = lifecycleOf(row);
       const to = asStatusCode(target.Code);
-      // Same code (two `open` rows) or active → active: nothing to ask, the pick is the act.
-      if (to === from || (isActive(from) && isActive(to))) {
+      // The same row, or active → active (two `open` rows included): nothing to ask,
+      // the pick is the act. A second row of a terminal code still needs what that
+      // code demands (sp_SetTicketStatus), so it goes through ask().
+      if (target.Id === row.StatusId || (isActive(from) && isActive(to))) {
         mutateStatus({ TicketId: row.Id, StatusId: target.Id });
         return;
       }
@@ -313,7 +322,9 @@ export const ComplaintSheets = forwardRef<ComplaintSheetsHandle>(function Compla
         remarksError="Say why it needs a senior."
         submitLabel={(name) => (name ? `Escalate to ${name}` : "Escalate")}
         emptyMessage={
-          ticket?.AssignedTo
+          seniorsLoading
+            ? "Loading who is above…"
+            : ticket?.AssignedTo
             ? "The assignee has nobody above them in the reporting chain."
             : "You have nobody above you in the reporting chain."
         }

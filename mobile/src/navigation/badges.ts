@@ -18,23 +18,29 @@ export const overdueTicketsCountQuery = (userId: number | null) => {
   return { queryKey: ["tickets", "count", params], queryFn: () => fetchTickets({ ...params, PageSize: 1 }) };
 };
 
-/** Overdue follow-ups, a count (PageSize 1). Home has no such query yet; Phase 2's tile must use this one. */
-export const overdueFollowUpsCountQuery = () => {
-  const params = followUpViewParams("overdue");
+/**
+ * Overdue follow-ups, a count (PageSize 1). With a user id it is MINE (§7.9
+ * ruling): the bar badge and Home share that request. Without one it is the
+ * reach-wide count that labels the queue's own Overdue view.
+ */
+export const overdueFollowUpsCountQuery = (assignedTo: number | null = null) => {
+  const params = { ...followUpViewParams("overdue"), ...(assignedTo != null ? { AssignedTo: assignedTo } : null) };
   return { queryKey: ["followups", "count", params], queryFn: () => fetchFollowUps({ ...params, PageSize: 1 }) };
 };
 
 /**
  * Badge counts for the bar and rail (spec §3.3): Tasks = "Needs you",
- * Complaints = my overdue, Follow-ups = overdue, Inbox = unread. Each query runs
+ * Complaints = my overdue, Follow-ups = my overdue, Inbox = unread. Each query runs
  * only for a module the role can view. Tasks and Complaints share Home's
  * cache keys; Follow-ups and Inbox share the factories above / useUnreadCount.
  */
 export function useNavBadges(can: { tasks: boolean; complaints: boolean; leads: boolean }): Partial<Record<RailItem, number>> {
   const userId = useAuthStore((s) => s.UserId);
   const myDay = useQuery({ ...MY_DAY_QUERY, enabled: can.tasks });
-  const tickets = useQuery({ ...overdueTicketsCountQuery(userId), enabled: can.complaints });
-  const followUps = useQuery({ ...overdueFollowUpsCountQuery(), enabled: can.leads });
+  // Without a user id a "mine" filter is null — the whole reach, not yours (as Home).
+  const me = userId != null;
+  const tickets = useQuery({ ...overdueTicketsCountQuery(userId), enabled: can.complaints && me });
+  const followUps = useQuery({ ...overdueFollowUpsCountQuery(userId), enabled: can.leads && me });
   const unread = useUnreadCount();
   return {
     Tasks: can.tasks ? needsYou(myDay.data?.data).length : 0,

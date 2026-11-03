@@ -121,9 +121,10 @@ describe("leadQueueParams", () => {
 
 describe("followUpViewParams", () => {
   it("Done today (G20, 118): done follow-ups whose DoneAt falls today, an exclusive end at tomorrow 00:00", () => {
-    expect(doneTodayParams(now)).toEqual({ Status: "done", DoneFrom: "2026-11-02", DoneTo: "2026-11-03" });
-    expect(doneTodayParams(new Date(2026, 11, 31, 9))).toEqual({ Status: "done", DoneFrom: "2026-12-31", DoneTo: "2027-01-01" });
-    expectToday(() => doneTodayParams().DoneFrom);
+    // Mine only (§7.9 ruling): the caller's own follow-ups.
+    expect(doneTodayParams(7, now)).toEqual({ Status: "done", DoneFrom: "2026-11-02", DoneTo: "2026-11-03", AssignedTo: 7 });
+    expect(doneTodayParams(7, new Date(2026, 11, 31, 9))).toEqual({ Status: "done", DoneFrom: "2026-12-31", DoneTo: "2027-01-01", AssignedTo: 7 });
+    expectToday(() => doneTodayParams(7).DoneFrom);
   });
 
   it("lists the four views in order", () => {

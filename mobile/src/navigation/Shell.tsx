@@ -3,9 +3,10 @@ import { StyleSheet, View } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRoute } from "@react-navigation/native";
 
-import { ensurePersonalWorkspace, fetchWorkspaces } from "../api/workspaceQueries";
+import { ensurePersonalWorkspace } from "../api/workspaceQueries";
 import { apiErrorMessage } from "../api/errors";
 import { useAccess } from "../features/auth/useAccess";
+import { WORKSPACES_QUERY } from "../features/tasks/taskHelpers";
 import { useHeartbeat } from "../hooks/useHeartbeat";
 import useAuthStore from "../stores/useAuthStore";
 import { ActionBar, useKeyboardOpen, useLayout, useToast, type BarAction, type SheetRef } from "../ui";
@@ -67,6 +68,8 @@ interface ShellApi {
   setActions: (routeKey: string, actions: BarAction[] | null) => void;
   openCreate: () => void;
   createLabel: string;
+  /** False when the role can add to no module: no "+ New", no rail "+". */
+  canCreate: boolean;
   nav: "bar" | "rail";
 }
 
@@ -102,9 +105,9 @@ export function useActionBar(actions: BarAction[]): { inBand: boolean } {
  * The band's "+ New": opens the Create sheet, or — with exactly one module the
  * role can add to — goes straight to its form and reads "+ Lead" (E 27).
  */
-export function useCreate(): { open: () => void; label: string } {
+export function useCreate(): { open: () => void; label: string; can: boolean } {
   const shell = useContext(ShellContext);
-  return { open: shell?.openCreate ?? (() => {}), label: shell?.createLabel ?? "New" };
+  return { open: shell?.openCreate ?? (() => {}), label: shell?.createLabel ?? "New", can: shell?.canCreate ?? false };
 }
 
 export interface ShellProps {
@@ -153,7 +156,7 @@ export function Shell({ route, navigator, children }: ShellProps) {
       // New task → the caller's personal workspace (spec: proposed), made if missing.
       try {
         const find = async () =>
-          (await queryClient.fetchQuery({ queryKey: ["workspaces", false], queryFn: () => fetchWorkspaces({ PageSize: 100 }) }))
+          (await queryClient.fetchQuery(WORKSPACES_QUERY))
             .find((w) => w.Type === "personal" && w.OwnerUserId === userId);
         let personal = await find();
         if (!personal) {
@@ -177,7 +180,11 @@ export function Shell({ route, navigator, children }: ShellProps) {
 
   const nav = layout.nav;
   const createLabel = single ? CREATE_ROWS[single].short : "New";
-  const api = useMemo(() => ({ setActions, openCreate, createLabel, nav }), [setActions, openCreate, createLabel, nav]);
+  const canCreate = addable.length > 0;
+  const api = useMemo(
+    () => ({ setActions, openCreate, createLabel, canCreate, nav }),
+    [setActions, openCreate, createLabel, canCreate, nav],
+  );
 
   // Before the container reports its first state, the stack is on Tabs/Home:
   // seeding it draws the bar on the very first frame instead of popping it in.
@@ -192,9 +199,10 @@ export function Shell({ route, navigator, children }: ShellProps) {
     at.name === "Inbox" ? "Inbox" : at.name === "FollowUps" ? "FollowUps" : (activeTab ?? FORM_MODULE[at.name] ?? null);
 
   const pressItem = (item: RailItem) => {
-    // Follow-ups is a tab only while the bar has room; navigate() lands on the
-    // tab when it exists and pushes the queue when it does not.
-    if (item === "Inbox" || item === "FollowUps") navigator.navigate(item);
+    // Inbox is never a tab; Follow-ups is one only while the bar has room, else
+    // the queue is pushed. A tab goes through toTab like the rest: navigate()
+    // from a pushed screen would reach the stack and push a copy (review A-I1).
+    if (item === "Inbox" || (item === "FollowUps" && !tabsFor(can).includes("FollowUps"))) navigator.navigate(item);
     else navigator.toTab(item);
   };
 
@@ -219,7 +227,7 @@ export function Shell({ route, navigator, children }: ShellProps) {
             active={railActive}
             onPress={pressItem}
             badges={badges}
-            onCreate={openCreate}
+            onCreate={canCreate ? openCreate : undefined}
             createLabel={single ? `New ${CREATE_ROWS[single].short.toLowerCase()}` : "Create"}
           />
         ) : null}

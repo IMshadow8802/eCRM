@@ -274,6 +274,16 @@ it("an empty Mine says so; an empty search says nothing matches", async () => {
   expect(await screen.findByText("Nothing matches")).toBeOnTheScreen();
 });
 
+// Review C-M8: New hides the pills, but a status left from Mine still read as "narrowed".
+it("an empty New preset says no new leads, even with a status pill left over from another preset", async () => {
+  answer((p) => Promise.resolve(leadsReply(p.StatusId === 1 && p.OwnerId == null ? [] : [row])));
+  await mount();
+  await fireEvent.press(await screen.findByRole("radio", { name: /^Qualified/ }));
+  await fireEvent.press(screen.getByRole("tab", { name: /^New/ }));
+  expect(await screen.findByText("No new leads")).toBeOnTheScreen();
+  expect(screen.queryByText("Nothing matches")).toBeNull();
+});
+
 it("switching from an empty preset shows skeletons, not its empty state, until the new one answers (device)", async () => {
   answer((p) => (p.OwnerId ? Promise.resolve(leadsReply([])) : new Promise(() => {})));
   await mount();
@@ -389,6 +399,19 @@ describe("T3: tablet two-pane", () => {
     expect(flat(cells[0]!)).toMatchObject({ borderTopLeftRadius: 16 });
     expect(flat(cells[0]!).boxShadow).toBeUndefined();
     expect(flat(cells[1]!)).toMatchObject({ borderBottomLeftRadius: 16, boxShadow: "0 1px 2px #DCE0EC" });
+  });
+
+  // Review C-M5: when the shown lead left the list (transfer, status change) the pane jumped to another lead.
+  it("the picked lead stays in the pane when it drops out of the list", async () => {
+    await mount();
+    await fireEvent.press(await screen.findByText("Meera Joshi"));
+    expect(await screen.findByRole("header", { name: "Meera Joshi" })).toBeOnTheScreen();
+    answer(() => Promise.resolve(leadsReply([row], 1)));
+    await fireEvent.press(screen.getByRole("tab", { name: /^Overdue/ }));
+    await waitFor(() => expect(lastList()).toMatchObject({ Overdue: true }));
+    await waitFor(() => expect(screen.queryByTestId("lead-row-12")).toBeNull());
+    expect(screen.getByRole("header", { name: "Meera Joshi" })).toBeOnTheScreen();
+    expect(screen.queryByRole("header", { name: "Ravi Patel" })).toBeNull();
   });
 
   it("an empty list leaves the pane saying nothing is selected", async () => {

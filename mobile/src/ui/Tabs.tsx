@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View, type LayoutChangeEvent } from "react-native";
 import { Check, type LucideIcon } from "lucide-react-native";
 
@@ -38,11 +38,25 @@ export function BandTabs<T extends string | number>({ value, options, onChange, 
   const [box, setBox] = useState(0);
   // Only a row wider than its box scrolls; one that fits keeps spread/gap layout.
   const overflow = box > 0 && content > box + 1;
+  // Each tab's place in the row, so the active one can be scrolled into view
+  // (Home and Search open a list on a preset that may sit off-screen).
+  const scroller = useRef<ScrollView>(null);
+  const spans = useRef<Record<string, { x: number; width: number }>>({});
+  const reveal = () => {
+    const at = spans.current[String(value)];
+    if (overflow && at) scroller.current?.scrollTo({ x: Math.max(0, at.x + at.width / 2 - box / 2), animated: true });
+  };
+  useEffect(reveal, [value, overflow, box]);
   const items = options.map((o) => {
     const on = o.value === value;
     return (
       <Pressable
         key={String(o.value)}
+        onLayout={(e: LayoutChangeEvent) => {
+          const { x, width } = e.nativeEvent.layout;
+          spans.current[String(o.value)] = { x, width };
+          if (on) reveal();
+        }}
         onPress={() => onChange(o.value)}
         accessibilityRole="tab"
         accessibilityState={{ selected: on }}
@@ -60,6 +74,7 @@ export function BandTabs<T extends string | number>({ value, options, onChange, 
   const row = [styles.bandRow, spread && !overflow ? styles.spread : styles.gap22];
   return (
     <ScrollView
+      ref={scroller}
       horizontal
       testID={testID}
       accessibilityRole="tablist"

@@ -17,6 +17,8 @@ export const FOLLOWUP_ENDPOINTS = {
 } as const;
 
 export interface FetchFollowUpsParams {
+  /** Only this person's follow-ups (Home and the badge are "mine", §7.9). Omit for the reach-wide queue. */
+  AssignedTo?: number | null;
   Status?: FollowUpStatus | null;
   DueFrom?: string | null;
   DueTo?: string | null;
@@ -42,6 +44,7 @@ export interface FollowUpsPayload {
  * the controller to per-lead mode, which answers without pagination.
  */
 export const fetchFollowUps = ({
+  AssignedTo = null,
   Status = null,
   DueFrom = null,
   DueTo = null,
@@ -60,6 +63,7 @@ export const fetchFollowUps = ({
     // Only when set (as the controller): an older server never sees the keys.
     ...(DoneFrom ? { DoneFrom } : null),
     ...(DoneTo ? { DoneTo } : null),
+    ...(AssignedTo ? { AssignedTo } : null),
     Overdue,
     SearchTerm,
     PageNumber,

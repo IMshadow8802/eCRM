@@ -1,5 +1,5 @@
 import {
-  Archive, BadgeCheck, Bell, CalendarCheck, CalendarClock, Check, ChevronsUp, Circle, CircleCheck, CircleDot,
+  Archive, BadgeCheck, Bell, CalendarCheck, CalendarClock, CalendarX, Check, ChevronsUp, Circle, CircleCheck, CircleDot,
   CirclePause, CirclePlay, CircleX, Clock, Ellipsis, FileText, Flag, Headset, House, Inbox, LayoutDashboard,
   ListChecks, Lock, MapPin, MessageSquare, OctagonAlert, Pencil, Phone, PhoneCall, Plus, Sparkles,
   SquareCheckBig, Target, Timer, Trophy, UserCheck, UserPlus, Users,
@@ -72,6 +72,8 @@ describe("E §1.6 status → badge", () => {
     // 119: cancelled when the lead was won/lost — its type, in slate.
     ["visit", "cancelled", "slate", MapPin],
     ["other", "cancelled", "slate", CalendarClock],
+    // Review C-M7: a skipped one is the skip sheet's CalendarX in slate, not the open icon.
+    ["call", "skipped", "slate", CalendarX],
   ] as const)("follow-up %s (%s)", (type, state, tone, icon) => expect(followUpBadge(type, state)).toEqual({ tone, icon }));
 
   it.each([

@@ -430,6 +430,22 @@ describe("follow-ups tab", () => {
     expect(scheduleFollowUp).toHaveBeenCalledWith({ LeadId: 11, Type: "call", DueAt: `${localDay(1)}T11:00`, AssignedTo: 5 });
   });
 
+  it("retrying a reschedule after the skip failed retries only the skip — never books twice", async () => {
+    jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead(), { followups: [followUp()] }));
+    jest.mocked(skipFollowUp).mockRejectedValueOnce(serverError(400, "nope"));
+    await mount();
+    await loaded();
+    await fireEvent.press(screen.getByTestId("next-followup"));
+    await fireEvent.press(menuItem("Reschedule"));
+    await fireEvent.press(screen.getAllByRole("radio", { name: "Tomorrow" })[1]!);
+    await fireEvent.changeText(screen.getByPlaceholderText("Why it is moving"), "x");
+    await fireEvent.press(rescheduleSubmit());
+    expect(await screen.findByText("Booked the new follow-up, but the old one is still open — skip it from the lead.")).toBeOnTheScreen();
+    await fireEvent.press(rescheduleSubmit());
+    await waitFor(() => expect(skipFollowUp).toHaveBeenCalledTimes(2));
+    expect(scheduleFollowUp).toHaveBeenCalledTimes(1);
+  });
+
   it("skip needs remarks, then sends them", async () => {
     jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead(), { followups: [followUp()] }));
     await mount();

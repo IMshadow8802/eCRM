@@ -26,8 +26,6 @@ import { followUpViewParams } from "../sales/leadHelpers";
 
 type Nav = StackNavigationProp<RootStackParamList>;
 
-/** Same rule as Boards' "Your boards": live, accepted, and not seen only through the admin bypass. */
-
 /** "A", "A and B", "A, B and C". */
 const listOf = (names: string[]) =>
   names.length < 2 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
