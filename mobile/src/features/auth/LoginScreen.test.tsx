@@ -287,6 +287,24 @@ describe("why the last session ended", () => {
   });
 });
 
+describe("field size (reads thin at E's 44 on a 448 dp phone)", () => {
+  const box = (label: string) => flat(screen.getByLabelText(label).parent);
+
+  it("the company code field and the Continue button are the lg size", async () => {
+    await renderWithProviders(<LoginScreen />);
+    expect(box("Company code")).toMatchObject({ height: 52, borderRadius: 14 });
+    expect(flat(screen.getByRole("button", { name: "Continue" }))).toMatchObject({ height: 56, borderRadius: 28 });
+  });
+
+  it("both sign-in fields and the Sign in button are the lg size", async () => {
+    configured();
+    await renderWithProviders(<LoginScreen />);
+    expect(box("Username").height).toBe(52);
+    expect(box("Password").height).toBe(52);
+    expect(flat(screen.getByRole("button", { name: "Sign in" }))).toMatchObject({ height: 56, borderRadius: 28 });
+  });
+});
+
 describe("keyboard (Android edge-to-edge ignores adjustResize)", () => {
   const keyboard = (event: "keyboardDidShow" | "keyboardDidHide") =>
     act(() => {

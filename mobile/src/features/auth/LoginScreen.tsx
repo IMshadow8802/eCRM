@@ -195,6 +195,7 @@ export default function LoginScreen() {
                   value={compCode}
                   onChangeText={typed(setCompCode)}
                   leftIcon={Building2}
+                  size="lg"
                   hint="Not case-sensitive. Example: TestCRM"
                   error={fieldError("code")}
                   autoCapitalize="none"
@@ -229,6 +230,7 @@ export default function LoginScreen() {
                   value={identifier}
                   onChangeText={typed(setIdentifier)}
                   leftIcon={User}
+                  size="lg"
                   error={fieldError("identifier")}
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -243,6 +245,7 @@ export default function LoginScreen() {
                   onChangeText={typed(setPassword)}
                   password
                   leftIcon={Lock}
+                  size="lg"
                   error={fieldError("password")}
                   // E 03: wrong credentials ring the password; the box above says why.
                   invalid={box?.code === "INVALID_CREDENTIALS"}
@@ -352,8 +355,9 @@ const styles = StyleSheet.create({
   fieldAfterBox: { marginTop: spacing[4] },
   // E `.fl` keeps 12 under every field; the button adds its own 20 (16 after an error).
   nextField: { marginTop: spacing[3] },
-  button: { marginTop: spacing[8] },
-  buttonAfterBox: { marginTop: spacing[7] },
+  // 56: keeps E's field-to-button step (44 → 48) at the lg field's 52.
+  button: { marginTop: spacing[8], height: 56, borderRadius: 28 },
+  buttonAfterBox: { marginTop: spacing[7], height: 56, borderRadius: 28 },
   switch: { marginTop: spacing[5] },
   switchAfterBox: { marginTop: 18 },
   errorBox: {

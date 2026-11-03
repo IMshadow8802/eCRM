@@ -36,6 +36,11 @@ export interface InputProps extends Omit<TextInputProps, "style"> {
   /** Field height when not 44: a single line takes it as its height (E 23 search 40), a multiline as its minimum (E 13 84, E 23 64). */
   fieldHeight?: number;
   containerStyle?: ViewStyle;
+  /**
+   * `lg` is the sign-in form only: E's field scaled 52/44 (height, radius,
+   * padding, text, icon), because E's 44 reads thin on a 448 dp phone there.
+   */
+  size?: "md" | "lg";
 }
 
 /**
@@ -45,7 +50,7 @@ export interface InputProps extends Omit<TextInputProps, "style"> {
 export const Input = forwardRef<TextInput, InputProps>(function Input(
   {
     label, error, invalid = false, right, hint, required, labelTag, leftIcon: LeftIcon, prefix, tabular = false, password = false, tone = "default",
-    bare = false, fieldHeight, containerStyle, editable = true, multiline,
+    bare = false, fieldHeight, containerStyle, size = "md", editable = true, multiline,
     // Pulled out of `rest`: spread after the wrappers, a caller's onFocus would switch the ring off.
     onFocus, onBlur,
     ...rest
@@ -55,6 +60,8 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
   const [focused, setFocused] = useState(false);
   const [reveal, setReveal] = useState(false);
   const onBrand = tone === "onBrand";
+  const lg = size === "lg";
+  const iconSize = lg ? 20 : 18;
   const bad = !!error || invalid;
   // Inside a Sheet the field must be gorhom's, or it drops focus (sheetContext).
   // gorhom's is a TextInput (same props, same instance); only its ref type is wider.
@@ -80,15 +87,17 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
           focused && fieldBox.focused,
           bad && fieldBox.error,
           !editable && fieldBox.disabled,
+          lg && styles.lgBox,
+          lg && (focused || bad) && styles.lgRing,
           bare && styles.bare,
           fieldHeight != null && (multiline ? { minHeight: fieldHeight } : { height: fieldHeight }),
         ]}
       >
-        {LeftIcon ? <LeftIcon size={18} color={bad ? colors.danger : colors.textMuted} /> : null}
+        {LeftIcon ? <LeftIcon size={iconSize} color={bad ? colors.danger : colors.textMuted} /> : null}
         {prefix ? <FieldPrefix text={prefix} /> : null}
         <Field
           ref={ref}
-          style={[fieldBox.input, multiline && fieldBox.inputMultiline, tabular && styles.tabular]}
+          style={[fieldBox.input, multiline && fieldBox.inputMultiline, lg && styles.lgText, tabular && styles.tabular]}
           placeholderTextColor={colors.textMuted}
           secureTextEntry={password && !reveal}
           editable={editable}
@@ -111,7 +120,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
             hitSlop={spacing[3]}
             accessibilityLabel={reveal ? "Hide password" : "Show password"}
           >
-            {reveal ? <EyeOff size={18} color={colors.textSecondary} /> : <Eye size={18} color={colors.textSecondary} />}
+            {reveal ? <EyeOff size={iconSize} color={colors.textSecondary} /> : <Eye size={iconSize} color={colors.textSecondary} />}
           </Pressable>
         ) : null}
       </View>
@@ -130,6 +139,9 @@ const styles = StyleSheet.create({
   legacyLabel: { marginBottom: 6 },
   legacyHelp: { marginTop: 6 },
   tabular: { fontVariant: ["tabular-nums"] },
+  lgBox: { height: 52, borderRadius: 14, paddingHorizontal: 14 },
+  lgRing: { paddingHorizontal: 13 },
+  lgText: { fontSize: 17 },
 });
 
 export default Input;

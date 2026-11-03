@@ -132,6 +132,23 @@ describe("E field (§3.14)", () => {
     expect(box("Remarks").height).toBeUndefined();
   });
 
+  it("text is E's 15 and the icon 18 at the default size", async () => {
+    await render(<Input placeholder="Subject" leftIcon={Search} />);
+    expect(StyleSheet.flatten(screen.getByPlaceholderText("Subject").props.style).fontSize).toBe(15);
+    const icon = screen.getByPlaceholderText("Subject").parent!.children[0] as { props: { width?: number; size?: number } };
+    expect(icon.props.width ?? icon.props.size).toBe(18);
+  });
+
+  it("size lg (sign-in only) is E's field scaled 52/44: 52 tall, radius 14, 14 padding, 17 text, 20 icon", async () => {
+    await render(<Input placeholder="Username" leftIcon={Search} size="lg" />);
+    expect(box("Username")).toMatchObject({ height: 52, borderRadius: 14, borderWidth: 1, paddingHorizontal: 14 });
+    expect(StyleSheet.flatten(screen.getByPlaceholderText("Username").props.style).fontSize).toBe(17);
+    const icon = screen.getByPlaceholderText("Username").parent!.children[0] as { props: { width?: number; size?: number } };
+    expect(icon.props.width ?? icon.props.size).toBe(20);
+    await fireEvent(screen.getByPlaceholderText("Username"), "focus");
+    expect(box("Username")).toMatchObject({ height: 52, borderWidth: 2, paddingHorizontal: 13 });
+  });
+
   it("a right slot sits inside the field, straight after the text (E 12 clear X)", async () => {
     await render(<Input placeholder="Customer" right={<RNText>clear</RNText>} />);
     const kids = screen.getByPlaceholderText("Customer").parent!.children;
