@@ -93,6 +93,12 @@ ELSE
 GO
 
 -- 1-3. The procedures -------------------------------------------------------------
+-- Gate: never patch the lead procs unless the status check already allows
+-- 'cancelled' (step 0 above). Otherwise every won/lost would fail that check.
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints
+               WHERE parent_object_id = OBJECT_ID('dbo.tblFollowUp')
+                 AND definition LIKE '%cancelled%')
+  THROW 50119, '119: tblFollowUp status check does not allow cancelled yet; step 0 must succeed first. Nothing patched.', 1;
 DECLARE @nl NCHAR(1) = NCHAR(10);
 
 -- The block both lead procs gain, just before their own "DECLARE @hist" (the
@@ -220,8 +226,9 @@ SELECT @lid AS lead_id, @expect AS expected_type;
 EXEC dbo.sp_FetchLeads @CompId = @c, @SearchTerm = @mob, @PageSize = 50;
 --    expect: the row with Id = lead_id has NextFollowupType = expected_type;
 --    a row with NextFollowupDate NULL has NextFollowupType NULL.
+GO
 
--- 4. TestCRM ONLY. Each block runs inside its own transaction and ends with a
+-- 4. TestCRM ONLY. Stop after block 3 on eCRM+ / SolarCRM. Each block runs inside its own transaction and ends with a
 --    guarded ROLLBACK, so nothing stays. (If the proc itself fails it rolls the
 --    whole thing back and prints error 266; the guard then skips — no 3903.)
 -- 4a. Lost: open follow-ups -> cancelled, only on that lead.
