@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from "react";
-import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { useRef, useState, type ReactNode } from "react";
+import { Image, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { StatusBar } from "expo-status-bar";
 import { ArrowRight, Building2, Hexagon, LogOut, Lock, OctagonAlert, User } from "lucide-react-native";
@@ -9,7 +9,7 @@ import { login as loginRequest } from "../../api/authQueries";
 import { fetchClientConfig } from "../../api/centralQueries";
 import useAuthStore from "../../stores/useAuthStore";
 import { colors, gradients, radius, spacing } from "../../theme";
-import { Button, InfoNote, Input, StatusBadge, Text } from "../../ui";
+import { Button, InfoNote, Input, StatusBadge, Text, useKeyboardOpen } from "../../ui";
 import { appVersion } from "./appVersion";
 import { REASONS, UNREACHABLE, loginError, type AuthError } from "./authMessages";
 
@@ -32,6 +32,13 @@ export default function LoginScreen() {
   const sessionEndedReason = useAuthStore((s) => s.sessionEndedReason);
   const sessionEndedMessage = useAuthStore((s) => s.sessionEndedMessage);
   const insets = useSafeAreaInsets();
+  const keyboardOpen = useKeyboardOpen();
+  const scroller = useRef<ScrollView>(null);
+  // The form is the foot of the scroll: with the keyboard up, show the foot,
+  // so the field being typed in and the primary button are both above it.
+  const keepFormInView = () => {
+    if (keyboardOpen) scroller.current?.scrollToEnd({ animated: false });
+  };
 
   const [compCode, setCompCode] = useState("");
   const [identifier, setIdentifier] = useState("");
@@ -114,8 +121,14 @@ export default function LoginScreen() {
         end={gradients.authEnd}
         style={StyleSheet.absoluteFill}
       />
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      {/* "padding" on Android too: edge-to-edge (forced from API 35) ignores
+          adjustResize, so nothing else lifts the form over the keyboard. */}
+      <KeyboardAvoidingView testID="login-keyboard" style={styles.flex} behavior="padding">
         <ScrollView
+          ref={scroller}
+          testID="login-scroll"
+          onLayout={keepFormInView}
+          onContentSizeChange={keepFormInView}
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -160,9 +173,12 @@ export default function LoginScreen() {
           )}
 
           <View
+            testID="login-panel"
             style={[
               styles.panel,
-              isClientConfigured ? styles.panelLogin : styles.panelCode,
+              // The panel's minimum height is for the resting screen only; with
+              // the keyboard up it would push the button below the fold.
+              !keyboardOpen && (isClientConfigured ? styles.panelLogin : styles.panelCode),
               { paddingBottom: Math.max(44, insets.bottom + spacing[3]) },
             ]}
           >

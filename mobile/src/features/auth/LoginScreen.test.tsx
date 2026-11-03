@@ -1,5 +1,6 @@
 import { AxiosError, type AxiosResponse } from "axios";
 import { act, fireEvent, screen } from "@testing-library/react-native";
+import { DeviceEventEmitter, Platform, ScrollView } from "react-native";
 import Constants from "expo-constants";
 
 import { login } from "../../api/authQueries";
@@ -283,5 +284,52 @@ describe("why the last session ended", () => {
     configured();
     await renderWithProviders(<LoginScreen />);
     expect(screen.queryByText(/sign in again/i)).toBeNull();
+  });
+});
+
+describe("keyboard (Android edge-to-edge ignores adjustResize)", () => {
+  const keyboard = (event: "keyboardDidShow" | "keyboardDidHide") =>
+    act(() => {
+      DeviceEventEmitter.emit(event, {
+        endCoordinates: { screenX: 0, screenY: 500, width: 400, height: 300 },
+        duration: 0,
+        easing: "keyboard",
+      });
+    });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it("lifts the form by the keyboard's overlap on Android too", async () => {
+    jest.replaceProperty(Platform, "OS", "android");
+    await renderWithProviders(<LoginScreen />);
+    const avoider = screen.getByTestId("login-keyboard");
+    await fireEvent(avoider, "layout", { nativeEvent: { layout: { x: 0, y: 0, width: 400, height: 800 } }, persist: () => {} });
+    await keyboard("keyboardDidShow");
+    expect(flat(screen.getByTestId("login-keyboard")).paddingBottom).toBe(300);
+    await keyboard("keyboardDidHide");
+    expect(flat(screen.getByTestId("login-keyboard")).paddingBottom).toBe(0);
+  });
+
+  it("with the keyboard up the panel drops its minimum height and the scroll shows the form's foot", async () => {
+    const toEnd = jest.spyOn(ScrollView.prototype, "scrollToEnd").mockImplementation(() => {});
+    configured();
+    await renderWithProviders(<LoginScreen />);
+    expect(flat(screen.getByTestId("login-panel")).minHeight).toBe(540);
+    // At rest a layout pass leaves the scroll where it is.
+    await fireEvent(screen.getByTestId("login-scroll"), "layout", { nativeEvent: { layout: { x: 0, y: 0, width: 400, height: 800 } } });
+    expect(toEnd).not.toHaveBeenCalled();
+
+    await keyboard("keyboardDidShow");
+    expect(flat(screen.getByTestId("login-panel")).minHeight).toBeUndefined();
+    await fireEvent(screen.getByTestId("login-scroll"), "layout", { nativeEvent: { layout: { x: 0, y: 0, width: 400, height: 500 } } });
+    expect(toEnd).toHaveBeenCalledWith({ animated: false });
+
+    await keyboard("keyboardDidHide");
+    expect(flat(screen.getByTestId("login-panel")).minHeight).toBe(540);
+  });
+
+  it("taps land with the keyboard up: Continue works without dismissing it first", async () => {
+    await renderWithProviders(<LoginScreen />);
+    expect(screen.getByTestId("login-scroll").props.keyboardShouldPersistTaps).toBe("handled");
   });
 });
