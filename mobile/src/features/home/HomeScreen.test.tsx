@@ -493,6 +493,34 @@ describe("§7.9 · mine and team kept apart", () => {
     expect(mockNav.navigate).toHaveBeenLastCalledWith("Complaints", { queue: "team" });
   });
 
+  // T1 decision (2026-11-03): with a team, the first row is hero (2 of 3) |
+  // My team (1 of 3), so the row has no hole; the tiles follow in threes.
+  it("T1 tablet: My team fills the third column beside the hero; the first tile drops to the next row", async () => {
+    setWindow(...TABLET);
+    signInTeam("tasks", "complaints");
+    await renderWithProviders(<HomeScreen />);
+    const team = await screen.findByTestId("team-card");
+    const heroCell = ancestor(screen.getByText("My complaints"), (n) => flat(n).flex === 2)!;
+    const teamCell = ancestor(team, (n) => flat(n).flex === 1)!;
+    expect(heroCell).not.toBeNull();
+    expect(teamCell).not.toBeNull();
+    // Same row: the hero's cell and the team's cell share a parent.
+    expect(teamCell.parent === heroCell.parent).toBe(true);
+    // The hero cell holds the hero alone.
+    expect(ancestor(team, (n) => n === heroCell) === null).toBe(true);
+    // Tasks is not in that row.
+    expect(ancestor(screen.getByText("Tasks"), (n) => n === heroCell.parent) === null).toBe(true);
+  });
+
+  it("T1 tablet with a team: a tile that would sit alone on its row gives way (Inbox; the bell carries it)", async () => {
+    setWindow(...TABLET);
+    signInTeam("tasks", "complaints", "leads");
+    await renderWithProviders(<HomeScreen />);
+    await screen.findByTestId("team-card");
+    expect(await screen.findByText("Leads")).toBeOnTheScreen();
+    expect(screen.queryByRole("button", { name: /^Inbox/ })).toBeNull();
+  });
+
   it("reach Own: no team card, and no team requests", async () => {
     signInWith("complaints");
     await renderWithProviders(<HomeScreen />);

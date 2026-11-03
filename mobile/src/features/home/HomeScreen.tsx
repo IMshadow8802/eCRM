@@ -343,6 +343,9 @@ export default function HomeScreen() {
     tiles = [...(canTasks ? [tasksTile] : []), ...(canLeads ? [fuTile, leadsTile] : []), inboxTile];
     // Two columns: an odd count past two leaves a hole; Inbox gives way (the bell carries it).
     if (!tablet && tiles.length > 2 && tiles.length % 2 === 1) tiles = tiles.slice(0, -1);
+    // Tablet: My team takes the hero row's third column (T1), so every tile
+    // goes to rows of three; one left alone on the last row gives way too.
+    if (tablet && teamCard && tiles.length > 3 && tiles.length % 3 === 1) tiles = tiles.slice(0, -1);
   } else if (canLeads) tiles = [leadsTile, fuTile];
   else if (canTasks) tiles = [tasksTile, inboxTile];
   else if (canComplaints) tiles = [inboxTile];
@@ -518,11 +521,19 @@ export default function HomeScreen() {
     const todayRows = (dueToday.data?.data?.followups ?? []).map((f) => followUpRow(f, false, true));
     body = (
       <View style={{ gap }}>
+        {/* T1: hero spans 2 of 3. My team, when there is one, takes the third
+            column so the row has no hole; otherwise the first tile does. */}
         <View style={[styles.row, { gap }]}>
-          <View style={[styles.flex2, { gap }]}>{heroCard}{teamCard}</View>
-          {tiles[0] ? tileNode(tiles[0]) : <View style={styles.flex} />}
+          <View style={styles.flex2}>{heroCard}</View>
+          {teamCard ? (
+            <View style={styles.flex}>{teamCard}</View>
+          ) : tiles[0] ? (
+            tileNode(tiles[0])
+          ) : (
+            <View style={styles.flex} />
+          )}
         </View>
-        {rows(tiles.slice(1), 3)}
+        {rows(teamCard ? tiles : tiles.slice(1), 3)}
         <View style={[styles.row, styles.top, { gap }]}>
           <View style={styles.flex2}>{needsBlock}</View>
           <View style={styles.flex}>

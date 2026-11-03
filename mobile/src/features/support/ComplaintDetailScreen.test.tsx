@@ -365,7 +365,9 @@ describe("E 11 · the ⋮ menu", () => {
 describe("T2 · at the rail", () => {
   beforeEach(() => mockBar.mockImplementation(() => ({ inBand: true })));
 
-  it("the actions sit in the band, the main one last; the customer card has a Call button", async () => {
+  // T2 decision (2026-11-03): Escalate folds into ⋮ so the ticket number has
+  // room; Resolve stays the filled main action. The phone bar keeps it.
+  it("the actions sit in the band, the main one last, Escalate in the ⋮ menu; the customer card has a Call button", async () => {
     const open = jest.spyOn(Linking, "openURL").mockResolvedValue(true);
     jest.mocked(fetchTicketDetail).mockResolvedValue(
       detail(ticket({ ContactPerson: "Rakesh Sharma", PriorityName: "High" })),
@@ -377,7 +379,8 @@ describe("T2 · at the rail", () => {
       ["Log call", "On hold", "Transfer", "Escalate", "Resolve"].includes(l),
     );
     // The band comes first in the tree; the sheets (kept mounted by the mock) follow.
-    expect(band.slice(0, 5)).toEqual(["Log call", "On hold", "Transfer", "Escalate", "Resolve"]);
+    expect(band.slice(0, 4)).toEqual(["Log call", "On hold", "Transfer", "Resolve"]);
+    expect(screen.getByRole("menuitem", { name: "Escalate" })).toBeOnTheScreen();
     expect(screen.getByText("Contact: Rakesh Sharma")).toBeOnTheScreen();
     // T2 keeps the direction on a call row; the phone (11) drops it.
     expect(await screen.findByText("Call logged · 4 min · outgoing")).toBeOnTheScreen();

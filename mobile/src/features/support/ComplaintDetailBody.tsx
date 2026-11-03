@@ -342,6 +342,8 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
       : []),
     ...(can.edit && active ? [{ key: "reject", label: "Reject", icon: CircleX, onPress: run("reject") }] : []),
     ...(can.edit && isTerminal(code) ? [{ key: "reopen", label: "Reopen", icon: RotateCcw, onPress: run("reopen") }] : []),
+    // T2: in the band Escalate folds in here, so the ticket number has room.
+    ...(inBand ? bar.filter((a) => a.key === "escalate").map(({ key, label, icon, onPress }) => ({ key, label, icon, onPress })) : []),
     { key: "files", label: "Files", icon: Paperclip, onPress: () => scrollRef.current?.scrollTo({ y: filesY, animated: true }) },
     ...(can.delete
       ? [{ key: "delete", label: "Delete complaint", icon: Trash2, tone: "danger" as const, onPress: () => setConfirmingDelete(true) }]
@@ -385,7 +387,7 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
   // T2: ghost buttons for the rest, the main one filled and last.
   const bandActions: ReactNode = inBand ? (
     <View style={styles.bandActions}>
-      {[...bar.filter((a) => !a.main), ...bar.filter((a) => a.main)].map((a) => (
+      {[...bar.filter((a) => !a.main && a.key !== "escalate"), ...bar.filter((a) => a.main)].map((a) => (
         <HeaderButton key={a.key} label={a.label} icon={a.icon} onPress={a.onPress} variant={a.main ? "primary" : "ghost"} on="raised" />
       ))}
       {menuButton}
