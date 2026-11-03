@@ -149,7 +149,8 @@ INSERT INTO @patch VALUES
   + N' AND f.Status <> ''cancelled''  -- 119: cancelled is not due');
 
 DECLARE @seq INT = 1, @p SYSNAME, @marker NVARCHAR(100), @a1 NVARCHAR(400), @r1 NVARCHAR(MAX),
-        @def NVARCHAR(MAX), @msg NVARCHAR(2048);
+        @def NVARCHAR(MAX), @msg NVARCHAR(2048),
+        @hdr NVARCHAR(300), @h INT, @k INT;
 WHILE @seq <= 5
 BEGIN
     SELECT @p = proc_name, @marker = marker, @a1 = a1, @r1 = r1 FROM @patch WHERE seq = @seq;
@@ -161,9 +162,14 @@ BEGIN
         THROW 50119, @msg, 1;
     END
 
-    IF CHARINDEX(@marker, @def) = 0 AND CHARINDEX(N'CREATE OR ALTER PROC', @def) = 0
+    -- SQL Server stores "CREATE OR ALTER PROC" as "CREATE   PROC" (OR ALTER
+    -- blanked out), so the header is found by "PROC dbo.<name>" — exactly once —
+    -- and rewritten to CREATE OR ALTER just before it is executed.
+    SET @hdr = N'PROC dbo.' + @p;
+    IF CHARINDEX(@marker, @def) = 0
+       AND (DATALENGTH(@def) - DATALENGTH(REPLACE(@def, @hdr, N''))) / DATALENGTH(@hdr) <> 1
     BEGIN
-        SET @msg = N'119: live dbo.' + @p + N' does not begin CREATE OR ALTER PROC — left as it was';
+        SET @msg = N'119: live dbo.' + @p + N' header "PROC dbo.' + @p + N'" not found exactly once — left as it was';
         THROW 50119, @msg, 1;
     END
 
@@ -178,6 +184,15 @@ BEGIN
         END
 
         SET @def = REPLACE(@def, @a1, @r1);
+        SET @h = CHARINDEX(@hdr, @def);
+        SET @k = @h - 1;
+        WHILE @k > 0 AND SUBSTRING(@def, @k, 1) IN (N' ', NCHAR(9), NCHAR(10), NCHAR(13)) SET @k -= 1;
+        IF @k < 6 OR SUBSTRING(@def, @k - 5, 6) <> N'CREATE'
+        BEGIN
+            SET @msg = N'119: no CREATE before "PROC dbo.' + @p + N'" — left as it was';
+            THROW 50119, @msg, 1;
+        END
+        SET @def = STUFF(@def, @k - 5, @h - (@k - 5), N'CREATE OR ALTER ');
         BEGIN TRY
             BEGIN TRAN;
             EXEC (@def);   -- CREATE OR ALTER: alters in place, grants + object_id kept
