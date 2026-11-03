@@ -1,10 +1,10 @@
 import { memo } from "react";
-import { CalendarClock } from "lucide-react-native";
+import { CalendarClock, MapPin, Phone, Users, type LucideIcon } from "lucide-react-native";
 
-import type { Lead, Lookup } from "../../types/api";
+import type { FollowUpType, Lead, Lookup } from "../../types/api";
 import { colors, metrics } from "../../theme";
 import { ListRow, Text } from "../../ui";
-import { followUpLine, leadStatusBadge, parseDate, rupees, shortDay } from "./leadHelpers";
+import { followUpLine, followUpTypeLabel, leadStatusBadge, parseDate, rupees, shortDay } from "./leadHelpers";
 
 export interface LeadRowProps {
   lead: Lead;
@@ -19,6 +19,18 @@ export interface LeadRowProps {
 
 const LINE_INK = { default: "textSecondary", danger: "dangerText", muted: "textMuted" } as const;
 
+/** G2: the types a row names; "other" and a missing type (DB without 119) read "Follow-up". */
+const TYPE_ICON: Partial<Record<FollowUpType, LucideIcon>> = { call: Phone, visit: MapPin, meeting: Users };
+const PREFIX = "Follow-up ";
+
+/** "Follow-up tomorrow 11:00 am" → "Call tomorrow 11:00 am" when the next follow-up's type is known. */
+function typedLine(lead: Lead, text: string): { text: string; icon: LucideIcon } {
+  const type = lead.NextFollowupType;
+  const icon = type ? TYPE_ICON[type] : undefined;
+  if (!type || !icon || !text.startsWith(PREFIX)) return { text, icon: CalendarClock };
+  return { text: `${followUpTypeLabel(type)} ${text.slice(PREFIX.length)}`, icon };
+}
+
 /**
  * One lead (E 14): status badge · name and ₹ · company · product with the
  * status pill · the next follow-up (G2). A lost lead reads muted and says why
@@ -30,6 +42,8 @@ function LeadRowBase({ lead, statuses, onPress, selected = false, first = false 
   const value = rupees(lead.EstValue);
   const lostAt = parseDate(lead.LostAt);
   const line = followUpLine(lead);
+  const typed = typedLine(lead, line.text);
+  const LineIcon = typed.icon;
 
   return (
     <ListRow
@@ -47,9 +61,9 @@ function LeadRowBase({ lead, statuses, onPress, selected = false, first = false 
           </Text>
         ) : (
           <>
-            <CalendarClock size={metrics.iconSm} color={colors[LINE_INK[line.tone]]} />
+            <LineIcon size={metrics.iconSm} color={colors[LINE_INK[line.tone]]} />
             <Text variant="label" color={LINE_INK[line.tone]} numberOfLines={1}>
-              {line.text}
+              {typed.text}
             </Text>
           </>
         )

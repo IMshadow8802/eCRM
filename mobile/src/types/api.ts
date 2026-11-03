@@ -701,6 +701,11 @@ export interface Lead {
   EstValue: number | null;
   Remarks: string | null;
   NextFollowupDate: string | null;
+  /**
+   * sp_FetchLeads (119): the Type of the earliest open follow-up, the same row
+   * NextFollowupDate is the date of. Absent on a DB without 119 and on detail.
+   */
+  NextFollowupType?: FollowUpType | null;
   /** Computed by the SP: next follow-up before today on an active lead. */
   IsOverdue: boolean;
   LostReasonId: number | null;

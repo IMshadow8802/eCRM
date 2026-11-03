@@ -206,6 +206,21 @@ describe("leadController.fetch", () => {
     );
   });
 
+  // 119: rows go out as the SP returns them, so NextFollowupType reaches the
+  // clients once applied, and its absence (DB without 119) is not an error.
+  it("passes NextFollowupType through when the SP returns it, and copes when it does not", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[{ Id: 1, NextFollowupDate: "2026-11-04T11:00:00", NextFollowupType: "visit" }, { Id: 2 }], []],
+    });
+    const res = mockRes();
+    await leadController.fetch(baseReq(), res);
+    const [a, b] = res.json.mock.calls[0][0].data.leads;
+    expect(a.NextFollowupType).toBe("visit");
+    expect(b).not.toHaveProperty("NextFollowupType");
+    // No new param: the SP call is the same before and after 119.
+    expect(database.executeStoredProcedure.mock.calls[0][1]).not.toHaveProperty("NextFollowupType");
+  });
+
   it("forwards CompId + optional filters and maps rows + pagination recordsets", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [
