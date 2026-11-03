@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
-import { ScrollView, StyleSheet, View, type ViewStyle } from "react-native";
+import { StyleSheet, View, type ViewStyle } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ChevronLeft, X } from "lucide-react-native";
 
 import { colors, metrics, radius } from "../theme";
 import { IconButton } from "./IconButton";
+import { KeyboardScrollView } from "./KeyboardScrollView";
 import { Refresher, type RefresherProps } from "./Refresher";
 import { SearchField, type SearchFieldProps } from "./SearchField";
 import { BandTabs, type BandTabsProps } from "./Tabs";
@@ -161,14 +162,13 @@ export function BandSheet({
   if (!scroll) return <View style={[...shell, ...pad, styles.flex, style]}>{children}</View>;
   return (
     <View style={[...shell, styles.flex, style]}>
-      <ScrollView
+      <KeyboardScrollView
         style={styles.flex}
         contentContainerStyle={[...pad, { paddingBottom: contentBottom + metrics.sheetPadTop }]}
-        keyboardShouldPersistTaps="handled"
         refreshControl={refresh ? <Refresher refreshing={refresh.refreshing} onRefresh={refresh.onRefresh} /> : undefined}
       >
         {children}
-      </ScrollView>
+      </KeyboardScrollView>
     </View>
   );
 }

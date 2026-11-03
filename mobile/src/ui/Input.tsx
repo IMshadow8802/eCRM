@@ -1,10 +1,11 @@
-import { forwardRef, useState, type ReactNode } from "react";
+import { forwardRef, useRef, useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, TextInput, View, type TextInputProps, type ViewStyle } from "react-native";
 import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { Eye, EyeOff, type LucideIcon } from "lucide-react-native";
 
 import { colors, fontScaleCap, spacing } from "../theme";
 import { FieldHelp, FieldLabel, FieldPrefix, fieldBox } from "./Field";
+import { useKeyboardReveal } from "./KeyboardScrollView";
 import { useInSheet } from "./sheetContext";
 import { Text } from "./Text";
 
@@ -58,6 +59,9 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
   ref,
 ) {
   const [focused, setFocused] = useState(false);
+  // Inside a KeyboardScrollView: the whole field (box and help line) is kept above the keyboard.
+  const keepInView = useKeyboardReveal();
+  const wrapper = useRef<View>(null);
   const [reveal, setReveal] = useState(false);
   const onBrand = tone === "onBrand";
   const lg = size === "lg";
@@ -68,7 +72,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
   const Field = (useInSheet() ? BottomSheetTextInput : TextInput) as typeof TextInput;
 
   return (
-    <View style={containerStyle}>
+    <View ref={wrapper} style={containerStyle}>
       {label ? (
         onBrand ? (
           <Text variant="label" color="textOnBrandMuted" style={styles.legacyLabel}>
@@ -105,10 +109,12 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
           maxFontSizeMultiplier={fontScaleCap.body}
           onFocus={(e) => {
             setFocused(true);
+            keepInView?.(wrapper.current);
             onFocus?.(e);
           }}
           onBlur={(e) => {
             setFocused(false);
+            keepInView?.(null);
             onBlur?.(e);
           }}
           {...rest}

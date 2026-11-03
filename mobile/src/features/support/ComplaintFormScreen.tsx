@@ -31,6 +31,7 @@ import {
   FieldLabel,
   FieldRow,
   GroupHeader,
+  KeyboardScrollView,
   Input,
   ListGroup,
   ListRow,
@@ -548,9 +549,8 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
       />
 
       <BandSheet padded={false}>
-        <ScrollView
+        <KeyboardScrollView
           contentContainerStyle={[styles.content, { paddingHorizontal: layout.gutter }]}
-          keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
           <View style={[styles.column, { maxWidth: layout.contentMaxWidth }]}>
@@ -643,7 +643,7 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
 
             {error ? <Text variant="label" color="dangerText" style={styles.error}>{error}</Text> : null}
           </View>
-        </ScrollView>
+        </KeyboardScrollView>
       </BandSheet>
 
       {/* E 12: the one pill at the foot; no bottom bar on a form. */}

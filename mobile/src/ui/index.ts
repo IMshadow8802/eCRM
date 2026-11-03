@@ -47,6 +47,7 @@ export { ToastProvider, useToast } from "./Toast";
 export { default as Text } from "./Text";
 export { default as useLayout, layoutFor } from "./useLayout";
 export { default as useKeyboardOpen } from "./useKeyboardOpen";
+export { KeyboardScrollView } from "./KeyboardScrollView";
 // retired (Task 40): pre-E components still read by un-migrated screens.
 export { default as ChipGroup } from "./ChipGroup";
 export { default as Fab } from "./Fab";
