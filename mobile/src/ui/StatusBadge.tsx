@@ -41,7 +41,6 @@ const RING = 4;
 /**
  * The solid rounded square that leads every row: status, module, kind. Fill
  * and icon ink come from `badgeTones` — a screen names a tone, never a colour.
- * Replaces `Glyph`.
  */
 export function StatusBadge({
   tone, icon: Icon, size = 40, escalated = false, ringColor = "surface", ring = false, iconSize, testID,

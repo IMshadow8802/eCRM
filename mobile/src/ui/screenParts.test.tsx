@@ -1,15 +1,13 @@
-// ScreenHeader, EmptyState, Fab, Card, Timeline.
+// EmptyState, Card, Timeline.
 import { StyleSheet, Text as RNText } from "react-native";
 import { fireEvent, screen } from "@testing-library/react-native";
-import { Plus, Settings } from "lucide-react-native";
+import { Plus } from "lucide-react-native";
 
 import { colors } from "../theme";
 import { renderWithProviders } from "../test/renderWithProviders";
 import { BoardSurfaceContext } from "./boardSurface";
 import { Card } from "./Card";
 import { EmptyState } from "./EmptyState";
-import { Fab } from "./Fab";
-import { ScreenHeader } from "./ScreenHeader";
 import { Text } from "./Text";
 import { Timeline } from "./Timeline";
 
@@ -20,41 +18,6 @@ const holdTouch = () => {
   const touch = { pageX: 0, pageY: 0, locationX: 0, locationY: 0, timestamp: 0 };
   return { persist: () => {}, currentTarget: { measure: () => {} }, nativeEvent: { ...touch, touches: [touch], changedTouches: [touch] } };
 };
-
-describe("ScreenHeader", () => {
-  it("shows title and subtitle; back and each action do their thing", async () => {
-    const onBack = jest.fn();
-    const onSettings = jest.fn();
-    await renderWithProviders(
-      <ScreenHeader title="Complaint #12" subtitle="Open" tint="danger" onBack={onBack} actions={[{ icon: Settings, label: "Settings", onPress: onSettings }]} />,
-    );
-    expect(screen.getByText("Complaint #12")).toBeOnTheScreen();
-    expect(screen.getByText("Open")).toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "Go back" }));
-    await fireEvent.press(screen.getByRole("button", { name: "Settings" }));
-    expect(onBack).toHaveBeenCalledTimes(1);
-    expect(onSettings).toHaveBeenCalledTimes(1);
-  });
-
-  // Solid colour plus a sink, never an opacity fade (§9.3).
-  it("a held button sinks onto the page in a solid pressed colour", async () => {
-    await renderWithProviders(
-      <ScreenHeader title="T" onBack={jest.fn()} actions={[{ icon: Settings, label: "Settings", onPress: jest.fn() }]} />,
-    );
-    for (const [name, fill] of [["Go back", colors.primaryPressed], ["Settings", colors.surfacePressed]] as const) {
-      await fireEvent(screen.getByRole("button", { name }), "responderGrant", holdTouch());
-      const style = StyleSheet.flatten(screen.getByRole("button", { name }).props.style);
-      expect(style.backgroundColor).toBe(fill);
-      expect(style.transform).toEqual([{ translateY: 2 }]);
-      expect(style.opacity).toBeUndefined();
-    }
-  });
-
-  it("no back handler means no back button", async () => {
-    await renderWithProviders(<ScreenHeader title="Today" />);
-    expect(screen.queryByRole("button", { name: "Go back" })).toBeNull();
-  });
-});
 
 describe("EmptyState", () => {
   it("offers its action only when it has both a label and a handler", async () => {
@@ -67,24 +30,6 @@ describe("EmptyState", () => {
     expect(onAction).toHaveBeenCalledTimes(1);
     await view.rerender(<EmptyState title="No leads" actionLabel="Add lead" />);
     expect(screen.queryByRole("button")).toBeNull();
-  });
-});
-
-describe("Fab", () => {
-  it("presses, shows a label, and is blocked while loading", async () => {
-    const onPress = jest.fn();
-    const onBusy = jest.fn();
-    await renderWithProviders(
-      <>
-        <Fab icon={Plus} label="New" accessibilityLabel="New complaint" offsetBottom={56} onPress={onPress} />
-        <Fab icon={Plus} accessibilityLabel="Saving" loading onPress={onBusy} />
-      </>,
-    );
-    expect(screen.getByText("New")).toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "New complaint" }));
-    expect(onPress).toHaveBeenCalledTimes(1);
-    await fireEvent.press(screen.getByRole("button", { name: "Saving" }));
-    expect(onBusy).not.toHaveBeenCalled();
   });
 });
 

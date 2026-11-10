@@ -51,7 +51,7 @@ export interface BandProps {
 
 /**
  * The navy header (E `.hd`). It runs under the status bar (light content);
- * the sheet below overlaps its bottom edge by 16. Replaces ScreenHeader.
+ * the sheet below overlaps its bottom edge by 16.
  */
 export function Band({
   title, titleVariant = "h1", subtitle, count, onBack, backIcon = "back", actions, search, tabs,

@@ -1,9 +1,8 @@
-// EmptyState, SkeletonRows, ErrorCard (E 20a–c); ScreenLoader built on them.
-import { act, fireEvent, render, screen } from "@testing-library/react-native";
+// EmptyState, SkeletonRows, ErrorCard (E 20a–c).
+import { fireEvent, render, screen } from "@testing-library/react-native";
 
 import { badgeTones, colors } from "../theme";
 import { EmptyState, ErrorCard, SkeletonRows } from "./EmptyState";
-import { ScreenLoader } from "./ScreenLoader";
 
 import { flat } from "../test/style";
 
@@ -61,23 +60,3 @@ describe("ErrorCard (20c)", () => {
   });
 });
 
-describe("ScreenLoader", () => {
-  it("skeleton rows first, then after 6s admits it is slow and offers a retry", async () => {
-    jest.useFakeTimers();
-    const onRetry = jest.fn();
-    await render(<ScreenLoader onRetry={onRetry} />);
-    expect(screen.getAllByTestId("skeleton-row").length).toBeGreaterThan(0);
-    expect(screen.queryByText("Still trying…")).toBeNull();
-    await act(async () => jest.advanceTimersByTime(6000));
-    expect(screen.getByText("Still trying…")).toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
-    expect(onRetry).toHaveBeenCalledTimes(1);
-  });
-
-  it("a failed load says so at once, with the caller's message and no retry when none is given", async () => {
-    await render(<ScreenLoader failed message="Server is down" />);
-    expect(screen.getByText("Could not load this")).toBeOnTheScreen();
-    expect(screen.getByText("Server is down")).toBeOnTheScreen();
-    expect(screen.queryByRole("button")).toBeNull();
-  });
-});
