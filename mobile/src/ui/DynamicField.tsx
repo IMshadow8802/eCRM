@@ -156,5 +156,3 @@ const styles = StyleSheet.create({
   },
   checkboxLabel: { flex: 1 },
 });
-
-export default DynamicField;

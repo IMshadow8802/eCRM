@@ -117,7 +117,6 @@ export const TimeSheet = forwardRef<SheetRef, TimeSheetProps>(function TimeSheet
   );
 });
 
-export default TimeSheet;
 
 const styles = StyleSheet.create({
   summary: {

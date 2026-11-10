@@ -74,5 +74,3 @@ const styles = StyleSheet.create({
   flex: { flex: 1, minWidth: 0 },
   foot: { marginTop: 14 },
 });
-
-export default CreateSheet;

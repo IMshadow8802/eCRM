@@ -96,5 +96,3 @@ export const KeyboardScrollView = forwardRef<ScrollView, KeyboardScrollViewProps
     </KeyboardRevealContext.Provider>
   );
 });
-
-export default KeyboardScrollView;

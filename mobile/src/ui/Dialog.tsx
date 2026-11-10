@@ -119,5 +119,3 @@ const styles = StyleSheet.create({
   // above the keyboard is dimmed too (an iOS floating keyboard leaves it visible).
   fill: { flex: 1, backgroundColor: colors.overlay },
 });
-
-export default Dialog;

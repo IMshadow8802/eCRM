@@ -130,5 +130,3 @@ const styles = StyleSheet.create({
   flex: { flex: 1, minWidth: 0 },
   list: { maxHeight: 380 },
 });
-
-export default Select;

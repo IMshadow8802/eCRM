@@ -82,5 +82,3 @@ const styles = StyleSheet.create({
     textAlignVertical: "center",
   },
 });
-
-export default SearchField;

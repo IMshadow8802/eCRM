@@ -53,7 +53,6 @@ function TaskCardBase({ task, onPress, onLongPress }: TaskCardProps) {
 }
 
 export const TaskCard = memo(TaskCardBase);
-export default TaskCard;
 
 const styles = StyleSheet.create({
   card: { padding: spacing[3], marginBottom: spacing[2] },

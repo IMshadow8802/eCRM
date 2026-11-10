@@ -98,5 +98,3 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: radius.mark,
   },
 });
-
-export default Rail;

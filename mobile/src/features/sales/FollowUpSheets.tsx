@@ -182,5 +182,3 @@ export const FollowUpSheets = forwardRef<FollowUpSheetsHandle>(function FollowUp
     </>
   );
 });
-
-export default FollowUpSheets;

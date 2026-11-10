@@ -163,5 +163,3 @@ const styles = StyleSheet.create({
   // E's 14 above the button.
   save: { marginTop: metrics.sheetActionGap },
 });
-
-export default StatusSheet;

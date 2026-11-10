@@ -111,5 +111,3 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   muted: { fontStyle: "italic" },
 });
-
-export default Timeline;

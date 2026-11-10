@@ -43,5 +43,3 @@ export function useHeartbeat(): void {
     };
   }, [isAuthenticated, reauthOpen]);
 }
-
-export default useHeartbeat;

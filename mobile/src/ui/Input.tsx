@@ -149,5 +149,3 @@ const styles = StyleSheet.create({
   lgRing: { paddingHorizontal: 13 },
   lgText: { fontSize: 17 },
 });
-
-export default Input;

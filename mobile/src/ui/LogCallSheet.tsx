@@ -147,5 +147,3 @@ const styles = StyleSheet.create({
   error: { marginTop: spacing[2] },
   save: { marginTop: spacing[4] },
 });
-
-export default LogCallSheet;

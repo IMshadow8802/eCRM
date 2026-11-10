@@ -60,5 +60,3 @@ export function useLayout(): Layout {
   const { width, height } = useWindowDimensions();
   return layoutFor(width, height);
 }
-
-export default useLayout;

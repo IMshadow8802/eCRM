@@ -82,5 +82,3 @@ const styles = StyleSheet.create({
   },
   sink: { transform: [{ scale: 0.97 }] },
 });
-
-export default ActionBar;

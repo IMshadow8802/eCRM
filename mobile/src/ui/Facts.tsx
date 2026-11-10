@@ -64,5 +64,3 @@ const styles = StyleSheet.create({
   label: { flexShrink: 0 },
   listValue: { flex: 1, alignItems: "flex-end" },
 });
-
-export default Facts;

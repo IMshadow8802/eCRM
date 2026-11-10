@@ -66,4 +66,3 @@ function LeadRowBase({ lead, statuses, onPress, selected = false, first = false 
 }
 
 export const LeadRow = memo(LeadRowBase);
-export default LeadRow;

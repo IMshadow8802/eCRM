@@ -571,5 +571,3 @@ const styles = StyleSheet.create({
   shrink: { flexShrink: 1 },
   flex: { flex: 1, minWidth: 0 },
 });
-
-export default ComplaintDetailBody;

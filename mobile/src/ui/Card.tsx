@@ -71,5 +71,3 @@ const styles = StyleSheet.create({
   padded: { padding: spacing[4] },
   pressed: { transform: [{ scale: 0.985 }, { translateY: 1 }] },
 });
-
-export default Card;

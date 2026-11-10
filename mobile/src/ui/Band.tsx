@@ -194,5 +194,3 @@ const styles = StyleSheet.create({
   },
   centerTop: { paddingTop: 96 },
 });
-
-export default Band;

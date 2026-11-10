@@ -206,5 +206,3 @@ export const ComposeSheet = forwardRef<SheetRef, ComposeSheetProps>(
 const styles = StyleSheet.create({
   body: { gap: metrics.fieldGap + 2 },
 });
-
-export default ComposeSheet;

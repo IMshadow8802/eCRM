@@ -164,5 +164,3 @@ const styles = StyleSheet.create({
   foot: { flexDirection: "row", alignItems: "center", gap: spacing[2], marginBottom: spacing[3] },
   flex: { flex: 1 },
 });
-
-export default TransferSheet;

@@ -502,5 +502,3 @@ const styles = StyleSheet.create({
   columns: { flexDirection: "row", gap: spacing[4] },
   factsColumn: { width: metrics.factsColumn },
 });
-
-export default LeadDetailBody;

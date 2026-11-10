@@ -90,5 +90,3 @@ const styles = StyleSheet.create({
   board: { paddingRight: SCREEN_PADDING, paddingTop: spacing[3], gap: BOARD_GAP },
   column: { flex: 1 },
 });
-
-export default BoardColumns;

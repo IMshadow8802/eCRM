@@ -91,5 +91,3 @@ const styles = StyleSheet.create({
   xs: { fontSize: 11, lineHeight: 14 },
   pressed: { transform: [{ scale: 0.97 }] },
 });
-
-export default Chip;

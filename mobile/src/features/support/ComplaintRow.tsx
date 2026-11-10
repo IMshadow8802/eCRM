@@ -77,4 +77,3 @@ function ComplaintRowBase({ ticket, onPress, onAction, canWrite = true, canHold 
 }
 
 export const ComplaintRow = memo(ComplaintRowBase);
-export default ComplaintRow;

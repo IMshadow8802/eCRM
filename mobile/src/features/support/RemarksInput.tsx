@@ -46,5 +46,3 @@ export function RemarksInput({
 const styles = StyleSheet.create({
   block: { marginBottom: metrics.fieldGap },
 });
-
-export default RemarksInput;

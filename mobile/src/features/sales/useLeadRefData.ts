@@ -73,5 +73,3 @@ export function useLeadRefData(): LeadRefData {
     },
   });
 }
-
-export default useLeadRefData;

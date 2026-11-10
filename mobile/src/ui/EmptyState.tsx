@@ -149,5 +149,3 @@ const styles = StyleSheet.create({
   errorTitle: { marginTop: spacing[4] },
   retry: { marginTop: spacing[5] },
 });
-
-export default EmptyState;

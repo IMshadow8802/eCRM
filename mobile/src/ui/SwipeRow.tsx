@@ -70,5 +70,3 @@ const styles = StyleSheet.create({
   actions: { flexDirection: "row" },
   block: { alignItems: "center", justifyContent: "center", gap: 4 },
 });
-
-export default SwipeRow;

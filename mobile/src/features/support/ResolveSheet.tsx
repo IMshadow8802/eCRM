@@ -80,5 +80,3 @@ export const ResolveSheet = forwardRef<SheetRef, ResolveSheetProps>(function Res
 const styles = StyleSheet.create({
   field: { marginBottom: metrics.fieldGap },
 });
-
-export default ResolveSheet;

@@ -82,5 +82,3 @@ export function Refresher({
     </RefreshControl>
   );
 }
-
-export default Refresher;

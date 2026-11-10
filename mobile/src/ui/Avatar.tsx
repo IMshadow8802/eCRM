@@ -144,5 +144,3 @@ const styles = StyleSheet.create({
   more: { fontSize: 10 },
   ring2: { borderWidth: 2 },
 });
-
-export default Avatar;

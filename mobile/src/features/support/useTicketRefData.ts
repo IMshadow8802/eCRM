@@ -73,5 +73,3 @@ export function useTicketRefData(): TicketRefData {
     }),
   });
 }
-
-export default useTicketRefData;

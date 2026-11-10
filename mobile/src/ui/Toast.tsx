@@ -213,5 +213,3 @@ const styles = StyleSheet.create({
   },
   message: { flex: 1 },
 });
-
-export default ToastProvider;

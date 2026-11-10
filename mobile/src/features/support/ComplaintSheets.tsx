@@ -372,5 +372,3 @@ export const ComplaintSheets = forwardRef<ComplaintSheetsHandle>(function Compla
     </>
   );
 });
-
-export default ComplaintSheets;

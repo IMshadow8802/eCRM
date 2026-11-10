@@ -32,5 +32,3 @@ const styles = StyleSheet.create({
   fill: { alignSelf: "stretch" },
   bar: { backgroundColor: colors.primary },
 });
-
-export default ProgressBar;

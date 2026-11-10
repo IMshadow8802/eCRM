@@ -49,5 +49,3 @@ const styles = StyleSheet.create({
   checked: { backgroundColor: colors.success },
   pressed: { transform: [{ scale: 0.9 }] },
 });
-
-export default Checkbox;

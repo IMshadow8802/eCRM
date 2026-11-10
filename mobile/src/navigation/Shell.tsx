@@ -243,5 +243,3 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   row: { flexDirection: "row" },
 });
-
-export default Shell;

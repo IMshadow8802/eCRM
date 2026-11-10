@@ -112,5 +112,3 @@ const styles = StyleSheet.create({
   text: { flex: 1 },
   empty: { padding: spacing[4] },
 });
-
-export default ActionSheet;

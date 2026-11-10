@@ -155,5 +155,3 @@ export const postData = <T>(
   post<Record<string, T[]>>(endpoint, payload).then(
     (body) => body?.data?.[key] ?? [],
   );
-
-export default apiClient;

@@ -144,5 +144,3 @@ const styles = StyleSheet.create({
   triggerText: { flex: 1 },
   iosDone: { alignSelf: "flex-end", padding: spacing[2] },
 });
-
-export default DateField;

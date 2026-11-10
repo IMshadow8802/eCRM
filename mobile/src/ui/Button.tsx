@@ -113,5 +113,3 @@ const styles = StyleSheet.create({
   fullWidth: { alignSelf: "stretch" },
   content: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
 });
-
-export default Button;

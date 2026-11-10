@@ -66,7 +66,6 @@ function TaskRowBase({ task, onPress, personal = false, first = false }: TaskRow
 }
 
 export const TaskRow = memo(TaskRowBase);
-export default TaskRow;
 
 const styles = StyleSheet.create({
   row: {

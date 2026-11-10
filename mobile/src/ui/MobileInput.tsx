@@ -37,5 +37,3 @@ export const MobileInput = forwardRef<TextInput, MobileInputProps>(function Mobi
     />
   );
 });
-
-export default MobileInput;

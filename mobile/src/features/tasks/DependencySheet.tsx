@@ -134,7 +134,6 @@ export const DependencySheet = forwardRef<SheetRef, DependencySheetProps>(
   },
 );
 
-export default DependencySheet;
 
 const styles = StyleSheet.create({
   summary: {

@@ -42,5 +42,3 @@ const styles = StyleSheet.create({
   band: { backgroundColor: colors.band },
   padded: { paddingHorizontal: spacing[4] },
 });
-
-export default Screen;
