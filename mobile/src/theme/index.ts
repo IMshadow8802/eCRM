@@ -15,12 +15,11 @@ export {
   HIT_TARGET,
   CONTROL_HEIGHT,
   TAB_BAR_HEIGHT,
-  TAB_BAR_CLEARANCE,
 } from "./tokens";
 export type {
   BadgeTone, ChipTone, ChipTonePair, ColorKey, FontScaleGroup, RadiusKey, SpacingKey, UiModule,
 } from "./tokens";
-export { typography, fontFamily, fontSize, variantScaleGroup } from "./typography";
+export { typography, fontFamily, variantScaleGroup } from "./typography";
 export type { TypographyVariant, FontWeightName } from "./typography";
 export * from "./statusBadges";
 export { useAppFonts } from "./fonts";

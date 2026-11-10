@@ -9,7 +9,7 @@ import type {
   WorkspaceType,
 } from "../types/api";
 
-export const WORKSPACE_ENDPOINTS = {
+const WORKSPACE_ENDPOINTS = {
   fetchWorkspaces: "/api/workspaces/fetchWorkspaces",
   saveWorkspace: "/api/workspaces/saveWorkspace",
   fetchWorkspaceMembers: "/api/workspaces/fetchWorkspaceMembers",

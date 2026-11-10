@@ -49,7 +49,7 @@ export const setUnauthorizedHandler = (handler: ((code?: string, message?: strin
 
 // A closed server session (CLAUDE.md §3 Sessions) can be saved by signing in
 // again over the screen; a bad/expired JWT cannot. Mirrors web/src/utils/reauth.js.
-export const SESSION_CODES = ["SESSION_REQUIRED", "SESSION_EXPIRED", "SESSION_FORCED", "SESSION_ENDED"];
+const SESSION_CODES = ["SESSION_REQUIRED", "SESSION_EXPIRED", "SESSION_FORCED", "SESSION_ENDED"];
 
 // Wired by the auth store: shows the re-sign-in dialog and resolves with the
 // new token (rejects when the person signs in as someone else).

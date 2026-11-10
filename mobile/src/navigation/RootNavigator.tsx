@@ -128,7 +128,7 @@ function Tabs() {
   );
 }
 
-export const navigationRef = createNavigationContainerRef<RootStackParamList>();
+const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
 /** The focused stack route, and its focused tab when that route is Tabs. */
 export function focusedRoute(state: NavigationState | undefined): FocusedRoute | null {

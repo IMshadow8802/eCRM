@@ -22,7 +22,7 @@ export interface StatusBadgeProps {
 }
 
 /** size → [radius, icon] (E §3.6). */
-export const BADGE_GEOMETRY: Record<StatusBadgeSize, [number, number]> = {
+const BADGE_GEOMETRY: Record<StatusBadgeSize, [number, number]> = {
   28: [radius.badgeXs, 14],
   32: [radius.badgeSm, 16],
   36: [radius.badge, 18],

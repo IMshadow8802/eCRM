@@ -12,7 +12,7 @@
 import { post } from "./client";
 import type { ApiEnvelope, Lead, LeadDetail, LeadStatusCode, Pagination } from "../types/api";
 
-export const LEAD_ENDPOINTS = {
+const LEAD_ENDPOINTS = {
   saveLeads: "/api/leads/saveLeads",
   fetchLeads: "/api/leads/fetchLeads",
   fetchLeadDetail: "/api/leads/fetchLeadDetail",

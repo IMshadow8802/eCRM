@@ -31,7 +31,7 @@ const initialsOf = (name?: string | null) =>
     .join("") || "?";
 
 /** E's a1–a6, in order. */
-export const AVATAR_TONES: BadgeTone[] = ["indigo", "butter", "mint", "lilac", "peach", "teal"];
+const AVATAR_TONES: BadgeTone[] = ["indigo", "butter", "mint", "lilac", "peach", "teal"];
 
 /** A stored `color:<name>` preset on the sorbet palette (proposed in spec §3.17). */
 export const AVATAR_PRESET_TONE: Record<string, BadgeTone> = {

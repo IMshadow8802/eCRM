@@ -4,7 +4,7 @@ import { Keyboard, ScrollView, type LayoutChangeEvent, type NativeScrollEvent, t
 import { spacing } from "../theme";
 
 /** An Input reports the field it is (label to help line) while focused, null on blur. */
-export const KeyboardRevealContext = createContext<((field: View | null) => void) | null>(null);
+const KeyboardRevealContext = createContext<((field: View | null) => void) | null>(null);
 export const useKeyboardReveal = () => useContext(KeyboardRevealContext);
 
 /** Room kept between the field's foot and the keyboard. */

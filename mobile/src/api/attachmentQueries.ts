@@ -3,7 +3,7 @@
 import { apiClient, getApiBaseUrl, getAuthToken, post, postData } from "./client";
 import type { ApiEnvelope, Attachment, AttachmentEntity } from "../types/api";
 
-export const ATTACHMENT_ENDPOINTS = {
+const ATTACHMENT_ENDPOINTS = {
   fetch: "/api/attachments/fetch",
   save: "/api/attachments/save",
   download: "/api/attachments/download",

@@ -2,7 +2,7 @@
 import { post } from "./client";
 import type { Access, ApiEnvelope, LoginData, Permissions } from "../types/api";
 
-export const AUTH_ENDPOINTS = {
+const AUTH_ENDPOINTS = {
   login: "/api/auth/loginUser",
   logout: "/api/auth/logoutUser",
   fetchMyAccess: "/api/auth/fetchMyAccess",

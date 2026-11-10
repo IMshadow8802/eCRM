@@ -186,17 +186,8 @@ export type DueBucket =
   | "later"
   | "noDate";
 
-export const BUCKET_LABEL: Record<DueBucket, string> = {
-  overdue: "Overdue",
-  today: "Today",
-  tomorrow: "Tomorrow",
-  thisWeek: "This week",
-  later: "Later",
-  noDate: "No due date",
-};
-
 /** Order the sections appear in. Overdue first — that is the whole point. */
-export const BUCKET_ORDER: DueBucket[] = [
+const BUCKET_ORDER: DueBucket[] = [
   "overdue",
   "today",
   "tomorrow",

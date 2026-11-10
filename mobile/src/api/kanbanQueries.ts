@@ -5,7 +5,7 @@
 import { post, postData } from "./client";
 import type { ApiEnvelope, KanbanColumn } from "../types/api";
 
-export const KANBAN_ENDPOINTS = {
+const KANBAN_ENDPOINTS = {
   fetchKanbanColumns: "/api/kanban/fetchKanbanColumns",
   saveKanbanColumn: "/api/kanban/saveKanbanColumn",
   deleteKanbanColumn: "/api/kanban/deleteKanbanColumn",

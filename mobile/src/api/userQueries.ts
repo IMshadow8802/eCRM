@@ -4,7 +4,7 @@
 import { post, postData } from "./client";
 import type { ApiEnvelope, AssignableUser, Branch, DirectoryUser } from "../types/api";
 
-export const USER_ENDPOINTS = {
+const USER_ENDPOINTS = {
   directory: "/api/users/directory",
   fetchAssignableUsers: "/api/users/fetchAssignableUsers",
   fetchBranches: "/api/users/fetchBranches",

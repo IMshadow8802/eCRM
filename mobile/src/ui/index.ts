@@ -6,7 +6,7 @@
 //   2. Never write a colour literal or a raw spacing number — use the tokens.
 //
 // If a screen needs a widget that is not here, add it here.
-export { default as ActionBar, MAX_BAR_ACTIONS } from "./ActionBar";
+export { default as ActionBar } from "./ActionBar";
 export { default as ActionSheet } from "./ActionSheet";
 export { default as Avatar, AvatarStack, avatarTone } from "./Avatar";
 export { Band, BandSheet } from "./Band";
@@ -36,7 +36,7 @@ export { default as Refresher } from "./Refresher";
 export { default as Screen } from "./Screen";
 export { default as SearchField } from "./SearchField";
 export { default as Select } from "./Select";
-export { default as Sheet, SheetBackHandler, SheetHeader } from "./Sheet";
+export { default as Sheet, SheetBackHandler } from "./Sheet";
 export { default as StatusBadge } from "./StatusBadge";
 export { default as SwipeRow } from "./SwipeRow";
 export { BandTabs, FilterPills, FilterPillsSkeleton, SegmentedTabs } from "./Tabs";
@@ -75,7 +75,7 @@ export type { RefresherProps } from "./Refresher";
 export type { ScreenProps } from "./Screen";
 export type { SearchFieldProps } from "./SearchField";
 export type { SelectOption, SelectProps } from "./Select";
-export type { SheetHeaderProps, SheetProps, SheetRef } from "./Sheet";
+export type { SheetProps, SheetRef } from "./Sheet";
 export type { StatusBadgeProps, StatusBadgeSize } from "./StatusBadge";
 export type { SwipeAction, SwipeRowProps } from "./SwipeRow";
 export type { BandTabsProps, FilterOption, FilterPillsProps, SegmentedTabsProps, TabOption } from "./Tabs";

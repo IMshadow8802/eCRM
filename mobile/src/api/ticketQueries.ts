@@ -17,7 +17,7 @@ import type {
   TicketStatusCode,
 } from "../types/api";
 
-export const TICKET_ENDPOINTS = {
+const TICKET_ENDPOINTS = {
   saveTicket: "/api/tickets/saveTicket",
   fetchTickets: "/api/tickets/fetchTickets",
   fetchTicketDetail: "/api/tickets/fetchTicketDetail",

@@ -5,7 +5,7 @@
 import { post } from "./client";
 import type { TaskTat } from "../types/api";
 
-export const TAT_ENDPOINTS = {
+const TAT_ENDPOINTS = {
   fetchTaskTat: "/api/tat/fetchTaskTat",
   acknowledge: "/api/tat/acknowledge",
   hold: "/api/tat/hold",

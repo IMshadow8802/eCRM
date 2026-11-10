@@ -9,7 +9,7 @@
 import { post } from "./client";
 import type { ApiEnvelope, CallDirection, FollowUp, FollowUpStatus, FollowUpType, Pagination } from "../types/api";
 
-export const FOLLOWUP_ENDPOINTS = {
+const FOLLOWUP_ENDPOINTS = {
   scheduleFollowUp: "/api/followups/scheduleFollowUp",
   completeFollowUp: "/api/followups/completeFollowUp",
   skipFollowUp: "/api/followups/skipFollowUp",

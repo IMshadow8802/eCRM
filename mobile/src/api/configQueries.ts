@@ -9,7 +9,7 @@
 import { postData } from "./client";
 import type { ConfigEntity, CustomFieldDef, Lookup } from "../types/api";
 
-export const CONFIG_ENDPOINTS = {
+const CONFIG_ENDPOINTS = {
   fetchLookups: "/api/config/fetchLookups",
   fetchCustomFields: "/api/config/fetchCustomFields",
 } as const;

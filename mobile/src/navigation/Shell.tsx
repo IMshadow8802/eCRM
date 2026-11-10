@@ -24,7 +24,7 @@ export type RouteOwner = TabName | "action" | "none";
  * What the bottom chrome shows for each stack route (spec §3.4): the tab that
  * owns it (active on the bar), the record's action bar, or nothing (forms).
  */
-export const ROUTE_OWNER: Record<StackRoute, RouteOwner> = {
+const ROUTE_OWNER: Record<StackRoute, RouteOwner> = {
   Login: "none",
   Tabs: "Home",
   TaskDetail: "Tasks",

@@ -20,7 +20,7 @@ export interface ActionBarProps {
 }
 
 /** E caps a record's bar at five actions; extras belong in the ⋮ menu. */
-export const MAX_BAR_ACTIONS = 5;
+const MAX_BAR_ACTIONS = 5;
 
 /**
  * The record's action bar (E 11, 15): the bottom bar's navy, with the record's

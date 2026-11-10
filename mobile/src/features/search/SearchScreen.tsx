@@ -22,7 +22,7 @@ import { complaintQueueParams } from "../support/ticketHelpers";
 type Props = StackScreenProps<RootStackParamList, "Search">;
 
 /** Shorter terms match half the company; the server's LIKE gains nothing from one letter. */
-export const MIN_TERM = 2;
+const MIN_TERM = 2;
 const PAGE = 5;
 
 interface Group {

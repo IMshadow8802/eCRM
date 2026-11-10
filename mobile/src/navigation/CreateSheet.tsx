@@ -13,7 +13,7 @@ export const CREATE_ROWS: Record<CreateKind, { title: string; meta: string; modu
   complaint: { title: "New complaint", meta: "Log a customer issue; TAT starts now", module: "complaints", short: "Complaint" },
   lead: { title: "New lead", meta: "Capture an enquiry and its first follow-up", module: "leads", short: "Lead" },
 };
-export const CREATE_ORDER: CreateKind[] = ["task", "complaint", "lead"];
+const CREATE_ORDER: CreateKind[] = ["task", "complaint", "lead"];
 
 export interface CreateSheetProps {
   /** The kinds the role may add (`useAccess(m).add`), in any order. */

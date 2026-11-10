@@ -122,11 +122,11 @@ const parse = (iso: string | null | undefined): Date | null => {
 const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
 
 /** "5:30 pm" */
-export const clock = (d: Date): string =>
+const clock = (d: Date): string =>
   `${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, "0")} ${d.getHours() < 12 ? "am" : "pm"}`;
 
 /** "Tue, 3 Nov" */
-export const dayMonth = (d: Date): string =>
+const dayMonth = (d: Date): string =>
   `${DAYS[d.getDay()]}, ${d.getDate()} ${MONTHS[d.getMonth()]}`;
 
 /** "40 m" / "2 h" / "3 d" — whole units, never "1.5 h". */

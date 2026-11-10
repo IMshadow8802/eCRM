@@ -16,7 +16,7 @@ import type {
   TaskTimeEntry,
 } from "../types/api";
 
-export const TASK_ENDPOINTS = {
+const TASK_ENDPOINTS = {
   fetchTasks: "/api/tasks/fetchTasks",
   saveTask: "/api/tasks/saveTask",
   moveTaskColumn: "/api/tasks/moveTaskColumn",

@@ -5,7 +5,7 @@
 import { postData } from "./client";
 import type { Product } from "../types/api";
 
-export const PRODUCT_ENDPOINTS = {
+const PRODUCT_ENDPOINTS = {
   fetchProducts: "/api/products/fetchProducts",
 } as const;
 

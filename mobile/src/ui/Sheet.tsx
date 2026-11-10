@@ -45,7 +45,7 @@ export interface SheetProps {
   padded?: boolean;
 }
 
-export interface SheetHeaderProps {
+interface SheetHeaderProps {
   title: string;
   subtitle?: string;
   badge?: Pick<StatusBadgeProps, "tone" | "icon">;
@@ -53,7 +53,7 @@ export interface SheetHeaderProps {
 }
 
 /** Badge · title + subtitle · close (E `.shd`). */
-export function SheetHeader({ title, subtitle, badge, onClose }: SheetHeaderProps) {
+function SheetHeader({ title, subtitle, badge, onClose }: SheetHeaderProps) {
   return (
     <View style={styles.header}>
       {badge ? <StatusBadge tone={badge.tone} icon={badge.icon} /> : null}

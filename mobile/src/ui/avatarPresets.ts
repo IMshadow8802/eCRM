@@ -33,7 +33,7 @@ export const AVATAR_ICONS: Record<string, LucideIcon> = {
   diamond: Diamond, bug: Bug,
 };
 
-export const colorOf = (key?: string): string =>
+const colorOf = (key?: string): string =>
   (key && AVATAR_COLORS[key]) || AVATAR_COLORS.violet!;
 
 /** The preset's colour name, or violet for an unknown one (the same fallback as `colorOf`). */

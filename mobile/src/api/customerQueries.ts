@@ -11,7 +11,7 @@
 import { post, postData } from "./client";
 import type { ApiEnvelope, Customer, CustomerDetail } from "../types/api";
 
-export const CUSTOMER_ENDPOINTS = {
+const CUSTOMER_ENDPOINTS = {
   fetchCustomers: "/api/customers/fetchCustomers",
   saveCustomer: "/api/customers/saveCustomer",
   fetchCustomerDetail: "/api/customers/fetchCustomerDetail",

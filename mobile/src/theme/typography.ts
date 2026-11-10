@@ -18,9 +18,6 @@ export const fontFamily = {
 
 export type FontWeightName = keyof typeof fontFamily;
 
-/** retired (Task 40): the pre-E size steps, still read by a few screens. */
-export const fontSize = { xs: 11, sm: 13, base: 14, md: 15, lg: 17, xl: 19, "2xl": 22, "3xl": 28 } as const;
-
 export interface TextStyleToken {
   fontSize: number;
   fontFamily: string;

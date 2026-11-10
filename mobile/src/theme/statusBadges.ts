@@ -4,7 +4,7 @@
 // only, never a colour, so `StatusBadge`/`Chip` resolve them through the theme.
 // Every branch keys on a machine code, never on a company's label.
 import {
-  Archive, BadgeCheck, Bell, Calendar, CalendarCheck, CalendarClock, CalendarX, ChevronsUp, Check, Circle,
+  Archive, BadgeCheck, Bell, CalendarCheck, CalendarClock, CalendarX, ChevronsUp, Check, Circle,
   CircleCheck, CircleDot, CirclePause, CirclePlay, CircleX, Clock, Ellipsis, FileText, Flag, Headset,
   House, Inbox, LayoutDashboard, ListChecks, Lock, MapPin, MessageSquare, OctagonAlert, Pencil, Phone,
   PhoneCall, Plus, Sparkles, SquareCheckBig, Target, Timer, Trophy, UserCheck, UserPlus, Users,
@@ -161,6 +161,3 @@ const TAT_EVENT = {
   breached: b("red", OctagonAlert),
 } as const;
 export const tatEventBadge = (event: keyof typeof TAT_EVENT): BadgeSpec => TAT_EVENT[event];
-
-/** Icons E pairs with chips that are not statuses (due date, TAT, Custom). */
-export const chipIcons = { date: Calendar, timer: Timer, lock: Lock } as const;

@@ -2,7 +2,7 @@
 import { post } from "./client";
 import type { ApiEnvelope, AppNotification, Pagination } from "../types/api";
 
-export const NOTIFICATION_ENDPOINTS = {
+const NOTIFICATION_ENDPOINTS = {
   fetchNotifications: "/api/notifications/fetchNotifications",
   markNotificationRead: "/api/notifications/markNotificationRead",
   markAllNotificationsRead: "/api/notifications/markAllNotificationsRead",

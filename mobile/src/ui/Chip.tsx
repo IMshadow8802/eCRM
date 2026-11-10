@@ -22,7 +22,7 @@ export interface ChipProps {
 }
 
 /** size → height, horizontal padding, text variant, icon (E §3.7). */
-export const CHIP_SIZES: Record<ChipSize, { height: number; padH: number; variant: TypographyVariant; icon: number }> = {
+const CHIP_SIZES: Record<ChipSize, { height: number; padH: number; variant: TypographyVariant; icon: number }> = {
   xs: { height: 18, padH: 9, variant: "label", icon: 12 },
   sm: { height: 22, padH: 9, variant: "label", icon: 12 },
   md: { height: 28, padH: 12, variant: "metaStrong", icon: 14 },

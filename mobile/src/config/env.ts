@@ -9,7 +9,7 @@ export const APP_TYPE = "ECRM_EMP";
 // A persisted base URL is stamped on every request, so a tampered AsyncStorage
 // value must not be able to point the token at another host. Only URLs on
 // these origins survive rehydration.
-export const TRUSTED_API_ORIGINS = ["https://shadowcodes.in"];
+const TRUSTED_API_ORIGINS = ["https://shadowcodes.in"];
 
 export const isTrustedApiUrl = (url: unknown): boolean => {
   try {

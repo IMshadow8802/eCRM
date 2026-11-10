@@ -11,7 +11,7 @@ import type { ApiEnvelope, Call, CallDirection } from "../types/api";
 
 export type { CallDirection };
 
-export const CALL_ENDPOINTS = {
+const CALL_ENDPOINTS = {
   logCall: "/api/calls/logCall",
   fetchCalls: "/api/calls/fetchCalls",
 } as const;
