@@ -460,17 +460,22 @@ rebuild, and any future icon work does not.
 
 ### 9.5 Shared components — build it once, in `src/ui/`
 
-`ActionSheet · Avatar · Button · Card · Chip · ComposeSheet · DateField ·
-Dialog · Divider · EmptyState · Fab · Input · Screen · ScreenHeader ·
-Segmented · Select · Sheet · Text`
+`ActionBar · ActionSheet · Avatar · Band/BandSheet · BandTabs/SegmentedTabs/
+FilterPills (Tabs) · BoardColumns · Button · Card · Checkbox · Chip ·
+ChoiceList · ComposeSheet · CountBadge · DateField · Dialog · DynamicField ·
+EmptyState · Facts · Field* · HeroCard/ModuleTile · IconButton · Input ·
+KeyboardScrollView · ListRow/ListGroup (List) · LogCallSheet · MobileInput ·
+Notes · ProgressBar · Refresher · Screen · SearchField · Select · Sheet ·
+StatusBadge · SwipeRow · Text · Timeline · Toast` — `src/ui/index.ts` is the
+list; screens import from it and nowhere else.
 
 If a screen needs a widget that is not there, **add it there**. Two screens
 building the same thing separately is the failure this prevents.
 
-- **`ChipGroup` for a row of pills where one is selected** (list filters, a
-  direction picker); **`Chip` for a static label** (a stage, a badge);
-  **`Segmented` for switching between views of one record**. All three were
-  hand-rolled ~20 times before this was written down.
+- **`Band` is the screen header** (navy, with `BandSheet` overlapping it);
+  **`BandTabs`** for presets on the band, **`FilterPills`** for a pill row with
+  counts, **`SegmentedTabs`** for switching views of one record; **`Chip`** for
+  a static label, **`StatusBadge`** for an icon badge.
 - **`Card` is the only raised surface.** Never hand-roll
   `backgroundColor + borderRadius + shadows.md` in a screen. That happened in
   nine files, and every change to the shell then had to be made nine times —
@@ -514,9 +519,9 @@ building the same thing separately is the failure this prevents.
 There is no `@dnd-kit` on React Native; gestures go through
 `react-native-gesture-handler` + `react-native-reanimated`.
 
-- **Within a list** (checklist items, column order): use
-  `react-native-reorderable-list`. Actively maintained, works with Reanimated 4.
-  Avoid `react-native-draggable-flatlist` — stale, and it breaks on Reanimated 4.
+- **Within a list**: none on mobile. Checklist reorder was removed until the
+  backend has a reorder endpoint; when it returns, avoid
+  `react-native-draggable-flatlist` (stale, breaks on Reanimated 4).
 - **Between kanban columns**: **do not build drag.** Four columns on a 360px
   screen makes a drop target a few pixels wide. Use long-press → "Move to…"
   `Sheet` → `moveTaskColumn`, the same endpoint and gate a drag on web would
