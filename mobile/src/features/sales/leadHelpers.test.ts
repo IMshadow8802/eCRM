@@ -223,6 +223,16 @@ describe("dates and money", () => {
     expect(fromNow(null, now)).toBeNull();
   });
 
+  it("counts a day-only due in days, never hours (22:34 must not read 'in 1 h')", () => {
+    const late = new Date(2026, 10, 16, 22, 34);
+    expect(fromNow("2026-11-17", late)).toBe("tomorrow");
+    expect(fromNow("2026-11-16", late)).toBe("today");
+    expect(fromNow("2026-11-15", late)).toBe("yesterday");
+    expect(fromNow("2026-11-20", late)).toBe("in 4 days");
+    expect(fromNow("2026-11-13", late)).toBe("3 days ago");
+    expect(fromNow(new Date(2026, 10, 17, 10).toISOString(), late)).toBe("in 11 h");
+  });
+
   it("a follow-up row reads type · day · time, or · done", () => {
     const f = (patch: Partial<FollowUp>) =>
       ({ Type: "visit", Status: "open", DueAt: new Date(2026, 10, 7, 15).toISOString(), DoneAt: null, ...patch }) as FollowUp;

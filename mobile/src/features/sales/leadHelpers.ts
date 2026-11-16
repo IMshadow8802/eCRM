@@ -207,10 +207,18 @@ export function whenText(iso: string | null | undefined, now = new Date()): stri
   return hasTime(d) ? `${name} ${clock(d)}` : name;
 }
 
-/** "in 20 h" · "in 20 min" · "in 4 d" · "2 h ago" */
+/** "in 20 h" · "in 20 min" · "in 4 d" · "2 h ago"; a day-only due: "today" · "tomorrow" · "in 4 days" · "3 days ago" */
 export function fromNow(iso: string | null | undefined, now = new Date()): string | null {
   const d = parseDate(iso);
   if (!d) return null;
+  if (!hasTime(d)) {
+    // A day-only due has no clock: count calendar days, never hours to midnight.
+    const days = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) / 864e5);
+    if (days === 0) return "today";
+    if (days === 1) return "tomorrow";
+    if (days === -1) return "yesterday";
+    return days > 0 ? `in ${days} days` : `${-days} days ago`;
+  }
   const minutes = Math.round((d.getTime() - now.getTime()) / 60000);
   const abs = Math.abs(minutes);
   const span = abs < 60 ? `${abs} min` : abs < 48 * 60 ? `${Math.round(abs / 60)} h` : `${Math.round(abs / 1440)} d`;
