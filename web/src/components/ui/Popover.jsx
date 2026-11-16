@@ -1,5 +1,6 @@
 import MuiPopover from "@mui/material/Popover";
 import { useTheme } from "@mui/material/styles";
+import { zIndex } from "../../styles/tokens";
 
 /**
  * Themed Popover. Consumers pass `anchorEl`, `open`, `onClose`, content.
@@ -25,6 +26,8 @@ export default function Popover({
       anchorOrigin={anchorOrigin}
       transformOrigin={transformOrigin}
       data-testid={testId}
+      // MUI defaults to 1300, under ui/Modal (1400); same token Combobox/DateField use.
+      sx={{ zIndex: zIndex.popover }}
       slotProps={{
         paper: {
           sx: {
