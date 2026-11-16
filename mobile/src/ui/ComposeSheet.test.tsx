@@ -5,6 +5,7 @@ import { act, fireEvent, screen } from "@testing-library/react-native";
 import { renderWithProviders } from "../test/renderWithProviders";
 import { Button } from "./Button";
 import { ComposeSheet, type ComposeSheetProps } from "./ComposeSheet";
+import { toISODate } from "./DateField";
 import type { SheetRef } from "./Sheet";
 
 const FIELDS: ComposeSheetProps["fields"] = [
@@ -41,7 +42,7 @@ it("submit stays disabled until every required field and choice is filled", asyn
   expect(submitButton()).toBeEnabled();
   await fireEvent.press(submitButton());
   // Trimmed; an untouched optional field is sent as "".
-  expect(onSubmit).toHaveBeenCalledWith({ hours: "2.5", note: "" }, { kind: 2 });
+  expect(onSubmit).toHaveBeenCalledWith({ hours: "2.5", note: "" }, { kind: 2 }, null);
 });
 
 it("a field can be required only for some choices", async () => {
@@ -55,7 +56,7 @@ it("a field can be required only for some choices", async () => {
   expect(submitButton()).toBeDisabled();
   await fireEvent.changeText(screen.getByPlaceholderText("Note"), "why");
   await fireEvent.press(submitButton());
-  expect(onSubmit).toHaveBeenCalledWith({ note: "why" }, { kind: "call" });
+  expect(onSubmit).toHaveBeenCalledWith({ note: "why" }, { kind: "call" }, null);
 });
 
 // The real sheet calls onDismiss when it closes; the mock's dismiss is a no-op.
@@ -113,7 +114,7 @@ it("a single one-line field submits from the keyboard", async () => {
   const input = screen.getByPlaceholderText("Item");
   await fireEvent.changeText(input, "Call back");
   await fireEvent(input, "submitEditing");
-  expect(onSubmit).toHaveBeenCalledWith({ text: "Call back" }, {});
+  expect(onSubmit).toHaveBeenCalledWith({ text: "Call back" }, {}, null);
 });
 
 // Editing a comment: the sheet opens holding the comment's text.
@@ -202,7 +203,7 @@ it("a secure field is masked with the show/hide eye (Change password)", async ()
   // Sent as typed: spaces are part of a password.
   await fireEvent.changeText(screen.getByPlaceholderText("Current password"), " fixture-1 ");
   await fireEvent.press(submitButton());
-  expect(onSubmit).toHaveBeenCalledWith({ pw: " fixture-1 " }, {});
+  expect(onSubmit).toHaveBeenCalledWith({ pw: " fixture-1 " }, {}, null);
 });
 
 it("onDismiss runs after the sheet has reset", async () => {
@@ -213,4 +214,70 @@ it("onDismiss runs after the sheet has reset", async () => {
   await act(() => ref.current!.dismiss());
   expect(onDismiss).toHaveBeenCalledTimes(1);
   expect(screen.getByPlaceholderText("Hours").props.value).toBe("");
+});
+
+// The when row: day chips + optional time, handed over as one due string.
+const localDayPlus = (n: number) => {
+  const d = new Date();
+  return toISODate(new Date(d.getFullYear(), d.getMonth(), d.getDate() + n));
+};
+
+it("a required when keeps submit disabled until a day is chosen, then hands over the due", async () => {
+  const { onSubmit } = await renderSheet({ fields: [], choices: [], when: { label: "When", required: true } });
+  expect(submitButton()).toBeDisabled();
+  await fireEvent.press(screen.getByText("Tomorrow"));
+  await fireEvent.press(submitButton());
+  expect(onSubmit).toHaveBeenCalledWith({}, {}, localDayPlus(1));
+});
+
+it("an optional when submits null when untouched", async () => {
+  const { onSubmit } = await renderSheet({ fields: [], choices: [], when: { label: "When" } });
+  await fireEvent.press(submitButton());
+  expect(onSubmit).toHaveBeenCalledWith({}, {}, null);
+});
+
+it("initialTime is in the time row on open and rides along with the chip", async () => {
+  const { onSubmit } = await renderSheet({ fields: [], choices: [], when: { label: "When", initialTime: "10:00" } });
+  await fireEvent.press(screen.getByText("Tomorrow"));
+  await fireEvent.press(submitButton());
+  expect(onSubmit).toHaveBeenCalledWith({}, {}, `${localDayPlus(1)}T10:00`);
+});
+
+it("a past due disables submit", async () => {
+  // Today 00:00 is already past (unless run in minute 00:00).
+  const { onSubmit } = await renderSheet({ fields: [], choices: [], when: { label: "When", initialTime: "00:00" } });
+  await fireEvent.press(screen.getByText("Today"));
+  expect(submitButton()).toBeDisabled();
+  await fireEvent.press(submitButton());
+  expect(onSubmit).not.toHaveBeenCalled();
+});
+
+it("dismiss resets the when row to initialTime", async () => {
+  const ref = createRef<SheetRef>();
+  const { onSubmit } = await renderSheet({ fields: [], choices: [], when: { label: "When", required: true, initialTime: "10:00" }, ref } as Partial<ComposeSheetProps>);
+  await fireEvent.press(screen.getByText("Tomorrow"));
+  expect(submitButton()).toBeEnabled();
+  await act(() => ref.current!.dismiss());
+  expect(submitButton()).toBeDisabled();
+  await fireEvent.press(screen.getByText("In 3 days"));
+  await fireEvent.press(submitButton());
+  expect(onSubmit).toHaveBeenCalledWith({}, {}, `${localDayPlus(3)}T10:00`);
+});
+
+it("a new initialTime reseeds the time row", async () => {
+  function Host() {
+    const [t, setT] = useState("09:00");
+    return (
+      <>
+        <Button title="Later" onPress={() => setT("17:30")} />
+        <ComposeSheet title="Log time" submitLabel="Go" fields={[]} when={{ label: "When", initialTime: t }} onSubmit={onSubmit} />
+      </>
+    );
+  }
+  const onSubmit = jest.fn();
+  await renderWithProviders(<Host />);
+  await fireEvent.press(screen.getByText("Later"));
+  await fireEvent.press(screen.getByText("Tomorrow"));
+  await fireEvent.press(screen.getByRole("button", { name: "Go" }));
+  expect(onSubmit).toHaveBeenCalledWith({}, {}, `${localDayPlus(1)}T17:30`);
 });

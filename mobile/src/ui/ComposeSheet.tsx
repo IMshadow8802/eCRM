@@ -8,6 +8,7 @@ import type { StatusBadgeProps } from "./StatusBadge";
 import { FilterPills } from "./Tabs";
 import { Sheet, type SheetRef } from "./Sheet";
 import { Text } from "./Text";
+import { EMPTY_WHEN, WhenField, isPastDue, whenDue, type WhenValue } from "./WhenField";
 
 export interface ComposeField {
   key: string;
@@ -39,6 +40,14 @@ export interface ComposeChoice {
   required?: boolean;
 }
 
+/** A day-chips row with an optional time; `onSubmit` receives its due string. */
+export interface ComposeWhen {
+  label: string;
+  required?: boolean;
+  /** "HH:mm" put in the time row each time the sheet opens (reschedule keeps the old time of day). */
+  initialTime?: string | null;
+}
+
 export interface ComposeSheetProps {
   title: string;
   /** The line under the title ("C-1042 · AC not cooling"). */
@@ -48,6 +57,7 @@ export interface ComposeSheetProps {
   submitLabel: string;
   fields: ComposeField[];
   choices?: ComposeChoice[];
+  when?: ComposeWhen;
   busy?: boolean;
   /**
    * Why the last submit failed. Shown above the button, and the reason the
@@ -63,6 +73,8 @@ export interface ComposeSheetProps {
   onSubmit: (
     values: Record<string, string>,
     choices: Record<string, string | number>,
+    /** `whenDue(...)` — "yyyy-MM-dd[THH:mm]", or null when no day is chosen. */
+    due: string | null,
   ) => void;
   /** After the sheet closes and has reset its fields. */
   onDismiss?: () => void;
@@ -79,7 +91,7 @@ export interface ComposeSheetProps {
  */
 export const ComposeSheet = forwardRef<SheetRef, ComposeSheetProps>(
   function ComposeSheet(
-    { title, subtitle, badge, submitLabel, fields, choices = [], busy = false, error, initialValues, onSubmit, onDismiss },
+    { title, subtitle, badge, submitLabel, fields, choices = [], when, busy = false, error, initialValues, onSubmit, onDismiss },
     ref,
   ) {
     const [values, setValues] = useState<Record<string, string>>(initialValues ?? {});
@@ -92,12 +104,22 @@ export const ComposeSheet = forwardRef<SheetRef, ComposeSheetProps>(
     }
     const [picked, setPicked] = useState<Record<string, string | number>>({});
 
+    const initialWhen = (): WhenValue => ({ ...EMPTY_WHEN, time: when?.initialTime ?? null });
+    const [whenValue, setWhenValue] = useState<WhenValue>(initialWhen);
+    const [whenSeed, setWhenSeed] = useState(when?.initialTime);
+    if (whenSeed !== when?.initialTime) {
+      setWhenSeed(when?.initialTime);
+      setWhenValue(initialWhen());
+    }
+    const due = when ? whenDue(whenValue) : null;
+
     const set = (key: string, value: string) =>
       setValues((prev) => ({ ...prev, [key]: value }));
 
     const reset = () => {
       setValues(initialValues ?? {});
       setPicked({});
+      setWhenValue(initialWhen());
     };
 
     const isRequired = (f: (typeof fields)[number]) =>
@@ -105,7 +127,9 @@ export const ComposeSheet = forwardRef<SheetRef, ComposeSheetProps>(
 
     const complete =
       fields.every((f) => !isRequired(f) || (values[f.key] ?? "").trim()) &&
-      choices.every((c) => !c.required || picked[c.key] != null);
+      choices.every((c) => !c.required || picked[c.key] != null) &&
+      (!when?.required || due != null) &&
+      !isPastDue(due);
 
     /**
      * Deliberately does NOT clear the fields.
@@ -125,7 +149,7 @@ export const ComposeSheet = forwardRef<SheetRef, ComposeSheetProps>(
       const trimmed: Record<string, string> = {};
       // A password is sent as typed: its spaces are part of it.
       for (const field of fields) trimmed[field.key] = field.secure ? (values[field.key] ?? "") : (values[field.key] ?? "").trim();
-      onSubmit(trimmed, picked);
+      onSubmit(trimmed, picked, due);
     };
 
     return (
@@ -160,6 +184,10 @@ export const ComposeSheet = forwardRef<SheetRef, ComposeSheetProps>(
             </View>
           ))}
 
+          {when ? (
+            <WhenField label={when.label} required={when.required} value={whenValue} onChange={setWhenValue} />
+          ) : null}
+
           {fields.map((field, i) => (
             <View key={field.key}>
               <Input
@@ -179,7 +207,7 @@ export const ComposeSheet = forwardRef<SheetRef, ComposeSheetProps>(
                 // Only the first field, and only when nothing above it needs a
                 // decision first — a keyboard covering an unanswered chip row
                 // is how a required choice gets missed.
-                autoFocus={i === 0 && !choices.length}
+                autoFocus={i === 0 && !choices.length && !when}
                 returnKeyType={field.multiline ? undefined : "done"}
                 onSubmitEditing={
                   field.multiline || fields.length > 1 ? undefined : submit
