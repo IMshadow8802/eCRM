@@ -12,7 +12,6 @@ import {
   TextInput,
   TextArea,
   NumberInput,
-  DateField,
   Combobox,
   MobileInput,
 } from "../../components/ui";
@@ -25,6 +24,8 @@ import { useLookups } from "../../hooks/useLookups";
 import { useAssignableUsers } from "../../hooks/useAssignableUsers";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
 import { PARTNER_ENDPOINTS } from "../../api/partnerQueries";
+import DueInputs from "./DueInputs";
+import { dueAt, isPastDue } from "./followUpDue";
 import { useAccess } from "../../hooks/useAccess";
 import { mobileSchema } from "../../utils/mobile";
 
@@ -47,11 +48,14 @@ const schema = z.object({
   EstValue: z.string().optional(),
   Remarks: z.string().optional(),
   FirstFollowupAt: z.string().optional(),
+  FirstFollowupTime: z.string().optional(),
   PartnerId: z.number().nullable().optional(),
   // "none" = no commission; sent as null. Terms are a partners-view field.
   CommType: z.enum(["pct", "fixed", "none"]).optional(),
   CommValue: z.string().optional(),
 }).superRefine((v, ctx) => {
+  if (isPastDue(v.FirstFollowupAt, v.FirstFollowupTime))
+    ctx.addIssue({ code: "custom", path: ["FirstFollowupTime"], message: "Pick a time from now on" });
   if (!v.PartnerId || !v.CommType || v.CommType === "none") return;
   const raw = (v.CommValue ?? "").trim();
   const n = Number(raw);
@@ -86,6 +90,7 @@ const EMPTY = {
   EstValue: "",
   Remarks: "",
   FirstFollowupAt: today(),
+  FirstFollowupTime: "",
   PartnerId: null,
   CommType: "none",
   CommValue: "",
@@ -111,6 +116,7 @@ const leadToForm = (lead) => ({
   EstValue: lead.EstValue == null ? "" : String(lead.EstValue),
   Remarks: lead.Remarks ?? "",
   FirstFollowupAt: "",
+  FirstFollowupTime: "",
   PartnerId: lead.PartnerId ?? null,
   CommType: lead.CommType ?? "none",
   CommValue: lead.CommValue == null ? "" : String(lead.CommValue),
@@ -304,7 +310,7 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
           : {
               StatusId: values.StatusId ?? null,
               OwnerId: values.OwnerId ?? null,
-              FirstFollowupAt: values.FirstFollowupAt || null,
+              FirstFollowupAt: values.FirstFollowupAt ? dueAt(values.FirstFollowupAt, values.FirstFollowupTime) : null,
             }),
         // Always say who sent it (null clears). Terms only from a partners-view
         // user who can see them — the server ignores them from anyone else.
@@ -589,17 +595,14 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
                     />
                   )}
                 />
-                <Controller
-                  control={control}
-                  name="FirstFollowupAt"
-                  render={({ field }) => (
-                    <DateField
-                      label="First follow-up"
-                      value={field.value}
-                      onChange={field.onChange}
-                      data-testid="lead-followup-date"
-                    />
-                  )}
+                <DueInputs
+                  dateLabel="First follow-up"
+                  date={watch("FirstFollowupAt")}
+                  time={watch("FirstFollowupTime")}
+                  onDateChange={(v) => setValue("FirstFollowupAt", v ?? "", { shouldValidate: true })}
+                  onTimeChange={(v) => setValue("FirstFollowupTime", v, { shouldValidate: true })}
+                  dateTestId="lead-followup-date"
+                  timeTestId="lead-followup-time"
                 />
               </>
             )}

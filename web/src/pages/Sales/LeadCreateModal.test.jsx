@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import dayjs from "dayjs";
 
+vi.mock("../../components/ui/DateField", () => import("../../test/DateFieldStub"));
 import LeadCreateModal from "./LeadCreateModal";
 import useAuthStore from "../../stores/useAuthStore";
 import { server } from "../../test/mocks/server";
@@ -120,6 +121,49 @@ describe("LeadCreateModal", () => {
     expect(captured).not.toHaveProperty("StageId");
     expect(captured.CustomJSON).toBe("[]");
     expect(onClose).toHaveBeenCalled();
+  }, 20000);
+
+  const fillBasics = async (user) => {
+    await user.type(screen.getByTestId("lead-name"), "Sharma");
+    await user.type(screen.getByTestId("lead-mobile"), "9820012345");
+  };
+
+  it("sends the first follow-up with its time", async () => {
+    let captured;
+    mockSave((b) => { captured = b; });
+    renderWithProviders(<LeadCreateModal open onClose={() => {}} />, { router: false });
+    const user = userEvent.setup();
+    await fillBasics(user);
+    fireEvent.change(screen.getByTestId("lead-followup-date"), { target: { value: "2099-01-05" } });
+    fireEvent.change(screen.getByTestId("lead-followup-time"), { target: { value: "11:00" } });
+    await user.click(screen.getByTestId("lead-create-submit"));
+    await waitFor(() => expect(captured).toBeTruthy());
+    expect(captured.FirstFollowupAt).toBe("2099-01-05T11:00");
+    expect(captured).not.toHaveProperty("FirstFollowupTime");
+  }, 20000);
+
+  it("sends null when the first follow-up date is cleared", async () => {
+    let captured;
+    mockSave((b) => { captured = b; });
+    renderWithProviders(<LeadCreateModal open onClose={() => {}} />, { router: false });
+    const user = userEvent.setup();
+    await fillBasics(user);
+    fireEvent.change(screen.getByTestId("lead-followup-date"), { target: { value: "" } });
+    await user.click(screen.getByTestId("lead-create-submit"));
+    await waitFor(() => expect(captured).toBeTruthy());
+    expect(captured.FirstFollowupAt).toBeNull();
+  }, 20000);
+
+  it("blocks today plus a past time", async () => {
+    let captured;
+    mockSave((b) => { captured = b; });
+    renderWithProviders(<LeadCreateModal open onClose={() => {}} />, { router: false });
+    const user = userEvent.setup();
+    await fillBasics(user);
+    fireEvent.change(screen.getByTestId("lead-followup-time"), { target: { value: "00:00" } });
+    await user.click(screen.getByTestId("lead-create-submit"));
+    expect((await screen.findAllByText("Pick a time from now on")).length).toBeGreaterThan(0);
+    expect(captured).toBeUndefined();
   }, 20000);
 
   it("serialises configured custom fields into CustomJSON", async () => {

@@ -1,21 +1,18 @@
 import { useState } from "react";
 import { PhoneCall } from "lucide-react";
 
-import { Modal, Button, Combobox, TextArea, DateField } from "../../components/ui";
+import { Modal, Button, Combobox, TextArea } from "../../components/ui";
 import { useApiMutation } from "../../hooks/useApiMutation";
 import { useLookups } from "../../hooks/useLookups";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
 
 /**
  * Logs a manual call against a lead OR a ticket: outcome (from the
- * `call_outcome` lookup), free-text notes, and an optional next-follow-up
- * date. Pass either `leadId` (sales) or `ticketId` (support) — exactly one.
- * (The next-follow-up only takes effect for lead calls server-side.)
+ * `call_outcome` lookup), and free-text notes. Pass either `leadId` (sales) or `ticketId` (support) — exactly one.
  */
 export default function LogCallModal({ open, onClose, leadId, ticketId, onLogged }) {
   const [outcome, setOutcome] = useState(null);
   const [notes, setNotes] = useState("");
-  const [nextFollowupDate, setNextFollowupDate] = useState("");
 
   const { lookups } = useLookups("call_outcome", {
     enabled: Boolean(open),
@@ -31,7 +28,6 @@ export default function LogCallModal({ open, onClose, leadId, ticketId, onLogged
   const reset = () => {
     setOutcome(null);
     setNotes("");
-    setNextFollowupDate("");
   };
 
   const handleClose = () => {
@@ -48,7 +44,6 @@ export default function LogCallModal({ open, onClose, leadId, ticketId, onLogged
         OutcomeId: outcome?.value ?? null,
         Notes: trimmedNotes,
         Direction: "out",
-        NextFollowupDate: nextFollowupDate || null,
         FollowupRemarks: trimmedNotes,
       });
       reset();
@@ -79,12 +74,6 @@ export default function LogCallModal({ open, onClose, leadId, ticketId, onLogged
             rows={3}
             placeholder="What happened on the call?"
             data-testid="log-call-notes"
-          />
-          <DateField
-            label="Next follow-up (optional)"
-            value={nextFollowupDate}
-            onChange={setNextFollowupDate}
-            data-testid="log-call-followup-date"
           />
         </div>
       </Modal.Body>

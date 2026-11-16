@@ -60,7 +60,7 @@ describe("LogCallModal", () => {
     expect(screen.getByText("No answer")).toBeInTheDocument();
   });
 
-  it("submits logCall with the picked outcome, notes and next follow-up date", async () => {
+  it("submits logCall with the picked outcome, and notes", async () => {
     let captured;
     // Typing into the masked MUI date field is slow under coverage
     // instrumentation — give this one more headroom than the 5s default.
@@ -80,10 +80,6 @@ describe("LogCallModal", () => {
 
     await user.type(screen.getByLabelText("Notes"), "Customer wants a demo");
 
-    const dateInput = screen.getByLabelText("Next follow-up (optional)");
-    await user.click(dateInput);
-    await user.keyboard("07102026");
-
     await user.click(screen.getByTestId("log-call-submit"));
 
     await waitFor(() => expect(captured).toBeTruthy());
@@ -92,14 +88,15 @@ describe("LogCallModal", () => {
       OutcomeId: 1,
       Notes: "Customer wants a demo",
       Direction: "out",
-      NextFollowupDate: "2026-10-07",
       FollowupRemarks: "Customer wants a demo",
     });
+    expect(captured).not.toHaveProperty("NextFollowupDate");
+    expect(screen.queryByTestId("log-call-followup-date")).not.toBeInTheDocument();
     expect(onLogged).toHaveBeenCalled();
     expect(onClose).toHaveBeenCalled();
   }, 15000);
 
-  it("submits with a null outcome and no follow-up date when both are left blank", async () => {
+  it("submits with a null outcome and when left blank", async () => {
     let captured;
     mockLogCall((body) => {
       captured = body;
@@ -115,7 +112,6 @@ describe("LogCallModal", () => {
       OutcomeId: null,
       Notes: null,
       Direction: "out",
-      NextFollowupDate: null,
       FollowupRemarks: null,
     });
   });
