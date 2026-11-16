@@ -14,6 +14,7 @@ import { server } from "../../test/mocks/server";
 import renderWithProviders from "../../test/renderWithProviders";
 
 vi.mock("./LogFollowUpModal", () => ({ __esModule: true, default: ({ open, followUp }) => (open ? <div data-testid="log-modal">{followUp?.Id}</div> : null) }));
+vi.mock("./RescheduleFollowUpModal", () => ({ __esModule: true, default: ({ open, followUp }) => (open ? <div data-testid="reschedule-modal">{followUp?.Id}</div> : null) }));
 vi.mock("./TransferLeadModal", () => ({ __esModule: true, default: ({ open, leadIds }) => (open ? <div data-testid="transfer-modal">{leadIds.join(",")}</div> : null) }));
 vi.mock("./LeadCreateModal", () => ({ __esModule: true, default: ({ open, lead }) => (open ? <div data-testid="edit-modal">{lead?.Id}</div> : null) }));
 
@@ -99,6 +100,17 @@ describe("LeadDetail (spec 1)", () => {
     expect(items[1]).toHaveTextContent("Wants a quote");
     await user.click(screen.getByTestId("log-followup-21"));
     expect(screen.getByTestId("log-modal")).toHaveTextContent("21");
+  });
+
+  it("an open follow-up has Reschedule, a closed one does not", async () => {
+    mocks();
+    renderDetail();
+    await screen.findByTestId("lead-detail");
+    const user = userEvent.setup();
+    await user.click(screen.getByText(/Follow-ups/));
+    expect(screen.queryByTestId("reschedule-followup-20")).toBeNull();
+    await user.click(screen.getByTestId("reschedule-followup-21"));
+    expect(screen.getByTestId("reschedule-modal")).toHaveTextContent("21");
   });
 
   it("history tab shows the assignment trail and Transfer opens the modal", async () => {

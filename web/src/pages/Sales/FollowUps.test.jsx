@@ -47,6 +47,11 @@ vi.mock("./LogFollowUpModal", () => ({
   default: ({ open, followUp }) => (open ? <div data-testid="log-modal">{String(followUp?.Id)}</div> : null),
 }));
 
+vi.mock("./RescheduleFollowUpModal", () => ({
+  __esModule: true,
+  default: ({ open, followUp }) => (open ? <div data-testid="reschedule-modal">{String(followUp?.Id)}</div> : null),
+}));
+
 // useApiMutation is real here — the assertions are about the bodies that reach
 // the wire, so the shared apiClient is what gets stubbed.
 const post = vi.fn();
@@ -99,6 +104,14 @@ describe("Follow-ups queue", () => {
     expect(screen.getByTestId("log-modal")).toHaveTextContent("21");
     expect(screen.queryByTestId("log-followup-20")).toBeNull();
     expect(screen.queryByTestId("skip-followup-20")).toBeNull();
+  });
+
+  it("Reschedule opens the modal for an open row; done rows have none", async () => {
+    renderPage();
+    const user = userEvent.setup();
+    expect(screen.queryByTestId("reschedule-followup-20")).toBeNull();
+    await user.click(screen.getByTestId("reschedule-followup-21"));
+    expect(screen.getByTestId("reschedule-modal")).toHaveTextContent("21");
   });
 
   it("Skip requires remarks and posts skipFollowUp", async () => {

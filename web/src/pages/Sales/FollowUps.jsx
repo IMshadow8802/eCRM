@@ -8,7 +8,7 @@ import { Helmet } from "react-helmet-async";
 import { Box } from "@mui/material";
 import { MaterialReactTable } from "material-react-table";
 import { useNavigate } from "react-router-dom";
-import { CheckCircle2, Eye, SkipForward, Trash2 } from "lucide-react";
+import { CalendarClock, CheckCircle2, Eye, SkipForward, Trash2 } from "lucide-react";
 import dayjs from "dayjs";
 
 import { Button, IconButton, Modal, TextArea, Tooltip, Tabs, Chip } from "../../components/ui";
@@ -21,6 +21,7 @@ import { SALES_ENDPOINTS } from "../../api/salesQueries";
 import { formatDate, formatDue } from "../../utils/format";
 import { FOLLOWUP_TYPES } from "./leadStatus";
 import LogFollowUpModal from "./LogFollowUpModal";
+import RescheduleFollowUpModal from "./RescheduleFollowUpModal";
 
 const VIEWS = [
   { value: "today", label: "Today" },
@@ -51,6 +52,7 @@ const FollowUps = () => {
   const navigate = useNavigate();
   const [view, setView] = useState("today");
   const [logging, setLogging] = useState(null);
+  const [rescheduling, setRescheduling] = useState(null);
   const [skipping, setSkipping] = useState(null);
   const [skipRemarks, setSkipRemarks] = useState("");
   const [deleting, setDeleting] = useState(null);
@@ -189,6 +191,11 @@ const FollowUps = () => {
                   <CheckCircle2 size={16} />
                 </IconButton>
               </Tooltip>
+              <Tooltip title="Reschedule">
+                <IconButton size="sm" variant="ghost" tone="primary" aria-label="Reschedule follow-up" data-testid={`reschedule-followup-${f.Id}`} onClick={() => setRescheduling(f)}>
+                  <CalendarClock size={16} />
+                </IconButton>
+              </Tooltip>
               <Tooltip title="Skip with a remark">
                 <IconButton size="sm" variant="ghost" tone="warning" aria-label="Skip follow-up" data-testid={`skip-followup-${f.Id}`} onClick={() => setSkipping(f)}>
                   <SkipForward size={16} />
@@ -222,6 +229,7 @@ const FollowUps = () => {
       <MaterialReactTable table={table} />
 
       <LogFollowUpModal open={Boolean(logging)} followUp={logging} onClose={() => setLogging(null)} />
+      <RescheduleFollowUpModal open={Boolean(rescheduling)} followUp={rescheduling} onClose={() => setRescheduling(null)} />
 
       <Modal open={Boolean(skipping)} onClose={() => setSkipping(null)} size="sm" data-testid="skip-modal">
         <Modal.Header title="Skip follow-up" icon={<SkipForward size={18} />} onClose={() => setSkipping(null)} />

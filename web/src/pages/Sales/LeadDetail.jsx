@@ -18,6 +18,7 @@ import { FOLLOWUP_TYPES } from "./leadStatus";
 import Timeline from "./Timeline";
 import { useAccess } from "../../hooks/useAccess";
 import LogFollowUpModal from "./LogFollowUpModal";
+import RescheduleFollowUpModal from "./RescheduleFollowUpModal";
 import TransferLeadModal from "./TransferLeadModal";
 import LeadCreateModal from "./LeadCreateModal";
 import LeadPartnerCard from "./LeadPartnerCard";
@@ -69,6 +70,7 @@ export default function LeadDetail({ leadId: leadIdProp }) {
   const [editOpen, setEditOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [logging, setLogging] = useState(null);          // follow-up row being completed
+  const [rescheduling, setRescheduling] = useState(null); // follow-up row being moved
   const [lostPick, setLostPick] = useState(null);        // status option awaiting a reason
   const [lostReason, setLostReason] = useState(null);
   const [scheduleOpen, setScheduleOpen] = useState(false);
@@ -341,7 +343,10 @@ export default function LeadDetail({ leadId: leadIdProp }) {
                     {f.Status === "open" && f.AssignedToName && <div style={{ fontSize: "calc(12rem / 15)", marginTop: 2 }}>Assigned to {f.AssignedToName}</div>}
                   </div>
                   {f.Status === "open"
-                    ? <Button size="sm" variant="primary" onClick={() => setLogging(f)} data-testid={`log-followup-${f.Id}`}>Log</Button>
+                    ? <div style={{ display: "flex", gap: "calc(6rem / 15)" }}>
+                        <Button size="sm" variant="ghost" onClick={() => setRescheduling(f)} data-testid={`reschedule-followup-${f.Id}`}>Reschedule</Button>
+                        <Button size="sm" variant="primary" onClick={() => setLogging(f)} data-testid={`log-followup-${f.Id}`}>Log</Button>
+                      </div>
                     : <Chip label={{ done: "Done", cancelled: "Cancelled" }[f.Status] ?? "Skipped"} size="sm" />}
                   {f.Status === "open" && <Chip label="Open" size="sm" tone="primary" />}
                 </div>
@@ -395,6 +400,7 @@ export default function LeadDetail({ leadId: leadIdProp }) {
       </Modal>
 
       <LogFollowUpModal open={Boolean(logging)} followUp={logging} onClose={() => setLogging(null)} onLogged={refetch} />
+      <RescheduleFollowUpModal open={Boolean(rescheduling)} followUp={rescheduling} onClose={() => setRescheduling(null)} onDone={refetch} />
       <TransferLeadModal open={transferOpen} leadIds={[leadId]} canCrossBranch={leadsAccess.wide} onClose={() => setTransferOpen(false)} onTransferred={refetch} />
       <LeadCreateModal open={editOpen} lead={lead} onClose={() => setEditOpen(false)} onSaved={refetch} />
       <WonDialog open={wonOpen} lead={lead} onClose={() => setWonOpen(false)} onWon={refetch} />
