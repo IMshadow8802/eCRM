@@ -11,6 +11,7 @@ vi.mock("../../components/ui/DateField", () => import("../../test/DateFieldStub"
 import LeadDetail from "./LeadDetail";
 import useAuthStore from "../../stores/useAuthStore";
 import { server } from "../../test/mocks/server";
+import { pickTime } from "../../test/pickTime";
 import renderWithProviders from "../../test/renderWithProviders";
 
 vi.mock("./LogFollowUpModal", () => ({ __esModule: true, default: ({ open, followUp }) => (open ? <div data-testid="log-modal">{followUp?.Id}</div> : null) }));
@@ -149,7 +150,7 @@ describe("LeadDetail (spec 1)", () => {
     expect(screen.getByTestId("schedule-type-input")).toHaveValue("Call");
     expect(within(screen.getByTestId("schedule-modal")).queryByTitle("Clear")).not.toBeInTheDocument();
     fireEvent.change(screen.getByTestId("schedule-date"), { target: { value: "2027-09-14" } });
-    fireEvent.change(screen.getByTestId("schedule-time"), { target: { value: "12:30" } });
+    await pickTime(user, "schedule-time", "12:30");
     await user.click(screen.getByTestId("schedule-submit"));
     await waitFor(() => expect(cap.schedule).toEqual({ LeadId: 9, Type: "call", DueAt: "2027-09-14T12:30" }));
     await waitFor(() => expect(screen.queryByTestId("schedule-modal")).not.toBeInTheDocument());

@@ -10,6 +10,7 @@ import { http, HttpResponse } from "msw";
 import LogFollowUpModal from "./LogFollowUpModal";
 import useAuthStore from "../../stores/useAuthStore";
 import { server } from "../../test/mocks/server";
+import { pickTime } from "../../test/pickTime";
 import renderWithProviders from "../../test/renderWithProviders";
 
 const json = (data) => HttpResponse.json({ success: true, message: "ok", responseCode: 200, data });
@@ -44,7 +45,7 @@ describe("LogFollowUpModal", () => {
     await user.click(screen.getByTestId("followup-next-type-input"));
     await user.click(await screen.findByRole("option", { name: "Visit" }));
     await user.type(screen.getByTestId("followup-next-date"), "2027-09-14");
-    await user.type(screen.getByTestId("followup-next-time"), "16:00");
+    await pickTime(user, "followup-next-time", "16:00");
     await user.click(screen.getByTestId("followup-submit"));
 
     await waitFor(() => expect(cap.body).toBeTruthy());
@@ -61,7 +62,7 @@ describe("LogFollowUpModal", () => {
     const user = userEvent.setup();
     await user.type(screen.getByTestId("followup-remarks"), "Called");
     await user.type(screen.getByTestId("followup-next-date"), dayjs().format("YYYY-MM-DD"));
-    await user.type(screen.getByTestId("followup-next-time"), "00:00");
+    await pickTime(user, "followup-next-time", "00:00");
     expect(screen.getByTestId("followup-submit")).toBeDisabled();
   });
 

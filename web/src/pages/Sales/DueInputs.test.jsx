@@ -5,6 +5,8 @@ import dayjs from "dayjs";
 vi.mock("../../components/ui/DateField", () => import("../../test/DateFieldStub"));
 import renderWithProviders from "../../test/renderWithProviders";
 import DueInputs from "./DueInputs";
+import { pickTime } from "../../test/pickTime";
+import userEvent from "@testing-library/user-event";
 
 const setup = (props) =>
   renderWithProviders(<DueInputs date="" time="" onDateChange={vi.fn()} onTimeChange={vi.fn()} dateLabel="Due" dateTestId="d" timeTestId="t" {...props} />);
@@ -14,10 +16,10 @@ describe("DueInputs", () => {
     setup();
     expect(screen.getByTestId("t")).toBeDisabled();
   });
-  it("typing a time reports HH:mm", () => {
+  it("picking a time reports HH:mm", async () => {
     const onTimeChange = vi.fn();
     setup({ date: dayjs().add(1, "day").format("YYYY-MM-DD"), onTimeChange });
-    fireEvent.change(screen.getByTestId("t"), { target: { value: "12:30" } });
+    await pickTime(userEvent.setup(), "t", "12:30");
     expect(onTimeChange).toHaveBeenCalledWith("12:30");
   });
   it("date change is forwarded", () => {

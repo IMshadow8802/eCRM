@@ -7,6 +7,7 @@ vi.mock("../../api/salesQueries", async () => ({
   skipFollowUp: vi.fn(),
 }));
 
+import { pickTime, clearTime } from "../../test/pickTime";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import dayjs from "dayjs";
@@ -48,7 +49,7 @@ describe("RescheduleFollowUpModal", () => {
   it("titles itself and prefills the time from a timed due", () => {
     renderModal();
     expect(screen.getByText("Reschedule follow-up")).toBeInTheDocument();
-    expect(screen.getByTestId("reschedule-time")).toHaveValue("10:00");
+    expect(screen.getByTestId("reschedule-time")).toHaveValue("10:00 am");
   });
 
   it("leaves the time empty for a day-only due", () => {
@@ -66,8 +67,7 @@ describe("RescheduleFollowUpModal", () => {
     expect(submit).toBeEnabled();
     await user.clear(screen.getByTestId("reschedule-date"));
     await user.type(screen.getByTestId("reschedule-date"), dayjs().format("YYYY-MM-DD"));
-    await user.clear(screen.getByTestId("reschedule-time"));
-    await user.type(screen.getByTestId("reschedule-time"), "00:00");
+    await pickTime(user, "reschedule-time", "00:00");
     expect(screen.getByText("Pick a time from now on")).toBeInTheDocument();
     expect(submit).toBeDisabled();
     await user.click(submit);
@@ -91,7 +91,7 @@ describe("RescheduleFollowUpModal", () => {
   it("books a day-only follow-up when the time is cleared, with defaults for a bare row", async () => {
     const { user } = renderModal({ followUp: { Id: 21, LeadId: 9, DueAt: "2026-11-16T10:00:00" } });
     await fill(user);
-    await user.clear(screen.getByTestId("reschedule-time"));
+    await clearTime(user, "reschedule-time");
     await user.click(screen.getByTestId("reschedule-submit"));
     await waitFor(() => expect(skipFollowUp).toHaveBeenCalled());
     expect(scheduleFollowUp).toHaveBeenCalledWith({ LeadId: 9, Type: "call", DueAt: "2099-01-05", AssignedTo: null });

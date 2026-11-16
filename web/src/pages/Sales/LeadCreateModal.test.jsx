@@ -8,6 +8,7 @@ vi.mock("../../components/ui/DateField", () => import("../../test/DateFieldStub"
 import LeadCreateModal from "./LeadCreateModal";
 import useAuthStore from "../../stores/useAuthStore";
 import { server } from "../../test/mocks/server";
+import { pickTime } from "../../test/pickTime";
 import renderWithProviders from "../../test/renderWithProviders";
 
 // The assignable roster, not every user — the owner picker must only offer
@@ -135,7 +136,7 @@ describe("LeadCreateModal", () => {
     const user = userEvent.setup();
     await fillBasics(user);
     fireEvent.change(screen.getByTestId("lead-followup-date"), { target: { value: "2099-01-05" } });
-    fireEvent.change(screen.getByTestId("lead-followup-time"), { target: { value: "11:00" } });
+    await pickTime(user, "lead-followup-time", "11:00");
     await user.click(screen.getByTestId("lead-create-submit"));
     await waitFor(() => expect(captured).toBeTruthy());
     expect(captured.FirstFollowupAt).toBe("2099-01-05T11:00");
@@ -160,7 +161,7 @@ describe("LeadCreateModal", () => {
     renderWithProviders(<LeadCreateModal open onClose={() => {}} />, { router: false });
     const user = userEvent.setup();
     await fillBasics(user);
-    fireEvent.change(screen.getByTestId("lead-followup-time"), { target: { value: "00:00" } });
+    await pickTime(user, "lead-followup-time", "00:00");
     await user.click(screen.getByTestId("lead-create-submit"));
     expect((await screen.findAllByText("Pick a time from now on")).length).toBeGreaterThan(0);
     expect(captured).toBeUndefined();
