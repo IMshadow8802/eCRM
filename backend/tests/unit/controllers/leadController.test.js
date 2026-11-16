@@ -81,6 +81,27 @@ describe("leadController.save", () => {
     expect(res.json.mock.calls[0][0].data.Id).toBe(42);
   });
 
+  it("normalises FirstFollowupAt with a time to full ISO seconds before the SP", async () => {
+    mockRoster(3);
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordset: [{ ResponseCode: 200, ResponseMess: "Saved", Id: 42 }] });
+    await leadController.save(baseReq({ body: { ...EDIT_BODY, Id: 0, FirstFollowupAt: "2026-11-17T11:00" } }), mockRes());
+    expect(database.executeStoredProcedure.mock.calls[1][1].FirstFollowupAt).toBe("2026-11-17T11:00:00");
+  });
+
+  it("400s a garbage FirstFollowupAt with no SP call", async () => {
+    const res = mockRes();
+    await leadController.save(baseReq({ body: { ...EDIT_BODY, Id: 0, FirstFollowupAt: "soon" } }), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  it("sends a null FirstFollowupAt as null", async () => {
+    mockRoster(3);
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordset: [{ ResponseCode: 200, ResponseMess: "Saved", Id: 42 }] });
+    await leadController.save(baseReq({ body: { ...EDIT_BODY, Id: 0, FirstFollowupAt: "" } }), mockRes());
+    expect(database.executeStoredProcedure.mock.calls[1][1].FirstFollowupAt).toBeNull();
+  });
+
   // Ownership only moves through transfer (history) and status through
   // setStatus (guards). An edit must not be a side door for either.
   it("on edit, gates on the lead and drops OwnerId / StatusId / FirstFollowupAt", async () => {

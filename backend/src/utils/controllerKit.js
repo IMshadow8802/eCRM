@@ -114,7 +114,7 @@ const positiveInt = (value) => {
 };
 
 // A DATETIME for the SP, or null when invalid. 'YYYY-MM-DD' and 'YYYY-MM-DDTHH:mm[:ss]'
-// are IST wall clock and pass as sent; an instant with Z / ±HH:mm becomes its IST wall clock.
+// are IST wall clock (a time is canonicalised to YYYY-MM-DDTHH:mm:ss); an instant with Z / ±HH:mm becomes its IST wall clock.
 const DUE = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})?)?$/;
 function istDateTime(v) {
   const s = typeof v === "string" ? v.trim() : "";
@@ -123,7 +123,9 @@ function istDateTime(v) {
   const [, y, mo, d, h = "0", mi = "0", sec = "0", zone] = m;
   const t = new Date(Date.UTC(+y, +mo - 1, +d));
   if (t.getUTCMonth() !== +mo - 1 || t.getUTCDate() !== +d || +h > 23 || +mi > 59 || +sec > 59) return null;
-  return zone ? toSqlIst(new Date(s)) : s;
+  if (zone) return toSqlIst(new Date(s));
+  // SQL datetime cannot parse ISO without seconds; always send YYYY-MM-DDTHH:mm:ss.
+  return m[4] == null ? s : `${y}-${mo}-${d}T${h}:${mi}:${m[6] ?? "00"}`;
 }
 // An optional DATETIME filter: null when absent/blank, undefined when present
 // but invalid (the caller 400s), else the SP value. Never nulls a bad value —

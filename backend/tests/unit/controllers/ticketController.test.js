@@ -357,7 +357,7 @@ describe("ticketController.fetch", () => {
       res,
     );
     expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({
-      AssignedTo: 7, ResolvedFrom: "2026-10-27", ResolvedTo: "2026-11-02T10:15", PageSize: 1,
+      AssignedTo: 7, ResolvedFrom: "2026-10-27", ResolvedTo: "2026-11-02T10:15:00", PageSize: 1,
     });
     expect(res.json.mock.calls[0][0].data.pagination.totalRecords).toBe(4);
   });

@@ -45,7 +45,7 @@ describe("schedule", () => {
   // instant was stored 5h30m early as IST wall clock.
   it.each([
     ["date", "2026-10-12", "2026-10-12"],
-    ["IST wall clock", "2026-10-12T12:00", "2026-10-12T12:00"],
+    ["IST wall clock", "2026-10-12T12:00", "2026-10-12T12:00:00"],
     ["IST wall clock with seconds", "2026-10-12T12:00:30", "2026-10-12T12:00:30"],
     ["Z instant → IST wall clock", "2026-10-12T06:30:00.000Z", "2026-10-12 12:00:00"],
     ["offset instant → IST wall clock", "2026-10-12T12:00:00+05:30", "2026-10-12 12:00:00"],

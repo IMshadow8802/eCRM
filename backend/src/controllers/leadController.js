@@ -8,7 +8,7 @@ const {
   assertCanAssign,
   scopeFor,
 } = require("../middleware/permission");
-const { positiveInt, pageParams } = require("../utils/controllerKit");
+const { positiveInt, pageParams, optionalDateTime } = require("../utils/controllerKit");
 const { applyMobiles } = require("../utils/mobile");
 const { parseDay } = require("../utils/reportKit");
 const { termsError } = require("../utils/commission");
@@ -66,6 +66,9 @@ const leadController = {
     // column, so it has to mean one thing: ten digits (utils/mobile.js).
     const mobileError = applyMobiles(fields, [["MobileNo", "Mobile number"], ["AltMobile", "Alternate mobile"]]);
     if (mobileError) return responseHelper.validationError(res, mobileError);
+    // SQL datetime rejects ISO without seconds, so normalise (null when blank, 400 when invalid).
+    fields.FirstFollowupAt = optionalDateTime(fields.FirstFollowupAt);
+    if (fields.FirstFollowupAt === undefined) return responseHelper.validationError(res, "Follow-up date is not valid");
     // Partner rides in the same sp_SaveLead call (one transaction). Terms are
     // only honoured from a caller who can view partners.
     const partnerSent = Object.prototype.hasOwnProperty.call(req.body, "PartnerId");

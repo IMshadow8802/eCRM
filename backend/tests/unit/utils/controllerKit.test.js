@@ -248,10 +248,11 @@ describe("positiveInt", () => {
 });
 
 describe("istDateTime", () => {
-  it("passes a day and an IST wall-clock time through as sent", () => {
+  it("passes a day through and canonicalises an IST wall-clock time to YYYY-MM-DDTHH:mm:ss (SQL datetime rejects no-seconds ISO)", () => {
     expect(istDateTime("2026-11-02")).toBe("2026-11-02");
-    expect(istDateTime("2026-11-02T10:15")).toBe("2026-11-02T10:15");
-    expect(istDateTime(" 2026-11-02 10:15:30 ")).toBe("2026-11-02 10:15:30");
+    expect(istDateTime("2026-11-02T10:15")).toBe("2026-11-02T10:15:00");
+    expect(istDateTime(" 2026-11-02 10:15:30 ")).toBe("2026-11-02T10:15:30");
+    expect(istDateTime("2026-11-02T10:15:30.123")).toBe("2026-11-02T10:15:30");
   });
 
   it("turns an instant with a zone into its IST wall clock", () => {
