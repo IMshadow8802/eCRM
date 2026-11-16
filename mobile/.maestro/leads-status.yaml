@@ -39,7 +39,6 @@ appId: com.shadowider.eCRM
 - tapOn: "Won"
 - tapOn: "Amount in rupees"
 - inputText: "50000"
-- hideKeyboard
 - tapOn: "Save · mark won"
 - waitForAnimationToEnd
 # The won card leads the Details tab.

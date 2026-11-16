@@ -13,16 +13,13 @@ appId: com.shadowider.eCRM
 - inputText: "MAESTRO Lead ${output.stamp}"
 - tapOn: "10-digit mobile number"
 - inputText: "${typeof MOBILE !== 'undefined' ? MOBILE : '98' + output.stamp}"
-- hideKeyboard
 - tapOn:
     text: "Optional"
     below:
       text: "Company"
 - inputText: "MAESTRO Co ${output.stamp}"
-- hideKeyboard
 - tapOn: "Amount in rupees"
 - inputText: "120000"
-- hideKeyboard
 # Defaults: status New, owner = me, first follow-up Tomorrow.
 - assertVisible: "Status: New"
 - assertVisible: "Owner: Ayush Mishra \\(you\\)"

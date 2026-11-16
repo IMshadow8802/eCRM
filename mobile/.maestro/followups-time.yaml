@@ -32,7 +32,6 @@ appId: com.shadowider.eCRM
 - assertVisible: "Skip this follow-up"
 - tapOn: "Why it is not happening"
 - inputText: "MAESTRO clear ${output.stamp}"
-- hideKeyboard
 - tapOn:
     text: "Skip follow-up"
     below:
@@ -94,7 +93,6 @@ appId: com.shadowider.eCRM
 - assertVisible: "12:30 pm"
 - tapOn: "Why it is moving"
 - inputText: "MAESTRO move ${output.stamp}"
-- hideKeyboard
 - tapOn:
     text: "Reschedule"
     below:

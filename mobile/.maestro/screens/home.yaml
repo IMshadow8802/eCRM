@@ -4,7 +4,7 @@ appId: com.shadowider.eCRM
 - runFlow: ../common/open-work.yaml
 - waitForAnimationToEnd
 - takeScreenshot: e2e-shots/app/04
-- tapOn: "New new"
+- tapOn: "Create"
 - waitForAnimationToEnd
 - takeScreenshot: e2e-shots/app/04b
 - back

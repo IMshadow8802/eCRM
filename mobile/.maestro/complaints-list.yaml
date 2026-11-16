@@ -27,7 +27,6 @@ appId: com.shadowider.eCRM
 - tapOn: "Active, \\d+"
 - tapOn: "Search number, customer, mobile"
 - inputText: "zzzz-no-match"
-- hideKeyboard
 - assertVisible: "Nothing matches"
 - tapOn: "Clear search"
 - assertVisible:

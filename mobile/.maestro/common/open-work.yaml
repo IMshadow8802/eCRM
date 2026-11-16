@@ -11,7 +11,6 @@ appId: com.shadowider.eCRM
     while:
       notVisible: "More"
     commands:
-      - hideKeyboard
       - back
       - launchApp:
           stopApp: false

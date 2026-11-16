@@ -15,13 +15,11 @@ appId: com.shadowider.eCRM
 - assertVisible: "MAESTRO Cust ${output.stamp}"
 - tapOn: "10-digit number"
 - inputText: "97${output.stamp}"
-- hideKeyboard
 - scrollUntilVisible:
     element: "One line — what is wrong"
     centerElement: true
 - tapOn: "One line — what is wrong"
 - inputText: "MAESTRO complaint ${output.stamp}"
-- hideKeyboard
 - tapOn: "Category: Not set"
 - tapOn: "Technical"
 - tapOn: "Priority: Not set"
@@ -34,6 +32,5 @@ appId: com.shadowider.eCRM
     index: 0
 - tapOn: "Search number, customer, mobile"
 - inputText: "${output.stamp}"
-- hideKeyboard
 - tapOn: "TKT-.*MAESTRO complaint ${output.stamp}"
 - assertVisible: "MAESTRO Cust ${output.stamp}"

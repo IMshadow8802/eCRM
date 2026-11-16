@@ -10,7 +10,6 @@ appId: com.shadowider.eCRM
 - tapOn:
     id: "logcall-notes"
 - inputText: "MAESTRO call ${output.stamp}"
-- hideKeyboard
 - tapOn: "Keep open"
 - takeScreenshot: lifecycle-call
 - tapOn: "Save call"
@@ -24,7 +23,6 @@ appId: com.shadowider.eCRM
 - tapOn:
     id: "compose-remarks"
 - inputText: "MAESTRO hold ${output.stamp}"
-- hideKeyboard
 - tapOn:
     text: "Put on hold"
     below:
@@ -51,7 +49,6 @@ appId: com.shadowider.eCRM
 - tapOn:
     id: "resolve-remarks"
 - inputText: "MAESTRO resolved ${output.stamp}"
-- hideKeyboard
 - takeScreenshot: lifecycle-resolve-sheet
 - tapOn: "Save · mark resolved"
 - waitForAnimationToEnd

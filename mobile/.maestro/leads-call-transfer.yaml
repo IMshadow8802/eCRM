@@ -10,7 +10,6 @@ appId: com.shadowider.eCRM
 - tapOn:
     id: "logcall-notes"
 - inputText: "MAESTRO lead call ${output.stamp}"
-- hideKeyboard
 - tapOn: "Save call"
 - assertNotVisible: "Save call"
 - waitForAnimationToEnd
@@ -23,7 +22,6 @@ appId: com.shadowider.eCRM
 - tapOn: "Overloaded"
 - tapOn: "Anything the next person should know"
 - inputText: "MAESTRO lead transfer ${output.stamp}"
-- hideKeyboard
 - tapOn:
     text: "Transfer"
     below:

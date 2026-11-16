@@ -12,7 +12,6 @@ appId: com.shadowider.eCRM
 - tapOn:
     id: "transfer-remarks"
 - inputText: "MAESTRO transfer ${output.stamp}"
-- hideKeyboard
 - takeScreenshot: transfer-sheet
 - tapOn: "Transfer to Amit Singh \\(Exec HO, under Neha\\)"
 - waitForAnimationToEnd
@@ -28,7 +27,6 @@ appId: com.shadowider.eCRM
 - tapOn:
     id: "escalate-remarks"
 - inputText: "MAESTRO escalate ${output.stamp}"
-- hideKeyboard
 - takeScreenshot: escalate-sheet
 - tapOn:
     text: "Escalate.*"
