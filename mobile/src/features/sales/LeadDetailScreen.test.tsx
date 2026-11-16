@@ -16,6 +16,7 @@ import { flat } from "../../test/style";
 import { PHONE, setWindow, TABLET } from "../../test/window";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import { colors } from "../../theme";
+import { dueTitle } from "./leadHelpers";
 import LeadDetailScreen from "./LeadDetailScreen";
 
 jest.mock("../../api/leadQueries");
@@ -263,11 +264,26 @@ describe("the action bar", () => {
     await fireEvent.press(screen.getByText("Add follow-up"));
     expect(scheduleFollowUp).not.toHaveBeenCalled();
     await fireEvent.press(screen.getAllByRole("radio", { name: "Visit" })[0]!);
-    // Schedule's "When" is the third Tomorrow (after Done's next and Reschedule's day).
+    // Schedule's "When" row is the third Tomorrow: the follow-up sheets (Done's
+    // "Next follow-up", Reschedule's "New day") render before it.
     await fireEvent.press(screen.getAllByRole("radio", { name: "Tomorrow" })[2]!);
     await fireEvent.press(screen.getByText("Add follow-up"));
     await waitFor(() =>
       expect(scheduleFollowUp).toHaveBeenCalledWith({ LeadId: 11, Type: "visit", DueAt: localDay(1) }, expect.anything()),
+    );
+  });
+
+  it("schedule with a time books the day at that time", async () => {
+    await mount();
+    await loaded();
+    await pressBar("Log follow-up");
+    await fireEvent.press(screen.getAllByRole("radio", { name: "Visit" })[0]!);
+    await fireEvent.press(screen.getAllByRole("radio", { name: "Tomorrow" })[2]!);
+    await fireEvent.press(screen.getByText("Add a time (optional)"));
+    await fireEvent(screen.getByTestId("date-picker"), "valueChange", { nativeEvent: { timestamp: 0, utcOffset: 330 } }, new Date(2026, 10, 16, 12, 30));
+    await fireEvent.press(screen.getByText("Add follow-up"));
+    await waitFor(() =>
+      expect(scheduleFollowUp).toHaveBeenCalledWith({ LeadId: 11, Type: "visit", DueAt: `${localDay(1)}T12:30` }, expect.anything()),
     );
   });
 
@@ -394,9 +410,8 @@ describe("follow-ups tab", () => {
     await fireEvent.press(rescheduleSubmit());
     await waitFor(() => expect(skipFollowUp).toHaveBeenCalled());
     expect(scheduleFollowUp).toHaveBeenCalledWith({ LeadId: 11, Type: "visit", DueAt: `${localDay(3)}T15:30`, AssignedTo: 9 });
-    const d = new Date(`${localDay(3)}T00:00:00`);
-    const day = `${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()]}, ${d.getDate()} ${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d.getMonth()]}`;
-    expect(skipFollowUp).toHaveBeenCalledWith({ Id: 71, Remarks: `Rescheduled to ${day}: Client away` });
+    // The remark names the booked day and time ("Tue, 17 Nov · 3:30 pm").
+    expect(skipFollowUp).toHaveBeenCalledWith({ Id: 71, Remarks: `Rescheduled to ${dueTitle(`${localDay(3)}T15:30`)}: Client away` });
     // The new one is booked before the old one is closed.
     expect(jest.mocked(scheduleFollowUp).mock.invocationCallOrder[0]!).toBeLessThan(jest.mocked(skipFollowUp).mock.invocationCallOrder[0]!);
   });
@@ -426,7 +441,7 @@ describe("follow-ups tab", () => {
     await fireEvent.changeText(screen.getByPlaceholderText("Why it is moving"), "x");
     await fireEvent.press(rescheduleSubmit());
     expect(await screen.findByText("Booked the new follow-up, but the old one is still open — skip it from the lead.")).toBeOnTheScreen();
-    // A bare-day follow-up is re-booked as a bare day; nobody assigned stays nobody.
+    // The old 11:00 rides along as the prefilled time.
     expect(scheduleFollowUp).toHaveBeenCalledWith({ LeadId: 11, Type: "call", DueAt: `${localDay(1)}T11:00`, AssignedTo: 5 });
   });
 

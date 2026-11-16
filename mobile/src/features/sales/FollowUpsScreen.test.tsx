@@ -14,6 +14,7 @@ import { flat } from "../../test/style";
 import { PHONE, setWindow } from "../../test/window";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import FollowUpsScreen from "./FollowUpsScreen";
+import { dueTitle } from "./leadHelpers";
 
 jest.mock("../../api/followupQueries");
 jest.mock("../../api/configQueries");
@@ -169,8 +170,22 @@ it("swipe right reveals Done, swipe left Reschedule; each opens its sheet, nothi
   // [0] the swipe block, [1] the sheet's title, [2] its submit.
   await fireEvent.press(screen.getAllByText("Reschedule")[2]!);
   await waitFor(() => expect(skipFollowUp).toHaveBeenCalled());
+  // The old 10:00 is prefilled in the time row.
   expect(scheduleFollowUp).toHaveBeenCalledWith({ LeadId: 21, Type: "call", DueAt: `${tomorrow}T10:00`, AssignedTo: null });
+  expect(skipFollowUp).toHaveBeenCalledWith({ Id: 11, Remarks: `Rescheduled to ${dueTitle(`${tomorrow}T10:00`)}: Asked for Friday` });
   expect(screen.getByText("Swipe a row right to mark it done, left to reschedule.")).toBeOnTheScreen();
+});
+
+it("reschedule with the time cleared books a bare day", async () => {
+  await mount();
+  await screen.findByText("Ramesh Patel");
+  await fireEvent.press(screen.getAllByRole("button", { name: "Reschedule" })[0]!);
+  await fireEvent.press(screen.getAllByRole("radio", { name: "Tomorrow" })[1]!);
+  await fireEvent.press(screen.getByLabelText("Clear time"));
+  await fireEvent.changeText(screen.getByPlaceholderText("Why it is moving"), "Any time");
+  await fireEvent.press(screen.getAllByText("Reschedule")[2]!);
+  await waitFor(() => expect(skipFollowUp).toHaveBeenCalled());
+  expect(scheduleFollowUp).toHaveBeenCalledWith({ LeadId: 21, Type: "call", DueAt: tomorrow, AssignedTo: null });
 });
 
 it("a view-only role sees no Done pill, no swipes and no footnote", async () => {

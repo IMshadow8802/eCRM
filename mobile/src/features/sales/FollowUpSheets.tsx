@@ -6,15 +6,7 @@ import { completeFollowUp, scheduleFollowUp, skipFollowUp } from "../../api/foll
 import { apiErrorMessage } from "../../api/errors";
 import type { CallDirection, FollowUp, FollowUpType } from "../../types/api";
 import { ComposeSheet, type SheetRef } from "../../ui";
-import {
-  dueFromChoice,
-  followUpTypeLabel,
-  onDayAtTimeOf,
-  parseDate,
-  shortDay,
-  WHEN_CHOICES,
-  type WhenChoice,
-} from "./leadHelpers";
+import { dueTitle, followUpTypeLabel, timeOf } from "./leadHelpers";
 import { useLeadRefData } from "./useLeadRefData";
 
 export interface FollowUpSheetsHandle {
@@ -32,7 +24,6 @@ const DIRECTIONS = [
   { value: "out", label: "Outgoing" },
   { value: "in", label: "Incoming" },
 ];
-const WHEN_OPTIONS = WHEN_CHOICES.map((w) => ({ value: w.value, label: w.label }));
 /** Whole minutes: completeFollowUp's positiveInt drops a fraction. */
 const wholeMinutes = (text: string | undefined): number | null => {
   const minutes = Math.round(Number(text));
@@ -44,8 +35,8 @@ const wholeMinutes = (text: string | undefined): number | null => {
  * reschedule, skip. A refusal shows in the sheet, which keeps what was typed;
  * success refetches the lead, the lists and the queue.
  *
- * ponytail: the API has no reschedule — it is a new booking (same type,
- * assignee and time of day) and only then a skip of the old one with the
+ * ponytail: the API has no reschedule — it is a new booking (same type and
+ * assignee, the old time of day prefilled) and only then a skip of the old one with the
  * reason, so a failure never loses the follow-up. If the skip fails after the
  * booking, the sheet says so and a retry only retries the skip (`rebooked`
  * remembers which follow-up already has its replacement), so it never books
@@ -94,15 +85,14 @@ export const FollowUpSheets = forwardRef<FollowUpSheetsHandle>(function FollowUp
         await scheduleFollowUp({
           LeadId: f.LeadId,
           Type: (f.Type ?? "call") as FollowUpType,
-          DueAt: onDayAtTimeOf(f.DueAt, due),
+          DueAt: due,
           AssignedTo: f.AssignedTo,
         });
         booked = rebooked.current = { id: f.Id, due };
       }
       // A retry names the day actually booked, even if the picker changed since.
-      const day = shortDay(parseDate(booked.due) as Date);
       try {
-        await skipFollowUp({ Id: f.Id, Remarks: `Rescheduled to ${day}: ${remarks}` });
+        await skipFollowUp({ Id: f.Id, Remarks: `Rescheduled to ${dueTitle(booked.due)}: ${remarks}` });
       } catch {
         throw new Error("Booked the new follow-up, but the old one is still open — skip it from the lead.");
       }
@@ -128,13 +118,13 @@ export const FollowUpSheets = forwardRef<FollowUpSheetsHandle>(function FollowUp
             ? [{ key: "outcome", label: "Outcome", options: callOutcomes.map((o) => ({ value: o.Id, label: o.Value })) }]
             : []),
           ...(isCall ? [{ key: "direction", label: "Direction", options: DIRECTIONS }] : []),
-          { key: "next", label: "Next follow-up", options: WHEN_OPTIONS },
         ]}
+        when={{ label: "Next follow-up" }}
         fields={[
           { key: "remarks", label: "Remarks", placeholder: "What was discussed — the next person reads this", multiline: true, required: true },
           ...(isCall ? [{ key: "minutes", label: "Minutes", placeholder: "Call minutes", numeric: true }] : []),
         ]}
-        onSubmit={(values, picked) => {
+        onSubmit={(values, picked, due) => {
           if (!current) return;
           complete.mutate({
             Id: current.Id,
@@ -143,8 +133,8 @@ export const FollowUpSheets = forwardRef<FollowUpSheetsHandle>(function FollowUp
             Direction: isCall ? ((picked.direction as CallDirection | undefined) ?? "out") : null,
             Duration: isCall ? wholeMinutes(values.minutes) : null,
             // ponytail: the next step is always a call, as the web's default; no type picker.
-            NextType: picked.next ? "call" : null,
-            NextDueAt: picked.next ? dueFromChoice(picked.next as WhenChoice) : null,
+            NextType: due ? "call" : null,
+            NextDueAt: due,
           });
         }}
       />
@@ -157,11 +147,11 @@ export const FollowUpSheets = forwardRef<FollowUpSheetsHandle>(function FollowUp
         submitLabel="Reschedule"
         busy={reschedule.isPending}
         error={failed("reschedule")}
-        choices={[{ key: "when", label: "New day", required: true, options: WHEN_OPTIONS }]}
+        when={{ label: "New day", required: true, initialTime: timeOf(current?.DueAt) }}
         fields={[{ key: "remarks", label: "Why", placeholder: "Why it is moving", multiline: true, required: true }]}
-        onSubmit={(values, picked) => {
-          if (!current) return;
-          reschedule.mutate({ f: current, due: dueFromChoice(picked.when as WhenChoice), remarks: (values.remarks ?? "").trim() });
+        onSubmit={(values, _picked, due) => {
+          if (!current || !due) return;
+          reschedule.mutate({ f: current, due, remarks: (values.remarks ?? "").trim() });
         }}
       />
 

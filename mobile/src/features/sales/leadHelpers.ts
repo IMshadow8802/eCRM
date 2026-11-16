@@ -142,22 +142,6 @@ export const FOLLOWUP_TYPES: { value: FollowUpType; label: string }[] = [
 export const followUpTypeLabel = (type: string | null | undefined): string =>
   FOLLOWUP_TYPES.find((t) => t.value === type)?.label ?? "Follow-up";
 
-/** Due dates on a phone are a tap: the four days people actually book. */
-export const WHEN_CHOICES = [
-  { value: "today", label: "Today" },
-  { value: "tomorrow", label: "Tomorrow" },
-  { value: "3days", label: "In 3 days" },
-  { value: "week", label: "Next week" },
-] as const;
-
-export type WhenChoice = (typeof WHEN_CHOICES)[number]["value"];
-
-const WHEN_DAYS: Record<WhenChoice, number> = { today: 0, tomorrow: 1, "3days": 3, week: 7 };
-
-/** Local 'YYYY-MM-DD' for a when-choice. */
-export const dueFromChoice = (choice: WhenChoice, now = new Date()): string =>
-  localDay(addDays(now, WHEN_DAYS[choice]));
-
 /** The lead form's first follow-up (E 16): a day, a picked date, or none. */
 export const FIRST_FOLLOWUPS = [
   { value: "tomorrow", label: "Tomorrow" },
@@ -256,10 +240,10 @@ export function followUpMeta(f: FollowUp): string {
   return [followUpTypeLabel(f.Type), d ? shortDay(d) : null, tail].filter(Boolean).join(" · ");
 }
 
-/** `day` at the time of day of `iso` ("2026-11-05T15:30"); a bare day when `iso` has none. */
-export function onDayAtTimeOf(iso: string | null | undefined, day: string): string {
+/** "15:30" for a timed due; null for a day-only one or none (reschedule's prefilled time). */
+export function timeOf(iso: string | null | undefined): string | null {
   const d = parseDate(iso);
-  return d && hasTime(d) ? `${day}T${pad(d.getHours())}:${pad(d.getMinutes())}` : day;
+  return d && hasTime(d) ? `${pad(d.getHours())}:${pad(d.getMinutes())}` : null;
 }
 
 /** "Tue, 3 Nov · 11:00 am" — the next-follow-up card's title. */

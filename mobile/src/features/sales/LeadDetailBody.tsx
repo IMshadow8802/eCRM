@@ -62,7 +62,7 @@ import { lookupMap } from "../support/ticketHelpers";
 import { relativeTime } from "../tasks/taskHelpers";
 import { FollowUpSheets, type FollowUpSheetsHandle } from "./FollowUpSheets";
 import { ContactCard, DetailsFacts, FollowUpsTab } from "./LeadDetailParts";
-import { dueFromChoice, FOLLOWUP_TYPES, leadStatusBadge, nextOpen, rupees, WHEN_CHOICES, type WhenChoice } from "./leadHelpers";
+import { FOLLOWUP_TYPES, leadStatusBadge, nextOpen, rupees } from "./leadHelpers";
 import { StatusSheet, type StatusChange } from "./StatusSheet";
 import { useLeadRefData } from "./useLeadRefData";
 
@@ -70,7 +70,6 @@ type Tab = "details" | "followups" | "activity";
 /** The sheets that can show a server refusal inline. */
 type SheetKey = "status" | "schedule" | "call" | "transfer";
 
-const WHEN_OPTIONS = WHEN_CHOICES.map((w) => ({ value: w.value, label: w.label }));
 const NO_TRANSFER_REASONS = "No transfer reasons are set up. Add them on the web first.";
 
 /** Timeline node per tblLeadActivity.Type; unmapped types still get a node. */
@@ -442,14 +441,11 @@ export function LeadDetailBody({ leadId, navigation, onBack, useBar, pane = fals
             submitLabel="Add follow-up"
             busy={schedule.isPending}
             error={failed("schedule")}
-            choices={[
-              { key: "type", label: "Type", required: true, options: FOLLOWUP_TYPES },
-              { key: "when", label: "When", required: true, options: WHEN_OPTIONS },
-            ]}
+            choices={[{ key: "type", label: "Type", required: true, options: FOLLOWUP_TYPES }]}
+            when={{ label: "When", required: true }}
             fields={[]}
-            onSubmit={(_, p) =>
-              schedule.mutate({ LeadId: leadId, Type: p.type as FollowUpType, DueAt: dueFromChoice(p.when as WhenChoice) })
-            }
+            // `due` is never null here: the when row is required.
+            onSubmit={(_, p, due) => schedule.mutate({ LeadId: leadId, Type: p.type as FollowUpType, DueAt: due! })}
           />
           <LogCallSheet
             ref={callRef}

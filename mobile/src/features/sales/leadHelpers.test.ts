@@ -2,7 +2,6 @@ import type { FollowUp, Lookup } from "../../types/api";
 import {
   dayLabel,
   defaultStatus,
-  dueFromChoice,
   FOLLOWUP_TYPES,
   FOLLOWUP_VIEWS,
   followUpTypeLabel,
@@ -21,13 +20,12 @@ import {
   leadStatusBadge,
   localDay,
   nextOpen,
-  onDayAtTimeOf,
+  timeOf,
   openRank,
   openValue,
   rupees,
   shortDay,
   whenText,
-  WHEN_CHOICES,
 } from "./leadHelpers";
 import { lead } from "../../test/fixtures";
 
@@ -150,19 +148,6 @@ describe("follow-ups", () => {
     expect(followUpTypeLabel("fax")).toBe("Follow-up");
   });
 
-  it("books the four when-choices on local days, across a year end", () => {
-    expect(WHEN_CHOICES.map((c) => c.label)).toEqual(["Today", "Tomorrow", "In 3 days", "Next week"]);
-    expect(WHEN_CHOICES.map((c) => dueFromChoice(c.value, now))).toEqual([
-      "2026-11-02",
-      "2026-11-03",
-      "2026-11-05",
-      "2026-11-09",
-    ]);
-    expect(dueFromChoice("week", now)).toBe("2026-11-09");
-    expect(dueFromChoice("tomorrow", new Date(2026, 11, 31))).toBe("2027-01-01");
-    expectToday(() => dueFromChoice("today"));
-  });
-
   it("finds the first open follow-up", () => {
     const f = (Id: number, Status: FollowUp["Status"]) => ({ Id, Status }) as FollowUp;
     expect(nextOpen([f(1, "done"), f(2, "open"), f(3, "open")])?.Id).toBe(2);
@@ -249,10 +234,11 @@ describe("dates and money", () => {
     expect(followUpMeta(f({ Status: "cancelled", DoneAt: new Date(2026, 10, 3, 10).toISOString() }))).toBe("Visit · Tue, 3 Nov · Cancelled");
   });
 
-  it("a re-booking keeps the old follow-up's time of day on the new day", () => {
-    expect(onDayAtTimeOf("2026-11-02T15:30:00", "2026-11-05")).toBe("2026-11-05T15:30");
-    expect(onDayAtTimeOf("2026-11-02", "2026-11-05")).toBe("2026-11-05");
-    expect(onDayAtTimeOf(null, "2026-11-05")).toBe("2026-11-05");
+  it("timeOf: the HH:mm of a timed due, null for a day-only or none", () => {
+    expect(timeOf("2026-11-02T15:30:00")).toBe("15:30");
+    expect(timeOf("2026-11-02")).toBeNull();
+    expect(timeOf("2026-11-02T00:00:00")).toBeNull();
+    expect(timeOf(null)).toBeNull();
   });
 
   it("the form's first follow-up: Tomorrow, In 3 days, Pick date, None", () => {
