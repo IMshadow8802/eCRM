@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 vi.mock("../../components/ui/DateField", () => import("../../test/DateFieldStub"));
 
@@ -26,6 +26,8 @@ const mocks = (cap = {}) =>
       return json({ Id: 21, NextId: 22 });
     }),
   );
+
+afterEach(() => vi.useRealTimers());
 
 describe("LogFollowUpModal", () => {
   beforeEach(() => {
@@ -57,12 +59,13 @@ describe("LogFollowUpModal", () => {
   });
 
   it("keeps Log follow-up disabled for a next time already past today", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date().setHours(14, 10, 0, 0) }); // 14:10 of the real day (DEFAULTS read today() at import)
     mocks();
     renderWithProviders(<LogFollowUpModal open followUp={FU} onClose={() => {}} />, { router: false });
     const user = userEvent.setup();
     await user.type(screen.getByTestId("followup-remarks"), "Called");
     await user.type(screen.getByTestId("followup-next-date"), dayjs().format("YYYY-MM-DD"));
-    await pickTime(user, "followup-next-time", "00:00");
+    await pickTime(user, "followup-next-time", "09:00");
     expect(screen.getByTestId("followup-submit")).toBeDisabled();
   });
 

@@ -241,6 +241,8 @@ describe("create", () => {
 });
 
 describe("E 16", () => {
+  afterEach(() => jest.useRealTimers());
+
   const LABELS = /^(Name|Mobile|Alternate mobile|Company|Source|Product|Estimated value|Status|Owner|First follow-up|Roof type|Email|City|State|Pincode|Address|Remarks)( \*)?$/;
 
   it("Save is in the band; the fields run in E's order, custom fields under More details", async () => {
@@ -301,14 +303,15 @@ describe("E 16", () => {
   });
 
   it("today with a time already past is refused (backstop: a time set for tomorrow, then the day moved to today)", async () => {
+    fakeNow(new Date(2026, 10, 16, 14, 10));
     await mount();
     await screen.findAllByText("Priya Shah (you)");
     await fillRequired();
     await fireEvent.press(screen.getByText("Add a time (optional)"));
-    await pickTime("00:00");
+    await pickTime("09:00");
     await fireEvent.press(screen.getByRole("tab", { name: "Pick date" }));
     await fireEvent.press(screen.getByText("Choose a day"));
-    await pickDay(localDay(0));
+    await pickDay("2026-11-16");
     await save();
     expect(screen.getByText("Pick a time from now on")).toBeOnTheScreen();
     expect(createLead).not.toHaveBeenCalled();

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -71,6 +71,8 @@ const pick = async (user, testId, optionName) => {
   await user.click(screen.getByTestId(`${testId}-input`));
   await user.click(await screen.findByRole("option", { name: optionName }));
 };
+
+afterEach(() => vi.useRealTimers());
 
 describe("LeadCreateModal", () => {
   beforeEach(() => {
@@ -156,12 +158,13 @@ describe("LeadCreateModal", () => {
   }, 20000);
 
   it("blocks today plus a past time", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date().setHours(14, 10, 0, 0) }); // 14:10 of the real day (DEFAULTS read today() at import)
     let captured;
     mockSave((b) => { captured = b; });
     renderWithProviders(<LeadCreateModal open onClose={() => {}} />, { router: false });
     const user = userEvent.setup();
     await fillBasics(user);
-    await pickTime(user, "lead-followup-time", "00:00");
+    await pickTime(user, "lead-followup-time", "09:00");
     await user.click(screen.getByTestId("lead-create-submit"));
     expect((await screen.findAllByText("Pick a time from now on")).length).toBeGreaterThan(0);
     expect(captured).toBeUndefined();

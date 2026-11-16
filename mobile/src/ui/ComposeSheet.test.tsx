@@ -2,6 +2,7 @@ import { createRef, useState } from "react";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { act, fireEvent, screen } from "@testing-library/react-native";
 
+import { fakeNow } from "../test/pickers";
 import { renderWithProviders } from "../test/renderWithProviders";
 import { Button } from "./Button";
 import { ComposeSheet, type ComposeSheetProps } from "./ComposeSheet";
@@ -244,12 +245,16 @@ it("initialTime is in the time row on open and rides along with the chip", async
 });
 
 it("a past due disables submit", async () => {
-  // Today 00:00 is already past (unless run in minute 00:00).
-  const { onSubmit } = await renderSheet({ fields: [], choices: [], when: { label: "When", initialTime: "00:00" } });
-  await fireEvent.press(screen.getByText("Today"));
-  expect(submitButton()).toBeDisabled();
-  await fireEvent.press(submitButton());
-  expect(onSubmit).not.toHaveBeenCalled();
+  fakeNow(new Date(2026, 10, 16, 14, 10));
+  try {
+    const { onSubmit } = await renderSheet({ fields: [], choices: [], when: { label: "When", initialTime: "09:00" } });
+    await fireEvent.press(screen.getByText("Today"));
+    expect(submitButton()).toBeDisabled();
+    await fireEvent.press(submitButton());
+    expect(onSubmit).not.toHaveBeenCalled();
+  } finally {
+    jest.useRealTimers();
+  }
 });
 
 it("dismiss resets the when row to initialTime", async () => {

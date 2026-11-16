@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 vi.mock("../../components/ui/DateField", () => import("../../test/DateFieldStub"));
 vi.mock("../../api/salesQueries", async () => ({
@@ -40,6 +40,8 @@ const fill = async (user, { date = "2099-01-05", remarks = "Client asked" } = {}
   await user.type(screen.getByTestId("reschedule-remarks"), remarks);
 };
 
+afterEach(() => vi.useRealTimers());
+
 describe("RescheduleFollowUpModal", () => {
   beforeEach(() => {
     scheduleFollowUp.mockReset().mockResolvedValue({ Id: 22 });
@@ -58,6 +60,7 @@ describe("RescheduleFollowUpModal", () => {
   });
 
   it("needs a date and remarks, and refuses a time already past today", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date().setHours(14, 10, 0, 0) }); // 14:10 of the real day (DEFAULTS read today() at import)
     const { user } = renderModal();
     const submit = screen.getByTestId("reschedule-submit");
     expect(submit).toBeDisabled();
@@ -67,7 +70,7 @@ describe("RescheduleFollowUpModal", () => {
     expect(submit).toBeEnabled();
     await user.clear(screen.getByTestId("reschedule-date"));
     await user.type(screen.getByTestId("reschedule-date"), dayjs().format("YYYY-MM-DD"));
-    await pickTime(user, "reschedule-time", "00:00");
+    await pickTime(user, "reschedule-time", "09:00");
     expect(screen.getByText("Pick a time from now on")).toBeInTheDocument();
     expect(submit).toBeDisabled();
     await user.click(submit);
