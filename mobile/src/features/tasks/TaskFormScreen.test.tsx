@@ -6,6 +6,7 @@ import type { WorkspaceMember } from "../../types/api";
 import { assigneesJson, envelope, makeTask, makeWorkspace, serverError } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import TaskFormScreen from "./TaskFormScreen";
+import { fakeNow, pickDay, pickTime as pickTimeIn } from "../../test/pickers";
 
 jest.mock("../../api/taskQueries");
 jest.mock("../../api/workspaceQueries");
@@ -74,8 +75,7 @@ describe("create", () => {
     await fireEvent.press(screen.getByText("Bug"));
     await fireEvent.changeText(screen.getByPlaceholderText("0"), "2.5");
     await fireEvent.press(screen.getByText("Select a date"));
-    // The native picker is a plain View in jest; its valueChange event carries the date.
-    await fireEvent(screen.getByTestId("date-picker"), "valueChange", {}, new Date(2026, 10, 20));
+    await pickDay("2026-11-20");
     await fireEvent.press(screen.getByRole("button", { name: "Create task" }));
 
     await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
@@ -202,29 +202,43 @@ const fillMinimum = async () => {
   await fireEvent.changeText(screen.getByPlaceholderText("What needs doing?"), "Call bank");
   await fireEvent.changeText(screen.getByPlaceholderText("Step 1"), "Dial");
 };
-const pickDate = async (d: Date) => {
+const pickDate = async (iso: string) => {
   await fireEvent.press(screen.getByText("Select a date"));
-  await fireEvent(screen.getByTestId("date-picker"), "valueChange", {}, d);
-  await fireEvent.press(screen.getByText("Done"));
+  await pickDay(iso);
 };
-const pickTime = async (from: string, h: number, m: number) => {
+const pickTime = async (from: string, hhmm: string) => {
   await fireEvent.press(screen.getByText(from));
-  await fireEvent(screen.getByTestId("date-picker"), "valueChange", {}, new Date(2026, 10, 20, h, m));
-  await fireEvent.press(screen.getByText("Done"));
+  await pickTimeIn(hhmm);
 };
 const allowed = () => screen.getByLabelText("Time allowed (working hours)");
 
 // TASK-02: due time and time allowed (TAT), on web's rules (useTaskDraft.js).
+describe("due time on today", () => {
+  afterEach(() => jest.useRealTimers());
+
+  it("with the due date today, due-time slots already past are off", async () => {
+    fakeNow(new Date(2026, 10, 16, 14, 10));
+    await mount();
+    await ready("Create task");
+    await fillMinimum();
+    await pickDate("2026-11-16");
+    await fireEvent.press(screen.getByText("Select a time"));
+    await fireEvent.press(screen.getByRole("tab", { name: "Afternoon" }));
+    expect(screen.getByTestId("time-slot-14:00")).toBeDisabled();
+    expect(screen.getByTestId("time-slot-14:30")).toBeEnabled();
+  });
+});
+
 describe("due time and time allowed", () => {
   it("a due time is offered only with a due date, and sent as HH:mm", async () => {
     await mount();
     await ready("Create task");
     expect(screen.queryByText("Due time")).toBeNull();
     await fillMinimum();
-    await pickDate(new Date(2026, 10, 20));
+    await pickDate("2026-11-20");
     expect(screen.getByText("Due time")).toBeOnTheScreen();
-    await pickTime("Select a time", 9, 5);
-    expect(screen.getByText("09:05")).toBeOnTheScreen();
+    await pickTime("Select a time", "09:05");
+    expect(screen.getByText("9:05 am")).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", { name: "Create task" }));
     await waitFor(() => expect(saveTask).toHaveBeenCalled());
     expect(sent()).toMatchObject({ DueDate: "2026-11-20", DueTime: "09:05" });
@@ -236,8 +250,8 @@ describe("due time and time allowed", () => {
     await mount();
     await ready("Create task");
     await fillMinimum();
-    await pickDate(new Date(2026, 10, 20));
-    await pickTime("Select a time", 14, 30);
+    await pickDate("2026-11-20");
+    await pickTime("Select a time", "14:30");
     await fireEvent.press(screen.getByLabelText("Clear date"));
     expect(screen.queryByText("Due time")).toBeNull();
     await fireEvent.press(screen.getByRole("button", { name: "Create task" }));
@@ -297,10 +311,10 @@ describe("due time and time allowed", () => {
     jest.mocked(fetchTaskById).mockResolvedValue(timed);
     await mount({ workspaceId: 10, taskId: 9 });
     await ready("Save changes");
-    expect(screen.getByText("10:00")).toBeOnTheScreen();
+    expect(screen.getByText("10:00 am")).toBeOnTheScreen();
     expect(allowed()).toHaveDisplayValue("2");
 
-    await pickTime("10:00", 16, 0);
+    await pickTime("10:00 am", "16:00");
     await fireEvent.press(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(saveTask).toHaveBeenCalledTimes(1));
     expect(sent()).toMatchObject({ DueTime: "16:00" });

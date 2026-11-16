@@ -3,6 +3,7 @@ import { fireEvent, screen } from "@testing-library/react-native";
 import type { CustomFieldDef, CustomFieldType } from "../types/api";
 import { renderWithProviders } from "../test/renderWithProviders";
 import { DynamicField } from "./DynamicField";
+import { pickDay } from "../test/pickers";
 
 const def = (Type: CustomFieldType, patch: Partial<CustomFieldDef> = {}): CustomFieldDef => ({
   Id: 1,
@@ -73,7 +74,7 @@ it("date: a picked day is sent as Y-M-D, clearing sends an empty string", async 
   await fireEvent.press(screen.getByLabelText("Clear date"));
   expect(onChange).toHaveBeenCalledWith("");
   await fireEvent.press(screen.getByText("4 Mar 2026"));
-  await fireEvent(screen.getByTestId("date-picker"), "valueChange", {}, new Date(2026, 2, 9));
+  await pickDay("2026-03-09");
   expect(onChange).toHaveBeenLastCalledWith("2026-03-09");
 });
 

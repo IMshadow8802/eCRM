@@ -48,17 +48,3 @@ beforeEach(() => {
   rearm(images.launchCameraAsync!, mockCanceled);
   rearm(images.launchImageLibraryAsync!, mockCanceled);
 });
-
-// The native picker; a plain View so a test can fire its `valueChange` and
-// `dismiss` events. The deprecated `onChange` (datetimepicker 9.1) is dropped,
-// so a component still wired to it fails its test instead of passing silently.
-jest.mock("@react-native-community/datetimepicker", () => {
-  const { createElement } = require("react");
-  const { View } = require("react-native");
-  const Picker = (props: Record<string, unknown>) => {
-    const rest = { ...props };
-    delete rest.onChange;
-    return createElement(View, { testID: "date-picker", ...rest });
-  };
-  return { __esModule: true, default: Picker };
-});

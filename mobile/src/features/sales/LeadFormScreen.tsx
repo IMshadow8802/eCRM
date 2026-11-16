@@ -384,7 +384,7 @@ function LeadForm({ lead, navigation }: { lead: Lead | null; navigation: Props["
             ) : null}
             {first !== "none" ? (
               <View style={styles.pick}>
-                <DateField mode="time" value={firstTime} onChange={setFirstTime} placeholder="Add a time (optional)" error={fieldErrors.time} />
+                <DateField mode="time" value={firstTime} day={followUpDay} onChange={setFirstTime} placeholder="Add a time (optional)" error={fieldErrors.time} />
               </View>
             ) : null}
             {due ? (

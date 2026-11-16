@@ -11,6 +11,7 @@ import { PHONE, setWindow, TABLET } from "../../test/window";
 import { colors } from "../../theme";
 import { flat } from "../../test/style";
 import LeadFormScreen from "./LeadFormScreen";
+import { fakeNow, pickDay, pickTime } from "../../test/pickers";
 
 jest.mock("../../api/configQueries");
 jest.mock("../../api/leadQueries");
@@ -279,14 +280,12 @@ describe("E 16", () => {
     expect(createLead).not.toHaveBeenCalled();
   });
 
-  const ev = { nativeEvent: { timestamp: 0, utcOffset: 330 } };
-
   it("Tomorrow with a time books that day and minute", async () => {
     await mount();
     await screen.findAllByText("Priya Shah (you)");
     await fillRequired();
     await fireEvent.press(screen.getByText("Add a time (optional)"));
-    await fireEvent(screen.getByTestId("date-picker"), "valueChange", ev, new Date(2026, 10, 2, 11, 0));
+    await pickTime("11:00");
     await save();
     await waitFor(() => expect(createLead).toHaveBeenCalledWith(expect.objectContaining({ FirstFollowupAt: `${localDay(1)}T11:00` })));
   });
@@ -301,15 +300,15 @@ describe("E 16", () => {
     await waitFor(() => expect(createLead).toHaveBeenCalledWith(expect.objectContaining({ FirstFollowupAt: null })));
   });
 
-  it("today with a time already past is refused", async () => {
+  it("today with a time already past is refused (backstop: a time set for tomorrow, then the day moved to today)", async () => {
     await mount();
     await screen.findAllByText("Priya Shah (you)");
     await fillRequired();
+    await fireEvent.press(screen.getByText("Add a time (optional)"));
+    await pickTime("00:00");
     await fireEvent.press(screen.getByRole("tab", { name: "Pick date" }));
     await fireEvent.press(screen.getByText("Choose a day"));
-    await fireEvent(screen.getByTestId("date-picker"), "valueChange", ev, new Date());
-    await fireEvent.press(screen.getByText("Add a time (optional)"));
-    await fireEvent(screen.getAllByTestId("date-picker").at(-1)!, "valueChange", ev, new Date(2026, 10, 2, 0, 0));
+    await pickDay(localDay(0));
     await save();
     expect(screen.getByText("Pick a time from now on")).toBeOnTheScreen();
     expect(createLead).not.toHaveBeenCalled();
@@ -341,6 +340,23 @@ describe("E 16", () => {
     expect(screen.getByText("Custom").parent!.parent).toHaveTextContent(/^Roof type( \*)?\s*Custom$/);
     await fireEvent.press(screen.getByRole("button", { name: "Cancel" }));
     expect(navigation.goBack).toHaveBeenCalled();
+  });
+});
+
+describe("first follow-up time on today", () => {
+  afterEach(() => jest.useRealTimers());
+
+  it("the time sheet knows the day: on today, slots already past are off", async () => {
+    fakeNow(new Date(2026, 10, 16, 14, 10));
+    await mount();
+    await screen.findAllByText("Priya Shah (you)");
+    await fireEvent.press(screen.getByRole("tab", { name: "Pick date" }));
+    await fireEvent.press(screen.getByText("Choose a day"));
+    await pickDay("2026-11-16");
+    await fireEvent.press(screen.getByText("Add a time (optional)"));
+    await fireEvent.press(screen.getByRole("tab", { name: "Afternoon" }));
+    expect(screen.getByTestId("time-slot-14:00")).toBeDisabled();
+    expect(screen.getByTestId("time-slot-14:30")).toBeEnabled();
   });
 });
 

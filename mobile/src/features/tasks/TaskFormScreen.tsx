@@ -346,6 +346,7 @@ function TaskForm({ navigation, workspaceId, columnId, task }: TaskFormProps) {
                 mode="time"
                 label="Due time"
                 value={dueTime || null}
+                day={dueDate}
                 onChange={(v) => setDueTime(v ?? "")}
               />
             ) : null}

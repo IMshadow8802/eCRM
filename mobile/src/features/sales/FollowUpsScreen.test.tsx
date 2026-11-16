@@ -15,6 +15,7 @@ import { PHONE, setWindow } from "../../test/window";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import FollowUpsScreen from "./FollowUpsScreen";
 import { dueTitle } from "./leadHelpers";
+import { pickDay } from "../../test/pickers";
 
 jest.mock("../../api/followupQueries");
 jest.mock("../../api/configQueries");
@@ -237,9 +238,8 @@ it("the band's calendar picks a day: every follow-up due that day; a view tab go
   await screen.findByText("Ramesh Patel");
   await fireEvent.press(screen.getByRole("button", { name: "Pick a day" }));
   expect(screen.getByText("Due on")).toBeOnTheScreen();
-  // The date picker is a plain View in jest: open it, then fire its pick.
   await fireEvent.press(screen.getByText("Pick a day"));
-  await fireEvent(screen.getByTestId("date-picker"), "valueChange", { type: "set" }, new Date(2026, 10, 9));
+  await pickDay("2026-11-09");
   await waitFor(() => expect(lastList()).toEqual(expect.objectContaining({ DueFrom: "2026-11-09", DueTo: "2026-11-09" })));
   expect(lastList()?.Status).toBeUndefined();
   await fireEvent.press(screen.getByRole("tab", { name: /^Overdue/ }));

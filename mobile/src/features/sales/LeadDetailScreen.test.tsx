@@ -18,6 +18,7 @@ import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../
 import { colors } from "../../theme";
 import { dueTitle } from "./leadHelpers";
 import LeadDetailScreen from "./LeadDetailScreen";
+import { pickTime } from "../../test/pickers";
 
 jest.mock("../../api/leadQueries");
 jest.mock("../../api/followupQueries");
@@ -280,7 +281,7 @@ describe("the action bar", () => {
     await fireEvent.press(screen.getAllByRole("radio", { name: "Visit" })[0]!);
     await fireEvent.press(screen.getAllByRole("radio", { name: "Tomorrow" })[2]!);
     await fireEvent.press(screen.getByText("Add a time (optional)"));
-    await fireEvent(screen.getByTestId("date-picker"), "valueChange", { nativeEvent: { timestamp: 0, utcOffset: 330 } }, new Date(2026, 10, 16, 12, 30));
+    await pickTime("12:30");
     await fireEvent.press(screen.getByText("Add follow-up"));
     await waitFor(() =>
       expect(scheduleFollowUp).toHaveBeenCalledWith({ LeadId: 11, Type: "visit", DueAt: `${localDay(1)}T12:30` }, expect.anything()),

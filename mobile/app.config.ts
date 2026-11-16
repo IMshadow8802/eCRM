@@ -101,7 +101,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       },
     ],
     "expo-dev-client",
-    "@react-native-community/datetimepicker",
     "expo-sharing",
     [
       "expo-font",

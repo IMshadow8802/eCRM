@@ -1,19 +1,21 @@
-import { useState } from "react";
-import { Platform, Pressable, StyleSheet, View } from "react-native";
-import DateTimePicker, {
-  type DateTimePickerChangeEvent,
-} from "@react-native-community/datetimepicker";
+import { useRef, useState } from "react";
+import { Keyboard, Pressable, StyleSheet, View } from "react-native";
 import { Calendar, Clock, X } from "lucide-react-native";
 
 import { colors, spacing } from "../theme";
+import { CalendarSheet } from "./CalendarSheet";
 import { FieldHelp, FieldLabel, fieldBox } from "./Field";
+import { Sheet, type SheetRef } from "./Sheet";
 import { Text } from "./Text";
+import { slotLabel, TimeSheet } from "./TimeSheet";
+
+export { toISODate } from "./CalendarSheet";
 
 export interface DateFieldProps {
   label?: string;
   /** ISO date (yyyy-MM-dd), or "HH:mm" with mode="time", or null. Matches what the API sends. */
   value: string | null;
-  /** A day (default) or a time of day; both use the same native picker. */
+  /** A day (default) or a time of day; each opens its in-app sheet. */
   mode?: "date" | "time";
   onChange: (value: string | null) => void;
   placeholder?: string;
@@ -24,25 +26,11 @@ export interface DateFieldProps {
   disabled?: boolean;
   minimumDate?: Date;
   clearable?: boolean;
+  /** Time mode: the day the time is on (yyyy-MM-dd); when it is today, past times are off. */
+  day?: string | null;
+  /** The clock the pickers read (today's ring, past slots). Defaults to now. */
+  now?: Date;
 }
-
-export const toISODate = (d: Date) => {
-  // Local Y/M/D, NOT toISOString() — that converts to UTC and rolls the date
-  // back a day for anyone east of Greenwich, which is every user here (IST).
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-};
-
-const pad2 = (n: number) => String(n).padStart(2, "0");
-const toHHMM = (d: Date) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-
-/** The picker's starting Date for a stored "HH:mm": today at that time. */
-const timeToDate = (hhmm: string | null) => {
-  const d = new Date();
-  const [h, m] = (hhmm ?? "").split(":").map(Number);
-  if (Number.isFinite(h) && Number.isFinite(m)) d.setHours(h!, m!, 0, 0);
-  return d;
-};
 
 const format = (iso: string) => {
   const [y, m, d] = iso.split("-").map(Number);
@@ -54,7 +42,11 @@ const format = (iso: string) => {
   });
 };
 
-/** The ONE date picker. Handles the iOS/Android modal difference internally. */
+/**
+ * The ONE date / time picker. Both modes open the shared Sheet with our own
+ * calendar or time slots, so it looks the same on iOS and Android (the native
+ * dialogs did not match the app). A pick sends the value and closes the sheet.
+ */
 export function DateField({
   label,
   value,
@@ -67,15 +59,22 @@ export function DateField({
   disabled,
   minimumDate,
   clearable = true,
+  day,
+  now,
 }: DateFieldProps) {
+  const sheetRef = useRef<SheetRef>(null);
+  // The picker mounts on open and unmounts once the sheet has closed, so it
+  // starts on the current value (and month) every time.
   const [open, setOpen] = useState(false);
-
-  // datetimepicker 9.1 split the deprecated `onChange` into a pick and a
-  // dismiss. Android's dialog closes itself either way; iOS keeps the inline
-  // calendar mounted until Done.
-  const handlePick = (_event: DateTimePickerChangeEvent, picked: Date) => {
-    if (Platform.OS === "android") setOpen(false);
-    onChange(mode === "time" ? toHHMM(picked) : toISODate(picked));
+  const show = () => {
+    // A focused text field keeps the keyboard up over the sheet (see Select).
+    Keyboard.dismiss();
+    setOpen(true);
+    sheetRef.current?.present();
+  };
+  const pick = (v: string | null) => {
+    onChange(v);
+    sheetRef.current?.dismiss();
   };
 
   return (
@@ -83,7 +82,7 @@ export function DateField({
       {label ? <FieldLabel label={label} required={required} tag={labelTag} /> : null}
 
       <Pressable
-        onPress={() => !disabled && setOpen(true)}
+        onPress={show}
         disabled={disabled}
         style={[fieldBox.box, !!error && fieldBox.error, disabled && fieldBox.disabled]}
       >
@@ -97,7 +96,7 @@ export function DateField({
           color={value ? "text" : "textMuted"}
           style={styles.triggerText}
         >
-          {value ? (mode === "time" ? value : format(value)) : placeholder}
+          {value ? (mode === "time" ? slotLabel(value) : format(value)) : placeholder}
         </Text>
         {value && clearable ? (
           <Pressable
@@ -113,34 +112,17 @@ export function DateField({
 
       <FieldHelp error={error} />
 
-      {open ? (
-        <DateTimePicker
-          value={
-            mode === "time"
-              ? timeToDate(value)
-              : value
-                ? new Date(`${value}T00:00:00`)
-                : new Date()
-          }
-          mode={mode}
-          // iOS has no inline clock; the wheel is its time picker.
-          display={Platform.OS === "ios" ? (mode === "time" ? "spinner" : "inline") : "default"}
-          minimumDate={minimumDate}
-          onValueChange={handlePick}
-          onDismiss={() => setOpen(false)}
-        />
-      ) : null}
-
-      {open && Platform.OS === "ios" ? (
-        <Pressable onPress={() => setOpen(false)} style={styles.iosDone}>
-          <Text variant="bodyStrong" color="primary">Done</Text>
-        </Pressable>
-      ) : null}
+      <Sheet ref={sheetRef} title={mode === "time" ? "Pick a time" : undefined} padded onDismiss={() => setOpen(false)}>
+        {!open ? null : mode === "time" ? (
+          <TimeSheet value={value} day={day} now={now} clearable={clearable} onPick={pick} />
+        ) : (
+          <CalendarSheet value={value} minimumDate={minimumDate} now={now} onPick={pick} />
+        )}
+      </Sheet>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   triggerText: { flex: 1 },
-  iosDone: { alignSelf: "flex-end", padding: spacing[2] },
 });

@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { fireEvent, screen } from "@testing-library/react-native";
 
 import { EMPTY_WHEN, WhenField, dueAt, isPastDue, whenDue, type WhenValue } from "./WhenField";
+import { pickDay, pickTime } from "../test/pickers";
+import { renderWithProviders as render } from "../test/renderWithProviders";
 
 const now = new Date(2026, 10, 16, 14, 0);
-const nativeEvent = { timestamp: 0, utcOffset: 330 };
 
 it("dueAt joins a local day and an optional time", () => {
   expect(dueAt("2026-11-17", "12:30")).toBe("2026-11-17T12:30");
@@ -52,7 +53,7 @@ it("shows the four chips; the time row appears once a day is chosen; Pick date s
   expect(screen.queryByText("Choose a day")).toBeNull();
   await fireEvent.press(screen.getByText("Pick date"));
   await fireEvent.press(screen.getByText("Choose a day"));
-  await fireEvent(screen.getByTestId("date-picker"), "valueChange", { nativeEvent }, new Date(2026, 11, 1));
+  await pickDay("2026-12-01");
   expect(screen.getByText("1 Dec 2026")).toBeOnTheScreen();
 });
 
@@ -75,6 +76,11 @@ it("picking a time sets it; required label renders", async () => {
   const onValue = jest.fn();
   await render(<WhenField label="When" required value={{ chip: "today", day: null, time: null }} now={now} onChange={onValue} />);
   await fireEvent.press(screen.getByText("Add a time (optional)"));
-  await fireEvent(screen.getByTestId("date-picker"), "valueChange", { nativeEvent }, new Date(2026, 10, 16, 17, 5));
+  await pickTime("17:05");
   expect(onValue).toHaveBeenCalledWith({ chip: "today", day: null, time: "17:05" });
+});
+
+it("a stored time with no day chip yet (Reschedule prefill) shows the time row from the start", async () => {
+  await render(<Harness initial={{ chip: null, day: null, time: "12:30" }} />);
+  expect(screen.getByText("12:30 pm")).toBeOnTheScreen();
 });

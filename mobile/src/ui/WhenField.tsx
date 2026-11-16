@@ -70,15 +70,19 @@ export function WhenField({ label, required, value, onChange, now = new Date() }
           value={value.day}
           placeholder="Choose a day"
           minimumDate={now}
+          now={now}
           clearable={false}
           onChange={(day) => onChange({ ...value, day })}
         />
       ) : null}
-      {value.chip ? (
+      {/* A prefilled time (Reschedule) shows before a day is chosen, or it looks lost. */}
+      {value.chip || value.time ? (
         <DateField
           mode="time"
           value={value.time}
           placeholder="Add a time (optional)"
+          day={whenDue({ ...value, time: null }, now)}
+          now={now}
           error={past ? "Pick a time from now on" : null}
           onChange={(time) => onChange({ ...value, time })}
         />

@@ -509,8 +509,11 @@ building the same thing separately is the failure this prevents.
   visibility on a boolean, not on `list.length`.
 - **One** confirm dialog (`Dialog`). **Never use RN's `Alert`** — it cannot be
   styled, cannot show a loading state, and blocks the JS thread on Android.
-- **One** picker (`Select`, single + multi) and **one** date picker
-  (`DateField`, handles the iOS/Android modal difference internally).
+- **One** picker (`Select`, single + multi) and **one** date/time picker
+  (`DateField`): both modes open the shared `Sheet` with our own
+  `ui/CalendarSheet` (Monday-first month grid) or `ui/TimeSheet` (part-of-day
+  30-min slots + custom time). No native dialog; pass `day` to a time field so
+  past slots on today are off.
 - `DateField` formats local Y/M/D, **never `toISOString()`** — that converts to
   UTC and rolls the date back a day for every user in IST.
 
@@ -546,9 +549,10 @@ There is no `@dnd-kit` on React Native; gestures go through
   `makeRoute(name, params)` and `seedAuth({ UserId, user, permissions })`
   (resets `useAuthStore`, then signs in). A test `jest.mock`s every
   `src/api/*` module it reaches — no network, ever. `jest.setup.ts` mocks
-  reanimated, bottom-sheet, gesture-handler, AsyncStorage, WebView, the
-  date picker (a plain `View`: fire its `change` event) and the image /
-  document pickers (default: the user cancels; override per test).
+  reanimated, bottom-sheet, gesture-handler, AsyncStorage, WebView and the
+  image / document pickers (default: the user cancels; override per test).
+  Dates and times are picked through the in-app sheets with
+  `src/test/pickers.ts` (`pickDay(iso)`, `pickTime("HH:mm")`, `fakeNow(date)`).
   `lucide-react-native` is mapped to its CJS build in `jest.config.js`.
   Reactotron (dev-only, stripped from release bundles) still shows every API
   call live on a device.

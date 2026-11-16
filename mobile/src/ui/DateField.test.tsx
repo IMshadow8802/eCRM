@@ -1,71 +1,57 @@
-import { Platform } from "react-native";
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { fireEvent, screen } from "@testing-library/react-native";
 
+import { pickDay, pickTime } from "../test/pickers";
+import { renderWithProviders as render } from "../test/renderWithProviders";
+import { spySheets } from "../test/sheets";
 import { DateField, toISODate } from "./DateField";
 
-// The suite runs in IST (jest.config.js), so a UTC conversion rolls a
-// just-past-midnight pick back a day — the bug the first test guards.
-const nativeEvent = { timestamp: 0, utcOffset: 330 };
+const now = new Date(2026, 10, 16, 14, 10);
 
-async function openPicker(props: Partial<Parameters<typeof DateField>[0]> = {}) {
+it("date mode opens OUR calendar sheet (no native dialog) and a tapped day is sent as local Y-M-D, then closes", async () => {
+  const { present, dismiss } = spySheets();
   const onChange = jest.fn();
-  await render(<DateField label="Due" value={null} onChange={onChange} {...props} />);
-  await fireEvent.press(screen.getByText(props.placeholder ?? "Select a date"));
-  return { onChange, picker: screen.getByTestId("date-picker") };
-}
-
-it("a pick just after midnight IST is sent as that local day, never the UTC day before", async () => {
-  const { onChange, picker } = await openPicker();
-  await fireEvent(picker, "valueChange", { nativeEvent }, new Date(2026, 10, 2, 0, 30));
+  await render(<DateField label="Due" value={null} now={now} onChange={onChange} />);
+  await fireEvent.press(screen.getByText("Select a date"));
+  expect(present).toHaveBeenCalledTimes(1);
+  await fireEvent.press(screen.getByTestId("calendar-day-2026-11-02"));
   expect(onChange).toHaveBeenCalledWith("2026-11-02");
+  expect(dismiss).toHaveBeenCalledTimes(1);
 });
 
-it("toISODate is the local day, never the UTC one", () => {
-  // 00:30 IST on 3 Nov is still 2 Nov in UTC.
+it("toISODate is still exported from DateField and is the local day", () => {
   expect(toISODate(new Date(2026, 10, 3, 0, 30))).toBe("2026-11-03");
 });
 
-it("shows the stored day formatted, opens the picker on it, and clears to null", async () => {
+it("shows the stored day formatted, the calendar opens on its month, and clears to null", async () => {
   const onChange = jest.fn();
   await render(<DateField value="2026-01-05" onChange={onChange} />);
   expect(screen.getByText("5 Jan 2026")).toBeOnTheScreen();
+  // Nothing is mounted until the field is opened.
+  expect(screen.queryByText("January 2026")).toBeNull();
   await fireEvent.press(screen.getByText("5 Jan 2026"));
-  const shown: Date = screen.getByTestId("date-picker").props.value;
-  expect([shown.getFullYear(), shown.getMonth(), shown.getDate()]).toEqual([2026, 0, 5]);
+  expect(screen.getByText("January 2026")).toBeOnTheScreen();
+  expect(screen.getByTestId("calendar-day-2026-01-05")).toBeSelected();
   await fireEvent.press(screen.getByLabelText("Clear date"));
   expect(onChange).toHaveBeenCalledWith(null);
 });
 
-it("iOS keeps the inline calendar open after a pick until Done", async () => {
-  const { onChange, picker } = await openPicker();
-  await fireEvent(picker, "valueChange", { nativeEvent }, new Date(2026, 10, 3));
-  expect(onChange).toHaveBeenCalledWith("2026-11-03");
-  expect(screen.getByTestId("date-picker")).toBeOnTheScreen();
-  await fireEvent.press(screen.getByText("Done"));
-  expect(screen.queryByTestId("date-picker")).toBeNull();
-});
-
-it("Android closes its dialog on a pick, and a dismiss changes nothing", async () => {
-  jest.replaceProperty(Platform, "OS", "android");
-  const { onChange, picker } = await openPicker();
-  expect(screen.queryByText("Done")).toBeNull();
-  await fireEvent(picker, "valueChange", { nativeEvent }, new Date(2026, 10, 4));
-  expect(onChange).toHaveBeenCalledWith("2026-11-04");
-  expect(screen.queryByTestId("date-picker")).toBeNull();
-
+it("minimumDate reaches the calendar: earlier days cannot be picked", async () => {
+  const onChange = jest.fn();
+  await render(<DateField value={null} now={now} minimumDate={now} onChange={onChange} />);
   await fireEvent.press(screen.getByText("Select a date"));
-  await fireEvent(screen.getByTestId("date-picker"), "dismiss");
-  expect(screen.queryByTestId("date-picker")).toBeNull();
-  expect(onChange).toHaveBeenCalledTimes(1);
+  await fireEvent.press(screen.getByTestId("calendar-day-2026-11-15"));
+  expect(onChange).not.toHaveBeenCalled();
+  await pickDay("2027-02-03");
+  expect(onChange).toHaveBeenCalledWith("2027-02-03");
 });
 
 it("disabled never opens; required and error are shown", async () => {
-  const onChange = jest.fn();
-  await render(<DateField label="Due" required error="Pick a day" disabled value={null} onChange={onChange} />);
+  const { present } = spySheets();
+  await render(<DateField label="Due" required error="Pick a day" disabled value={null} onChange={jest.fn()} />);
   expect(screen.getByText(" *")).toBeOnTheScreen();
   expect(screen.getByText("Pick a day")).toBeOnTheScreen();
   await fireEvent.press(screen.getByText("Select a date"));
-  expect(screen.queryByTestId("date-picker")).toBeNull();
+  expect(present).not.toHaveBeenCalled();
 });
 
 it("a value with no clearable flag has no clear control", async () => {
@@ -73,23 +59,62 @@ it("a value with no clearable flag has no clear control", async () => {
   expect(screen.queryByLabelText("Clear date")).toBeNull();
 });
 
-it("time mode opens the clock on the stored time, sends HH:mm, and clears to null", async () => {
+it("time mode opens OUR time sheet on the stored time, sends HH:mm, and clears to null", async () => {
+  const { present, dismiss } = spySheets();
   const onChange = jest.fn();
-  await render(<DateField mode="time" value="09:05" onChange={onChange} />);
-  expect(screen.getByText("09:05")).toBeOnTheScreen();
-  await fireEvent.press(screen.getByText("09:05"));
-  const picker = screen.getByTestId("date-picker");
-  expect(picker.props.mode).toBe("time");
-  const shown: Date = picker.props.value;
-  expect([shown.getHours(), shown.getMinutes()]).toEqual([9, 5]);
-  await fireEvent(picker, "valueChange", { nativeEvent }, new Date(2026, 10, 2, 0, 30));
-  expect(onChange).toHaveBeenCalledWith("00:30");
+  await render(<DateField mode="time" value="09:05" now={now} onChange={onChange} />);
+  // Shown 12-hour like the cards' due line; still sent as HH:mm.
+  expect(screen.getByText("9:05 am")).toBeOnTheScreen();
+  await fireEvent.press(screen.getByText("9:05 am"));
+  expect(present).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole("tab", { name: "Morning" })).toBeSelected();
+  await fireEvent.press(screen.getByRole("tab", { name: "Afternoon" }));
+  await fireEvent.press(screen.getByTestId("time-slot-12:30"));
+  expect(onChange).toHaveBeenCalledWith("12:30");
+  expect(dismiss).toHaveBeenCalledTimes(1);
+  await pickTime("00:30");
+  expect(onChange).toHaveBeenLastCalledWith("00:30");
   await fireEvent.press(screen.getByLabelText("Clear time"));
   expect(onChange).toHaveBeenLastCalledWith(null);
 });
 
-it("time mode with nothing stored says so and opens the clock", async () => {
-  await render(<DateField mode="time" value={null} onChange={jest.fn()} />);
+it("time mode: No time in the sheet clears", async () => {
+  const onChange = jest.fn();
+  await render(<DateField mode="time" value="10:00" now={now} onChange={onChange} />);
+  await fireEvent.press(screen.getByText("10:00 am"));
+  await fireEvent.press(screen.getByText("No time"));
+  expect(onChange).toHaveBeenCalledWith(null);
+});
+
+it("time mode: a field that is not clearable offers no No time", async () => {
+  await render(<DateField mode="time" label="Due time" value="10:00" now={now} clearable={false} onChange={jest.fn()} />);
+  await fireEvent.press(screen.getByText("10:00 am"));
+  expect(screen.getByText("Pick a time")).toBeOnTheScreen();
+  expect(screen.queryByText("No time")).toBeNull();
+});
+
+it("time mode with nothing stored says so; with day = today the past slots are off", async () => {
+  await render(<DateField mode="time" value={null} day="2026-11-16" now={now} onChange={jest.fn()} />);
   await fireEvent.press(screen.getByText("Select a time"));
-  expect(screen.getByTestId("date-picker").props.value).toBeInstanceOf(Date);
+  expect(screen.getByTestId("time-slot-14:00")).toBeDisabled();
+  expect(screen.getByTestId("time-slot-14:30")).toBeEnabled();
+});
+
+it("time mode displays a stored afternoon time 12-hour", async () => {
+  await render(<DateField mode="time" value="12:30" onChange={jest.fn()} />);
+  expect(screen.getByText("12:30 pm")).toBeOnTheScreen();
+  expect(screen.queryByText("12:30")).toBeNull();
+});
+
+it("the picker unmounts once the sheet has closed, so the next open starts fresh", async () => {
+  // The real sheet calls onDismiss after it closes; the mock's dismiss does not.
+  spySheets().dismiss.mockImplementation(function (this: unknown) {
+    (this as { props: { onDismiss?: () => void } }).props.onDismiss?.();
+  });
+  const onChange = jest.fn();
+  await render(<DateField value="2026-01-05" onChange={onChange} />);
+  await fireEvent.press(screen.getByText("5 Jan 2026"));
+  await fireEvent.press(screen.getByTestId("calendar-day-2026-01-09"));
+  expect(onChange).toHaveBeenCalledWith("2026-01-09");
+  expect(screen.queryByText("January 2026")).toBeNull();
 });
