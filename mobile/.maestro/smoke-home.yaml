@@ -22,7 +22,7 @@ appId: com.shadowider.eCRM
 - assertVisible:
     id: "pill-More"
 - takeScreenshot: smoke-home
-- tapOn: "New new"
+- tapOn: "Create"
 - assertVisible: "What do you want to start\\?"
 - assertVisible: "New task"
 - assertVisible: "New complaint"

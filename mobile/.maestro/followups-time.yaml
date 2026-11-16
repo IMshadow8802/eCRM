@@ -1,0 +1,131 @@
+# Follow-up date + time (2026-11-16), on the in-app pickers (ui/CalendarSheet,
+# ui/TimeSheet — the native Android dialogs are gone):
+# 1. Schedule Visit · Tomorrow · Afternoon 12:30 → the next card reads
+#    "<day> · 12:30 pm".
+# 2. Reschedule: the time row shows prefilled "12:30 pm" before any chip;
+#    Pick date → calendar day 3 ahead → the new card is that day at 12:30 pm,
+#    the old one skipped.
+# 3. Today: past slots are disabled — tapping 11:30 am leaves the sheet open.
+#    (Checked only after 11:30 am device time. 11:30 sits in the right
+#    column: the dev build's floating Expo tools button covers the left one.)
+appId: com.shadowider.eCRM
+---
+- runFlow: common/new-lead.yaml
+- evalScript: |
+    ${(function () {
+      var D = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+      var M = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+      function p(n) { return (n < 10 ? "0" : "") + n; }
+      function at(n) { var d = new Date(); d.setDate(d.getDate() + n); return d; }
+      function day(d) { return D[d.getDay()] + ", " + d.getDate() + " " + M[d.getMonth()]; }
+      var d1 = at(1), d3 = at(3), now = new Date();
+      output.d1 = day(d1);
+      output.d3 = day(d3);
+      output.iso3 = d3.getFullYear() + "-" + p(d3.getMonth() + 1) + "-" + p(d3.getDate());
+      // The calendar opens on the current month; d3 may sit in the next one.
+      output.nextMonth = d3.getMonth() !== now.getMonth() ? "yes" : "no";
+    })()}
+
+# The lead's own first call (Tomorrow, no time) goes, so the next card is ours.
+- tapOn: "Lead actions"
+- tapOn: "Skip follow-up"
+- assertVisible: "Skip this follow-up"
+- tapOn: "Why it is not happening"
+- inputText: "MAESTRO clear ${output.stamp}"
+- hideKeyboard
+- tapOn:
+    text: "Skip follow-up"
+    below:
+      id: "compose-remarks"
+- waitForAnimationToEnd
+- assertNotVisible: "Skip this follow-up"
+
+# 1. Schedule: Visit · Tomorrow · Afternoon · 12:30.
+- tapOn: "Lead actions"
+- tapOn: "Schedule follow-up"
+- assertVisible: "Schedule follow-up"
+- tapOn: "Visit"
+- tapOn: "Tomorrow"
+- tapOn: "Add a time \\(optional\\)"
+- assertVisible: "Pick a time"
+- tapOn: "Afternoon"
+- assertVisible:
+    id: "time-slot-12:30"
+- takeScreenshot: time-sheet-afternoon
+- tapOn:
+    id: "time-slot-12:30"
+- waitForAnimationToEnd
+# The picker closed and the Schedule sheet is back with the time set.
+- assertNotVisible: "Custom time"
+- assertVisible: "Schedule follow-up"
+- assertVisible: "12:30 pm"
+- assertVisible: "Clear time"
+- takeScreenshot: time-schedule-sheet
+- tapOn: "Add follow-up"
+- waitForAnimationToEnd
+- assertNotVisible: "Add follow-up"
+- tapOn: "Follow-ups, \\d+"
+- assertVisible:
+    id: "next-followup"
+- assertVisible: "${output.d1} · 12:30 pm"
+- takeScreenshot: time-next-card
+
+# 2. Reschedule: the time comes prefilled, visible before any chip.
+- tapOn:
+    id: "next-followup"
+- tapOn: "Reschedule"
+- assertVisible: "New day.*"
+- assertVisible: "12:30 pm"
+- assertVisible: "Clear time"
+- takeScreenshot: time-reschedule-prefilled
+- tapOn: "Pick date"
+- tapOn: "Choose a day"
+- waitForAnimationToEnd
+- runFlow:
+    when:
+      true: ${output.nextMonth == "yes"}
+    commands:
+      - tapOn: "Next month"
+- takeScreenshot: time-calendar
+- tapOn:
+    id: "calendar-day-${output.iso3}"
+- waitForAnimationToEnd
+- assertVisible: "Why it is moving"
+- assertVisible: "12:30 pm"
+- tapOn: "Why it is moving"
+- inputText: "MAESTRO move ${output.stamp}"
+- hideKeyboard
+- tapOn:
+    text: "Reschedule"
+    below:
+      id: "compose-remarks"
+- waitForAnimationToEnd
+- assertNotVisible: "Why it is moving"
+- assertVisible: "${output.d3} · 12:30 pm"
+- assertVisible: ".*skipped.*"
+- takeScreenshot: time-rescheduled
+
+# 3. Today: a past slot is disabled; tapping it keeps the picker open.
+- tapOn: "Lead actions"
+- tapOn: "Schedule follow-up"
+- assertVisible: "Add follow-up"
+# "Visit", not "Call": the action bar has a Call button that dials.
+- tapOn: "Visit"
+- tapOn: "Today"
+- tapOn: "Add a time \\(optional\\)"
+- assertVisible: "Pick a time"
+- runFlow:
+    # Before 11:31 the 11:30 slot is not past yet; the rest still runs.
+    when:
+      true: ${(function () { var d = new Date(); return d.getHours() * 60 + d.getMinutes() > 690; })()}
+    commands:
+      - tapOn: "Morning"
+      - assertVisible:
+          id: "time-slot-11:30"
+          enabled: false
+      - tapOn:
+          id: "time-slot-11:30"
+      - assertVisible: "Custom time"
+      - takeScreenshot: time-past-disabled
+- back
+- waitForAnimationToEnd

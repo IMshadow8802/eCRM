@@ -17,3 +17,4 @@ flows:
   - leads-edit.yaml
   - leads-call-transfer.yaml
   - followups-queue.yaml
+  - followups-time.yaml
