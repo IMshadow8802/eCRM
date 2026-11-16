@@ -38,6 +38,14 @@ export function formatDateTime(value, { empty = "" } = {}) {
   return d.isValid() ? d.format("DD-MM-YYYY HH:mm") : empty;
 }
 
+/** A due moment: the date, plus the time only when it is not midnight (a day-only follow-up). */
+export function formatDue(value, { empty = "" } = {}) {
+  if (!value) return empty;
+  const d = dayjs(value);
+  if (!d.isValid()) return empty;
+  return d.format(d.hour() || d.minute() ? "DD-MM-YYYY HH:mm" : "DD-MM-YYYY");
+}
+
 /**
  * Indian-format currency: ₹1,23,456.00 — lakh/crore grouping, two decimals.
  *

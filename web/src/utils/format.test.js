@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatDate, formatDateTime, formatCurrency } from "./format";
+import { formatDate, formatDateTime, formatCurrency, formatDue } from "./format";
 
 describe("formatDate", () => {
   it("renders DD-MM-YYYY", () => {
@@ -81,5 +81,14 @@ describe("formatCurrency", () => {
 
   it("honours a custom empty placeholder", () => {
     expect(formatCurrency(null, { empty: "—" })).toBe("—");
+  });
+});
+
+describe("formatDue", () => {
+  it("shows the time when set", () => expect(formatDue("2026-11-17T12:30:00")).toBe("17-11-2026 12:30"));
+  it("hides a midnight time", () => expect(formatDue("2026-11-17T00:00:00")).toBe("17-11-2026"));
+  it("empty and invalid use the fallback", () => {
+    expect(formatDue(null, { empty: "—" })).toBe("—");
+    expect(formatDue("nope", { empty: "—" })).toBe("—");
   });
 });
