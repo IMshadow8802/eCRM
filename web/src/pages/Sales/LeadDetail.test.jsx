@@ -26,8 +26,8 @@ const LEAD = { Id: 9, Name: "Sharma", Company: "Sharma Traders", MobileNo: "9820
 const DETAIL = {
   lead: LEAD, fields: [],
   activity: [{ Id: 1, Type: "created", Summary: "Lead created", CreatedAt: "2026-09-01T10:00:00Z" }],
-  followups: [{ Id: 21, Type: "call", DueAt: "2026-09-10T00:00:00Z", Status: "open", AssignedToName: "Bob" },
-              { Id: 20, Type: "call", DueAt: "2026-09-08T00:00:00Z", Status: "done", DoneByName: "Bob", Outcome: "Connected", Remarks: "Wants a quote", DoneAt: "2026-09-08T11:00:00Z" }],
+  followups: [{ Id: 21, Type: "call", DueAt: "2026-09-10T00:00:00", Status: "open", AssignedToName: "Bob" },
+              { Id: 20, Type: "call", DueAt: "2026-09-08T00:00:00", Status: "done", DoneByName: "Bob", Outcome: "Connected", Remarks: "Wants a quote", DoneAt: "2026-09-08T11:00:00Z" }],
   assignments: [{ Id: 31, FromUserName: null, ToUserName: "Bob", Reason: null, Remarks: "Assigned on creation", AssignedByName: "Alice", AssignedAt: "2026-09-01T10:00:00Z" }],
 };
 
@@ -136,10 +136,18 @@ describe("LeadDetail (spec 1)", () => {
     // Type has no clear button: a null type would throw inside submitSchedule.
     expect(screen.getByTestId("schedule-type-input")).toHaveValue("Call");
     expect(within(screen.getByTestId("schedule-modal")).queryByTitle("Clear")).not.toBeInTheDocument();
-    fireEvent.change(screen.getByTestId("schedule-date"), { target: { value: "2026-09-14" } });
+    fireEvent.change(screen.getByTestId("schedule-date"), { target: { value: "2027-09-14" } });
+    fireEvent.change(screen.getByTestId("schedule-time"), { target: { value: "12:30" } });
     await user.click(screen.getByTestId("schedule-submit"));
-    await waitFor(() => expect(cap.schedule).toEqual({ LeadId: 9, Type: "call", DueAt: "2026-09-14" }));
+    await waitFor(() => expect(cap.schedule).toEqual({ LeadId: 9, Type: "call", DueAt: "2027-09-14T12:30" }));
     await waitFor(() => expect(screen.queryByTestId("schedule-modal")).not.toBeInTheDocument());
+    // date only, and time needs a date
+    await user.click(screen.getByTestId("schedule-followup-btn"));
+    expect(screen.getByTestId("schedule-time")).toBeDisabled();
+    expect(screen.getByTestId("schedule-submit")).toBeDisabled();
+    fireEvent.change(screen.getByTestId("schedule-date"), { target: { value: "2027-09-15" } });
+    await user.click(screen.getByTestId("schedule-submit"));
+    await waitFor(() => expect(cap.schedule).toEqual({ LeadId: 9, Type: "call", DueAt: "2027-09-15" }));
   });
 
   // A picked-but-not-applied status must not linger in the input: the header
@@ -172,8 +180,8 @@ describe("LeadDetail (spec 1)", () => {
       http.post("*/api/leads/fetchLeadDetail", async () => json({
         lead: { Id: 9, Name: "Nameless", StatusId: 99, StatusName: null, StatusCode: "lost", OwnerName: null, LostReason: "Price too high" },
         fields: [], activity: [],
-        followups: [{ Id: 22, Type: "email", DueAt: "2026-09-02T00:00:00Z", Status: "open", IsOverdue: 1 },
-                    { Id: 23, Type: "call", DueAt: "2026-09-01T00:00:00Z", Status: "skipped" }],
+        followups: [{ Id: 22, Type: "email", DueAt: "2026-09-02T00:00:00", Status: "open", IsOverdue: 1 },
+                    { Id: 23, Type: "call", DueAt: "2026-09-01T00:00:00", Status: "skipped" }],
         assignments: [{ Id: 32, FromUserName: "Bob", ToUserName: "Carol", FromBranchName: "Pune", ToBranchName: "Mumbai",
                         Reason: "Territory change", Remarks: "Moved to west", AssignedByName: "Alice", AssignedAt: "2026-09-05T09:00:00Z" }],
       })),
@@ -204,7 +212,7 @@ describe("LeadDetail (spec 1)", () => {
       http.post("*/api/leads/fetchLeadDetail", async () => json({
         lead: { Id: 9, Name: "Won one", StatusId: 5, StatusName: "Won", StatusCode: "converted" },
         fields: [], activity: [], assignments: [],
-        followups: [{ Id: 24, Type: "visit", DueAt: "2026-11-05T00:00:00Z", Status: "cancelled",
+        followups: [{ Id: 24, Type: "visit", DueAt: "2026-11-05T00:00:00", Status: "cancelled",
                       DoneAt: "2026-11-03T10:00:00", Remarks: "Lead won" }],
       })),
     );

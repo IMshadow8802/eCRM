@@ -18,7 +18,7 @@ import { HELP_GUIDES } from "../../data/helpGuides";
 import useServerTable from "../../hooks/useServerTable";
 import { useApiMutation } from "../../hooks/useApiMutation";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
-import { formatDate } from "../../utils/format";
+import { formatDate, formatDue } from "../../utils/format";
 import { FOLLOWUP_TYPES } from "./leadStatus";
 import LogFollowUpModal from "./LogFollowUpModal";
 
@@ -116,7 +116,7 @@ const FollowUps = () => {
         enableSorting: true,
         Cell: ({ row, cell }) => (
           <span style={row.original.IsOverdue ? { color: "#DC2626", fontWeight: 600 } : undefined}>
-            {formatDate(cell.getValue(), { empty: "—" })}
+            {formatDue(cell.getValue(), { empty: "—" })}
           </span>
         ),
       },

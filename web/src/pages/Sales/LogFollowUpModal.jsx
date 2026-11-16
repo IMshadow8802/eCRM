@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2 } from "lucide-react";
-import dayjs from "dayjs";
 
-import { Modal, Button, Combobox, TextArea, DateField, NumberInput } from "../../components/ui";
+import { Modal, Button, Combobox, TextArea, NumberInput } from "../../components/ui";
 import FormGrid from "../../components/ui/FormGrid";
 import { useApiMutation } from "../../hooks/useApiMutation";
 import { useLookups } from "../../hooks/useLookups";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
+import { formatDue } from "../../utils/format";
+import { dueAt, isPastDue } from "./followUpDue";
+import DueInputs from "./DueInputs";
 import { FOLLOWUP_TYPES, DIRECTIONS } from "./leadStatus";
 
 /**
@@ -21,6 +23,7 @@ export default function LogFollowUpModal({ open, onClose, followUp, onLogged }) 
   const [duration, setDuration] = useState("");
   const [nextType, setNextType] = useState(FOLLOWUP_TYPES[0]);
   const [nextDate, setNextDate] = useState("");
+  const [nextTime, setNextTime] = useState("");
 
   const isCall = followUp?.Type === "call";
   const { lookups: outcomes } = useLookups("call_outcome", { enabled: open, showErrorMessage: false });
@@ -29,7 +32,7 @@ export default function LogFollowUpModal({ open, onClose, followUp, onLogged }) 
   useEffect(() => {
     if (!open) return;
     setOutcome(null); setRemarks(""); setDirection(DIRECTIONS[0]); setDuration("");
-    setNextType(FOLLOWUP_TYPES[0]); setNextDate("");
+    setNextType(FOLLOWUP_TYPES[0]); setNextDate(""); setNextTime("");
   }, [open, followUp?.Id]);
 
   const mutation = useApiMutation({
@@ -38,7 +41,7 @@ export default function LogFollowUpModal({ open, onClose, followUp, onLogged }) 
     invalidateQueries: [["followups"], ["lead-detail"], ["leads"]],
   });
 
-  const ready = Boolean(remarks.trim());
+  const ready = Boolean(remarks.trim()) && !isPastDue(nextDate, nextTime);
   const submit = async () => {
     if (!ready) return;
     try {
@@ -49,7 +52,7 @@ export default function LogFollowUpModal({ open, onClose, followUp, onLogged }) 
         Direction: isCall ? direction?.value ?? null : null,
         Duration: isCall && duration !== "" ? Number(duration) : null,
         NextType: nextDate ? nextType?.value ?? "call" : null,
-        NextDueAt: nextDate || null,
+        NextDueAt: nextDate ? dueAt(nextDate, nextTime) : null,
       });
       onLogged?.();
       onClose?.();
@@ -58,7 +61,7 @@ export default function LogFollowUpModal({ open, onClose, followUp, onLogged }) 
     }
   };
 
-  const due = followUp?.DueAt ? dayjs(followUp.DueAt).format("DD-MM-YYYY") : "";
+  const due = formatDue(followUp?.DueAt);
   const typeLabel = FOLLOWUP_TYPES.find((t) => t.value === followUp?.Type)?.label ?? "Follow-up";
 
   return (
@@ -84,7 +87,7 @@ export default function LogFollowUpModal({ open, onClose, followUp, onLogged }) 
             />
           </div>
           <Combobox label="Next follow-up" options={FOLLOWUP_TYPES} value={nextType} onChange={setNextType} data-testid="followup-next-type" />
-          <DateField label="Next date" value={nextDate} onChange={setNextDate} data-testid="followup-next-date" />
+          <DueInputs dateLabel="Next date" date={nextDate} time={nextTime} onDateChange={setNextDate} onTimeChange={setNextTime} dateTestId="followup-next-date" timeTestId="followup-next-time" />
         </FormGrid>
       </Modal.Body>
       <Modal.Footer>

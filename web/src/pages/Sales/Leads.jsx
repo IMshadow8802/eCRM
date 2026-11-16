@@ -19,7 +19,7 @@ import { useAccess } from "../../hooks/useAccess";
 import useAuthStore from "../../stores/useAuthStore";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
 import { PARTNER_ENDPOINTS } from "../../api/partnerQueries";
-import { formatCurrency, formatDate } from "../../utils/format";
+import { formatCurrency, formatDate, formatDue } from "../../utils/format";
 import { getUserName } from "../../utils/userShape";
 import { LEAD_PRESETS, presetParams, isActiveCode, leadsParamsToState } from "./leadStatus";
 import LeadCreateModal from "./LeadCreateModal";
@@ -91,7 +91,7 @@ const Leads = () => {
         ? <strong>{formatCurrency(row.original.WonValue, { empty: "—" })}</strong>
         : formatCurrency(row.original.EstValue, { empty: "—" })) },
     { accessorKey: "NextFollowupDate", header: "Next Follow-up", enableSorting: true,
-      Cell: ({ row, cell }) => <span style={row.original.IsOverdue ? overdueSx : undefined}>{formatDate(cell.getValue(), { empty: "—" })}</span> },
+      Cell: ({ row, cell }) => <span style={row.original.IsOverdue ? overdueSx : undefined}>{formatDue(cell.getValue(), { empty: "—" })}</span> },
   ], [overdueSx.color]);
 
   const extraParams = useMemo(() => ({

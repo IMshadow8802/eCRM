@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 vi.mock("../../components/ui/DateField", () => import("../../test/DateFieldStub"));
 
 import { screen, waitFor } from "@testing-library/react";
+import dayjs from "dayjs";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 
@@ -42,15 +43,26 @@ describe("LogFollowUpModal", () => {
     await user.type(screen.getByTestId("followup-remarks"), "Wants a quote for 2 units");
     await user.click(screen.getByTestId("followup-next-type-input"));
     await user.click(await screen.findByRole("option", { name: "Visit" }));
-    await user.type(screen.getByTestId("followup-next-date"), "2026-09-14");
+    await user.type(screen.getByTestId("followup-next-date"), "2027-09-14");
+    await user.type(screen.getByTestId("followup-next-time"), "16:00");
     await user.click(screen.getByTestId("followup-submit"));
 
     await waitFor(() => expect(cap.body).toBeTruthy());
     expect(cap.body).toEqual({
       Id: 21, OutcomeId: 1, Remarks: "Wants a quote for 2 units",
-      Direction: "out", Duration: null, NextType: "visit", NextDueAt: "2026-09-14",
+      Direction: "out", Duration: null, NextType: "visit", NextDueAt: "2027-09-14T16:00",
     });
     expect(onLogged).toHaveBeenCalled();
+  });
+
+  it("keeps Log follow-up disabled for a next time already past today", async () => {
+    mocks();
+    renderWithProviders(<LogFollowUpModal open followUp={FU} onClose={() => {}} />, { router: false });
+    const user = userEvent.setup();
+    await user.type(screen.getByTestId("followup-remarks"), "Called");
+    await user.type(screen.getByTestId("followup-next-date"), dayjs().format("YYYY-MM-DD"));
+    await user.type(screen.getByTestId("followup-next-time"), "00:00");
+    expect(screen.getByTestId("followup-submit")).toBeDisabled();
   });
 
   it("will not submit without remarks", async () => {

@@ -4,14 +4,16 @@ import { useTheme } from "@mui/material/styles";
 import { ArrowRightLeft, CalendarPlus, Pencil, Save as SaveIcon, Trophy } from "lucide-react";
 import dayjs from "dayjs";
 
-import { PageHeader, Card, Chip, Button, Tabs, EmptyState, Skeleton, Combobox, Modal, DateField } from "../../components/ui";
+import { PageHeader, Card, Chip, Button, Tabs, EmptyState, Skeleton, Combobox, Modal } from "../../components/ui";
 import DynamicField from "../../components/DynamicField";
 import Attachments from "../../components/Attachments";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { useApiMutation } from "../../hooks/useApiMutation";
 import { useLookups } from "../../hooks/useLookups";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
-import { formatCurrency } from "../../utils/format";
+import { formatCurrency, formatDue } from "../../utils/format";
+import { dueAt, isPastDue } from "./followUpDue";
+import DueInputs from "./DueInputs";
 import { FOLLOWUP_TYPES } from "./leadStatus";
 import Timeline from "./Timeline";
 import { useAccess } from "../../hooks/useAccess";
@@ -72,6 +74,7 @@ export default function LeadDetail({ leadId: leadIdProp }) {
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [scheduleType, setScheduleType] = useState(FOLLOWUP_TYPES[0]);
   const [scheduleDate, setScheduleDate] = useState("");
+  const [scheduleTime, setScheduleTime] = useState("");
   const [draft, setDraft] = useState({});
   const [wonOpen, setWonOpen] = useState(false);
   const [quoteCount, setQuoteCount] = useState(0);
@@ -184,8 +187,8 @@ export default function LeadDetail({ leadId: leadIdProp }) {
   };
   const submitSchedule = async () => {
     if (!scheduleDate) return;
-    await scheduleMutation.mutateAsync({ LeadId: leadId, Type: scheduleType.value, DueAt: scheduleDate });
-    setScheduleOpen(false); setScheduleDate("");
+    await scheduleMutation.mutateAsync({ LeadId: leadId, Type: scheduleType.value, DueAt: dueAt(scheduleDate, scheduleTime) });
+    setScheduleOpen(false); setScheduleDate(""); setScheduleTime("");
   };
 
   if (isLoading || !lead) return (
@@ -258,7 +261,7 @@ export default function LeadDetail({ leadId: leadIdProp }) {
                 <InfoItem label="Owner" value={lead.OwnerName || "Unassigned"} />
                 <InfoItem label="Branch" value={lead.BranchName} />
                 <InfoItem label="Source" value={lead.SourceName} />
-                <InfoItem label="Next follow-up" value={fmt(lead.NextFollowupDate)} />
+                <InfoItem label="Next follow-up" value={formatDue(lead.NextFollowupDate) || null} />
                 <InfoItem label="Assigned since" value={fmt(lead.AssignedAt)} />
                 {Boolean(lead.LostReason) && <InfoItem label="Lost reason" value={lead.LostReason} />}
               </div>
@@ -331,7 +334,7 @@ export default function LeadDetail({ leadId: leadIdProp }) {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "calc(12rem / 15)" }}>
                   <div>
                     <div style={{ fontSize: "calc(14rem / 15)", fontWeight: 600 }}>
-                      {FOLLOWUP_TYPES.find((t) => t.value === f.Type)?.label ?? f.Type} · {f.Status === "open" ? `due ${fmt(f.DueAt)}` : `${f.Status} ${fmt(f.DoneAt, "DD-MM-YYYY HH:mm")}${f.Status === "cancelled" ? "" : ` by ${f.DoneByName ?? "—"}`}`}
+                      {FOLLOWUP_TYPES.find((t) => t.value === f.Type)?.label ?? f.Type} · {f.Status === "open" ? `due ${formatDue(f.DueAt)}` : `${f.Status} ${fmt(f.DoneAt, "DD-MM-YYYY HH:mm")}${f.Status === "cancelled" ? "" : ` by ${f.DoneByName ?? "—"}`}`}
                       {f.IsOverdue ? " · overdue" : ""}
                     </div>
                     {(f.Outcome || f.Remarks) && <div style={{ fontSize: "calc(13rem / 15)", marginTop: 2 }}>{[f.Outcome, f.Remarks].filter(Boolean).join(" — ")}</div>}
@@ -382,12 +385,12 @@ export default function LeadDetail({ leadId: leadIdProp }) {
             {/* disableClearable: a follow-up with no type is not a thing the
                 SP accepts, and a cleared value would blow up submitSchedule. */}
             <Combobox label="Type" disableClearable options={FOLLOWUP_TYPES} value={scheduleType} onChange={setScheduleType} data-testid="schedule-type" />
-            <DateField label="Due" required value={scheduleDate} onChange={setScheduleDate} data-testid="schedule-date" />
+            <DueInputs dateLabel="Due" required date={scheduleDate} time={scheduleTime} onDateChange={setScheduleDate} onTimeChange={setScheduleTime} dateTestId="schedule-date" timeTestId="schedule-time" />
           </div>
         </Modal.Body>
         <Modal.Footer>
           <Button variant="ghost" onClick={() => setScheduleOpen(false)}>Cancel</Button>
-          <Button variant="primary" onClick={submitSchedule} disabled={!scheduleDate || !scheduleType} loading={scheduleMutation.isPending} data-testid="schedule-submit">Schedule</Button>
+          <Button variant="primary" onClick={submitSchedule} disabled={!scheduleDate || !scheduleType || isPastDue(scheduleDate, scheduleTime)} loading={scheduleMutation.isPending} data-testid="schedule-submit">Schedule</Button>
         </Modal.Footer>
       </Modal>
 

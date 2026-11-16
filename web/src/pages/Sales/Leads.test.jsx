@@ -166,9 +166,9 @@ describe("Leads page (spec 1)", () => {
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
 
     const { container } = withTheme(
-      cellOf("NextFollowupDate")({ row: { original: { IsOverdue: true } }, cell: { getValue: () => "2026-07-10" } })
+      cellOf("NextFollowupDate")({ row: { original: { IsOverdue: true } }, cell: { getValue: () => "2026-09-01T11:00:00" } })
     );
-    expect(container.querySelector("span")).toHaveTextContent("10-07-2026");
+    expect(container.querySelector("span")).toHaveTextContent("01-09-2026 11:00");
     expect(container.querySelector("span").style.fontWeight).toBe("600");
     const onTime = withTheme(
       cellOf("NextFollowupDate")({ row: { original: { IsOverdue: false } }, cell: { getValue: () => null } })

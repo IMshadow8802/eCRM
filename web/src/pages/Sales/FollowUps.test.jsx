@@ -12,8 +12,8 @@ import { buildTheme } from "../../theme";
 // The queue is a work list, not a lead list: an open row can be logged,
 // skipped or deleted; a logged one is history and carries no actions.
 const ROWS = [
-  { Id: 21, LeadId: 9, LeadName: "Sharma", Type: "call", DueAt: "2026-09-01T00:00:00Z", Status: "open", AssignedToName: "Bob", IsOverdue: true },
-  { Id: 20, LeadId: 9, LeadName: "Sharma", Type: "visit", DueAt: "2026-08-30T00:00:00Z", Status: "done", Outcome: "Connected", Remarks: "ok" },
+  { Id: 21, LeadId: 9, LeadName: "Sharma", Type: "call", DueAt: "2026-09-01T00:00:00", Status: "open", AssignedToName: "Bob", IsOverdue: true },
+  { Id: 20, LeadId: 9, LeadName: "Sharma", Type: "visit", DueAt: "2026-08-30T00:00:00", Status: "done", Outcome: "Connected", Remarks: "ok" },
 ];
 
 const mockNavigate = vi.fn();
@@ -142,8 +142,8 @@ describe("Follow-ups queue", () => {
     expect(withTheme(cellOf("LeadName")({ row: { original: { LeadName: "Sharma" } } })).container).toHaveTextContent("Sharma");
 
     // Overdue is a server verdict (IsOverdue), not a client date comparison.
-    const late = withTheme(cellOf("DueAt")({ row: { original: { IsOverdue: true } }, cell: { getValue: () => "2026-09-01T00:00:00Z" } }));
-    expect(late.container.querySelector("span")).toHaveTextContent("01-09-2026");
+    const late = withTheme(cellOf("DueAt")({ row: { original: { IsOverdue: true } }, cell: { getValue: () => "2026-09-01T15:30:00" } }));
+    expect(late.container.querySelector("span")).toHaveTextContent("01-09-2026 15:30");
     expect(late.container.querySelector("span").style.fontWeight).toBe("600");
     const onTime = withTheme(cellOf("DueAt")({ row: { original: { IsOverdue: false } }, cell: { getValue: () => null } }));
     expect(onTime.container.querySelector("span").style.fontWeight).toBe("");
