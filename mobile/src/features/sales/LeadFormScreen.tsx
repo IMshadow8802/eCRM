@@ -18,6 +18,7 @@ import {
   Button,
   Card,
   DateField,
+  dueAt,
   DynamicField,
   EmptyState,
   ErrorCard,
@@ -26,6 +27,7 @@ import {
   FieldRow,
   GroupHeader,
   HeaderButton,
+  isPastDue,
   Input,
   MobileInput,
   Screen,
@@ -40,11 +42,10 @@ import { asOptions, blankDraft, missingRequired, serialiseCustomFields } from ".
 import {
   addDays,
   defaultStatus,
+  dueTitle,
   FIRST_FOLLOWUPS,
   leadStatusBadge,
   localDay,
-  parseDate,
-  shortDay,
   type FirstFollowUp,
 } from "./leadHelpers";
 import { useLeadRefData } from "./useLeadRefData";
@@ -193,6 +194,7 @@ function LeadForm({ lead, navigation }: { lead: Lead | null; navigation: Props["
   const [pickedDay, setPickedDay] = useState<string | null>(null);
   const [custom, setCustom] = useState<Record<number, string | boolean>>({});
   const [error, setError] = useState<string | null>(null);
+  const [firstTime, setFirstTime] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const toast = useToast();
 
@@ -242,7 +244,7 @@ function LeadForm({ lead, navigation }: { lead: Lead | null; navigation: Props["
             ...base,
             StatusId: statusId,
             OwnerId: ownerId,
-            FirstFollowupAt: followUpDay,
+            FirstFollowupAt: followUpDay ? dueAt(followUpDay, firstTime) : null,
             CustomJSON: serialiseCustomFields(fieldDefs, customDraft),
           }),
     onSuccess: (response) => {
@@ -271,6 +273,7 @@ function LeadForm({ lead, navigation }: { lead: Lead | null; navigation: Props["
       ...(!draft.MobileNo.trim() && { MobileNo: "A mobile number is required." }),
       ...(value != null && (!Number.isFinite(value) || value < 0) && { EstValue: "Estimated value must be a number." }),
       ...(!editing && first === "pick" && !pickedDay && { pick: "Pick the day of the first follow-up." }),
+      ...(!editing && followUpDay && isPastDue(dueAt(followUpDay, firstTime)) && { time: "Pick a time from now on" }),
       ...(!editing && Object.fromEntries(missingRequired(fieldDefs, customDraft).map((d) => [`c${d.Id}`, `${d.Label} is required.`]))),
     };
     setFieldErrors(errors);
@@ -310,7 +313,7 @@ function LeadForm({ lead, navigation }: { lead: Lead | null; navigation: Props["
   );
   // T4 pairs Owner with the first custom field; the rest go under More details.
   const [pairedField, ...moreFields] = !editing && wide ? fieldDefs : [undefined, ...(!editing ? fieldDefs : [])];
-  const day = parseDate(followUpDay);
+  const due = followUpDay ? dueAt(followUpDay, firstTime) : null;
 
   const owner = (
     <Select
@@ -379,8 +382,13 @@ function LeadForm({ lead, navigation }: { lead: Lead | null; navigation: Props["
                 <DateField value={pickedDay} onChange={setPickedDay} placeholder="Choose a day" minimumDate={new Date()} error={fieldErrors.pick} />
               </View>
             ) : null}
-            {day ? (
-              <FieldHelp hint={`Call on ${shortDay(day)}${wide ? " · reminder in your Follow-ups queue" : ""}`} />
+            {first !== "none" ? (
+              <View style={styles.pick}>
+                <DateField mode="time" value={firstTime} onChange={setFirstTime} placeholder="Add a time (optional)" error={fieldErrors.time} />
+              </View>
+            ) : null}
+            {due ? (
+              <FieldHelp hint={`Call on ${dueTitle(due)}${wide ? " · reminder in your Follow-ups queue" : ""}`} />
             ) : null}
           </Field>
           {moreFields.length ? (

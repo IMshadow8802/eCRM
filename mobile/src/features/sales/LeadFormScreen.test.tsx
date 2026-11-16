@@ -279,6 +279,42 @@ describe("E 16", () => {
     expect(createLead).not.toHaveBeenCalled();
   });
 
+  const ev = { nativeEvent: { timestamp: 0, utcOffset: 330 } };
+
+  it("Tomorrow with a time books that day and minute", async () => {
+    await mount();
+    await screen.findAllByText("Priya Shah (you)");
+    await fillRequired();
+    await fireEvent.press(screen.getByText("Add a time (optional)"));
+    await fireEvent(screen.getByTestId("date-picker"), "valueChange", ev, new Date(2026, 10, 2, 11, 0));
+    await save();
+    await waitFor(() => expect(createLead).toHaveBeenCalledWith(expect.objectContaining({ FirstFollowupAt: `${localDay(1)}T11:00` })));
+  });
+
+  it("None hides the time row and sends no follow-up", async () => {
+    await mount();
+    await screen.findAllByText("Priya Shah (you)");
+    await fillRequired();
+    await fireEvent.press(screen.getByRole("tab", { name: "None" }));
+    expect(screen.queryByText("Add a time (optional)")).toBeNull();
+    await save();
+    await waitFor(() => expect(createLead).toHaveBeenCalledWith(expect.objectContaining({ FirstFollowupAt: null })));
+  });
+
+  it("today with a time already past is refused", async () => {
+    await mount();
+    await screen.findAllByText("Priya Shah (you)");
+    await fillRequired();
+    await fireEvent.press(screen.getByRole("tab", { name: "Pick date" }));
+    await fireEvent.press(screen.getByText("Choose a day"));
+    await fireEvent(screen.getByTestId("date-picker"), "valueChange", ev, new Date());
+    await fireEvent.press(screen.getByText("Add a time (optional)"));
+    await fireEvent(screen.getAllByTestId("date-picker").at(-1)!, "valueChange", ev, new Date(2026, 10, 2, 0, 0));
+    await save();
+    expect(screen.getByText("Pick a time from now on")).toBeOnTheScreen();
+    expect(createLead).not.toHaveBeenCalled();
+  });
+
   it("In 3 days books that local day", async () => {
     await mount();
     await screen.findAllByText("Priya Shah (you)");
