@@ -1,7 +1,5 @@
-// The report route table after 072: pipelineFunnel is gone (sp_PipelineFunnel
-// dropped), leadsByStatus takes its place. This file locks that table down —
-// the controller suite tests the handlers, this tests that they are reachable
-// and that the retired route is not.
+// The report route table. The controller suite tests the handlers; this tests
+// that they are reachable and that the retired routes are not.
 
 let mockAcc;
 
@@ -25,17 +23,8 @@ jest.mock("../../../src/controllers/reportController", () => ({
   getDashboard: hit("getDashboard"),
   ticketsByCategory: hit("ticketsByCategory"),
   resolutionSummary: hit("resolutionSummary"),
-  funnel: hit("funnel"),
-  followUpCompliance: hit("followUpCompliance"),
-  activity: hit("activity"),
-  lost: hit("lost"),
-  aging: hit("aging"),
-  transfers: hit("transfers"),
-  pipelineValue: hit("pipelineValue"),
-  leaderboard: hit("leaderboard"),
   tat: hit("tat"),
   tatClocks: hit("tatClocks"),
-  partners: hit("partners"),
   sales: hit("sales"),
   salesRows: hit("salesRows"),
 }));
@@ -59,16 +48,6 @@ describe("reportRoutes", () => {
     ["/api/reports/getDashboard", "getDashboard"],
     ["/api/reports/ticketsByCategory", "ticketsByCategory"],
     ["/api/reports/resolutionSummary", "resolutionSummary"],
-    // Spec 4a
-    ["/api/reports/funnel", "funnel"],
-    ["/api/reports/partners", "partners"],
-    ["/api/reports/followUpCompliance", "followUpCompliance"],
-    ["/api/reports/activity", "activity"],
-    ["/api/reports/lost", "lost"],
-    ["/api/reports/aging", "aging"],
-    ["/api/reports/transfers", "transfers"],
-    ["/api/reports/pipelineValue", "pipelineValue"],
-    ["/api/reports/leaderboard", "leaderboard"],
     // Sales reports rebuild
     ["/api/reports/sales", "sales"],
     ["/api/reports/salesRows", "salesRows"],
@@ -94,7 +73,6 @@ describe("reportRoutes", () => {
 
   // HR holds `people` only: no dashboard / support / sales report grants.
   it.each([
-    ["/api/reports/funnel", "funnel"],
     ["/api/reports/sales", "sales"],
     ["/api/reports/salesRows", "salesRows"],
     ["/api/reports/ticketsByCategory", "ticketsByCategory"],
@@ -136,6 +114,16 @@ describe("reportRoutes", () => {
     ["/api/reports/leadsByStatus"],
     ["/api/reports/callsPerUser"],
     ["/api/reports/conversionBySource"],
+    // Replaced by /sales + /salesRows (sql/122 drops their procs).
+    ["/api/reports/funnel"],
+    ["/api/reports/followUpCompliance"],
+    ["/api/reports/activity"],
+    ["/api/reports/lost"],
+    ["/api/reports/aging"],
+    ["/api/reports/transfers"],
+    ["/api/reports/pipelineValue"],
+    ["/api/reports/leaderboard"],
+    ["/api/reports/partners"],
   ])("no longer serves %s", async (path) => {
     const res = await request(app).post(path).send({});
     expect(res.status).toBe(404);

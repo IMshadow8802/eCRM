@@ -208,11 +208,8 @@ function jsFilesIn(dir) {
  *   runSp               (ticket/customer/lead/call/config/quotation controllers) —
  *                        checked by WRAPPER_CALL above, per call site.
  *   fetchRows           (configController)                             — same.
- *   runReport           (reportKit, every sp_Rpt* endpoint)             —
- *                        checked by its own dedicated test below: one call
- *                        site, CompId hardcoded.
  *   assertRecordAccess  (permission.js, the lead/ticket record-access gate)
- *                        — same treatment as runReport: one call site behind
+ *                        — checked by its own dedicated test below: one call site behind
  *                        an ENTITY_LOOKUP dispatch table, CompId hardcoded,
  *                        checked by its own dedicated test below.
  * The scan runs over src/controllers, src/utils AND src/middleware — a
@@ -231,7 +228,6 @@ const KNOWN_WRAPPERS = new Set([
   "callController.js:runSp",
   "configController.js:runSp",
   "configController.js:fetchRows",
-  "reportKit.js:runReport",
   "permission.js:visibleRecord", // assertRecordAccess's lookup half; ENTITY_LOOKUP SPs all take CompId
 ]);
 
@@ -290,21 +286,8 @@ describe("tenancy contract: every SP call is company-scoped", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("reportKit.runReport (every sp_Rpt* report endpoint) passes CompId", () => {
-    // runReport's call site has no literal SP name or inline params object —
-    // spName and the whole args bag are assembled elsewhere (REPORTS in this
-    // same file, parseReportArgs) — so neither CALL nor WRAPPER_CALL can key
-    // off it the way they do a runSp/fetchRows call. It has exactly one
-    // executeStoredProcedure call, so it is checked directly here instead.
-    const source = fs.readFileSync(path.join(UTILS, "reportKit.js"), "utf8");
-    const call = /executeStoredProcedure\(\s*spName\s*,\s*\{([^{}]*)\}/s.exec(source);
-
-    expect(call).not.toBeNull(); // guards against the regex silently matching nothing
-    expect(call[1]).toContain("CompId");
-  });
-
   it("permission.assertRecordAccess (lead/ticket record gate) passes CompId", () => {
-    // Same shape as runReport: assertRecordAccess resolves its SP name from
+    // assertRecordAccess resolves its SP name from
     // ENTITY_LOOKUP[entity] (an identifier, not a literal) before calling
     // executeStoredProcedure, so it has no literal-name call site for CALL or
     // WRAPPER_CALL to key off. One call site, checked directly.

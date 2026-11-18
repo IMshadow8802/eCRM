@@ -1,32 +1,18 @@
 // src/utils/reportKit.js
 //
-// The one shape every sales report endpoint shares (spec 4a §3–4): the same
-// twelve SP params, the same three result sets, the same validation. Eight
-// controller methods are each one line because this exists.
+// Date-range parsing shared by every report and drill (parseDay, parseRange),
+// plus the TAT report's argument parser (parseReportArgs over REPORTS.tat).
+// The spec-4a sales reports that also used it went with sql/122.
 
-const database = require("../config/database");
-const { scopeParams } = require("../middleware/permission");
-const { success, error } = require("./responseHelper");
 const { positiveInt } = require("./controllerKit");
 
-const DATE_BASES = ["created", "closed", "activity"];
 const MAX_RANGE_DAYS = 731; // two years, leap included
 
-// GroupBy whitelist per report — must match the RAISERROR guard at the top of
-// each sp_Rpt*. The SP rejects anything else too, but that surfaces as a 500;
-// the 400 lives here.
+// GroupBy whitelist — must match the RAISERROR guard at the top of sp_RptTat.
+// The SP rejects anything else too, but that surfaces as a 500; the 400 lives here.
 const REPORTS = {
-  funnel:             { sp: "sp_RptFunnel",             groupBys: ["source", "owner", "product", "branch", "status", "team"] },
-  followUpCompliance: { sp: "sp_RptFollowUpCompliance", groupBys: ["owner", "team", "branch"] },
-  activity:           { sp: "sp_RptActivity",           groupBys: ["owner", "day", "team", "branch"] },
-  lost:               { sp: "sp_RptLost",               groupBys: ["reason", "source", "product", "owner", "branch"] },
-  aging:              { sp: "sp_RptAging",              groupBys: ["owner", "branch", "team"] },
-  transfers:          { sp: "sp_RptTransfers",          groupBys: ["reason", "pair", "branch"] },
-  pipelineValue:      { sp: "sp_RptPipelineValue",      groupBys: ["status", "owner", "product", "branch"] },
-  leaderboard:        { sp: "sp_RptLeaderboard",        groupBys: ["owner"] },
   // Task TAT (P4): one basis, the clock's AssignedAt; its own handler in reportController.
-  tat:                { sp: "sp_RptTat",                groupBys: ["person", "priority", "workspace"], bases: ["assigned"] },
-  partners:           { sp: "sp_RptPartners",           groupBys: ["partner"] },
+  tat: { sp: "sp_RptTat", groupBys: ["person", "priority", "workspace"], bases: ["assigned"] },
 };
 
 // Which clocks a TAT headline number counts (sp_RptTatClocks @Metric).
@@ -79,7 +65,7 @@ function parseRange(body = {}, today = new Date()) {
 
 /**
  * Body -> SP params, or a message for a 400.
- * Defaults: last 30 days (today inclusive), the report's first basis ('created' by default), the report's
+ * Defaults: last 30 days (today inclusive), the report's first basis, the report's
  * first GroupBy. Id filters narrow only when they are positive integers.
  */
 function parseReportArgs(body = {}, key, today = new Date()) {
@@ -89,7 +75,7 @@ function parseReportArgs(body = {}, key, today = new Date()) {
   if (range.error) return range;
   const { from, to } = range;
 
-  const bases = report.bases ?? DATE_BASES;
+  const { bases } = report;
   const basis = body.DateBasis ?? bases[0];
   if (!bases.includes(basis)) return { error: `DateBasis must be one of ${bases.join(", ")}` };
 
@@ -110,29 +96,4 @@ function parseReportArgs(body = {}, key, today = new Date()) {
   };
 }
 
-const identity = (data) => data;
-
-/**
- * Runs one report SP and answers in the shared shape. Throws on a DB error so
- * the controller's asyncRoute owns the 500 — one place, one message.
- */
-async function runReport(spName, req, res, key, shape = identity) {
-  const parsed = parseReportArgs(req.body, key);
-  if (parsed.error) return error(res, parsed.error, "VALIDATION_ERROR", 400);
-
-  const result = await database.executeStoredProcedure(spName, {
-    CompId: req.user.CompId,
-    ...parsed.args,
-    ...scopeParams(req),
-  });
-  const rs = result?.recordsets ?? [];
-  const { FromDate, ToDate, DateBasis, GroupBy } = parsed.args;
-  return success(res, "Report fetched successfully", shape({
-    kpis: rs[0]?.[0] ?? {},
-    rows: rs[1] ?? [],
-    trend: rs[2] ?? [],
-    range: { from: FromDate, to: ToDate, basis: DateBasis, groupBy: GroupBy },
-  }));
-}
-
-module.exports = { REPORTS, TAT_METRICS, DATE_BASES, MAX_RANGE_DAYS, parseDay, parseRange, parseReportArgs, runReport };
+module.exports = { REPORTS, TAT_METRICS, MAX_RANGE_DAYS, parseDay, parseRange, parseReportArgs };

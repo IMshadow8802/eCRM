@@ -11,32 +11,14 @@ const router = express.Router();
 router.use(verifyToken, loadScope);
 
 router.post("/getDashboard", allowEmptyPayload, requireModule("dashboard", "view"), reportController.getDashboard);
-// /getFollowupsUserWise and /getLeadSummaryBranchWise went on 2026-08-04, and
-// /getConvertedSummary, /leadsByStatus, /callsPerUser and /conversionBySource
-// followed on 2026-09-13. The last three scoped by BRANCH only — no owner axis
-// — so a Self-scope rep could read the whole branch through them, and
-// sp_CallsPerUser handed back every colleague's call volume by name. They were
-// meant to survive one release for the /reports/* redirects, but those are
-// client-side routes that never reach the API and nothing in web or mobile
-// called them. sp_ConvertedSummary also referenced tblLeads.LeadStatus and
-// .InvoiceDate, columns that no longer exist, so it threw on every call.
-// The spec-4a procs below carry branch AND owner scope.
+// Older report endpoints were removed (2026-08-04, 2026-09-13; the spec-4a set on
+// 2026-11-18, sql/122). Sales reports are /sales + /salesRows below.
 router.post("/ticketsByCategory", allowEmptyPayload, requireModule("support_reports", "view"), reportController.ticketsByCategory);
 router.post("/resolutionSummary", allowEmptyPayload, requireModule("support_reports", "view"), reportController.resolutionSummary);
 
-// Spec 4a — the report system.
-router.post("/funnel", allowEmptyPayload, requireModule("sales_reports", "view"), reportController.funnel);
-router.post("/followUpCompliance", allowEmptyPayload, requireModule("sales_reports", "view"), reportController.followUpCompliance);
-router.post("/activity", allowEmptyPayload, requireModule("sales_reports", "view"), reportController.activity);
-router.post("/lost", allowEmptyPayload, requireModule("sales_reports", "view"), reportController.lost);
-router.post("/aging", allowEmptyPayload, requireModule("sales_reports", "view"), reportController.aging);
-router.post("/transfers", allowEmptyPayload, requireModule("sales_reports", "view"), reportController.transfers);
-router.post("/pipelineValue", allowEmptyPayload, requireModule("sales_reports", "view"), reportController.pipelineValue);
-router.post("/leaderboard", allowEmptyPayload, requireModule("sales_reports", "view"), reportController.leaderboard);
 // Sales reports rebuild (sql/122): every summary + its drill.
 router.post("/sales", allowEmptyPayload, requireModule("sales_reports", "view"), reportController.sales);
 router.post("/salesRows", allowEmptyPayload, requireModule("sales_reports", "view"), reportController.salesRows);
-router.post("/partners", allowEmptyPayload, requireModule("sales_reports", "view"), reportController.partners);
 
 // P4 Team Reports — open to every signed-in user; the data is scoped per caller
 // (self + ReportsTo subtree + attendance reach), out-of-reach rows are dropped.

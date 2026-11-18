@@ -56,6 +56,7 @@ const transferArgs = (body) => ({
 // but is not a date, and reaching @FromDate DATE with it is a 500 where the
 // report it drilled from answers 400.
 const isoDay = (s) => (typeof s === "string" && parseDay(s) ? s : null);
+const LEAD_SORTS = ["created", "lastActivity", "name", "value", "nextFollowUp"];
 
 const leadController = {
   async save(req, res) {
@@ -125,6 +126,9 @@ const leadController = {
         StatusId = null, StatusCode = null, ProductId = null, OwnerId = null, SourceId = null,
         Overdue = false, Unassigned = false, FromDate = null, ToDate = null, PartnerId = null,
       } = req.body;
+      // Whitelisted here and again in the SP (122 §6); SortDir only rides with a column.
+      const SortBy = LEAD_SORTS.includes(req.body.SortBy) ? req.body.SortBy : null;
+      const SortDir = SortBy && (req.body.SortDir === "asc" ? "asc" : "desc");
       // Clamped, not taken raw: PageSize went straight to the SP, and
       // sp_FetchLeads has no ceiling of its own.
       const { PageNumber, PageSize } = pageParams(req.body);
@@ -133,7 +137,7 @@ const leadController = {
         CompId, BranchId, PageNumber, PageSize, SearchTerm,
         StatusId, StatusCode, ProductId, OwnerId, SourceId, PartnerId: positiveInt(PartnerId),
         Overdue: bit(Overdue), Unassigned: bit(Unassigned),
-        FromDate: isoDay(FromDate), ToDate: isoDay(ToDate),
+        FromDate: isoDay(FromDate), ToDate: isoDay(ToDate), SortBy, SortDir,
         ...scopeParams(req),
       });
 

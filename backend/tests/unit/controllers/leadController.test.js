@@ -357,6 +357,18 @@ describe("leadController.fetch filters", () => {
     await leadController.fetch(baseReq({ body: { FromDate: "01/08/2026", ToDate: 20260831 } }), mockRes());
     expect(database.executeStoredProcedure.mock.calls[1][1]).toMatchObject({ FromDate: null, ToDate: null });
   });
+
+  // 122 §6: a whitelisted column and direction, never a raw string.
+  it.each([
+    [{ SortBy: "lastActivity", SortDir: "asc" }, { SortBy: "lastActivity", SortDir: "asc" }],
+    [{ SortBy: "value" }, { SortBy: "value", SortDir: "desc" }],
+    [{ SortBy: "CreatedAt; DROP", SortDir: "up" }, { SortBy: null, SortDir: null }],
+    [{}, { SortBy: null, SortDir: null }],
+  ])("fetch sends sort %j as %j", async (body, sent) => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[], []] });
+    await leadController.fetch(baseReq({ body }), mockRes());
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_FetchLeads", expect.objectContaining(sent));
+  });
 });
 
 describe("leadController.detail", () => {

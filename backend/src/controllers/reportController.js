@@ -1,7 +1,7 @@
 const database = require("../config/database");
 const { scopeParams, scopeFor, scopeJson } = require("../middleware/permission");
 const { asyncRoute, positiveInt } = require("../utils/controllerKit");
-const { runReport, REPORTS, parseReportArgs, TAT_METRICS } = require("../utils/reportKit");
+const { parseReportArgs, TAT_METRICS } = require("../utils/reportKit");
 const { success, error } = require("../utils/responseHelper");
 const { dayKey, toSqlIst } = require("../utils/workCalendar");
 const { parseSalesArgs, previousRange, rangeDays, sumRows, MAX_ROWS, PREVIOUS_MAX_DAYS } = require("../utils/salesReport");
@@ -12,7 +12,7 @@ class ReportController {
     try {
       // sp_Dashboard used to get the branch axis only (sql/081 adds @UserId +
       // @OwnerIdsJson), so a Self-scope rep was handed their whole branch:
-      // 222 leads where the funnel report showed the correct 133.
+      // 222 leads where the leads report showed the correct 133.
       const t = scopeFor(req, "complaints");
       const result = await database.executeStoredProcedure("sp_Dashboard", {
         CompId: req.user.CompId,
@@ -111,30 +111,6 @@ class ReportController {
 }
 
 const controller = new ReportController();
-
-// Spec 4a: one method per report, every one the same line. Assigned on the
-// instance rather than declared on the class so asyncRoute wraps each once —
-// a thrown SP error becomes one consistent 500, validation stays a 400 inside
-// runReport. REPORTS is the single list; adding a report = one row there.
-for (const [key, { sp }] of Object.entries(REPORTS)) {
-  controller[key] = asyncRoute(
-    (req, res) => runReport(sp, req, res, key),
-    "Failed to fetch report",
-    "REPORT_ERROR",
-  );
-}
-
-// Partner report: the money columns need `partners` view, not just report access.
-const MONEY = ["WonValue", "Earned", "Due", "Paid"];
-const omitMoney = (row) => Object.fromEntries(Object.entries(row).filter(([k]) => !MONEY.includes(k)));
-controller.partners = asyncRoute(
-  (req, res) => runReport("sp_RptPartners", req, res, "partners",
-    scopeFor(req, "partners").can.view
-      ? undefined
-      : (d) => ({ ...d, kpis: omitMoney(d.kpis), rows: d.rows.map(omitMoney) })),
-  "Failed to fetch report",
-  "REPORT_ERROR",
-);
 
 // Task TAT report (P4). Scope is the attendance scope (self + ReportsTo subtree +
 // attendance reach), sent as a user allow-list: NULL = everyone, [] = nobody.

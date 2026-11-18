@@ -147,60 +147,6 @@ describe("reportController ticket reports", () => {
   });
 });
 
-// --- Spec 4a: the eight report endpoints, all through reportKit.runReport ---
-
-const REPORT_METHODS = [
-  ["funnel", "sp_RptFunnel", "source"],
-  ["followUpCompliance", "sp_RptFollowUpCompliance", "owner"],
-  ["activity", "sp_RptActivity", "owner"],
-  ["lost", "sp_RptLost", "reason"],
-  ["aging", "sp_RptAging", "owner"],
-  ["transfers", "sp_RptTransfers", "reason"],
-  ["pipelineValue", "sp_RptPipelineValue", "status"],
-  ["leaderboard", "sp_RptLeaderboard", "owner"],
-];
-
-describe.each(REPORT_METHODS)("reportController.%s", (method, sp, defaultGroupBy) => {
-  it(`calls ${sp} with CompId, the parsed args and the caller's scope`, async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce({
-      recordsets: [[{ A: 1 }], [{ GroupKey: 1, GroupLabel: "x" }], [{ Bucket: "2026-09-01" }]],
-    });
-    const res = mockRes();
-    await reportController[method](
-      baseReq({ scope: { branchIds: [2], ownerIds: [7] }, body: { FromDate: "2026-08-01", ToDate: "2026-08-31" } }),
-      res,
-    );
-    expect(database.executeStoredProcedure).toHaveBeenCalledWith(sp, {
-      CompId: 5,
-      FromDate: "2026-08-01", ToDate: "2026-08-31", DateBasis: "created", GroupBy: defaultGroupBy,
-      BranchId: null, OwnerId: null, SourceId: null, ProductId: null,
-      UserId: 7, AccessibleBranchIdsJson: "[2]", OwnerIdsJson: "[7]",
-    });
-    expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.json.mock.calls[0][0].data).toEqual({
-      kpis: { A: 1 },
-      rows: [{ GroupKey: 1, GroupLabel: "x" }],
-      trend: [{ Bucket: "2026-09-01" }],
-      range: { from: "2026-08-01", to: "2026-08-31", basis: "created", groupBy: defaultGroupBy },
-    });
-  });
-
-  it("400s on a GroupBy outside this report's whitelist", async () => {
-    const res = mockRes();
-    await reportController[method](baseReq({ body: { GroupBy: "nope" } }), res);
-    expect(res.status).toHaveBeenCalledWith(400);
-    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
-  });
-
-  it("500s when the SP throws", async () => {
-    database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
-    const res = mockRes();
-    await reportController[method](baseReq({ body: { FromDate: "2026-08-01", ToDate: "2026-08-31" } }), res);
-    expect(res.status).toHaveBeenCalledWith(500);
-    expect(res.json.mock.calls[0][0]).toMatchObject({ success: false, code: "REPORT_ERROR" });
-  });
-});
-
 // --- P4: the TAT report — scoped by the attendance scope as a user allow-list ---
 
 describe("reportController.tat", () => {
@@ -353,48 +299,6 @@ describe("reportController.tatClocks", () => {
     const res = mockRes();
     await reportController.tatClocks(req({ Metric: "missed", OwnerId: 7 }), res);
     expect(res.status).toHaveBeenCalledWith(500);
-  });
-});
-
-// --- Partner report: money columns only for callers who can view partners ---
-
-describe("reportController.partners", () => {
-  const FULL = { LeadsSent: 4, Converted: 1, ConversionPct: 25, WonValue: 100, Earned: 10, Due: 5, Paid: 5 };
-  const partnersReq = (modules) => {
-    const req = baseReq({ body: { FromDate: "2026-08-01", ToDate: "2026-08-31" } });
-    req.access = mockAccess({ modules }, 7);
-    req.scope = scopeFor(req.access, "sales_reports", 7);
-    return req;
-  };
-  const run = async (modules) => {
-    database.executeStoredProcedure.mockResolvedValueOnce({
-      recordsets: [[FULL], [{ GroupKey: 1, GroupLabel: "P", ...FULL }], [{ Bucket: "2026-08-01", LeadsSent: 4, Converted: 1 }]],
-    });
-    const res = mockRes();
-    await reportController.partners(partnersReq(modules), res);
-    return res.json.mock.calls[0][0].data;
-  };
-
-  it("calls sp_RptPartners and keeps money when the caller can view partners", async () => {
-    const data = await run([["sales_reports", "v"], ["partners", "v"]]);
-    expect(database.executeStoredProcedure.mock.calls[0][0]).toBe("sp_RptPartners");
-    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({ GroupBy: "partner", CompId: 5 });
-    expect(data.kpis.Earned).toBe(10);
-    expect(data.rows[0].Paid).toBe(5);
-  });
-
-  it("strips WonValue/Earned/Due/Paid from kpis and rows without partners view", async () => {
-    const data = await run([["sales_reports", "v"]]);
-    expect(data.kpis).toEqual({ LeadsSent: 4, Converted: 1, ConversionPct: 25 });
-    expect(data.rows[0]).toEqual({ GroupKey: 1, GroupLabel: "P", LeadsSent: 4, Converted: 1, ConversionPct: 25 });
-    expect(data.trend).toHaveLength(1);
-  });
-
-  it("tolerates empty result sets when stripping", async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [] });
-    const res = mockRes();
-    await reportController.partners(partnersReq([["sales_reports", "v"]]), res);
-    expect(res.json.mock.calls[0][0].data).toMatchObject({ kpis: {}, rows: [], trend: [] });
   });
 });
 
