@@ -145,8 +145,9 @@ export const tableDefaults = {
     // `space-between` with no wrap and clips its own overflow, so the two
     // buttons on the right — show/hide columns, toggle filters — were painted
     // over rather than scrolled off. 260 + 80 + gap is 356px in a 320px box on
-    // a 360px phone. Let the field give way there and take the full row.
-    sx: { minWidth: { xs: 0, sm: "calc(260rem / 15)" } },
+    // a 360px phone. Let the field give way there — but not to a sliver: 140
+    // plus the four 40px buttons still fits one row at 360px.
+    sx: { flex: "1 1 auto", minWidth: { xs: "calc(140rem / 15)", sm: "calc(260rem / 15)" } },
   },
 
   muiPaginationProps: {

@@ -11,8 +11,9 @@ import {
 } from "material-react-table";
 import Box from "@mui/material/Box";
 import Checkbox from "@mui/material/Checkbox";
-import { Search } from "lucide-react";
+import { Search, X } from "lucide-react";
 import TextInput from "../ui/TextInput";
+import IconButton from "../ui/IconButton";
 import { tableDefaults } from "./tableDefaults";
 
 /**
@@ -168,6 +169,7 @@ function SelectBox({ row, staticRowIndex, table }) {
 function toolbarWithSearch({ table }) {
   const o = table.options;
   const search = o.muiSearchTextFieldProps ?? {};
+  const value = table.getState().globalFilter ?? "";
   return h(
     Fragment,
     null,
@@ -178,7 +180,11 @@ function toolbarWithSearch({ table }) {
         placeholder: search.placeholder ?? "Search…",
         "aria-label": "Search",
         leftAdornment: h(Search, { size: 14 }),
-        value: table.getState().globalFilter ?? "",
+        // Tucked into the field's right padding so the 32px button sits inside the box.
+        rightAdornment: value
+          ? h("span", { style: { display: "inline-flex", marginRight: "calc(-8rem / 15)" } }, h(IconButton, { size: "sm", "aria-label": "Clear search", onClick: () => table.setGlobalFilter(undefined) }, h(X, { size: 14 })))
+          : null,
+        value,
         onChange: (e) => table.setGlobalFilter(e.target.value || undefined),
       })),
     o.enableFilters && o.enableColumnFilters && o.columnFilterDisplayMode !== "popover" && h(MRT_ToggleFiltersButton, { table }),

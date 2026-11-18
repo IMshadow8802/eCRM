@@ -126,8 +126,11 @@ describe("small-screen table defaults", () => {
   // own overflow, so a 260px floor on the search box painted over the
   // show/hide-columns and toggle-filters buttons — on every list page, with no
   // way to reach them.
+  // But not to nothing (e2e 2026-11-18): with a 0 floor the field shrank to a
+  // sliver on a 360px phone. 140 + the four 40px buttons still fits one row.
   it("lets the search field give way on a phone instead of pinning the toolbar", () => {
-    expect(tableDefaults.muiSearchTextFieldProps.sx.minWidth).toEqual({ xs: 0, sm: "calc(260rem / 15)" });
+    expect(tableDefaults.muiSearchTextFieldProps.sx.minWidth).toEqual({ xs: "calc(140rem / 15)", sm: "calc(260rem / 15)" });
+    expect(tableDefaults.muiSearchTextFieldProps.sx.flex).toBe("1 1 auto");
   });
 
   it("lets the toolbar's action row wrap rather than clip", () => {

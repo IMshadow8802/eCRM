@@ -315,6 +315,22 @@ describe("useAppTable search box", () => {
     expect(screen.getAllByRole("checkbox").every((b) => b.checked)).toBe(true);
   });
 
+  it("clear (x) shows only with text and empties the field and the filter", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { screen, fireEvent } = await renderTable();
+    const { waitFor } = await import("@testing-library/react");
+    expect(screen.queryByLabelText("Clear search")).toBeNull();
+    const box = screen.getByPlaceholderText("Search…");
+    fireEvent.change(box, { target: { value: "ban" } });
+    await waitFor(() => expect(screen.queryByText("apple")).toBeNull());
+    fireEvent.click(screen.getByLabelText("Clear search"));
+    expect(box).toHaveValue("");
+    await waitFor(() => expect(screen.getByText("apple")).toBeInTheDocument());
+    expect(screen.queryByLabelText("Clear search")).toBeNull();
+    expect(err.mock.calls.filter((c) => String(c[0]).includes("does not recognize"))).toEqual([]);
+    err.mockRestore();
+  });
+
   it("no box when the table turns global search off", async () => {
     const { screen } = await renderTable({ enableGlobalFilter: false });
     expect(screen.queryByPlaceholderText("Search…")).toBeNull();
