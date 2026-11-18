@@ -159,7 +159,8 @@ export default function DateRangeField({
               <div style={{ fontSize: "calc(12rem / 15)", color: p.text.secondary, paddingTop: "calc(4rem / 15)" }}>
                 Pick the first and last day
               </div>
-              <div style={{ display: "flex", gap: "calc(12rem / 15)", width: "calc(312rem / 15)" }}>
+              {/* Stacked: side by side in a fixed row the To field was clipped ("30-09-20"). */}
+              <div data-testid={`${testId}-fields`} style={{ display: "flex", flexDirection: "column", gap: "calc(12rem / 15)", width: "calc(208rem / 15)" }}>
                 <DateField size="sm" label="From" value={draft.from} onChange={(from) => setDraft((d) => ({ ...d, from }))} data-testid={`${testId}-from`} />
                 <DateField size="sm" label="To" value={draft.to} onChange={(to) => setDraft((d) => ({ ...d, to }))} error={backwards ? "To is before From" : undefined} data-testid={`${testId}-to`} />
               </div>

@@ -160,7 +160,9 @@ export const slug = (text) => String(text ?? "").toLowerCase().replace(/[^a-z0-9
 /** team-report_neha-kulkarni_2026-11-17.csv · lead-sources_2026-11-01_2026-11-30.csv · open-leads_any-time.csv */
 export function exportName(report, filters, personName) {
   const when = !filters.from ? "any-time" : filters.from === filters.to ? filters.from : `${filters.from}_${filters.to}`;
-  return [report.fileKey, personName && slug(personName), when].filter(Boolean).join("_") + ".csv";
+  // "Amit Singh (Exec HO, under Neha)" -> amit-singh: a bracketed role is not part of the name.
+  const name = personName && slug(personName.replace(/\s*\([^)]*\)\s*$/, ""));
+  return [report.fileKey, name, when].filter(Boolean).join("_") + ".csv";
 }
 
 const BOM = "﻿";

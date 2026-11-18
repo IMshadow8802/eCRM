@@ -216,9 +216,8 @@ export function ReportTable({ rows, columns, rowKey, testId, onRowClick, rowTest
     enableBottomToolbar: rows.length > 25,
     initialState: { columnPinning: { left: mrtColumns[0] ? [mrtColumns[0].id] : [] } },
     muiTablePaperProps: { "data-testid": testId },
-    // MRT's built-in search box still passes MUI v9 the removed inputProps/InputProps,
-    // which leak onto the DOM. Ours sets the same global filter through ui/TextInput.
-    // ponytail: list pages on useAppTable keep MRT's box (and the warning); move this into useAppTable if it matters there.
+    // Search on the left here (useAppTable draws the same ui/TextInput box on the right
+    // for every other table; MRT's own box leaks InputProps/inputProps onto the DOM).
     positionGlobalFilter: "none",
     renderTopToolbarCustomActions: ({ table: t }) => (
       <Box sx={{ width: { xs: "100%", sm: "calc(260rem / 15)" } }}>

@@ -1,5 +1,18 @@
-import { useEffect, useLayoutEffect, useState } from "react";
-import { useMaterialReactTable } from "material-react-table";
+import { createElement as h, Fragment, useEffect, useLayoutEffect, useState } from "react";
+import {
+  getIsRowSelected,
+  getMRT_RowSelectionHandler,
+  getMRT_SelectAllHandler,
+  useMaterialReactTable,
+  MRT_ShowHideColumnsButton,
+  MRT_ToggleDensePaddingButton,
+  MRT_ToggleFiltersButton,
+  MRT_ToggleFullScreenButton,
+} from "material-react-table";
+import Box from "@mui/material/Box";
+import Checkbox from "@mui/material/Checkbox";
+import { Search } from "lucide-react";
+import TextInput from "../ui/TextInput";
 import { tableDefaults } from "./tableDefaults";
 
 /**
@@ -37,10 +50,18 @@ export default function useAppTable(options = {}) {
   const table = useMaterialReactTable({
     ...tableDefaults,
     ...rest,
+    // MRT 3's own search box passes MUI v9 the removed InputProps/inputProps,
+    // which React logs as unknown DOM props. Draw ours in the same spot instead,
+    // unless the page placed the search (or the toolbar buttons) itself.
+    ...(rest.enableGlobalFilter !== false && !rest.positionGlobalFilter && !rest.renderToolbarInternalActions && {
+      positionGlobalFilter: "none",
+      renderToolbarInternalActions: toolbarWithSearch,
+    }),
     displayColumnDefOptions: {
       ...tableDefaults.displayColumnDefOptions,
       ...displayColumnDefOptions,
       "mrt-row-actions": { ...tableDefaults.displayColumnDefOptions["mrt-row-actions"], ...displayColumnDefOptions?.["mrt-row-actions"] },
+      "mrt-row-select": { Cell: SelectBox, Header: SelectBox, ...displayColumnDefOptions?.["mrt-row-select"] },
     },
     initialState: { ...tableDefaults.initialState, ...(initialState || {}) },
     muiTableProps: mergeSxProps(tableDefaults.muiTableProps, muiTableProps),
@@ -104,6 +125,67 @@ export default function useAppTable(options = {}) {
   }, [tableContainerRef, tablePaperRef]);
 
   return table;
+}
+
+/**
+ * MRT 3's selection checkbox names its input through `inputProps`, which MUI
+ * v9's Checkbox no longer takes: React logged an unknown DOM prop and the
+ * input went unnamed. Same box, same MRT handlers, named through slotProps.
+ * With no `row` it is the header's select-all.
+ * ponytail: checkbox only; a page with enableMultiRowSelection: false (a radio)
+ * or enableSelectAll: false needs those branches back from MRT_SelectCheckbox.
+ */
+function SelectBox({ row, staticRowIndex, table }) {
+  const { localization, selectAllMode } = table.options;
+  const all = !row;
+  const checked = all
+    ? selectAllMode === "page" ? table.getIsAllPageRowsSelected() : table.getIsAllRowsSelected()
+    : getIsRowSelected({ row, table });
+  const indeterminate = !checked && (all ? table.getIsSomeRowsSelected() : row.getIsSomeSelected() && row.getCanSelectSubRows());
+  const onChange = all ? getMRT_SelectAllHandler({ table }) : getMRT_RowSelectionHandler({ row, staticRowIndex, table });
+  const label = all ? localization.toggleSelectAll : localization.toggleSelectRow;
+  return h(Checkbox, {
+    size: "small",
+    checked,
+    indeterminate,
+    disabled: table.getState().isLoading || (row && !row.getCanSelect()),
+    onClick: (e) => e.stopPropagation(),
+    onChange: (e) => {
+      e.stopPropagation();
+      onChange(e);
+    },
+    slotProps: { input: { "aria-label": label } },
+    sx: { height: "1.75rem", width: "1.75rem" },
+  });
+}
+
+/**
+ * MRT's right-hand toolbar: our search field, then MRT's own buttons under the
+ * same conditions MRT_ToolbarInternalButtons uses (minus the search toggle:
+ * the field is always shown). Each keystroke sets the global filter directly;
+ * useServerTable debounces its fetch.
+ */
+function toolbarWithSearch({ table }) {
+  const o = table.options;
+  const search = o.muiSearchTextFieldProps ?? {};
+  return h(
+    Fragment,
+    null,
+    // The page's search sx (tableDefaults: no 260px floor on a phone, or the toolbar clips).
+    h(Box, { sx: { mr: "calc(4rem / 15)", ...search.sx } },
+      h(TextInput, {
+        size: "sm",
+        placeholder: search.placeholder ?? "Search…",
+        "aria-label": "Search",
+        leftAdornment: h(Search, { size: 14 }),
+        value: table.getState().globalFilter ?? "",
+        onChange: (e) => table.setGlobalFilter(e.target.value || undefined),
+      })),
+    o.enableFilters && o.enableColumnFilters && o.columnFilterDisplayMode !== "popover" && h(MRT_ToggleFiltersButton, { table }),
+    (o.enableHiding || o.enableColumnOrdering || o.enableColumnPinning) && h(MRT_ShowHideColumnsButton, { table }),
+    o.enableDensityToggle && h(MRT_ToggleDensePaddingButton, { table }),
+    o.enableFullScreenToggle && h(MRT_ToggleFullScreenButton, { table }),
+  );
 }
 
 /**

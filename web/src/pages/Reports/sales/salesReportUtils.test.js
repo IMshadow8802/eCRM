@@ -141,6 +141,8 @@ describe("export", () => {
     expect(exportName(team, { from: "2026-11-17", to: "2026-11-17" }, "Neha Kulkarni")).toBe("team-report_neha-kulkarni_2026-11-17.csv");
     expect(exportName(REPORTS.sources, { from: "2026-11-01", to: "2026-11-30" })).toBe("lead-sources_2026-11-01_2026-11-30.csv");
     expect(exportName(REPORTS.open, { from: null, to: null })).toBe("open-leads_any-time.csv");
+    // A bracketed role in the name stays out of the file name (e2e 2026-11-18).
+    expect(exportName(team, F, "Amit Singh (Exec HO, under Neha)")).toBe("team-report_amit-singh_2026-09-01_2026-09-30.csv");
   });
   it("the summary export is BOM-first, every catalogue column, Total and Previous last, formula-safe", () => {
     const lines = [{ GroupKey: 1, GroupLabel: "=HYPERLINK(\"x\")", LineKind: "person", New: 2, WonValue: 1000 },

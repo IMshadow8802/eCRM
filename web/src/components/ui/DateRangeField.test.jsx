@@ -113,6 +113,18 @@ describe("DateRangeField", () => {
     await waitFor(() => expect(screen.queryByRole("listbox")).not.toBeInTheDocument());
   });
 
+  // e2e 2026-11-18: side by side in a fixed 312px row the To field was clipped
+  // ("30-09-20"). The two fields stack, each the full width of the panel.
+  it("Custom stacks From over To so neither field is clipped", () => {
+    wrap();
+    open();
+    fireEvent.click(screen.getByTestId("date-range-option-custom"));
+    const fields = screen.getByTestId("date-range-fields");
+    expect(fields.style.flexDirection).toBe("column");
+    expect(within(fields).getByTestId("date-range-from")).toBeInTheDocument();
+    expect(within(fields).getByTestId("date-range-to")).toBeInTheDocument();
+  });
+
   it("a cleared date disables apply", () => {
     wrap();
     open();

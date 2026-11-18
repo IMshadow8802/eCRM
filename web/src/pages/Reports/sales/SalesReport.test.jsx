@@ -94,6 +94,35 @@ describe("SalesReport", () => {
     expect(screen.getByText("Previous period · 16 Nov 2026")).toBeInTheDocument();
   });
 
+  // REGRESSION (e2e 2026-11-18): the API sends IsActive/NoManager as 1/0 (the
+  // controller's numRow), so `{l.NoManager && …}` printed a stray "0" after
+  // every name and `IsActive === false` never showed "inactive".
+  it("flags as 1/0 numbers: no stray 0 after a name, inactive and no-manager still drawn", async () => {
+    mockReportEndpoints("/api/reports/sales", data({
+      rows: [
+        line({ GroupKey: 9, GroupLabel: "Neha Kapoor", LineKind: "team", TeamSize: 4, IsActive: 1, NoManager: 0, New: 3 }),
+        line({ GroupKey: 5, GroupLabel: "Old Hand", IsActive: 0, NoManager: 0 }),
+        line({ GroupKey: 21, GroupLabel: "Priya Sharma", LineKind: "team", TeamSize: 13, IsActive: 1, NoManager: 1 }),
+      ],
+      totals: { New: 3 },
+    }));
+    renderReport("team");
+    const neha = await screen.findByRole("link", { name: /Neha Kapoor/ });
+    expect(neha.closest("td").textContent).toBe("Neha Kapoor· team of 4");
+    expect(screen.getByRole("link", { name: "Old Hand" }).closest("td").textContent).toBe("Old Hand inactive");
+    expect(screen.getByRole("link", { name: /Priya Sharma/ }).closest("td").textContent).toBe("Priya Sharma· team of 13No manager set");
+  });
+
+  it("a lost reason line (flags 0) prints only its name", async () => {
+    mockReportEndpoints("/api/reports/sales", data({
+      rows: [line({ GroupKey: 4, GroupLabel: "Price", LineKind: "reason", IsActive: 1, NoManager: 0, Lost: 1 })],
+      totals: { Lost: 1 },
+    }));
+    renderReport("lost");
+    const price = await screen.findByText("Price");
+    expect(price.closest("td").textContent).toBe("Price");
+  });
+
   it("clicking a team walks down: NodeId posted, filters kept, breadcrumb back to the start", async () => {
     const cap = mockReportEndpoints("/api/reports/sales", (body) =>
       body.NodeId === 9

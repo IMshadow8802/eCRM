@@ -129,12 +129,13 @@ export default function SalesReport({ report: slug }) {
   const path = data?.path ?? [];
   const person = filters.at ? path[path.length - 1] : null;
 
-  const firstNoManager = lines.find((l) => l.NoManager);
+  const firstNoManager = lines.find((l) => Number(l.NoManager));
   const nameCell = (l) => {
     const extra = (
       <>
-        {l.IsActive === false && <span style={{ color: p.text.tertiary, fontSize: fs(13), fontWeight: 500 }}>inactive</span>}
-        {l.NoManager && <Chip size="sm" tone="warning" label="No manager set" />}
+        {/* The API sends these flags as 1/0: `{0 && …}` would print a stray "0". */}
+        {l.IsActive != null && !Number(l.IsActive) && <span style={{ color: p.text.tertiary, fontSize: fs(13), fontWeight: 500 }}>inactive</span>}
+        {Boolean(Number(l.NoManager)) && <Chip size="sm" tone="warning" label="No manager set" />}
       </>
     );
     const strong = { color: p.text.primary, fontWeight: 600, textDecoration: "none" };

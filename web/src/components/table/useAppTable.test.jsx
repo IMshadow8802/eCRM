@@ -259,3 +259,65 @@ describe("useAppTable full screen", () => {
     expect(result.current.getState().isFullScreen).toBe(false);
   });
 });
+
+// REGRESSION (e2e 2026-11-18): MRT 3's built-in search box hands MUI v9's
+// TextField the removed InputProps/inputProps, which React then logs as unknown
+// DOM props on every list page (Leads among them). useAppTable draws the search
+// itself with ui/TextInput, in the same place, wired to the same global filter.
+describe("useAppTable search box", () => {
+  async function renderTable(options = {}) {
+    const { screen, fireEvent } = await import("@testing-library/react");
+    const { default: renderWithProviders } = await import("../../test/renderWithProviders");
+    const { MaterialReactTable } = await import("material-react-table");
+    function T() {
+      const table = useAppTable({
+        columns: [{ accessorKey: "a", header: "A" }],
+        data: [{ a: "apple" }, { a: "banana" }],
+        ...options,
+      });
+      return <MaterialReactTable table={table} />;
+    }
+    renderWithProviders(<T />, { router: false });
+    return { screen, fireEvent };
+  }
+
+  it("filters through our own field and logs no unknown-prop error", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { screen, fireEvent } = await renderTable();
+    const box = screen.getByPlaceholderText("Search…");
+    fireEvent.change(box, { target: { value: "ban" } });
+    const { waitFor } = await import("@testing-library/react");
+    await waitFor(() => expect(screen.queryByText("apple")).toBeNull());
+    expect(document.querySelector("tbody").textContent).toBe("banana");
+    expect(screen.getByLabelText("Show/Hide columns")).toBeInTheDocument();
+    const unknown = err.mock.calls.filter((c) => String(c[0]).includes("does not recognize"));
+    expect(unknown).toEqual([]);
+    err.mockRestore();
+  });
+
+  // Same leak from MRT's row-selection checkboxes (Leads, Partners, Commissions).
+  it("row selection: no unknown-prop error, each checkbox input still named", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { screen } = await renderTable({ enableRowSelection: true });
+    const boxes = screen.getAllByRole("checkbox");
+    expect(boxes).toHaveLength(3);
+    expect(boxes[0]).toHaveAttribute("aria-label", "Toggle select all");
+    expect(boxes[1]).toHaveAttribute("aria-label", "Toggle select row");
+    expect(err.mock.calls.filter((c) => String(c[0]).includes("does not recognize"))).toEqual([]);
+    err.mockRestore();
+    // (Once rows are selected MRT's own "n selected" banner leaks `alignItems`: a separate MRT/MUI v9 gap.)
+    const { fireEvent } = await import("@testing-library/react");
+    fireEvent.click(boxes[1]);
+    expect(boxes[1]).toBeChecked();
+    expect(boxes[0]).not.toBeChecked();
+    expect(boxes[0]).toHaveAttribute("data-indeterminate", "true");
+    fireEvent.click(boxes[0]);
+    expect(screen.getAllByRole("checkbox").every((b) => b.checked)).toBe(true);
+  });
+
+  it("no box when the table turns global search off", async () => {
+    const { screen } = await renderTable({ enableGlobalFilter: false });
+    expect(screen.queryByPlaceholderText("Search…")).toBeNull();
+    expect(screen.getByLabelText("Show/Hide columns")).toBeInTheDocument();
+  });
+});
