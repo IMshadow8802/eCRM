@@ -9,6 +9,7 @@ export { default as Switch } from "./Switch";
 export { default as RadioGroup } from "./RadioGroup";
 export { default as Combobox } from "./Combobox";
 export { default as DateField } from "./DateField";
+export { default as DateRangeField } from "./DateRangeField";
 export { default as Card } from "./Card";
 export { default as Modal } from "./Modal";
 export { default as Drawer } from "./Drawer";

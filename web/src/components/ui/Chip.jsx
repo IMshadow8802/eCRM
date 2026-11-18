@@ -41,12 +41,15 @@ export default function Chip({
   variant = "tonal",
   tone = "default",
   size = "md",
+  // { bg, text }: replaces the tone's pair (report colour key).
+  colors,
   "data-testid": testId,
   ...rest
 }) {
   const theme = useTheme();
   const p = theme.tokens;
-  const t = resolveTone(TONES.includes(tone) ? tone : "default", p);
+  const resolved = resolveTone(TONES.includes(tone) ? tone : "default", p);
+  const t = colors ? { ...resolved, subtle: colors.bg, main: colors.text } : resolved;
 
   const SIZE = {
     sm: { h: 20, fz: 11, px: 8, gap: 4, icon: 12 },

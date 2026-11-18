@@ -9,6 +9,8 @@ import {
   motion,
   zIndex,
   controlHeight,
+  reportKey,
+  keyInk,
 } from "./tokens";
 
 describe("design tokens", () => {
@@ -158,5 +160,25 @@ describe("design tokens", () => {
     for (const mode of ["light", "dark"]) {
       expect(ratio(palettes[mode].warning.text, palettes[mode].surface.card)).toBeGreaterThanOrEqual(4.5);
     }
+  });
+});
+
+describe("report colour key", () => {
+  it("reportKey is the approved colour key, exactly", () => {
+    expect(reportKey).toEqual({
+      new:   { text: "#4F46E5", bg: "#EEF2FF", underline: "#C7D2FE" },
+      call:  { text: "#0369A1", bg: "#F0F9FF", underline: "#BAE6FD" },
+      visit: { text: "#6D28D9", bg: "#F5F3FF", underline: "#DDD6FE" },
+      won:   { text: "#047857", bg: "#ECFDF5", underline: "#A7F3D0" },
+      lost:  { text: "#DC2626", bg: "#FEF2F2", underline: "#FECACA" },
+      late:  { text: "#B45309", bg: "#FFFBEB", underline: "#FDE68A" },
+      idle:  { text: "#78350F", bg: "#FEF3C7", underline: "#FDE68A" },
+      stock: { text: "#0F172A", bg: "#F1F5F9", underline: "#CBD5E1", dot: "#94A3B8", chipText: "#475569" },
+      better: "#047857", worse: "#DC2626", zero: "#94A3B8",
+    });
+  });
+  it("keyInk gives stock the theme's primary text, every other key its own", () => {
+    expect(keyInk({ text: { primary: "#FFF" } }, "stock")).toBe("#FFF");
+    expect(keyInk({ text: { primary: "#FFF" } }, "late")).toBe("#B45309");
   });
 });

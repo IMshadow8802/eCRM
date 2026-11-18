@@ -321,6 +321,28 @@ export const palettes = {
   },
 };
 
+// ---------- Sales report colour key ----------
+// The approved key (reports-mockups.html, --k-*), one hue per kind of number.
+// Light theme only; on dark, stock ink follows text.primary (keyInk).
+// No report file writes a hex value: they read this.
+export const reportKey = {
+  new: { text: indigo[600], bg: indigo[50], underline: indigo[200] },
+  call: { text: sky[700], bg: sky[50], underline: sky[200] },
+  visit: { text: violet[700], bg: violet[50], underline: violet[200] },
+  won: { text: emerald[700], bg: emerald[50], underline: emerald[200] },
+  lost: { text: red[600], bg: red[50], underline: red[200] },
+  late: { text: amber[700], bg: amber[50], underline: amber[200] },
+  idle: { text: amber[900], bg: amber[100], underline: amber[200] },
+  stock: { text: slate[900], bg: slate[100], underline: slate[300], dot: slate[400], chipText: slate[600] },
+  better: emerald[700],
+  worse: red[600],
+  zero: slate[400],
+};
+
+// Number ink for a key. Stock is "what is", neutral: the theme's own text, so
+// it stays readable on a dark card.
+export const keyInk = (tokens, key) => (key === "stock" ? tokens.text.primary : reportKey[key].text);
+
 // ---------- Radii ----------
 export const radii = {
   none: 0,

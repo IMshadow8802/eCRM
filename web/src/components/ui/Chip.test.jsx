@@ -88,4 +88,11 @@ describe("Chip", () => {
     fireEvent.keyDown(chip, { key: "a" });
     expect(onClick).toHaveBeenCalledTimes(2);
   });
+
+  it("colors replace the tone's pair, whatever the tone", () => {
+    for (const tone of ["default", "error", "primary"]) {
+      wrap(<Chip label="Won" tone={tone} colors={{ bg: "#ECFDF5", text: "#047857" }} data-testid={`k-${tone}`} />);
+      expect(screen.getByTestId(`k-${tone}`)).toHaveStyle({ backgroundColor: "#ECFDF5", color: "#047857" });
+    }
+  });
 });
