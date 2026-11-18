@@ -505,6 +505,9 @@ BEGIN
     END;
 
     -- every counted row with its line key
+    -- source / reason lines take every #R row: they are NOT person-scoped through #T (those reports
+    -- have no person axis), so a Lead sources total can differ from the Team report total by the rows
+    -- credited to people out of view (V13) — the 'team' / 'person' lines drop those.
     SELECT CASE @GroupBy WHEN 'source' THEN r.SourceId WHEN 'reason' THEN r.LostReasonId ELSE m.GroupKey END AS GroupKey,
            r.*
     INTO #G
@@ -795,8 +798,279 @@ END
 GO
 
 -- ===========================================================================
--- VERIFY AFTER APPLY — read-only unless marked
+-- §6 dbo.sp_FetchLeads — replaced whole from its live text (Ruling 9)
+--
+-- Base: the live definition read 2026-11-18, SHA-256 EA1CB758...83EC, identical
+-- on TestCRM, eCRM+, SolarCRM and OSG. Changes, nothing else:
+--   1. @SortBy ('created' | 'lastActivity' | 'name' | 'value' | 'nextFollowUp',
+--      anything else = NULL) and @SortDir ('asc', anything else = 'desc').
+--   2. LastActivityAt (the fn_SalesReportRows expression) in the @Page insert
+--      and in result set 1 after NextFollowupDate.
+--   3. Both ORDER BYs: the @Overdue term only without @SortBy, then the chosen
+--      key NULLs last in both directions, then CreatedAt DESC, Id DESC.
+-- Every WHERE, the scope predicate and every other column are the live text.
+-- The guard refuses §6 when the live text already carries calling lists (121):
+-- it reports, and SET NOEXEC skips the CREATE OR ALTER (a THROW alone would
+-- end only its own batch; sqlcmd without -b would still run the next one and
+-- overwrite 121). §7 onward run either way.
 -- ===========================================================================
+IF OBJECT_DEFINITION(OBJECT_ID('dbo.sp_FetchLeads')) LIKE '%CallList%'
+BEGIN
+    RAISERROR('122 §6: sp_FetchLeads already carries 121; rebase §6 on the live text.', 16, 1);
+    SET NOEXEC ON;
+END
+GO
+
+-- 122 §6: sp_FetchLeads — @SortBy / @SortDir and LastActivityAt; the rest is the 2026-11-18 live text.
+CREATE OR ALTER PROC dbo.sp_FetchLeads
+    @CompId                  INT,
+    @BranchId                INT           = NULL,
+    @PageNumber              INT           = 1,
+    @PageSize                INT           = 10,
+    @SearchTerm              NVARCHAR(200) = NULL,
+    @StatusId                INT           = NULL,
+    @StatusCode              VARCHAR(30)   = NULL,
+    @ProductId               INT           = NULL,
+    @OwnerId                 INT           = NULL,
+    @SourceId                INT           = NULL,
+    @Overdue                 BIT           = 0,
+    @Unassigned              BIT           = 0,
+    @FromDate                DATE          = NULL,
+    @ToDate                  DATE          = NULL,
+    @UserId                  INT           = NULL,
+    @AccessibleBranchIdsJson NVARCHAR(MAX) = NULL,
+    @OwnerIdsJson            NVARCHAR(MAX) = NULL,
+    @PartnerId               INT           = NULL,
+    @SortBy                  VARCHAR(20)   = NULL,
+    @SortDir                 VARCHAR(4)    = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SET @PageNumber = CASE WHEN ISNULL(@PageNumber,1) < 1 THEN 1 ELSE @PageNumber END;
+    SET @PageSize   = CASE WHEN ISNULL(@PageSize,10) < 1 THEN 10 ELSE @PageSize END;
+    IF @SearchTerm IS NOT NULL AND LTRIM(RTRIM(@SearchTerm)) = '' SET @SearchTerm = NULL;
+    IF @StatusCode IS NOT NULL AND LTRIM(RTRIM(@StatusCode)) = '' SET @StatusCode = NULL;
+    IF @SortBy NOT IN ('created','lastActivity','name','value','nextFollowUp') SET @SortBy = NULL;
+    SET @SortDir = CASE WHEN @SortDir = 'asc' THEN 'asc' ELSE 'desc' END;
+    DECLARE @ToEx DATETIME = CASE WHEN @ToDate IS NULL THEN NULL ELSE DATEADD(DAY, 1, CAST(@ToDate AS DATETIME)) END;
+
+    DECLARE @BranchIds TABLE (BranchId INT PRIMARY KEY);
+    DECLARE @OwnerIds  TABLE (OwnerId  INT PRIMARY KEY);
+    DECLARE @UseBranchScope BIT = 0, @UseOwnerScope BIT = 0;
+
+    IF (@AccessibleBranchIdsJson IS NOT NULL AND @AccessibleBranchIdsJson <> '')
+    BEGIN
+        INSERT INTO @BranchIds (BranchId) SELECT DISTINCT CAST(value AS INT) FROM OPENJSON(@AccessibleBranchIdsJson);
+        SET @UseBranchScope = 1;
+    END
+    IF (@OwnerIdsJson IS NOT NULL AND @OwnerIdsJson <> '')
+    BEGIN
+        INSERT INTO @OwnerIds (OwnerId) SELECT DISTINCT CAST(value AS INT) FROM OPENJSON(@OwnerIdsJson);
+        SET @UseOwnerScope = 1;
+    END
+
+    DECLARE @Today DATETIME = CAST(CAST(GETDATE() AS DATE) AS DATETIME);
+
+    DECLARE @Page TABLE (Id INT, Total INT, rn INT, LastActivityAt DATETIME NULL);
+    INSERT INTO @Page (Id, Total, rn, LastActivityAt)
+    SELECT l.Id, COUNT(*) OVER (), ROW_NUMBER() OVER (
+               ORDER BY CASE WHEN @SortBy IS NULL AND @Overdue = 1 THEN l.NextFollowupDate END ASC,
+                        CASE WHEN @SortBy = 'lastActivity' AND la.LastActivityAt   IS NULL THEN 1
+                             WHEN @SortBy = 'value'        AND l.EstValue          IS NULL THEN 1
+                             WHEN @SortBy = 'nextFollowUp' AND l.NextFollowupDate  IS NULL THEN 1 ELSE 0 END ASC,
+                        CASE WHEN @SortDir = 'asc'  AND @SortBy = 'created'      THEN l.CreatedAt        END ASC,
+                        CASE WHEN @SortDir = 'desc' AND @SortBy = 'created'      THEN l.CreatedAt        END DESC,
+                        CASE WHEN @SortDir = 'asc'  AND @SortBy = 'lastActivity' THEN la.LastActivityAt  END ASC,
+                        CASE WHEN @SortDir = 'desc' AND @SortBy = 'lastActivity' THEN la.LastActivityAt  END DESC,
+                        CASE WHEN @SortDir = 'asc'  AND @SortBy = 'name'         THEN l.Name             END ASC,
+                        CASE WHEN @SortDir = 'desc' AND @SortBy = 'name'         THEN l.Name             END DESC,
+                        CASE WHEN @SortDir = 'asc'  AND @SortBy = 'value'        THEN l.EstValue         END ASC,
+                        CASE WHEN @SortDir = 'desc' AND @SortBy = 'value'        THEN l.EstValue         END DESC,
+                        CASE WHEN @SortDir = 'asc'  AND @SortBy = 'nextFollowUp' THEN l.NextFollowupDate END ASC,
+                        CASE WHEN @SortDir = 'desc' AND @SortBy = 'nextFollowUp' THEN l.NextFollowupDate END DESC,
+                        l.CreatedAt DESC, l.Id DESC),
+           la.LastActivityAt
+    FROM dbo.tblLeads l
+    JOIN dbo.tblLookup st ON st.Id = l.StatusId
+    -- ceiling: ~50k leads per company; then a stored column kept by sp_LogLeadActivity
+    OUTER APPLY (
+        SELECT CASE WHEN fd.MaxDone IS NULL THEN ac.MaxAct
+                    WHEN ac.MaxAct  IS NULL OR fd.MaxDone >= ac.MaxAct THEN fd.MaxDone
+                    ELSE ac.MaxAct END AS LastActivityAt
+        FROM (SELECT MAX(f.DoneAt) AS MaxDone FROM dbo.tblFollowUp f
+              WHERE f.CompId = l.CompId AND f.LeadId = l.Id AND f.Status = 'done') fd
+        CROSS JOIN
+             (SELECT MAX(a.CreatedAt) AS MaxAct FROM dbo.tblLeadActivity a
+              WHERE a.CompId = l.CompId AND a.LeadId = l.Id
+                AND a.Type IN ('call','followup','note','status','quotation','assigned')) ac
+    ) la
+    WHERE l.CompId = @CompId
+      AND (@BranchId   IS NULL OR l.BranchId  = @BranchId)
+      AND (@StatusId   IS NULL OR l.StatusId  = @StatusId)
+      AND (@StatusCode IS NULL OR st.Code     = @StatusCode)
+      AND (@ProductId  IS NULL OR l.ProductId = @ProductId)
+      AND (@OwnerId    IS NULL OR l.OwnerId   = @OwnerId)
+      AND (@SourceId   IS NULL OR l.SourceId  = @SourceId)
+      AND (@PartnerId  IS NULL OR l.PartnerId = @PartnerId)
+      AND (@Unassigned = 0 OR l.OwnerId IS NULL)
+      AND (@Overdue = 0 OR (l.NextFollowupDate < /*120*/ CASE WHEN CAST(l.NextFollowupDate AS TIME) = '00:00' THEN @Today ELSE GETDATE() END AND st.Code IN ('open','qualified')))
+      AND (@FromDate IS NULL OR l.CreatedAt >= @FromDate)
+      AND (@ToEx     IS NULL OR l.CreatedAt <  @ToEx)
+      AND (@SearchTerm IS NULL OR l.Name LIKE '%' + @SearchTerm + '%'
+                              OR l.Company LIKE '%' + @SearchTerm + '%'
+                              OR l.MobileNo LIKE '%' + @SearchTerm + '%'
+                              OR l.Email LIKE '%' + @SearchTerm + '%'
+                              OR l.City LIKE '%' + @SearchTerm + '%')
+      AND (
+            (    (@UseBranchScope = 0 OR l.BranchId IN (SELECT BranchId FROM @BranchIds))
+             AND (@UseOwnerScope  = 0 OR l.OwnerId  IN (SELECT OwnerId  FROM @OwnerIds)) )
+         OR (@UserId IS NOT NULL AND (l.OwnerId = @UserId OR (l.OwnerId IS NULL AND l.CreatedBy = @UserId)))
+          )
+    ORDER BY CASE WHEN @SortBy IS NULL AND @Overdue = 1 THEN l.NextFollowupDate END ASC,
+             CASE WHEN @SortBy = 'lastActivity' AND la.LastActivityAt   IS NULL THEN 1
+                  WHEN @SortBy = 'value'        AND l.EstValue          IS NULL THEN 1
+                  WHEN @SortBy = 'nextFollowUp' AND l.NextFollowupDate  IS NULL THEN 1 ELSE 0 END ASC,
+             CASE WHEN @SortDir = 'asc'  AND @SortBy = 'created'      THEN l.CreatedAt        END ASC,
+             CASE WHEN @SortDir = 'desc' AND @SortBy = 'created'      THEN l.CreatedAt        END DESC,
+             CASE WHEN @SortDir = 'asc'  AND @SortBy = 'lastActivity' THEN la.LastActivityAt  END ASC,
+             CASE WHEN @SortDir = 'desc' AND @SortBy = 'lastActivity' THEN la.LastActivityAt  END DESC,
+             CASE WHEN @SortDir = 'asc'  AND @SortBy = 'name'         THEN l.Name             END ASC,
+             CASE WHEN @SortDir = 'desc' AND @SortBy = 'name'         THEN l.Name             END DESC,
+             CASE WHEN @SortDir = 'asc'  AND @SortBy = 'value'        THEN l.EstValue         END ASC,
+             CASE WHEN @SortDir = 'desc' AND @SortBy = 'value'        THEN l.EstValue         END DESC,
+             CASE WHEN @SortDir = 'asc'  AND @SortBy = 'nextFollowUp' THEN l.NextFollowupDate END ASC,
+             CASE WHEN @SortDir = 'desc' AND @SortBy = 'nextFollowUp' THEN l.NextFollowupDate END DESC,
+             l.CreatedAt DESC, l.Id DESC
+    OFFSET (@PageNumber - 1) * @PageSize ROWS FETCH NEXT @PageSize ROWS ONLY;
+
+    -- Result set 1: page of leads
+    SELECT l.Id, l.CompId, l.BranchId, b.BranchName,
+           l.Name, l.Company, l.MobileNo, l.AltMobile, l.Email,
+           l.Address, l.City, l.State, l.Pincode,
+           l.SourceId, src.Value AS SourceName,
+           l.PartnerId, pr.Name AS PartnerName,
+           l.ProductId, p.Name AS ProductName,
+           l.StatusId, st.Value AS StatusName, st.Code AS StatusCode,
+           l.OwnerId, o.FullName AS OwnerName, o.Avatar AS OwnerAvatar,
+           l.EstValue, l.Remarks, l.NextFollowupDate, x.LastActivityAt,
+           (SELECT TOP 1 f.Type FROM dbo.tblFollowUp f WHERE f.CompId = l.CompId AND f.LeadId = l.Id AND f.Status = 'open' ORDER BY f.DueAt, f.Id) AS NextFollowupType,  -- 119
+           CAST(CASE WHEN l.NextFollowupDate < /*120*/ CASE WHEN CAST(l.NextFollowupDate AS TIME) = '00:00' THEN @Today ELSE GETDATE() END AND st.Code IN ('open','qualified') THEN 1 ELSE 0 END AS BIT) AS IsOverdue,
+           l.LostReasonId, l.WonAt, l.WonValue, l.CustomerId, l.LostAt, l.AssignedAt,
+           l.CreatedBy, l.EditBy, l.CreatedAt, l.UpdatedAt,
+           200 AS ResponseCode, 'Leads retrieved successfully' AS ResponseMess
+    FROM @Page x
+    JOIN dbo.tblLeads l ON l.Id = x.Id
+    JOIN dbo.tblLookup st ON st.Id = l.StatusId
+    LEFT JOIN dbo.tblLookup src ON src.Id = l.SourceId
+    LEFT JOIN dbo.tblPartner pr ON pr.Id = l.PartnerId
+    LEFT JOIN dbo.tblProduct p ON p.Id = l.ProductId
+    LEFT JOIN dbo.tblUser o ON o.Id = l.OwnerId
+    LEFT JOIN dbo.tblBranch b ON b.Id = l.BranchId
+    ORDER BY x.rn;
+
+    -- Result set 2: pagination
+    DECLARE @Total INT = ISNULL((SELECT MAX(Total) FROM @Page), 0);
+    IF @Total = 0 AND @PageNumber > 1
+        -- Asked for a page past the end: count still matters for the client.
+        SELECT @Total = COUNT(*)
+        FROM dbo.tblLeads l JOIN dbo.tblLookup st ON st.Id = l.StatusId
+        WHERE l.CompId = @CompId
+          AND (@BranchId   IS NULL OR l.BranchId  = @BranchId)
+          AND (@StatusId   IS NULL OR l.StatusId  = @StatusId)
+          AND (@StatusCode IS NULL OR st.Code     = @StatusCode)
+          AND (@ProductId  IS NULL OR l.ProductId = @ProductId)
+          AND (@OwnerId    IS NULL OR l.OwnerId   = @OwnerId)
+          AND (@SourceId   IS NULL OR l.SourceId  = @SourceId)
+          AND (@PartnerId  IS NULL OR l.PartnerId = @PartnerId)
+          AND (@Unassigned = 0 OR l.OwnerId IS NULL)
+          AND (@Overdue = 0 OR (l.NextFollowupDate < /*120*/ CASE WHEN CAST(l.NextFollowupDate AS TIME) = '00:00' THEN @Today ELSE GETDATE() END AND st.Code IN ('open','qualified')))
+          AND (@FromDate IS NULL OR l.CreatedAt >= @FromDate)
+          AND (@ToEx     IS NULL OR l.CreatedAt <  @ToEx)
+          AND (@SearchTerm IS NULL OR l.Name LIKE '%' + @SearchTerm + '%'
+                                  OR l.Company LIKE '%' + @SearchTerm + '%'
+                                  OR l.MobileNo LIKE '%' + @SearchTerm + '%'
+                                  OR l.Email LIKE '%' + @SearchTerm + '%'
+                                  OR l.City LIKE '%' + @SearchTerm + '%')
+          AND (
+                (    (@UseBranchScope = 0 OR l.BranchId IN (SELECT BranchId FROM @BranchIds))
+                 AND (@UseOwnerScope  = 0 OR l.OwnerId  IN (SELECT OwnerId  FROM @OwnerIds)) )
+             OR (@UserId IS NOT NULL AND (l.OwnerId = @UserId OR (l.OwnerId IS NULL AND l.CreatedBy = @UserId)))
+              );
+
+    SELECT @Total AS TotalRecords,
+           CASE WHEN @Total = 0 THEN 0 ELSE CEILING(CAST(@Total AS FLOAT) / @PageSize) END AS TotalPages,
+           @PageNumber AS CurrentPage,
+           @PageSize   AS PageSize;
+END
+GO
+
+SET NOEXEC OFF;
+GO
+
+-- ===========================================================================
+-- §7 menu rows — keyed on Route under 'Sales Reports' (ids differ per database)
+--
+-- The only table pointing at tblMenu is the legacy tblGroupAccess (MenuId, FK);
+-- its rows for the ten old children go first. None are written for the new
+-- rows: menus come from tblMenu.Module joined to tblGroupModule since 096
+-- (Ruling 10). 'Team Reports' (TAT / attendance) is renamed 'Work Reports'.
+-- ===========================================================================
+SET XACT_ABORT ON;
+BEGIN TRY
+    BEGIN TRAN;
+
+    DECLARE @Parent INT = (SELECT Id FROM dbo.tblMenu WHERE Description = 'Sales Reports' AND ParentId = 0);
+    IF @Parent IS NULL THROW 51221, '122 §7: no top-level ''Sales Reports'' menu row.', 1;
+
+    DECLARE @Old TABLE (Route NVARCHAR(200) PRIMARY KEY);
+    INSERT INTO @Old (Route) VALUES
+        (N'/reports/funnel'), (N'/reports/funnel?groupBy=source'), (N'/reports/pipeline-value'),
+        (N'/reports/leaderboard'), (N'/reports/activity'), (N'/reports/follow-up-compliance'),
+        (N'/reports/aging'), (N'/reports/lost'), (N'/reports/transfers'), (N'/reports/partners');
+
+    DELETE ga FROM dbo.tblGroupAccess ga
+    JOIN dbo.tblMenu m ON m.Id = ga.MenuId
+    WHERE m.ParentId = @Parent AND m.Route IN (SELECT Route FROM @Old);
+
+    DELETE FROM dbo.tblMenu WHERE ParentId = @Parent AND Route IN (SELECT Route FROM @Old);
+
+    INSERT INTO dbo.tblMenu (ParentId, Description, Image, FormId, MenuType, ActualId, IsAllowed, FormName, FormClass, OpenStyle, Route, Module, SortOrder)
+    SELECT @Parent, n.Title, NULL, 0, 1, 0, 1, NULL, NULL, 1, n.Route, 'sales_reports', n.SortOrder
+    FROM (VALUES (N'Team report',  N'/reports/sales/team',    1),
+                 (N'Lead sources', N'/reports/sales/sources', 2),
+                 (N'Open leads',   N'/reports/sales/open',    3),
+                 (N'Lost leads',   N'/reports/sales/lost',    4),
+                 (N'Won deals',    N'/reports/sales/won',     5)) n(Title, Route, SortOrder)
+    WHERE NOT EXISTS (SELECT 1 FROM dbo.tblMenu m WHERE m.Route = n.Route);
+
+    UPDATE dbo.tblMenu SET Description = 'Work Reports' WHERE Description = 'Team Reports' AND ParentId = 0;
+
+    COMMIT;
+END TRY
+BEGIN CATCH
+    IF @@TRANCOUNT > 0 ROLLBACK;
+    THROW;
+END CATCH;
+GO
+
+-- ===========================================================================
+-- §8 drop the old report procedures
+-- Reference check 2026-11-18 on TestCRM (sys.sql_modules LIKE each name): no
+-- module other than these twelve mentions any of them. sp_RptTat and
+-- sp_RptTatClocks stay.
+-- ===========================================================================
+DROP PROCEDURE IF EXISTS dbo.sp_RptFunnel, dbo.sp_RptFollowUpCompliance, dbo.sp_RptActivity,
+                         dbo.sp_RptLost, dbo.sp_RptAging, dbo.sp_RptTransfers,
+                         dbo.sp_RptPipelineValue, dbo.sp_RptLeaderboard, dbo.sp_RptPartners,
+                         dbo.sp_LeadsByStatus, dbo.sp_CallsPerUser, dbo.sp_ConversionBySource;
+GO
+
+-- ===========================================================================
+-- §9 VERIFY AFTER APPLY — read-only unless marked
+-- ===========================================================================
+-- TestCRM-only checks: V4 (it writes, inside a rolled-back transaction), V5's numbers, and
+-- the named people / ids in V8–V10 and V13. Every other check runs on any database with its own ids.
 -- (TestCRM: comp = 1, owner = 2 Ayush Mishra.)
 -- V1 tree: every person in view appears exactly once at Depth 0, and never twice under one ancestor.
 -- SELECT PersonId, COUNT(*) FROM dbo.fn_ReportTree(<comp>, <ownerId>, NULL, NULL) WHERE Depth = 0 GROUP BY PersonId HAVING COUNT(*) <> 1;   -- expect 0 rows
@@ -850,7 +1124,11 @@ GO
 -- SELECT * FROM #X WHERE Cell <> Drill;                                             -- expect 0 rows
 -- SELECT COUNT(*) AS Checked FROM #X;                                               -- expect (lines + 1) * 8
 -- DROP TABLE #S, #D, #X;
--- V8b the same block with @NodeId = <a manager at the start level, e.g. Priya Sharma> on the sp_RptSales call: expect 0 rows.
+-- V8b the same block with @NodeId = M (a manager at the start level, e.g. Priya Sharma 13) on the sp_RptSales call,
+--     and the TOTALS row drilled as M's whole team, not as "no person": in the cursor set
+--       @p = CASE WHEN @kind = 'unassigned' THEN NULL WHEN @kind = 'total' THEN M ELSE @k END,
+--       @r = CASE WHEN @kind IN ('team','total') THEN 1 ELSE 0 END   (a node level has no unassigned line).
+--     expect 0 rows.
 -- V8c the same block with an Own-reach staff id: @UserId = <staffId> and @OwnerIdsJson = '[<staffId>]' on both calls: expect 0 rows.
 -- V9 the same block for @GroupBy = 'source': p / r / un are not used; per line pass @GroupKey = s.GroupKey
 --    (@GroupKeyIsNull = 1 when it is NULL), metrics 'new' and 'new' with each @State
@@ -876,3 +1154,25 @@ GO
 --    Unassigned leads New 6 · Open 9 · Missed 5   Ayush Mishra (own) New 1 · Open 85   Rajesh Verma (74) Open 8
 --    lines sum: New 221 · Calls 209 · Visits+Meetings 110 · Won 6 (17000) · Lost 49 · Open 626 = V5;
 --    Missed 344 + 5 (Unassigned, the V13b rows) = 349 = V5.
+-- V14 sort, NULLs last: EXEC dbo.sp_FetchLeads @CompId = <c>, @UserId = <ownerId>, @PageSize = 5000, @SortBy = 'lastActivity', @SortDir = 'asc';
+--     and again with @SortDir = 'desc': rows with LastActivityAt NULL come last both times (and the same for
+--     @SortBy = 'value' on EstValue, 'nextFollowUp' on NextFollowupDate). @SortBy = 'bogus' = the default order.
+-- V15 default order unchanged: EXEC dbo.sp_FetchLeads @CompId = <c> (no sort): CreatedAt DESC, Id DESC, as before 122;
+--     with @Overdue = 1 it still leads with NextFollowupDate ASC. Result set 1 has LastActivityAt right after NextFollowupDate.
+-- V16 the old procedures are gone and nothing mentions them:
+-- SELECT name FROM sys.procedures WHERE name IN ('sp_RptFunnel','sp_RptFollowUpCompliance','sp_RptActivity','sp_RptLost',
+--   'sp_RptAging','sp_RptTransfers','sp_RptPipelineValue','sp_RptLeaderboard','sp_RptPartners',
+--   'sp_LeadsByStatus','sp_CallsPerUser','sp_ConversionBySource');                                     -- expect 0 rows
+-- SELECT OBJECT_NAME(object_id) FROM sys.sql_modules
+-- WHERE definition LIKE '%sp[_]RptFunnel%' OR definition LIKE '%sp[_]RptFollowUpCompliance%' OR definition LIKE '%sp[_]RptActivity%'
+--    OR definition LIKE '%sp[_]RptLost%' OR definition LIKE '%sp[_]RptAging%' OR definition LIKE '%sp[_]RptTransfers%'
+--    OR definition LIKE '%sp[_]RptPipelineValue%' OR definition LIKE '%sp[_]RptLeaderboard%' OR definition LIKE '%sp[_]RptPartners%'
+--    OR definition LIKE '%sp[_]LeadsByStatus%' OR definition LIKE '%sp[_]CallsPerUser%' OR definition LIKE '%sp[_]ConversionBySource%';
+--                                                                                                       -- expect 0 rows
+-- V17 SELECT Description, Route, Module, SortOrder FROM dbo.tblMenu
+--     WHERE ParentId = (SELECT Id FROM dbo.tblMenu WHERE Description = 'Sales Reports' AND ParentId = 0) ORDER BY SortOrder;
+--     expect exactly: Team report /reports/sales/team 1 · Lead sources /reports/sales/sources 2 · Open leads /reports/sales/open 3
+--     · Lost leads /reports/sales/lost 4 · Won deals /reports/sales/won 5, all Module 'sales_reports'
+-- V18 SELECT COUNT(*) FROM dbo.tblMenu WHERE Description = 'Team Reports';                    -- expect 0
+--     SELECT COUNT(*) FROM dbo.tblMenu WHERE Description = 'Work Reports' AND ParentId = 0;    -- expect 1
+-- V19 SELECT COUNT(*) FROM dbo.tblGroupAccess ga WHERE NOT EXISTS (SELECT 1 FROM dbo.tblMenu m WHERE m.Id = ga.MenuId);   -- expect 0
