@@ -74,3 +74,10 @@ export const COLUMNS = Object.fromEntries([
   col("avgDays", "Avg days open", "stock", "days", null, (l) => (Number(l.DaysOpenN) ? Number(l.DaysOpenSum) / Number(l.DaysOpenN) : null), null,
     "From created to lost, on average."),
 ].map((c) => [c.key, c]));
+
+// The colour-key line above every summary, in this order.
+export const KEY_LEGEND = [
+  { k: "new", label: "New" }, { k: "call", label: "Calls" }, { k: "visit", label: "Visits & meetings" },
+  { k: "won", label: "Won" }, { k: "lost", label: "Lost" }, { k: "late", label: "Missed · overdue" },
+  { k: "idle", label: "Not touched · no next follow-up" }, { k: "stock", label: "Open · due · value" },
+];

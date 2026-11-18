@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Box, Popover, useMediaQuery } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { ChevronRight, MoreHorizontal } from "lucide-react";
+import { Link } from "react-router-dom";
 
 import IconButton from "./IconButton";
 
@@ -71,7 +72,9 @@ export default function PageHeader({
           >
             {breadcrumb.map((crumb, i) => (
               <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: "calc(4rem / 15)" }}>
-                {crumb.href ? (
+                {crumb.to ? (
+                  <Link to={crumb.to} style={{ color: p.text.secondary, textDecoration: "none" }}>{crumb.label}</Link>
+                ) : crumb.href ? (
                   <a href={crumb.href} style={{ color: p.text.secondary, textDecoration: "none" }}>{crumb.label}</a>
                 ) : (
                   <span>{crumb.label}</span>

@@ -1,5 +1,35 @@
 // Bilingual (Hindi default, English toggle) how-to guides shown by the
 // HelpGuide "?" button on the main working screens. Each step has {hi, en}.
+// The five sales reports: step 1 says what one line is and what the dates
+// mean on that report; step 2 is the same on all of them.
+const SALES_REPORT_STEP2 = {
+  hi: "हर संख्या एक link है — उस पर क्लिक करने से ठीक वही पंक्तियाँ खुलती हैं जो गिनी गईं। Export स्क्रीन पर दिख रहा डेटा डाउनलोड करता है। तारीखें और फ़िल्टर पेज के address में रहते हैं, इसलिए copy किया link या bookmark वही रिपोर्ट खोलता है।",
+  en: "Every number is a link to exactly the rows it counted. Export downloads what is on screen. The address bar holds the dates and filters, so a copied link or a bookmark opens the same report.",
+};
+const salesGuide = (titleHi, titleEn, step1) => ({ titleHi, titleEn, steps: [step1, SALES_REPORT_STEP2] });
+const SALES_REPORT_GUIDES = {
+  salesTeam: salesGuide("Team report कैसे पढ़ें", "How to read the Team report", {
+    hi: "आपके नीचे हर व्यक्ति की एक पंक्ति। किसी manager की पंक्ति उसकी पूरी टीम है, वह खुद भी शामिल; तारीखें वे दिन हैं जिनमें काम हुआ।",
+    en: "One line per person under you. A manager's line is their whole team, themselves included; the dates are the days the work was done.",
+  }),
+  salesSources: salesGuide("Lead sources कैसे पढ़ें", "How to read Lead sources", {
+    hi: "हर source की एक पंक्ति। तारीखें बताती हैं कि leads कब बनीं; बाकी कॉलम बताते हैं कि वे leads आज किस हाल में हैं।",
+    en: "One line per source. The dates are when the leads were created; the other columns say what those leads are today.",
+  }),
+  salesOpen: salesGuide("Open leads कैसे पढ़ें", "How to read Open leads", {
+    hi: "अभी जिनके पास open leads हैं, उनमें हर व्यक्ति की एक पंक्ति। तारीख सिर्फ़ यह सीमित करती है कि lead कब बनी।",
+    en: "One line per person holding open leads right now. The date only narrows by when the lead was created.",
+  }),
+  salesLost: salesGuide("Lost leads कैसे पढ़ें", "How to read Lost leads", {
+    hi: "हर कारण की एक पंक्ति। तारीखें वे दिन हैं जब leads lost मार्क हुईं।",
+    en: "One line per reason. The dates are when the leads were marked lost.",
+  }),
+  salesWon: salesGuide("Won deals कैसे पढ़ें", "How to read Won deals", {
+    hi: "जीती गई हर lead की एक पंक्ति। तारीखें वे दिन हैं जब वह won मार्क हुई।",
+    en: "One line per lead won. The dates are when it was marked won.",
+  }),
+};
+
 export const HELP_GUIDES = {
   tasks: {
     titleHi: "टास्क कैसे इस्तेमाल करें",
@@ -165,6 +195,7 @@ export const HELP_GUIDES = {
       },
     ],
   },
+  ...SALES_REPORT_GUIDES,
   tickets: {
     titleHi: "शिकायतें (Tickets) कैसे संभालें",
     titleEn: "How to handle complaints (Tickets)",

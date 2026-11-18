@@ -56,6 +56,7 @@ const AttendanceReport = lazy(() => import("./pages/Reports/AttendanceReport"));
 const TransfersReport = lazy(() => import("./pages/Reports/Transfers"));
 const PipelineValueReport = lazy(() => import("./pages/Reports/PipelineValue"));
 const LeaderboardReport = lazy(() => import("./pages/Reports/Leaderboard"));
+const SalesReport = lazy(() => import("./pages/Reports/sales/SalesReport"));
 
 // Support / ticketing module (Spec 2)
 const Tickets = lazy(() => import("./pages/Support/Tickets"));
@@ -80,7 +81,7 @@ export const routesConfig = [
   { path: "/sales", element: <SectionRedirect prefix="/sales" fallback="/sales/leads" /> },
   { path: "/support", element: <SectionRedirect prefix="/support" fallback="/support/tickets" /> },
   { path: "/settings", element: <SectionRedirect prefix="/settings" fallback="/settings/custom-fields" /> },
-  { path: "/reports", element: <SectionRedirect prefix="/reports" fallback="/reports/funnel" /> },
+  { path: "/reports", element: <SectionRedirect prefix="/reports" fallback="/reports/sales/team" /> },
   { path: "/admin", element: <SectionRedirect prefix="/admin" fallback="/users" /> },
   { path: "/dashboard/*", element: <ProtectedRoute element={<Dashboard />} /> },
   // My Work is retired (2026-10-11): Today › Mine shows the same open tasks
@@ -119,6 +120,10 @@ export const routesConfig = [
   { path: "/reports/leads-by-status", element: <Navigate to="/reports/funnel" replace /> },
   { path: "/reports/calls-per-user", element: <Navigate to="/reports/activity" replace /> },
   { path: "/reports/conversion-by-source", element: <Navigate to="/reports/funnel?groupBy=source" replace /> },
+  { path: "/reports/sales/team", element: <ProtectedRoute element={<SalesReport report="team" />} /> },
+  { path: "/reports/sales/sources", element: <ProtectedRoute element={<SalesReport report="sources" />} /> },
+  { path: "/reports/sales/open", element: <ProtectedRoute element={<SalesReport report="open" />} /> },
+  { path: "/reports/sales/lost", element: <ProtectedRoute element={<SalesReport report="lost" />} /> },
   { path: "/reports/funnel", element: <ProtectedRoute element={<FunnelReport />} /> },
   { path: "/reports/follow-up-compliance", element: <ProtectedRoute element={<FollowUpComplianceReport />} /> },
   { path: "/reports/activity", element: <ProtectedRoute element={<ActivityReport />} /> },

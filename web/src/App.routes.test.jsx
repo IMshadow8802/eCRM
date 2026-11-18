@@ -7,6 +7,7 @@ import { routesConfig } from "./App";
 import useAuthStore from "./stores/useAuthStore";
 import SectionRedirect from "./components/SectionRedirect";
 import HomeRedirect from "./components/HomeRedirect";
+import ProtectedRoute from "./components/ProtectedRoutes";
 
 const menu = (menuid, parentid, description, route) => ({
   menuid,
@@ -35,7 +36,7 @@ describe("section landing redirects", () => {
     ["/sales", "/sales/leads"],
     ["/support", "/support/tickets"],
     ["/settings", "/settings/custom-fields"],
-    ["/reports", "/reports/funnel"],
+    ["/reports", "/reports/sales/team"],
     ["/admin", "/users"],
   ])("%s is wired to a SectionRedirect falling back to %s", (from, fallback) => {
     const route = routesConfig.find((r) => r.path === from);
@@ -174,6 +175,16 @@ describe("retired sales routes", () => {
       "/reports/pipeline-value",
       "/reports/leaderboard",
     ]));
+  });
+});
+
+// Sales reports rebuild: four summary reports, one frame.
+describe("sales report routes", () => {
+  it.each(["team", "sources", "open", "lost"])("/reports/sales/%s renders SalesReport behind ProtectedRoute", (slug) => {
+    const route = routesConfig.find((r) => r.path === `/reports/sales/${slug}`);
+    expect(route).toBeTruthy();
+    expect(route.element.type).toBe(ProtectedRoute);
+    expect(route.element.props.element.props.report).toBe(slug);
   });
 });
 

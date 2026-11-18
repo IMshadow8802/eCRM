@@ -12,7 +12,7 @@ export const REPORTS = {
     firstHeader: "Person",
     columns: ["new", "calls", "visits", "due", "missed", "won", "wonValue", "lost", "openNow", "overdueNow"],
     exportOnly: ["other", "onTime", "late", "skipped"],
-    fileKey: "team-report",
+    fileKey: "team-report", guide: "salesTeam",
   },
   sources: {
     slug: "sources", title: "Lead sources", subtitle: "where leads came from, and what became of them", path: "/reports/sales/sources",
@@ -20,7 +20,7 @@ export const REPORTS = {
     firstHeader: "Source",
     columns: ["new", "cohortOpen", "cohortWon", "cohortWonValue", "cohortLost", "cohortJunk", "conversion", "untouched"],
     exportOnly: [],
-    fileKey: "lead-sources",
+    fileKey: "lead-sources", guide: "salesSources",
   },
   open: {
     slug: "open", title: "Open leads", subtitle: "What is open right now, per person", path: "/reports/sales/open",
@@ -28,7 +28,7 @@ export const REPORTS = {
     firstHeader: "Person",
     columns: ["open", "age0", "age8", "age31", "age90", "openValue", "overdue", "noNext", "stale"],
     exportOnly: [],
-    fileKey: "open-leads",
+    fileKey: "open-leads", guide: "salesOpen",
   },
   lost: {
     slug: "lost", title: "Lost leads", subtitle: "why leads were lost", path: "/reports/sales/lost",
@@ -36,12 +36,12 @@ export const REPORTS = {
     firstHeader: "Reason",
     columns: ["lostN", "share", "lostValue", "avgDays"],
     exportOnly: [],
-    fileKey: "lost-leads",
+    fileKey: "lost-leads", guide: "salesLost",
   },
   won: {
     slug: "won", title: "Won deals", subtitle: "Every lead won in these days", path: "/reports/sales/won",
     groupBy: "source", dateMeans: "Won in", defaultPreset: "month", allowAny: false, previous: true,
     firstHeader: null, columns: null, exportOnly: null,
-    fileKey: "won-deals",
+    fileKey: "won-deals", guide: "salesWon",
   },
 };

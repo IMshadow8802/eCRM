@@ -6,6 +6,7 @@ import PageHeader from "./PageHeader";
 import { Home } from "lucide-react";
 import { useState } from "react";
 import { HeaderSlotContext } from "./headerSlot";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 
 // A stand-in for RootLayout + TopNav: the layout owns the element, the bar renders it.
 function Layout({ children }) {
@@ -39,6 +40,24 @@ describe("PageHeader", () => {
     );
     expect(screen.getByRole("link", { name: "Home" })).toBeInTheDocument();
     expect(screen.getByText("Tasks")).toBeInTheDocument();
+  });
+
+  it("a crumb with `to` is a router link: it navigates without a reload", () => {
+    function Where() { const l = useLocation(); return <output data-testid="where">{l.pathname + l.search}</output>; }
+    render(
+      <ThemeProvider theme={buildTheme()}>
+        <MemoryRouter initialEntries={["/reports/sales/team?at=9"]}>
+          <Routes><Route path="*" element={<PageHeader title="Neha" breadcrumb={[{ label: "Team report", to: "/reports/sales/team?preset=week" }, { label: "Old", href: "/old" }]} />} /></Routes>
+          <Where />
+        </MemoryRouter>
+      </ThemeProvider>,
+    );
+    const link = screen.getByRole("link", { name: "Team report" });
+    expect(link.getAttribute("href")).toMatch(/\/reports\/sales\/team\?preset=week$/);
+    // a router link handles the click itself (default prevented = no page load)
+    expect(fireEvent.click(link)).toBe(false);
+    expect(screen.getByTestId("where")).toHaveTextContent("/reports/sales/team?preset=week");
+    expect(screen.getByRole("link", { name: "Old" })).toHaveAttribute("href", "/old");
   });
 
   it("icon + actions + tabs slots render", () => {
