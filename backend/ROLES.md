@@ -173,9 +173,7 @@ Controllers read `req.scope.isAdmin`, not the JWT claim.
 ## Known-open
 
 - **Login/logout are not audited.**
-- **The three spec-1 report SPs** (`sp_LeadsByStatus`, `sp_CallsPerUser`, `sp_ConversionBySource`) scope by branch only; they go with the `/reports/*` redirects.
-- **The leaderboard ranks only reps the caller sees in full** (`sp_RptLeaderboard` restricts the rep list to `@OwnerIds`; `079` adds the branch half, pending apply). The caller is always listed.
-- **Team reach is not a superset of a member's Own reach in the follow-up list** (`sp_FetchFollowUps` matches `AssignedTo` only in the `@UserId` escape hatch). The three people reports carry `AssignedTo/DoneBy IN @OwnerIds` on purpose and count more than the page shows; read `sp_RptFollowUpCompliance`'s header before changing.
+- **Team reach is not a superset of a member's Own reach in the follow-up list** (`sp_FetchFollowUps` matches `AssignedTo` only in the `@UserId` escape hatch). `fn_SalesReportRows`' people-subject predicate (every follow-up and call row) accepts the actor (`DoneBy`/`AssignedTo`, or `tblCall.UserId`) in `@OwnerIds` on purpose, so the sales reports count more than the page shows; read the function's header in `sql/122` before changing.
 - **`tblBranch` has no `CompId`** (one database per client), so `sp_FetchBranches` is company-blind.
 
 ---
@@ -200,4 +198,6 @@ Controllers read `req.scope.isAdmin`, not the JWT claim.
 - **TAT verdict** on a breached task clock: a `ReportsTo` ancestor of the assignee, or the task's workspace owner/manager (`tblWorkspaceMembers`), or an admin; **never the assignee on their own clock**. Personal workspaces have no TAT. Hold-everyone needs workspace owner/manager or the task's creator; an assignee may hold or release only their own.
 - **Sessions:** an admin may end any user's sessions (`/api/presence/endSession`); nobody ends their own that way (they sign out).
 
-Team reports (`/api/reports/tat`, `/api/reports/attendance`) have no module: any signed-in user may call them, and the controller scopes the rows to the user's attendance reach plus their `ReportsTo` subtree. An employee sees only their own rows; an `OwnerId` outside that scope returns no rows.
+Work reports (`/api/reports/tat`, `/api/reports/attendance`) have no module: any signed-in user may call them, and the controller scopes the rows to the user's attendance reach plus their `ReportsTo` subtree. An employee sees only their own rows; an `OwnerId` outside that scope returns no rows.
+
+Sales reports (`/api/reports/sales`, `/api/reports/salesRows`) need `sales_reports` view and use `leads` reach; staff may be given `sales_reports`: with Own reach they see one line, themselves.
