@@ -23,7 +23,8 @@ appId: com.shadowider.eCRM
 # Defaults: status New, owner = me, first follow-up Tomorrow.
 - assertVisible: "Status: New"
 - assertVisible: "Owner: Ayush Mishra \\(you\\)"
-- assertVisible: "Call on .*"
+- scrollUntilVisible:
+    element: "Call on .*"
 # Save sits in the band (E 16).
 - tapOn: "Save"
 - assertVisible: "MAESTRO Lead ${output.stamp}"

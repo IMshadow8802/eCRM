@@ -20,6 +20,8 @@ appId: com.shadowider.eCRM
     centerElement: true
 - tapOn: "One line — what is wrong"
 - inputText: "MAESTRO complaint ${output.stamp}"
+- scrollUntilVisible:
+    element: "Category: Not set"
 - tapOn: "Category: Not set"
 - tapOn: "Technical"
 - tapOn: "Priority: Not set"
