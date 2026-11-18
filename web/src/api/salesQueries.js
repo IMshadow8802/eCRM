@@ -55,6 +55,9 @@ export const SALES_ENDPOINTS = {
     pipelineValue: "/api/reports/pipelineValue",
     leaderboard: "/api/reports/leaderboard",
     partners: "/api/reports/partners",
+    // Sales reports rebuild: sp_RptSales (summary lines) and sp_RptSalesRows (the rows behind a number).
+    sales: "/api/reports/sales",
+    salesRows: "/api/reports/salesRows",
   },
 };
 
@@ -109,3 +112,5 @@ export const transfers = post(SALES_ENDPOINTS.reports.transfers);
 export const pipelineValue = post(SALES_ENDPOINTS.reports.pipelineValue);
 export const leaderboard = post(SALES_ENDPOINTS.reports.leaderboard);
 export const partners = post(SALES_ENDPOINTS.reports.partners);
+export const salesReport = post(SALES_ENDPOINTS.reports.sales);
+export const salesReportRows = post(SALES_ENDPOINTS.reports.salesRows);

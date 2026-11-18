@@ -45,6 +45,8 @@ describe("SALES_ENDPOINTS", () => {
       pipelineValue: "/api/reports/pipelineValue",
       leaderboard: "/api/reports/leaderboard",
       partners: "/api/reports/partners",
+      sales: "/api/reports/sales",
+      salesRows: "/api/reports/salesRows",
     });
     expect(SALES_ENDPOINTS.reports).not.toHaveProperty("pipelineFunnel");
   });
@@ -99,6 +101,8 @@ const FETCHERS = {
   transfers: SALES_ENDPOINTS.reports.transfers,
   pipelineValue: SALES_ENDPOINTS.reports.pipelineValue,
   leaderboard: SALES_ENDPOINTS.reports.leaderboard,
+  salesReport: SALES_ENDPOINTS.reports.sales,
+  salesReportRows: SALES_ENDPOINTS.reports.salesRows,
 };
 
 describe("salesQueries", () => {
