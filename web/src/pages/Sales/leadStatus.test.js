@@ -55,7 +55,8 @@ describe("leadsParamsToState / leadsStateToParams", () => {
     const bad = leadsParamsToState(new URLSearchParams("OwnerId=abc&created=nonsense&sort=;drop&dir=sideways"), dayjs(NOW));
     expect(bad.filters.OwnerId).toBe("");
     expect(bad.created.preset).toBe("any");
-    expect(bad.sorting).toEqual([{ id: "created", desc: true }]);
+    expect(bad.sorting).toEqual([]);
+    expect(leadsParamsToState(new URLSearchParams(""), dayjs(NOW)).sorting).toEqual([]);
   });
 
   it("reads every id filter and a backwards custom range as an error", () => {
@@ -72,8 +73,11 @@ describe("leadsParamsToState / leadsStateToParams", () => {
   });
 
   it("writes only what differs from the defaults", () => {
-    expect(leadsStateToParams({ filters: { OwnerId: 17, StatusId: "" }, created: { preset: "any" }, sorting: [{ id: "created", desc: true }] }))
+    expect(leadsStateToParams({ filters: { OwnerId: 17, StatusId: "" }, created: { preset: "any" }, sorting: [] }))
       .toEqual({ OwnerId: "17" });
+    // A chosen Created ↓ is a sort, not the default: it survives a reload.
+    expect(leadsStateToParams({ filters: {}, created: { preset: "any" }, sorting: [{ id: "created", desc: true }] }))
+      .toEqual({ sort: "created", dir: "desc" });
     expect(leadsStateToParams({ filters: {}, created: { preset: "custom", from: "2026-09-01", to: "2026-09-30" }, sorting: [{ id: "value", desc: false }] }))
       .toEqual({ created: "custom", from: "2026-09-01", to: "2026-09-30", sort: "value", dir: "asc" });
     expect(leadsStateToParams({ filters: {}, created: { preset: "yesterday" }, sorting: [{ id: "created", desc: false }] }))

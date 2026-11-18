@@ -244,9 +244,12 @@ describe("Leads page (spec 1)", () => {
     expect(lastCfg().columns.filter((c) => c.enableSorting).map((c) => c.id)).toEqual(["name", "created", "lastActivity", "value", "nextFollowUp"]);
   });
 
-  it("first request sorts by Created, newest first, with no date range", () => {
+  // The proc's own order applies until the user picks a sort: newest first,
+  // or most overdue first on the Overdue tab (sp_FetchLeads, @SortBy NULL).
+  it("first request sends no sort and no date range", () => {
     renderPage();
-    expect(lastLeadsBody()).toMatchObject({ SortBy: "created", SortDir: "desc" });
+    expect(lastLeadsBody()).not.toHaveProperty("SortBy");
+    expect(lastLeadsBody()).not.toHaveProperty("SortDir");
     expect(lastLeadsBody()).not.toHaveProperty("FromDate");
     expect(screen.getByTestId("location").textContent).toBe("");
   });
@@ -280,6 +283,16 @@ describe("Leads page (spec 1)", () => {
     expect(lastLeadsBody()).not.toHaveProperty("FromDate");
     expect(lastLeadsBody()).not.toHaveProperty("ToDate");
     expect(search().has("created")).toBe(false);
+  });
+
+  // Regression: SortBy="created" was always sent, which overrode the proc's
+  // most-overdue-first order on the Overdue tab.
+  it("Overdue preset with the default sort sends no SortBy", async () => {
+    renderPage();
+    await userEvent.setup().click(screen.getByRole("tab", { name: "Overdue" }));
+    expect(lastLeadsBody()).toMatchObject({ Overdue: true });
+    expect(lastLeadsBody()).not.toHaveProperty("SortBy");
+    expect(lastLeadsBody()).not.toHaveProperty("SortDir");
   });
 
   it("clicking the Last activity header sorts by it and writes it to the address bar", async () => {

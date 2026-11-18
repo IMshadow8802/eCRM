@@ -54,7 +54,6 @@ export const statusChipColors = (code) => {
 
 // The sort names sp_FetchLeads understands (= the sortable columns' ids).
 export const LEAD_SORTS = ["name", "created", "lastActivity", "value", "nextFollowUp"];
-const DEFAULT_SORT = { id: "created", desc: true };
 const FILTER_KEYS = ["StatusId", "ProductId", "OwnerId", "SourceId", "BranchId", "PartnerId"];
 const RANGE = { key: "created", defaultPreset: "any" };
 
@@ -71,7 +70,9 @@ export function leadsParamsToState(params, today = dayjs()) {
   return {
     filters: Object.fromEntries(FILTER_KEYS.map((k) => [k, idParam(params.get(k))])),
     created: readRange(params, { ...RANGE, allowAny: true, today }),
-    sorting: [LEAD_SORTS.includes(sort) ? { id: sort, desc: params.get("dir") !== "asc" } : DEFAULT_SORT],
+    // No sort until the user picks one: the proc's own order applies (newest
+    // first; most overdue first on the Overdue tab), so no column shows an arrow.
+    sorting: LEAD_SORTS.includes(sort) ? [{ id: sort, desc: params.get("dir") !== "asc" }] : [],
   };
 }
 
@@ -81,6 +82,6 @@ export function leadsStateToParams({ filters, created, sorting }) {
   for (const k of FILTER_KEYS) if (filters[k] !== "" && filters[k] != null) out[k] = String(filters[k]);
   Object.assign(out, writeRange(created, RANGE));
   const s = sorting[0];
-  if (s && (s.id !== DEFAULT_SORT.id || s.desc !== DEFAULT_SORT.desc)) Object.assign(out, { sort: s.id, dir: s.desc ? "desc" : "asc" });
+  if (s) Object.assign(out, { sort: s.id, dir: s.desc ? "desc" : "asc" });
   return out;
 }

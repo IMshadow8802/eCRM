@@ -362,13 +362,22 @@ describe("leadController.fetch filters", () => {
   it.each([
     [{ SortBy: "lastActivity", SortDir: "asc" }, { SortBy: "lastActivity", SortDir: "asc" }],
     [{ SortBy: "value" }, { SortBy: "value", SortDir: "desc" }],
-    [{ SortBy: "CreatedAt; DROP", SortDir: "up" }, { SortBy: null, SortDir: null }],
-    [{}, { SortBy: null, SortDir: null }],
   ])("fetch sends sort %j as %j", async (body, sent) => {
     database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[], []] });
     await leadController.fetch(baseReq({ body }), mockRes());
     expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_FetchLeads", expect.objectContaining(sent));
   });
+
+  // Regression: a DB without 122 §6 rejects unknown params, so with no (valid)
+  // sort the keys must be absent, not null — or every Leads list 500s there.
+  it.each([[{}], [{ SortBy: "CreatedAt; DROP", SortDir: "up" }], [{ SortDir: "asc" }]])(
+    "fetch with no valid sort %j sends no SortBy/SortDir keys", async (body) => {
+      database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[], []] });
+      await leadController.fetch(baseReq({ body }), mockRes());
+      const params = database.executeStoredProcedure.mock.calls[0][1];
+      expect(params).not.toHaveProperty("SortBy");
+      expect(params).not.toHaveProperty("SortDir");
+    });
 });
 
 describe("leadController.detail", () => {

@@ -127,8 +127,10 @@ const leadController = {
         Overdue = false, Unassigned = false, FromDate = null, ToDate = null, PartnerId = null,
       } = req.body;
       // Whitelisted here and again in the SP (122 §6); SortDir only rides with a column.
-      const SortBy = LEAD_SORTS.includes(req.body.SortBy) ? req.body.SortBy : null;
-      const SortDir = SortBy && (req.body.SortDir === "asc" ? "asc" : "desc");
+      // No valid sort = no keys at all: a DB without 122 §6 rejects unknown params.
+      const sort = LEAD_SORTS.includes(req.body.SortBy)
+        ? { SortBy: req.body.SortBy, SortDir: req.body.SortDir === "asc" ? "asc" : "desc" }
+        : {};
       // Clamped, not taken raw: PageSize went straight to the SP, and
       // sp_FetchLeads has no ceiling of its own.
       const { PageNumber, PageSize } = pageParams(req.body);
@@ -137,7 +139,7 @@ const leadController = {
         CompId, BranchId, PageNumber, PageSize, SearchTerm,
         StatusId, StatusCode, ProductId, OwnerId, SourceId, PartnerId: positiveInt(PartnerId),
         Overdue: bit(Overdue), Unassigned: bit(Unassigned),
-        FromDate: isoDay(FromDate), ToDate: isoDay(ToDate), SortBy, SortDir,
+        FromDate: isoDay(FromDate), ToDate: isoDay(ToDate), ...sort,
         ...scopeParams(req),
       });
 
