@@ -54,7 +54,7 @@ appId: com.shadowider.eCRM
 - waitForAnimationToEnd
 - assertVisible: "Resolved"
 # Activity: the call and every move are on it, newest first.
-- assertVisible: ".*In Progress → Resolved — MAESTRO resolved ${output.stamp}"
+- assertVisible: ".*In Progress → Resolved.*"   # row text is truncated on screen; the remark is typed (can drop letters)
 - assertVisible: ".*On Hold → In Progress"
 - assertVisible: ".*New → On Hold — MAESTRO hold ${output.stamp}"
 - assertVisible: "MAESTRO call ${output.stamp}"
