@@ -50,28 +50,47 @@ vi.mock("../stores/useAuthStore", () => {
         description: "Followups User-wise",
         permissions: { canView: true },
       },
-      // DB-driven Sales menu with an explicit nested Route (from tblMenu.Route).
+      // DB-driven Sales Reports menu with explicit nested Routes (tblMenu.Route, 122 §7).
       {
         menuid: 20,
         parentid: 0,
-        description: "Sales",
-        route: "/sales",
+        description: "Sales Reports",
+        route: "/reports",
         permissions: { canView: true },
       },
       {
         menuid: 21,
         parentid: 20,
-        description: "Pipeline",
-        route: "/sales/pipeline",
+        description: "Team report",
+        route: "/reports/sales/team",
         permissions: { canView: true },
       },
-      // tblMenu.Route may carry a query string (spec 4a re-points row 22 to
-      // /reports/funnel?groupBy=source), which the active check must handle.
       {
         menuid: 22,
         parentid: 20,
-        description: "By Source",
-        route: "/sales/leads?groupBy=source",
+        description: "Lead sources",
+        route: "/reports/sales/sources",
+        permissions: { canView: true },
+      },
+      {
+        menuid: 23,
+        parentid: 20,
+        description: "Open leads",
+        route: "/reports/sales/open",
+        permissions: { canView: true },
+      },
+      {
+        menuid: 24,
+        parentid: 20,
+        description: "Lost leads",
+        route: "/reports/sales/lost",
+        permissions: { canView: true },
+      },
+      {
+        menuid: 25,
+        parentid: 20,
+        description: "Won deals",
+        route: "/reports/sales/won",
         permissions: { canView: true },
       },
     ],
@@ -115,32 +134,24 @@ describe("Sidebar", () => {
     expect(screen.getByTestId("sidebar-Reports")).toBeInTheDocument();
   });
 
-  it("highlights a menu Route that carries a query string, and only when it matches", async () => {
+  it("highlights the report row on its own page and on the rows behind it, nothing else", async () => {
     const user = userEvent.setup();
-    // On /sales/leads with no params, the plain child is current, not the
-    // ?groupBy=source one. Before this, a query-carrying row never lit at all.
-    const { unmount } = renderSidebar({ route: "/sales/leads" });
-    await user.click(screen.getByTestId("sidebar-Sales"));
-    expect(screen.getByTestId("sidebar-By Source")).not.toHaveAttribute("aria-current");
-    unmount();
-
-    renderSidebar({ route: "/sales/leads?groupBy=source&preset=7d" });
-    await user.click(screen.getByTestId("sidebar-Sales"));
-    // Extra params (a report page writes its filters into the URL) must not
-    // blank the highlight — the row's own params just have to be present.
-    expect(screen.getByTestId("sidebar-By Source")).toHaveAttribute("aria-current", "page");
+    renderSidebar({ route: "/reports/sales/team/rows?metric=calls" });
+    await user.click(screen.getByTestId("sidebar-Sales Reports"));
+    expect(screen.getByTestId("sidebar-Team report")).toHaveAttribute("aria-current", "page");
+    expect(screen.getByTestId("sidebar-Lost leads")).not.toHaveAttribute("aria-current");
   });
 
-  it("renders the DB-driven Sales menu (from menuRights, not hardcoded)", () => {
+  it("renders the DB-driven Sales Reports menu (from menuRights, not hardcoded)", () => {
     renderSidebar();
-    expect(screen.getByTestId("sidebar-Sales")).toBeInTheDocument();
+    expect(screen.getByTestId("sidebar-Sales Reports")).toBeInTheDocument();
   });
 
   it("navigates to a submenu's DB Route when clicked", () => {
     renderSidebar();
-    fireEvent.click(screen.getByTestId("sidebar-Sales")); // expand parent
-    fireEvent.click(screen.getByTestId("sidebar-Pipeline"));
-    expect(mockNavigate).toHaveBeenCalledWith("/sales/pipeline");
+    fireEvent.click(screen.getByTestId("sidebar-Sales Reports")); // expand parent
+    fireEvent.click(screen.getByTestId("sidebar-Won deals"));
+    expect(mockNavigate).toHaveBeenCalledWith("/reports/sales/won");
   });
 
   it("shows the collapse toggle on desktop and calls the handler on click", () => {

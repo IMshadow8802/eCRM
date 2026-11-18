@@ -29,7 +29,7 @@ export function useReportFilters({ groupBys, dateBases = DATE_BASES, defaultBasi
   const filters = useMemo(() => {
     const f = readFilters(searchParams, { groupBys, defaultBasis, presets, defaultPreset });
     // readFilters validates against every known basis; a page may offer fewer.
-    // Without this, /reports/aging?basis=activity is accepted, changes the
+    // Without this, /reports/tat?basis=closed is accepted, changes the
     // numbers, and hides the control that would let you see or undo it.
     return dateBases.some((b) => b.value === f.basis) ? f : { ...f, basis: defaultBasis };
   }, [searchParams, groupBys, dateBases, defaultBasis, presets, defaultPreset]);

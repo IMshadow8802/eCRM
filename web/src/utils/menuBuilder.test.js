@@ -19,8 +19,6 @@ import {
   SupportAgentOutlined,
   ConfirmationNumberOutlined,
   AccountTreeOutlined,
-  FilterAltOutlined,
-  InsightsOutlined,
   DoneAllOutlined,
   CategoryOutlined,
   FlagOutlined,
@@ -29,7 +27,6 @@ import {
   ListAltOutlined,
   TimelineOutlined,
   TrendingDownOutlined,
-  HourglassBottomOutlined,
   SwapHorizOutlined,
   Inventory2Outlined,
   EmojiEventsOutlined,
@@ -66,8 +63,6 @@ describe("getMenuIcon", () => {
     // 091 §10: the Quotations row under Sales.
     ["Quotations", RequestQuoteOutlined],
     ["Pipeline", AccountTreeOutlined],
-    ["Pipeline Funnel", FilterAltOutlined],
-    ["Conversion by Source", InsightsOutlined],
     ["Resolution Summary", DoneAllOutlined],
     ["Ticket Categories", CategoryOutlined],
     ["Priorities", FlagOutlined],
@@ -77,18 +72,20 @@ describe("getMenuIcon", () => {
     // spec 4a sidebar rows — these were the circles (tblMenu rows 21, 40-46)
     ["Activity", TimelineOutlined],
     ["Lost Analysis", TrendingDownOutlined],
-    ["Aging", HourglassBottomOutlined],
     ["Transfers", SwapHorizOutlined],
     ["Products", Inventory2Outlined],
-    // "Leaderboard" contains "lead", so it must be matched before it
-    ["Leaderboard", EmojiEventsOutlined],
-    ["Follow-up Compliance", EventAvailableOutlined],
-    ["Pipeline Value", AccountTreeOutlined],
     ["Something Else", CircleOutlined],
     [undefined, CircleOutlined],
   ])("maps %s to the expected icon", (title, expected) => {
     expect(getMenuIcon(title)).toBe(expected);
   });
+});
+
+describe("getMenuIcon — sales report rows (122 §7)", () => {
+  it.each([
+    ["Team report", GroupsOutlined], ["Lead sources", SourceOutlined], ["Open leads", PersonSearchOutlined],
+    ["Lost leads", TrendingDownOutlined], ["Won deals", EmojiEventsOutlined], ["Work Reports", AssessmentOutlined],
+  ])("%s", (title, icon) => expect(getMenuIcon(title)).toBe(icon));
 });
 
 describe("menuPath", () => {
@@ -175,18 +172,18 @@ describe("buildDynamicMenu", () => {
       { menuid: 14, parentid: 0, description: "Sales", sortOrder: 50 },
       { menuid: 99, parentid: 0, description: "Unranked B", sortOrder: null },
       { menuid: 60, parentid: 0, description: "Unranked A" },
-      { menuid: 20, parentid: 11, description: "Funnel", sortOrder: 1 },
-      { menuid: 21, parentid: 11, description: "Activity", sortOrder: 5 },
-      { menuid: 45, parentid: 11, description: "Pipeline Value", sortOrder: 3 },
+      { menuid: 20, parentid: 11, description: "Team report", sortOrder: 1 },
+      { menuid: 21, parentid: 11, description: "Won deals", sortOrder: 5 },
+      { menuid: 45, parentid: 11, description: "Open leads", sortOrder: 3 },
       { menuid: 70, parentid: 11, description: "New report" },
-      { menuid: 22, parentid: 11, description: "Conversion by Source", sortOrder: 2 },
+      { menuid: 22, parentid: 11, description: "Lead sources", sortOrder: 2 },
     ];
     const menus = buildDynamicMenu(rights);
     expect(menus.map((m) => m.title)).toEqual([
       "Dashboard", "Today", "Tasks", "Sales", "Sales Reports", "Unranked A", "Unranked B",
     ]);
     expect(menus.find((m) => m.menuId === 11).submenus.map((s) => s.title)).toEqual([
-      "Funnel", "Conversion by Source", "Pipeline Value", "Activity", "New report",
+      "Team report", "Lead sources", "Open leads", "Won deals", "New report",
     ]);
   });
 
@@ -203,7 +200,6 @@ describe("menuTrail / isMenuPathActive", () => {
   const menus = buildDynamicMenu([
     { menuid: 30, parentid: 0, description: "Team Reports", route: "/reports/team" },
     { menuid: 31, parentid: 30, description: "Task deadlines", route: "/reports/tat" },
-    { menuid: 32, parentid: 30, description: "By source", route: "/reports/funnel?groupBy=source" },
     { menuid: 1, parentid: 0, description: "Leads", route: "/sales/leads" },
   ]);
   const at = (pathname, search = "") => ({ pathname, search });
@@ -214,9 +210,9 @@ describe("menuTrail / isMenuPathActive", () => {
     expect(menuTrail(menus, at("/nowhere"))).toEqual([]);
   });
 
-  it("a route with a query string needs its params in the URL", () => {
-    expect(isMenuPathActive("/reports/funnel?groupBy=source", at("/reports/funnel", "?groupBy=source&x=1"))).toBe(true);
-    expect(isMenuPathActive("/reports/funnel?groupBy=source", at("/reports/funnel", "?groupBy=owner"))).toBe(false);
+  it("matches the path exactly or as a prefix segment, never a partial word", () => {
+    expect(isMenuPathActive("/reports/sales/team", at("/reports/sales/team"))).toBe(true);
+    expect(isMenuPathActive("/reports/sales/team", at("/reports/sales/team/rows", "?metric=calls"))).toBe(true);
     expect(isMenuPathActive("/sales/lead", at("/sales/leads"))).toBe(false);
   });
 });

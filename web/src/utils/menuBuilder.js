@@ -19,8 +19,6 @@ import {
   SupportAgentOutlined,
   ConfirmationNumberOutlined,
   AccountTreeOutlined,
-  FilterAltOutlined,
-  InsightsOutlined,
   DoneAllOutlined,
   CategoryOutlined,
   FlagOutlined,
@@ -29,7 +27,6 @@ import {
   ListAltOutlined,
   TimelineOutlined,
   TrendingDownOutlined,
-  HourglassBottomOutlined,
   SwapHorizOutlined,
   Inventory2Outlined,
   EmojiEventsOutlined,
@@ -42,7 +39,7 @@ import {
  * Maps a menu title string to a MUI icon component.
  * Keyword matching, first-match-wins — so order matters: more specific
  * report/entity keywords come before the generic ones they overlap with
- * (e.g. "funnel" before "pipeline", "call" before "user").
+ * (e.g. "won" before "lead", "call" before "user").
  */
 export function getMenuIcon(menuTitle) {
   const title = String(menuTitle || "").toLowerCase();
@@ -62,16 +59,13 @@ export function getMenuIcon(menuTitle) {
   // 091 §10: the Quotations row under Sales. "quotation" is checked before
   // "lead" so a menu row titled "Lead Quotations" wouldn't fall through.
   if (title.includes("quotation")) return RequestQuoteOutlined;
-  if (title.includes("funnel")) return FilterAltOutlined;
-  // spec 4a report pages — each needs its own keyword or it falls through to
-  // the circle, which is what every unmapped menu row looked like.
+  // Report rows — each needs its own keyword or it falls through to the
+  // circle, which is what every unmapped menu row looked like.
   if (title.includes("activity")) return TimelineOutlined;
   if (title.includes("lost")) return TrendingDownOutlined;
-  if (title.includes("aging")) return HourglassBottomOutlined;
   if (title.includes("transfer")) return SwapHorizOutlined;
-  if (title.includes("leaderboard")) return EmojiEventsOutlined;
+  if (title.includes("won")) return EmojiEventsOutlined;
   if (title.includes("product")) return Inventory2Outlined;
-  if (title.includes("conversion")) return InsightsOutlined;
   if (title.includes("resolution")) return DoneAllOutlined;
   if (title.includes("categor")) return CategoryOutlined;
   if (title.includes("priorit")) return FlagOutlined;
@@ -163,17 +157,11 @@ export function buildDynamicMenu(menuRights) {
 }
 
 /**
- * Does a menu path match the current location? A Route may carry a query
- * string (tblMenu row 22 is /reports/funnel?groupBy=source), so the path part
- * is compared (exact or as a prefix segment), then the row's params must be
- * present in the URL. Shared by the sidebar highlight and the breadcrumb.
+ * Does a menu path match the current location (exact, or as a prefix
+ * segment)? Shared by the sidebar highlight and the breadcrumb.
  */
 export function isMenuPathActive(path, location) {
-  const [pathname, search] = String(path).split("?");
-  if (location.pathname !== pathname && !location.pathname.startsWith(`${pathname}/`)) return false;
-  if (!search) return true;
-  const here = new URLSearchParams(location.search);
-  return [...new URLSearchParams(search)].every(([k, v]) => here.get(k) === v);
+  return location.pathname === path || location.pathname.startsWith(`${path}/`);
 }
 
 /**

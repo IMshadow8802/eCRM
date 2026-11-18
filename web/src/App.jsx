@@ -44,18 +44,9 @@ const QuotationList = lazy(() => import("./pages/Sales/Quotations/QuotationList"
 const CustomFields = lazy(() => import("./pages/Settings/CustomFields"));
 const Lookups = lazy(() => import("./pages/Settings/Lookups"));
 const Products = lazy(() => import("./pages/Settings/Products"));
-// Sales reports (spec 4a) — one frame, eight config pages.
-const FunnelReport = lazy(() => import("./pages/Reports/Funnel"));
-const FollowUpComplianceReport = lazy(() => import("./pages/Reports/FollowUpCompliance"));
-const ActivityReport = lazy(() => import("./pages/Reports/Activity"));
-const PartnersReport = lazy(() => import("./pages/Reports/Partners"));
-const LostReport = lazy(() => import("./pages/Reports/Lost"));
-const AgingReport = lazy(() => import("./pages/Reports/Aging"));
+// Team reports + the rebuilt sales reports.
 const TatReport = lazy(() => import("./pages/Reports/TatReport"));
 const AttendanceReport = lazy(() => import("./pages/Reports/AttendanceReport"));
-const TransfersReport = lazy(() => import("./pages/Reports/Transfers"));
-const PipelineValueReport = lazy(() => import("./pages/Reports/PipelineValue"));
-const LeaderboardReport = lazy(() => import("./pages/Reports/Leaderboard"));
 const SalesReport = lazy(() => import("./pages/Reports/sales/SalesReport"));
 const SalesRows = lazy(() => import("./pages/Reports/sales/SalesRows"));
 
@@ -115,12 +106,7 @@ export const routesConfig = [
   { path: "/settings/custom-fields", element: <ProtectedRoute element={<CustomFields />} /> },
   { path: "/settings/lookups", element: <ProtectedRoute element={<Lookups />} /> },
   { path: "/settings/products", element: <ProtectedRoute element={<Products />} /> },
-  // Sales reports (spec 4a). Spec-1 paths redirect: bookmarks and the sidebar
-  // rows that were re-pointed in sql/075 both land on the new pages.
-  { path: "/reports/pipeline-funnel", element: <Navigate to="/reports/funnel" replace /> },
-  { path: "/reports/leads-by-status", element: <Navigate to="/reports/funnel" replace /> },
-  { path: "/reports/calls-per-user", element: <Navigate to="/reports/activity" replace /> },
-  { path: "/reports/conversion-by-source", element: <Navigate to="/reports/funnel?groupBy=source" replace /> },
+  // Sales reports rebuild. The old spec-4a pages are gone with no redirect (decision 32).
   { path: "/reports/sales/team", element: <ProtectedRoute element={<SalesReport report="team" />} /> },
   { path: "/reports/sales/sources", element: <ProtectedRoute element={<SalesReport report="sources" />} /> },
   { path: "/reports/sales/open", element: <ProtectedRoute element={<SalesReport report="open" />} /> },
@@ -130,17 +116,8 @@ export const routesConfig = [
   { path: "/reports/sales/open/rows", element: <ProtectedRoute element={<SalesRows report="open" />} /> },
   { path: "/reports/sales/lost/rows", element: <ProtectedRoute element={<SalesRows report="lost" />} /> },
   { path: "/reports/sales/won", element: <ProtectedRoute element={<SalesRows report="won" />} /> },
-  { path: "/reports/funnel", element: <ProtectedRoute element={<FunnelReport />} /> },
-  { path: "/reports/follow-up-compliance", element: <ProtectedRoute element={<FollowUpComplianceReport />} /> },
-  { path: "/reports/activity", element: <ProtectedRoute element={<ActivityReport />} /> },
-  { path: "/reports/partners", element: <ProtectedRoute element={<PartnersReport />} /> },
-  { path: "/reports/lost", element: <ProtectedRoute element={<LostReport />} /> },
-  { path: "/reports/aging", element: <ProtectedRoute element={<AgingReport />} /> },
   { path: "/reports/tat", element: <ProtectedRoute element={<TatReport />} /> },
   { path: "/reports/attendance", element: <ProtectedRoute element={<AttendanceReport />} /> },
-  { path: "/reports/transfers", element: <ProtectedRoute element={<TransfersReport />} /> },
-  { path: "/reports/pipeline-value", element: <ProtectedRoute element={<PipelineValueReport />} /> },
-  { path: "/reports/leaderboard", element: <ProtectedRoute element={<LeaderboardReport />} /> },
   // Support / complaints module (spec 2). The stage board is gone; its path
   // redirects so bookmarks and a stale sidebar row land on the list.
   { path: "/support/board", element: <Navigate to="/support/tickets" replace /> },

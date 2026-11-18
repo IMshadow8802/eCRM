@@ -166,7 +166,7 @@ describe("ReportTable on MRT", () => {
   });
 });
 
-describe("ReportPage (shell) states", () => {
+describe("ReportShellPage states", () => {
   const base = {
     title: "T",
     documentTitle: "T",

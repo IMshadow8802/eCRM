@@ -7,8 +7,6 @@ import { server } from "./mocks/server";
 
 const json = (data) => HttpResponse.json({ success: true, message: "ok", responseCode: 200, data });
 
-export const reportData = (over = {}) => ({ kpis: {}, rows: [], trend: [], range: {}, ...over });
-
 export function mockReportEndpoints(path, data, capture = {}) {
   server.use(
     http.post("*/api/users/fetchBranches", () => json({ branches: [{ Id: 1, BranchName: "HEAD OFFICE" }, { Id: 2, BranchName: "SOUTH EXTENSION" }] })),

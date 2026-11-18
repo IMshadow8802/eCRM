@@ -1,13 +1,21 @@
 import { describe, it, expect } from "vitest";
 import dayjs from "dayjs";
 
+import * as reportUtils from "./reportUtils";
 import {
   PRESETS, DATE_BASES, presetRange, readFilters, writeFilters, toBody,
-  formatValue, toCsv, leadsUrl, drillParams, GROUP_PARAM, idFilters, drillRange, truncTick } from "./reportUtils";
+  formatValue, toCsv, truncTick } from "./reportUtils";
 
 const TODAY = dayjs("2026-09-10");
 const GROUP_BYS = [{ value: "source", label: "Source" }, { value: "owner", label: "Owner" }];
 const params = (s) => new URLSearchParams(s);
+
+// Sales reports rebuild: the drill helpers left with the old report pages.
+it("exports exactly the helpers the team reports and filters use", () => {
+  expect(Object.keys(reportUtils).sort()).toEqual([
+    "DATE_BASES", "PRESETS", "formatValue", "presetRange", "rangeError", "readFilters", "toBody", "toCsv", "truncTick", "writeFilters",
+  ]);
+});
 
 describe("presetRange", () => {
   it.each([
@@ -104,28 +112,6 @@ describe("a page's own presets", () => {
   });
 });
 
-describe("drill helpers", () => {
-  const f = { from: "2026-08-01", to: "2026-08-31", basis: "created", groupBy: "source", BranchId: 2, OwnerId: null, SourceId: 11, ProductId: null };
-
-  it("idFilters carries the four filter-bar ids so a drill is not wider than its row", () => {
-    expect(idFilters(f)).toEqual({ BranchId: 2, OwnerId: null, SourceId: 11, ProductId: null });
-  });
-
-  it("drillRange carries the range only when it means CreatedAt on both sides", () => {
-    expect(drillRange(f)).toEqual({ from: "2026-08-01", to: "2026-08-31" });
-    // sp_FetchLeads narrows on CreatedAt, so a closed/activity range would
-    // drill into a different set of leads than the row counted.
-    expect(drillRange({ ...f, basis: "closed" })).toEqual({});
-    expect(drillRange({ ...f, basis: "activity" })).toEqual({});
-  });
-
-  it("drillParams drops the range on a non-created basis but keeps ids and the group", () => {
-    expect(drillParams({ ...f, basis: "closed" }, { GroupKey: 12 })).toEqual({
-      BranchId: 2, OwnerId: null, SourceId: 12, ProductId: null,
-    });
-  });
-});
-
 describe("writeFilters / toBody", () => {
   const base = { preset: "30d", from: "2026-08-12", to: "2026-09-10", basis: "created", groupBy: "source", BranchId: null, OwnerId: null, SourceId: null, ProductId: null };
 
@@ -209,34 +195,6 @@ describe("toCsv formula injection", () => {
     // display name silently becomes two rows and every later column shifts.
     const out = toCsv(cols, [{ GroupLabel: "Ravi\rKumar", Leads: 2 }]);
     expect(out).toBe('Rep,Leads\n"Ravi\rKumar",2');
-  });
-});
-
-describe("leadsUrl / drillParams", () => {
-  it("builds the Leads list URL without empty values", () => {
-    expect(leadsUrl({ SourceId: 11, OwnerId: null, from: "2026-08-01", to: "", BranchId: undefined })).toBe("/sales/leads?SourceId=11&from=2026-08-01");
-    expect(leadsUrl({})).toBe("/sales/leads");
-  });
-
-  it("maps the row's group onto the matching Leads filter and carries the range + active filters", () => {
-    const f = { groupBy: "source", from: "2026-08-01", to: "2026-08-31", BranchId: 2, OwnerId: null, SourceId: null, ProductId: null };
-    expect(drillParams(f, { GroupKey: 11, GroupLabel: "Website" })).toEqual({
-      BranchId: 2, OwnerId: null, SourceId: 11, ProductId: null, from: "2026-08-01", to: "2026-08-31",
-    });
-    // Key order is part of the contract: the URL is asserted as a string elsewhere.
-    expect(leadsUrl(drillParams(f, { GroupKey: 11 }))).toBe("/sales/leads?from=2026-08-01&to=2026-08-31&BranchId=2&SourceId=11");
-  });
-
-  it("adds nothing for a grouping the list cannot filter by, or a null key", () => {
-    const f = { groupBy: "team", from: "2026-08-01", to: "2026-08-31", BranchId: null, OwnerId: null, SourceId: null, ProductId: null };
-    expect(drillParams(f, { GroupKey: 16 })).toEqual({ BranchId: null, OwnerId: null, SourceId: null, ProductId: null, from: "2026-08-01", to: "2026-08-31" });
-    // A null GroupKey writes nothing: the active SourceId filter survives it,
-    // and a row with no key drills to the same list the filters already show.
-    expect(drillParams({ ...f, groupBy: "source", SourceId: 4 }, { GroupKey: null })).toMatchObject({ SourceId: 4 });
-    expect(drillParams({ ...f, groupBy: "source" }, { GroupKey: null })).toEqual(drillParams(f, { GroupKey: null }));
-    expect(GROUP_PARAM.status).toBe("StatusId");
-    expect(GROUP_PARAM.partner).toBe("PartnerId");
-    expect(leadsUrl({ PartnerId: 3 })).toBe("/sales/leads?PartnerId=3");
   });
 });
 

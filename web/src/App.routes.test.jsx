@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { act, cleanup, screen } from "@testing-library/react";
-import { Route, Routes } from "react-router-dom";
+import { Route, Routes, matchRoutes } from "react-router-dom";
 
 import renderWithProviders from "./test/renderWithProviders";
 import { routesConfig } from "./App";
@@ -139,42 +139,42 @@ describe("HomeRedirect", () => {
   });
 });
 
-// Spec 1 retired the lead pipeline board; spec 4a retired the three
-// single-number lead reports. Every old path survives only as a redirect so
-// bookmarks and the one-release-old sidebar rows land somewhere useful.
+// Spec 1 retired the lead pipeline board (still a redirect). The sales
+// reports rebuild retired every spec-4a report page and the spec-1 redirects
+// into them with no redirect at all (decision 32): an old link is a 404.
 describe("retired sales routes", () => {
-  const paths = routesConfig.map((r) => r.path);
   const redirect = (from) => {
     const route = routesConfig.find((r) => r.path === from);
     expect(route.element.type.name).toBe("Navigate");
     return route.element.props.to;
   };
+  // App.jsx mounts routesConfig followed by the "*" NotFound route.
+  const landsOn = (path) => matchRoutes([...routesConfig, { path: "*" }], path).at(-1).route.path;
 
   it("has no pipeline page, only a redirect", () => {
     expect(redirect("/sales/pipeline")).toBe("/sales/leads");
   });
 
-  it.each([
-    ["/reports/pipeline-funnel", "/reports/funnel"],
-    ["/reports/leads-by-status", "/reports/funnel"],
-    ["/reports/calls-per-user", "/reports/activity"],
-    ["/reports/conversion-by-source", "/reports/funnel?groupBy=source"],
-  ])("redirects %s to %s", (from, to) => {
-    expect(redirect(from)).toBe(to);
+  it("keeps products", () => {
+    expect(landsOn("/settings/products")).toBe("/settings/products");
   });
 
-  it("registers products and the eight spec-4a report pages (matching tblMenu.Route)", () => {
-    expect(paths).toEqual(expect.arrayContaining([
-      "/settings/products",
-      "/reports/funnel",
-      "/reports/follow-up-compliance",
-      "/reports/activity",
-      "/reports/lost",
-      "/reports/aging",
-      "/reports/transfers",
-      "/reports/pipeline-value",
-      "/reports/leaderboard",
-    ]));
+  it.each([
+    "/reports/funnel",
+    "/reports/follow-up-compliance",
+    "/reports/activity",
+    "/reports/lost",
+    "/reports/aging",
+    "/reports/transfers",
+    "/reports/pipeline-value",
+    "/reports/leaderboard",
+    "/reports/partners",
+    "/reports/pipeline-funnel",
+    "/reports/leads-by-status",
+    "/reports/calls-per-user",
+    "/reports/conversion-by-source",
+  ])("%s renders the NotFound page", (path) => {
+    expect(landsOn(path)).toBe("*");
   });
 });
 

@@ -36,15 +36,6 @@ describe("SALES_ENDPOINTS", () => {
       fetchBranches: "/api/users/fetchBranches",
     });
     expect(SALES_ENDPOINTS.reports).toEqual({
-      funnel: "/api/reports/funnel",
-      followUpCompliance: "/api/reports/followUpCompliance",
-      activity: "/api/reports/activity",
-      lost: "/api/reports/lost",
-      aging: "/api/reports/aging",
-      transfers: "/api/reports/transfers",
-      pipelineValue: "/api/reports/pipelineValue",
-      leaderboard: "/api/reports/leaderboard",
-      partners: "/api/reports/partners",
       sales: "/api/reports/sales",
       salesRows: "/api/reports/salesRows",
     });
@@ -93,14 +84,6 @@ const FETCHERS = {
   completeFollowUp: SALES_ENDPOINTS.followups.completeFollowUp,
   skipFollowUp: SALES_ENDPOINTS.followups.skipFollowUp,
   deleteFollowup: SALES_ENDPOINTS.followups.deleteFollowup,
-  funnel: SALES_ENDPOINTS.reports.funnel,
-  followUpCompliance: SALES_ENDPOINTS.reports.followUpCompliance,
-  activity: SALES_ENDPOINTS.reports.activity,
-  lost: SALES_ENDPOINTS.reports.lost,
-  aging: SALES_ENDPOINTS.reports.aging,
-  transfers: SALES_ENDPOINTS.reports.transfers,
-  pipelineValue: SALES_ENDPOINTS.reports.pipelineValue,
-  leaderboard: SALES_ENDPOINTS.reports.leaderboard,
   salesReport: SALES_ENDPOINTS.reports.sales,
   salesReportRows: SALES_ENDPOINTS.reports.salesRows,
 };
@@ -124,7 +107,11 @@ describe("salesQueries", () => {
     expect(apiClient.post).toHaveBeenCalledWith(SALES_ENDPOINTS.leads.fetchLeads, {});
   });
 
-  it("no longer exports the retired pipeline-era or spec-1 report fetchers", () => {
+  it("no longer exports the retired pipeline-era, spec-1 or spec-4a report fetchers", () => {
+    // sales reports rebuild: the nine spec-4a report fetchers are gone.
+    for (const name of ["funnel", "followUpCompliance", "activity", "lost", "aging", "transfers", "pipelineValue", "leaderboard", "partners"]) {
+      expect(salesQueries[name]).toBeUndefined();
+    }
     expect(salesQueries.moveLeadStage).toBeUndefined();
     expect(salesQueries.saveFollowup).toBeUndefined();
     expect(salesQueries.pipelineFunnel).toBeUndefined();

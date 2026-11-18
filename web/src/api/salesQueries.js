@@ -44,18 +44,8 @@ export const SALES_ENDPOINTS = {
     skipFollowUp: "/api/followups/skipFollowUp",
     deleteFollowup: "/api/followups/deleteFollowup",
   },
-  // Spec 4a report system — one POST shape, { kpis, rows, trend, range } back.
+  // Sales reports rebuild: sp_RptSales (summary lines) and sp_RptSalesRows (the rows behind a number).
   reports: {
-    funnel: "/api/reports/funnel",
-    followUpCompliance: "/api/reports/followUpCompliance",
-    activity: "/api/reports/activity",
-    lost: "/api/reports/lost",
-    aging: "/api/reports/aging",
-    transfers: "/api/reports/transfers",
-    pipelineValue: "/api/reports/pipelineValue",
-    leaderboard: "/api/reports/leaderboard",
-    partners: "/api/reports/partners",
-    // Sales reports rebuild: sp_RptSales (summary lines) and sp_RptSalesRows (the rows behind a number).
     sales: "/api/reports/sales",
     salesRows: "/api/reports/salesRows",
   },
@@ -102,15 +92,6 @@ export const completeFollowUp = post(SALES_ENDPOINTS.followups.completeFollowUp)
 export const skipFollowUp = post(SALES_ENDPOINTS.followups.skipFollowUp);
 export const deleteFollowup = post(SALES_ENDPOINTS.followups.deleteFollowup);
 
-// Reports (spec 4a)
-export const funnel = post(SALES_ENDPOINTS.reports.funnel);
-export const followUpCompliance = post(SALES_ENDPOINTS.reports.followUpCompliance);
-export const activity = post(SALES_ENDPOINTS.reports.activity);
-export const lost = post(SALES_ENDPOINTS.reports.lost);
-export const aging = post(SALES_ENDPOINTS.reports.aging);
-export const transfers = post(SALES_ENDPOINTS.reports.transfers);
-export const pipelineValue = post(SALES_ENDPOINTS.reports.pipelineValue);
-export const leaderboard = post(SALES_ENDPOINTS.reports.leaderboard);
-export const partners = post(SALES_ENDPOINTS.reports.partners);
+// Sales reports
 export const salesReport = post(SALES_ENDPOINTS.reports.sales);
 export const salesReportRows = post(SALES_ENDPOINTS.reports.salesRows);

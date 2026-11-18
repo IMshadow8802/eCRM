@@ -39,7 +39,7 @@ export default function QuotationList() {
   // searchParams every render (not seeded once into local state), so a
   // pasted /sales/quotations?Status=... link — or a reload of one — shows
   // the same filtered view instead of reverting to the defaults. Same
-  // round-trip ReportPage.jsx uses (readFilters/writeFilters); this page's
+  // round-trip ReportFilters.jsx uses (readFilters/writeFilters); this page's
   // filter set is small enough not to need a shared parser module for it.
   const [searchParams, setSearchParams] = useSearchParams();
   const filters = useMemo(() => ({
