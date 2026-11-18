@@ -11,6 +11,7 @@ flows:
   - complaints-lifecycle.yaml
   - complaints-transfer-escalate.yaml
   - leads-list.yaml
+  - leads-created.yaml
   - leads-create.yaml
   - leads-followup.yaml
   - leads-status.yaml

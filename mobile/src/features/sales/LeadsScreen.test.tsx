@@ -1,6 +1,6 @@
 import { StyleSheet } from "react-native";
 import { useState } from "react";
-import { act, fireEvent, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react-native";
 
 import { fetchCalls } from "../../api/callQueries";
 import { fetchLookups } from "../../api/configQueries";
@@ -11,6 +11,7 @@ import useAuthStore from "../../stores/useAuthStore";
 import type { Access, Lead, Lookup } from "../../types/api";
 import { envelope, lead, pagination } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
+import { pickDay } from "../../test/pickers";
 import { flat } from "../../test/style";
 import { PHONE, setWindow, TABLET } from "../../test/window";
 import { leadQueueParams } from "./leadHelpers";
@@ -131,18 +132,21 @@ it("while a search is set the pills drop their counts (no count storm per term);
   expect(fetchLeads).toHaveBeenCalledWith({ ...leadQueueParams("overdue", "all", 42, "patel"), PageSize: 1, PageNumber: 1 });
 });
 
+/** The status pills' radios (the Created sheet's choices are radios too, and stay mounted in tests). */
+const pillRadios = () => within(screen.getByLabelText("Filter by status")).queryAllByRole("radio");
+
 it("the status pills (7.2) narrow by StatusId and carry counts; New hides them", async () => {
   await mount();
   await screen.findByText("Ravi Patel");
   await waitFor(() =>
-    expect(screen.getAllByRole("radio").map((r) => r.props.accessibilityLabel)).toEqual(["All, 12", "New, 112", "Qualified, 512"]),
+    expect(pillRadios().map((r) => r.props.accessibilityLabel)).toEqual(["All, 12", "New, 112", "Qualified, 512"]),
   );
   await fireEvent.press(screen.getByRole("radio", { name: "Qualified, 512" }));
   await waitFor(() => expect(lastList()).toEqual(expect.objectContaining({ StatusId: 5, OwnerId: 42 })));
 
   await fireEvent.press(screen.getByRole("tab", { name: /^New/ }));
   await waitFor(() => expect(lastList()).toEqual(expect.objectContaining({ StatusId: 1, OwnerId: null })));
-  expect(screen.queryAllByRole("radio")).toHaveLength(0);
+  expect(screen.queryByLabelText("Filter by status")).toBeNull();
 });
 
 it("New waits for the statuses: no request that would list every status", async () => {
@@ -332,7 +336,7 @@ describe("as a tab", () => {
 
   // A mounted tab keeps its chip and search; Home's navigate must still land on
   // exactly the list its number counted.
-  it("a navigate() with a queue drops the status pill and search the user left", async () => {
+  it("a navigate() with a queue drops the status pill, search and created range the user left", async () => {
     const navigation = makeNavigation<"Leads">();
     let navigateTo: (params: { queue: "mine" }) => void = () => {};
     function Harness() {
@@ -345,6 +349,10 @@ describe("as a tab", () => {
     await fireEvent.changeText(screen.getByPlaceholderText("Search name, company, mobile"), "patel");
     await act(async () => { jest.advanceTimersByTime(300); });
     await waitFor(() => expect(lastList()).toEqual(expect.objectContaining({ StatusId: 5, SearchTerm: "patel" })));
+    // ...and the Created range: Home's numbers carry none.
+    await fireEvent.press(screen.getByTestId("created-filter"));
+    await fireEvent.press(screen.getByRole("radio", { name: "Yesterday" }));
+    await waitFor(() => expect(lastList()).toHaveProperty("FromDate"));
     await act(async () => navigateTo({ queue: "mine" }));
     await waitFor(() => expect(lastList()).toEqual({ ...leadQueueParams("mine", "all", 42, ""), PageNumber: 1 }));
     expect(screen.getByPlaceholderText("Search name, company, mobile").props.value).toBe("");
@@ -418,5 +426,101 @@ describe("T3: tablet two-pane", () => {
     answer(() => Promise.resolve(leadsReply([])));
     await mount();
     expect(await screen.findByText("No lead selected")).toBeOnTheScreen();
+  });
+});
+
+describe("the Created filter", () => {
+  beforeEach(() => jest.setSystemTime(new Date(2026, 10, 18, 9, 40)));
+
+  const chip = () => screen.getByTestId("created-filter");
+  const choose = async (label: string) => {
+    await fireEvent.press(chip());
+    await fireEvent.press(screen.getByRole("radio", { name: label }));
+  };
+  const calls = () => jest.mocked(fetchLeads).mock.calls.map(([p]) => p as FetchLeadsParams);
+  const YESTERDAY = { FromDate: "2026-11-17", ToDate: "2026-11-17" };
+
+  it("starts on any time and sends no dates", async () => {
+    await mount();
+    await screen.findByText("Ravi Patel");
+    expect(screen.getByText("Created: any time")).toBeOnTheScreen();
+    expect(calls().some((p) => "FromDate" in p)).toBe(false);
+  });
+
+  it("opens a sheet of the choices, the current one marked", async () => {
+    await mount();
+    await screen.findByText("Ravi Patel");
+    await fireEvent.press(chip());
+    expect(screen.getByText("Show leads created…")).toBeOnTheScreen();
+    const radios = screen.getAllByRole("radio").filter((r) => !pillRadios().includes(r));
+    expect(radios.map((r) => r.props.accessibilityLabel)).toEqual(["Any time", "Today", "Yesterday", "This week", "This month", "Last month", "Custom"]);
+    expect(screen.getByRole("radio", { name: "Any time" }).props.accessibilityState).toMatchObject({ checked: true });
+    expect(screen.getByRole("radio", { name: "Yesterday" }).props.accessibilityState).toMatchObject({ checked: false });
+  });
+
+  it("Yesterday narrows the list and every count, but not Mine's open value", async () => {
+    await mount();
+    await screen.findByText("Ravi Patel");
+    await choose("Yesterday");
+    expect(screen.getByText("Created: Yesterday")).toBeOnTheScreen();
+    await waitFor(() => expect(lastList()).toMatchObject(YESTERDAY));
+    for (const q of ["mine", "all", "overdue", "new", "unassigned"] as const) {
+      expect(fetchLeads).toHaveBeenCalledWith({ ...leadQueueParams(q, "all", 42, "", 1, { preset: "yesterday", from: "2026-11-17", to: "2026-11-17" }), PageSize: 1, PageNumber: 1 });
+    }
+    await waitFor(() => expect(calls().some((p) => p.PageSize === 1 && p.StatusId === 5 && p.FromDate === "2026-11-17")).toBe(true));
+    expect(valueCalls().every((p) => !("FromDate" in p))).toBe(true);
+  });
+
+  it("Custom shows From and To and sends dates only once both are picked, in order", async () => {
+    await mount();
+    await screen.findByText("Ravi Patel");
+    await choose("Custom");
+    expect(screen.getByText("From")).toBeOnTheScreen();
+    expect(screen.getByText("To")).toBeOnTheScreen();
+    await fireEvent.press(screen.getAllByText("Pick a day")[0]!);
+    await pickDay("2026-09-01", screen.getByTestId("created-from"));
+    await act(() => jest.advanceTimersByTime(1000));
+    expect(calls().some((p) => p.FromDate)).toBe(false);
+    await fireEvent.press(screen.getByText("Pick a day"));
+    await pickDay("2026-09-30", screen.getByTestId("created-to"));
+    await waitFor(() => expect(lastList()).toMatchObject({ FromDate: "2026-09-01", ToDate: "2026-09-30" }));
+    expect(screen.getByText("Created: 1 – 30 Sep 2026")).toBeOnTheScreen();
+
+    // From after To: said so, and no dates sent.
+    await fireEvent.press(screen.getAllByLabelText("Clear date")[0]!);
+    await fireEvent.press(screen.getByText("Pick a day"));
+    await pickDay("2026-10-05", screen.getByTestId("created-from"));
+    expect(await screen.findByText("To is before From")).toBeOnTheScreen();
+    await waitFor(() => expect(lastList()).not.toHaveProperty("FromDate"));
+  });
+
+  it("Any time removes the dates and hides the fields", async () => {
+    await mount();
+    await screen.findByText("Ravi Patel");
+    await choose("Custom");
+    expect(screen.getByText("From")).toBeOnTheScreen();
+    await choose("Yesterday");
+    expect(screen.queryByText("From")).toBeNull();
+    await waitFor(() => expect(lastList()).toMatchObject(YESTERDAY));
+    await choose("Any time");
+    expect(screen.getByText("Created: any time")).toBeOnTheScreen();
+    await waitFor(() => expect(lastList()).not.toHaveProperty("FromDate"));
+  });
+
+  it("a range with no rows says nothing matches, and to try another date", async () => {
+    answer((p) => Promise.resolve(leadsReply(p.FromDate ? [] : [row])));
+    await mount();
+    await screen.findByText("Ravi Patel");
+    await choose("Today");
+    expect(await screen.findByText("Nothing matches")).toBeOnTheScreen();
+    expect(screen.getByText("Try another status, another date, or clear the search.")).toBeOnTheScreen();
+  });
+
+  it("stays on the New preset, where the status pills are hidden", async () => {
+    await mount();
+    await screen.findByText("Ravi Patel");
+    await fireEvent.press(screen.getByRole("tab", { name: /^New/ }));
+    await waitFor(() => expect(lastList()).toMatchObject({ StatusId: 1 }));
+    expect(chip()).toBeOnTheScreen();
   });
 });

@@ -36,8 +36,9 @@ it("caps its width when asked", async () => {
 
 it("a pressable chip presses and reaches 44 through hitSlop", async () => {
   const onPress = jest.fn();
-  await render(<Chip label="Done" size="lg" tone="green" onPress={onPress} />);
+  await render(<Chip label="Done" size="lg" tone="green" onPress={onPress} testID="done-chip" />);
   const button = screen.getByRole("button", { name: "Done" });
+  expect(screen.getByTestId("done-chip")).toBe(button);
   expect(button.props.hitSlop).toBe(6);
   await fireEvent.press(button);
   expect(onPress).toHaveBeenCalledTimes(1);

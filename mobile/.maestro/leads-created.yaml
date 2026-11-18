@@ -1,0 +1,19 @@
+# Leads: the Created filter narrows the list and the counts.
+appId: com.shadowider.eCRM
+---
+- runFlow: common/new-lead.yaml
+- back
+- assertVisible: "Created: any time"
+- tapOn: "Created: any time"
+- assertVisible: "Show leads created…"
+- tapOn: "Today"
+- assertVisible: "Created: Today"
+- assertVisible: "MAESTRO Lead ${output.stamp}.*"
+- tapOn: "Created: Today"
+- tapOn: "Yesterday"
+- assertVisible: "Created: Yesterday"
+- assertNotVisible: "MAESTRO Lead ${output.stamp}.*"
+- takeScreenshot: leads-created
+- tapOn: "Created: Yesterday"
+- tapOn: "Any time"
+- assertVisible: "Created: any time"

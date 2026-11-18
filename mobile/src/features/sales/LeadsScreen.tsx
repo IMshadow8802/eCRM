@@ -1,7 +1,7 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { FlatList, StyleSheet, View } from "react-native";
 import { keepPreviousData, useInfiniteQuery, useQueries, useQuery } from "@tanstack/react-query";
-import { Plus } from "lucide-react-native";
+import { CalendarDays, Plus } from "lucide-react-native";
 import type { StackScreenProps } from "@react-navigation/stack";
 
 import { fetchLeads } from "../../api/leadQueries";
@@ -11,9 +11,13 @@ import type { RootStackParamList } from "../../navigation/RootNavigator";
 import useAuthStore from "../../stores/useAuthStore";
 import type { Lead } from "../../types/api";
 import { metrics, spacing } from "../../theme";
+import { ANY, PRESETS, presetRange, rangeLabel } from "../../utils/datePresets";
 import {
+  ActionSheet,
   Band,
   BandSheet,
+  Chip,
+  DateField,
   EmptyState,
   ErrorCard,
   FilterPills,
@@ -24,6 +28,7 @@ import {
   Screen,
   SkeletonRows,
   useLayout,
+  type SheetRef,
 } from "../../ui";
 import { useAccess } from "../auth/useAccess";
 import { LeadDetailBody } from "./LeadDetailBody";
@@ -36,6 +41,7 @@ import {
   OPEN_VALUE_PAGE,
   openValue,
   rupees,
+  type CreatedFilter,
   type LeadQueue,
   type LeadStatusFilter,
 } from "./leadHelpers";
@@ -77,16 +83,24 @@ export default function LeadsScreen({ navigation, route }: Props) {
   const pad = { paddingTop: metrics.sheetPadTop, paddingHorizontal: isTwoPane ? metrics.pane.listSheet : gutter };
 
   const [status, setStatus] = useState<LeadStatusFilter>("all");
+  // Created (plan ruling 13): a preset from the sheet, or Custom's two inline days.
+  const [created, setCreated] = useState<CreatedFilter>({ preset: "any", from: null, to: null });
   // Search's "See all" carries its term in; Home and Search carry a queue.
   const [search, setSearch] = useState(route.params?.term ?? "");
-  // A navigate() with a queue drops the chip and search left on this mounted
-  // tab, so the list is exactly what Home or Search counted.
+  // A navigate() with a queue drops the chip, search and created range left on
+  // this mounted tab, so the list is exactly what Home or Search counted.
   const [queue, setQueue] = useParamState<LeadQueue>(route.params, route.params?.queue, "mine", () => {
     setStatus("all");
+    setCreated({ preset: "any", from: null, to: null });
     setSearch(route.params?.term ?? "");
   });
   const term = useDebouncedValue(search.trim());
   const [selected, setSelected] = useState<number | null>(null);
+
+  const createdRef = useRef<SheetRef>(null);
+  const backwards = created.from != null && created.to != null && created.to < created.from;
+  // A backwards range sends no dates (leadQueueParams needs both).
+  const createdParam = useMemo<CreatedFilter | null>(() => (backwards ? null : created), [backwards, created]);
 
   const { statuses } = useLeadRefData();
   const newId = firstOpenStatus(statuses);
@@ -95,8 +109,8 @@ export default function LeadsScreen({ navigation, route }: Props) {
   // No "new" status yet = no New query: a null StatusId would list every status.
   const build = useCallback(
     (q: LeadQueue, s: LeadStatusFilter) =>
-      userId == null || (q === "new" && newId == null) ? null : leadQueueParams(q, s, userId, term, newId),
-    [userId, term, newId],
+      userId == null || (q === "new" && newId == null) ? null : leadQueueParams(q, s, userId, term, newId, createdParam),
+    [userId, term, newId, createdParam],
   );
   const params = useMemo(() => build(queue, status), [build, queue, status]);
 
@@ -148,7 +162,7 @@ export default function LeadsScreen({ navigation, route }: Props) {
     if (hasNextPage && !isFetchingNextPage && !isPlaceholderData) void fetchNextPage();
   }, [hasNextPage, isFetchingNextPage, isPlaceholderData, fetchNextPage]);
   // New hides the pills (and ignores the status), so a pill left from another preset is no narrowing.
-  const narrowed = (queue !== "new" && status !== "all") || term.length > 0;
+  const narrowed = (queue !== "new" && status !== "all") || term.length > 0 || created.preset !== "any";
 
   // The picked lead stays in the pane even after it leaves the list (a transfer,
   // a status move): jumping to another would make the next tap act on the wrong
@@ -179,8 +193,44 @@ export default function LeadsScreen({ navigation, route }: Props) {
         />
       </View>
     );
+  const createdLabel =
+    created.preset === "any"
+      ? "Created: any time"
+      : created.preset === "custom"
+        ? `Created: ${created.from && created.to && !backwards ? rangeLabel({ from: created.from, to: created.to }) : "Custom"}`
+        : `Created: ${PRESETS.find((p) => p.value === created.preset)?.label}`;
+  const createdFilter = (
+    <View style={styles.created}>
+      <Chip
+        testID="created-filter"
+        label={createdLabel}
+        icon={CalendarDays}
+        tone={created.preset === "any" ? "slate" : "primary"}
+        size="md"
+        onPress={() => createdRef.current?.present()}
+      />
+      {created.preset === "custom" ? (
+        <View style={styles.range}>
+          <View style={styles.fill} testID="created-from">
+            <DateField label="From" value={created.from} onChange={(from) => setCreated((c) => ({ ...c, from }))} placeholder="Pick a day" clearable />
+          </View>
+          <View style={styles.fill} testID="created-to">
+            <DateField
+              label="To"
+              value={created.to}
+              onChange={(to) => setCreated((c) => ({ ...c, to }))}
+              placeholder="Pick a day"
+              error={backwards ? "To is before From" : undefined}
+              clearable
+            />
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
   const header = (
     <>
+      {createdFilter}
       {pills}
       {isTwoPane ? null : (
         <GroupHeader
@@ -262,13 +312,32 @@ export default function LeadsScreen({ navigation, route }: Props) {
                   top
                   module="leads"
                   title={narrowed ? "Nothing matches" : EMPTY[queue].title}
-                  message={narrowed ? "Try another status, or clear the search." : EMPTY[queue].message}
+                  message={
+                    !narrowed
+                      ? EMPTY[queue].message
+                      : created.preset !== "any"
+                        ? "Try another status, another date, or clear the search."
+                        : "Try another status, or clear the search."
+                  }
                 />
               )
             }
           />
         )}
       </BandSheet>
+      <ActionSheet
+        ref={createdRef}
+        title="Show leads created…"
+        actions={[ANY, ...PRESETS].map((p) => ({
+          key: p.value,
+          label: p.label,
+          selected: created.preset === p.value,
+          onPress: () => {
+            const r = presetRange(p.value);
+            setCreated({ preset: p.value, from: r?.from ?? null, to: r?.to ?? null });
+          },
+        }))}
+      />
     </View>
   );
 
@@ -294,6 +363,8 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row" },
   listPane: { flex: 0, width: metrics.listPaneWidth },
   pills: { marginBottom: spacing[3] },
+  created: { marginBottom: spacing[3], gap: spacing[3] },
+  range: { flexDirection: "row", gap: spacing[3] },
   list: { paddingBottom: spacing[6] },
   listEmpty: { flexGrow: 1 },
 });

@@ -19,6 +19,7 @@ export interface ChipProps {
   /** Caps the width and truncates — for labels a company can type freely. */
   maxWidth?: number;
   onPress?: () => void;
+  testID?: string;
 }
 
 /** size → height, horizontal padding, text variant, icon (E §3.7). */
@@ -35,7 +36,7 @@ const CHIP_SIZES: Record<ChipSize, { height: number; padH: number; variant: Typo
  * target through hitSlop.
  */
 export function Chip({
-  label, tone = "slate", icon: Icon, size = "sm", iconOnly = false, accessibilityLabel, maxWidth, onPress,
+  label, tone = "slate", icon: Icon, size = "sm", iconOnly = false, accessibilityLabel, maxWidth, onPress, testID,
 }: ChipProps) {
   const { fill, text } = chipTones[tone];
   const s = CHIP_SIZES[size];
@@ -65,7 +66,7 @@ export function Chip({
 
   if (!onPress) {
     return (
-      <View accessible={!!accessibilityLabel} accessibilityLabel={accessibilityLabel} style={[styles.chip, shape]}>
+      <View testID={testID} accessible={!!accessibilityLabel} accessibilityLabel={accessibilityLabel} style={[styles.chip, shape]}>
         {body}
       </View>
     );
@@ -73,6 +74,7 @@ export function Chip({
   const slop = Math.max(0, (HIT_TARGET - s.height) / 2);
   return (
     <Pressable
+      testID={testID}
       onPress={onPress}
       hitSlop={slop}
       accessibilityRole="button"

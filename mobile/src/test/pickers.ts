@@ -1,18 +1,20 @@
-import { fireEvent, screen } from "@testing-library/react-native";
+import { fireEvent, screen, within } from "@testing-library/react-native";
 
 /**
  * Picks a day in the in-app calendar (ui/CalendarSheet), paging months until
  * the day is shown. The sheet mock keeps the calendar mounted, so the field
  * does not need opening first; open it anyway when the test is about that.
- * With several calendars mounted, the last one is used.
+ * With several calendars mounted, the last one is used — or pass `scope`
+ * (an element holding one DateField) when an earlier calendar shows that day too.
  */
-export async function pickDay(iso: string) {
-  for (let i = 0; i < 60 && !screen.queryAllByTestId(`calendar-day-${iso}`).length; i++) {
-    const shown = String(screen.getAllByTestId(/^calendar-month-/).at(-1)!.props.testID).slice("calendar-month-".length);
+export async function pickDay(iso: string, scope?: Parameters<typeof within>[0]) {
+  const q = scope ? within(scope) : screen;
+  for (let i = 0; i < 60 && !q.queryAllByTestId(`calendar-day-${iso}`).length; i++) {
+    const shown = String(q.getAllByTestId(/^calendar-month-/).at(-1)!.props.testID).slice("calendar-month-".length);
     const way = iso.slice(0, 7) < shown ? "Previous month" : "Next month";
-    await fireEvent.press(screen.getAllByLabelText(way).at(-1)!);
+    await fireEvent.press(q.getAllByLabelText(way).at(-1)!);
   }
-  await fireEvent.press(screen.getAllByTestId(`calendar-day-${iso}`).at(-1)!);
+  await fireEvent.press(q.getAllByTestId(`calendar-day-${iso}`).at(-1)!);
 }
 
 /**
