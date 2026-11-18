@@ -721,6 +721,8 @@ export interface Lead {
   CreatedBy: number | null;
   CreatedAt: string;
   UpdatedAt: string | null;
+  /** sp_FetchLeads (122): the latest activity. The phone does not show it yet. */
+  LastActivityAt?: string | null;
 }
 
 /** A row of tblLeadActivity (sp_FetchLeadDetail RS3), author joined. */

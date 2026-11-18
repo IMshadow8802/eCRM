@@ -5,7 +5,7 @@ import type { Lead, Lookup } from "../../types/api";
 import { colors, metrics } from "../../theme";
 import { followUpBadge } from "../../theme/statusBadges";
 import { ListRow, Text } from "../../ui";
-import { followUpLine, leadStatusBadge, parseDate, rupees, shortDay } from "./leadHelpers";
+import { createdDay, followUpLine, leadStatusBadge, parseDate, rupees, shortDay } from "./leadHelpers";
 
 export interface LeadRowProps {
   lead: Lead;
@@ -21,7 +21,7 @@ export interface LeadRowProps {
 const LINE_INK = { default: "textSecondary", danger: "dangerText", muted: "textMuted" } as const;
 
 /**
- * One lead (E 14): status badge · name and ₹ · company · product with the
+ * One lead (E 14): status badge · name and ₹ · created day · company · product with the
  * status pill · the next follow-up (G2). A lost lead reads muted and says why
  * and when instead.
  */
@@ -41,7 +41,7 @@ function LeadRowBase({ lead, statuses, onPress, selected = false, first = false 
       title={lead.Name}
       titleTone={lost ? "muted" : "default"}
       right={value ? { amount: value, muted: lost } : undefined}
-      meta={[lead.Company, lead.ProductName].filter(Boolean).join(" · ") || undefined}
+      meta={[createdDay(lead.CreatedAt), lead.Company, lead.ProductName].filter(Boolean).join(" · ") || undefined}
       chips={[{ label: lead.StatusName ?? "—", tone: badge.chip }]}
       line3={
         lost ? (

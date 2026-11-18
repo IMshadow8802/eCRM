@@ -32,6 +32,9 @@ export interface FetchLeadsParams {
   /** Active and next follow-up before today — the SP decides. */
   Overdue?: boolean;
   Unassigned?: boolean;
+  /** Created between these local days, both inclusive (sp_FetchLeads, on CreatedAt). */
+  FromDate?: string | null;
+  ToDate?: string | null;
 }
 
 export interface LeadsPayload {
@@ -48,6 +51,8 @@ export const fetchLeads = ({
   OwnerId = null,
   Overdue = false,
   Unassigned = false,
+  FromDate = null,
+  ToDate = null,
 }: FetchLeadsParams = {}): Promise<ApiEnvelope<LeadsPayload>> =>
   post<LeadsPayload>(LEAD_ENDPOINTS.fetchLeads, {
     PageNumber,
@@ -58,6 +63,8 @@ export const fetchLeads = ({
     OwnerId,
     Overdue,
     Unassigned,
+    FromDate,
+    ToDate,
   });
 
 /**

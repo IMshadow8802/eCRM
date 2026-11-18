@@ -1,5 +1,6 @@
 import type { FollowUp, Lookup } from "../../types/api";
 import {
+  createdDay,
   dayLabel,
   defaultStatus,
   FOLLOWUP_TYPES,
@@ -281,5 +282,20 @@ describe("dates and money", () => {
     expect(rupees(0)).toBe("₹0");
     expect(rupees(null)).toBeNull();
     expect(rupees(undefined)).toBeNull();
+  });
+});
+
+describe("created range", () => {
+  it("passes the created range to the list and count params, and leaves it out otherwise", () => {
+    const c = { preset: "yesterday" as const, from: "2026-11-17", to: "2026-11-17" };
+    expect(leadQueueParams("mine", "all", 7, "", null, c)).toMatchObject({ OwnerId: 7, FromDate: "2026-11-17", ToDate: "2026-11-17" });
+    expect(leadQueueParams("all", "all", 7, "")).not.toHaveProperty("FromDate");
+    expect(leadQueueParams("all", "all", 7, "", null, { preset: "custom", from: "2026-11-01", to: null })).not.toHaveProperty("FromDate");
+  });
+  it("createdDay", () => {
+    const now = new Date(2026, 10, 18, 9, 40);
+    expect(createdDay("2026-11-17T23:50:00", now)).toBe("17 Nov");
+    expect(createdDay("2025-12-30T10:00:00", now)).toBe("30 Dec 2025");
+    expect(createdDay(null, now)).toBeNull();
   });
 });

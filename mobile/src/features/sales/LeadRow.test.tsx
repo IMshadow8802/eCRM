@@ -4,6 +4,7 @@ import type { Lookup } from "../../types/api";
 import { lead } from "../../test/fixtures";
 import { flat } from "../../test/style";
 import { badgeTones, colors, metrics } from "../../theme";
+import { fakeNow } from "../../test/pickers";
 import { LeadRow } from "./LeadRow";
 
 // The four line icons become named views so a test can tell them apart.
@@ -37,7 +38,8 @@ it("E 14 row: badge by status, name and ₹ amount, company · product with the 
 
   expect(screen.getByText("Ravi Patel")).toBeOnTheScreen();
   expect(screen.getByText("₹2,40,000")).toBeOnTheScreen();
-  expect(screen.getByText("Patel Solar · Inverter 10 kVA")).toBeOnTheScreen();
+  // The created day leads it (asserted below with a fixed clock).
+  expect(screen.getByText(/ · Patel Solar · Inverter 10 kVA$/)).toBeOnTheScreen();
   expect(screen.getByText("Contacted")).toBeOnTheScreen();
   // G1: the second open-coded status is the teal phone.
   expect(badgeFill()).toBe(badgeTones.teal.fill);
@@ -48,7 +50,7 @@ it("E 14 row: badge by status, name and ₹ amount, company · product with the 
   expect(onPress).toHaveBeenCalledWith(row);
 });
 
-it("no follow-up reads muted; no value shows no ₹; no company or product, no meta", async () => {
+it("no follow-up reads muted; no value shows no ₹; no company or product, the meta is the created day alone", async () => {
   await render(<LeadRow lead={lead({ Company: null })} statuses={STATUSES} onPress={jest.fn()} />);
   expect(flat(screen.getByText("No follow-up planned")).color).toBe(colors.textMuted);
   expect(screen.queryByText(/₹/)).toBeNull();
@@ -120,5 +122,20 @@ describe("G2: the follow-up's type (sp_FetchLeads.NextFollowupType, 119)", () =>
     expect(screen.getByText("No follow-up planned")).toBeOnTheScreen();
     expect(lineIcon("CalendarClock")).toHaveLength(1);
     expect(lineIcon("Phone")).toHaveLength(0);
+  });
+});
+
+describe("the created day leads the meta", () => {
+  beforeEach(() => fakeNow(new Date(2026, 10, 18, 9, 40)));
+  afterEach(() => jest.useRealTimers());
+
+  it("reads day · company · product", async () => {
+    await render(<LeadRow lead={lead({ CreatedAt: "2026-11-17T10:00:00", Company: "Arora Hardware", ProductName: "Fixed" })} statuses={STATUSES} onPress={jest.fn()} />);
+    expect(screen.getByText("17 Nov · Arora Hardware · Fixed")).toBeOnTheScreen();
+  });
+
+  it("with no company and no product it is the day alone", async () => {
+    await render(<LeadRow lead={lead({ CreatedAt: "2026-11-17T10:00:00", Company: null, ProductName: null })} statuses={STATUSES} onPress={jest.fn()} />);
+    expect(screen.getByText("17 Nov")).toBeOnTheScreen();
   });
 });

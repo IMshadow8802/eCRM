@@ -29,8 +29,8 @@ interface Case {
 }
 
 const CASES: [string, Case][] = [
-  ["fetchLeads", { call: () => leads.fetchLeads(), url: "/api/leads/fetchLeads", body: { PageNumber: 1, PageSize: 50, SearchTerm: null, StatusId: null, StatusCode: null, OwnerId: null, Overdue: false, Unassigned: false } }],
-  ["fetchLeads filters", { call: () => leads.fetchLeads({ PageNumber: 2, SearchTerm: "ravi", StatusCode: "open", OwnerId: 4, Overdue: true, Unassigned: true }), url: "/api/leads/fetchLeads", body: { PageNumber: 2, PageSize: 50, SearchTerm: "ravi", StatusId: null, StatusCode: "open", OwnerId: 4, Overdue: true, Unassigned: true } }],
+  ["fetchLeads", { call: () => leads.fetchLeads(), url: "/api/leads/fetchLeads", body: { PageNumber: 1, PageSize: 50, SearchTerm: null, StatusId: null, StatusCode: null, OwnerId: null, Overdue: false, Unassigned: false, FromDate: null, ToDate: null } }],
+  ["fetchLeads filters", { call: () => leads.fetchLeads({ PageNumber: 2, SearchTerm: "ravi", StatusCode: "open", OwnerId: 4, Overdue: true, Unassigned: true, FromDate: "2026-11-01", ToDate: "2026-11-17" }), url: "/api/leads/fetchLeads", body: { PageNumber: 2, PageSize: 50, SearchTerm: "ravi", StatusId: null, StatusCode: "open", OwnerId: 4, Overdue: true, Unassigned: true, FromDate: "2026-11-01", ToDate: "2026-11-17" } }],
   ["createLead", { call: () => leads.createLead({ ...BASE, StatusId: 1, OwnerId: 4, FirstFollowupAt: "2026-11-03", CustomJSON: "[]" }), url: "/api/leads/saveLeads", body: { Id: 0, ...BASE, StatusId: 1, OwnerId: 4, FirstFollowupAt: "2026-11-03", CustomJSON: "[]" } }],
   ["updateLead", { call: () => leads.updateLead({ Id: 9, ...BASE }), url: "/api/leads/saveLeads", body: { Id: 9, ...BASE, CustomJSON: null } }],
   ["setLeadStatus", { call: () => leads.setLeadStatus({ LeadId: 9, StatusId: 2 }), url: "/api/leads/setLeadStatus", body: { LeadId: 9, StatusId: 2, LostReasonId: null } }],

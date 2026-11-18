@@ -2,6 +2,7 @@ import type { FetchFollowUpsParams } from "../../api/followupQueries";
 import { fetchLeads, type FetchLeadsParams } from "../../api/leadQueries";
 import type { FollowUp, FollowUpType, Lead, Lookup } from "../../types/api";
 import { leadBadge, type BadgeSpec } from "../../theme/statusBadges";
+import type { DatePreset } from "../../utils/datePresets";
 
 // --------------------------------------------------------------- lifecycle
 
@@ -49,12 +50,16 @@ export const LEAD_QUEUES: { value: LeadQueue; label: string }[] = [
 /** "all" = no status filter; a number = one lead_status id. */
 export type LeadStatusFilter = "all" | number;
 
+/** The Leads screen's Created filter; from/to are local days, null until picked (custom). */
+export type CreatedFilter = { preset: DatePreset; from: string | null; to: string | null };
+
 /**
  * Same meanings as the web's presets (pages/Sales/leadStatus.js). Paging is the caller's.
  * `userId` is required: a null OwnerId would turn "Mine" into the whole reach, so
  * screens must not build a queue before auth has loaded. `New` is the whole
  * reach in `newStatusId` (firstOpenStatus); a screen must not query New before
- * that id is known, or it would list every status.
+ * that id is known, or it would list every status. `created` narrows by
+ * CreatedAt only once it has both days; a half-picked custom range sends none.
  */
 export const leadQueueParams = (
   queue: LeadQueue,
@@ -62,6 +67,7 @@ export const leadQueueParams = (
   userId: number,
   term: string,
   newStatusId: number | null = null,
+  created: CreatedFilter | null = null,
 ): FetchLeadsParams => ({
   PageSize: 50,
   SearchTerm: term || null,
@@ -69,6 +75,7 @@ export const leadQueueParams = (
   Overdue: queue === "overdue",
   Unassigned: queue === "unassigned",
   StatusId: queue === "new" ? newStatusId : status === "all" ? null : status,
+  ...(created?.from && created.to ? { FromDate: created.from, ToDate: created.to } : null),
 });
 
 /**
@@ -189,6 +196,13 @@ export function dayLabel(iso: string | null | undefined, now = new Date()): stri
   if (day === localDay(addDays(now, -1))) return "Yesterday";
   const year = d.getFullYear() === now.getFullYear() ? "" : ` ${d.getFullYear()}`;
   return `${d.getDate()} ${MONTHS[d.getMonth()]}${year}`;
+}
+
+/** A lead row's created day: "17 Nov", or "17 Nov 2025" in another year. */
+export function createdDay(iso: string | null | undefined, now = new Date()): string | null {
+  const d = parseDate(iso);
+  if (!d) return null;
+  return `${d.getDate()} ${MONTHS[d.getMonth()]}${d.getFullYear() === now.getFullYear() ? "" : ` ${d.getFullYear()}`}`;
 }
 
 /** "Tue, 3 Nov" */
