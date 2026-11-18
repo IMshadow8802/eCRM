@@ -31,7 +31,7 @@ function formatNumber(column, v) {
 function NumberCell({ column, line, totals, href, p }) {
   const v = column.value(line, totals);
   const text = formatNumber(column, v);
-  if (text === "0") return <span style={{ color: p.text.tertiary }}>0</span>;
+  if (text === "0") return <span style={{ color: reportKey.zero }}>0</span>;
   if (!href || text === "—") return text;
   return (
     <Link

@@ -186,6 +186,24 @@ describe("sales report routes", () => {
     expect(route.element.type).toBe(ProtectedRoute);
     expect(route.element.props.element.props.report).toBe(slug);
   });
+
+  it.each([
+    ["/reports/sales/team/rows", "team"],
+    ["/reports/sales/sources/rows", "sources"],
+    ["/reports/sales/open/rows", "open"],
+    ["/reports/sales/lost/rows", "lost"],
+    ["/reports/sales/won", "won"],
+  ])("%s renders SalesRows behind ProtectedRoute", (path, report) => {
+    const route = routesConfig.find((r) => r.path === path);
+    expect(route).toBeTruthy();
+    expect(route.element.type).toBe(ProtectedRoute);
+    // one lazy SalesRows for all five, not the summary frame
+    const rowsType = routesConfig.find((r) => r.path === "/reports/sales/won").element.props.element.type;
+    const summaryType = routesConfig.find((r) => r.path === "/reports/sales/team").element.props.element.type;
+    expect(route.element.props.element.type).toBe(rowsType);
+    expect(rowsType).not.toBe(summaryType);
+    expect(route.element.props.element.props.report).toBe(report);
+  });
 });
 
 // Spec 2 retired the ticket stage board and the pipeline engine. The board

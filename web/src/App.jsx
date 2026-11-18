@@ -57,6 +57,7 @@ const TransfersReport = lazy(() => import("./pages/Reports/Transfers"));
 const PipelineValueReport = lazy(() => import("./pages/Reports/PipelineValue"));
 const LeaderboardReport = lazy(() => import("./pages/Reports/Leaderboard"));
 const SalesReport = lazy(() => import("./pages/Reports/sales/SalesReport"));
+const SalesRows = lazy(() => import("./pages/Reports/sales/SalesRows"));
 
 // Support / ticketing module (Spec 2)
 const Tickets = lazy(() => import("./pages/Support/Tickets"));
@@ -124,6 +125,11 @@ export const routesConfig = [
   { path: "/reports/sales/sources", element: <ProtectedRoute element={<SalesReport report="sources" />} /> },
   { path: "/reports/sales/open", element: <ProtectedRoute element={<SalesReport report="open" />} /> },
   { path: "/reports/sales/lost", element: <ProtectedRoute element={<SalesReport report="lost" />} /> },
+  { path: "/reports/sales/team/rows", element: <ProtectedRoute element={<SalesRows report="team" />} /> },
+  { path: "/reports/sales/sources/rows", element: <ProtectedRoute element={<SalesRows report="sources" />} /> },
+  { path: "/reports/sales/open/rows", element: <ProtectedRoute element={<SalesRows report="open" />} /> },
+  { path: "/reports/sales/lost/rows", element: <ProtectedRoute element={<SalesRows report="lost" />} /> },
+  { path: "/reports/sales/won", element: <ProtectedRoute element={<SalesRows report="won" />} /> },
   { path: "/reports/funnel", element: <ProtectedRoute element={<FunnelReport />} /> },
   { path: "/reports/follow-up-compliance", element: <ProtectedRoute element={<FollowUpComplianceReport />} /> },
   { path: "/reports/activity", element: <ProtectedRoute element={<ActivityReport />} /> },

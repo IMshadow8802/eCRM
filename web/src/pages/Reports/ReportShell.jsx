@@ -172,18 +172,20 @@ export function ReportBarChart({ data, xKey, bars, legend = true, height = 260 }
  * `onRowClick` (spec 4a drill-down) makes rows hoverable, clickable and
  * keyboard-activatable. Without it rows carry no handler, cursor or tab stop.
  */
-export function ReportTable({ rows, columns, rowKey, testId, onRowClick, rowTestId, rowTint }) {
+export function ReportTable({ rows, columns, rowKey, testId, onRowClick, rowTestId, rowTint, loading = false }) {
+  const hasFooter = columns.some((c) => c.footer != null);
   const mrtColumns = useMemo(
     () =>
       columns.map((c, i) => {
-        const id = String(c.key ?? (typeof c.header === "string" ? c.header : `col${i}`));
+        const id = String(c.key ?? ((typeof c.header === "string" && c.header) || `col${i}`));
         const value = (r) => (c.key != null && c.key in r ? r[c.key] : c.cell(r));
         const sample = rows.length ? value(rows[0]) : null;
         const plain = sample == null || typeof sample !== "object";
         return {
           id,
           header: typeof c.header === "string" ? c.header : id,
-          accessorFn: value,
+          // MRT fills a loading table with blank rows: never hand those to a cell function.
+          accessorFn: loading ? () => null : value,
           enableSorting: plain,
           enableGlobalFilter: plain,
           Header: () =>
@@ -196,16 +198,20 @@ export function ReportTable({ rows, columns, rowKey, testId, onRowClick, rowTest
           muiTableHeadCellProps: { align: c.align },
           muiTableBodyCellProps: { align: c.align },
           ...(c.size && { size: c.size, minSize: c.size }),
+          ...(c.footer != null && { Footer: () => c.footer }),
         };
       }),
-    [columns, rows],
+    [columns, rows, loading],
   );
 
   const table = useAppTable({
     columns: mrtColumns,
     data: rows,
-    getRowId: (r) => String(rowKey(r)),
+    getRowId: (r, i) => (loading ? `skeleton-${i}` : String(rowKey(r))),
     enableColumnPinning: true,
+    // tfoot only when a column draws something in it; skeleton rows under the kept header while loading.
+    enableTableFooter: hasFooter,
+    state: { showSkeletons: loading },
     enablePagination: rows.length > 25,
     enableBottomToolbar: rows.length > 25,
     initialState: { columnPinning: { left: mrtColumns[0] ? [mrtColumns[0].id] : [] } },
@@ -226,7 +232,7 @@ export function ReportTable({ rows, columns, rowKey, testId, onRowClick, rowTest
         />
       </Box>
     ),
-    muiTableBodyRowProps: ({ row }) => ({
+    muiTableBodyRowProps: ({ row }) => (loading ? {} : {
       "data-testid": rowTestId?.(row.original) ?? (onRowClick && testId ? `${testId}-row` : undefined),
       // `rowTint(row)` → a background for the whole row (a status wash). On the
       // cells, not the row: a pinned cell paints its own background (on ::before) over a row's.

@@ -51,6 +51,29 @@ describe("ReportTable", () => {
     expect(document.body.innerHTML).not.toMatch(/inputprops=/i);
   });
 
+  it("loading keeps the header and fills the body with skeletons, no data rows", () => {
+    const keyless = [...columns, { header: "", cell: (r) => <a href={`/x/${r.Id}`}>open</a> }];
+    renderWithProviders(<ReportTable rows={[]} columns={keyless} rowKey={(r) => r.Id} testId="t" loading onRowClick={() => {}} />, { router: false });
+    const table = screen.getByTestId("t");
+    expect(within(table).getAllByRole("columnheader").length).toBe(3);
+    expect(table.querySelectorAll("tbody .MuiSkeleton-root").length).toBeGreaterThan(0);
+    expect(within(table).queryByText("A")).toBeNull();
+    expect(table.querySelector("tbody a")).toBeNull();
+  });
+
+  it("draws a column's footer in a tfoot cell", () => {
+    const withFoot = [{ ...columns[0], footer: <b>Total</b> }, columns[1]];
+    renderWithProviders(<ReportTable rows={rows} columns={withFoot} rowKey={(r) => r.Id} testId="t" />, { router: false });
+    const tfoot = screen.getByTestId("t").querySelector("tfoot");
+    expect(tfoot).toBeInTheDocument();
+    expect(within(tfoot).getByText("Total")).toBeInTheDocument();
+  });
+
+  it("has no tfoot when no column has a footer", () => {
+    renderWithProviders(<ReportTable rows={rows} columns={columns} rowKey={(r) => r.Id} testId="t" />, { router: false });
+    expect(screen.getByTestId("t").querySelector("tfoot")).toBeNull();
+  });
+
   it("calls onRowClick with the row and marks rows clickable", async () => {
     const onRowClick = vi.fn();
     renderWithProviders(

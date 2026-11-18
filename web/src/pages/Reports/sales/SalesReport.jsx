@@ -46,6 +46,60 @@ function Legend({ p }) {
   );
 }
 
+/**
+ * The line under every sales report title: the date field with its meaning,
+ * office / source / product, Export, then the colour key. Shared by the
+ * summaries and the drill pages so the two never drift apart.
+ */
+export function ReportFilterRow({ report, filters, onChange, onExport, canExport }) {
+  const p = useTheme().tokens;
+  // Pick-lists: the same queries the Leads list uses.
+  const { data: branchData } = useApiQuery({ queryKey: ["branches"], endpoint: SALES_ENDPOINTS.users.fetchBranches, showErrorMessage: false });
+  const { lookups: sources } = useLookups("lead_source", { showErrorMessage: false });
+  const { data: productData } = useApiQuery({
+    queryKey: ["products", "active"], endpoint: SALES_ENDPOINTS.products.fetchProducts, params: { PageSize: 200, IsActive: true }, showErrorMessage: false,
+  });
+  const pickers = [
+    ["BranchId", "branch", "All offices", (branchData?.branches ?? []).map((b) => ({ value: b.Id, label: b.BranchName }))],
+    ["SourceId", "source", "All sources", sources.map((s) => ({ value: s.Id, label: s.Value }))],
+    ["ProductId", "product", "All products", (productData?.products ?? []).map((x) => ({ value: x.Id, label: x.Name }))],
+  ];
+  // An id in the address that the list does not hold is still applied: name it, never show the placeholder.
+  const optById = (list, v) => (v == null ? null : list.find((o) => o.value === v) ?? (list.length ? { value: v, label: `Unknown (#${v})` } : null));
+
+  return (
+    <>
+      <Box sx={{ display: "flex", alignItems: "center", gap: fs(8), flexWrap: "wrap" }}>
+        <DateRangeField
+          value={filters}
+          onChange={(v) => onChange(v)}
+          means={report.dateMeans}
+          heading={`${report.dateMeans}…`}
+          allowAny={report.allowAny}
+        />
+        {pickers.map(([key, name, placeholder, options]) => (
+          <Box key={key} sx={{ width: fs(170) }}>
+            <Combobox
+              size="sm"
+              fullWidth
+              placeholder={placeholder}
+              options={options}
+              value={optById(options, filters[key])}
+              onChange={(opt) => onChange({ [key]: opt?.value ?? null })}
+              data-testid={`filter-${name}`}
+            />
+          </Box>
+        ))}
+        <Box sx={{ flex: 1 }} />
+        <Button variant="outlined" size="sm" leftIcon={<Download size={14} />} onClick={onExport} disabled={!canExport}>
+          Export
+        </Button>
+      </Box>
+      <Legend p={p} />
+    </>
+  );
+}
+
 export default function SalesReport({ report: slug }) {
   const report = REPORTS[slug];
   const theme = useTheme();
@@ -74,20 +128,6 @@ export default function SalesReport({ report: slug }) {
   const previous = report.previous ? data?.previous ?? null : null;
   const path = data?.path ?? [];
   const person = filters.at ? path[path.length - 1] : null;
-
-  // Pick-lists: the same queries the Leads list uses.
-  const { data: branchData } = useApiQuery({ queryKey: ["branches"], endpoint: SALES_ENDPOINTS.users.fetchBranches, showErrorMessage: false });
-  const { lookups: sources } = useLookups("lead_source", { showErrorMessage: false });
-  const { data: productData } = useApiQuery({
-    queryKey: ["products", "active"], endpoint: SALES_ENDPOINTS.products.fetchProducts, params: { PageSize: 200, IsActive: true }, showErrorMessage: false,
-  });
-  const pickers = [
-    ["BranchId", "branch", "All offices", (branchData?.branches ?? []).map((b) => ({ value: b.Id, label: b.BranchName }))],
-    ["SourceId", "source", "All sources", sources.map((s) => ({ value: s.Id, label: s.Value }))],
-    ["ProductId", "product", "All products", (productData?.products ?? []).map((x) => ({ value: x.Id, label: x.Name }))],
-  ];
-  // An id in the address that the list does not hold is still applied: name it, never show the placeholder.
-  const optById = (list, v) => (v == null ? null : list.find((o) => o.value === v) ?? (list.length ? { value: v, label: `Unknown (#${v})` } : null));
 
   const firstNoManager = lines.find((l) => l.NoManager);
   const nameCell = (l) => {
@@ -207,33 +247,7 @@ export default function SalesReport({ report: slug }) {
         <title>PRD Infotech | {report.title}</title>
       </Helmet>
 
-      <Box sx={{ display: "flex", alignItems: "center", gap: fs(8), flexWrap: "wrap" }}>
-        <DateRangeField
-          value={filters}
-          onChange={(v) => update(v)}
-          means={report.dateMeans}
-          heading={`${report.dateMeans}…`}
-          allowAny={report.allowAny}
-        />
-        {pickers.map(([key, name, placeholder, options]) => (
-          <Box key={key} sx={{ width: fs(170) }}>
-            <Combobox
-              size="sm"
-              fullWidth
-              placeholder={placeholder}
-              options={options}
-              value={optById(options, filters[key])}
-              onChange={(opt) => update({ [key]: opt?.value ?? null })}
-              data-testid={`filter-${name}`}
-            />
-          </Box>
-        ))}
-        <Box sx={{ flex: 1 }} />
-        <Button variant="outlined" size="sm" leftIcon={<Download size={14} />} onClick={exportCsv} disabled={!lines.length}>
-          Export
-        </Button>
-      </Box>
-      <Legend p={p} />
+      <ReportFilterRow report={report} filters={filters} onChange={update} onExport={exportCsv} canExport={lines.length > 0} />
 
       <Card padding="none" sx={{ display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
         {content}

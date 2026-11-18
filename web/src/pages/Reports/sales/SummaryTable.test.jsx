@@ -70,6 +70,8 @@ describe("SummaryTable", () => {
     expect(within(sara).getAllByRole("cell")[1].textContent).toBe("—");
     expect(within(sara).getAllByText("0").every((el) => !el.closest("a"))).toBe(true);
     expect(within(sara).getAllByText("0").length).toBeGreaterThanOrEqual(2);
+    // a zero takes the colour key's zero ink
+    expect(within(sara).getAllByText("0")[0].style.color).toBe(rgb(reportKey.zero));
   });
 
   it("draws a full-width section row before a line when asked", () => {
