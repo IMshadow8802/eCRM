@@ -36,6 +36,8 @@ jest.mock("../../../src/controllers/reportController", () => ({
   tat: hit("tat"),
   tatClocks: hit("tatClocks"),
   partners: hit("partners"),
+  sales: hit("sales"),
+  salesRows: hit("salesRows"),
 }));
 jest.mock("../../../src/controllers/attendanceReport", () => ({
   attendance: jest.fn((req, res) => res.status(200).json({ success: true, hit: "attendance" })),
@@ -67,6 +69,9 @@ describe("reportRoutes", () => {
     ["/api/reports/transfers", "transfers"],
     ["/api/reports/pipelineValue", "pipelineValue"],
     ["/api/reports/leaderboard", "leaderboard"],
+    // Sales reports rebuild
+    ["/api/reports/sales", "sales"],
+    ["/api/reports/salesRows", "salesRows"],
   ])("routes %s to the %s handler", async (path, handler) => {
     const r = await request(app).post(path).send({});
     expect(r.status).toBe(200);
@@ -90,6 +95,8 @@ describe("reportRoutes", () => {
   // HR holds `people` only: no dashboard / support / sales report grants.
   it.each([
     ["/api/reports/funnel", "funnel"],
+    ["/api/reports/sales", "sales"],
+    ["/api/reports/salesRows", "salesRows"],
     ["/api/reports/ticketsByCategory", "ticketsByCategory"],
     ["/api/reports/getDashboard", "getDashboard"],
   ])("403s HR (people only) on %s without reaching the controller", async (path, handler) => {
@@ -105,7 +112,8 @@ describe("reportRoutes", () => {
   it("splits the three report modules: a sales_reports grant does not open support reports", async () => {
     const saved = mockAcc;
     mockAcc = mockAccess({ modules: [["sales_reports"]] });
-    expect((await request(app).post("/api/reports/leaderboard").send({})).status).toBe(200);
+    expect((await request(app).post("/api/reports/sales").send({})).status).toBe(200);
+    expect((await request(app).post("/api/reports/salesRows").send({})).status).toBe(200);
     expect((await request(app).post("/api/reports/resolutionSummary").send({})).status).toBe(403);
     expect((await request(app).post("/api/reports/getDashboard").send({})).status).toBe(403);
     mockAcc = saved;

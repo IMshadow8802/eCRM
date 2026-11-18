@@ -397,3 +397,224 @@ describe("reportController.partners", () => {
     expect(res.json.mock.calls[0][0].data).toMatchObject({ kpis: {}, rows: [], trend: [] });
   });
 });
+
+// --- Sales reports rebuild: sp_RptSales (summary lines) and sp_RptSalesRows (drill) ---
+
+const salesReq = (body = {}, scope) => {
+  const req = baseReq({ body });
+  req.access = mockAccess({ modules: [["sales_reports", "v"], ["leads", "v", "Own"]] }, 7);
+  req.scope = scope ?? scopeFor(req.access, "sales_reports", 7);
+  return req;
+};
+const salesCall = (n) => database.executeStoredProcedure.mock.calls[n][1];
+
+describe("reportController.sales", () => {
+  const rs = (lines, path = [], ok = 1) => ({ recordsets: [lines, path, [{ NodeOk: ok }]] });
+
+  it("calls sp_RptSales for the range and the previous range with the caller's scope", async () => {
+    database.executeStoredProcedure
+      .mockResolvedValueOnce(rs([{ GroupKey: 3, GroupLabel: "A", LineKind: "person", New: 2, WonValue: "10.00" }]))
+      .mockResolvedValueOnce(rs([{ GroupKey: 3, New: 1, WonValue: "0.00" }]));
+    const req = salesReq({ FromDate: "2026-11-17", ToDate: "2026-11-17", NodeId: 12 });
+    const res = mockRes();
+    await reportController.sales(req, res);
+    expect(database.executeStoredProcedure).toHaveBeenNthCalledWith(1, "sp_RptSales", {
+      CompId: 5, FromDate: "2026-11-17", ToDate: "2026-11-17", GroupBy: "team", NodeId: 12,
+      BranchId: null, SourceId: null, ProductId: null,
+      UserId: 7, AccessibleBranchIdsJson: expect.anything(), OwnerIdsJson: expect.anything() });
+    expect(salesCall(1)).toMatchObject({ FromDate: "2026-11-16", ToDate: "2026-11-16", NodeId: 12 });
+    const data = res.json.mock.calls[0][0].data;
+    expect(data.totals).toMatchObject({ New: 2, WonValue: 10 });
+    expect(data.previous).toEqual({ totals: expect.objectContaining({ New: 1 }), range: { from: "2026-11-16", to: "2026-11-16" } });
+    expect(data.rows[0].WonValue).toBe(10); // DECIMAL strings become numbers
+    expect(data.rows[0]).toMatchObject({ GroupKey: 3, GroupLabel: "A", LineKind: "person" });
+    expect(data.nodeOk).toBe(true);
+    expect(data.range).toEqual({ from: "2026-11-17", to: "2026-11-17" });
+    expect(data.asOf).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+  });
+
+  it("returns the path without its Ord and keeps an own line's TeamSize as sent", async () => {
+    database.executeStoredProcedure
+      .mockResolvedValueOnce(rs([{ GroupKey: 12, GroupLabel: "Neha", LineKind: "own", TeamSize: 5, New: 1 }],
+        [{ Ord: 1, Id: 9, Name: "Ravi" }, { Ord: 2, Id: 12, Name: "Neha" }]))
+      .mockResolvedValueOnce(rs([]));
+    const res = mockRes();
+    await reportController.sales(salesReq({ FromDate: "2026-11-17", ToDate: "2026-11-17", NodeId: 12 }), res);
+    const data = res.json.mock.calls[0][0].data;
+    expect(data.path).toEqual([{ Id: 9, Name: "Ravi" }, { Id: 12, Name: "Neha" }]);
+    expect(data.rows[0]).toMatchObject({ LineKind: "own", TeamSize: 5 });
+    expect(data.totals.TeamSize).toBeUndefined();
+  });
+
+  it("skips the previous call for Open leads and for ranges over 92 days", async () => {
+    database.executeStoredProcedure.mockResolvedValue(rs([{ GroupKey: 3, OpenNow: 4 }]));
+    let res = mockRes();
+    await reportController.sales(salesReq({ GroupBy: "person" }), res);
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
+    expect(salesCall(0)).toMatchObject({ GroupBy: "person", FromDate: null, ToDate: null });
+    expect(res.json.mock.calls[0][0].data.previous).toBeNull();
+    expect(res.json.mock.calls[0][0].data.range).toEqual({ from: null, to: null });
+
+    database.executeStoredProcedure.mockClear();
+    res = mockRes();
+    await reportController.sales(salesReq({ GroupBy: "person", FromDate: "2026-11-01", ToDate: "2026-11-17" }), res);
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
+    expect(res.json.mock.calls[0][0].data.previous).toBeNull();
+
+    database.executeStoredProcedure.mockClear();
+    res = mockRes();
+    await reportController.sales(salesReq({ GroupBy: "source", FromDate: "2026-01-01", ToDate: "2026-06-30" }), res);
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
+    expect(res.json.mock.calls[0][0].data.previous).toBeNull();
+  });
+
+  it("defaults to yesterday with a previous day when no dates are sent", async () => {
+    database.executeStoredProcedure.mockResolvedValue(rs([]));
+    await reportController.sales(salesReq({}), mockRes());
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(2);
+    expect(salesCall(0).FromDate).toEqual(expect.any(String));
+    expect(salesCall(0).FromDate).toBe(salesCall(0).ToDate);
+  });
+
+  it("passes an empty owner list as '[]', never null", async () => {
+    database.executeStoredProcedure.mockResolvedValue(rs([]));
+    await reportController.sales(salesReq({ FromDate: "2026-11-17", ToDate: "2026-11-17" }, { branchIds: [2], ownerIds: [] }), mockRes());
+    expect(salesCall(0)).toMatchObject({ OwnerIdsJson: "[]", AccessibleBranchIdsJson: "[2]" });
+    expect(salesCall(1)).toMatchObject({ OwnerIdsJson: "[]" });
+  });
+
+  it("answers nodeOk false with no rows when the SP refuses the node", async () => {
+    database.executeStoredProcedure.mockResolvedValue(rs([], [], 0));
+    const res = mockRes();
+    await reportController.sales(salesReq({ FromDate: "2026-11-17", ToDate: "2026-11-17", NodeId: 99 }), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    const data = res.json.mock.calls[0][0].data;
+    expect(data.rows).toEqual([]);
+    expect(data.nodeOk).toBe(false);
+    expect(data.path).toEqual([]);
+  });
+
+  it("tolerates missing recordsets", async () => {
+    database.executeStoredProcedure.mockResolvedValue({});
+    const res = mockRes();
+    await reportController.sales(salesReq({ FromDate: "2026-11-17", ToDate: "2026-11-17" }), res);
+    const data = res.json.mock.calls[0][0].data;
+    expect(data).toMatchObject({ rows: [], path: [], nodeOk: true });
+    expect(data.totals.New).toBe(0);
+  });
+
+  it("400s bad input without touching the DB", async () => {
+    const res = mockRes();
+    await reportController.sales(salesReq({ GroupBy: "owner" }), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json.mock.calls[0][0].code).toBe("VALIDATION_ERROR");
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  it("500s when the SP throws", async () => {
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
+    const res = mockRes();
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    await reportController.sales(salesReq({ FromDate: "2026-11-17", ToDate: "2026-11-17" }), res);
+    console.error.mockRestore();
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json.mock.calls[0][0].code).toBe("REPORT_ERROR");
+  });
+});
+
+describe("reportController.salesRows", () => {
+  const ROW = { EventAt: new Date("2026-09-03T10:00:00Z"), Metric: "call", Src: "F", RefId: 1, LeadId: 9,
+    LeadName: "Acme", MobileNo: "9825012345", Amount: "5.00", Detail1: "12", StatusCode: "open" };
+  const body = (over = {}) => ({ FromDate: "2026-09-01", ToDate: "2026-09-30", Metric: "call", PersonId: 9, Rollup: true, ...over });
+
+  it("passes the drill and scope, MaxRows 2000, and reports truncation from the true total", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[ROW, { ...ROW, RefId: 2 }], [{ Total: 6412, AmountTotal: "5.00" }], [{ Ord: 1, Id: 9, Name: "Neha" }]],
+    });
+    const res = mockRes();
+    await reportController.salesRows(salesReq(body()), res);
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
+    expect(database.executeStoredProcedure.mock.calls[0][0]).toBe("sp_RptSalesRows");
+    expect(salesCall(0)).toMatchObject({
+      CompId: 5, FromDate: "2026-09-01", ToDate: "2026-09-30", GroupBy: "team",
+      Metric: "call", Shape: "events", PersonId: 9, Rollup: 1, MaxRows: 2000,
+      UserId: 7, AccessibleBranchIdsJson: "[2]", OwnerIdsJson: "[7]",
+    });
+    const data = res.json.mock.calls[0][0].data;
+    expect(data.total).toBe(6412);
+    expect(data.truncated).toBe(true);
+    expect(data.amountTotal).toBe(5);
+    expect(data.sums).toEqual({});
+    expect(data.path).toEqual([{ Id: 9, Name: "Neha" }]);
+    expect(data.previous).toBeNull();
+    expect(data.range).toEqual({ from: "2026-09-01", to: "2026-09-30" });
+    // text and date columns stay as they came; money becomes a number
+    expect(data.rows[0]).toMatchObject({ EventAt: ROW.EventAt, MobileNo: "9825012345", Detail1: "12", Amount: 5, LeadId: 9 });
+  });
+
+  it("clamps a larger MaxRows to 2000", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[], [{ Total: 0, AmountTotal: 0 }]] });
+    await reportController.salesRows(salesReq(body({ MaxRows: 50000 })), mockRes());
+    expect(salesCall(0).MaxRows).toBe(2000);
+  });
+
+  it("is not truncated when every row came back", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[ROW, ROW], [{ Total: 2, AmountTotal: "10.00" }], []] });
+    const res = mockRes();
+    await reportController.salesRows(salesReq(body()), res);
+    expect(res.json.mock.calls[0][0].data).toMatchObject({ total: 2, truncated: false });
+  });
+
+  it("returns the column sums of the leads shape", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [
+      [{ LeadId: 4, LeadName: "A", NNew: 1 }],
+      [{ Total: 1, AmountTotal: "100.00", NNew: 1, NMissed: 2, WonValue: "17000.00" }], []] });
+    const res = mockRes();
+    await reportController.salesRows(salesReq(body({ Shape: "leads", Metric: "all", Rollup: false })), res);
+    expect(salesCall(0)).toMatchObject({ Shape: "leads", Metric: "all", Rollup: 0 });
+    expect(res.json.mock.calls[0][0].data.sums).toEqual({ NNew: 1, NMissed: 2, WonValue: 17000 });
+  });
+
+  it("WithPrevious makes one extra call with MaxRows 0 and returns its totals", async () => {
+    database.executeStoredProcedure
+      .mockResolvedValueOnce({ recordsets: [[ROW], [{ Total: 1, AmountTotal: "5.00" }], []] })
+      .mockResolvedValueOnce({ recordsets: [[{ Total: 3, AmountTotal: "7.50" }]] });
+    const res = mockRes();
+    await reportController.salesRows(salesReq(body({ WithPrevious: true })), res);
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(2);
+    expect(salesCall(1)).toMatchObject({ FromDate: "2026-08-01", ToDate: "2026-08-31", MaxRows: 0, Metric: "call", PersonId: 9 });
+    expect(res.json.mock.calls[0][0].data.previous).toEqual({ total: 3, amountTotal: 7.5, range: { from: "2026-08-01", to: "2026-08-31" } });
+  });
+
+  it("WithPrevious is ignored for Open leads", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[], [{ Total: 0, AmountTotal: 0 }]] });
+    const res = mockRes();
+    await reportController.salesRows(salesReq({ GroupBy: "person", Metric: "open", WithPrevious: true }), res);
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
+    expect(salesCall(0)).toMatchObject({ FromDate: null, ToDate: null });
+    expect(res.json.mock.calls[0][0].data.previous).toBeNull();
+  });
+
+  it("a malformed PersonId is dropped, not an error", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [] });
+    const res = mockRes();
+    await reportController.salesRows(salesReq(body({ PersonId: "abc" })), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(salesCall(0).PersonId).toBeNull();
+  });
+
+  it("400s a bad Metric without touching the DB", async () => {
+    const res = mockRes();
+    await reportController.salesRows(salesReq(body({ Metric: "calls" })), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json.mock.calls[0][0].code).toBe("VALIDATION_ERROR");
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  it("tolerates missing recordsets", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [] });
+    const res = mockRes();
+    await reportController.salesRows(salesReq(body()), res);
+    expect(res.json.mock.calls[0][0].data).toMatchObject({ rows: [], total: 0, amountTotal: 0, truncated: false, path: [] });
+  });
+});

@@ -33,6 +33,9 @@ router.post("/aging", allowEmptyPayload, requireModule("sales_reports", "view"),
 router.post("/transfers", allowEmptyPayload, requireModule("sales_reports", "view"), reportController.transfers);
 router.post("/pipelineValue", allowEmptyPayload, requireModule("sales_reports", "view"), reportController.pipelineValue);
 router.post("/leaderboard", allowEmptyPayload, requireModule("sales_reports", "view"), reportController.leaderboard);
+// Sales reports rebuild (sql/122): every summary + its drill.
+router.post("/sales", allowEmptyPayload, requireModule("sales_reports", "view"), reportController.sales);
+router.post("/salesRows", allowEmptyPayload, requireModule("sales_reports", "view"), reportController.salesRows);
 router.post("/partners", allowEmptyPayload, requireModule("sales_reports", "view"), reportController.partners);
 
 // P4 Team Reports — open to every signed-in user; the data is scoped per caller

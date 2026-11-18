@@ -3,7 +3,8 @@ const { scopeParams, scopeFor, scopeJson } = require("../middleware/permission")
 const { asyncRoute, positiveInt } = require("../utils/controllerKit");
 const { runReport, REPORTS, parseReportArgs, TAT_METRICS } = require("../utils/reportKit");
 const { success, error } = require("../utils/responseHelper");
-const { dayKey } = require("../utils/workCalendar");
+const { dayKey, toSqlIst } = require("../utils/workCalendar");
+const { parseSalesArgs, previousRange, rangeDays, sumRows, MAX_ROWS, PREVIOUS_MAX_DAYS } = require("../utils/salesReport");
 const { visibleUserIds } = require("./workSettingsController");
 
 class ReportController {
@@ -200,6 +201,82 @@ controller.tatClocks = asyncRoute(
       Metric, BranchId, OwnerId, UserIdsJson: await tatScopeJson(req, OwnerId),
     });
     return success(res, "Report fetched successfully", { clocks: result?.recordsets?.[0] ?? [] });
+  },
+  "Failed to fetch report",
+  "REPORT_ERROR",
+);
+
+// --- Sales reports (sql/122): summary lines and the rows behind one number ---
+// Scope is the sales_reports scope bound by the route, passed untouched ([] stays "[]").
+// Totals are summed here from the lines (no totals from SQL); an 'own' line's
+// TeamSize is the whole team and is passed through as the proc sent it.
+const LINE_KEEP = ["GroupKey", "GroupLabel", "LineKind"];
+const ROW_KEEP = ["EventAt", "Metric", "Src", "LeadName", "CreatedAt", "MobileNo", "Company", "PersonName",
+  "OwnerName", "SourceName", "StatusName", "StatusCode", "Detail1", "Detail2", "LostReason", "Remarks",
+  "QuoteNo", "LastActivityAt", "NextFollowupDate"];
+const toPath = (rows = []) => rows.map((r) => ({ Id: num(r.Id), Name: r.Name }));
+// Previous period only for a dated, non-Open-leads range of at most 92 days.
+const previousOf = ({ FromDate, ToDate, GroupBy }) =>
+  (FromDate && ToDate && GroupBy !== "person" && rangeDays(FromDate, ToDate) <= PREVIOUS_MAX_DAYS
+    ? previousRange(FromDate, ToDate) : null);
+
+controller.sales = asyncRoute(
+  async (req, res) => {
+    const parsed = parseSalesArgs(req.body);
+    if (parsed.error) return error(res, parsed.error, "VALIDATION_ERROR", 400);
+    const args = parsed.args;
+    const run = (over) => database.executeStoredProcedure("sp_RptSales",
+      { CompId: req.user.CompId, ...args, ...scopeParams(req), ...over });
+    const prev = previousOf(args);
+    const [result, prevResult] = await Promise.all([
+      run(),
+      prev && run({ FromDate: prev.from, ToDate: prev.to }),
+    ]);
+    const rs = result?.recordsets ?? [];
+    const rows = (rs[0] ?? []).map((r) => numRow(r, LINE_KEEP));
+    return success(res, "Report fetched successfully", {
+      rows,
+      totals: sumRows(rows),
+      // the previous call's lines only (RS1); its path / NodeOk are the same call's
+      previous: prev ? { totals: sumRows(prevResult?.recordsets?.[0] ?? []), range: prev } : null,
+      path: toPath(rs[1]),
+      nodeOk: rs[2]?.[0] ? !!rs[2][0].NodeOk : true,
+      range: { from: args.FromDate, to: args.ToDate },
+      asOf: toSqlIst(new Date()),
+    });
+  },
+  "Failed to fetch report",
+  "REPORT_ERROR",
+);
+
+controller.salesRows = asyncRoute(
+  async (req, res) => {
+    const parsed = parseSalesArgs(req.body, { rows: true });
+    if (parsed.error) return error(res, parsed.error, "VALIDATION_ERROR", 400);
+    const args = parsed.args;
+    const MaxRows = Math.min(positiveInt(req.body?.MaxRows) ?? MAX_ROWS, MAX_ROWS);
+    const run = (over) => database.executeStoredProcedure("sp_RptSalesRows",
+      { CompId: req.user.CompId, ...args, MaxRows, ...scopeParams(req), ...over });
+    const prev = req.body?.WithPrevious ? previousOf(args) : null;
+    const [result, prevResult] = await Promise.all([
+      run(),
+      // MaxRows 0 = the totals row alone, as recordsets[0]
+      prev && run({ FromDate: prev.from, ToDate: prev.to, MaxRows: 0 }),
+    ]);
+    const rs = result?.recordsets ?? [];
+    const rows = (rs[0] ?? []).map((r) => numRow(r, ROW_KEEP));
+    const { Total = 0, AmountTotal = 0, ...sums } = rs[1]?.[0] ?? {};
+    const p = prevResult?.recordsets?.[0]?.[0] ?? {};
+    return success(res, "Report fetched successfully", {
+      rows,
+      total: num(Total),
+      amountTotal: num(AmountTotal),
+      sums: numRow(sums),
+      truncated: num(Total) > rows.length,
+      path: toPath(rs[2]),
+      range: { from: args.FromDate, to: args.ToDate },
+      previous: prev ? { total: num(p.Total ?? 0), amountTotal: num(p.AmountTotal ?? 0), range: prev } : null,
+    });
   },
   "Failed to fetch report",
   "REPORT_ERROR",
