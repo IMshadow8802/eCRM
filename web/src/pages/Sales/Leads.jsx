@@ -1,13 +1,14 @@
 // src/pages/Sales/Leads.jsx
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";
-import { Box } from "@mui/material";
+import { Box, Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { MaterialReactTable } from "material-react-table";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowRightLeft, Eye, Pencil, Plus, Trash2, Users } from "lucide-react";
 
 import { Button, Combobox, IconButton, Tooltip, Tabs, Chip } from "../../components/ui";
+import DateRangeField from "../../components/ui/DateRangeField";
 import PageHeader from "../../components/ui/PageHeader";
 import HelpGuide from "../../components/HelpGuide";
 import { HELP_GUIDES } from "../../data/helpGuides";
@@ -19,13 +20,16 @@ import { useAccess } from "../../hooks/useAccess";
 import useAuthStore from "../../stores/useAuthStore";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
 import { PARTNER_ENDPOINTS } from "../../api/partnerQueries";
-import { formatCurrency, formatDate, formatDue } from "../../utils/format";
+import { formatCurrency, formatDate, formatDateTime, formatDue } from "../../utils/format";
+import { keyInk } from "../../styles/tokens";
 import { getUserName } from "../../utils/userShape";
-import { LEAD_PRESETS, presetParams, isActiveCode, leadsParamsToState } from "./leadStatus";
+import { LEAD_PRESETS, presetParams, isActiveCode, isStale, statusChipColors, leadsParamsToState, leadsStateToParams } from "./leadStatus";
 import LeadCreateModal from "./LeadCreateModal";
 import TransferLeadModal from "./TransferLeadModal";
 import DeleteLeadModal from "./DeleteLeadModal";
 
+// Name, Owner and Partner wrap so the list fits without sideways scroll.
+const wrap = { sx: { whiteSpace: "normal", overflowWrap: "anywhere" } };
 const num = (v) => (v === "" ? null : Number(v));
 
 const Leads = () => {
@@ -34,17 +38,16 @@ const Leads = () => {
   const leadsAccess = useAccess("leads");
   const userId = useAuthStore((s) => s.user?.UserId ?? s.UserId);
 
-  // A report drill-down lands here with its filters in the URL (spec 4a).
-  // Read once on mount; from then on the page owns its state, so a stray URL
-  // change cannot wipe what the user has typed. This holds only because every
-  // drill arrives from a /reports/* path and so remounts this component —
-  // React Router does NOT remount on a search-string-only change, so an
-  // in-page link to /sales/leads?... would silently do nothing. Don't add one.
-  const [searchParams] = useSearchParams();
+  // The filters, the Created range and the sort live in the address bar, so a
+  // reload or a shared link reopens the same list. The URL is read once, on
+  // mount; after that the page owns the state and only writes it back.
+  // React Router does not remount on a search-only change, which is fine
+  // because nothing inside this page links to /sales/leads?… — keep it so.
+  const [searchParams, setSearchParams] = useSearchParams();
   const [initial] = useState(() => leadsParamsToState(searchParams));
-  const [preset, setPreset] = useState(initial.preset);
+  const [preset, setPreset] = useState("all");
   const [filters, setFilters] = useState(initial.filters);
-  const [range, setRange] = useState(initial.range);
+  const [created, setCreated] = useState(initial.created);
   const [createOpen, setCreateOpen] = useState(false);
   const [editLead, setEditLead] = useState(null);
   const [transferIds, setTransferIds] = useState([]);
@@ -74,38 +77,46 @@ const Leads = () => {
     ?? (filters.PartnerId !== "" && opts.partner.length ? { value: filters.PartnerId, label: `Unknown (#${filters.PartnerId})` } : null);
 
   // Every label comes from the SP now; no client-side id → name resolution.
-  const overdueSx = { color: theme.tokens.error.main, fontWeight: 600 };
+  // Column ids are the server's sort names; only those five sort.
+  const lateInk = keyInk(theme.tokens, "late");
+  const idleInk = keyInk(theme.tokens, "idle");
   const columns = useMemo(() => [
     // Grid layout shares spare width: the name takes twice the share, the short ones less.
-    { accessorKey: "Name", header: "Name", enableSorting: true, size: 200, grow: 2 },
+    { id: "name", accessorKey: "Name", header: "Name", enableSorting: true, size: 180, grow: 2, muiTableBodyCellProps: wrap },
+    { id: "created", accessorKey: "CreatedAt", header: "Created", enableSorting: true, size: 110,
+      Cell: ({ row }) => <span title={formatDateTime(row.original.CreatedAt)}>{formatDate(row.original.CreatedAt, { empty: "—" })}</span> },
+    { id: "lastActivity", accessorKey: "LastActivityAt", header: "Last activity", enableSorting: true, size: 120,
+      Cell: ({ row }) => {
+        const stale = isStale(row.original);
+        return <span data-stale={String(stale)} style={stale ? { color: idleInk, fontWeight: 600 } : undefined}>{formatDate(row.original.LastActivityAt, { empty: "—" })}</span>;
+      } },
     { accessorKey: "Company", header: "Company", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "—" },
     { accessorKey: "MobileNo", header: "Mobile", enableSorting: false, size: 120 },
-    { accessorKey: "City", header: "City", enableSorting: false, size: 110, Cell: ({ cell }) => cell.getValue() || "—" },
     { accessorKey: "StatusName", header: "Status", enableSorting: false, size: 110,
-      Cell: ({ row }) => <Chip label={row.original.StatusName || "—"} size="sm" tone={isActiveCode(row.original.StatusCode) ? "primary" : "default"} /> },
+      Cell: ({ row }) => <Chip label={row.original.StatusName || "—"} size="sm" tone={isActiveCode(row.original.StatusCode) ? "primary" : "default"} colors={statusChipColors(row.original.StatusCode)} /> },
     { accessorKey: "ProductName", header: "Product", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "—" },
-    { accessorKey: "OwnerName", header: "Owner", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "Unassigned" },
-    { accessorKey: "PartnerName", header: "Partner", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "—" },
-    { accessorKey: "EstValue", header: "Value", enableSorting: true,
+    { accessorKey: "OwnerName", header: "Owner", enableSorting: false, muiTableBodyCellProps: wrap, Cell: ({ cell }) => cell.getValue() || "Unassigned" },
+    { accessorKey: "PartnerName", header: "Partner", enableSorting: false, muiTableBodyCellProps: wrap, Cell: ({ cell }) => cell.getValue() || "—" },
+    { id: "value", accessorKey: "EstValue", header: "Value", enableSorting: true,
       Cell: ({ row }) => (row.original.StatusCode === "converted"
         ? <strong>{formatCurrency(row.original.WonValue, { empty: "—" })}</strong>
         : formatCurrency(row.original.EstValue, { empty: "—" })) },
-    { accessorKey: "NextFollowupDate", header: "Next Follow-up", enableSorting: true,
-      Cell: ({ row, cell }) => <span style={row.original.IsOverdue ? overdueSx : undefined}>{formatDue(cell.getValue(), { empty: "—" })}</span> },
-  ], [overdueSx.color]);
+    { id: "nextFollowUp", accessorKey: "NextFollowupDate", header: "Next Follow-up", enableSorting: true,
+      Cell: ({ row, cell }) => <span style={row.original.IsOverdue ? { color: lateInk, fontWeight: 600 } : undefined}>{formatDue(cell.getValue(), { empty: "—" })}</span> },
+  ], [lateInk, idleInk]);
 
   const extraParams = useMemo(() => ({
     StatusId: num(filters.StatusId), ProductId: num(filters.ProductId), OwnerId: num(filters.OwnerId),
     SourceId: num(filters.SourceId), BranchId: num(filters.BranchId), PartnerId: num(filters.PartnerId),
-    ...(range.from ? { FromDate: range.from } : {}),
-    ...(range.to ? { ToDate: range.to } : {}),
+    ...(created.from && !created.error ? { FromDate: created.from, ToDate: created.to } : {}),
     ...presetParams(preset, userId),
-  }), [filters, range, preset, userId]);
+  }), [filters, created, preset, userId]);
 
-  const { table } = useServerTable({
+  const { table, sorting } = useServerTable({
     columns, queryKey: "leads", endpoint: SALES_ENDPOINTS.leads.fetchLeads, dataKey: "leads", extraParams,
-    initialPageSize: 25, getRowId: (row) => row.Id,
+    initialPageSize: 25, initialSorting: initial.sorting, enableSortingRemoval: false, getRowId: (row) => row.Id,
     enableRowSelection: true, enableRowActions: true,
+    positionActionsColumn: "last",
     displayColumnDefOptions: { "mrt-row-actions": { grow: false, header: "Actions" } },
     muiTableBodyRowProps: ({ row }) => ({ hover: true, sx: { cursor: "pointer" }, onClick: () => navigate(`/sales/leads/${row.original.Id}`) }),
     renderRowActions: ({ row }) => (
@@ -118,6 +129,12 @@ const Leads = () => {
       </Box>
     ),
   });
+
+  // Compared as a string: setSearchParams changes identity on every navigation.
+  const query = new URLSearchParams(leadsStateToParams({ filters, created, sorting })).toString();
+  useEffect(() => {
+    setSearchParams(query, { replace: true });
+  }, [query]); // setSearchParams left out: see above
 
   const selectedIds = Object.keys(table.getState?.()?.rowSelection ?? {}).map(Number);
 
@@ -143,6 +160,7 @@ const Leads = () => {
       <Box sx={{ mt: 1 }}><Tabs value={preset} onChange={setPreset} items={LEAD_PRESETS} data-testid="lead-presets" /></Box>
 
       <Box sx={{ display: "flex", gap: 1, mt: 1, mb: 0.5, flexWrap: "wrap" }}>
+        <DateRangeField means="Created" heading="Show leads created…" allowAny value={created} onChange={(v) => setCreated({ ...v, error: null })} data-testid="filter-created" />
         <Box sx={{ flex: "1 1 calc(150rem / 15)", maxWidth: "calc(220rem / 15)" }}><Combobox size="sm" placeholder="All statuses" options={opts.status} value={optById(opts.status, filters.StatusId)} onChange={setFilterValue("StatusId")} data-testid="filter-status" /></Box>
         <Box sx={{ flex: "1 1 calc(150rem / 15)", maxWidth: "calc(220rem / 15)" }}><Combobox size="sm" placeholder="All products" options={opts.product} value={optById(opts.product, filters.ProductId)} onChange={setFilterValue("ProductId")} data-testid="filter-product" /></Box>
         <Box sx={{ flex: "1 1 calc(150rem / 15)", maxWidth: "calc(220rem / 15)" }}><Combobox size="sm" placeholder="All owners" options={opts.owner} value={optById(opts.owner, filters.OwnerId)} onChange={setFilterValue("OwnerId")} data-testid="filter-owner" /></Box>
@@ -151,11 +169,8 @@ const Leads = () => {
         <Box sx={{ flex: "1 1 calc(150rem / 15)", maxWidth: "calc(220rem / 15)" }}><Combobox size="sm" placeholder="All branches" options={opts.branch} value={optById(opts.branch, filters.BranchId)} onChange={setFilterValue("BranchId")} data-testid="filter-branch" /></Box>
       </Box>
 
-      {(range.from || range.to) && (
-        <Box sx={{ mb: 0.5 }}>
-          <Chip tone="info" label={`Created ${formatDate(range.from, { empty: "…" })} – ${formatDate(range.to, { empty: "…" })}`}
-            onDelete={() => setRange({ from: "", to: "" })} data-testid="leads-range-chip" />
-        </Box>
+      {created.error && (
+        <Typography variant="caption" color="error" sx={{ mb: 0.5 }} data-testid="filter-created-error">{created.error}</Typography>
       )}
 
       <MaterialReactTable table={table} />

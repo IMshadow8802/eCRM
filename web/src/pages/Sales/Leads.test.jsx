@@ -7,20 +7,31 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "@mui/material/styles";
 import { buildTheme } from "../../theme";
 
+import dayjs from "dayjs";
+
+const daysAgo = (n) => dayjs().subtract(n, "day").format("YYYY-MM-DDTHH:mm:ss");
 const FIXTURE_LEADS = [
-  { Id: 101, Name: "Acme Corp", MobileNo: "9990001111", City: "Pune", StatusName: "Contacted", StatusCode: "open",
-    ProductName: "TV 43in", OwnerName: "Bob", EstValue: 50000, NextFollowupDate: "2026-07-10", IsOverdue: true },
+  { Id: 101, Name: "Acme Corp", MobileNo: "9990001111", StatusName: "Contacted", StatusCode: "open",
+    ProductName: "TV 43in", OwnerName: "Bob", EstValue: 50000, NextFollowupDate: "2026-07-10", IsOverdue: true,
+    CreatedAt: daysAgo(20), LastActivityAt: daysAgo(8) },
+  { Id: 102, Name: "Zen Ltd", MobileNo: "9990002222", StatusName: "Won", StatusCode: "converted",
+    EstValue: 9000, WonValue: 9000, CreatedAt: daysAgo(30), LastActivityAt: null },
 ];
 let rowSelection = {};
 const mockNavigate = vi.fn();
 vi.mock("react-router-dom", async () => ({ ...(await vi.importActual("react-router-dom")), useNavigate: () => mockNavigate }));
-vi.mock("../../hooks/useServerTable", () => ({
-  __esModule: true,
-  default: vi.fn(() => ({
-    table: { __options: { data: FIXTURE_LEADS }, getState: () => ({ rowSelection }), resetRowSelection: vi.fn() },
-    data: FIXTURE_LEADS, isLoading: false, isFetching: false, error: null, refetch: vi.fn(), totalRecords: 1,
-  })),
-}));
+// The real hook, spied: its config is inspected, and the request it builds
+// (sort keys included) reaches useApiQuery below.
+vi.mock("../../hooks/useServerTable", async (importOriginal) => {
+  const real = (await importOriginal()).default;
+  return {
+    __esModule: true,
+    default: vi.fn((cfg) => {
+      const out = real(cfg);
+      return { ...out, table: { ...out.table, getState: () => ({ ...out.table.getState(), rowSelection }) } };
+    }),
+  };
+});
 vi.mock("../../hooks", () => ({
   useUsers: vi.fn(() => ({ data: { users: [{ Id: 2, Username: "bob", FullName: "Bob" }] } })),
   useConfirmation: vi.fn(() => ({ confirmationState: { open: false }, showConfirmation: vi.fn(), hideConfirmation: vi.fn(), handleConfirm: vi.fn(), confirmDelete: vi.fn() })),
@@ -34,6 +45,7 @@ vi.mock("../../hooks/useLookups", () => ({
 }));
 vi.mock("../../hooks/useApiQuery", () => ({
   useApiQuery: vi.fn((cfg) => {
+    if (cfg?.endpoint === "/api/leads/fetchLeads") return { data: { leads: FIXTURE_LEADS, pagination: { totalRecords: 2 } }, isLoading: false, isFetching: false };
     if (cfg?.endpoint === "/api/products/fetchProducts") return { data: { products: [{ Id: 2, Name: "TV 43in" }] } };
     if (cfg?.endpoint === "/api/partners/fetchPartners") return { data: { partners: [{ Id: 3, Name: "Sharma Traders" }] } };
     if (cfg?.endpoint === "/api/users/fetchBranches") return { data: { branches: [{ Id: 2, BranchName: "Pune" }] } };
@@ -42,28 +54,27 @@ vi.mock("../../hooks/useApiQuery", () => ({
 }));
 let mockAccess = null;
 vi.mock("../../stores/useAuthStore", () => ({ __esModule: true, default: (sel) => sel({ user: { UserId: 7 }, UserId: 7, access: mockAccess }) }));
-vi.mock("material-react-table", () => ({
-  MaterialReactTable: ({ table }) => (
-    <div data-testid="mrt-root">
-      {(table?.__options?.data ?? []).map((row) => <div key={row.Id} data-testid={`lead-row-${row.Id}`}>{row.Name}</div>)}
-    </div>
-  ),
-}));
 vi.mock("./TransferLeadModal", () => ({ __esModule: true, default: vi.fn(({ open, leadIds }) => (open ? <div data-testid="transfer-modal">{leadIds.join(",")}</div> : null)) }));
 
 import Leads from "./Leads";
 import TransferLeadModal from "./TransferLeadModal";
 import useServerTable from "../../hooks/useServerTable";
+import { useApiQuery } from "../../hooks/useApiQuery";
+import { useLocation } from "react-router-dom";
+
+const LocationProbe = () => <div data-testid="location">{useLocation().search}</div>;
 
 const renderPage = (route) => render(
-  <ThemeProvider theme={buildTheme("light")}><QueryClientProvider client={new QueryClient()}><MemoryRouter initialEntries={route ? [route] : undefined}><Leads /></MemoryRouter></QueryClientProvider></ThemeProvider>,
+  <ThemeProvider theme={buildTheme("light")}><QueryClientProvider client={new QueryClient()}><MemoryRouter initialEntries={route ? [route] : undefined}><Leads /><LocationProbe /></MemoryRouter></QueryClientProvider></ThemeProvider>,
 );
 const lastCfg = () => useServerTable.mock.calls.at(-1)[0];
 const lastExtraParams = () => lastCfg().extraParams;
+const lastLeadsBody = () => useApiQuery.mock.calls.filter(([c]) => c?.endpoint === "/api/leads/fetchLeads").at(-1)[0].params;
+const search = () => new URLSearchParams(screen.getByTestId("location").textContent);
 const cellOf = (key) => lastCfg().columns.find((c) => c.accessorKey === key).Cell;
 
 describe("Leads page (spec 1)", () => {
-  beforeEach(() => { rowSelection = {}; useServerTable.mockClear(); mockNavigate.mockClear(); });
+  beforeEach(() => { rowSelection = {}; useServerTable.mockClear(); useApiQuery.mockClear(); mockNavigate.mockClear(); });
 
   it("renders presets and the five filters", () => {
     renderPage();
@@ -155,7 +166,6 @@ describe("Leads page (spec 1)", () => {
     const withTheme = (node) => render(<ThemeProvider theme={theme}>{node}</ThemeProvider>);
 
     expect(cellOf("Company")({ cell: { getValue: () => null } })).toBe("—");
-    expect(cellOf("City")({ cell: { getValue: () => "Pune" } })).toBe("Pune");
     expect(cellOf("ProductName")({ cell: { getValue: () => null } })).toBe("—");
     expect(cellOf("OwnerName")({ cell: { getValue: () => null } })).toBe("Unassigned");
     expect(cellOf("EstValue")({ row: { original: { StatusCode: "open", EstValue: 50000 } } })).toContain("50,000");
@@ -181,13 +191,13 @@ describe("Leads page (spec 1)", () => {
   it("shows a converted row's WonValue instead of its EstValue", () => {
     renderPage();
     const theme = buildTheme("light");
-    render(
+    const { container } = render(
       <ThemeProvider theme={theme}>
         {cellOf("EstValue")({ row: { original: { StatusCode: "converted", EstValue: 50000, WonValue: 47500 } } })}
       </ThemeProvider>,
     );
-    expect(screen.getByText("₹47,500.00")).toBeInTheDocument();
-    expect(screen.queryByText(/50,000/)).not.toBeInTheDocument();
+    expect(container).toHaveTextContent("₹47,500.00");
+    expect(container).not.toHaveTextContent(/50,000/);
   });
 
   it("row click navigates to the lead detail and row actions open the modals", async () => {
@@ -196,11 +206,7 @@ describe("Leads page (spec 1)", () => {
     cfg.muiTableBodyRowProps({ row: { original: { Id: 42 } } }).onClick();
     expect(mockNavigate).toHaveBeenCalledWith("/sales/leads/42");
 
-    render(
-      <ThemeProvider theme={buildTheme("light")}>
-        {cfg.renderRowActions({ row: { original: FIXTURE_LEADS[0] } })}
-      </ThemeProvider>
-    );
+    // The real table draws the row actions.
     const user = userEvent.setup();
     await user.click(screen.getByTestId("transfer-lead-101"));
     expect(screen.getByTestId("transfer-modal")).toHaveTextContent("101");
@@ -215,11 +221,6 @@ describe("Leads page (spec 1)", () => {
   // by consequence.
   it("row actions lead with an eye into the lead and are toned by what they do", async () => {
     renderPage();
-    render(
-      <ThemeProvider theme={buildTheme("light")}>
-        {lastCfg().renderRowActions({ row: { original: FIXTURE_LEADS[0] } })}
-      </ThemeProvider>
-    );
     const eye = screen.getByTestId("view-lead-101");
     expect(eye).toHaveAttribute("data-tone", "primary");
     await userEvent.setup().click(eye);
@@ -236,27 +237,100 @@ describe("Leads page (spec 1)", () => {
     expect(await screen.findByTestId("lead-create-modal")).toBeInTheDocument();
   });
 
-  // Spec 4a: a report number drills into this list with the range it counted.
-  it("seeds filters and the date range from the URL, and the range chip clears it", async () => {
-    renderPage("/sales/leads?StatusId=15&OwnerId=2&from=2026-08-01&to=2026-08-31");
-    expect(lastExtraParams()).toEqual({
-      StatusId: 15, ProductId: null, OwnerId: 2, SourceId: null, BranchId: null, PartnerId: null,
-      FromDate: "2026-08-01", ToDate: "2026-08-31",
-    });
+  it("columns: Created and Last activity right after the name, no City", () => {
+    renderPage();
+    const headers = screen.getAllByRole("columnheader").map((h) => h.querySelector(".Mui-TableHeadCell-Content-Wrapper")?.textContent).filter(Boolean);
+    expect(headers).toEqual(["Name", "Created", "Last activity", "Company", "Mobile", "Status", "Product", "Owner", "Partner", "Value", "Next Follow-up", "Actions"]);
+    expect(lastCfg().columns.filter((c) => c.enableSorting).map((c) => c.id)).toEqual(["name", "created", "lastActivity", "value", "nextFollowUp"]);
+  });
+
+  it("first request sorts by Created, newest first, with no date range", () => {
+    renderPage();
+    expect(lastLeadsBody()).toMatchObject({ SortBy: "created", SortDir: "desc" });
+    expect(lastLeadsBody()).not.toHaveProperty("FromDate");
+    expect(screen.getByTestId("location").textContent).toBe("");
+  });
+
+  it("Last activity shows a dash when empty and marks an active lead untouched for 8 days", () => {
+    renderPage();
+    const stale = document.querySelector('[data-stale="true"]');
+    expect(stale).toHaveTextContent(dayjs(FIXTURE_LEADS[0].LastActivityAt).format("DD-MM-YYYY"));
+    expect(stale.style.color).toBe("rgb(120, 53, 15)");
+    expect(stale.style.fontWeight).toBe("600");
+    expect(document.querySelectorAll('[data-stale="true"]')).toHaveLength(1);
+    const theme = buildTheme("light");
+    const { container } = render(<ThemeProvider theme={theme}>{cellOf("LastActivityAt")({ row: { original: FIXTURE_LEADS[1] } })}</ThemeProvider>);
+    expect(container).toHaveTextContent("—");
+    expect(container.querySelector("span")).toHaveAttribute("data-stale", "false");
+    const created = render(<ThemeProvider theme={theme}>{cellOf("CreatedAt")({ row: { original: { CreatedAt: "2026-10-10T15:05:00" } } })}</ThemeProvider>);
+    expect(created.container.querySelector("span")).toHaveTextContent("10-10-2026");
+    expect(created.container.querySelector("span")).toHaveAttribute("title", "10-10-2026 15:05");
+  });
+
+  it("Created filter: Yesterday sends that day and writes the address bar; Any time removes it", async () => {
+    renderPage();
+    const user = userEvent.setup();
+    const y = dayjs().subtract(1, "day").format("YYYY-MM-DD");
+    await user.click(screen.getByTestId("filter-created-button"));
+    await user.click(screen.getByTestId("filter-created-option-yesterday"));
+    expect(lastLeadsBody()).toMatchObject({ FromDate: y, ToDate: y });
+    expect(search().get("created")).toBe("yesterday");
+    await user.click(screen.getByTestId("filter-created-button"));
+    await user.click(screen.getByTestId("filter-created-option-any"));
+    expect(lastLeadsBody()).not.toHaveProperty("FromDate");
+    expect(lastLeadsBody()).not.toHaveProperty("ToDate");
+    expect(search().has("created")).toBe(false);
+  });
+
+  it("clicking the Last activity header sorts by it and writes it to the address bar", async () => {
+    renderPage();
+    await userEvent.setup().click(screen.getByText("Last activity"));
+    expect(lastLeadsBody()).toMatchObject({ SortBy: "lastActivity" });
+    expect(search().get("sort")).toBe("lastActivity");
+  });
+
+  it("a filter choice lands in the address bar", async () => {
+    renderPage();
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("filter-owner-input"));
+    await user.click(await screen.findByRole("option", { name: "Bob" }));
+    expect(search().get("OwnerId")).toBe("2");
+  });
+
+  it("mounting with filters, a preset and a sort in the URL sends them all", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 10, 18, 9, 40));
+    try {
+      renderPage("/sales/leads?OwnerId=17&created=lastMonth&sort=value&dir=asc");
+      expect(lastLeadsBody()).toMatchObject({ OwnerId: 17, FromDate: "2026-10-01", ToDate: "2026-10-31", SortBy: "value", SortDir: "asc" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a backwards custom range in the URL sends no dates and says why", () => {
+    renderPage("/sales/leads?created=custom&from=2026-09-30&to=2026-09-01");
+    expect(lastLeadsBody()).not.toHaveProperty("FromDate");
+    expect(lastLeadsBody()).not.toHaveProperty("ToDate");
+    expect(screen.getByText("To is before From")).toBeInTheDocument();
+  });
+
+  it("seeds the id filters from the URL as numbers", () => {
+    renderPage("/sales/leads?StatusId=15&OwnerId=2");
+    expect(lastExtraParams()).toEqual({ StatusId: 15, ProductId: null, OwnerId: 2, SourceId: null, BranchId: null, PartnerId: null });
     // Numeric ids, not strings: optById compares with ===, so a string would
     // still post the filter while every Combobox showed its placeholder.
     expect(screen.getByTestId("filter-status-input")).toHaveValue("Lost");
     expect(screen.getByTestId("filter-owner-input")).toHaveValue("Bob");
-    const chip = screen.getByTestId("leads-range-chip");
-    expect(chip).toHaveTextContent("01-08-2026 – 31-08-2026");
-    await userEvent.setup().click(screen.getByTestId("leads-range-chip-remove"));
-    expect(lastExtraParams()).not.toHaveProperty("FromDate");
-    expect(screen.queryByTestId("leads-range-chip")).toBeNull();
   });
 
-  it("Overdue=1 lands on the Overdue preset", () => {
-    renderPage("/sales/leads?Overdue=1");
-    expect(lastExtraParams()).toMatchObject({ Overdue: true });
-    expect(screen.getByRole("tab", { name: "Overdue" })).toHaveAttribute("aria-selected", "true");
+  it("won and lost status chips take the report colours; overdue follow-up is late amber", () => {
+    renderPage();
+    const theme = buildTheme("light");
+    const chip = (code) => render(<ThemeProvider theme={theme}>{cellOf("StatusName")({ row: { original: { StatusName: code, StatusCode: code } } })}</ThemeProvider>).container.querySelector("span");
+    expect(chip("converted").style.backgroundColor).toBe("rgb(236, 253, 245)"); // #ECFDF5
+    expect(chip("lost").style.backgroundColor).toBe("rgb(254, 242, 242)"); // #FEF2F2
+    const due = render(<ThemeProvider theme={theme}>{cellOf("NextFollowupDate")({ row: { original: { IsOverdue: true } }, cell: { getValue: () => "2026-09-01" } })}</ThemeProvider>);
+    expect(due.container.querySelector("span").style.color).toBe("rgb(180, 83, 9)"); // #B45309
   });
 });

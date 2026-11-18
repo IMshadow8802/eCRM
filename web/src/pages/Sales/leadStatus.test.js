@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { isActiveCode, LEAD_PRESETS, presetParams, leadsParamsToState } from "./leadStatus";
+import dayjs from "dayjs";
+import {
+  isActiveCode, LEAD_PRESETS, presetParams, leadsParamsToState, leadsStateToParams,
+  isStale, STALE_DAYS, LEAD_SORTS, statusChipColors,
+} from "./leadStatus";
 
 describe("leadStatus helpers", () => {
   it("treats open and qualified as active, the rest as closed", () => {
@@ -21,30 +25,68 @@ describe("leadStatus helpers", () => {
   });
 });
 
-describe("leadsParamsToState", () => {
-  const p = (s) => new URLSearchParams(s);
+const NOW = new Date(2026, 10, 18, 9, 40);
 
-  it("seeds ids and the date range from a report drill-down URL", () => {
-    expect(leadsParamsToState(p("StatusId=32&OwnerId=17&SourceId=11&ProductId=2&BranchId=1&PartnerId=3&from=2026-08-01&to=2026-08-31"))).toEqual({
-      preset: "all",
-      filters: { StatusId: 32, ProductId: 2, OwnerId: 17, SourceId: 11, BranchId: 1, PartnerId: 3 },
-      range: { from: "2026-08-01", to: "2026-08-31" },
-    });
+describe("isStale", () => {
+  it("is seven days", () => expect(STALE_DAYS).toBe(7));
+  it.each([
+    [{ StatusCode: "open", CreatedAt: "2026-11-01T10:00:00", LastActivityAt: "2026-11-10T10:00:00" }, true],
+    [{ StatusCode: "open", CreatedAt: "2026-11-01T10:00:00", LastActivityAt: "2026-11-12T10:00:00" }, false],
+    [{ StatusCode: "qualified", CreatedAt: "2026-10-10T15:05:00", LastActivityAt: null }, true], // never touched, old
+    [{ StatusCode: "open", CreatedAt: "2026-11-17T10:00:00", LastActivityAt: null }, false], // never touched, new
+    [{ StatusCode: "converted", CreatedAt: "2026-01-01T10:00:00", LastActivityAt: null }, false], // closed is never stale
+  ])("isStale %j -> %s", (lead, out) => expect(isStale(lead, NOW)).toBe(out));
+  it("defaults now to the clock and survives a lead with no dates", () => {
+    expect(isStale({ StatusCode: "open", CreatedAt: "2000-01-01T00:00:00" })).toBe(true);
+    expect(isStale({ StatusCode: "open" }, NOW)).toBe(false);
+  });
+});
+
+describe("leadsParamsToState / leadsStateToParams", () => {
+  it("lists the server's sort names", () => {
+    expect(LEAD_SORTS).toEqual(["name", "created", "lastActivity", "value", "nextFollowUp"]);
   });
 
-  it("maps Overdue / Unassigned / StatusCode=lost onto the presets", () => {
-    expect(leadsParamsToState(p("Overdue=1")).preset).toBe("overdue");
-    expect(leadsParamsToState(p("Unassigned=true")).preset).toBe("unassigned");
-    expect(leadsParamsToState(p("StatusCode=converted")).preset).toBe("won");
-    expect(leadsParamsToState(p("StatusCode=lost")).preset).toBe("lost");
-    expect(leadsParamsToState(p("")).preset).toBe("all");
+  it("reads ids, created and sort; garbage falls back", () => {
+    const s = leadsParamsToState(new URLSearchParams("OwnerId=17&created=lastMonth&sort=lastActivity&dir=asc"), dayjs(NOW));
+    expect(s.filters.OwnerId).toBe(17);
+    expect(s.created).toMatchObject({ preset: "lastMonth", from: "2026-10-01", to: "2026-10-31" });
+    expect(s.sorting).toEqual([{ id: "lastActivity", desc: false }]);
+    const bad = leadsParamsToState(new URLSearchParams("OwnerId=abc&created=nonsense&sort=;drop&dir=sideways"), dayjs(NOW));
+    expect(bad.filters.OwnerId).toBe("");
+    expect(bad.created.preset).toBe("any");
+    expect(bad.sorting).toEqual([{ id: "created", desc: true }]);
   });
 
-  it("drops anything that is not a positive integer or an ISO day", () => {
-    expect(leadsParamsToState(p("StatusId=abc&OwnerId=-3&from=01/08/2026&to=2026-08-31"))).toEqual({
-      preset: "all",
-      filters: { StatusId: "", ProductId: "", OwnerId: "", SourceId: "", BranchId: "", PartnerId: "" },
-      range: { from: "", to: "2026-08-31" },
-    });
+  it("reads every id filter and a backwards custom range as an error", () => {
+    const s = leadsParamsToState(new URLSearchParams("StatusId=32&ProductId=2&SourceId=11&BranchId=1&PartnerId=3&OwnerId=-3&created=custom&from=2026-09-30&to=2026-09-01&sort=value"), dayjs(NOW));
+    expect(s.filters).toEqual({ StatusId: 32, ProductId: 2, OwnerId: "", SourceId: 11, BranchId: 1, PartnerId: 3 });
+    expect(s.created).toEqual({ preset: "custom", from: "2026-09-30", to: "2026-09-01", error: "To is before From" });
+    expect(s.sorting).toEqual([{ id: "value", desc: true }]);
+  });
+
+  it("no longer reads the old report keys", () => {
+    const s = leadsParamsToState(new URLSearchParams("StatusCode=lost&Overdue=1&Unassigned=1"), dayjs(NOW));
+    expect(s).not.toHaveProperty("preset");
+    expect(leadsStateToParams(s)).toEqual({});
+  });
+
+  it("writes only what differs from the defaults", () => {
+    expect(leadsStateToParams({ filters: { OwnerId: 17, StatusId: "" }, created: { preset: "any" }, sorting: [{ id: "created", desc: true }] }))
+      .toEqual({ OwnerId: "17" });
+    expect(leadsStateToParams({ filters: {}, created: { preset: "custom", from: "2026-09-01", to: "2026-09-30" }, sorting: [{ id: "value", desc: false }] }))
+      .toEqual({ created: "custom", from: "2026-09-01", to: "2026-09-30", sort: "value", dir: "asc" });
+    expect(leadsStateToParams({ filters: {}, created: { preset: "yesterday" }, sorting: [{ id: "created", desc: false }] }))
+      .toEqual({ created: "yesterday", sort: "created", dir: "asc" });
+    expect(leadsStateToParams({ filters: {}, created: { preset: "any" }, sorting: [] })).toEqual({});
+  });
+});
+
+describe("statusChipColors", () => {
+  it("colours won and lost from the report key, leaves the rest alone", () => {
+    expect(statusChipColors("converted")).toEqual({ bg: "#ECFDF5", text: "#047857" });
+    expect(statusChipColors("lost")).toEqual({ bg: "#FEF2F2", text: "#DC2626" });
+    expect(statusChipColors("open")).toBeUndefined();
+    expect(statusChipColors("junk")).toBeUndefined();
   });
 });

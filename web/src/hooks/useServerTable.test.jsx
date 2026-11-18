@@ -192,4 +192,29 @@ describe("useServerTable", () => {
 
     expect(useApiQuery.mock.calls.at(-1)[0].params.PageNumber).toBe(3);
   });
+
+  it("sends no sort keys until a column is sorted", () => {
+    const { result } = renderHook(() => useServerTable(baseConfig));
+    expect(useApiQuery.mock.calls.at(-1)[0].params).not.toHaveProperty("SortBy");
+    expect(useApiQuery.mock.calls.at(-1)[0].params).not.toHaveProperty("SortDir");
+    expect(result.current.sorting).toEqual([]);
+  });
+
+  it("sends SortBy / SortDir from the first sort, and honours initialSorting", () => {
+    const { result } = renderHook(() => useServerTable({ ...baseConfig, initialSorting: [{ id: "created", desc: true }] }));
+    expect(useApiQuery.mock.calls.at(-1)[0].params).toMatchObject({ SortBy: "created", SortDir: "desc" });
+    act(() => result.current.table.__options.onSortingChange([{ id: "name", desc: false }]));
+    expect(useApiQuery.mock.calls.at(-1)[0].params).toMatchObject({ SortBy: "name", SortDir: "asc" });
+    expect(result.current.sorting).toEqual([{ id: "name", desc: false }]);
+    // initialSorting is the hook's to consume, not MRT's.
+    expect(useAppTable.mock.calls.at(-1)[0]).not.toHaveProperty("initialSorting");
+  });
+
+  it("resets to page 1 when the sort changes", () => {
+    const { result } = renderHook(() => useServerTable(baseConfig));
+    act(() => result.current.table.__options.onPaginationChange({ pageIndex: 2, pageSize: 25 }));
+    expect(useApiQuery.mock.calls.at(-1)[0].params.PageNumber).toBe(3);
+    act(() => result.current.table.__options.onSortingChange([{ id: "value", desc: true }]));
+    expect(useApiQuery.mock.calls.at(-1)[0].params).toMatchObject({ PageNumber: 1, SortBy: "value", SortDir: "desc" });
+  });
 });

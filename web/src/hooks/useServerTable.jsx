@@ -20,6 +20,8 @@ import useAppTable from "../components/table/useAppTable";
  *     dataKey: "users",        // response.data[dataKey] → row array
  *     extraParams: {},          // optional; merged into body on every call
  *     initialPageSize: 25,
+ *     initialSorting: [],       // optional; [{ id, desc }] — the first sort is
+ *                               //   sent as SortBy (= column id) / SortDir
  *     enableRowActions: true,
  *     renderRowActions: ({ row }) => …,
  *     renderTopToolbarCustomActions: ({ table }) => …,
@@ -36,6 +38,7 @@ export default function useServerTable({
   dataKey,
   extraParams = {},
   initialPageSize = DEFAULT_PAGE_SIZE,
+  initialSorting = [],
   debounceMs = DEFAULT_DEBOUNCE_MS,
   enabled = true,
   ...tableOptions
@@ -46,7 +49,7 @@ export default function useServerTable({
   });
   const [globalFilter, setGlobalFilter] = useState("");
   const [debouncedFilter, setDebouncedFilter] = useState("");
-  const [sorting, setSorting] = useState([]);
+  const [sorting, setSorting] = useState(initialSorting);
 
   // Debounce the search term so each keystroke doesn't trigger a fetch.
   useEffect(() => {
@@ -58,13 +61,15 @@ export default function useServerTable({
   // identity — otherwise this resets paging on every keystroke elsewhere.
   const extraParamsKey = JSON.stringify(extraParams);
 
-  // Reset to first page whenever the search text or the filters change: page 3
-  // of the unfiltered set is empty once the set shrinks under it.
+  const sortingKey = JSON.stringify(sorting);
+
+  // Reset to first page whenever the search text, the filters or the sort
+  // change: page 3 of the old order or set is not page 3 of the new one.
   useEffect(() => {
     setPagination((prev) =>
       prev.pageIndex === 0 ? prev : { ...prev, pageIndex: 0 }
     );
-  }, [debouncedFilter, extraParamsKey]);
+  }, [debouncedFilter, extraParamsKey, sortingKey]);
 
   const requestParams = useMemo(
     () => ({
@@ -72,9 +77,11 @@ export default function useServerTable({
       PageNumber: pagination.pageIndex + 1,
       PageSize: pagination.pageSize,
       SearchTerm: debouncedFilter ? debouncedFilter : null,
+      // Only when a sort is set: endpoints that do not sort never see the keys.
+      ...(sorting.length ? { SortBy: sorting[0].id, SortDir: sorting[0].desc ? "desc" : "asc" } : {}),
       ...extraParams,
     }),
-    [pagination.pageIndex, pagination.pageSize, debouncedFilter, extraParams]
+    [pagination.pageIndex, pagination.pageSize, debouncedFilter, sorting, extraParams]
   );
 
   const query = useApiQuery({
@@ -127,5 +134,6 @@ export default function useServerTable({
     pagination,
     globalFilter,
     debouncedFilter,
+    sorting,
   };
 }
