@@ -1,5 +1,5 @@
 import { forwardRef } from "react";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Timer, Trash2 } from "lucide-react-native";
 
@@ -65,7 +65,7 @@ export const TimeSheet = forwardRef<SheetRef, TimeSheetProps>(function TimeSheet
         </Text>
       </View>
 
-      <ScrollView style={styles.list} bounces={false}>
+      <View>
         {entries.map((entry) => {
           const mine = userId != null && entry.UserId === userId;
           return (
@@ -112,7 +112,7 @@ export const TimeSheet = forwardRef<SheetRef, TimeSheetProps>(function TimeSheet
               : "No time booked against this task yet."}
           </Text>
         ) : null}
-      </ScrollView>
+      </View>
     </Sheet>
   );
 });
@@ -126,7 +126,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[4],
     paddingBottom: spacing[3],
   },
-  list: { maxHeight: 360 },
   row: {
     flexDirection: "row",
     alignItems: "center",

@@ -1,7 +1,8 @@
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
-import { fireEvent, screen } from "@testing-library/react-native";
+import { fireEvent, screen, within } from "@testing-library/react-native";
 
 import { renderWithProviders } from "../test/renderWithProviders";
+import { expectSheetScroll } from "../test/sheets";
 import { Select } from "./Select";
 
 // The bottom-sheet mock renders its content inline; present/dismiss are the
@@ -95,5 +96,19 @@ it("opening closes the keyboard, and a choice counts on the first tap even if on
   await renderWithProviders(<Select label="Status" value={null} options={OPTIONS} onChange={jest.fn()} />);
   await fireEvent.press(screen.getByText("Select…"));
   expect(hide).toHaveBeenCalledTimes(1);
-  expect(screen.getByTestId("select-list").props.keyboardShouldPersistTaps).toBe("handled");
+  expect(screen.getByTestId("sheet-scroll").props.keyboardShouldPersistTaps).toBe("handled");
+});
+
+// Regression (SolarCRM, Android): "Assign to" with 14 people showed ~6 and
+// would not scroll — the options sat in a plain RN ScrollView inside the sheet.
+it("a long list renders every option inside the sheet's gorhom scrollable", async () => {
+  const people = Array.from({ length: 14 }, (_, i) => ({ value: i + 1, label: `Person ${i + 1}` }));
+  people[12] = { value: 13, label: "Vinod" };
+  people[13] = { value: 14, label: "Vivek" };
+  const onChange = jest.fn();
+  await renderWithProviders(<Select label="Assign to" value={null} options={people} onChange={onChange} />);
+  const body = expectSheetScroll(screen.root, screen.getByTestId("sheet-scroll") as never);
+  for (const p of people) expect(within(body as never).getByText(p.label)).toBeOnTheScreen();
+  await fireEvent.press(screen.getByText("Vivek"));
+  expect(onChange).toHaveBeenCalledWith(14);
 });

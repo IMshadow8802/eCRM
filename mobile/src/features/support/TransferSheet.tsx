@@ -1,5 +1,5 @@
 import { forwardRef, useState } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { Clock, Search, type LucideIcon } from "lucide-react-native";
 
 import { colors, metrics, spacing, type BadgeTone } from "../../theme";
@@ -100,7 +100,9 @@ export const TransferSheet = forwardRef<SheetRef, TransferSheetProps>(function T
           fieldHeight={metrics.searchHeight}
         />
       ) : null}
-      <ScrollView style={styles.people} bounces={false} keyboardShouldPersistTaps="handled">
+      {/* A plain View: the sheet body is the scrollable (see ui/Sheet). An RN
+          ScrollView here never scrolled on Android under the sheet's pan. */}
+      <View style={styles.people}>
         <ChoiceList
           value={person}
           onChange={setPerson}
@@ -112,7 +114,7 @@ export const TransferSheet = forwardRef<SheetRef, TransferSheetProps>(function T
             lead: <Avatar name={p.FullName} userId={p.Id} size={36} />,
           }))}
         />
-      </ScrollView>
+      </View>
       <FieldHelp error={tried && person == null ? `Pick who it goes to.` : null} />
 
       {reasons ? (
@@ -159,7 +161,7 @@ export const TransferSheet = forwardRef<SheetRef, TransferSheetProps>(function T
 });
 
 const styles = StyleSheet.create({
-  people: { maxHeight: 300, marginTop: metrics.inlineGap },
+  people: { marginTop: metrics.inlineGap },
   block: { marginTop: spacing[3] },
   foot: { flexDirection: "row", alignItems: "center", gap: spacing[2], marginBottom: spacing[3] },
   flex: { flex: 1 },

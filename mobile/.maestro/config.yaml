@@ -10,6 +10,7 @@ flows:
   - complaints-create.yaml
   - complaints-lifecycle.yaml
   - complaints-transfer-escalate.yaml
+  - long-picklist.yaml
   - leads-list.yaml
   - leads-created.yaml
   - leads-create.yaml

@@ -1,5 +1,5 @@
 import { forwardRef, useImperativeHandle, useRef } from "react";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import type { LucideIcon } from "lucide-react-native";
 
 import { colors, HIT_TARGET, radius, spacing, type BadgeTone } from "../theme";
@@ -54,7 +54,7 @@ export const ActionSheet = forwardRef<SheetRef, ActionSheetProps>(function Actio
 
   return (
     <Sheet ref={innerRef} title={title} subtitle={subtitle} badge={badge} padded>
-      <ScrollView style={styles.list} bounces={false}>
+      <View>
         {actions.map((action) => {
           const tone = action.tone ?? "text";
           const on = !!action.selected;
@@ -96,13 +96,12 @@ export const ActionSheet = forwardRef<SheetRef, ActionSheetProps>(function Actio
         {!actions.length ? (
           <Text variant="meta" style={styles.empty}>{emptyMessage ?? "Nothing to choose from."}</Text>
         ) : null}
-      </ScrollView>
+      </View>
     </Sheet>
   );
 });
 
 const styles = StyleSheet.create({
-  list: { maxHeight: 420 },
   row: { flexDirection: "row", alignItems: "center", gap: spacing[3], minHeight: HIT_TARGET, paddingVertical: 7, paddingHorizontal: spacing[1], borderRadius: radius.badgeLg },
   on: { backgroundColor: colors.fieldTint },
   onDanger: { backgroundColor: colors.dangerRowTint },

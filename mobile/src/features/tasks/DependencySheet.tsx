@@ -1,5 +1,5 @@
 import { forwardRef } from "react";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ban, CircleCheck, X } from "lucide-react-native";
 
@@ -104,7 +104,7 @@ export const DependencySheet = forwardRef<SheetRef, DependencySheetProps>(
           </Text>
         </View>
 
-        <ScrollView style={styles.list} bounces={false}>
+        <View>
           {blockers.length ? (
             <>
               <Text variant="overline" style={styles.heading}>
@@ -128,7 +128,7 @@ export const DependencySheet = forwardRef<SheetRef, DependencySheetProps>(
               This task has no dependencies.
             </Text>
           ) : null}
-        </ScrollView>
+        </View>
       </Sheet>
     );
   },
@@ -143,7 +143,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[4],
     paddingBottom: spacing[3],
   },
-  list: { maxHeight: 360 },
   heading: { paddingHorizontal: spacing[4], paddingTop: spacing[2] },
   row: {
     flexDirection: "row",

@@ -5,7 +5,6 @@ import {
   BottomSheetModal,
   BottomSheetBackdrop,
   BottomSheetScrollView,
-  BottomSheetView,
   type BottomSheetBackdropProps,
   type BottomSheetModal as BottomSheetModalType,
   useBottomSheetModal,
@@ -107,6 +106,9 @@ export const Sheet = forwardRef<SheetRef, SheetProps>(function Sheet(
   const keyboard = useKeyboardHeight();
   const { height: windowHeight } = useWindowDimensions();
   const room = keyboardAware && keyboard > 0 ? windowHeight - insets.top - keyboard - HANDLE_AREA : undefined;
+  // Without a keyboard a sheet stops short of the status bar; anything taller
+  // (75 people in "Assign to") scrolls inside its body.
+  const tallest = windowHeight - insets.top - spacing[6];
   const bodyStyle = [padded && styles.padded, { paddingBottom: insets.bottom + spacing[4] }];
   const body = (
     <>
@@ -129,7 +131,7 @@ export const Sheet = forwardRef<SheetRef, SheetProps>(function Sheet(
       ref={inner}
       snapPoints={points}
       enableDynamicSizing={!points}
-      maxDynamicContentSize={room}
+      maxDynamicContentSize={room ?? tallest}
       backdropComponent={renderBackdrop}
       onDismiss={onDismiss}
       stackBehavior={nested ? "push" : undefined}
@@ -152,7 +154,20 @@ export const Sheet = forwardRef<SheetRef, SheetProps>(function Sheet(
           {body}
         </KeyboardScrollView>
       ) : (
-        <BottomSheetView style={bodyStyle}>{body}</BottomSheetView>
+        // The body is ALWAYS gorhom's scrollable, never an RN ScrollView inside
+        // the content: on Android the sheet's pan swallows a plain ScrollView's
+        // swipe (a 14-person picker showed 6 and would not scroll). A nested
+        // BottomSheetScrollView is no fix either — it reports its full content
+        // height to dynamic sizing and clobbers the sheet's measured height.
+        // So lists inside a sheet are plain Views and the whole body scrolls.
+        <BottomSheetScrollView
+          testID="sheet-scroll"
+          bounces={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={bodyStyle}
+        >
+          {body}
+        </BottomSheetScrollView>
       )}
     </BottomSheetModal>
   );

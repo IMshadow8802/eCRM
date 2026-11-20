@@ -1,9 +1,10 @@
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
-import { fireEvent, screen } from "@testing-library/react-native";
+import { fireEvent, screen, within } from "@testing-library/react-native";
 import { CircleCheck, Pencil, Trash2 } from "lucide-react-native";
 
 import { colors } from "../theme";
 import { renderWithProviders } from "../test/renderWithProviders";
+import { expectSheetScroll } from "../test/sheets";
 import { flat } from "../test/style";
 import { ActionSheet } from "./ActionSheet";
 
@@ -61,4 +62,18 @@ it("a picker: badge, plain icon in its tone, chip; the selected danger row is ti
   expect(screen.getByText("Current")).toBeOnTheScreen();
   expect(flat(screen.getByRole("radio", { name: "Lost" })).backgroundColor).toBe(colors.dangerRowTint);
   expect(flat(screen.getByRole("radio", { name: "Edit" })).backgroundColor).toBeUndefined();
+});
+
+// A "Transfer to…" list longer than the screen must scroll on Android: its
+// rows live in the sheet's gorhom scrollable, never a nested RN ScrollView.
+it("a long list renders every row inside the sheet's gorhom scrollable", async () => {
+  const picked = jest.fn();
+  const actions = Array.from({ length: 20 }, (_, i) => ({
+    key: String(i), label: `Column ${i + 1}`, selected: i === 0, onPress: () => picked(i),
+  }));
+  await renderWithProviders(<ActionSheet title="Move to" actions={actions} />);
+  const body = expectSheetScroll(screen.root, screen.getByTestId("sheet-scroll") as never);
+  for (const a of actions) expect(within(body as never).getByText(a.label)).toBeOnTheScreen();
+  await fireEvent.press(screen.getByText("Column 20"));
+  expect(picked).toHaveBeenCalledWith(19);
 });

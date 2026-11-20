@@ -230,6 +230,10 @@ describe("due time on today", () => {
 });
 
 describe("due time and time allowed", () => {
+  // These pick 2026-11-20 morning slots; past slots on "today" are off, so an
+  // unpinned clock broke them on that very day. Pin "now" days earlier.
+  beforeEach(() => fakeNow(new Date(2026, 10, 16, 8, 0)));
+  afterEach(() => jest.useRealTimers());
   it("a due time is offered only with a due date, and sent as HH:mm", async () => {
     await mount();
     await ready("Create task");

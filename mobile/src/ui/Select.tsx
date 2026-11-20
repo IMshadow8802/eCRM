@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
-import { Keyboard, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Keyboard, Pressable, StyleSheet, View } from "react-native";
 import { ChevronDown, type LucideIcon } from "lucide-react-native";
 
 import { colors, type BadgeTone, type ChipTone } from "../theme";
@@ -105,7 +105,7 @@ export function Select<T extends string | number>({
       <FieldHelp error={error} />
 
       <Sheet ref={sheetRef} title={sheetTitle ?? label ?? "Select"} padded>
-        <ScrollView testID="select-list" style={styles.list} bounces={false} keyboardShouldPersistTaps="handled">
+        <View testID="select-list">
           <ChoiceList
             value={multiple ? draft : value}
             multiple={multiple}
@@ -118,7 +118,7 @@ export function Select<T extends string | number>({
               lead: o.lead ?? (o.avatar ? <Avatar {...o.avatar} size={36} /> : o.icon ? <o.icon size={18} color={colors.textSecondary} /> : undefined),
             }))}
           />
-        </ScrollView>
+        </View>
       </Sheet>
     </View>
   );
@@ -128,5 +128,4 @@ const styles = StyleSheet.create({
   value: { flex: 1, minWidth: 0 },
   person: { flexDirection: "row", alignItems: "center", gap: 8 },
   flex: { flex: 1, minWidth: 0 },
-  list: { maxHeight: 380 },
 });

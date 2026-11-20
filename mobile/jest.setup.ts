@@ -11,7 +11,17 @@ notifyManager.setScheduler((cb) => cb());
 // Reanimated 4 runs on react-native-worklets, whose native module is absent in jest.
 jest.mock("react-native-worklets", () => require("react-native-worklets/src/mock"));
 jest.mock("react-native-reanimated", () => require("react-native-reanimated/mock"));
-jest.mock("@gorhom/bottom-sheet", () => require("@gorhom/bottom-sheet/mock"));
+// The stock mock's BottomSheetScrollView IS react-native's ScrollView, so a test
+// could not tell a sheet's gorhom scrollable from a plain one (a plain one does
+// not scroll inside a sheet on Android). Ours marks its host node.
+jest.mock("@gorhom/bottom-sheet", () => {
+  const React = require("react") as typeof import("react");
+  const { ScrollView } = require("react-native") as typeof import("react-native");
+  const BottomSheetScrollView = React.forwardRef<unknown, object>(function BottomSheetScrollView(props, ref) {
+    return React.createElement(ScrollView, { ...props, ref, bottomSheetScrollable: true } as never);
+  });
+  return { ...require("@gorhom/bottom-sheet/mock"), BottomSheetScrollView };
+});
 jest.mock("@react-native-async-storage/async-storage", () =>
   require("@react-native-async-storage/async-storage/jest/async-storage-mock"),
 );

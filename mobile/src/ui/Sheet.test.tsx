@@ -64,25 +64,32 @@ describe("a keyboard-aware sheet with the keyboard up", () => {
         <Text>body</Text>
       </Sheet>,
     );
-    expect(props?.maxDynamicContentSize).toBeUndefined();
+    // No keyboard: capped short of the status bar only.
+    const tallest = props?.maxDynamicContentSize ?? 0;
+    expect(tallest).toBeGreaterThan(Dimensions.get("window").height - 100);
     expect(screen.getByTestId("sheet-scroll").props.keyboardShouldPersistTaps).toBe("handled");
 
     await keyboard("keyboardDidShow");
     const room = props?.maxDynamicContentSize ?? 0;
     expect(room).toBeGreaterThan(0);
+    expect(room).toBeLessThan(tallest);
     expect(room).toBeLessThanOrEqual(Dimensions.get("window").height - 300 - 26);
 
     await keyboard("keyboardDidHide");
-    expect(props?.maxDynamicContentSize).toBeUndefined();
+    expect(props?.maxDynamicContentSize).toBe(tallest);
     jest.restoreAllMocks();
   });
 
-  it("a sheet without inputs keeps its plain body", async () => {
+  // A plain RN ScrollView in a sheet does not scroll on Android (the sheet's
+  // pan takes the swipe), so every body is gorhom's scrollable.
+  it("a sheet without inputs still scrolls its body in gorhom's scrollable", async () => {
     await renderWithProviders(
       <Sheet title="Pick">
         <Text>body</Text>
       </Sheet>,
     );
-    expect(screen.queryByTestId("sheet-scroll")).toBeNull();
+    const body = screen.getByTestId("sheet-scroll");
+    expect(body.props.bottomSheetScrollable).toBe(true);
+    expect(body.props.keyboardShouldPersistTaps).toBe("handled");
   });
 });

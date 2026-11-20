@@ -1,0 +1,28 @@
+# A pick list longer than the screen scrolls inside its sheet (device bug
+# 2026-11-20, SolarCRM Android: "Assign to" had 14 people, ~6 showed and the
+# list would not scroll). TestCRM's admin sees ~75 people, sorted by name
+# (sp_FetchAssignableUsers ORDER BY FullName), so "Vikram Rao" sits at the end.
+# Saves nothing: the form is left unsubmitted; the next flow's open-work backs out.
+appId: com.shadowider.eCRM
+---
+- runFlow: common/open-work.yaml
+- tapOn: "Open My complaints"
+- tapOn: "New complaint"
+- assertVisible: "Customer \\*"
+- scrollUntilVisible:
+    element: "Assign to: Nobody yet"
+    centerElement: true
+- tapOn: "Assign to: Nobody yet"
+- assertVisible: "Who picks this up\\?"
+# The swipe lands mid-screen, inside the sheet: the sheet's own body scrolls.
+- scrollUntilVisible:
+    element: "Vikram Rao.*"
+    direction: DOWN
+    timeout: 30000
+- tapOn:
+    text: "Vikram Rao.*"
+    index: 0
+# A single pick closes the sheet; the field names the person.
+- assertNotVisible: "Who picks this up\\?"
+- assertVisible: "Assign to: Vikram Rao.*"
+- takeScreenshot: long-picklist-picked
