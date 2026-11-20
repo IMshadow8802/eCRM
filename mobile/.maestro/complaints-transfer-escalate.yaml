@@ -8,6 +8,7 @@ appId: com.shadowider.eCRM
 # settling drops a character now and then ("Ait Singh", run 3).
 - waitForAnimationToEnd
 - tapOn: "Amit Singh \\(Exec HO, under Neha\\)"
+# The pick folds the list to Amit, so the reason sits right below it.
 - tapOn: "Overloaded"
 - tapOn:
     id: "transfer-remarks"

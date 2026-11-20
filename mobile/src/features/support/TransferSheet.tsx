@@ -52,6 +52,8 @@ export const TransferSheet = forwardRef<SheetRef, TransferSheetProps>(function T
 ) {
   const [query, setQuery] = useState("");
   const [person, setPerson] = useState<number | null>(null);
+  /** "Change" pressed: the full list again, with the pick still marked. */
+  const [changing, setChanging] = useState(false);
   const [reason, setReason] = useState<number | null>(null);
   const [remarks, setRemarks] = useState("");
   const [tried, setTried] = useState(false);
@@ -59,13 +61,24 @@ export const TransferSheet = forwardRef<SheetRef, TransferSheetProps>(function T
   const reset = () => {
     setQuery("");
     setPerson(null);
+    setChanging(false);
     setReason(null);
     setRemarks("");
     setTried(false);
   };
 
+  // Once someone is picked the list folds to them, so Reason and Remarks sit
+  // right below instead of under ~75 names (device check 2026-11-20).
+  const collapsed = person != null && !changing;
   const q = query.trim().toLowerCase();
-  const shown = q ? people.filter((p) => `${p.FullName} ${p.note ?? ""}`.toLowerCase().includes(q)) : people;
+  const shown = collapsed
+    ? people.filter((p) => p.Id === person)
+    : q ? people.filter((p) => `${p.FullName} ${p.note ?? ""}`.toLowerCase().includes(q)) : people;
+  const pick = (id: number) => {
+    setPerson(id);
+    setChanging(false);
+    setQuery("");
+  };
   const name = people.find((p) => p.Id === person)?.FullName ?? null;
   const needsReason = !!reasons;
   const noReasons = !!reasons && !reasons.length;
@@ -87,8 +100,13 @@ export const TransferSheet = forwardRef<SheetRef, TransferSheetProps>(function T
       snapPoints={searchable ? ["90%"] : undefined}
       onDismiss={reset}
     >
-      <FieldLabel label={pickLabel} required />
-      {searchable ? (
+      <View style={styles.pickHead}>
+        <View style={styles.flex}>
+          <FieldLabel label={pickLabel} required />
+        </View>
+        {collapsed ? <Button title="Change" variant="ghost" size="xs" onPress={() => setChanging(true)} /> : null}
+      </View>
+      {searchable && !collapsed ? (
         <Input
           testID={`${testID}-search`}
           accessibilityLabel="Search people in your reach"
@@ -105,7 +123,7 @@ export const TransferSheet = forwardRef<SheetRef, TransferSheetProps>(function T
       <View style={styles.people}>
         <ChoiceList
           value={person}
-          onChange={setPerson}
+          onChange={pick}
           emptyMessage={q ? "Nobody matches." : emptyMessage}
           choices={shown.map((p) => ({
             value: p.Id,
@@ -161,6 +179,7 @@ export const TransferSheet = forwardRef<SheetRef, TransferSheetProps>(function T
 });
 
 const styles = StyleSheet.create({
+  pickHead: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
   people: { marginTop: metrics.inlineGap },
   block: { marginTop: spacing[3] },
   foot: { flexDirection: "row", alignItems: "center", gap: spacing[2], marginBottom: spacing[3] },

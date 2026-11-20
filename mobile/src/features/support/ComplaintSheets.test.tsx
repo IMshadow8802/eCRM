@@ -305,6 +305,29 @@ describe("Transfer (23)", () => {
     expect(await screen.findByText("Transferred to Priya Shah")).toBeOnTheScreen();
   });
 
+  it("a pick collapses the list to that person with Change; Change brings the list and search back", async () => {
+    const open = await mount();
+    await open("transfer");
+    await fireEvent.changeText(screen.getByTestId("transfer-search"), "pri");
+    await fireEvent.press(screen.getByRole("radio", { name: "Priya Shah" }));
+    // Only the chosen person is left, so Reason and Remarks sit right below.
+    expect(screen.getByText("Priya Shah")).toBeOnTheScreen();
+    expect(screen.queryByText("Vikram Singh")).toBeNull();
+    expect(screen.queryByTestId("transfer-search")).toBeNull();
+    await fireEvent.press(screen.getByRole("button", { name: "Change" }));
+    expect(screen.getByText("Vikram Singh")).toBeOnTheScreen();
+    expect(screen.getByTestId("transfer-search").props.value).toBe("");
+    expect(screen.getByRole("radio", { name: "Priya Shah" }).props.accessibilityState.checked).toBe(true);
+    await fireEvent.press(screen.getByRole("radio", { name: "Vikram Singh" }));
+    expect(screen.queryByText("Priya Shah")).toBeNull();
+    await fireEvent.press(screen.getByRole("radio", { name: "Specialist needed" }));
+    await fireEvent.changeText(screen.getByTestId("transfer-remarks"), "Needs a visit");
+    await fireEvent.press(screen.getByRole("button", { name: "Transfer to Vikram Singh" }));
+    await waitFor(() =>
+      expect(transferTicket).toHaveBeenCalledWith({ TicketId: 7, ToUserId: 11, ToBranchId: null, ReasonId: 30, Remarks: "Needs a visit" }),
+    );
+  });
+
   it("a failed transfer says why", async () => {
     jest.mocked(transferTicket).mockRejectedValue(serverError(403, "Not in your reach"));
     const open = await mount();
