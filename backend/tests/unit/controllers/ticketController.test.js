@@ -562,9 +562,21 @@ describe("ticketController.detail", () => {
     expect(res.json.mock.calls[0][0].data.ticket.Id).toBe(1);
   });
 
-  it("shows a ticket the caller created but assigned to someone else", async () => {
+  // Complaints aligned with leads (2026-11-21): the creator keeps a ticket only
+  // while it is unassigned. Once it is assigned to someone else, the ex-creator
+  // loses it — here it is out of their reach, so they no longer see it.
+  it("hides a ticket the caller created once it is assigned to someone else out of reach", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [[{ Id: 1, BranchId: 9, AssignedTo: 4, CreatedBy: 7 }], [], [], [], []],
+    });
+    const res = mockRes();
+    await ticketController.detail(baseReq({ scope: { branchIds: [2], ownerIds: [7] }, body: { TicketId: 1 } }), res);
+    expect(res.status).toHaveBeenCalledWith(404);
+  });
+
+  it("shows a ticket the caller created while it is still unassigned, even out of reach", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[{ Id: 1, BranchId: 9, AssignedTo: null, CreatedBy: 7 }], [], [], [], []],
     });
     const res = mockRes();
     await ticketController.detail(baseReq({ scope: { branchIds: [2], ownerIds: [7] }, body: { TicketId: 1 } }), res);

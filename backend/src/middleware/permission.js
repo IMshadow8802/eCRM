@@ -150,10 +150,11 @@ const canSeeRecord = (req, record, ownerField) => {
   const owner = Number(record[ownerField]);
   const createdBy = Number(record.CreatedBy);
 
-  // Always-visible rule: assigned to me beats scope. For complaints the person
-  // who logged it keeps it too; a lead's creator keeps it only while it has no
-  // owner — once anyone owns it, moving really moves it (spec 2026-10-10 §6).
-  const creatorKeeps = ownerField === "AssignedTo" || (ownerField === "OwnerId" && !record.OwnerId);
+  // Always-visible rule: assigned to me beats scope. The creator keeps a record
+  // only while its owner field is empty — a complaint while unassigned, a lead
+  // while it has no owner; once anyone else is assigned, moving really moves it
+  // and the creator loses it (spec 2026-10-10 §6; complaints aligned 2026-11-21).
+  const creatorKeeps = !record[ownerField];
   if (owner === userId || (creatorKeeps && createdBy === userId)) return true;
 
   // No scope loaded = fail closed (the always-visible rule above still won).
@@ -178,7 +179,8 @@ const canReadBranch = (req, branchId) =>
 // Record-level guard for WRITE endpoints (and attachment reads). The read
 // paths already gate single records via canSeeRecord; write paths used to
 // trust the client-supplied id blindly. This fetches the record and applies
-// the same rule — assigned-to-caller always wins (and created-by for complaints), OR-ed with scope.
+// the same rule — assigned-to-caller always wins (and the creator while the
+// record is still unassigned), OR-ed with scope.
 //
 // Tasks route through sp_CheckTaskPermission (workspace membership), which
 // also keeps personal workspaces private from admins — deliberately no

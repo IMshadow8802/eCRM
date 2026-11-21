@@ -45,11 +45,11 @@ Every list, detail, report and dashboard figure of a reach module:
 ```sql
 WHERE (
      ( BranchId IN @branchIds AND (@ownerIds IS NULL OR OwnerId IN @ownerIds) )
-  OR AssignedTo = @UserId OR OwnerId = @UserId   -- mine -> always visible (complaints: also CreatedBy)
+  OR AssignedTo = @UserId OR OwnerId = @UserId   -- mine -> always visible
 )
 ```
 
-A lead's creator keeps it only while it has no owner (107): `OwnerId = @UserId OR (OwnerId IS NULL AND CreatedBy = @UserId)`. **`OR`, not `AND`**: assignment is an explicit act of sharing. `@ownerIds` NULL means no owner filter;
+A record's creator keeps it only while its owner field is empty, then loses it: a lead while it has no owner (107), `OwnerId = @UserId OR (OwnerId IS NULL AND CreatedBy = @UserId)`; a complaint while it is unassigned (128), `AssignedTo = @UserId OR (AssignedTo IS NULL AND CreatedBy = @UserId)`. **`OR`, not `AND`**: assignment is an explicit act of sharing. `@ownerIds` NULL means no owner filter;
 an empty list `[]` means nobody (fail closed). Optional filters (`@BranchId`, `@OwnerId`, `@AssignedTo`)
 only narrow within reach.
 

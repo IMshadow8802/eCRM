@@ -198,8 +198,24 @@ describe("permission middleware", () => {
       const manager = { user: { UserId: 3 }, scope: { branchIds: [1], ownerIds: [3, 9] } };
       expect(canSeeRecord(manager, { OwnerId: 9, CreatedBy: 7, BranchId: 1 }, "OwnerId")).toBe(true);
     });
-    it("keeps the creator rule for complaints", () => {
-      expect(canSeeRecord(ownOnly(7), { AssignedTo: 9, CreatedBy: 7, BranchId: 1 }, "AssignedTo")).toBe(true);
+    // Complaints now mirror leads (aligned 2026-11-21): the creator keeps a
+    // ticket only while it is unassigned. Once it is assigned to someone else,
+    // the ex-creator loses it, just like a handed-off lead.
+    it("hides a complaint from its creator once it is assigned to someone else", () => {
+      expect(canSeeRecord(ownOnly(7), { AssignedTo: 9, CreatedBy: 7, BranchId: 1 }, "AssignedTo")).toBe(false);
+    });
+    it("keeps an unassigned complaint visible to its creator, even outside their reach", () => {
+      expect(canSeeRecord(ownOnly(7), { AssignedTo: null, CreatedBy: 7, BranchId: 5 }, "AssignedTo")).toBe(true);
+    });
+    it("keeps a self-assigned complaint visible to its creator", () => {
+      expect(canSeeRecord(ownOnly(7), { AssignedTo: 7, CreatedBy: 7, BranchId: 5 }, "AssignedTo")).toBe(true);
+    });
+    it("still shows a reassigned complaint to its current assignee", () => {
+      expect(canSeeRecord(ownOnly(9), { AssignedTo: 9, CreatedBy: 7, BranchId: 1 }, "AssignedTo")).toBe(true);
+    });
+    it("still shows a reassigned complaint to a manager whose reach covers the assignee", () => {
+      const manager = { user: { UserId: 3 }, scope: { branchIds: [1], ownerIds: [3, 9] } };
+      expect(canSeeRecord(manager, { AssignedTo: 9, CreatedBy: 7, BranchId: 1 }, "AssignedTo")).toBe(true);
     });
     // Regression: an "assign later" lead (OwnerId NULL) vanished from its creator's list and detail.
     it("keeps an unassigned lead visible to its creator, even outside their reach", () => {
@@ -225,8 +241,12 @@ describe("permission middleware", () => {
       expect(canSeeRecord(selfScoped, { BranchId: 2, OwnerId: 7, CreatedBy: 3 }, "OwnerId")).toBe(true);
     });
 
-    it("allows a complaint the caller created but is not assigned", () => {
-      expect(canSeeRecord(selfScoped, { BranchId: 2, AssignedTo: 3, CreatedBy: 7 }, "AssignedTo")).toBe(true);
+    it("allows a complaint the caller created while it is unassigned", () => {
+      expect(canSeeRecord(selfScoped, { BranchId: 2, AssignedTo: null, CreatedBy: 7 }, "AssignedTo")).toBe(true);
+    });
+
+    it("denies a complaint the caller created once it is assigned to someone else", () => {
+      expect(canSeeRecord(selfScoped, { BranchId: 2, AssignedTo: 3, CreatedBy: 7 }, "AssignedTo")).toBe(false);
     });
 
     // Assignment is an explicit act of sharing — it beats branch scope.
@@ -252,9 +272,9 @@ describe("permission middleware", () => {
       expect(canSeeRecord({ user: { UserId: 7 } }, { BranchId: 2, OwnerId: 3, CreatedBy: 3 }, "OwnerId")).toBe(false);
     });
 
-    it("still allows the caller's own or created record when req.scope is missing", () => {
+    it("still allows the caller's own or created (unassigned) record when req.scope is missing", () => {
       expect(canSeeRecord({ user: { UserId: 7 } }, { BranchId: 2, OwnerId: 7, CreatedBy: 3 }, "OwnerId")).toBe(true);
-      expect(canSeeRecord({ user: { UserId: 7 } }, { BranchId: 2, AssignedTo: 3, CreatedBy: 7 }, "AssignedTo")).toBe(true);
+      expect(canSeeRecord({ user: { UserId: 7 } }, { BranchId: 2, AssignedTo: null, CreatedBy: 7 }, "AssignedTo")).toBe(true);
     });
 
     it("denies a null record", () => {
@@ -419,6 +439,25 @@ describe("permission middleware", () => {
         "sp_FetchTicketDetail",
         { CompId: 5, TicketId: 4 },
       );
+    });
+
+    // Write path mirrors the read rule: the ex-creator of a ticket now assigned
+    // to someone else is refused a transfer/status/edit (spec aligned 2026-11-21).
+    it("403s a transfer/status by the ex-creator of a reassigned ticket", async () => {
+      const ticket = { Id: 4, BranchId: 2, AssignedTo: 3, CreatedBy: 7 };
+      database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[ticket], [], [], [], []] });
+      const editReq = { ...selfReq, access: mockAccess({ modules: [["complaints", "ve", "Own"]] }) };
+      const res = mockRes();
+      await expect(assertRecordAccess(editReq, res, "ticket", 4, "write")).resolves.toBe(false);
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+
+    // While the ticket is still unassigned the creator keeps the write path.
+    it("allows the creator to act on their own unassigned ticket", async () => {
+      const ticket = { Id: 4, BranchId: 2, AssignedTo: null, CreatedBy: 7 };
+      database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[ticket], [], [], [], []] });
+      const editReq = { ...selfReq, access: mockAccess({ modules: [["complaints", "ve", "Own"]] }) };
+      await expect(assertRecordAccess(editReq, mockRes(), "ticket", 4, "write")).resolves.toEqual(ticket);
     });
 
     // Tasks have no row to hand back — sp_CheckTaskPermission answers yes/no —
