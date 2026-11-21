@@ -10,8 +10,10 @@ const blank = (s) => !s || !String(s).trim();
 const BAD_DUE = "Follow-up date is not valid";
 
 // A follow-up is governed by its lead's visibility, plus one extra: the person
-// it is ASSIGNED to may act on it even when the lead sits outside their owner
-// scope (a manager scheduled it onto them). Resolved in one read via
+// an OPEN follow-up is assigned to may act on it even when the lead sits outside
+// their owner scope (a manager scheduled it onto them). A done/cancelled one
+// needs the lead: a transfer re-points only open rows, so a past owner keeps
+// the old ones (access review F1, 2026-11-21). Resolved in one read via
 // sp_FetchFollowUpLead; sends 404/403 itself and returns null on refusal.
 async function loadVisibleFollowUp(req, res, id) {
   const Id = positiveInt(id);
@@ -25,7 +27,7 @@ async function loadVisibleFollowUp(req, res, id) {
     error(res, "Follow-up not found", "NOT_FOUND", 404);
     return null;
   }
-  const mine = Number(row.AssignedTo) === Number(req.user.UserId);
+  const mine = row.Status === "open" && Number(row.AssignedTo) === Number(req.user.UserId);
   if (!mine && !canSeeRecord(req, row, "OwnerId")) {
     error(res, "You do not have access to this follow-up", "FORBIDDEN", 403);
     return null;

@@ -246,6 +246,33 @@ describe("ticketController.save — customer visibility", () => {
     expect(res.status).toHaveBeenCalledWith(403);
     expect(database.executeStoredProcedure).not.toHaveBeenCalledWith("sp_SaveTicket", expect.anything());
   });
+
+  // REGRESSION (W2, 2026-11-21): an assignee whose customers reach is Own
+  // (SolarCRM Support Agent) was 403'd on every edit of their own complaint,
+  // because save re-checked the unchanged customer. Keeping the customer is no
+  // new act of linking.
+  const ownAgent = { scope: { branchIds: [2], ownerIds: [7] } };
+  const hiddenCustomer = { Id: 31, BranchId: 9, CreatedBy: 3 };
+
+  it("lets the assignee edit their complaint when the customer is unchanged but not visible to them", async () => {
+    mockTicketLookup({ ...visibleTicket, CustomerId: 31 });
+    database.executeStoredProcedure.mockResolvedValueOnce(okRow());
+    const res = mockRes();
+    await ticketController.save(baseReq({ ...ownAgent, body: { Id: 1, CustomerId: "31", Description: "visited" } }), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalledWith("sp_FetchCustomerDetail", expect.anything());
+    expect(database.executeStoredProcedure).toHaveBeenLastCalledWith("sp_SaveTicket", expect.objectContaining({ CustomerId: 31 }));
+  });
+
+  it("still refuses moving the complaint to a different customer the caller cannot see", async () => {
+    mockTicketLookup({ ...visibleTicket, CustomerId: 30 });
+    mockCustomer(hiddenCustomer);
+    const res = mockRes();
+    await ticketController.save(baseReq({ ...ownAgent, body: { Id: 1, CustomerId: 31 } }), res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_FetchCustomerDetail", expect.objectContaining({ CustomerId: 31 }));
+    expect(database.executeStoredProcedure).not.toHaveBeenCalledWith("sp_SaveTicket", expect.anything());
+  });
 });
 
 describe("ticketController.fetch", () => {
