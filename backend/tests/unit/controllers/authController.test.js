@@ -394,7 +394,7 @@ describe("authController login access block", () => {
     const { access, permissions } = res.json.mock.calls[0][0].data;
     expect(access).toEqual({
       isAdmin: false, canSeeSensitive: true, primaryBranchId: 2,
-      modules: { leads: { view: true, add: true, edit: false, delete: false, reach: "Office" } },
+      modules: { leads: { view: true, add: true, edit: false, delete: false, reach: "Office", assignReach: null } },
     });
     expect(permissions).toMatchObject({ menuItems: [], rawPermissions: [], totalMenuItems: 0, hasAdminAccess: false });
   });
