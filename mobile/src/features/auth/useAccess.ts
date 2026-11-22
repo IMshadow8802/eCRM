@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { AppState } from "react-native";
 
 import useAuthStore from "../../stores/useAuthStore";
-import type { ModuleKey, Reach } from "../../types/api";
+import type { AssignReach, ModuleKey, Reach } from "../../types/api";
 
 export interface ModuleAccess {
   view: boolean;
@@ -11,11 +11,13 @@ export interface ModuleAccess {
   edit: boolean;
   delete: boolean;
   reach: Reach | null;
+  /** "Can assign to" for leads/complaints — for hints only; the server re-checks. Null when unknown. */
+  assignReach: AssignReach | null;
   isAdmin: boolean;
 }
 
-const NONE: ModuleAccess = { view: false, add: false, edit: false, delete: false, reach: null, isAdmin: false };
-const ADMIN: ModuleAccess = { view: true, add: true, edit: true, delete: true, reach: "Company", isAdmin: true };
+const NONE: ModuleAccess = { view: false, add: false, edit: false, delete: false, reach: null, assignReach: null, isAdmin: false };
+const ADMIN: ModuleAccess = { view: true, add: true, edit: true, delete: true, reach: "Company", assignReach: "Company", isAdmin: true };
 
 /**
  * What the role may do in `module`. Courtesy only: it hides what the server
@@ -26,7 +28,7 @@ export function useAccess(module: ModuleKey): ModuleAccess {
   const access = useAuthStore((s) => s.access);
   if (access?.isAdmin) return ADMIN;
   const m = access?.modules[module];
-  return m ? { ...m, reach: m.reach ?? null, isAdmin: false } : NONE;
+  return m ? { ...m, reach: m.reach ?? null, assignReach: m.assignReach ?? null, isAdmin: false } : NONE;
 }
 
 /**

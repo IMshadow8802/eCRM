@@ -28,7 +28,6 @@ import { fetchCustomerDetail } from "../../api/customerQueries";
 import { apiErrorMessage } from "../../api/errors";
 import { deleteTicket, fetchEscalationTargets, fetchTicketDetail } from "../../api/ticketQueries";
 import { useActionBar } from "../../navigation/Shell";
-import useAuthStore from "../../stores/useAuthStore";
 import { activityBadge, colors, complaintBadge, escalatedMark, metrics, priorityChip, spacing } from "../../theme";
 import {
   ActionSheet,
@@ -123,7 +122,6 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
   const queryClient = useQueryClient();
   const toast = useToast();
   const layout = useLayout();
-  const userId = useAuthStore((s) => s.UserId);
   // Courtesy only (CLAUDE.md §3): the routes 403 without these grants anyway.
   const can = useAccess("complaints");
   const canSeeCustomers = useAccess("customers").view;
@@ -153,11 +151,10 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
     queryKey: ["calls", "ticket", ticketId],
     queryFn: () => fetchCalls({ TicketId: ticketId }),
   });
-  // The chain above whoever is working it — no chain, no Escalate.
-  const forUserId = ticket?.AssignedTo ?? userId;
+  // The chain above whoever is working it (the server works it out) — no chain, no Escalate.
   const { data: seniors } = useQuery({
-    queryKey: ["escalation-targets", forUserId],
-    queryFn: () => fetchEscalationTargets(forUserId),
+    queryKey: ["escalation-targets", ticketId],
+    queryFn: () => fetchEscalationTargets(ticketId),
     enabled: can.edit && !!ticket && active,
   });
   // The customer's complaints — only once asked for.

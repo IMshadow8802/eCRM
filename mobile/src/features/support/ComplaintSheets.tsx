@@ -5,7 +5,6 @@ import { ArrowLeftRight, ChevronsUp, CircleCheck, CirclePause } from "lucide-rea
 import { logCall } from "../../api/callQueries";
 import { apiErrorMessage } from "../../api/errors";
 import { escalateTicket, fetchEscalationTargets, setTicketStatus, transferTicket } from "../../api/ticketQueries";
-import useAuthStore from "../../stores/useAuthStore";
 import { complaintBadge } from "../../theme";
 import type { Lookup, Ticket, TicketStatusCode } from "../../types/api";
 import { ComposeSheet, LogCallSheet, useToast, type LogCallThen, type SheetRef } from "../../ui";
@@ -70,7 +69,6 @@ const NOT_SET_UP = "That status is not set up for your company. Add it on the we
 export const ComplaintSheets = forwardRef<ComplaintSheetsHandle>(function ComplaintSheets(_props, ref) {
   const queryClient = useQueryClient();
   const toast = useToast();
-  const userId = useAuthStore((s) => s.UserId);
   const { statuses, resolutions, transferReasons, callOutcomes, users } = useTicketRefData();
 
   const [ticket, setTicket] = useState<Ticket | null>(null);
@@ -85,12 +83,11 @@ export const ComplaintSheets = forwardRef<ComplaintSheetsHandle>(function Compla
   const callRef = useRef<SheetRef>(null);
 
   const code = ticket ? lifecycleOf(ticket) : "open";
-  // The chain above whoever is WORKING it — the assignee, else me. Same key as
-  // the record's own query, so the two share one request.
-  const forUserId = ticket?.AssignedTo ?? userId;
+  // The chain above whoever is WORKING it (the server works it out). Same key
+  // as the record's own query, so the two share one request.
   const { data: seniors, isLoading: seniorsLoading } = useQuery({
-    queryKey: ["escalation-targets", forUserId],
-    queryFn: () => fetchEscalationTargets(forUserId),
+    queryKey: ["escalation-targets", ticket?.Id],
+    queryFn: () => fetchEscalationTargets(ticket!.Id),
     enabled: !!ticket && isActive(code),
   });
 

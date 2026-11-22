@@ -341,11 +341,11 @@ describe("Transfer (23)", () => {
 });
 
 describe("Escalate", () => {
-  it("lists the chain above the assignee and sends who and why", async () => {
+  it("asks the server for the chain above whoever works this complaint and sends who and why", async () => {
     const open = await mount();
     await open("escalate", ticket({ AssignedTo: 42, AssigneeName: "Ayush Mishra" }));
     expect(await screen.findByText("Direct manager · Support Head")).toBeOnTheScreen();
-    expect(fetchEscalationTargets).toHaveBeenCalledWith(42);
+    expect(fetchEscalationTargets).toHaveBeenCalledWith(7);
     await fireEvent.press(screen.getByRole("radio", { name: "Neha Kapoor" }));
     await fireEvent.press(screen.getByRole("button", { name: "Escalate to Neha Kapoor" }));
     expect(screen.getByText("Say why it needs a senior.")).toBeOnTheScreen();

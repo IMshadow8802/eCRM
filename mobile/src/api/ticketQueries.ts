@@ -11,6 +11,7 @@ import { post, postData } from "./client";
 import type {
   ApiEnvelope,
   EscalationTarget,
+  LoggedByMeRow,
   Pagination,
   Ticket,
   TicketDetail,
@@ -29,6 +30,7 @@ const TICKET_ENDPOINTS = {
   transferTicket: "/api/tickets/transferTicket",
   escalateTicket: "/api/tickets/escalateTicket",
   fetchEscalationTargets: "/api/tickets/fetchEscalationTargets",
+  fetchLoggedByMe: "/api/tickets/fetchLoggedByMe",
   deleteTicket: "/api/tickets/deleteTicket",
 } as const;
 
@@ -257,12 +259,17 @@ export const reopenTicket = (params: {
  * `ToBranchId` only when the target sits in another branch; whether the caller
  * MAY do that is decided server-side (wide scopes only).
  */
+/**
+ * Reassign (reason + remarks) or, with `SendBack`, return it to whoever gave
+ * it to the caller (`SendBackToId` on the detail; remarks only, no reason).
+ */
 export const transferTicket = (params: {
   TicketId: number;
   ToUserId: number;
   ToBranchId?: number | null;
-  ReasonId: number;
+  ReasonId?: number | null;
   Remarks: string;
+  SendBack?: boolean;
 }): Promise<ApiEnvelope<unknown>> =>
   post(TICKET_ENDPOINTS.transferTicket, { ToBranchId: null, ...params });
 
@@ -279,17 +286,29 @@ export const escalateTicket = (params: {
   post(TICKET_ENDPOINTS.escalateTicket, params);
 
 /**
- * The chain of command above `forUserId` (default: the caller), nearest first.
- * Pass the ticket's assignee — an escalation is about who is *working* it.
+ * Who this complaint may be escalated to, nearest first — the server works out
+ * the chain above whoever is working it.
  */
-export const fetchEscalationTargets = (
-  forUserId: number | null = null,
-): Promise<EscalationTarget[]> =>
-  postData<EscalationTarget>(
-    TICKET_ENDPOINTS.fetchEscalationTargets,
-    { ForUserId: forUserId },
-    "users",
-  );
+export const fetchEscalationTargets = (ticketId: number): Promise<EscalationTarget[]> =>
+  postData<EscalationTarget>(TICKET_ENDPOINTS.fetchEscalationTargets, { TicketId: ticketId }, "users");
+
+/** Complaints the caller logged, wherever they went. A row with `CanOpen` false has `Id` null. */
+export const fetchLoggedByMe = ({
+  SearchTerm = null,
+  PageNumber = 1,
+  PageSize = 50,
+}: { SearchTerm?: string | null; PageNumber?: number; PageSize?: number } = {}): Promise<{
+  rows: LoggedByMeRow[];
+  pagination: Pagination;
+}> =>
+  post<{ rows?: LoggedByMeRow[]; pagination?: Pagination }>(TICKET_ENDPOINTS.fetchLoggedByMe, {
+    SearchTerm,
+    PageNumber,
+    PageSize,
+  }).then((b) => ({
+    rows: b.data?.rows ?? [],
+    pagination: b.data?.pagination ?? { currentPage: PageNumber, pageSize: PageSize, totalRecords: 0, totalPages: 0 },
+  }));
 
 export const deleteTicket = (params: {
   Id: number;

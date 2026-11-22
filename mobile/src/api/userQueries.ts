@@ -21,19 +21,19 @@ export const fetchUserDirectory = (): Promise<DirectoryUser[]> =>
   postData<DirectoryUser>(USER_ENDPOINTS.directory, {}, "users");
 
 /**
- * Who the caller may hand a record to, for the given module (the roster
- * follows that module's reach). `assertCanAssign` re-checks membership on every
- * save and transfer — this is the pick-list, not the gate. `BranchId` lists
- * another office's roster for a cross-office move; mobile never passes it.
+ * Who the caller may hand a record to in `Module` (the role's "Can assign to"),
+ * ordered GroupRank, FullName. Pass `RecordId` when reassigning one record so
+ * the person who gave it to the caller is marked `IsGiver`. The save/transfer
+ * procedure re-checks — this is the pick-list, not the gate.
  */
-export const fetchAssignableUsers = (
-  params: { Module?: "leads" | "complaints"; BranchId?: number | null } = {},
-): Promise<AssignableUser[]> =>
-  postData<AssignableUser>(
-    USER_ENDPOINTS.fetchAssignableUsers,
-    { BranchId: null, Module: "leads", ...params },
-    "users",
-  );
+export const fetchAssignableUsers = ({
+  Module,
+  RecordId = null,
+}: {
+  Module: "leads" | "complaints";
+  RecordId?: number | null;
+}): Promise<AssignableUser[]> =>
+  postData<AssignableUser>(USER_ENDPOINTS.fetchAssignableUsers, { Module, RecordId }, "users");
 
 /** Every office in the company, open to any signed-in user (the office pick-list). */
 export const fetchBranches = (): Promise<Branch[]> =>

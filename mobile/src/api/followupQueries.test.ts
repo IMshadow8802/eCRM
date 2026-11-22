@@ -38,3 +38,11 @@ describe.each(CASES)("%s", (_name, c) => {
     expect(lastRequest().body).toStrictEqual(c.body);
   });
 });
+
+it("fetchFollowUps hands back Via and CanAct exactly as the server sends them", async () => {
+  const row = { Id: 4, Via: 3, CanAct: false, LeadMobile: null };
+  const pagination = { currentPage: 1, pageSize: 50, totalRecords: 1, totalPages: 1 };
+  respond({ success: true, data: { followups: [row], pagination } });
+  const res = await followups.fetchFollowUps();
+  expect(res.data?.followups[0]).toEqual(row);
+});
