@@ -25,7 +25,7 @@ describe("TicketDetail — rejected to closed (spec 2 §2)", () => {
 
   it("opens the resolution prompt and posts ResolutionId + Remarks, matching sp_SetTicketStatus's FromCode<>'resolved' rule", async () => {
     const cap = mockTicketEndpoints({}, {
-      detail: ticketDetail({ ticket: ticketRow({ StatusId: 66, StatusName: "Rejected", StatusCode: "rejected", ClosedAt: "2026-09-10T09:00:00Z" }) }),
+      detail: ticketDetail({ ticket: ticketRow({ CanEdit: 1, StatusId: 66, StatusName: "Rejected", StatusCode: "rejected", ClosedAt: "2026-09-10T09:00:00Z" }) }),
     });
     renderWithProviders(<TicketDetail ticketId={7} />);
     await screen.findByTestId("ticket-detail");

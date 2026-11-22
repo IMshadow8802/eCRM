@@ -240,6 +240,7 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
         }
         actions={
           <div style={{ display: "flex", gap: "calc(8rem / 15)", alignItems: "center", flexWrap: "wrap" }}>
+            {Boolean(ticket.CanEdit) && (
             <div style={{ width: "calc(190rem / 15)" }}>
               {/* blurOnSelect: a pick that opens a prompt instead of moving the
                   status must not linger in the input, or the header contradicts
@@ -254,8 +255,9 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
                 data-testid="ticket-status-select"
               />
             </div>
+            )}
             <Button variant="ghost" leftIcon={<PhoneCall size={14} />} onClick={() => setCallOpen(true)} data-testid="log-call-btn">Log call</Button>
-            {isActiveCode(ticket.StatusCode) && resolvedOpt && (
+            {Boolean(ticket.CanEdit) && isActiveCode(ticket.StatusCode) && resolvedOpt && (
               <Button variant="primary" leftIcon={<CircleCheck size={14} />} onClick={() => setResolvePick(resolvedOpt)} data-testid="resolve-ticket-btn">Resolve</Button>
             )}
             {Boolean(ticket.CanReopen) && openOpt && (
@@ -274,8 +276,12 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
                 Send back to {ticket.SendBackToName}
               </Button>
             )}
-            <Button variant="tonal" leftIcon={<Flag size={14} />} onClick={() => setEscalateOpen(true)} data-testid="escalate-ticket-btn">Escalate</Button>
-            <Button variant="tonal" leftIcon={<Pencil size={14} />} onClick={() => setEditOpen(true)} data-testid="edit-ticket-btn">Edit</Button>
+            {Boolean(ticket.CanEdit) && (
+              <Button variant="tonal" leftIcon={<Flag size={14} />} onClick={() => setEscalateOpen(true)} data-testid="escalate-ticket-btn">Escalate</Button>
+            )}
+            {Boolean(ticket.CanEdit) && (
+              <Button variant="tonal" leftIcon={<Pencil size={14} />} onClick={() => setEditOpen(true)} data-testid="edit-ticket-btn">Edit</Button>
+            )}
           </div>
         }
       />
@@ -369,7 +375,7 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
 
             <Card>
               <h3 style={{ margin: "0 0 calc(16rem / 15)", fontSize: "calc(15rem / 15)", fontWeight: 700 }}>Attachments</h3>
-              <Attachments entity="ticket" entityId={ticket.Id} />
+              <Attachments entity="ticket" entityId={ticket.Id} disabled={!ticket.CanEdit} />
             </Card>
           </div>
         )}

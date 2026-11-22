@@ -103,7 +103,7 @@ describe("TicketDetail (spec 2)", () => {
 
   it("an overdue, escalated complaint says so in the header", async () => {
     mockTicketEndpoints({}, {
-      detail: ticketDetail({ ticket: ticketRow({ IsOverdue: 1, EscalatedTo: 16, EscalatedToName: "Neha Verma", PreviousTickets: 2 }) }),
+      detail: ticketDetail({ ticket: ticketRow({ CanEdit: 1, IsOverdue: 1, EscalatedTo: 16, EscalatedToName: "Neha Verma", PreviousTickets: 2 }) }),
     });
     renderDetail();
     expect(await screen.findByTestId("ticket-due-chip")).toHaveTextContent("overdue");
@@ -111,7 +111,7 @@ describe("TicketDetail (spec 2)", () => {
   });
 
   it("the customer card links to that customer's other complaints", async () => {
-    mockTicketEndpoints({}, { detail: ticketDetail({ ticket: ticketRow({ PreviousTickets: 2, CustomerEmail: "acme@example.com", CustomerCity: "Pune" }) }) });
+    mockTicketEndpoints({}, { detail: ticketDetail({ ticket: ticketRow({ CanEdit: 1, PreviousTickets: 2, CustomerEmail: "acme@example.com", CustomerCity: "Pune" }) }) });
     renderDetail();
     const card = await screen.findByTestId("ticket-customer-card");
     expect(card).toHaveTextContent("Acme Corp");
@@ -148,7 +148,7 @@ describe("TicketDetail (spec 2)", () => {
 
   it("a finished complaint has no Resolve button", async () => {
     mockTicketEndpoints({}, {
-      detail: ticketDetail({ ticket: ticketRow({ StatusId: 65, StatusName: "Closed", StatusCode: "closed" }) }),
+      detail: ticketDetail({ ticket: ticketRow({ CanEdit: 1, StatusId: 65, StatusName: "Closed", StatusCode: "closed" }) }),
     });
     renderDetail();
     expect(await screen.findByTestId("ticket-status-chip")).toHaveTextContent("Closed");
@@ -177,7 +177,7 @@ describe("TicketDetail (spec 2)", () => {
 
   it("closing a RESOLVED complaint posts straight away — the customer confirmed", async () => {
     const cap = mockTicketEndpoints({}, {
-      detail: ticketDetail({ ticket: ticketRow({ StatusId: 64, StatusName: "Resolved", StatusCode: "resolved", ResolvedAt: "2026-09-16T09:00:00Z", ResolutionId: 8, ResolutionName: "Fixed" }) }),
+      detail: ticketDetail({ ticket: ticketRow({ CanEdit: 1, StatusId: 64, StatusName: "Resolved", StatusCode: "resolved", ResolvedAt: "2026-09-16T09:00:00Z", ResolutionId: 8, ResolutionName: "Fixed" }) }),
     });
     renderDetail();
     await screen.findByTestId("ticket-detail");
@@ -204,7 +204,7 @@ describe("TicketDetail (spec 2)", () => {
   // Spec §2 + §6: reopening is a manager's act. The client always asks for
   // remarks; the server decides whether the caller may.
   it("reopening a closed complaint asks for remarks, and a 400 keeps the prompt open with the server's words", async () => {
-    mockTicketEndpoints({}, { detail: ticketDetail({ ticket: ticketRow({ StatusId: 65, StatusName: "Closed", StatusCode: "closed", ClosedAt: "2026-09-16T12:00:00Z" }) }) });
+    mockTicketEndpoints({}, { detail: ticketDetail({ ticket: ticketRow({ CanEdit: 1, StatusId: 65, StatusName: "Closed", StatusCode: "closed", ClosedAt: "2026-09-16T12:00:00Z" }) }) });
     server.use(http.post("*/api/tickets/setTicketStatus", () => refuse("Reopening requires a manager", 400)));
     renderDetail();
     await screen.findByTestId("ticket-detail");
@@ -290,7 +290,7 @@ describe("TicketDetail (spec 2)", () => {
 
   it("shows the linked lead link when the complaint tracks one", async () => {
     mockTicketEndpoints({}, {
-      detail: ticketDetail({ ticket: ticketRow({ LinkedLeadId: 11 }), linkedLead: { Id: 11, Name: "Acme Corp Lead" } }),
+      detail: ticketDetail({ ticket: ticketRow({ CanEdit: 1, LinkedLeadId: 11 }), linkedLead: { Id: 11, Name: "Acme Corp Lead" } }),
     });
     renderDetail();
     const link = await screen.findByTestId("linked-lead-link");
@@ -304,7 +304,7 @@ describe("TicketDetail (spec 2)", () => {
   // with no basename prefix and fail this assertion.
   it("the linked-lead link goes through router navigation, so it keeps the app's basename", async () => {
     mockTicketEndpoints({}, {
-      detail: ticketDetail({ ticket: ticketRow({ LinkedLeadId: 11 }), linkedLead: { Id: 11, Name: "Acme Corp Lead" } }),
+      detail: ticketDetail({ ticket: ticketRow({ CanEdit: 1, LinkedLeadId: 11 }), linkedLead: { Id: 11, Name: "Acme Corp Lead" } }),
     });
     renderWithProviders(
       <MemoryRouter basename="/prdcrm" initialEntries={["/prdcrm/support/tickets/7"]}>
@@ -452,6 +452,23 @@ describe("TicketDetail (spec 2)", () => {
       expect(screen.getByTestId("remarks-modal")).toHaveTextContent("Reopen complaint");
       await user.click(screen.getByText("remarks-submit"));
       await waitFor(() => expect(cap.status).toEqual({ TicketId: 7, StatusId: 61, Remarks: "Customer called back" }));
+    });
+
+    it("hides Edit, Resolve, Escalate and the status select when CanEdit is 0", async () => {
+      mockTicketEndpoints({}, { detail: withTicket({ CanEdit: 0 }) });
+      renderDetail();
+      await screen.findByTestId("ticket-detail");
+      for (const id of ["edit-ticket-btn", "resolve-ticket-btn", "escalate-ticket-btn", "ticket-status-select"]) {
+        expect(screen.queryByTestId(id)).toBeNull();
+      }
+    });
+
+    it("shows Edit, Resolve, Escalate and the status select when CanEdit is 1", async () => {
+      mockTicketEndpoints({}, { detail: withTicket({ CanEdit: 1 }) });
+      renderDetail();
+      for (const id of ["edit-ticket-btn", "resolve-ticket-btn", "escalate-ticket-btn", "ticket-status-select"]) {
+        expect(await screen.findByTestId(id)).toBeInTheDocument();
+      }
     });
 
     it("no Reopen button without CanReopen", async () => {
