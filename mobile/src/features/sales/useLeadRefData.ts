@@ -8,7 +8,7 @@ import type { AssignableUser, Lookup, Product } from "../../types/api";
 /**
  * The lists the sales screens offer as choices — pickers only; sp_FetchLeads
  * joins every name a row displays. Same per-kind keys as useTicketRefData,
- * so a list both modules use (transfer reasons, call outcomes) is fetched once.
+ * so a list both modules use (reassign reasons, call outcomes) is fetched once.
  */
 export interface LeadRefData {
   /** lead_status rows in SortOrder — each carries its Code. */
@@ -24,7 +24,7 @@ export interface LeadRefData {
   lostReasonsLoaded: boolean;
   transferReasonsLoaded: boolean;
   /**
-   * The two lists a create sends ids from (status, owner). Until both are
+   * The two lists a create sends ids from (status, assign to). Until both are
    * "ready" a create would go out with null ids, so the form waits on this.
    */
   choicesState: "loading" | "ready" | "failed";

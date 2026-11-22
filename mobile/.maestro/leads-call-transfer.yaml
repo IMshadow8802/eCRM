@@ -1,4 +1,5 @@
-# Log a call on a lead, then hand it to another owner with reason + remarks.
+# Log a call on a lead, then reassign it with reason + remarks. A reassign
+# leaves the record (back to the list), so the call history is checked first.
 appId: com.shadowider.eCRM
 ---
 - runFlow: common/new-lead.yaml
@@ -13,22 +14,21 @@ appId: com.shadowider.eCRM
 - tapOn: "Save call"
 - assertNotVisible: "Save call"
 - waitForAnimationToEnd
-
-- tapOn: "Transfer"
-- assertVisible: "Transfer to…"
-- takeScreenshot: lead-transfer-picker
-- tapOn: "Amit Singh \\(Exec HO, under Neha\\)"
-- assertVisible: "Transfer to Amit Singh.*"
-- tapOn: "Overloaded"
-- tapOn: "Anything the next person should know"
-- inputText: "MAESTRO lead transfer ${output.stamp}"
-- tapOn:
-    text: "Transfer"
-    below:
-      text: "Anything the next person should know|MAESTRO lead transfer.*"
-- waitForAnimationToEnd
-- assertVisible: "Amit Singh \\(Exec HO, under Neha\\)"
 - tapOn: "Activity"
 - assertVisible: ".*MAESTRO lead call.*"   # typed text can drop letters on the emulator keyboard
-- assertVisible: ".*Amit Singh.*"
-- takeScreenshot: lead-call-transfer-history
+- takeScreenshot: lead-call-history
+
+- tapOn: "Reassign"
+- assertVisible: "Reassign lead"
+- assertVisible: "Reassign to"
+- takeScreenshot: lead-reassign-picker
+- tapOn: "Amit Singh \\(Exec HO, under Neha\\)"
+- assertVisible: "Reassign to Amit"
+- tapOn: "Overloaded"
+- tapOn:
+    id: "reassign-remarks"
+- inputText: "MAESTRO lead reassign ${output.stamp}"
+- tapOn: "Reassign to Amit"
+- waitForAnimationToEnd
+- assertVisible: "Reassigned to Amit Singh.*"
+- takeScreenshot: lead-reassigned

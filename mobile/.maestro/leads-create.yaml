@@ -9,7 +9,7 @@ appId: com.shadowider.eCRM
 - assertVisible: ".*MAESTRO Co ${output.stamp}.*"
 - assertVisible: ".*1,20,000.*"
 - assertVisible: ".*Ayush Mishra.*"
-# The action bar (E 15): Call · Message · Log follow-up (main) · Status · Transfer.
+# The action bar (E 15): Call · Message · Log follow-up (main) · Status · Reassign.
 - assertVisible:
     id: "action-bar"
 - assertVisible: "Log follow-up"

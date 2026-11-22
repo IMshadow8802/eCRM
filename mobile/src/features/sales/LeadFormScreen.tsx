@@ -132,7 +132,7 @@ function Frame({
 /**
  * Add or edit a lead (E 16; T4 at the rail). Status, owner, the first
  * follow-up and the custom fields are create-only: afterwards they move
- * through the status sheet, Transfer and the follow-up sheets, which keep
+ * through the status sheet, Reassign and the follow-up sheets, which keep
  * history (the edit sends CustomJSON null so stored values survive).
  */
 export default function LeadFormScreen({ route, navigation }: Props) {
@@ -222,6 +222,7 @@ function LeadForm({ lead, navigation }: { lead: Lead | null; navigation: Props["
       users.map((u) => ({
         value: u.Id,
         label: u.Id === userId ? `${u.FullName} (you)` : u.FullName,
+        sublabel: u.AwayToday === true ? "Away today" : undefined,
         avatar: { name: u.FullName, uri: u.Avatar, userId: u.Id },
       })),
     [users, userId],
@@ -300,7 +301,7 @@ function LeadForm({ lead, navigation }: { lead: Lead | null; navigation: Props["
     });
   };
 
-  // T4: the custom field beside Owner carries an xs "Custom" chip on its label.
+  // T4: the custom field beside Assign to carries an xs "Custom" chip on its label.
   const customField = (def: CustomFieldDef, tag?: string) => (
     <DynamicField
       key={def.Id}
@@ -311,13 +312,13 @@ function LeadForm({ lead, navigation }: { lead: Lead | null; navigation: Props["
       onChange={(next) => setCustom((c) => ({ ...c, [def.Id]: next }))}
     />
   );
-  // T4 pairs Owner with the first custom field; the rest go under More details.
+  // T4 pairs Assign to with the first custom field; the rest go under More details.
   const [pairedField, ...moreFields] = !editing && wide ? fieldDefs : [undefined, ...(!editing ? fieldDefs : [])];
   const due = followUpDay ? dueAt(followUpDay, firstTime) : null;
 
   const owner = (
     <Select
-      label="Owner"
+      label="Assign to"
       value={ownerId}
       options={userOptions}
       onChange={(v) => setOwnerPick(v as number)}

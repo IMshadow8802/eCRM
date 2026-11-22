@@ -46,8 +46,8 @@ const owner = (lead: Lead) => (
 );
 
 /**
- * Mobile + call/message (G30), then Owner and Source (phone) or the facts
- * list in the 300 column (T3: Owner · Source · Product · custom fields · Created).
+ * Mobile + call/message (G30), then Assigned to and Source (phone) or the facts
+ * list in the 300 column (T3: Assigned to · Source · Product · custom fields · Created).
  */
 export function ContactCard({
   lead, fields, wide, onCall, onMessage,
@@ -78,7 +78,7 @@ export function ContactCard({
           <Facts
             layout="list"
             items={[
-              { label: "Owner", node: owner(lead) },
+              { label: "Assigned to", node: owner(lead) },
               { label: "Source", value: lead.SourceName ?? "—" },
               { label: "Product", value: lead.ProductName ?? "—" },
               ...fields.map((f) => ({ label: f.Label, value: customValue(f) })),
@@ -89,7 +89,7 @@ export function ContactCard({
       ) : (
         <View style={styles.facts}>
           <View style={styles.flex}>
-            <Text variant="label" color="textMuted">Owner</Text>
+            <Text variant="label" color="textMuted">Assigned to</Text>
             <View style={styles.factValue}>{owner(lead)}</View>
           </View>
           <View style={styles.flex}>

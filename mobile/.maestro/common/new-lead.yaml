@@ -1,5 +1,5 @@
 # Adds a lead "MAESTRO Lead <stamp>" (company "MAESTRO Co <stamp>", value
-# 120000, owner left as the default) and lands on its detail screen.
+# 120000, "Assign to" left as the default) and lands on its detail screen.
 # Pass env MOBILE to type a specific mobile; default is 98 + stamp.
 appId: com.shadowider.eCRM
 ---
@@ -20,9 +20,9 @@ appId: com.shadowider.eCRM
 - inputText: "MAESTRO Co ${output.stamp}"
 - tapOn: "Amount in rupees"
 - inputText: "120000"
-# Defaults: status New, owner = me, first follow-up Tomorrow.
+# Defaults: status New, assigned to me, first follow-up Tomorrow.
 - assertVisible: "Status: New"
-- assertVisible: "Owner: Ayush Mishra \\(you\\)"
+- assertVisible: "Assign to: Ayush Mishra \\(you\\)"
 - scrollUntilVisible:
     element: "Call on .*"
 # Save sits in the band (E 16).
