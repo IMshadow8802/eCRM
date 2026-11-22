@@ -60,6 +60,7 @@ class UserGroupController {
         CompId: req.user.CompId,
         ModulesJson: JSON.stringify(Modules),
         CanSeeSensitive: CanSeeSensitive ? 1 : 0,
+        UserId: req.user.UserId,
       });
       const row = firstRow(result);
       const ok = spOk(row);
@@ -78,7 +79,8 @@ class UserGroupController {
         success: ok,
         message: spMessage(row),
         responseCode: spStatus(row),
-        data: ok ? { groupId: row.Id } : null,
+        // Members left holding open work they can no longer open (131; the SP sends the notices).
+        data: ok ? { groupId: row.Id, stranded: { count: row.StrandedCount || 0, people: result.recordsets?.[1] ?? [] } } : null,
         timestamp: new Date().toISOString(),
       });
     },

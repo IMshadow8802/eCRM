@@ -326,7 +326,7 @@ describe("userGroupController.saveModules", () => {
     const res = mockRes();
     await userGroupController.saveModules(baseReq({ body: { GroupId: 3, Modules: modules, CanSeeSensitive: true } }), res);
     expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_SaveGroupModules", {
-      GroupId: 3, CompId: 5, ModulesJson: JSON.stringify(modules), CanSeeSensitive: 1,
+      GroupId: 3, CompId: 5, ModulesJson: JSON.stringify(modules), CanSeeSensitive: 1, UserId: 7,
     });
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json.mock.calls[0][0]).toMatchObject({ success: true, data: { groupId: 3 } });
@@ -360,6 +360,30 @@ describe("userGroupController.saveModules", () => {
       "sp_SaveActivityLog",
       expect.objectContaining({ EntityType: "UserGroup", EntityId: 3, Action: "PermissionChanged" }),
     );
+  });
+
+  it("saveModules passes AssignReach and returns stranded", async () => {
+    const withAssign = [{ Module: "complaints", CanView: 1, CanAdd: 1, CanEdit: 1, CanDelete: 0, Reach: "Office", AssignReach: "Office" }];
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [
+      [{ Id: 3, ResponseCode: 200, ResponseMess: "Saved", StrandedCount: 2 }],
+      [{ UserId: 82, FullName: "Pooja", Leads: 0, Complaints: 3 }, { UserId: 85, FullName: "Imran", Leads: 1, Complaints: 0 }],
+    ] });
+    const res = mockRes();
+    await userGroupController.saveModules(baseReq({ body: { GroupId: 3, Modules: withAssign } }), res);
+    const sent = database.executeStoredProcedure.mock.calls[0][1];
+    expect(JSON.parse(sent.ModulesJson)[0].AssignReach).toBe("Office");
+    expect(sent.UserId).toBe(7);
+    expect(res.json.mock.calls[0][0].data).toEqual({ groupId: 3, stranded: { count: 2, people: [
+      { UserId: 82, FullName: "Pooja", Leads: 0, Complaints: 3 },
+      { UserId: 85, FullName: "Imran", Leads: 1, Complaints: 0 },
+    ] } });
+  });
+
+  it("stranded is empty when nobody is left holding work (or the DB is old)", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(spResult([{ Id: 3, ResponseCode: 200, ResponseMess: "Saved" }]));
+    const res = mockRes();
+    await userGroupController.saveModules(baseReq({ body: { GroupId: 3, Modules: [] } }), res);
+    expect(res.json.mock.calls[0][0].data.stranded).toEqual({ count: 0, people: [] });
   });
 
   it("500s when the SP throws", async () => {

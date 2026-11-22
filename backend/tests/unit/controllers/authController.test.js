@@ -419,6 +419,32 @@ describe("authController login access block", () => {
   });
 });
 
+describe("authController access carries Can assign to (Task 15)", () => {
+  const RS = { recordsets: [ACCESS_RS.recordsets[0],
+    [{ Module: "leads", CanView: 1, CanAdd: 1, CanEdit: 1, CanDelete: 0, Reach: "Office", AssignReach: "OfficeTree" },
+     { Module: "people", CanView: 1, CanAdd: 0, CanEdit: 0, CanDelete: 0, Reach: "Own", AssignReach: "Company" }],
+    ACCESS_RS.recordsets[2], []] };
+
+  it("login payload carries assignReach", async () => {
+    database.executeStoredProcedure
+      .mockResolvedValueOnce({ recordsets: [[{ ResponseCode: 200, ResponseMess: "ok", UserId: 5, UserName: "a", Password: "h", UserActive: true, CompId: 1, BranchId: 2, IsAdmin: 0 }], []] })
+      .mockResolvedValueOnce(RS);
+    comparePassword.mockResolvedValueOnce(true);
+    const res = mockRes();
+    await authController.login({ body: { username: "a", password: "pw" } }, res);
+    const { modules } = res.json.mock.calls[0][0].data.access;
+    expect(modules.leads.assignReach).toBe("OfficeTree");
+    expect(modules.people.assignReach).toBeNull(); // only leads/complaints have one
+  });
+
+  it("fetchMyAccess carries assignReach", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[]] });
+    const res = mockRes();
+    await authController.fetchMyAccess({ user: { UserId: 5 }, access: buildAccess(RS.recordsets, 5) }, res);
+    expect(res.json.mock.calls[0][0].data.access.modules.leads.assignReach).toBe("OfficeTree");
+  });
+});
+
 describe("authController.fetchMyAccess", () => {
   it("returns access + menu rights for the token's user", async () => {
     const access = buildAccess(ACCESS_RS.recordsets, 5);

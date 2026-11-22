@@ -1,6 +1,7 @@
 const database = require("../config/database");
-const { scopeJson, scopeFor, canWriteBranch } = require("../middleware/permission");
+const { scopeFor, canWriteBranch } = require("../middleware/permission");
 const { stripSensitive, roleWithin } = require("../middleware/access");
+const { actor } = require("../utils/actor");
 const { logActivity, ACTIONS } = require("../utils/activityLogger");
 const { emitToWorkspace, emitToUser } = require("../realtime/events");
 const { SCOPES } = require("../realtime/contract");
@@ -249,6 +250,8 @@ class UserController {
               userId: spResponse.UserId,
               assignedGroupId: spResponse.AssignedGroupId,
               unassignedTasks: unassigned.reduce((n, r) => n + (r.TaskCount || 0), 0),
+              // Open work this person now holds but can no longer open (133); 0 on an older DB.
+              stranded: { leads: spResponse.StrandedLeads || 0, complaints: spResponse.StrandedComplaints || 0 },
             }
           : null,
         timestamp: new Date().toISOString(),
@@ -508,25 +511,24 @@ class UserController {
     "DIRECTORY_ERROR",
   );
 
-  // Who the caller may hand a lead to. Body { BranchId } lists a destination
-  // branch's roster for cross-branch transfers; the RIGHT to do that is checked
-  // in assertCanAssign at transfer time, not here — this only lists.
+  // Who the caller may assign a lead or complaint to: sp_FetchAssignableUsers
+  // decides (Can assign to, ranked, Away today). Body { Module?, RecordId? }.
+  // Installed phones still send { BranchId }: ignored, the list is the same (D23).
   assignableUsers = asyncRoute(
     async (req, res) => {
-      // Whose roster: the scope of the module being assigned in. Old clients send
-      // no Module: leads if the caller can see leads, else complaints (support roles).
+      // Old clients send no Module: leads if the caller can see leads, else complaints (support roles).
       const module = req.body?.Module ?? (scopeFor(req, "leads").can.view ? "leads" : "complaints");
       if (!["leads", "complaints"].includes(module)) {
         return validationError(res, "Module must be leads or complaints");
       }
-      const s = scopeFor(req, module);
-      if (!s.can.view) return error(res, "You do not have permission for this action", "INSUFFICIENT_ROLE", 403);
+      if (!scopeFor(req, module).can.view) return error(res, "You do not have permission for this action", "INSUFFICIENT_ROLE", 403);
+      const { CompId, UserId } = actor(req); // named, so the tenancy guard sees CompId
       const result = await database.executeStoredProcedure("sp_FetchAssignableUsers", {
-        UserId: req.user.UserId,
-        CompId: req.user.CompId,
-        BranchId: positiveInt(req.body?.BranchId),
-        AccessibleBranchIdsJson: scopeJson(s.branchIds),
-        OwnerIdsJson: scopeJson(s.ownerIds),
+        CompId,
+        UserId,
+        Module: module,
+        RecordId: positiveInt(req.body?.RecordId),
+        TargetUserId: null,
       });
       const users = cleanSpRows(result.recordsets?.[0] ?? []);
       return success(res, "Assignable users retrieved", { users });
