@@ -123,6 +123,17 @@ it("only the customer and the subject are required", async () => {
   );
 });
 
+it("Assign to lists the complaints list with an Away today mark; it is optional", async () => {
+  jest.mocked(fetchAssignableUsers).mockResolvedValue([
+    { Id: 9, FullName: "Priya Shah", Avatar: null, JobTitle: "Technician", BranchId: 1, BranchName: null, ReportsTo: null, AwayToday: true },
+  ]);
+  await mount();
+  await screen.findByText("Wiring");
+  expect(screen.getByText(/^Assign to/)).toBeOnTheScreen();
+  expect(fetchAssignableUsers).toHaveBeenCalledWith({ Module: "complaints" });
+  expect(await screen.findByText("Technician · Away today")).toBeOnTheScreen();
+});
+
 it("a valid create posts Id 0 with the picked ids, prefills 'reported by', and goes back", async () => {
   const navigation = makeNavigation<"ComplaintForm">();
   await mount(undefined, navigation);

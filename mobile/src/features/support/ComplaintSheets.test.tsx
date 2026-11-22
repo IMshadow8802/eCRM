@@ -40,17 +40,24 @@ const STATUSES = [
   lookup(5, LOOKUP_KIND.ticketStatus, "Rejected", "rejected"),
 ];
 let lookups: Record<string, Lookup[]>;
+let people: AssignableUser[];
 const priya: AssignableUser = {
   Id: 9, FullName: "Priya Shah", Avatar: null, JobTitle: "Technician", BranchId: 1, BranchName: "Head Office", ReportsTo: null,
 };
 const vikram: AssignableUser = { ...priya, Id: 11, FullName: "Vikram Singh", JobTitle: "AC Technician", BranchName: "Karol Bagh" };
 
+let onGone: jest.Mock;
+let rendered: Awaited<ReturnType<typeof renderWithProviders>>;
 const mount = async () => {
   const ref = createRef<ComplaintSheetsHandle>();
-  await renderWithProviders(<ComplaintSheets ref={ref} />);
+  onGone = jest.fn();
+  rendered = await renderWithProviders(<ComplaintSheets ref={ref} onGone={onGone} />);
   await screen.findByText("Fixed on site");
-  await screen.findByText("Priya Shah");
-  return (action: ComplaintAction, row: Ticket = ticket()) => act(() => ref.current!.open(action, row));
+  return async (action: ComplaintAction, row: Ticket = ticket()) => {
+    await act(() => ref.current!.open(action, row));
+    // The reassign list is per record, asked for when the sheet opens.
+    if (action === "reassign" && people.length) await screen.findByText(people[0]!.FullName);
+  };
 };
 
 beforeEach(() => {
@@ -62,7 +69,8 @@ beforeEach(() => {
     [LOOKUP_KIND.callOutcome]: [lookup(40, LOOKUP_KIND.callOutcome, "No answer")],
   };
   jest.mocked(fetchLookups).mockImplementation(async ({ Kind }) => lookups[Kind] ?? []);
-  jest.mocked(fetchAssignableUsers).mockResolvedValue([priya, vikram]);
+  people = [priya, vikram];
+  jest.mocked(fetchAssignableUsers).mockImplementation(async () => people);
   jest.mocked(fetchEscalationTargets).mockResolvedValue([
     { Id: 5, FullName: "Neha Kapoor", JobTitle: "Support Head", Depth: 1 } as never,
   ]);
@@ -179,24 +187,24 @@ it("the sheets' remarks and search are the shared Input as sheet inputs: remarks
   const resolve = screen.getByTestId("resolve-remarks");
   expect(resolve.props.nativeID).toBe("sheet-input");
   expect(flat(resolve.parent!)).toMatchObject({ minHeight: 84, borderRadius: 12 });
-  await open("transfer");
-  const search = screen.getByTestId("transfer-search");
+  await open("reassign");
+  const search = screen.getByTestId("reassign-search");
   expect(search.props.nativeID).toBe("sheet-input");
   expect(flat(search.parent!)).toMatchObject({ height: 40, borderRadius: 12, borderWidth: 1 });
-  const remarks = screen.getByTestId("transfer-remarks");
+  const remarks = screen.getByTestId("reassign-remarks");
   expect(remarks.props.nativeID).toBe("sheet-input");
   expect(flat(remarks.parent!)).toMatchObject({ minHeight: 64 });
 });
 
-it("with no transfer reasons set up, Transfer says so and cannot be sent", async () => {
+it("with no reasons set up, Reassign says so and cannot be sent", async () => {
   lookups[LOOKUP_KIND.transferReason] = [];
   const open = await mount();
-  await open("transfer");
-  expect(screen.getByText("No transfer reasons are set up. Add them on the web first.")).toBeOnTheScreen();
-  expect(screen.getByRole("button", { name: "Transfer" })).toBeDisabled();
+  await open("reassign");
+  expect(screen.getByText("No reasons are set up. Add them on the web first.")).toBeOnTheScreen();
+  expect(screen.getByRole("button", { name: "Reassign" })).toBeDisabled();
 });
 
-it("a dismissed Resolve or Transfer sheet forgets what was typed", async () => {
+it("a dismissed Resolve or Reassign sheet forgets what was typed", async () => {
   const open = await mount();
   await open("resolve");
   await fireEvent.changeText(screen.getByTestId("resolve-remarks"), "half typed");
@@ -205,12 +213,12 @@ it("a dismissed Resolve or Transfer sheet forgets what was typed", async () => {
   expect(screen.getByTestId("resolve-remarks").props.value).toBe("");
   expect(screen.queryByText("Pick a resolution.")).toBeNull();
 
-  await open("transfer");
-  await fireEvent.changeText(screen.getByTestId("transfer-search"), "pri");
-  await fireEvent.changeText(screen.getByTestId("transfer-remarks"), "half typed");
-  await fireEvent(screen.getByText("Transfer complaint"), "dismiss");
-  expect(screen.getByTestId("transfer-remarks").props.value).toBe("");
-  expect(screen.getByTestId("transfer-search").props.value).toBe("");
+  await open("reassign");
+  await fireEvent.changeText(screen.getByTestId("reassign-search"), "pri");
+  await fireEvent.changeText(screen.getByTestId("reassign-remarks"), "half typed");
+  await fireEvent(screen.getByText("Reassign complaint"), "dismiss");
+  expect(screen.getByTestId("reassign-remarks").props.value).toBe("");
+  expect(screen.getByTestId("reassign-search").props.value).toBe("");
 });
 
 describe("status moves", () => {
@@ -241,7 +249,7 @@ describe("status moves", () => {
   });
 
   it("Reopen needs remarks and shows the server's refusal, never pre-empts it", async () => {
-    jest.mocked(setTicketStatus).mockRejectedValue(serverError(403, "Reopening requires a manager"));
+    jest.mocked(setTicketStatus).mockRejectedValue(serverError(400, "Reopening requires a manager"));
     const open = await mount();
     await open("reopen", ticket({ StatusCode: "resolved", StatusId: 3 }));
     expect(screen.getByText("Reopen complaint")).toBeOnTheScreen();
@@ -272,71 +280,72 @@ it("Resolve when the company has no resolved status says so instead of opening a
   expect(present).not.toHaveBeenCalled();
 });
 
-describe("Transfer (23)", () => {
+describe("Reassign (23)", () => {
   it("person, reason and remarks are required, each said inline after a submit", async () => {
     const open = await mount();
-    await open("transfer", ticket({ AssignedTo: 42, AssigneeName: "Ayush Mishra", DueAt: "2026-11-02T12:40:00" }));
+    await open("reassign", ticket({ AssignedTo: 42, AssigneeName: "Ayush Mishra", DueAt: "2026-11-02T12:40:00" }));
     expect(screen.getByText("T-7 · now with Ayush Mishra")).toBeOnTheScreen();
-    expect(screen.getByText(/^Due stays .*A transfer never moves the TAT clock\.$/)).toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "Transfer" }));
+    expect(screen.getByText(/^Due stays .*Reassigning never moves the TAT clock\.$/)).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Reassign" }));
     expect(screen.getByText("Pick who it goes to.")).toBeOnTheScreen();
     expect(screen.getByText("Pick a reason.")).toBeOnTheScreen();
-    expect(screen.getByText("Remarks are required for a transfer.")).toBeOnTheScreen();
+    expect(screen.getByText("Remarks are required to reassign.")).toBeOnTheScreen();
     expect(transferTicket).not.toHaveBeenCalled();
   });
 
   it("filters people in reach, then sends the controller's payload", async () => {
     const open = await mount();
-    await open("transfer");
+    await open("reassign");
     expect(screen.getByText("Technician · Head Office")).toBeOnTheScreen();
-    await fireEvent.changeText(screen.getByTestId("transfer-search"), "karol");
+    await fireEvent.changeText(screen.getByTestId("reassign-search"), "karol");
     expect(screen.queryByText("Priya Shah")).toBeNull();
-    await fireEvent.changeText(screen.getByTestId("transfer-search"), "zzz");
+    await fireEvent.changeText(screen.getByTestId("reassign-search"), "zzz");
     expect(screen.getByText("Nobody matches.")).toBeOnTheScreen();
-    await fireEvent.changeText(screen.getByTestId("transfer-search"), "");
+    await fireEvent.changeText(screen.getByTestId("reassign-search"), "");
     await fireEvent.press(screen.getByRole("radio", { name: "Priya Shah" }));
     expect(screen.getByPlaceholderText("Tell Priya what has been tried")).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("radio", { name: "Specialist needed" }));
-    await fireEvent.changeText(screen.getByTestId("transfer-remarks"), "Tried a reset");
-    await fireEvent.press(screen.getByRole("button", { name: "Transfer to Priya Shah" }));
+    await fireEvent.changeText(screen.getByTestId("reassign-remarks"), "Tried a reset");
+    await fireEvent.press(screen.getByRole("button", { name: "Reassign to Priya" }));
     await waitFor(() =>
       expect(transferTicket).toHaveBeenCalledWith({ TicketId: 7, ToUserId: 9, ToBranchId: null, ReasonId: 30, Remarks: "Tried a reset" }),
     );
-    expect(await screen.findByText("Transferred to Priya Shah")).toBeOnTheScreen();
+    expect(await screen.findByText("Reassigned to Priya Shah")).toBeOnTheScreen();
   });
 
   it("a pick collapses the list to that person with Change; Change brings the list and search back", async () => {
     const open = await mount();
-    await open("transfer");
-    await fireEvent.changeText(screen.getByTestId("transfer-search"), "pri");
+    await open("reassign");
+    await fireEvent.changeText(screen.getByTestId("reassign-search"), "pri");
     await fireEvent.press(screen.getByRole("radio", { name: "Priya Shah" }));
     // Only the chosen person is left, so Reason and Remarks sit right below.
     expect(screen.getByText("Priya Shah")).toBeOnTheScreen();
     expect(screen.queryByText("Vikram Singh")).toBeNull();
-    expect(screen.queryByTestId("transfer-search")).toBeNull();
+    expect(screen.queryByTestId("reassign-search")).toBeNull();
     await fireEvent.press(screen.getByRole("button", { name: "Change" }));
     expect(screen.getByText("Vikram Singh")).toBeOnTheScreen();
-    expect(screen.getByTestId("transfer-search").props.value).toBe("");
+    expect(screen.getByTestId("reassign-search").props.value).toBe("");
     expect(screen.getByRole("radio", { name: "Priya Shah" }).props.accessibilityState.checked).toBe(true);
     await fireEvent.press(screen.getByRole("radio", { name: "Vikram Singh" }));
     expect(screen.queryByText("Priya Shah")).toBeNull();
     await fireEvent.press(screen.getByRole("radio", { name: "Specialist needed" }));
-    await fireEvent.changeText(screen.getByTestId("transfer-remarks"), "Needs a visit");
-    await fireEvent.press(screen.getByRole("button", { name: "Transfer to Vikram Singh" }));
+    await fireEvent.changeText(screen.getByTestId("reassign-remarks"), "Needs a visit");
+    await fireEvent.press(screen.getByRole("button", { name: "Reassign to Vikram" }));
     await waitFor(() =>
       expect(transferTicket).toHaveBeenCalledWith({ TicketId: 7, ToUserId: 11, ToBranchId: null, ReasonId: 30, Remarks: "Needs a visit" }),
     );
   });
 
-  it("a failed transfer says why", async () => {
-    jest.mocked(transferTicket).mockRejectedValue(serverError(403, "Not in your reach"));
+  it("a failed reassign says why", async () => {
+    jest.mocked(transferTicket).mockRejectedValue(serverError(400, "Not in your reach"));
     const open = await mount();
-    await open("transfer");
+    await open("reassign");
     await fireEvent.press(screen.getByRole("radio", { name: "Vikram Singh" }));
     await fireEvent.press(screen.getByRole("radio", { name: "Specialist needed" }));
-    await fireEvent.changeText(screen.getByTestId("transfer-remarks"), "x");
-    await fireEvent.press(screen.getByRole("button", { name: "Transfer to Vikram Singh" }));
+    await fireEvent.changeText(screen.getByTestId("reassign-remarks"), "x");
+    await fireEvent.press(screen.getByRole("button", { name: "Reassign to Vikram" }));
     expect(await screen.findByText("Not in your reach")).toBeOnTheScreen();
+    expect(onGone).not.toHaveBeenCalled();
   });
 });
 
@@ -371,7 +380,134 @@ describe("Escalate", () => {
     jest.mocked(fetchEscalationTargets).mockResolvedValueOnce([]);
     const open = await mount();
     await open("escalate");
-    expect(await screen.findByText("You have nobody above you in the reporting chain.")).toBeOnTheScreen();
+    expect(await screen.findByText("Nobody above you can open complaints. Reassign it or tell a manager.")).toBeOnTheScreen();
+  });
+
+  it("an empty chain names the person it stays with; a refusal is the server's sentence", async () => {
+    jest.mocked(escalateTicket).mockRejectedValue(serverError(400, "Escalation target must be able to open complaints"));
+    const open = await mount();
+    await open("escalate", ticket({ AssignedTo: 9, AssigneeName: "Priya Shah" }));
+    expect(screen.getByText("T-7 · it stays with Priya Shah")).toBeOnTheScreen();
+    await fireEvent.press(await screen.findByRole("radio", { name: "Neha Kapoor" }));
+    await fireEvent.changeText(screen.getByTestId("escalate-remarks"), "Twice now");
+    await fireEvent.press(screen.getByRole("button", { name: "Escalate to Neha Kapoor" }));
+    expect(await screen.findByText("Escalation target must be able to open complaints")).toBeOnTheScreen();
+    expect(onGone).not.toHaveBeenCalled();
+  });
+
+  it("no chain above an assigned complaint names that person", async () => {
+    jest.mocked(fetchEscalationTargets).mockResolvedValueOnce([]);
+    const open = await mount();
+    await open("escalate", ticket({ AssignedTo: 9, AssigneeName: "Priya Shah" }));
+    expect(await screen.findByText("Nobody above Priya Shah can open complaints. Reassign it or tell a manager.")).toBeOnTheScreen();
+  });
+});
+
+describe("access model: Reassign words, groups, Away today, Send back, gone", () => {
+  const ranked = (): AssignableUser[] => [
+    { ...priya, Id: 21, FullName: "Vivek Rao", GroupRank: 1, IsGiver: true },
+    { ...priya, Id: 22, FullName: "Meena Iyer", GroupRank: 2, AwayToday: true },
+    { ...priya, Id: 23, FullName: "Kunal Das", GroupRank: 3 },
+  ];
+
+  it("asks for this record's list, groups it, marks Away today and the giver, and never says transfer", async () => {
+    people = ranked();
+    const open = await mount();
+    await open("reassign");
+    expect(fetchAssignableUsers).toHaveBeenCalledWith({ Module: "complaints", RecordId: 7 });
+    expect(screen.getByText("Your manager and team")).toBeOnTheScreen();
+    expect(screen.getByText("Your office")).toBeOnTheScreen();
+    expect(screen.getByText("Other offices")).toBeOnTheScreen();
+    expect(screen.getByText("Away today")).toBeOnTheScreen();
+    expect(screen.getByText("Gave it to you")).toBeOnTheScreen();
+    expect(screen.getByText(/^Reassign to/)).toBeOnTheScreen();
+    expect(screen.queryByText(/transfer/i)).toBeNull();
+    // Typing narrows the list on the device; empty groups drop their heading.
+    await fireEvent.changeText(screen.getByTestId("reassign-search"), "meena");
+    expect(screen.queryByText("Vivek Rao")).toBeNull();
+    expect(screen.queryByText("Your manager and team")).toBeNull();
+    expect(screen.getByText("Meena Iyer")).toBeOnTheScreen();
+  });
+
+  it("nobody to hand it to says so", async () => {
+    people = [];
+    const open = await mount();
+    await open("reassign");
+    expect(await screen.findByText("Nobody can take this. Ask a manager.")).toBeOnTheScreen();
+  });
+
+  it("a reassign that succeeds leaves the record: detail dropped, onGone, 'Reassigned to <name>'", async () => {
+    people = ranked();
+    const open = await mount();
+    const removed = jest.spyOn(rendered.queryClient, "removeQueries");
+    await open("reassign");
+    await fireEvent.press(screen.getByRole("radio", { name: "Vivek Rao" }));
+    await fireEvent.press(screen.getByRole("radio", { name: "Specialist needed" }));
+    await fireEvent.changeText(screen.getByTestId("reassign-remarks"), "Your area");
+    await fireEvent.press(screen.getByRole("button", { name: "Reassign to Vivek" }));
+    expect(await screen.findByText("Reassigned to Vivek Rao")).toBeOnTheScreen();
+    expect(onGone).toHaveBeenCalledTimes(1);
+    expect(removed).toHaveBeenCalledWith({ queryKey: ["ticket", 7] });
+  });
+
+  it("Send back posts SendBack with the remarks and no reason, then leaves", async () => {
+    const open = await mount();
+    await open("sendback", ticket({ SendBackToId: 30, SendBackToName: "Nitin Verma" }));
+    expect(screen.getAllByText("Send back to Nitin Verma")[0]).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Send back to Nitin" })).toBeDisabled();
+    await fireEvent.changeText(screen.getByTestId("compose-sendback"), "Wrong office");
+    await fireEvent.press(screen.getByRole("button", { name: "Send back to Nitin" }));
+    await waitFor(() =>
+      expect(transferTicket).toHaveBeenCalledWith({ TicketId: 7, ToUserId: 30, Remarks: "Wrong office", SendBack: true }),
+    );
+    expect(await screen.findByText("Sent back to Nitin Verma")).toBeOnTheScreen();
+    expect(onGone).toHaveBeenCalled();
+  });
+
+  // Review Focus 3: the giver lost the module between load and tap.
+  it("a refused send back shows the server's sentence, refetches the record and stays", async () => {
+    jest.mocked(transferTicket).mockRejectedValue(serverError(400, "Nitin Verma can no longer take this. Reassign it instead."));
+    const open = await mount();
+    const invalidated = jest.spyOn(rendered.queryClient, "invalidateQueries");
+    await open("sendback", ticket({ SendBackToId: 30, SendBackToName: "Nitin Verma" }));
+    await fireEvent.changeText(screen.getByTestId("compose-sendback"), "Wrong office");
+    await fireEvent.press(screen.getByRole("button", { name: "Send back to Nitin" }));
+    expect(await screen.findByText("Nitin Verma can no longer take this. Reassign it instead.")).toBeOnTheScreen();
+    expect(invalidated).toHaveBeenCalledWith({ queryKey: ["ticket", 7] });
+    expect(onGone).not.toHaveBeenCalled();
+  });
+
+  it("send back without a giver sends nothing", async () => {
+    const open = await mount();
+    await open("sendback");
+    expect(screen.getAllByText("Send back")[0]).toBeOnTheScreen();
+    await fireEvent.changeText(screen.getByTestId("compose-sendback"), "x");
+    await fireEvent.press(screen.getByRole("button", { name: "Send back" }));
+    expect(transferTicket).not.toHaveBeenCalled();
+  });
+
+  // Review Focus 4: someone else moved it while the screen was open.
+  it("a 403 on Resolve drops the detail, leaves and says the record is no longer with you", async () => {
+    jest.mocked(setTicketStatus).mockRejectedValue(serverError(403, "You do not have permission for this action"));
+    const open = await mount();
+    const removed = jest.spyOn(rendered.queryClient, "removeQueries");
+    await open("resolve");
+    await fireEvent.press(screen.getByRole("radio", { name: "Fixed on site" }));
+    await fireEvent.changeText(screen.getByTestId("resolve-remarks"), "Done");
+    await fireEvent.press(screen.getByRole("button", { name: "Save · mark resolved" }));
+    expect(await screen.findByText("This record is no longer with you")).toBeOnTheScreen();
+    expect(onGone).toHaveBeenCalledTimes(1);
+    expect(removed).toHaveBeenCalledWith({ queryKey: ["ticket", 7] });
+  });
+
+  it("a 404 on a logged call leaves the same way", async () => {
+    jest.mocked(logCall).mockRejectedValue(serverError(404, "Record not found"));
+    const open = await mount();
+    await open("call");
+    await fireEvent.changeText(screen.getByTestId("logcall-notes"), "Rang");
+    await fireEvent.press(screen.getByRole("button", { name: "Save call" }));
+    expect(await screen.findByText("This record is no longer with you")).toBeOnTheScreen();
+    expect(onGone).toHaveBeenCalled();
   });
 });
 
@@ -411,7 +547,7 @@ describe("Log call (24)", () => {
   });
 
   it("No answer is out + the outcome with no duration; a failure stays in the sheet", async () => {
-    jest.mocked(logCall).mockRejectedValue(serverError(403, "No write access"));
+    jest.mocked(logCall).mockRejectedValue(serverError(400, "No write access"));
     const open = await mount();
     await open("call", ticket({ StatusCode: "onhold" }));
     expect(screen.queryByRole("radio", { name: "Put on hold" })).toBeNull();

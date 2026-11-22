@@ -1,29 +1,13 @@
-# Transfer to an agent (reason + remarks), then escalate to their manager.
+# Escalate, then Reassign to an agent (reason + remarks). Reassign comes last:
+# a reassign takes the record back to the list.
 appId: com.shadowider.eCRM
 ---
 - runFlow: common/new-complaint.yaml
-- tapOn: "Transfer"
-- assertVisible: "Transfer complaint"
-# Picked from the list, not typed: adb input into a sheet that is still
-# settling drops a character now and then ("Ait Singh", run 3).
-- waitForAnimationToEnd
-- tapOn: "Amit Singh \\(Exec HO, under Neha\\)"
-# The pick folds the list to Amit, so the reason sits right below it.
-- tapOn: "Overloaded"
-- tapOn:
-    id: "transfer-remarks"
-- inputText: "MAESTRO transfer ${output.stamp}"
-- takeScreenshot: transfer-sheet
-- tapOn: "Transfer to Amit Singh \\(Exec HO, under Neha\\)"
-- waitForAnimationToEnd
-- assertNotVisible: "Transfer complaint"
-- assertVisible: "Amit Singh \\(Exec HO, under Neha\\)"
-- assertNotVisible: "Unassigned"
 
-# Escalate is on the action bar once someone is working it.
+# Escalate is on the action bar once the chain above is known.
 - tapOn: "Escalate"
 - assertVisible: "Escalate complaint"
-- assertVisible: "TKT-\\d+ · it stays with Amit Singh.*"
+- assertVisible: "TKT-\\d+ · it stays.*"
 - tapOn: "Neha Gupta \\(TL Head Office\\)"
 - tapOn:
     id: "escalate-remarks"
@@ -36,7 +20,22 @@ appId: com.shadowider.eCRM
 - waitForAnimationToEnd
 - assertNotVisible: "Escalate complaint"
 - assertVisible: "Escalated to Neha Gupta.*"
-# The activity names both moves (the transfer line carries its reason).
-- assertVisible: "Transferred to Amit Singh .* — Overloaded"
 - assertVisible: "Escalated to Neha Gupta .* — MAESTRO escalate ${output.stamp}"
-- takeScreenshot: transfer-escalate-history
+- takeScreenshot: escalate-history
+
+- tapOn: "Reassign"
+- assertVisible: "Reassign complaint"
+# Picked from the list, not typed: adb input into a sheet that is still
+# settling drops a character now and then ("Ait Singh", run 3).
+- waitForAnimationToEnd
+- tapOn: "Amit Singh \\(Exec HO, under Neha\\)"
+# The pick folds the list to Amit, so the reason sits right below it.
+- tapOn: "Overloaded"
+- tapOn:
+    id: "reassign-remarks"
+- inputText: "MAESTRO reassign ${output.stamp}"
+- takeScreenshot: reassign-sheet
+- tapOn: "Reassign to Amit"
+- waitForAnimationToEnd
+- assertVisible: "Reassigned to Amit Singh.*"
+- assertNotVisible: "Reassign complaint"

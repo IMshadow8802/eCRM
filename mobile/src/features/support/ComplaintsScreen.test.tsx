@@ -449,7 +449,7 @@ describe("route params", () => {
 describe("T2 · two panes", () => {
   beforeEach(() => {
     setWindow(...TABLET);
-    jest.mocked(fetchTicketDetail).mockResolvedValue({ ticket: ticket(), fields: [], activity: [], assignments: [], linkedLead: null });
+    jest.mocked(fetchTicketDetail).mockResolvedValue({ ticket: ticket({ CanEdit: true }), fields: [], activity: [], assignments: [], linkedLead: null });
   });
 
   it("starts on 'Pick a complaint'; a tap selects instead of pushing, and tints the row", async () => {

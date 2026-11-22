@@ -1,10 +1,11 @@
 import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeftRight, ChevronsUp, CircleCheck, CirclePause } from "lucide-react-native";
+import { ArrowLeftRight, ChevronsUp, CircleCheck, CirclePause, Undo2 } from "lucide-react-native";
 
 import { logCall } from "../../api/callQueries";
-import { apiErrorMessage } from "../../api/errors";
+import { apiErrorMessage, RECORD_GONE_MESSAGE, recordGone } from "../../api/errors";
 import { escalateTicket, fetchEscalationTargets, setTicketStatus, transferTicket } from "../../api/ticketQueries";
+import { fetchAssignableUsers } from "../../api/userQueries";
 import { complaintBadge } from "../../theme";
 import type { Lookup, Ticket, TicketStatusCode } from "../../types/api";
 import { ComposeSheet, LogCallSheet, useToast, type LogCallThen, type SheetRef } from "../../ui";
@@ -22,7 +23,8 @@ export type ComplaintAction =
   | "close"
   | "reject"
   | "reopen"
-  | "transfer"
+  | "reassign"
+  | "sendback"
   | "escalate";
 
 export interface ComplaintSheetsHandle {
@@ -59,17 +61,27 @@ const first = (name: string) => name.split(" ")[0];
 
 /**
  * The sheets behind every complaint action, shared by the list (swipe, E 22)
- * and the record (action bar, E 11): Resolve (13), Transfer (23), Log call
- * (24), Escalate, and one status sheet for hold / resume / close / reject /
- * reopen. `setTicketStatus` is the one engine for every status move; a refusal
- * (the reopen gate, a 403) is the server's sentence in a toast — never pre-empted.
+ * and the record (action bar, E 11): Resolve (13), Reassign (23), Send back,
+ * Log call (24), Escalate, and one status sheet for hold / resume / close /
+ * reject / reopen. `setTicketStatus` is the one engine for every status move;
+ * a refusal is the server's sentence in a toast — never pre-empted.
+ *
+ * A 403/404 means the complaint left the caller while the screen was open
+ * (Review Focus 4): the cached detail is dropped, `onGone` takes the record
+ * screen back to the list, and the toast says RECORD_GONE_MESSAGE. A reassign
+ * or send back that succeeds leaves the same way.
  */
 const NOT_SET_UP = "That status is not set up for your company. Add it on the web first.";
 
-export const ComplaintSheets = forwardRef<ComplaintSheetsHandle>(function ComplaintSheets(_props, ref) {
+export interface ComplaintSheetsProps {
+  /** The record screen: leave it (back to the list). Omit on the list. */
+  onGone?: () => void;
+}
+
+export const ComplaintSheets = forwardRef<ComplaintSheetsHandle, ComplaintSheetsProps>(function ComplaintSheets({ onGone }, ref) {
   const queryClient = useQueryClient();
   const toast = useToast();
-  const { statuses, resolutions, transferReasons, callOutcomes, users } = useTicketRefData();
+  const { statuses, resolutions, transferReasons, callOutcomes } = useTicketRefData();
 
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [move, setMove] = useState<Move | null>(null);
@@ -78,7 +90,8 @@ export const ComplaintSheets = forwardRef<ComplaintSheetsHandle>(function Compla
 
   const resolveRef = useRef<SheetRef>(null);
   const moveRef = useRef<SheetRef>(null);
-  const transferRef = useRef<SheetRef>(null);
+  const reassignRef = useRef<SheetRef>(null);
+  const sendBackRef = useRef<SheetRef>(null);
   const escalateRef = useRef<SheetRef>(null);
   const callRef = useRef<SheetRef>(null);
 
@@ -91,14 +104,38 @@ export const ComplaintSheets = forwardRef<ComplaintSheetsHandle>(function Compla
     enabled: !!ticket && isActive(code),
   });
 
+  // Per record, so the server can mark who gave it (IsGiver) and drop the holder.
+  const [picking, setPicking] = useState(false);
+  const { data: people = [] } = useQuery({
+    queryKey: ["users", "assignable", "complaints", ticket?.Id],
+    queryFn: () => fetchAssignableUsers({ Module: "complaints", RecordId: ticket!.Id }),
+    enabled: picking && !!ticket,
+  });
+
   const invalidate = (id: number) => {
     void queryClient.invalidateQueries({ queryKey: ["ticket", id] });
     void queryClient.invalidateQueries({ queryKey: ["tickets"] });
   };
 
+  /** The complaint is no longer the caller's to look at here: drop it and leave. */
+  const leave = (id: number, say: () => void) => {
+    for (const r of [resolveRef, moveRef, reassignRef, sendBackRef, escalateRef, callRef]) r.current?.dismiss();
+    onGone?.();
+    queryClient.removeQueries({ queryKey: ["ticket", id] });
+    void queryClient.invalidateQueries({ queryKey: ["tickets"] });
+    say();
+  };
+
+  /** Every write's refusal: gone (403/404) leaves; anything else is the server's sentence, then a fresh copy. */
+  const fail = (err: unknown, id: number, fallback: string) => {
+    if (recordGone(err)) return leave(id, () => toast.error(RECORD_GONE_MESSAGE));
+    toast.error(apiErrorMessage(err, fallback));
+    invalidate(id);
+  };
+
   const status = useMutation({
     mutationFn: (p: Parameters<typeof setTicketStatus>[0]) => setTicketStatus(p),
-    onError: (err) => toast.error(apiErrorMessage(err, "Could not change the status.")),
+    onError: (err, vars) => fail(err, vars.TicketId, "Could not change the status."),
     onSuccess: (_r, vars) => {
       resolveRef.current?.dismiss();
       moveRef.current?.dismiss();
@@ -108,20 +145,24 @@ export const ComplaintSheets = forwardRef<ComplaintSheetsHandle>(function Compla
     },
   });
 
-  const transfer = useMutation({
+  const reassign = useMutation({
     mutationFn: (p: Parameters<typeof transferTicket>[0]) => transferTicket(p),
-    onError: (err) => toast.error(apiErrorMessage(err, "Could not transfer this complaint.")),
+    onError: (err, vars) => {
+      // Send back refused (the giver lost the module, say): the server's
+      // sentence, then the refetched record drops the button (Review Focus 3).
+      if (vars.SendBack) sendBackRef.current?.dismiss();
+      fail(err, vars.TicketId, "Could not reassign this complaint.");
+    },
     onSuccess: (_r, vars) => {
-      transferRef.current?.dismiss();
-      const to = users.find((u) => u.Id === vars.ToUserId)?.FullName;
-      toast.success(to ? `Transferred to ${to}` : "Transferred");
-      invalidate(vars.TicketId);
+      const to = vars.SendBack ? ticket?.SendBackToName : people.find((u) => u.Id === vars.ToUserId)?.FullName;
+      const verb = vars.SendBack ? "Sent back" : "Reassigned";
+      leave(vars.TicketId, () => toast.success(to ? `${verb} to ${to}` : verb));
     },
   });
 
   const escalate = useMutation({
     mutationFn: (p: Parameters<typeof escalateTicket>[0]) => escalateTicket(p),
-    onError: (err) => toast.error(apiErrorMessage(err, "Could not escalate this complaint.")),
+    onError: (err, vars) => fail(err, vars.TicketId, "Could not escalate this complaint."),
     onSuccess: (_r, vars) => {
       escalateRef.current?.dismiss();
       const to = seniors?.find((s) => s.Id === vars.ToUserId)?.FullName;
@@ -132,7 +173,10 @@ export const ComplaintSheets = forwardRef<ComplaintSheetsHandle>(function Compla
 
   const call = useMutation({
     mutationFn: (p: Parameters<typeof logCall>[0]) => logCall(p),
-    onError: (err) => setCallError(apiErrorMessage(err, "Could not log that call.")),
+    onError: (err, vars) => {
+      if (recordGone(err)) leave(vars.TicketId!, () => toast.error(RECORD_GONE_MESSAGE));
+      else setCallError(apiErrorMessage(err, "Could not log that call."));
+    },
   });
 
   /**
@@ -177,7 +221,10 @@ export const ComplaintSheets = forwardRef<ComplaintSheetsHandle>(function Compla
         }
         setResolveTarget(null);
         resolveRef.current?.present();
-      } else if (action === "transfer") transferRef.current?.present();
+      } else if (action === "reassign") {
+        setPicking(true);
+        reassignRef.current?.present();
+      } else if (action === "sendback") sendBackRef.current?.present();
       else if (action === "escalate") escalateRef.current?.present();
       else {
         const target = statusFor(statuses, MOVE_TO[action]);
@@ -272,26 +319,35 @@ export const ComplaintSheets = forwardRef<ComplaintSheetsHandle>(function Compla
       />
 
       <TransferSheet
-        ref={transferRef}
-        testID="transfer"
-        title="Transfer complaint"
-        subtitle={ticket ? `${ticket.TicketNo} · ${ticket.AssigneeName ? `now with ${ticket.AssigneeName}` : "unassigned"}` : undefined}
+        ref={reassignRef}
+        testID="reassign"
+        title="Reassign complaint"
+        subtitle={ticket ? `${ticket.TicketNo} · ${ticket.AssigneeName ? `now with ${ticket.AssigneeName}` : "Unassigned"}` : undefined}
         badge={{ tone: "indigo", icon: ArrowLeftRight }}
-        pickLabel="Transfer to"
+        pickLabel="Reassign to"
         searchable
-        people={users
+        awayLabel="Away today"
+        giverLabel="Gave it to you"
+        people={people
           .filter((u) => u.Id !== ticket?.AssignedTo)
-          .map((u) => ({ Id: u.Id, FullName: u.FullName, note: [u.JobTitle, u.BranchName].filter(Boolean).join(" · ") || undefined }))}
+          .map((u) => ({
+            Id: u.Id,
+            FullName: u.FullName,
+            note: [u.JobTitle, u.BranchName].filter(Boolean).join(" · ") || undefined,
+            group: u.GroupRank,
+            away: u.AwayToday === true,
+            giver: u.IsGiver === true,
+          }))}
         reasons={transferReasons}
         remarksPlaceholder={(name) => (name ? `Tell ${first(name)} what has been tried` : "What has been tried")}
-        remarksError="Remarks are required for a transfer."
-        footnote={due ? `Due stays ${due}. A transfer never moves the TAT clock.` : undefined}
-        submitLabel={(name) => (name ? `Transfer to ${name}` : "Transfer")}
-        emptyMessage="There is nobody else you can hand this to."
-        busy={transfer.isPending}
+        remarksError="Remarks are required to reassign."
+        footnote={due ? `Due stays ${due}. Reassigning never moves the TAT clock.` : undefined}
+        submitLabel={(name) => (name ? `Reassign to ${first(name)}` : "Reassign")}
+        emptyMessage="Nobody can take this. Ask a manager."
+        busy={reassign.isPending}
         onSubmit={({ userId: to, reasonId, remarks }) => {
           if (!ticket) return;
-          transfer.mutate({
+          reassign.mutate({
             TicketId: ticket.Id,
             ToUserId: to,
             // Never inferred from the assignee's office (web: only on an explicit
@@ -303,11 +359,28 @@ export const ComplaintSheets = forwardRef<ComplaintSheetsHandle>(function Compla
         }}
       />
 
+      <ComposeSheet
+        ref={sendBackRef}
+        title={ticket?.SendBackToName ? `Send back to ${ticket.SendBackToName}` : "Send back"}
+        subtitle={label}
+        badge={{ tone: "teal", icon: Undo2 }}
+        submitLabel={ticket?.SendBackToName ? `Send back to ${first(ticket.SendBackToName)}` : "Send back"}
+        busy={reassign.isPending}
+        fields={[
+          { key: "sendback", label: "Remarks", placeholder: "Why it goes back — they get a notification", multiline: true, required: true },
+        ]}
+        onSubmit={(values) => {
+          if (!ticket?.SendBackToId) return;
+          // No ReasonId: the server stamps its own "Sent back" reason.
+          reassign.mutate({ TicketId: ticket.Id, ToUserId: ticket.SendBackToId, Remarks: values.sendback!, SendBack: true });
+        }}
+      />
+
       <TransferSheet
         ref={escalateRef}
         testID="escalate"
         title="Escalate complaint"
-        subtitle={ticket ? `${ticket.TicketNo} · it stays with ${ticket.AssigneeName ?? "the assignee"}` : undefined}
+        subtitle={ticket ? `${ticket.TicketNo} · ${ticket.AssigneeName ? `it stays with ${ticket.AssigneeName}` : "it stays unassigned"}` : undefined}
         badge={{ tone: "lilac", icon: ChevronsUp }}
         pickLabel="Escalate to"
         people={(seniors ?? []).map((s) => ({
@@ -321,9 +394,7 @@ export const ComplaintSheets = forwardRef<ComplaintSheetsHandle>(function Compla
         emptyMessage={
           seniorsLoading
             ? "Loading who is above…"
-            : ticket?.AssignedTo
-            ? "The assignee has nobody above them in the reporting chain."
-            : "You have nobody above you in the reporting chain."
+            : `Nobody above ${ticket?.AssigneeName ?? "you"} can open complaints. Reassign it or tell a manager.`
         }
         busy={escalate.isPending}
         onSubmit={({ userId: to, remarks }) => {

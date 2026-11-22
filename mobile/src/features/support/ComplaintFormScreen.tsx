@@ -178,7 +178,7 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
   const [priority, setPriority] = useState<number | null>(ticket?.Priority ?? null);
   const [product, setProduct] = useState<number | null>(ticket?.ProductId ?? null);
   // Create-only: sp_SaveTicket does not touch AssignedTo on update, and
-  // reassigning is transferTicket's job.
+  // reassigning is transferTicket's job (Reassign, on the record).
   const [assignee, setAssignee] = useState<number | null>(null);
   const [description, setDescription] = useState(ticket?.Description ?? "");
   const [draft, setDraft] = useState<Record<number, string | boolean>>(() =>
@@ -241,7 +241,7 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
       users.map((u) => ({
         value: u.Id,
         label: u.FullName,
-        sublabel: [u.JobTitle, u.BranchName].filter(Boolean).join(" · ") || undefined,
+        sublabel: [u.JobTitle, u.BranchName, u.AwayToday === true ? "Away today" : null].filter(Boolean).join(" · ") || undefined,
         avatar: { name: u.FullName, userId: u.Id },
       })),
     [users],
@@ -625,7 +625,7 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
                 keyboardType="email-address"
               />
               {/* Create only: on update the SP ignores AssignedTo — handing it
-                  on is Transfer's job, on the record. */}
+                  on is Reassign's job, on the record. */}
               {editing ? null : (
                 <Select
                   label="Assign to"

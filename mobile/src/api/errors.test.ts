@@ -1,6 +1,7 @@
 import { AxiosError, type InternalAxiosRequestConfig } from "axios";
 
-import { apiErrorMessage } from "./errors";
+import { apiErrorMessage, RECORD_GONE_MESSAGE, recordGone } from "./errors";
+import { serverError } from "../test/fixtures";
 
 const config = { headers: {} } as InternalAxiosRequestConfig;
 const axiosError = (response?: { data: unknown }) =>
@@ -36,4 +37,16 @@ it("shows a fetcher's own Error message", () => {
 
 it.each([new Error("Network Error"), new Error(""), "boom", null])("falls back for %p", (err) => {
   expect(apiErrorMessage(err, "fallback")).toBe("fallback");
+});
+
+describe("recordGone", () => {
+  it("is true for 403 and 404 only; the sentence matches the web", () => {
+    expect(recordGone(serverError(403, "x"))).toBe(true);
+    expect(recordGone(serverError(404, "x"))).toBe(true);
+    expect(recordGone(serverError(400, "x"))).toBe(false);
+    expect(recordGone(serverError(409, "x"))).toBe(false);
+    expect(recordGone(new AxiosError("Network Error"))).toBe(false);
+    expect(recordGone(new Error("boom"))).toBe(false);
+    expect(RECORD_GONE_MESSAGE).toBe("This record is no longer with you");
+  });
 });

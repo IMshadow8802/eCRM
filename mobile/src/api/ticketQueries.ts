@@ -253,13 +253,6 @@ export const reopenTicket = (params: {
 }): Promise<ApiEnvelope<unknown>> => post(TICKET_ENDPOINTS.reopenTicket, params);
 
 /**
- * Hands the complaint to someone in the caller's assignable list, with a
- * reason (`transfer_reason` lookup) and remarks — both required. The SP writes
- * the assignment row, stamps AssignedAt and notifies the new assignee.
- * `ToBranchId` only when the target sits in another branch; whether the caller
- * MAY do that is decided server-side (wide scopes only).
- */
-/**
  * Reassign (reason + remarks) or, with `SendBack`, return it to whoever gave
  * it to the caller (`SendBackToId` on the detail; remarks only, no reason).
  */
