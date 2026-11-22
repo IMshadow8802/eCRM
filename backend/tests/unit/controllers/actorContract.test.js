@@ -35,6 +35,10 @@ describe("actor contract — converted controllers", () => {
 });
 
 describe("actor contract — pending list stays honest", () => {
+  if (PENDING.length === 0) {
+    it("every controller is converted", () => expect(DONE).toHaveLength(4));
+    return;
+  }
   it.each(PENDING.map(file))("%s still breaks the rule (remove it from PENDING once converted)", (f) => {
     expect(breaks(read(f))).toBe(true);
   });
