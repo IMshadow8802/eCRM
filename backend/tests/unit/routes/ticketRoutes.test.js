@@ -38,6 +38,7 @@ jest.mock("../../../src/controllers/ticketController", () => ({
   bulkTransfer: hit("bulkTransfer"),
   escalate: hit("escalate"),
   escalationTargets: hit("escalationTargets"),
+  loggedByMe: hit("loggedByMe"),
   delete: hit("delete"),
 }));
 
@@ -70,6 +71,7 @@ describe("ticketRoutes", () => {
       "/bulkTransferTickets",
       "/escalateTicket",
       "/fetchEscalationTargets",
+      "/fetchLoggedByMe",
       "/deleteTicket",
     ]);
   });
@@ -87,6 +89,8 @@ describe("ticketRoutes", () => {
     ["/api/tickets/bulkTransferTickets", { TicketIds: [1], ToUserId: 18, ReasonId: 36, Remarks: "x" }, "bulkTransfer"],
     ["/api/tickets/escalateTicket", { TicketId: 1, ToUserId: 16, Remarks: "x" }, "escalate"],
     ["/api/tickets/fetchEscalationTargets", { ForUserId: 18 }, "escalationTargets"],
+    ["/api/tickets/fetchEscalationTargets", { TicketId: 1 }, "escalationTargets"],
+    ["/api/tickets/fetchLoggedByMe", { SearchTerm: "TKT" }, "loggedByMe"],
     ["/api/tickets/deleteTicket", { Id: 1 }, "delete"],
   ])("routes %s to the %s handler", async (path, body, handler) => {
     const r = await request(app).post(path).send(body);
@@ -112,6 +116,13 @@ describe("ticketRoutes", () => {
     // "Everything I can see" and "my own chain" are legitimate empty asks.
     expect((await request(app).post("/api/tickets/fetchTickets").send({})).status).toBe(200);
     expect((await request(app).post("/api/tickets/fetchEscalationTargets").send({})).status).toBe(200);
+    expect((await request(app).post("/api/tickets/fetchLoggedByMe").send({})).status).toBe(200);
+  });
+
+  it("declares fetchLoggedByMe with requireModule(\"complaints\", \"view\")", () => {
+    const layer = ticketRoutes.stack.find((l) => l.route?.path === "/fetchLoggedByMe");
+    const guard = layer.route.stack.map((s) => s.handle).find((h) => h.access);
+    expect(guard.access).toEqual({ module: "complaints", action: "view" });
   });
 });
 
