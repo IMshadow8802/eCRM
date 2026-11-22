@@ -258,7 +258,11 @@ function LeadForm({ lead, navigation }: { lead: Lead | null; navigation: Props["
       queryClient.invalidateQueries({ queryKey: ["lead", id] });
       // A first follow-up booked on create lands in the queue.
       queryClient.invalidateQueries({ queryKey: ["followups"] });
-      if (!editing && id) navigation.replace("LeadDetail", { leadId: id });
+      // Assigned to someone else, the creator can no longer open it: back to
+      // the list with the server's sentence instead of a bounce off the detail.
+      const handedOver = !editing && ownerId != null && ownerId !== userId;
+      if (handedOver) toast.success(response.message);
+      if (!editing && id && !handedOver) navigation.replace("LeadDetail", { leadId: id });
       else navigation.goBack();
     },
     onError: (err) => setError(apiErrorMessage(err, "Could not save this lead. Check your connection.")),

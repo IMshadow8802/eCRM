@@ -155,6 +155,7 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
   // Office/OfficeTree reach would be offered offices the server 403s.
   const wideCustomers = useAccess("customers").reach === "Company";
   const homeOffice = useAuthStore((s) => s.BranchId);
+  const myId = useAuthStore((s) => s.UserId);
   const [office, setOffice] = useState<number | null>(homeOffice);
   // Also names the office in the band (G24), so it is always asked (cached).
   const { data: branchRows } = useQuery({ queryKey: ["branches"], queryFn: fetchBranches });
@@ -295,7 +296,7 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
 
   const save = useMutation({
     mutationFn: saveTicket,
-    onSuccess: async (response) => {
+    onSuccess: async (response, sent) => {
       if (!response.success) {
         setError(response.message || "Could not save this complaint.");
         return;
@@ -307,6 +308,8 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
       }
       void queryClient.invalidateQueries({ queryKey: ["tickets"] });
       if (ticket) void queryClient.invalidateQueries({ queryKey: ["ticket", ticket.Id] });
+      // Handed to someone else, the logger loses it: say where it went.
+      if (!ticket && sent.AssignedTo && sent.AssignedTo !== myId) toast.success(response.message);
       navigation.goBack();
     },
     onError: (err) => setError(apiErrorMessage(err, "Could not save this complaint. Check your connection.")),

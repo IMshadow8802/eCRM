@@ -212,7 +212,7 @@ const Tickets = () => {
         open={createOpen || Boolean(editTicket)}
         ticket={editTicket}
         onClose={() => { setCreateOpen(false); setEditTicket(null); }}
-        onSaved={(res) => { if (createOpen && res?.Id) openTicket(res.Id); }}
+        onSaved={(res, meta) => { if (createOpen && res?.Id && !meta?.assignedAway) openTicket(res.Id); }}
       />
       <ResolveTicketModal open={Boolean(resolveTicket)} ticket={resolveTicket} status={resolvedStatus} onClose={() => setResolveTicket(null)} />
       <TransferTicketModal open={transferIds.length > 0} ticketIds={transferIds} onClose={() => setTransferIds([])} onDone={() => table.resetRowSelection?.()} />

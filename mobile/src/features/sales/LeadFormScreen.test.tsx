@@ -126,6 +126,21 @@ describe("create", () => {
     }
   });
 
+  it("assigned to someone else: back to the list with the server's sentence, no lead detail", async () => {
+    jest.mocked(fetchAssignableUsers).mockResolvedValue([person(42, "Priya Shah"), person(9, "Asha Rao")]);
+    jest.mocked(createLead).mockResolvedValue(envelope({ Id: 501 }, { message: "Lead saved and assigned to Asha Rao" }));
+    const navigation = makeNavigation<"LeadForm">();
+    await mount(undefined, navigation);
+    await screen.findByText("Asha Rao");
+    await fillRequired();
+    await fireEvent.press(screen.getByText("Asha Rao"));
+    await save();
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+    expect(createLead).toHaveBeenCalledWith(expect.objectContaining({ OwnerId: 9 }));
+    expect(navigation.replace).not.toHaveBeenCalled();
+    expect(await screen.findByText("Lead saved and assigned to Asha Rao")).toBeOnTheScreen();
+  });
+
   it("with no open status the default is still never Won", async () => {
     jest.mocked(fetchLookups).mockImplementation(async ({ Kind }) =>
       Kind === "lead_status" ? [status(3, "Won", "converted"), status(2, "Hot", "qualified")] : [],

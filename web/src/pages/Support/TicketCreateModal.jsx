@@ -19,6 +19,7 @@ import { SALES_ENDPOINTS } from "../../api/salesQueries";
 import { formatDateTime } from "../../utils/format";
 import { apiClient } from "../../utils/axiosConfig";
 import CustomerPicker from "./CustomerPicker";
+import useAuthStore from "../../stores/useAuthStore";
 
 // Only the columns sp_SaveTicket takes (spec 2 §3). CompId/BranchId/UserId are
 // injected server-side; the status is the SP's (first 'open' on insert, never
@@ -85,6 +86,7 @@ const clean = (s) => (s?.trim() ? s.trim() : null);
  */
 export default function TicketCreateModal({ open, onClose, ticket = null, onSaved }) {
   const isEdit = Boolean(ticket?.Id);
+  const myId = useAuthStore((s) => s.user?.UserId ?? s.UserId);
   const { control, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm({
     resolver: zodResolver(schema),
     defaultValues: EMPTY,
@@ -205,7 +207,9 @@ export default function TicketCreateModal({ open, onClose, ticket = null, onSave
       }
       reset(EMPTY);
       setCustom({});
-      onSaved?.(saved);
+      // Assigned to someone else, the logger can no longer open the record
+      // (the server hands it over); the caller must not navigate to it.
+      onSaved?.(saved, { assignedAway: !isEdit && Boolean(v.AssignedTo) && v.AssignedTo !== myId });
       onClose?.();
     } catch {
       // useApiMutation already surfaced the server's message.

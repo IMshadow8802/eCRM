@@ -72,7 +72,7 @@ describe("TicketCreateModal — create", () => {
     for (const key of ["CompId", "UserId", "StatusId", "PipelineId", "StageId", "CustomerName", "Channel"]) {
       expect(cap.save).not.toHaveProperty(key);
     }
-    expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ Id: 909, TicketNo: "TKT-0909" }));
+    expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ Id: 909, TicketNo: "TKT-0909" }), { assignedAway: true });
     expect(onClose).toHaveBeenCalled();
   }, 20000);
 
@@ -141,6 +141,18 @@ describe("TicketCreateModal — create", () => {
     await user.type(screen.getByTestId("ticket-subject"), "Invoice mismatch");
     await user.click(screen.getByTestId("create-ticket-submit"));
     expect(await screen.findByText("Logged and assigned to Sara Khan")).toBeInTheDocument();
+  });
+
+  it("created unassigned: onSaved says the logger keeps it (assignedAway false)", async () => {
+    mockTicketEndpoints();
+    const onSaved = vi.fn();
+    renderModal({ onSaved });
+    const user = userEvent.setup();
+    await pick(user, "customer-picker", "Acme Corp · 9990001111");
+    await user.type(screen.getByTestId("ticket-subject"), "No owner yet");
+    await user.click(screen.getByTestId("create-ticket-submit"));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(onSaved.mock.calls[0][1]).toEqual({ assignedAway: false });
   });
 
   it("a 200 that says success:false is still a refusal", async () => {

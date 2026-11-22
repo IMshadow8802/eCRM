@@ -65,7 +65,7 @@ vi.mock("material-react-table", () => ({
 const mockNavigate = vi.fn();
 vi.mock("react-router-dom", async () => ({ ...(await vi.importActual("react-router-dom")), useNavigate: () => mockNavigate }));
 vi.mock("./ResolveTicketModal", () => ({ __esModule: true, default: ({ open, ticket, status }) => (open ? <div data-testid="resolve-modal">ticket:{ticket?.Id} status:{status?.value}</div> : null) }));
-vi.mock("./TicketCreateModal", () => ({ __esModule: true, default: ({ open, ticket }) => (open ? <div data-testid="ticket-form-modal">{ticket?.Id ?? "new"}</div> : null) }));
+vi.mock("./TicketCreateModal", () => ({ __esModule: true, default: ({ open, ticket, onSaved }) => (open ? <div data-testid="ticket-form-modal">{ticket?.Id ?? "new"}<button data-testid="fake-save-away" onClick={() => onSaved({ Id: 55 }, { assignedAway: true })} /><button data-testid="fake-save-mine" onClick={() => onSaved({ Id: 56 }, { assignedAway: false })} /></div> : null) }));
 vi.mock("./TransferTicketModal", () => ({ __esModule: true, default: ({ open, ticketIds }) => (open ? <div data-testid="transfer-ticket-modal">{ticketIds.join(",")}</div> : null) }));
 vi.mock("./LoggedByMe", () => ({ __esModule: true, default: () => <div data-testid="logged-by-me-stub" /> }));
 vi.mock("./DeleteTicketModal", () => ({ __esModule: true, default: ({ open, ticketId }) => (open ? <div data-testid="delete-ticket-modal">delete:{ticketId}</div> : null) }));
@@ -271,6 +271,18 @@ describe("Tickets list (spec 2)", () => {
     renderPage();
     await userEvent.setup().click(screen.getByTestId("new-ticket-btn"));
     expect(await screen.findByTestId("ticket-form-modal")).toHaveTextContent("new");
+  });
+
+  it("after creating, opens the new complaint; but not when it was assigned to someone else", async () => {
+    mockNavigate.mockClear();
+    renderPage();
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("new-ticket-btn"));
+    await user.click(await screen.findByTestId("fake-save-away"));
+    expect(mockNavigate).not.toHaveBeenCalled();
+    await user.click(screen.getByTestId("new-ticket-btn"));
+    await user.click(await screen.findByTestId("fake-save-mine"));
+    expect(mockNavigate).toHaveBeenCalledWith("/support/tickets/56");
   });
 
   it("asks the server for nothing about stages any more", () => {
