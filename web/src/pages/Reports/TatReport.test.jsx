@@ -277,4 +277,15 @@ describe("TatReport", () => {
     expect(screen.getByTestId("report-OwnerId-input")).toHaveAttribute("placeholder", "All people");
   });
 
+  it("the person picker lists everyone from the names list, not the Can-assign-to list", async () => {
+    mockReportEndpoints("/api/reports/tat", DATA);
+    const assignable = [];
+    server.use(http.post("*/api/users/fetchAssignableUsers", () => { assignable.push(1); return HttpResponse.json({ success: true, data: { users: [] } }); }));
+    render();
+    await screen.findByTestId("tat-table");
+    await userEvent.setup().click(screen.getByTestId("report-OwnerId-input"));
+    expect(await screen.findByText("Amit Singh")).toBeInTheDocument();
+    expect(assignable).toEqual([]);
+  });
+
 });

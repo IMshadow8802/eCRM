@@ -68,6 +68,12 @@ export const SCOPE_INVALIDATIONS = {
   [SCOPES.SESSION]: () => [],
   // Not a query: the provider re-reads access into the auth store instead.
   [SCOPES.ACCESS]: () => [],
+  // My leads / complaints changed: refetch the lists and any open detail. A
+  // detail that left me then answers 403/404 and its page shows recordGone.
+  [SCOPES.RECORDS]: ({ module }) =>
+    module === "leads"
+      ? [["leads"], ["lead-detail"], ["followups"], ["dashboard"]]
+      : [["tickets"], ["ticket-detail"], ["logged-by-me"], ["dashboard"]],
 };
 
 function joinWorkspace(socket, workspaceId) {

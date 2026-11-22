@@ -3,19 +3,20 @@ import { useApiQuery } from "./useApiQuery";
 import { SALES_ENDPOINTS } from "../api/salesQueries";
 
 /**
- * Who the signed-in user may hand a lead to. The server scopes the list
- * (subtree + manager for Team/Self; readable branches for wide scopes) and
- * re-checks membership on every transfer — this is the pick-list, not the gate.
+ * Who the signed-in user may hand a record to ("Can assign to"). The server
+ * builds the list and re-checks it on every assignment — this is the
+ * pick-list, not the gate.
  *
- * `module` ("leads" | "complaints") picks which module's access the roster is
- * checked against; the caller needs that module or the server answers 403.
- * `branchId` switches to a destination branch's roster for cross-branch moves.
+ * `module` ("leads" | "complaints") picks whose rules apply; `recordId` lets
+ * the server put the person who gave it to you on the list (Send back).
+ * Rows: Id, FullName, Avatar, JobTitle, BranchId, BranchName, ReportsTo,
+ * GroupRank (1 manager and team, 2 my offices, 3 others), IsGiver, AwayToday.
  */
-export function useAssignableUsers({ branchId = null, enabled = true, module = "leads" } = {}) {
+export function useAssignableUsers({ module = "leads", recordId = null, enabled = true } = {}) {
   const query = useApiQuery({
-    queryKey: ["assignable-users", branchId, module],
+    queryKey: ["assignable-users", module, recordId],
     endpoint: SALES_ENDPOINTS.users.fetchAssignableUsers,
-    params: branchId ? { BranchId: branchId, Module: module } : { Module: module },
+    params: recordId ? { Module: module, RecordId: recordId } : { Module: module },
     enabled,
     showErrorMessage: false,
   });

@@ -310,6 +310,20 @@ describe("SocketProvider", () => {
     expect(keys).toContainEqual(["taskComments", 42]);
   });
 
+  it("a records event refetches that module's lists and open details", () => {
+    loginWith();
+    renderProvider();
+    const socket = lastSocket();
+    const fired = () => queryClient.invalidateQueries.mock.calls.map((c) => c[0].queryKey);
+
+    act(() => socket.handlers[EVENT_INVALIDATE]({ scope: SCOPES.RECORDS, module: "complaints" }));
+    expect(fired()).toEqual([["tickets"], ["ticket-detail"], ["logged-by-me"], ["dashboard"]]);
+
+    queryClient.invalidateQueries.mockClear();
+    act(() => socket.handlers[EVENT_INVALIDATE]({ scope: SCOPES.RECORDS, module: "leads" }));
+    expect(fired()).toEqual([["leads"], ["lead-detail"], ["followups"], ["dashboard"]]);
+  });
+
   it("ignores unknown scopes and malformed payloads", () => {
     loginWith();
     renderProvider();
