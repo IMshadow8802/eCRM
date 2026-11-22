@@ -122,7 +122,9 @@ const ticketController = {
       fields.AssignedTo = null;
     }
     // A ticket may only hang off a customer the caller can see (customers scope).
-    if (fields.CustomerId
+    // Keeping the customer a ticket already has is no new act of linking: an
+    // assignee with customers reach Own must still be able to edit (W2).
+    if (fields.CustomerId && Number(current?.CustomerId) !== fields.CustomerId
         && !(await assertCustomerVisible(req, res, fields.CustomerId, scopeFor(req, "customers")))) return;
     // ...and only link a lead the caller can see: the detail shows the linked
     // lead's contact details (audit 2026-10-12). Keeping the link a ticket

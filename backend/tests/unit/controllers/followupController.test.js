@@ -338,6 +338,25 @@ describe("delete", () => {
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
   });
 
+  // REGRESSION (F1 write half, 2026-11-21): "assigned to me" once opened the
+  // gate in any state, so a lead's past owner could still act on its done
+  // follow-ups after a transfer (which re-points only open ones).
+  it("403s a past assignee acting on a done follow-up of a lead they no longer hold", async () => {
+    fuLookup({ Id: 21, LeadId: 9, Status: "done", AssignedTo: 7, BranchId: 2, OwnerId: 3, CreatedBy: 3 });
+    const res = mockRes();
+    await followupController.delete(baseReq({ scope: { branchIds: [2], ownerIds: [7] }, body: { Id: 21 } }), res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(spNames()).toEqual(["sp_FetchFollowUpLead"]);
+  });
+
+  it("lets the lead's holder act on a done follow-up assigned to someone else", async () => {
+    fuLookup({ Id: 21, LeadId: 9, Status: "done", AssignedTo: 3, BranchId: 2, OwnerId: 7, CreatedBy: 3 });
+    status({ ResponseCode: 409, ResponseMess: "Only an open follow-up can be deleted" });
+    const res = mockRes();
+    await followupController.delete(baseReq({ scope: { branchIds: [2], ownerIds: [7] }, body: { Id: 21 } }), res);
+    expect(spNames()).toEqual(["sp_FetchFollowUpLead", "sp_DeleteFollowUp"]); // past the gate; the SP rules on state
+  });
+
   // Done rows are history: the SP refuses them and the controller must not
   // dress that 409 up as a success.
   it("passes the SP's 409 for a done follow-up through", async () => {
