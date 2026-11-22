@@ -66,7 +66,7 @@
 --                            lead is visible OR the person credited is in
 --                            fn_ReportTree; CanOpen = lead visible.
 --   sp_RptSales            - the two JSON lists gone; Ruling 7 when @BranchId /
---                            @SourceId / @ProductId is set.
+--                            @SourceId / @ProductId is set or @GroupBy = 'source'.
 --   sp_RptSalesRows        - the two JSON lists gone; rows only where
 --                            CanOpen = 1; Total still = the summary cell
 --                            (rows + HiddenCount); money totals from returned
@@ -263,9 +263,10 @@ GO
 --    the definitions:
 --    - "unassigned" line (owner axis off) = leads reach Office or wider, as the
 --      old lists made it (Own and Team carried an owner list);
---    - Ruling 7 (N2): with @BranchId / @SourceId / @ProductId set, only rows on
---      visible leads count (an activity on a hidden lead would otherwise tell
---      the viewer that lead's office / source / product).
+--    - Ruling 7 (N2): with @BranchId / @SourceId / @ProductId set, or grouped
+--      by source, only rows on visible leads count (an activity on a hidden
+--      lead would otherwise tell the viewer that lead's office / source /
+--      product). Team / person lines are people; reason lines are lost rows.
 --    The opening block is the same in sp_RptSalesRows; change both together.
 -- ---------------------------------------------------------------------------
 CREATE OR ALTER PROCEDURE dbo.sp_RptSales
@@ -290,8 +291,11 @@ BEGIN
     -- "unassigned" line only for leads reach Office or wider (owner axis off, as the old lists made it)
     DECLARE @OwnerOff BIT = CASE WHEN EXISTS (SELECT 1 FROM dbo.fn_AccessScope(@CompId, @UserId, 'leads')
                                               WHERE ReachLevel >= 3) THEN 1 ELSE 0 END;
-    -- Ruling 7 (N2): filtered by office / source / product -> rows on visible leads only
-    DECLARE @Filtered BIT = CASE WHEN @BranchId IS NULL AND @SourceId IS NULL AND @ProductId IS NULL THEN 0 ELSE 1 END;
+    -- Ruling 7 (N2): filtered by office / source / product, or grouped by source (each
+    -- line names a lead attribute) -> rows on visible leads only. Team / person lines are
+    -- people; reason lines are lost rows (a record family, always visible).
+    DECLARE @Filtered BIT = CASE WHEN @BranchId IS NULL AND @SourceId IS NULL AND @ProductId IS NULL
+                                  AND @GroupBy <> 'source' THEN 0 ELSE 1 END;
     SELECT * INTO #T FROM dbo.fn_ReportTree(@CompId, @UserId);
     SELECT r.* INTO #R
     FROM dbo.fn_SalesReportRows(@CompId, @FromDate, @ToEx, @UserId) r
@@ -454,9 +458,10 @@ GO
 --    - RS2 Total still counts every matching row, so it equals the summary
 --      cell (= returned rows + HiddenCount); AmountTotal (and WonValue in the
 --      leads shape) only from rows on visible leads; in the leads shape Total
---      = visible leads, the N* counts stay = the summary cells;
---    - a last recordset HiddenCount INT = matching rows on leads out of view
---      ("N activities on leads no longer in your view"), only when
+--      = every matching lead (listed + HiddenCount), the N* counts stay = the
+--      summary cells;
+--    - a last recordset HiddenCount INT = matching rows (leads shape: leads)
+--      out of view ("N activities on leads no longer in your view"), only when
 --      @MaxRows > 0 (@MaxRows = 0 stays one result set for INSERT ... EXEC).
 -- ---------------------------------------------------------------------------
 CREATE OR ALTER PROCEDURE dbo.sp_RptSalesRows
@@ -516,8 +521,11 @@ BEGIN
     -- "unassigned" line only for leads reach Office or wider (owner axis off, as the old lists made it)
     DECLARE @OwnerOff BIT = CASE WHEN EXISTS (SELECT 1 FROM dbo.fn_AccessScope(@CompId, @UserId, 'leads')
                                               WHERE ReachLevel >= 3) THEN 1 ELSE 0 END;
-    -- Ruling 7 (N2): filtered by office / source / product -> rows on visible leads only
-    DECLARE @Filtered BIT = CASE WHEN @BranchId IS NULL AND @SourceId IS NULL AND @ProductId IS NULL THEN 0 ELSE 1 END;
+    -- Ruling 7 (N2): filtered by office / source / product, or grouped by source (each
+    -- line names a lead attribute) -> rows on visible leads only. Team / person lines are
+    -- people; reason lines are lost rows (a record family, always visible).
+    DECLARE @Filtered BIT = CASE WHEN @BranchId IS NULL AND @SourceId IS NULL AND @ProductId IS NULL
+                                  AND @GroupBy <> 'source' THEN 0 ELSE 1 END;
     SELECT * INTO #T FROM dbo.fn_ReportTree(@CompId, @UserId);
     SELECT r.* INTO #R
     FROM dbo.fn_SalesReportRows(@CompId, @FromDate, @ToEx, @UserId) r
@@ -631,9 +639,9 @@ BEGIN
             WHERE d.CanOpen = 1                     -- F2 / D8: no rows for leads out of view
             ORDER BY d.CreatedAt DESC, d.LeadId DESC;
 
-        -- Total / AmountTotal = the listed (visible) leads and their estimated value; the N* counts
-        -- = the summary cells (hidden activity included); WonValue = Won of the period, visible leads only
-        SELECT ISNULL(SUM(CASE WHEN CanOpen = 1 THEN 1 ELSE 0 END), 0) AS Total,
+        -- Total = every matching lead (= listed leads + HiddenCount); AmountTotal = the visible leads'
+        -- estimated value; the N* counts = the summary cells; WonValue = Won of the period, visible leads only
+        SELECT COUNT(*) AS Total,
                CAST(ISNULL(SUM(CASE WHEN CanOpen = 1 THEN EstValue END), 0) AS DECIMAL(18,2)) AS AmountTotal,
                ISNULL(SUM(NNew), 0) AS NNew, ISNULL(SUM(NCalls), 0) AS NCalls, ISNULL(SUM(NVisits), 0) AS NVisits,
                ISNULL(SUM(NOther), 0) AS NOther, ISNULL(SUM(NDue), 0) AS NDue, ISNULL(SUM(NOnTime), 0) AS NOnTime,
@@ -654,8 +662,10 @@ BEGIN
       AND t.AncestorId <> ISNULL(@UserId, -1)
     ORDER BY t.Depth DESC;
 
-    -- RS4 (last): matching rows on leads out of view - "N activities on leads no longer in your view"
-    SELECT CAST((SELECT COUNT(*) FROM #F WHERE CanOpen = 0) AS INT) AS HiddenCount;
+    -- RS4 (last): what matched on leads out of view - events: rows ("N activities on leads no
+    -- longer in your view"); leads shape: leads. Either way listed + HiddenCount = RS2 Total.
+    SELECT CAST(CASE WHEN @Shape = 'leads' THEN (SELECT COUNT(DISTINCT LeadId) FROM #F WHERE CanOpen = 0)
+                     ELSE (SELECT COUNT(*) FROM #F WHERE CanOpen = 0) END AS INT) AS HiddenCount;
 END
 GO
 
@@ -831,8 +841,8 @@ BEGIN
 
     DECLARE @Vis BIT = 0, @CanEdit BIT = 0, @CanReassign BIT = 0, @CanReopen BIT = 0,
             @SendBackToId INT = NULL, @LeadVis BIT = 0;
-    SELECT @Vis = 1, @CanEdit = ISNULL(a.CanEdit, 0), @CanReassign = a.CanReassign,
-           @CanReopen = a.CanReopen, @SendBackToId = a.SendBackToId
+    SELECT @Vis = 1, @CanEdit = ISNULL(a.CanEdit, 0), @CanReassign = ISNULL(a.CanReassign, 0),
+           @CanReopen = ISNULL(a.CanReopen, 0), @SendBackToId = a.SendBackToId
     FROM dbo.fn_RecordActions(@CompId, @UserId, 'complaints', @TicketId) a;
 
     CREATE TABLE #VT (TicketId INT PRIMARY KEY);
@@ -1109,7 +1119,7 @@ BEGIN
     DECLARE @Today DATETIME = CAST(CAST(GETDATE() AS DATE) AS DATETIME);
 
     DECLARE @Vis BIT = 0, @CanEdit BIT = 0, @CanReassign BIT = 0, @SendBackToId INT = NULL;
-    SELECT @Vis = 1, @CanEdit = ISNULL(a.CanEdit, 0), @CanReassign = a.CanReassign, @SendBackToId = a.SendBackToId
+    SELECT @Vis = 1, @CanEdit = ISNULL(a.CanEdit, 0), @CanReassign = ISNULL(a.CanReassign, 0), @SendBackToId = a.SendBackToId
     FROM dbo.fn_RecordActions(@CompId, @UserId, 'leads', @LeadId) a;
 
     -- 1) core
@@ -2079,6 +2089,17 @@ GO
 --             AND r.PersonId IN (SELECT PersonId FROM dbo.fn_ReportTree(1, 17)))
 --        THEN 'PASS 5c' ELSE 'FAIL 5c' END;
 -- DROP TABLE #D2;
+--    5d Grouped by source, no hidden lead's activity is counted (Ruling 7): the
+--       whole-report drill = every visible non-open row -> PASS 5d.
+-- CREATE TABLE #D3 (Total INT, AmountTotal DECIMAL(18,2));
+-- INSERT INTO #D3 EXEC dbo.sp_RptSalesRows @CompId = 1, @FromDate = '2026-01-01', @ToDate = '2026-11-30', @GroupBy = 'source',
+--      @Metric = 'all', @Shape = 'events', @MaxRows = 0, @UserId = 17;
+-- SELECT CASE WHEN (SELECT Total FROM #D3) =
+--          (SELECT COUNT(*) FROM dbo.fn_SalesReportRows(1, '2026-01-01', '2026-12-01', 17) r
+--           WHERE r.CanOpen = 1 AND r.Metric <> 'open')
+--        THEN 'PASS 5d' ELSE 'FAIL 5d' END;
+-- DROP TABLE #D3;
+--    (and by eye: the same call with @MaxRows = 2000 ends with HiddenCount 0)
 --
 -- 6. sp_FetchLoggedByMe returns exactly the twelve columns, in order -> PASS 6.
 -- SELECT CASE WHEN STRING_AGG(name, ',') WITHIN GROUP (ORDER BY column_ordinal)
