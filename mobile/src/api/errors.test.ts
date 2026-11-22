@@ -40,9 +40,9 @@ it.each([new Error("Network Error"), new Error(""), "boom", null])("falls back f
 });
 
 describe("recordGone", () => {
-  it("is true for 403 and 404 only; the sentence matches the web", () => {
-    expect(recordGone(serverError(403, "x"))).toBe(true);
+  it("is true for 404 only (403 = visible, action refused); the sentence matches the web", () => {
     expect(recordGone(serverError(404, "x"))).toBe(true);
+    expect(recordGone(serverError(403, "x"))).toBe(false);
     expect(recordGone(serverError(400, "x"))).toBe(false);
     expect(recordGone(serverError(409, "x"))).toBe(false);
     expect(recordGone(new AxiosError("Network Error"))).toBe(false);

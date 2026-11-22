@@ -145,7 +145,7 @@ describe("callController.logCall", () => {
   // REGRESSION: logCall used to trust the client-supplied LeadId/TicketId — a
   // Self-scoped user could pollute any record's timeline (and reschedule its
   // follow-up) by posting a foreign Id.
-  it("403s logging a call against a lead the caller cannot see", async () => {
+  it("404s logging a call against a lead the caller cannot see", async () => {
     mockLeadLookup(null); // the database returns no row
 
     const req = baseReq({
@@ -154,7 +154,7 @@ describe("callController.logCall", () => {
     });
     const res = mockRes();
     await callController.logCall(req, res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1); // lookup only
   });
 
@@ -169,7 +169,7 @@ describe("callController.logCall", () => {
     expect(database.executeStoredProcedure).not.toHaveBeenCalledWith("sp_LogCall", expect.anything());
   });
 
-  it("403s logging a call against a ticket outside the caller's scope", async () => {
+  it("404s logging a call against a ticket outside the caller's scope", async () => {
     mockTicketLookup(null);
     const req = baseReq({
       scope: { branchIds: [2], ownerIds: [7] },
@@ -177,7 +177,7 @@ describe("callController.logCall", () => {
     });
     const res = mockRes();
     await callController.logCall(req, res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
   });
 
   it("handles DB error as 500", async () => {
@@ -264,7 +264,7 @@ describe("callController.fetchCalls", () => {
     await callController.fetchCalls(req, res);
 
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
   });
 
   it("refuses a ticket the caller cannot see, without querying calls", async () => {
@@ -274,7 +274,7 @@ describe("callController.fetchCalls", () => {
     await callController.fetchCalls(req, res);
 
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
   });
 
   it("handles DB error as 500", async () => {

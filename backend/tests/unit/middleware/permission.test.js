@@ -366,16 +366,38 @@ describe("permission middleware", () => {
       expect(res.status).not.toHaveBeenCalled();
     });
 
-    it("403s FORBIDDEN with the same message when the procedure returns no row", async () => {
-      for (const entity of ["lead", "ticket", "quotation"]) {
+    // 404 = not visible (missing and out-of-reach answer alike); the clients
+    // leave the screen on 404 only.
+    it("404s NOT_FOUND with the entity's name when the procedure returns no row", async () => {
+      for (const [entity, name] of [["lead", "Lead"], ["ticket", "Complaint"], ["quotation", "Quotation"], ["quoteprofile", "Letterhead"]]) {
         database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[], [], []] });
         const res = mockRes();
-        await expect(assertRecordAccess(selfReq, res, entity, 9)).resolves.toBe(false);
+        await expect(assertRecordAccess(selfReq, res, entity, 9, "write")).resolves.toBe(false);
+        expect(res.status).toHaveBeenCalledWith(404);
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: "NOT_FOUND", message: `${name} not found` }));
+      }
+    });
+
+    // 403 = visible, but the action is refused: the client stays on the record.
+    it("403s FORBIDDEN on a write to a row it can see but not edit; a view passes", async () => {
+      for (const entity of ["lead", "ticket", "quotation"]) {
+        database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ Id: 9, CanEdit: 0 }]] });
+        const res = mockRes();
+        await expect(assertRecordAccess(selfReq, res, entity, 9, "write")).resolves.toBe(false);
         expect(res.status).toHaveBeenCalledWith(403);
         expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-          code: "FORBIDDEN", message: `You do not have access to this ${entity}`,
+          code: "FORBIDDEN", message: "You do not have permission for this action",
         }));
       }
+      database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ Id: 9, CanEdit: 0 }]] });
+      await expect(assertRecordAccess(selfReq, mockRes(), "lead", 9, "view")).resolves.toEqual({ Id: 9, CanEdit: 0 });
+    });
+
+    it("lets a write through on CanEdit 1, and on a company-wide entity without CanEdit", async () => {
+      database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ Id: 9, CanEdit: 1 }]] });
+      await expect(assertRecordAccess(selfReq, mockRes(), "lead", 9, "write")).resolves.toEqual({ Id: 9, CanEdit: 1 });
+      database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ Id: 2 }]] });
+      await expect(assertRecordAccess(selfReq, mockRes(), "quoteprofile", 2, "write")).resolves.toEqual({ Id: 2 });
     });
 
     it("403s a write when the row says CanEdit 0", async () => {

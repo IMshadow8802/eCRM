@@ -189,11 +189,11 @@ describe("ticketController.save — update", () => {
     expect(called("sp_FetchAssignableUsers")).toBe(false);
   });
 
-  it("403s an update when the database returns no row, without running the SP", async () => {
+  it("404s an update when the database returns no row, without running the SP", async () => {
     mockTicketLookup(null);
     const res = mockRes();
     await ticketController.save(baseReq({ body: { Id: 1, Subject: "hijacked" } }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
     expect(calls()).toHaveLength(1);
   });
 
@@ -230,7 +230,7 @@ describe("ticketController.save — customer and linked lead", () => {
     mockLead(null);
     const res = mockRes();
     await ticketController.save(baseReq({ body: { ...CREATE_BODY, AssignedTo: null } }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
     expect(calls()[1]).toEqual(["sp_FetchLeadDetail", { CompId: 5, UserId: 7, LeadId: 9 }]);
     expect(called("sp_SaveTicket")).toBe(false);
   });
@@ -442,13 +442,13 @@ describe("ticketController lifecycle", () => {
     }
   });
 
-  it("403s when the gate finds no row or CanEdit 0, without the mutation", async () => {
+  it("404s when the gate finds no row, 403s on CanEdit 0, without the mutation", async () => {
     for (const row of [null, readOnly]) {
       database.executeStoredProcedure.mockReset();
       mockTicketLookup(row);
       const res = mockRes();
       await ticketController.setStatus(baseReq({ body: { TicketId: 1, StatusId: 62 } }), res);
-      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.status).toHaveBeenCalledWith(row ? 403 : 404);
       expect(calls()).toHaveLength(1);
     }
   });
@@ -490,11 +490,11 @@ describe("ticketController lifecycle", () => {
     expect(res.status).toHaveBeenCalledWith(200);
   });
 
-  it.each(["resolve", "close", "reject"])("%s 403s a hidden complaint, lookup only", async (method) => {
+  it.each(["resolve", "close", "reject"])("%s 404s a hidden complaint, lookup only", async (method) => {
     mockTicketLookup(null);
     const res = mockRes();
     await ticketController[method](baseReq({ body: { TicketId: 1, Remarks: "x" } }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
     expect(calls()).toHaveLength(1);
   });
 
@@ -517,14 +517,14 @@ describe("ticketController — gated writes refuse before the procedure", () => 
     ["reopen", "sp_ReopenTicket", { TicketId: 1, Remarks: "x" }],
     ["escalate", "sp_EscalateTicket", { TicketId: 1, ToUserId: 16, Remarks: "x" }],
   ];
-  it.each(cases)("%s: no detail row → 403 and CanEdit 0 → 403, %s never called", async (method, sp, body) => {
+  it.each(cases)("%s: no detail row → 404 and CanEdit 0 → 403, %s never called", async (method, sp, body) => {
     for (const row of [null, readOnly]) {
       database.executeStoredProcedure.mockReset();
       mockTicketLookup(row);
       database.executeStoredProcedure.mockResolvedValue(okRow());
       const res = mockRes();
       await ticketController[method](baseReq({ body }), res);
-      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.status).toHaveBeenCalledWith(row ? 403 : 404);
       expect(calls()[0]).toEqual(["sp_FetchTicketDetail", { CompId: 5, UserId: 7, TicketId: 1 }]);
       expect(called(sp)).toBe(false);
     }
@@ -681,7 +681,7 @@ describe("ticketController.escalate", () => {
     expect(res.json.mock.calls[0][0].message).toBe("Escalation target must be able to open complaints");
   });
 
-  it("400s without a ToUserId or a TicketId; 403s a hidden complaint", async () => {
+  it("400s without a ToUserId or a TicketId; 404s a hidden complaint", async () => {
     for (const b of [{ TicketId: 1 }, { ToUserId: 16 }]) {
       const res = mockRes();
       await ticketController.escalate(baseReq({ body: b }), res);
@@ -691,7 +691,7 @@ describe("ticketController.escalate", () => {
     mockTicketLookup(null);
     const res = mockRes();
     await ticketController.escalate(baseReq({ body }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
   });
 });
 
@@ -770,11 +770,11 @@ describe("ticketController.delete", () => {
     expect(res.json.mock.calls[0][0].message).toBe("Complaint deleted");
   });
 
-  it("403s a hidden complaint; 400s without an Id", async () => {
+  it("404s a hidden complaint; 400s without an Id", async () => {
     mockTicketLookup(null);
     const res = mockRes();
     await ticketController.delete(baseReq({ body: { Id: 1 } }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
     expect(called("sp_DeleteTicket")).toBe(false);
     const res2 = mockRes();
     await ticketController.delete(baseReq(), res2);

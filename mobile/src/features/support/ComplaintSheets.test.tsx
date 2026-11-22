@@ -487,8 +487,8 @@ describe("access model: Reassign words, groups, Away today, Send back, gone", ()
   });
 
   // Review Focus 4: someone else moved it while the screen was open.
-  it("a 403 on Resolve drops the detail, leaves and says the record is no longer with you", async () => {
-    jest.mocked(setTicketStatus).mockRejectedValue(serverError(403, "You do not have permission for this action"));
+  it("a 404 on Resolve drops the detail, leaves and says the record is no longer with you", async () => {
+    jest.mocked(setTicketStatus).mockRejectedValue(serverError(404, "Complaint not found"));
     const open = await mount();
     const removed = jest.spyOn(rendered.queryClient, "removeQueries");
     await open("resolve");
@@ -498,6 +498,21 @@ describe("access model: Reassign words, groups, Away today, Send back, gone", ()
     expect(await screen.findByText("This record is no longer with you")).toBeOnTheScreen();
     expect(onGone).toHaveBeenCalledTimes(1);
     expect(removed).toHaveBeenCalledWith({ queryKey: ["ticket", 7] });
+  });
+
+  // 403 = still visible, this action refused: say why and stay on the record.
+  it("a 403 on Resolve shows the server's message and stays", async () => {
+    jest.mocked(setTicketStatus).mockRejectedValue(serverError(403, "You do not have permission for this action"));
+    const open = await mount();
+    const removed = jest.spyOn(rendered.queryClient, "removeQueries");
+    await open("resolve");
+    await fireEvent.press(screen.getByRole("radio", { name: "Fixed on site" }));
+    await fireEvent.changeText(screen.getByTestId("resolve-remarks"), "Done");
+    await fireEvent.press(screen.getByRole("button", { name: "Save · mark resolved" }));
+    expect(await screen.findByText("You do not have permission for this action")).toBeOnTheScreen();
+    expect(screen.queryByText("This record is no longer with you")).toBeNull();
+    expect(onGone).not.toHaveBeenCalled();
+    expect(removed).not.toHaveBeenCalled();
   });
 
   it("a 404 on a logged call leaves the same way", async () => {

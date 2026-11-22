@@ -303,11 +303,11 @@ describe("fetch", () => {
     expect(res.json.mock.calls[0][0].data.followups).toEqual([row]);
   });
 
-  it("403s the per-lead mode when the database does not return the lead, without fetching rows", async () => {
+  it("404s the per-lead mode when the database does not return the lead, without fetching rows", async () => {
     leadLookup(null);
     const res = mockRes();
     await followupController.fetch(baseReq({ body: { LeadId: 9 } }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
   });
 

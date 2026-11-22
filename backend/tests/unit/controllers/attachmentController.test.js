@@ -136,11 +136,11 @@ describe("attachmentController.save", () => {
     expect(res.status).toHaveBeenCalledWith(201);
   });
 
-  it("403s uploading to a lead outside the caller's scope", async () => {
+  it("404s uploading to a lead outside the caller's scope", async () => {
     mockLeadLookup(null);
     const res = mockRes();
     await attachmentController.save(baseReq({ file, body: { Entity: "lead", EntityId: 8 } }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
   });
 
@@ -186,11 +186,11 @@ describe("attachmentController.fetch", () => {
     expect(res.json.mock.calls[0][0].data.attachments).toHaveLength(1);
   });
 
-  it("403s listing attachments of a lead the caller cannot see", async () => {
+  it("404s listing attachments of a lead the caller cannot see", async () => {
     mockLeadLookup(null);
     const res = mockRes();
     await attachmentController.fetch(baseReq({ body: { Id: 0, Entity: "lead", EntityId: 8 } }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1); // no list call
   });
 
@@ -235,14 +235,14 @@ describe("attachmentController.download", () => {
 
   // REGRESSION: any user in the company could download any attachment by Id —
   // including files on tasks in a colleague's personal workspace.
-  it("403s downloading a file whose parent record the caller cannot see", async () => {
+  it("404s downloading a file whose parent record the caller cannot see", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [[{ Id: 3, Entity: "lead", EntityId: 8, StoredName: "u.pdf", FileName: "x.pdf" }]],
     });
     mockLeadLookup(null);
     const res = mockRes();
     await attachmentController.download(baseReq({ body: { Id: 3 } }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
   });
 
   it("403s downloading a task file the workspace SP denies (personal beats admin)", async () => {
@@ -297,7 +297,7 @@ describe("attachmentController.download", () => {
     existsSpy.mockRestore();
   });
 
-  it("403s on the GET form too when the parent record is out of scope", async () => {
+  it("404s on the GET form too when the parent record is out of scope", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [[{ Id: 3, Entity: "lead", EntityId: 8, StoredName: "u.apk", FileName: "app.apk" }]],
     });
@@ -306,7 +306,7 @@ describe("attachmentController.download", () => {
     req.params = { id: "3" };
     const res = mockRes();
     await attachmentController.download(req, res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
   });
 
   it("400s on a non-numeric route param rather than querying with NaN", async () => {
@@ -371,14 +371,14 @@ describe("attachmentController.delete", () => {
   });
 
   // REGRESSION: delete used to run before any record-level check.
-  it("403s deleting a file whose parent record the caller cannot see, without deleting", async () => {
+  it("404s deleting a file whose parent record the caller cannot see, without deleting", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [[{ Id: 3, Entity: "lead", EntityId: 8, StoredName: "u.pdf", FileName: "x.pdf" }]],
     });
     mockLeadLookup(null);
     const res = mockRes();
     await attachmentController.delete(baseReq({ body: { Id: 3 } }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(2); // no delete call
   });
 

@@ -465,8 +465,8 @@ describe("access model on the record", () => {
   });
 
   // Review Focus 4.
-  it("a 403 on Resolve from a stale screen goes back and says the record is no longer with you", async () => {
-    jest.mocked(setTicketStatus).mockRejectedValue(serverError(403, "You do not have permission for this action"));
+  it("a 404 on Resolve from a stale screen goes back and says the record is no longer with you", async () => {
+    jest.mocked(setTicketStatus).mockRejectedValue(serverError(404, "Complaint not found"));
     const navigation = makeNavigation<"ComplaintDetail">();
     await mount(navigation);
     await loaded();
@@ -476,6 +476,19 @@ describe("access model on the record", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Save · mark resolved" }));
     expect(await screen.findByText("This record is no longer with you")).toBeOnTheScreen();
     expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  // 403 = still visible, the delete refused: say why and stay.
+  it("a 403 on delete shows the server's message and stays on the complaint", async () => {
+    jest.mocked(deleteTicket).mockRejectedValue(serverError(403, "You do not have permission for this action"));
+    const navigation = makeNavigation<"ComplaintDetail">();
+    await mount(navigation);
+    await loaded();
+    await fireEvent.press(screen.getByRole("menuitem", { name: "Delete complaint" }));
+    await fireEvent.press(screen.getByText("Delete"));
+    expect(await screen.findByText("You do not have permission for this action")).toBeOnTheScreen();
+    expect(screen.queryByText("This record is no longer with you")).toBeNull();
+    expect(navigation.goBack).not.toHaveBeenCalled();
   });
 
   it("a 404 on delete is the same", async () => {

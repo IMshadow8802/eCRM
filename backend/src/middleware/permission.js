@@ -180,7 +180,7 @@ const canReadBranch = (req, branchId) =>
 // Tasks route through sp_CheckTaskPermission (workspace membership), which
 // also keeps personal workspaces private from admins.
 //
-// Sends the 403 (or 500 on lookup failure) itself and returns false;
+// Sends the 404 / 403 (or 500 on lookup failure) itself and returns false;
 // truthy = proceed. `level` is 'view' | 'write'; for tasks also any raw
 // sp_CheckTaskPermission action ('change_status', 'log_time', …) — ticking a
 // checklist is change_status, not edit_fields, because checklist state IS
@@ -199,6 +199,8 @@ const ENTITY_LOOKUP = {
   quoteprofile: { sp: "sp_FetchQuoteProfileById", idParam: "ProfileId", companyWide: true },
 };
 
+const ENTITY_NAME = { lead: "Lead", ticket: "Complaint", quotation: "Quotation", quoteprofile: "Letterhead" };
+
 const truthy = (v) => v === true || v === 1;
 
 // The lookup half of assertRecordAccess: the record when the caller may see it
@@ -206,14 +208,22 @@ const truthy = (v) => v === true || v === 1;
 // must hide a related record rather than refuse the whole request (a
 // complaint's linked lead). Throws on a lookup failure (NO_ACTOR included);
 // deciding the response is the caller's job.
-async function visibleRecord(req, entity, entityId, level = "view") {
+// The detail row as the session person sees it (CanEdit not checked), or
+// undefined when the record is missing or not visible to them.
+async function lookupRecord(req, entity, entityId) {
   const { sp, idParam, companyWide } = ENTITY_LOOKUP[entity];
   const id = Number(entityId) || 0;
   const who = companyWide ? null : actor(req); // the session person, never the body
   const result = await database.executeStoredProcedure(sp, { CompId: req.user.CompId, ...who, [idParam]: id });
-  const record = result.recordsets?.[0]?.[0];
-  if (!record) return false;
-  if (!companyWide && level === "write" && !truthy(record.CanEdit)) return false;
+  return result.recordsets?.[0]?.[0];
+}
+
+const mayWrite = (entity, record, level) =>
+  level !== "write" || ENTITY_LOOKUP[entity].companyWide || truthy(record.CanEdit);
+
+async function visibleRecord(req, entity, entityId, level = "view") {
+  const record = await lookupRecord(req, entity, entityId);
+  if (!record || !mayWrite(entity, record, level)) return false;
   return record;
 }
 
@@ -251,7 +261,19 @@ async function assertRecordAccess(req, res, entity, entityId, level = "view") {
       const row = result.recordsets?.[0]?.[0] ?? result.recordset?.[0];
       granted = row?.Allowed === true || row?.Allowed === 1;
     } else if (ENTITY_LOOKUP[entity]) {
-      granted = await visibleRecord(req, entity, entityId, level);
+      // 404 = not visible (missing or out of reach: one answer, no existence
+      // oracle); 403 = visible, but this action is refused. Clients leave the
+      // screen on 404 only.
+      const record = await lookupRecord(req, entity, entityId);
+      if (!record) {
+        responseHelper.error(res, `${ENTITY_NAME[entity]} not found`, "NOT_FOUND", 404);
+        return false;
+      }
+      if (!mayWrite(entity, record, level)) {
+        responseHelper.error(res, "You do not have permission for this action", "FORBIDDEN", 403);
+        return false;
+      }
+      return record;
     }
 
     if (granted) return granted;

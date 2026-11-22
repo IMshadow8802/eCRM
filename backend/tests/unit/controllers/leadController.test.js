@@ -135,11 +135,11 @@ describe("leadController.save", () => {
     expect(res.json.mock.calls[0][0].message).toBe("Saved");
   });
 
-  it("403s an edit of a lead the caller cannot see (the procedure returns no row)", async () => {
+  it("404s an edit of a lead the caller cannot see (the procedure returns no row)", async () => {
     mockLeadLookup(null);
     const res = mockRes();
     await leadController.save(baseReq({ body: EDIT_BODY }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
   });
 
@@ -476,12 +476,12 @@ describe("leadController.setStatus", () => {
 
   // REGRESSION: the write path used to trust the client-supplied LeadId — a
   // Self-scoped exec could restatus any colleague's lead by posting its Id.
-  it("403s a lead the caller cannot see, without running the mutation", async () => {
+  it("404s a lead the caller cannot see, without running the mutation", async () => {
     mockLeadLookup(null);
     const req = baseReq({ body: { LeadId: 9, StatusId: 6 } });
     const res = mockRes();
     await leadController.setStatus(req, res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1); // lookup only
   });
 });
@@ -568,11 +568,11 @@ describe("leadController.transfer", () => {
     expect(database.executeStoredProcedure).not.toHaveBeenCalled();
   });
 
-  it("403s reassigning a lead the caller cannot see", async () => {
+  it("404s reassigning a lead the caller cannot see", async () => {
     mockLeadLookup(null);
     const res = mockRes();
     await leadController.transfer(baseReq({ body }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
   });
 
@@ -658,12 +658,12 @@ describe("leadController.delete", () => {
     expect(res.status).toHaveBeenCalledWith(200);
   });
 
-  it("403s deleting a lead the caller cannot see", async () => {
+  it("404s deleting a lead the caller cannot see", async () => {
     mockLeadLookup(null);
     const req = baseReq({ body: { Id: 9 } });
     const res = mockRes();
     await leadController.delete(req, res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
   });
 
@@ -750,11 +750,11 @@ describe("leadController.convert", () => {
     expect(database.executeStoredProcedure.mock.calls[1][1].WonValue).toBe(0);
   });
 
-  it("403s a lead the caller cannot see", async () => {
+  it("404s a lead the caller cannot see", async () => {
     mockLeadLookup(null);
     const res = mockRes();
     await leadController.convert(baseReq({ body: { LeadId: 9, WonValue: 100 } }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
   });
 
@@ -797,10 +797,10 @@ describe("leadController.convert", () => {
 });
 
 // A lead owned by someone else, out of the caller's view: the procedure
-// returns no row. Detail answers 404 (no hint it exists); every write 403s
-// before its mutation.
+// returns no row. Detail and every write answer 404 (no hint it exists), every
+// write before its mutation.
 describe("a lead owned by someone else", () => {
-  it("a lead owned by someone else answers 404 on detail and 403 on every write", async () => {
+  it("a lead owned by someone else answers 404 on detail and on every write", async () => {
     database.executeStoredProcedure.mockResolvedValue({ recordsets: [[], [], [], [], []] });
     const res = mockRes();
     await leadController.detail(baseReq({ body: { LeadId: 9 } }), res);
@@ -816,7 +816,7 @@ describe("a lead owned by someone else", () => {
     ]) {
       const r = mockRes();
       await leadController[method](baseReq({ body }), r);
-      expect(r.status).toHaveBeenCalledWith(403);
+      expect(r.status).toHaveBeenCalledWith(404);
     }
     const names = database.executeStoredProcedure.mock.calls.map((c) => c[0]);
     expect(new Set(names)).toEqual(new Set(["sp_FetchLeadDetail"]));

@@ -84,11 +84,11 @@ describe("quotationController.save", () => {
     expect(database.executeStoredProcedure.mock.calls[1][1].SellerStateCode).toBe("99");
   });
 
-  it("403s a create on a lead the caller cannot see, before the SP", async () => {
+  it("404s a create on a lead the caller cannot see, before the SP", async () => {
     mockLead(hiddenLead);
     const res = mockRes();
     await quotationController.save(baseReq({ body: BODY }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
   });
 
@@ -246,7 +246,7 @@ describe("quotationController lifecycle", () => {
     expect(res.status).toHaveBeenCalledWith(200);
   });
 
-  it.each(["finalise", "revise", "reject", "remove"])("%s 400s without an id and 403s a hidden lead", async (method) => {
+  it.each(["finalise", "revise", "reject", "remove"])("%s 400s without an id and 404s a hidden lead", async (method) => {
     const res = mockRes();
     await quotationController[method](baseReq({ body: {} }), res);
     expect(res.status).toHaveBeenCalledWith(400);
@@ -255,7 +255,7 @@ describe("quotationController lifecycle", () => {
     mockQuote(null);
     const res2 = mockRes();
     await quotationController[method](baseReq({ body: { QuotationId: 4 } }), res2);
-    expect(res2.status).toHaveBeenCalledWith(403);
+    expect(res2.status).toHaveBeenCalledWith(404);
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
   });
 
@@ -354,7 +354,7 @@ describe("quotationController profile", () => {
     expect(res.json.mock.calls[0][0].data.profile).toEqual({ Id: 3, BranchId: 6, IsSet: false });
   });
 
-  it("ensureProfile 400s without a lead, 403s a hidden one, 500s on a DB error", async () => {
+  it("ensureProfile 400s without a lead, 404s a hidden one, 500s on a DB error", async () => {
     const res = mockRes();
     await quotationController.ensureProfile(baseReq({ body: {} }), res);
     expect(res.status).toHaveBeenCalledWith(400);
@@ -362,7 +362,7 @@ describe("quotationController profile", () => {
     mockLead(hiddenLead);
     const res2 = mockRes();
     await quotationController.ensureProfile(baseReq({ body: { LeadId: 9 } }), res2);
-    expect(res2.status).toHaveBeenCalledWith(403);
+    expect(res2.status).toHaveBeenCalledWith(404);
 
     mockLead(visibleLead);
     database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
@@ -417,11 +417,11 @@ describe("quotationController profile", () => {
     expect(database.executeStoredProcedure).not.toHaveBeenCalled();
   });
 
-  it("saveProfile 403s a hidden lead without calling sp_SaveQuoteProfile", async () => {
+  it("saveProfile 404s a hidden lead without calling sp_SaveQuoteProfile", async () => {
     mockLead(hiddenLead);
     const res = mockRes();
     await quotationController.saveProfile(baseReq({ body: { LeadId: 9, ...PROFILE } }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
     expect(database.executeStoredProcedure).not.toHaveBeenCalledWith("sp_SaveQuoteProfile", expect.anything());
   });
