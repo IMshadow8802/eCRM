@@ -613,6 +613,9 @@ GO
 --     are Company, so they are always in that set). The actor is not told
 --     (they get the count on screen). Returns no recordset (it runs inside
 --     sp_SaveGroupModules / sp_SaveUser).
+--     @UserIdsJson items: a plain id = every module the person is stranded on
+--     ([5, 9]); an object = only that module ([{"UserId":5,"Module":"leads"}]),
+--     so a caller that knows what just changed sends no duplicate notice.
 -- ---------------------------------------------------------------------------
 CREATE OR ALTER PROC dbo.sp_NotifyStranded
     @CompId      BIGINT,
@@ -629,11 +632,14 @@ BEGIN
     INSERT INTO @W (UserId, Module, N, Name, Home, Mgr)
     SELECT s.UserId, m.Module, m.N, u.FullName, u.BranchId, mg.Id
     FROM dbo.fn_StrandedWork(@CompId) s
-    JOIN (SELECT DISTINCT TRY_CAST(value AS INT) AS Id FROM OPENJSON(@UserIdsJson)) j ON j.Id = s.UserId
     JOIN dbo.tblUser u ON u.Id = s.UserId AND u.CompId = @CompId
     CROSS APPLY (VALUES ('complaints', s.Complaints), ('leads', s.Leads)) m (Module, N)
     LEFT JOIN dbo.tblUser mg ON mg.Id = u.ReportsTo AND mg.Id <> u.Id AND mg.CompId = @CompId AND mg.IsActive = 1
-    WHERE m.N > 0;
+    WHERE m.N > 0
+      AND EXISTS (SELECT 1 FROM OPENJSON(@UserIdsJson) j
+                  WHERE (j.type = 2 AND TRY_CAST(j.value AS INT) = s.UserId)
+                     OR (j.type = 5 AND TRY_CAST(JSON_VALUE(j.value, '$.UserId') AS INT) = s.UserId
+                                    AND JSON_VALUE(j.value, '$.Module') = m.Module));
 
     IF NOT EXISTS (SELECT 1 FROM @W) RETURN;
 
@@ -778,7 +784,7 @@ BEGIN
     DECLARE @In TABLE (Module VARCHAR(30) PRIMARY KEY, V BIT, A BIT, E BIT, D BIT, Reach VARCHAR(12), AssignReach VARCHAR(12));
     DECLARE @Members TABLE (UserId INT PRIMARY KEY);
     DECLARE @Before TABLE (UserId INT PRIMARY KEY, Leads INT, Complaints INT);
-    DECLARE @New TABLE (UserId INT PRIMARY KEY, Leads INT, Complaints INT);
+    DECLARE @New TABLE (UserId INT PRIMARY KEY, Leads INT, Complaints INT, NewLeads BIT, NewComplaints BIT);
     DECLARE @Ids NVARCHAR(MAX);
 
     BEGIN TRY
@@ -805,19 +811,22 @@ BEGIN
         LEFT JOIN dbo.tblGroupModule gm ON gm.GroupId = @GroupId AND gm.Module = i.Module
         WHERE i.Module IN ('leads','complaints');
 
+        BEGIN TRAN;
+        -- "before" is read inside the transaction, so a concurrent change cannot slip between it and the save.
         INSERT INTO @Members (UserId) SELECT DISTINCT UserId FROM dbo.tblUserGroupMap WHERE GroupId = @GroupId;
         INSERT INTO @Before (UserId, Leads, Complaints)
         SELECT s.UserId, s.Leads, s.Complaints
         FROM dbo.fn_StrandedWork(@CompId) s JOIN @Members m ON m.UserId = s.UserId;
 
-        BEGIN TRAN;
         DELETE FROM dbo.tblGroupModule WHERE GroupId = @GroupId;
         INSERT INTO dbo.tblGroupModule (GroupId, Module, CanView, CanAdd, CanEdit, CanDelete, Reach, AssignReach)
         SELECT @GroupId, Module, V, A, E, D, Reach, AssignReach FROM @In;
         UPDATE dbo.tblUserGroups SET CanSeeSensitive = ISNULL(@CanSeeSensitive, 0) WHERE Id = @GroupId;
 
-        INSERT INTO @New (UserId, Leads, Complaints)
-        SELECT s.UserId, s.Leads, s.Complaints
+        INSERT INTO @New (UserId, Leads, Complaints, NewLeads, NewComplaints)
+        SELECT s.UserId, s.Leads, s.Complaints,
+               CASE WHEN s.Leads      > ISNULL(b.Leads, 0)      THEN 1 ELSE 0 END,
+               CASE WHEN s.Complaints > ISNULL(b.Complaints, 0) THEN 1 ELSE 0 END
         FROM dbo.fn_StrandedWork(@CompId) s
         JOIN @Members m ON m.UserId = s.UserId
         LEFT JOIN @Before b ON b.UserId = s.UserId
@@ -825,7 +834,12 @@ BEGIN
 
         IF EXISTS (SELECT 1 FROM @New)
         BEGIN
-            SET @Ids = '[' + (SELECT STRING_AGG(CAST(UserId AS VARCHAR(12)), ',') FROM @New) + ']';
+            -- only the module(s) that just became stranded: [{"UserId":5,"Module":"leads"}, ...]
+            SET @Ids = (SELECT x.UserId, x.Module FROM (
+                            SELECT UserId, 'leads' AS Module FROM @New WHERE NewLeads = 1
+                            UNION ALL
+                            SELECT UserId, 'complaints' FROM @New WHERE NewComplaints = 1) x
+                        FOR JSON PATH);
             EXEC dbo.sp_NotifyStranded @CompId = @CompId, @UserIdsJson = @Ids, @ActorUserId = @UserId;
         END
         COMMIT;
@@ -1063,16 +1077,19 @@ GO
 -- BEGIN CATCH PRINT CASE WHEN ERROR_NUMBER() = 201 THEN 'PASS 10c' ELSE 'FAIL 10c' END; END CATCH;
 --
 -- 11. Stranded work: every row is a holder without View + Edit (group tables)
---     -> 0; and the role save tells the manager: move pooja.joshi's role off
---     complaints inside a transaction -> StrandedCount 1, one stranded_work
---     notice to her manager (vikram.rao, 75).
+--     -> 0 (both modules of every row); and the role save tells the manager:
+--     move the Support Agent role off complaints inside a transaction ->
+--     StrandedCount 4, one complaints stranded_work notice per agent to
+--     vikram.rao (75), and no leads notice.
 -- SELECT CASE WHEN COUNT(*) = 0 THEN 'PASS 11a' ELSE 'FAIL 11a' END
 -- FROM dbo.fn_StrandedWork(1) s
--- WHERE EXISTS (SELECT 1 FROM dbo.tblUser u
+-- CROSS APPLY (VALUES ('leads', s.Leads), ('complaints', s.Complaints)) mo (Module, N)
+-- WHERE mo.N > 0
+--   AND EXISTS (SELECT 1 FROM dbo.tblUser u
 --               JOIN dbo.tblUserGroupMap m ON m.UserId = u.Id
 --               JOIN dbo.tblUserGroups g ON g.Id = m.GroupId AND g.IsActive = 1 AND g.CompId = 1
 --               LEFT JOIN dbo.tblGroupModule gm ON gm.GroupId = g.Id AND gm.CanView = 1 AND gm.CanEdit = 1
---                                              AND gm.Module = CASE WHEN s.Complaints > 0 THEN 'complaints' ELSE 'leads' END
+--                                              AND gm.Module = mo.Module
 --               WHERE u.Id = s.UserId AND u.IsActive = 1 AND (g.IsAdmin = 1 OR gm.Id IS NOT NULL));
 -- BEGIN TRAN;
 -- DECLARE @grp INT = (SELECT TOP 1 m.GroupId FROM dbo.tblUserGroupMap m JOIN dbo.tblUserGroups g ON g.Id = m.GroupId
@@ -1082,7 +1099,9 @@ GO
 --                                FROM dbo.tblGroupModule WHERE GroupId = @grp AND Module <> 'complaints' FOR JSON PATH);
 -- EXEC dbo.sp_SaveGroupModules @GroupId = @grp, @CompId = 1, @ModulesJson = @json, @CanSeeSensitive = 0, @UserId = 2;
 --   -- TestCRM: RS1 StrandedCount 4; RS2 pooja.joshi 0/3, sandeep.kumar 0/1, ananya.das 0/1, imran.khan 0/3
--- SELECT CASE WHEN (SELECT COUNT(*) FROM dbo.tblNotifications WHERE UserId = 75 AND Type = 'stranded_work') > @before
+-- SELECT CASE WHEN (SELECT COUNT(*) FROM dbo.tblNotifications WHERE UserId = 75 AND Type = 'stranded_work') = @before + 4
+--              AND NOT EXISTS (SELECT 1 FROM dbo.tblNotifications WHERE UserId = 75 AND Type = 'stranded_work'
+--                              AND EntityType = 'lead' AND ActorUserId = 2 AND CreatedDate >= DATEADD(MINUTE, -1, GETDATE()))
 --         THEN 'PASS 11b' ELSE 'FAIL 11b' END;
 -- ROLLBACK;
 --
