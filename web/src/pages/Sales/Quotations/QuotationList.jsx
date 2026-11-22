@@ -69,7 +69,7 @@ export default function QuotationList() {
   const columns = useMemo(() => [
     { accessorKey: "QuoteNo", header: "Quotation", enableSorting: false, Cell: ({ row }) => row.original.QuoteNo || `Draft · revision ${row.original.Revision}` },
     { accessorKey: "LeadName", header: "Lead", enableSorting: false, Cell: ({ row }) => row.original.ToCompany || row.original.LeadName || "—" },
-    { accessorKey: "OwnerName", header: "Owner", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "Unassigned" },
+    { accessorKey: "OwnerName", header: "Assigned to", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "Unassigned" },
     { accessorKey: "QuoteDate", header: "Date", enableSorting: false, Cell: ({ cell }) => formatDate(cell.getValue(), { empty: "—" }) },
     { accessorKey: "ValidTill", header: "Valid till", enableSorting: false,
       Cell: ({ row, cell }) => <span style={row.original.IsExpired ? { color: expiredColor, fontWeight: 600 } : undefined}>{formatDate(cell.getValue(), { empty: "—" })}{row.original.IsExpired ? " · expired" : ""}</span> },
@@ -97,8 +97,8 @@ export default function QuotationList() {
 
       <Box sx={{ display: "flex", gap: 1.5, mt: 1.5, flexWrap: "wrap", alignItems: "flex-end" }}>
         <Box sx={{ flex: "1 1 calc(150rem / 15)", maxWidth: "calc(220rem / 15)" }}><Combobox size="sm" label="Status" placeholder="All live" options={STATUS_OPTS} value={pick(STATUS_OPTS, filters.Status)} onChange={(o) => set("Status")(o?.value ?? null)} data-testid="filter-status" /></Box>
-        <Box sx={{ flex: "1 1 calc(150rem / 15)", maxWidth: "calc(220rem / 15)" }}><Combobox size="sm" label="Owner" placeholder="Anyone" options={ownerOpts} value={pick(ownerOpts, filters.OwnerId)} onChange={(o) => set("OwnerId")(o?.value ?? null)} data-testid="filter-owner" /></Box>
-        <Box sx={{ flex: "1 1 calc(150rem / 15)", maxWidth: "calc(220rem / 15)" }}><Combobox size="sm" label="Branch" placeholder="All branches" options={branchOpts} value={pick(branchOpts, filters.BranchId)} onChange={(o) => set("BranchId")(o?.value ?? null)} data-testid="filter-branch" /></Box>
+        <Box sx={{ flex: "1 1 calc(150rem / 15)", maxWidth: "calc(220rem / 15)" }}><Combobox size="sm" label="Assigned to" placeholder="Anyone" options={ownerOpts} value={pick(ownerOpts, filters.OwnerId)} onChange={(o) => set("OwnerId")(o?.value ?? null)} data-testid="filter-owner" /></Box>
+        <Box sx={{ flex: "1 1 calc(150rem / 15)", maxWidth: "calc(220rem / 15)" }}><Combobox size="sm" label="Office" placeholder="All offices" options={branchOpts} value={pick(branchOpts, filters.BranchId)} onChange={(o) => set("BranchId")(o?.value ?? null)} data-testid="filter-branch" /></Box>
         <Box sx={{ flex: "1 1 calc(150rem / 15)", maxWidth: "calc(220rem / 15)" }}><DateField size="sm" label="From" value={filters.FromDate} onChange={set("FromDate")} data-testid="filter-from" /></Box>
         <Box sx={{ flex: "1 1 calc(150rem / 15)", maxWidth: "calc(220rem / 15)" }}><DateField size="sm" label="To" value={filters.ToDate} onChange={set("ToDate")} data-testid="filter-to" /></Box>
       </Box>
