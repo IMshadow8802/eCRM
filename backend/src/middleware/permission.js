@@ -13,14 +13,14 @@
 //
 // loadScope binds req.scope to "people" (the scope a route with no module of
 // its own reads with); requireModule re-binds it to the route's module. So
-// scopeParams / canSeeRecord / assertCanAssign downstream read the lists of the
-// module the route is about.
+// scopeParams downstream reads the lists of the module the route is about.
 //
 // No cross-request cache: grant and office changes must take effect at once.
 
 const database = require("../config/database");
 const responseHelper = require("../utils/responseHelper");
 const { buildAccess, scopeFor: scopeOf, isWide } = require("./access");
+const { actor } = require("../utils/actor");
 
 const EMPTY_ACCESS = (req) => buildAccess([[{
   PrimaryBranchId: req.user?.BranchId ?? null, IsActive: 1, IsAdmin: 0, CanSeeSensitive: 0 }]], req.user?.UserId);
@@ -59,7 +59,7 @@ const saveAction = (req) => (Number(req.body?.Id) > 0 ? "edit" : "add");
 
 // Route guard: the caller's role must grant `action` on `module`. Both may be
 // functions of the request. On success req.scope becomes that module's scope, so
-// scopeParams / canSeeRecord / assertCanAssign downstream read the right lists.
+// scopeParams downstream reads the right lists.
 const requireModule = (module, action) => {
   const guard = (req, res, next) => {
     const m = typeof module === "function" ? module(req) : module;
@@ -137,12 +137,10 @@ const scopeParams = (req, module) => {
   };
 };
 
-// Single-record visibility check, for detail endpoints whose SP takes no scope
-// params. Mirrors the WHERE clause in the scoped fetch SPs — keep the two in
-// step. `ownerField` is 'OwnerId' for leads, 'AssignedTo' for tickets.
-//
-// Without this a Self-scoped user is only fenced out of the *list*: they could
-// still post any Id to fetchLeadDetail / fetchTicketDetail and read the record.
+// Customers only (they keep the Node-fed lists, plan Global Constraints):
+// mirrors sp_FetchCustomers' WHERE clause — keep the two in step. Leads,
+// complaints, follow-ups and quotations are answered by the database
+// (visibleRecord / visibleFollowUp), never by this.
 const canSeeRecord = (req, record, ownerField) => {
   if (!record) return false;
 
@@ -150,10 +148,6 @@ const canSeeRecord = (req, record, ownerField) => {
   const owner = Number(record[ownerField]);
   const createdBy = Number(record.CreatedBy);
 
-  // Always-visible rule: assigned to me beats scope. The creator keeps a record
-  // only while its owner field is empty — a complaint while unassigned, a lead
-  // while it has no owner; once anyone else is assigned, moving really moves it
-  // and the creator loses it (spec 2026-10-10 §6; complaints aligned 2026-11-21).
   const creatorKeeps = !record[ownerField];
   if (owner === userId || (creatorKeeps && createdBy === userId)) return true;
 
@@ -176,65 +170,69 @@ const canWriteBranch = (req, branchId) =>
 const canReadBranch = (req, branchId) =>
   req.scope?.branchIds?.includes(Number(branchId)) || false;
 
-// Record-level guard for WRITE endpoints (and attachment reads). The read
-// paths already gate single records via canSeeRecord; write paths used to
-// trust the client-supplied id blindly. This fetches the record and applies
-// the same rule — assigned-to-caller always wins (and the creator while the
-// record is still unassigned), OR-ed with scope.
+// Record-level guard for single-record reads and writes.
+//
+// Leads, complaints and quotations: the detail procedure is the whole answer
+// (plan Ruling 5). Given the session person it returns no row when the record
+// is not visible to them, and carries CanEdit on the row. Node adds no rule of
+// its own — no isAdmin shortcut, no req.scope lists.
 //
 // Tasks route through sp_CheckTaskPermission (workspace membership), which
-// also keeps personal workspaces private from admins — deliberately no
-// isAdmin shortcut around it here.
+// also keeps personal workspaces private from admins.
 //
 // Sends the 403 (or 500 on lookup failure) itself and returns false;
-// true = proceed. `level` only matters for tasks: 'view' | 'write', or any
-// raw sp_CheckTaskPermission action ('change_status', 'log_time', …) when the
-// coarse pair doesn't fit — ticking a checklist is change_status, not
-// edit_fields, because checklist state IS completion state.
+// truthy = proceed. `level` is 'view' | 'write'; for tasks also any raw
+// sp_CheckTaskPermission action ('change_status', 'log_time', …) — ticking a
+// checklist is change_status, not edit_fields, because checklist state IS
+// completion state.
 const TASK_ACTION = { view: "view_task", write: "edit_fields" };
 
 const ENTITY_LOOKUP = {
-  lead: { sp: "sp_FetchLeadDetail", idParam: "LeadId", ownerField: "OwnerId", module: "leads" },
-  ticket: { sp: "sp_FetchTicketDetail", idParam: "TicketId", ownerField: "AssignedTo", module: "complaints" },
-  // A quotation has no permission model of its own. sp_FetchQuotationDetail
-  // returns its LEAD's OwnerId / BranchId / CreatedBy under those names, so
-  // canSeeRecord answers for the lead: whoever can see the lead can see its
-  // quotations, and a transferred lead carries them along.
-  quotation: { sp: "sp_FetchQuotationDetail", idParam: "QuotationId", ownerField: "OwnerId", module: "leads" },
+  lead: { sp: "sp_FetchLeadDetail", idParam: "LeadId" },
+  ticket: { sp: "sp_FetchTicketDetail", idParam: "TicketId" },
+  // A quotation has no permission model of its own: the procedure answers for
+  // its lead (whoever can see the lead can see its quotations).
+  quotation: { sp: "sp_FetchQuotationDetail", idParam: "QuotationId" },
   // The branch letterhead (logo + header image). Company-wide on purpose:
   // every agent who may write a quotation must be able to draw it, whatever
   // their data scope. The SP's CompId filter is the whole gate.
   quoteprofile: { sp: "sp_FetchQuoteProfileById", idParam: "ProfileId", companyWide: true },
 };
 
-// The lookup half of assertRecordAccess for lead / ticket / quotation /
-// quoteprofile: the record when the caller may see it (or edit it, for
-// "write"), else false. Sends nothing — for a caller that must hide a related
-// record rather than refuse the whole request (a complaint's linked lead).
-// Throws on a lookup failure; deciding the response is the caller's job.
+const truthy = (v) => v === true || v === 1;
+
+// The lookup half of assertRecordAccess: the record when the caller may see it
+// (and edit it, for "write"), else false. Sends nothing — for a caller that
+// must hide a related record rather than refuse the whole request (a
+// complaint's linked lead). Throws on a lookup failure (NO_ACTOR included);
+// deciding the response is the caller's job.
 async function visibleRecord(req, entity, entityId, level = "view") {
-  const { sp, idParam, ownerField, companyWide, module } = ENTITY_LOOKUP[entity];
-  // The module is the outer gate: no right on it = refuse before the fetch.
-  // Its scope (not req.scope, which may be bound to another module) then
-  // judges the record.
-  const s = module ? scopeFor(req, module) : null;
-  if (s && (!s.can.view || (level === "write" && !s.can.edit))) return false;
-  const result = await database.executeStoredProcedure(sp, {
-    CompId: req.user.CompId,
-    [idParam]: Number(entityId) || 0,
+  const { sp, idParam, companyWide } = ENTITY_LOOKUP[entity];
+  const id = Number(entityId) || 0;
+  const who = companyWide ? null : actor(req); // the session person, never the body
+  const result = await database.executeStoredProcedure(sp, { CompId: req.user.CompId, ...who, [idParam]: id });
+  const record = result.recordsets?.[0]?.[0];
+  if (!record) return false;
+  if (!companyWide && level === "write" && !truthy(record.CanEdit)) return false;
+  return record;
+}
+
+// A follow-up as the session person may see it: the sp_FetchFollowUpLead row
+// (with Via and CanAct; the lead's BranchId/OwnerId/CreatedBy only on Via 1),
+// or false. Throws on a lookup failure.
+async function visibleFollowUp(req, id) {
+  const result = await database.executeStoredProcedure("sp_FetchFollowUpLead", {
+    ...actor(req),
+    Id: Number(id) || 0,
   });
-  const record = result.recordsets?.[0]?.[0] || null;
-  if (companyWide) return record || false;
-  return canSeeRecord({ ...req, scope: s }, record, ownerField) ? record : false;
+  return result.recordsets?.[0]?.[0] || false;
 }
 
 async function assertRecordAccess(req, res, entity, entityId, level = "view") {
   try {
-    // What the caller gets on success: the record itself for lead/ticket, so
-    // a controller that needs the assignee (the reopen gate, spec 2 §3) has it
-    // without a second round-trip; a plain true for tasks, where the
-    // permission SP answers yes/no and there is no row to hand over. Callers
-    // only ever test truthiness.
+    // What the caller gets on success: the record itself for lead/ticket/
+    // quotation (CanReassign, CanReopen, SendBackToId ride on it); a plain
+    // true for tasks, where the permission SP answers yes/no.
     let granted = false;
 
     if (entity === "task" || entity === "comment") {
@@ -271,84 +269,6 @@ async function assertRecordAccess(req, res, entity, entityId, level = "view") {
   }
 }
 
-// Transfer target guard.
-//
-// The rules, in order of cheapness (no scope loaded = 403 NO_SCOPE):
-//   1. Unassigning (no target) and moving to another branch are manager acts:
-//      reach Office / OfficeTree / Company (or admin). Team and Own cannot.
-//   2. A destination office must be one the caller may write (admin exempt).
-//   3. A target must be someone sp_FetchAssignableUsers lists for the caller —
-//      their subtree + their manager for Team/Own, their readable offices for
-//      the wide reaches (the caller's lists are passed in), or the destination branch's roster when @BranchId is
-//      supplied. The dropdown on the client is a convenience; this is the gate.
-//
-// Sends its own 403 (or 500 on lookup failure) and returns false; true = proceed.
-
-async function assertCanAssign(req, res, { toUserId, toBranchId }) {
-  if (!req.scope) {
-    responseHelper.error(res, "Permission scope not loaded", "NO_SCOPE", 403);
-    return false;
-  }
-  const target = Number(toUserId) || null;
-  const branch = Number(toBranchId) || null;
-  const wide = isWide(req.scope);
-
-  if (!target && !wide) {
-    responseHelper.error(res, "Only a manager can leave a record unassigned", "FORBIDDEN", 403);
-    return false;
-  }
-  if (branch && !wide) {
-    responseHelper.error(
-      res,
-      "Only a branch manager or above can move a record to another branch",
-      "FORBIDDEN",
-      403,
-    );
-    return false;
-  }
-  // A wide reach still only moves records into offices it may write.
-  if (branch && !req.scope.isAdmin && !canWriteBranch(req, branch)) {
-    responseHelper.error(res, "You cannot move records to that office", "FORBIDDEN", 403);
-    return false;
-  }
-  if (!target) return true;
-
-  try {
-    const result = await database.executeStoredProcedure("sp_FetchAssignableUsers", {
-      UserId: req.user.UserId,
-      CompId: req.user.CompId,
-      BranchId: branch,
-      AccessibleBranchIdsJson: scopeJson(req.scope?.branchIds),
-      OwnerIdsJson: scopeJson(req.scope?.ownerIds),
-    });
-    const rows = result.recordsets?.[0] ?? result.recordset ?? [];
-    if (rows.some((r) => Number(r.Id) === target)) return true;
-    responseHelper.error(res, "You cannot assign records to that user", "FORBIDDEN", 403);
-    return false;
-  } catch (err) {
-    console.error("assertCanAssign failed:", err.message);
-    responseHelper.error(res, "Failed to verify assignment target");
-    return false;
-  }
-}
-
-// Reopen gate (spec 2 §3 Rules). Reopening a resolved / closed / rejected
-// complaint is a manager's act: the wide reaches always may; a Team lead only
-// for a ticket assigned to someone in their subtree — never their own, never
-// an unassigned one; an Own-reach agent never. Pure: the controller already fetched
-// the ticket through assertRecordAccess, so this is a lookup on req.scope.
-//
-// The controller passes the answer as @AllowReopen on EVERY status call and
-// sp_SetTicketStatus alone decides whether the requested move IS a reopen —
-// Node never inspects status codes.
-const canReopen = (req, record) => {
-  if (isWide(req.scope)) return true;
-  const assignee = Number(record?.AssignedTo) || null;
-  if (!assignee || assignee === Number(req.user?.UserId)) return false;
-  const { ownerIds } = req.scope || {};
-  return Array.isArray(ownerIds) && ownerIds.includes(assignee);
-};
-
 // One sp_CheckTaskPermission answer as a boolean, without answering the
 // request — for a controller that needs to know a SECOND right after the gate
 // already passed (a tick-only caller vs one who may also rename the step).
@@ -382,7 +302,6 @@ module.exports = {
   canReadBranch,
   assertRecordAccess,
   visibleRecord,
+  visibleFollowUp,
   taskAllowed,
-  assertCanAssign,
-  canReopen,
 };
