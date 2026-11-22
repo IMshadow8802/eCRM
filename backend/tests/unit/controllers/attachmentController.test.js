@@ -202,7 +202,9 @@ describe("attachmentController.fetch", () => {
     mockTaskPermission(false);
     const res = mockRes();
     await attachmentController.fetch(baseReq({ body: { Id: 3 } }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    // hidden parent == missing id: 200 with an empty list, not a 403
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json.mock.calls[0][0].data.attachments).toEqual([]);
     expect(database.executeStoredProcedure).toHaveBeenCalledWith(
       "sp_CheckTaskPermission",
       expect.objectContaining({ TaskId: 12, Action: "view_task" }),
@@ -245,7 +247,50 @@ describe("attachmentController.download", () => {
     expect(res.status).toHaveBeenCalledWith(404);
   });
 
-  it("403s downloading a task file the workspace SP denies (personal beats admin)", async () => {
+  // REGRESSION (existence oracle): a hidden parent used to answer
+  // "Lead not found" / "Complaint not found", unlike a missing id.
+  it.each([["lead", mockLeadLookup], ["ticket", mockTicketLookup]])(
+    "a hidden %s parent answers byte-for-byte like a missing attachment",
+    async (entity, lookup) => {
+      database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[]] });
+      const missing = mockRes();
+      await attachmentController.download(baseReq({ body: { Id: 99 } }), missing);
+
+      database.executeStoredProcedure.mockResolvedValueOnce({
+        recordsets: [[{ Id: 3, Entity: entity, EntityId: 8, StoredName: "u.pdf", FileName: "x.pdf" }]],
+      });
+      lookup(null);
+      const hidden = mockRes();
+      await attachmentController.download(baseReq({ body: { Id: 3 } }), hidden);
+
+      expect(hidden.status.mock.calls).toEqual(missing.status.mock.calls);
+      expect(hidden.json.mock.calls[0][0]).toEqual(missing.json.mock.calls[0][0]);
+      expect(hidden.json.mock.calls[0][0].message).toBe("Attachment not found");
+    },
+  );
+
+  it("delete: a hidden parent answers like a missing attachment (404 NOT_FOUND)", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[{ Id: 3, Entity: "lead", EntityId: 8, StoredName: "u.pdf", FileName: "x.pdf" }]],
+    });
+    mockLeadLookup(null);
+    const res = mockRes();
+    await attachmentController.delete(baseReq({ body: { Id: 3 } }), res);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json.mock.calls[0][0]).toMatchObject({ message: "Attachment not found", code: "NOT_FOUND" });
+  });
+
+  it("delete: a visible but not-editable parent keeps its 403", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[{ Id: 3, Entity: "lead", EntityId: 8, StoredName: "u.pdf", FileName: "x.pdf" }]],
+    });
+    mockLeadLookup({ Id: 8, BranchId: 2, OwnerId: 3, CreatedBy: 3, CanEdit: 0 });
+    const res = mockRes();
+    await attachmentController.delete(baseReq({ body: { Id: 3 } }), res);
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+
+  it("404s (as a missing attachment) downloading a task file the workspace SP denies", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [[{ Id: 3, Entity: "task", EntityId: 12, StoredName: "u.png", FileName: "x.png" }]],
     });
@@ -254,7 +299,8 @@ describe("attachmentController.download", () => {
     req.body = { Id: 3 };
     const res = mockRes();
     await attachmentController.download(req, res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json.mock.calls[0][0].message).toBe("Attachment not found");
   });
 
   it("streams the file with download headers when access is allowed and the file exists", async () => {
