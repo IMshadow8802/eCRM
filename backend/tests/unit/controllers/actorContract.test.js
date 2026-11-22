@@ -15,7 +15,7 @@ const PERSON_FROM_REQUEST = /req\.(body|query|params)\??\.(UserId|CompId)\b|\{[^
 // Not converted yet. Each entry must STILL break the rule (so the list cannot rot):
 // the task that converts a controller (11 ticket, 12 lead, 13 followup + quotation)
 // removes it here, and this list is empty when Task 13 lands.
-const PENDING = ["ticket", "lead", "quotation"];
+const PENDING = ["ticket"];
 const DONE = ["ticket", "lead", "followup", "quotation"].filter((n) => !PENDING.includes(n));
 
 const breaks = (src) => LIST_PARAMS.test(src) || PERSON_FROM_REQUEST.test(src);
