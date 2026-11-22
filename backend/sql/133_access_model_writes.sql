@@ -30,6 +30,7 @@
 --   6 person in fn_AssignableUsers             403 You cannot assign records to that person
 --     (skipped for send back and when the person does not change)
 --   7 office table of spec 2.4                 400 Assign it to someone in that office, or unassign it first
+--     (a named office must be an active office of the company: fn_CompanyOffice)
 --   8 (in the procs) reason + remarks, the existing 400 messages; send back:
 --     remarks only, reason = the company's `sent_back` lookup.
 --   Bulk (Ruling 6, all-or-nothing, 1-200 ids): the first failing gate's code
@@ -39,6 +40,7 @@
 --   read (AssignedTo, BranchId, StatusId) and answer 409 if it moved meanwhile.
 --
 -- Created / replaced (exact signatures; backend and clients depend on them):
+--   fn_CompanyOffice (@CompId BIGINT, @BranchId BIGINT) -> BranchId (0/1 row: an active office of the company)  inline
 --   fn_ReassignGate (@CompId BIGINT, @UserId INT, @Module VARCHAR(30), @RecordId INT,
 --                    @ToUserId INT, @ToBranchId BIGINT, @SendBack BIT)
 --        -> Gate, Code, Message, FromUserId, FromBranchId, ToUserId, ToBranchId (one row)
@@ -58,7 +60,8 @@
 --   sp_ResolveTicket / sp_CloseTicket / sp_RejectTicket (parameters unchanged; B1)
 --   sp_EscalateTicket  (parameters unchanged)
 --   sp_FetchTicketEscalationTargets (new) @CompId BIGINT, @UserId INT, @TicketId INT, @ForUserId INT
---   sp_SaveUser        (parameters unchanged; success rows gain StrandedLeads, StrandedComplaints)
+--   sp_SaveUser        (same parameters, @ActorUserId now required: no default, NULL -> 400;
+--                       success rows gain StrandedLeads, StrandedComplaints)
 -- sp_FetchEscalationTargets is NOT touched (plan Ruling 3; tatController).
 --
 -- sqlcmd splits on GO even inside comments: every note is a `--` line comment.
@@ -83,6 +86,7 @@ GO
 -- ---------------------------------------------------------------------------
 -- 2. Back up every object this script creates or replaces (first save wins).
 -- ---------------------------------------------------------------------------
+EXEC dbo.sp_AccessModelBackup 133, 'fn_CompanyOffice';
 EXEC dbo.sp_AccessModelBackup 133, 'fn_ReassignGate';
 EXEC dbo.sp_AccessModelBackup 133, 'sp_FetchTicketEscalationTargets';
 EXEC dbo.sp_AccessModelBackup 133, 'sp_SaveTicket';
@@ -103,6 +107,28 @@ IF NOT EXISTS (SELECT 1 FROM dbo.tblAccessModelBackup WHERE ObjName = '#ck_logge
     INSERT INTO dbo.tblAccessModelBackup (ObjName, ScriptNo, ObjType, Definition, SavedAt)
     VALUES ('#ck_loggerholds_133', 133, NULL,
             N'["CK_tblTicket_LoggerHolds","CK_tblLeads_LoggerHolds"]', GETDATE());
+GO
+
+-- ---------------------------------------------------------------------------
+-- 2b. fn_CompanyOffice: one row when @BranchId is an ACTIVE office of
+--     @CompId, none otherwise. tblBranch has no CompId, so an office belongs
+--     to a company when an active person of that company is based there or
+--     holds an extra-office grant on it (tblUserBranchAccess.CompId). Every
+--     write that accepts an office reads this (review fix 1).
+--     ponytail: an office nobody of the company works in cannot be targeted;
+--     add tblBranch.CompId if that ever matters.
+-- ---------------------------------------------------------------------------
+CREATE OR ALTER FUNCTION dbo.fn_CompanyOffice (@CompId BIGINT, @BranchId BIGINT)
+RETURNS TABLE
+AS
+RETURN
+SELECT b.Id AS BranchId
+FROM dbo.tblBranch b
+WHERE b.Id = @BranchId AND b.IsActive = 1
+  AND (   EXISTS (SELECT 1 FROM dbo.tblUser u
+                  WHERE u.BranchId = b.Id AND u.CompId = @CompId AND u.IsActive = 1)
+       OR EXISTS (SELECT 1 FROM dbo.tblUserBranchAccess a
+                  WHERE a.BranchId = b.Id AND a.CompId = @CompId));
 GO
 
 -- ---------------------------------------------------------------------------
@@ -202,7 +228,8 @@ BEGIN
     -- Gate 7: the office (spec 2.4).
     IF @ToBranchId IS NOT NULL
     BEGIN
-        IF NOT (   (@Lvl = 5 AND EXISTS (SELECT 1 FROM dbo.tblBranch WHERE Id = @ToBranchId))
+        IF NOT EXISTS (SELECT 1 FROM dbo.fn_CompanyOffice(@CompId, @ToBranchId))   -- active, this company
+           OR NOT (   @Lvl = 5
                 OR (@Lvl IN (3, 4) AND EXISTS (SELECT 1 FROM dbo.fn_AccessOffices(@CompId, @UserId) o
                                                WHERE o.BranchId = @ToBranchId AND o.CanWrite = 1
                                                  AND (o.Level = 3 OR @Lvl = 4))))
@@ -212,12 +239,16 @@ BEGIN
         BEGIN INSERT INTO @G (Gate, Code, Message) VALUES (7, 400, N'Assign it to someone in that office, or unassign it first'); RETURN; END
     END
     ELSE
-        -- Rule 3: no office named -> it stays unless the person does not work there.
+        -- Rule 3: no office named -> it stays unless the person does not work
+        -- there; then their home office, if that is an active office of this
+        -- company (else it stays).
         SET @ToBranchId = CASE WHEN @ToUserId IS NULL
                                  OR EXISTS (SELECT 1 FROM dbo.fn_AccessOffices(@CompId, @ToUserId) o
                                             WHERE o.BranchId = @Branch AND o.Level = 3)
                                THEN @Branch
-                               ELSE ISNULL((SELECT BranchId FROM dbo.tblUser WHERE Id = @ToUserId AND CompId = @CompId), @Branch) END;
+                               ELSE ISNULL((SELECT u.BranchId FROM dbo.tblUser u
+                                            CROSS APPLY dbo.fn_CompanyOffice(@CompId, u.BranchId) co
+                                            WHERE u.Id = @ToUserId AND u.CompId = @CompId), @Branch) END;
 
     INSERT INTO @G (Gate, Code, Message, FromUserId, FromBranchId, ToUserId, ToBranchId)
     VALUES (0, 200, N'OK', @Assigned, @Branch, @ToUserId, @ToBranchId);
@@ -471,11 +502,13 @@ BEGIN
         IF @@ROWCOUNT = 0
             THROW 50409, 'This lead changed while you were working on it. Open it again and retry.', 1;
 
-        -- Open follow-ups of the previous person or of nobody travel; a third person's stay.
+        -- Every open follow-up takes the new office (D4.1); those of the previous
+        -- person or of nobody also take the new person, a third person's keep
+        -- their person (D26).
         UPDATE dbo.tblFollowUp
-        SET AssignedTo = @ToUserId, BranchId = @ToBranchId, EditBy = @UserId, UpdatedAt = @Now
-        WHERE CompId = @CompId AND LeadId = @LeadId AND Status = 'open'
-          AND (AssignedTo = @FromUserId OR AssignedTo IS NULL);
+        SET AssignedTo = CASE WHEN AssignedTo = @FromUserId OR AssignedTo IS NULL THEN @ToUserId ELSE AssignedTo END,
+            BranchId = @ToBranchId, EditBy = @UserId, UpdatedAt = @Now
+        WHERE CompId = @CompId AND LeadId = @LeadId AND Status = 'open';
 
         INSERT INTO dbo.tblLeadAssignment
             (CompId, LeadId, FromUserId, ToUserId, FromBranchId, ToBranchId, ReasonId, Remarks, AssignedBy)
@@ -803,13 +836,14 @@ BEGIN
         IF @@ROWCOUNT <> @Transferred
             THROW 50409, 'Some of these leads changed while you were working. Reload the list and retry.', 1;
 
-        -- Open follow-ups of the previous person or of nobody travel; a third person's stay.
+        -- Every open follow-up takes the new office (D4.1); the previous person's
+        -- or nobody's also take the new person, a third person's keep theirs (D26).
         UPDATE f
-        SET AssignedTo = i.ToUserId, BranchId = i.ToBranchId, EditBy = @UserId, UpdatedAt = @Now
+        SET AssignedTo = CASE WHEN f.AssignedTo = i.FromUserId OR f.AssignedTo IS NULL THEN i.ToUserId ELSE f.AssignedTo END,
+            BranchId = i.ToBranchId, EditBy = @UserId, UpdatedAt = @Now
         FROM dbo.tblFollowUp f
         JOIN @Ids i ON i.LeadId = f.LeadId AND i.Moved = 1
-        WHERE f.CompId = @CompId AND f.Status = 'open'
-          AND (f.AssignedTo = i.FromUserId OR f.AssignedTo IS NULL);
+        WHERE f.CompId = @CompId AND f.Status = 'open';
 
         INSERT INTO dbo.tblLeadAssignment
             (CompId, LeadId, FromUserId, ToUserId, FromBranchId, ToBranchId, ReasonId, Remarks, AssignedBy)
@@ -970,10 +1004,16 @@ BEGIN
        AND NOT EXISTS (SELECT 1 FROM dbo.tblLeads WHERE Id = @LinkedLeadId AND CompId = @CompId)
     BEGIN SELECT @Id AS Id, CAST(NULL AS VARCHAR(30)) AS TicketNo, 400 AS ResponseCode, 'Invalid linked lead' AS ResponseMess; RETURN; END
 
-    -- 133: Rule 3 — a new complaint sits in an office its person works in.
+    -- 133: Rule 3 — a new complaint sits in an office its person works in
+    -- (their home office, when that is an active office of this company).
     IF @Id = 0 AND @AssignedTo IS NOT NULL
        AND NOT EXISTS (SELECT 1 FROM dbo.fn_AccessOffices(@CompId, @AssignedTo) WHERE BranchId = @BranchId AND Level = 3)
-        SET @BranchId = ISNULL((SELECT BranchId FROM dbo.tblUser WHERE Id = @AssignedTo AND CompId = @CompId), @BranchId);
+        SET @BranchId = ISNULL((SELECT u.BranchId FROM dbo.tblUser u
+                                CROSS APPLY dbo.fn_CompanyOffice(@CompId, u.BranchId) co
+                                WHERE u.Id = @AssignedTo AND u.CompId = @CompId), @BranchId);
+    -- 133: the office must be an active office of this company (review fix 1).
+    IF @Id = 0 AND NOT EXISTS (SELECT 1 FROM dbo.fn_CompanyOffice(@CompId, @BranchId))
+    BEGIN SELECT 0 AS Id, CAST(NULL AS VARCHAR(30)) AS TicketNo, 400 AS ResponseCode, 'Invalid branch' AS ResponseMess; RETURN; END
 
     DECLARE @Now DATETIME = GETDATE();
     DECLARE @Tat INT = (SELECT TatHours FROM dbo.tblLookup WHERE Id = @Priority);
@@ -1193,7 +1233,12 @@ BEGIN
     -- 133: Rule 3 on create — the lead sits in an office its person works in.
     IF ISNULL(@Id, 0) <= 0 AND @OwnerId IS NOT NULL
        AND NOT EXISTS (SELECT 1 FROM dbo.fn_AccessOffices(@CompId, @OwnerId) WHERE BranchId = @BranchId AND Level = 3)
-        SET @BranchId = ISNULL((SELECT BranchId FROM dbo.tblUser WHERE Id = @OwnerId AND CompId = @CompId), @BranchId);
+        SET @BranchId = ISNULL((SELECT u.BranchId FROM dbo.tblUser u
+                                CROSS APPLY dbo.fn_CompanyOffice(@CompId, u.BranchId) co
+                                WHERE u.Id = @OwnerId AND u.CompId = @CompId), @BranchId);
+    -- 133: the office must be an active office of this company (review fix 1).
+    IF ISNULL(@Id, 0) <= 0 AND NOT EXISTS (SELECT 1 FROM dbo.fn_CompanyOffice(@CompId, @BranchId))
+    BEGIN SELECT 0 AS Id, 400 AS ResponseCode, 'Invalid branch' AS ResponseMess; RETURN; END
     -- 107: partner inputs that can be refused without reading the lead
     IF @SetPartner = 1 AND @PartnerId IS NOT NULL AND @PartnerId <= 0 SET @PartnerId = NULL;
     IF @SetPartner = 1 AND @PartnerId IS NOT NULL AND @SetTerms = 1 AND @CommType IS NOT NULL
@@ -1912,8 +1957,8 @@ GO
 --     (numeric id JSON, e.g. [82]). Success rows gain StrandedLeads,
 --     StrandedComplaints (the counts after the change; 0 when nothing of the
 --     three changed, and on create). Lines marked "133".
---     (@ActorUserId keeps its legacy default: the parameter list is unchanged
---     by the plan; userController always passes it.)
+--     @ActorUserId loses its default (N1a, review fix 2): leaving it out is
+--     error 201; NULL answers 400 "ActorUserId is required" before anything.
 -- ---------------------------------------------------------------------------
 CREATE OR ALTER PROC dbo.sp_SaveUser
     @Id INT,
@@ -1932,7 +1977,7 @@ CREATE OR ALTER PROC dbo.sp_SaveUser
     @BranchId BIGINT = NULL,         -- NULL on edit = keep the current branch (094)
     @Mobile VARCHAR(20) = NULL,
     @ReportsTo INT = NULL,
-    @ActorUserId INT = NULL,         -- who is saving (094)
+    @ActorUserId INT,                -- who is saving (094); 133: required, no default (N1a)
     @ActorIsAdmin BIT = NULL         -- 096: Node passes req.scope.isAdmin; NULL = legacy caller (admin-only route)
 AS
 BEGIN
@@ -1940,6 +1985,12 @@ BEGIN
 
     DECLARE @ResponseCode INT;
     DECLARE @ResponseMess VARCHAR(400);
+
+    -- 133: fail closed on a missing actor (the self-deactivation guard, the
+    -- stranded notice and the task release all need one).
+    IF (@ActorUserId IS NULL OR @ActorUserId <= 0)
+    BEGIN SET @ResponseCode = 400; SET @ResponseMess = 'ActorUserId is required';
+          SELECT @ResponseCode AS ResponseCode, @ResponseMess AS ResponseMess; RETURN; END
 
     IF (@Username IS NULL OR LTRIM(RTRIM(@Username)) = '')
     BEGIN SET @ResponseCode = 400; SET @ResponseMess = 'Username is required and cannot be blank';
@@ -1988,6 +2039,14 @@ BEGIN
     BEGIN SET @ResponseCode = 400; SET @ResponseMess = 'Branch is required';
           SELECT @ResponseCode AS ResponseCode, @ResponseMess AS ResponseMess; RETURN; END
     IF (@BranchId IS NOT NULL AND NOT EXISTS (SELECT 1 FROM tblBranch WHERE Id = @BranchId))
+    BEGIN SET @ResponseCode = 400; SET @ResponseMess = 'Invalid branch';
+          SELECT @ResponseCode AS ResponseCode, @ResponseMess AS ResponseMess; RETURN; END
+    -- 133 (review fix 1): nobody is moved into a closed office. Not fn_CompanyOffice:
+    -- the first person of a new office has nobody there yet. Keeping a person's
+    -- current office (even a closed one) stays allowed.
+    IF (@BranchId IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM tblBranch WHERE Id = @BranchId AND IsActive = 1)
+        AND NOT EXISTS (SELECT 1 FROM tblUser WHERE Id = @Id AND CompId = @CompId AND BranchId = @BranchId))
     BEGIN SET @ResponseCode = 400; SET @ResponseMess = 'Invalid branch';
           SELECT @ResponseCode AS ResponseCode, @ResponseMess AS ResponseMess; RETURN; END
 
@@ -2312,7 +2371,9 @@ GO
 -- ROLLBACK;
 --
 -- 7. Lead with three open follow-ups (previous owner's, nobody's, a third
---    person's) reassigned by the branch manager -> first two move, third stays (D26).
+--    person's) reassigned by the Sales Head to someone based in office 2 -> the
+--    first two take the new person, the third keeps hers (D26), all three take
+--    office 2 with the lead (D4.1).
 -- BEGIN TRAN;
 -- DECLARE @lead INT = (SELECT TOP 1 l.Id FROM dbo.tblLeads l JOIN dbo.tblLookup s ON s.Id = l.StatusId
 --                      WHERE l.CompId = 1 AND l.OwnerId = 17 AND l.BranchId = 1 AND s.Code = 'open' ORDER BY l.Id);
@@ -2320,12 +2381,14 @@ GO
 -- INSERT INTO dbo.tblFollowUp (CompId, BranchId, LeadId, Type, DueAt, AssignedTo, Status, CreatedBy)
 -- VALUES (1, 1, @lead, 'call', GETDATE(), 17, 'open', 17), (1, 1, @lead, 'call', GETDATE(), NULL, 'open', 17),
 --        (1, 1, @lead, 'call', GETDATE(), 18, 'open', 17);
--- EXEC dbo.sp_TransferLead @CompId = 1, @LeadId = @lead, @ToUserId = 19, @ToBranchId = NULL,
---      @ReasonId = 37, @Remarks = N'verify 133', @UserId = 15, @SendBack = 0;
--- SELECT CASE WHEN (SELECT COUNT(*) FROM dbo.tblFollowUp WHERE LeadId = @lead AND Status = 'open' AND AssignedTo = 19) = 2
+-- EXEC dbo.sp_TransferLead @CompId = 1, @LeadId = @lead, @ToUserId = 21, @ToBranchId = NULL,
+--      @ReasonId = 37, @Remarks = N'verify 133', @UserId = 13, @SendBack = 0;
+-- SELECT CASE WHEN (SELECT COUNT(*) FROM dbo.tblFollowUp WHERE LeadId = @lead AND Status = 'open' AND AssignedTo = 21) = 2
 --              AND (SELECT COUNT(*) FROM dbo.tblFollowUp WHERE LeadId = @lead AND Status = 'open' AND AssignedTo = 18) = 1
---              AND EXISTS (SELECT 1 FROM dbo.tblLeads WHERE Id = @lead AND OwnerId = 19)
---              AND EXISTS (SELECT 1 FROM dbo.tblNotifications WHERE UserId = 19 AND Type = 'lead_assigned' AND EntityId = @lead)
+--              AND NOT EXISTS (SELECT 1 FROM dbo.tblFollowUp f JOIN dbo.tblLeads l ON l.Id = f.LeadId
+--                              WHERE f.LeadId = @lead AND f.Status = 'open' AND f.BranchId <> l.BranchId)   -- all take its office (D4.1)
+--              AND EXISTS (SELECT 1 FROM dbo.tblLeads WHERE Id = @lead AND OwnerId = 21 AND BranchId = 2)
+--              AND EXISTS (SELECT 1 FROM dbo.tblNotifications WHERE UserId = 21 AND Type = 'lead_assigned' AND EntityId = @lead)
 --              AND EXISTS (SELECT 1 FROM dbo.tblNotifications WHERE UserId = 17 AND Type = 'lead_moved_away' AND EntityId = @lead)
 --         THEN 'PASS 7' ELSE 'FAIL 7' END;
 -- ROLLBACK;
@@ -2422,6 +2485,37 @@ GO
 --              AND EXISTS (SELECT 1 FROM dbo.tblTicket WHERE Subject = N'verify 133 b' AND AssignedTo = 85 AND BranchId = 1 AND LoggerHolds = 0)
 --         THEN 'PASS 13' ELSE 'FAIL 13' END;
 -- ROLLBACK;
+--
+-- 14. Review fixes: an inactive office, or an office no one of the company
+--     works in, cannot be named even by a Company-reach manager (gate 7, 400);
+--     a create in such an office is refused (400 Invalid branch); sp_SaveUser
+--     without an actor -> 400, and leaving the parameter out -> error 201.
+-- BEGIN TRAN;
+-- UPDATE dbo.tblBranch SET IsActive = 0 WHERE Id = 7;
+-- DECLARE @r TABLE (Id INT, ResponseCode INT, ResponseMess NVARCHAR(400), FromUserId INT, ToUserId INT, ToName NVARCHAR(200));
+-- INSERT INTO @r EXEC dbo.sp_TransferTicket @CompId = 1, @TicketId = 1087, @ToUserId = 84, @ToBranchId = 7,
+--      @ReasonId = 37, @Remarks = N'verify 133', @UserId = 75, @SendBack = 0;
+-- INSERT INTO @r EXEC dbo.sp_TransferTicket @CompId = 1, @TicketId = 1087, @ToUserId = NULL, @ToBranchId = 2147483647,
+--      @ReasonId = 37, @Remarks = N'verify 133', @UserId = 75, @SendBack = 0;
+-- DECLARE @t TABLE (Id INT, TicketNo VARCHAR(30), ResponseCode INT, ResponseMess NVARCHAR(400));
+-- DECLARE @c14 INT = (SELECT TOP 1 Id FROM dbo.tblCustomer WHERE CompId = 1 AND IsActive = 1 ORDER BY Id);
+-- INSERT INTO @t EXEC dbo.sp_SaveTicket @Id = 0, @CompId = 1, @BranchId = 7, @UserId = 75,
+--      @CustomerId = @c14, @Subject = N'verify 133';
+-- SELECT CASE WHEN (SELECT COUNT(*) FROM @r WHERE ResponseCode = 400
+--                   AND ResponseMess = 'Assign it to someone in that office, or unassign it first') = 2
+--              AND EXISTS (SELECT 1 FROM @t WHERE ResponseCode = 400 AND ResponseMess = 'Invalid branch')
+--              AND EXISTS (SELECT 1 FROM dbo.tblTicket WHERE Id = 1087 AND AssignedTo = 82 AND BranchId = 6)
+--         THEN 'PASS 14a' ELSE 'FAIL 14a' END;
+-- ROLLBACK;
+-- DECLARE @u TABLE (ResponseCode INT, ResponseMess VARCHAR(400));
+-- INSERT INTO @u EXEC dbo.sp_SaveUser @Id = 82, @Username = 'pooja.joshi', @Password = NULL, @UserActive = 1, @UserIp = '',
+--      @AllowDay = 0, @FullName = 'Pooja Joshi', @Email = NULL, @JobTitle = NULL, @HourlyRate = NULL, @GroupId = 0,
+--      @CompId = 1, @ActorUserId = NULL;
+-- SELECT CASE WHEN EXISTS (SELECT 1 FROM @u WHERE ResponseCode = 400 AND ResponseMess = 'ActorUserId is required')
+--         THEN 'PASS 14b' ELSE 'FAIL 14b' END;
+-- BEGIN TRY EXEC dbo.sp_SaveUser @Id = 82, @Username = 'x', @Password = NULL, @UserActive = 1, @UserIp = '', @AllowDay = 0,
+--      @FullName = 'x', @Email = NULL, @JobTitle = NULL, @HourlyRate = NULL, @GroupId = 0, @CompId = 1; PRINT 'FAIL 14c'; END TRY
+-- BEGIN CATCH PRINT CASE WHEN ERROR_NUMBER() = 201 THEN 'PASS 14c' ELSE 'FAIL 14c' END; END CATCH;
 --
 -- Dry-run facts (TestCRM, read-only, 2026-11-22; 130-132 not yet applied there):
 --   raw giver (fn_RecordGiver's SELECT): complaint 1089 -> 75 (vikram.rao);
