@@ -5,18 +5,22 @@
 // to a REAL backend, so two guards come before anything else:
 //
 //   1. The base URL. Only a local backend (localhost / 127.0.0.1, the owner
-//      runs it against the TestCRM database) or a hosted one whose path ends
-//      in /TestCRM. Anything else throws before a single request is made.
+//      runs it against the TestCRM database) or exactly
+//      https://shadowcodes.in/TestCRM. Anything else throws before a single
+//      request is made, so the persona password is never sent elsewhere.
 //   2. The database. Signing in as am_amit and resolving every AM- seed tag
 //      works only where 136 ran, and 136 refuses any database but TestCRM.
 //      A local backend pointed at eCRM+ fails here (am_amit does not exist).
+//      Every persona call awaits this proof first (memoised, failure too), so
+//      no test file can skip it.
 //
-// The password is the owner's TestCRM password (the personas copy its hash).
-// It is read from the environment (backend/.env.live, loaded by
-// tests/live/env.js) and is never printed: error messages carry the persona
-// and the server's message, never the request body.
+// The password (LIVE_PASSWORD, the personas' test-only password) is read from
+// the environment (backend/.env.live, loaded by tests/live/env.js) and is
+// never printed: error messages carry the persona and the server's message,
+// never the request body.
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1"]);
+const HOSTED = "shadowcodes.in";
 const SESSION_CODES = new Set(["SESSION_ENDED", "SESSION_EXPIRED", "SESSION_FORCED", "SESSION_REQUIRED"]);
 
 /** The normalised base URL, or a throw saying why it is refused. No I/O. */
@@ -28,12 +32,13 @@ function checkBaseUrl(raw) {
     throw new Error("Live suite refused: LIVE_BASE_URL is missing or not a URL. Set it in backend/.env.live.");
   }
   const path = u.pathname.replace(/\/+$/, "");
+  const clean = !u.username && !u.password && !u.search && !u.hash;
   const local = LOCAL_HOSTS.has(u.hostname) && (u.protocol === "http:" || u.protocol === "https:");
-  const hostedTest = u.protocol === "https:" && path.endsWith("/TestCRM");
-  if (!local && !hostedTest) {
+  const hostedTest = u.protocol === "https:" && u.hostname === HOSTED && u.port === "" && path === "/TestCRM";
+  if (!clean || (!local && !hostedTest)) {
     throw new Error(
       `Live suite refused: ${u.origin}${path} is neither a local backend (localhost / 127.0.0.1) `
-      + "nor a /TestCRM backend. It never runs against a live company.",
+      + `nor https://${HOSTED}/TestCRM. It never runs against a live company.`,
     );
   }
   return u.origin + path;
@@ -91,7 +96,8 @@ function makeClient({ baseUrl, password, fetch: fetchImpl = globalThis.fetch } =
     return null; // unreachable
   }
 
-  function as(persona) {
+  // Raw persona access, used only by the proof itself (as am_amit).
+  function rawAs(persona) {
     return {
       post: (path, body = {}) => authed(persona, () => ({
         method: "POST",
@@ -110,6 +116,27 @@ function makeClient({ baseUrl, password, fetch: fetchImpl = globalThis.fetch } =
     };
   }
 
+  /** Persona access for the suites: every call awaits the TestCRM proof first. */
+  function as(persona) {
+    const raw = rawAs(persona);
+    return {
+      post: async (path, body) => { await ids(); return raw.post(path, body); },
+      upload: async (path, fields) => { await ids(); return raw.upload(path, fields); },
+    };
+  }
+
+  /** After the proof: may this persona sign in? { status, message }, never throws. */
+  async function trySignIn(persona) {
+    await ids();
+    try {
+      await login(persona);
+      return { status: 200 };
+    } catch (err) {
+      const m = /\((\d+): (.*)\)$/.exec(err.message);
+      return { status: m ? Number(m[1]) : 0, message: m ? m[2] : err.message };
+    }
+  }
+
   function forget(persona) {
     tokens.delete(persona);
   }
@@ -117,7 +144,7 @@ function makeClient({ baseUrl, password, fetch: fetchImpl = globalThis.fetch } =
   // Seed tags -> ids, through am_amit's own list calls. This is also the
   // database proof: a missing tag means this is not the seeded TestCRM.
   async function resolveIds() {
-    const amit = as("amit");
+    const amit = rawAs("amit");
     const list = async (path, body, key) => {
       const r = await amit.post(path, body);
       if (r.status !== 200) throw new Error(`${path} answered ${r.status}: ${r.body?.message}`);
@@ -158,11 +185,13 @@ function makeClient({ baseUrl, password, fetch: fetchImpl = globalThis.fetch } =
     return out;
   }
 
-  /** Resolved once per client. Rejects (and so refuses the suite) off TestCRM. */
+  /**
+   * Resolved once per client, and a refusal is memoised too: off TestCRM every
+   * later call fails at once, with no further sign-in attempts.
+   */
   function ids() {
     if (!idsPromise) {
       idsPromise = resolveIds().catch((err) => {
-        idsPromise = null;
         if (/^Live suite refused/.test(err.message)) throw err;
         throw new Error(`Live suite refused: could not prove ${base} is TestCRM: ${err.message}`);
       });
@@ -170,7 +199,7 @@ function makeClient({ baseUrl, password, fetch: fetchImpl = globalThis.fetch } =
     return idsPromise;
   }
 
-  return { base, as, ids, forget, login };
+  return { base, as, ids, forget, trySignIn };
 }
 
 let shared = null;

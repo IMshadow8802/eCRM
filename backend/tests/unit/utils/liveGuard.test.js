@@ -56,6 +56,14 @@ describe("checkBaseUrl", () => {
     "https://shadowcodes.in/SolarCRM",
     "https://shadowcodes.in/TestCRM/../CRM",
     "http://shadowcodes.in/TestCRM", // not https
+    "https://evil.com/TestCRM", // any other host
+    "https://evil.example/TestCRM",
+    "https://shadowcodes.in.evil.com/TestCRM",
+    "https://evil.com/shadowcodes.in/TestCRM",
+    "https://shadowcodes.in/x/TestCRM", // path must be exactly /TestCRM
+    "https://shadowcodes.in:8443/TestCRM",
+    "https://user:pw@shadowcodes.in/TestCRM",
+    "https://shadowcodes.in/TestCRM?x=1",
     "http://localhost.evil.com:5001",
     "http://10.0.0.5:5001",
     "",
@@ -109,15 +117,40 @@ describe("makeClient", () => {
   });
 
   it("re-signs in once after a session-ended 401", async () => {
+    const proof = fakeBackend(seeded());
     let calls = 0;
-    const fetch = jest.fn(async (url) => {
-      if (url.endsWith("/api/auth/loginUser")) return json(200, { data: { token: "t" } });
+    const fetch = jest.fn(async (url, init) => {
+      if (!url.endsWith("/api/x")) return proof(url, init);
       calls += 1;
       return calls === 1 ? json(401, { code: "SESSION_ENDED" }) : json(200, { success: true, data: {} });
     });
     const r = await makeClient({ baseUrl: "http://localhost:5001", password: "x", fetch }).as("nitin").post("/api/x");
     expect(r.status).toBe(200);
-    expect(fetch.mock.calls.filter(([u]) => u.endsWith("/api/auth/loginUser"))).toHaveLength(2);
+    const logins = fetch.mock.calls.filter(([u]) => u.endsWith("/api/auth/loginUser")).map(([, i]) => JSON.parse(i.body).username);
+    expect(logins).toEqual(["am_amit", "am_nitin", "am_nitin"]);
+  });
+
+  it("a persona call cannot skip the proof: off TestCRM it refuses before that persona signs in", async () => {
+    const data = seeded();
+    data.leads = [];
+    const fetch = fakeBackend(data);
+    const c = makeClient({ baseUrl: "http://localhost:5001", password: "x", fetch });
+    await expect(c.as("kasak").post("/api/leads/fetchLeadDetail", { LeadId: 1 })).rejects.toThrow(/not the seeded TestCRM/);
+    await expect(c.as("nitin").upload("/api/attachments/save", { Entity: "ticket", EntityId: 1 })).rejects.toThrow(/not the seeded TestCRM/);
+    await expect(c.trySignIn("gone")).rejects.toThrow(/not the seeded TestCRM/);
+    const users = fetch.mock.calls.filter(([u]) => u.endsWith("/api/auth/loginUser")).map(([, i]) => JSON.parse(i.body).username);
+    expect(users).toEqual(["am_amit"]); // one proof attempt, memoised; nobody else signed in
+    expect(fetch.mock.calls.some(([u]) => /fetchLeadDetail|attachments/.test(u))).toBe(false);
+  });
+
+  it("trySignIn reports a refused sign-in without throwing", async () => {
+    const proof = fakeBackend(seeded());
+    const fetch = jest.fn(async (url, init) => (url.endsWith("/loginUser") && JSON.parse(init.body).username === "am_gone"
+      ? json(401, { success: false, message: "Account is inactive" })
+      : proof(url, init)));
+    const c = makeClient({ baseUrl: "http://localhost:5001", password: "x", fetch });
+    expect(await c.trySignIn("gone")).toEqual({ status: 401, message: "Account is inactive" });
+    expect(await c.trySignIn("nitin")).toEqual({ status: 200 });
   });
 });
 
@@ -135,9 +168,12 @@ describe("suite helpers against a fake backend", () => {
     "/api/notifications/fetchNotifications": () => ({
       notifications: [{ Id: "12", Type: "ticket_assigned" }, { Id: "10", Type: "ticket_moved_away" }, { Id: "9", Type: "ticket_assigned" }],
     }),
-    "/api/users/fetchUsers": () => ({
-      users: [{ Id: 102, Username: "am_vinod", FullName: "AM Vinod", GroupId: 5, BranchId: "1", ReportsTo: 98, IsActive: true }],
-    }),
+    "/api/users/fetchUsers": (b) => (b.Id
+      ? { users: [{ Id: b.Id, Username: "am_vinod", FullName: "AM Vinod", GroupId: 5, BranchId: "1", ReportsTo: 98, IsActive: true }] }
+      : { users: seeded().users }),
+    "/api/tickets/fetchTickets": () => ({ tickets: seeded().tickets }),
+    "/api/leads/fetchLeads": () => ({ leads: seeded().leads }),
+    "/api/customers/fetchCustomers": () => ({ customers: seeded().customers }),
     "/api/users/saveUser": (b) => ({ echo: b }),
   };
   const fetch = jest.fn(async (url, init) => {
@@ -146,7 +182,6 @@ describe("suite helpers against a fake backend", () => {
     return json(200, { success: true, data: routes[path](JSON.parse(init.body)) });
   });
   const c = makeClient({ baseUrl: "http://localhost:5001", password: "x", fetch });
-  c.ids = async () => ({ users: { vinod: 102 } });
 
   it("lookups skips the sent-back reason", async () => {
     expect(await lookups(c)).toEqual({
@@ -163,20 +198,21 @@ describe("suite helpers against a fake backend", () => {
   it("saveUser resends the fresh row with only the change, never a password", async () => {
     const r = await saveUser(c, "vinod", { ReportsTo: 99 });
     expect(r.body.data.echo).toEqual({
-      Id: 102, Username: "am_vinod", FullName: "AM Vinod", Email: undefined, JobTitle: undefined, HourlyRate: 0,
+      Id: 90, Username: "am_vinod", FullName: "AM Vinod", Email: undefined, JobTitle: undefined, HourlyRate: 0,
       GroupId: 5, BranchId: "1", Mobile: undefined, ReportsTo: 99, UserActive: true,
     });
     expect(r.body.data.echo).not.toHaveProperty("Password");
   });
 
   it("upload sends Entity before the file, as multipart", async () => {
-    const up = jest.fn(async (url, init) => (url.endsWith("/loginUser")
-      ? json(200, { data: { token: "t" } })
-      : json(404, { success: false, message: "Complaint not found" })));
+    const proof = fakeBackend(seeded());
+    const up = jest.fn(async (url, init) => (url.endsWith("/attachments/save")
+      ? json(404, { success: false, message: "Complaint not found" })
+      : proof(url, init)));
     const r = await makeClient({ baseUrl: "http://localhost:5001", password: "x", fetch: up })
       .as("nitin").upload("/api/attachments/save", { Entity: "ticket", EntityId: 5 });
     expect(r.status).toBe(404);
-    const form = up.mock.calls[1][1].body;
+    const form = up.mock.calls.find(([u]) => u.endsWith("/attachments/save"))[1].body;
     expect([...form.keys()]).toEqual(["Entity", "EntityId", "file"]);
   });
 });

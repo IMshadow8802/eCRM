@@ -5,7 +5,7 @@
 // legacy.live.js first; re-seed after. Records it creates are logged by
 // personas (subjects "AM-Fnn ..."), so 137 removes them.
 
-const { live, isRefusal, lookups, noticeMark, noticesSince, saveUser } = require("./client");
+const { live, isRefusal, lookups, noticeMark, noticesSince, saveUser, MISSING_ID, day } = require("./client");
 
 const c = live();
 let id;
@@ -30,6 +30,19 @@ const sendBack = (who, TicketId) => post(who, "/api/tickets/transferTicket", {
 const logComplaint = (who, Subject, AssignedTo = null) => post(who, "/api/tickets/saveTicket", {
   CustomerId: id.customers.HO, Subject, AssignedTo,
 });
+const outcome = (r) => ({ status: r.status, message: r.body?.message, refused: isRefusal(r) });
+
+/** [name, path, body(missing?), expected]: real id and MISSING_ID refused identically. */
+async function expectAllRefused(who, cases) {
+  for (const [label, path, body, expected] of cases) {
+    const r = await post(who, path, body(false));
+    const missing = await post(who, path, body(true));
+    expect({ label, ...outcome(r) }).toEqual({ label, ...expected, refused: true });
+    expect({ label, ...outcome(missing) }).toEqual({ label, ...outcome(r) });
+  }
+}
+
+let handed = {}; // what scenario 6 handed to roshan: { QuotationId, followUpId }
 
 describe("scenarios, in order", () => {
   it("1. nitin logs and routes to vinod", async () => {
@@ -122,6 +135,50 @@ describe("scenarios, in order", () => {
     expect((await kasak.post("/api/quotations/fetchQuotationDetail", { QuotationId })).status).toBe(404);
     expect((await kasak.post("/api/followups/fetchFollowups", { LeadId: id.L01 })).status).toBe(404);
     expect((await noticesSince(c, "roshan", mark, "lead_assigned")).some((n) => Number(n.EntityId) === id.L01)).toBe(true);
+    handed = { QuotationId, followUpId: kasakFu.Id };
+  });
+
+  it("6b. after the hand-over kasak can act on nothing she gave away: 404 as for a missing id", async () => {
+    const Q = (m) => (m ? MISSING_ID : handed.QuotationId);
+    const F = (m) => (m ? MISSING_ID : handed.followUpId);
+    const Q_404 = { status: 404, message: "Quotation not found" };
+    const FU_404 = { status: 404, message: "Follow-up not found" };
+    await expectAllRefused("kasak", [
+      ["quotation detail", "/api/quotations/fetchQuotationDetail", (m) => ({ QuotationId: Q(m) }), Q_404],
+      ["finalise", "/api/quotations/finaliseQuotation", (m) => ({ QuotationId: Q(m) }), Q_404],
+      ["revise", "/api/quotations/reviseQuotation", (m) => ({ QuotationId: Q(m) }), Q_404],
+      ["reject", "/api/quotations/rejectQuotation", (m) => ({ QuotationId: Q(m), Remarks: "AM live" }), Q_404],
+      ["delete", "/api/quotations/deleteQuotation", (m) => ({ QuotationId: Q(m) }), Q_404],
+      ["edit", "/api/quotations/saveQuotation", (m) => ({ Id: Q(m), Lines: [] }), Q_404],
+      ["complete follow-up", "/api/followups/completeFollowUp", (m) => ({ Id: F(m), Remarks: "AM live" }), FU_404],
+      ["skip follow-up", "/api/followups/skipFollowUp", (m) => ({ Id: F(m), Remarks: "AM live" }), FU_404],
+      ["delete follow-up", "/api/followups/deleteFollowup", (m) => ({ Id: F(m) }), FU_404],
+      ["reschedule on the lead", "/api/followups/scheduleFollowUp",
+        (m) => ({ LeadId: m ? MISSING_ID : id.L01, Type: "call", DueAt: `${day(2)}T11:00:00` }), { status: 404, message: "Lead not found" }],
+    ]);
+  });
+
+  it("F2 + 9. am_field logs a call on AM-L06, hands it to roshan: stl's drill counts it hidden; neha's total is the same", async () => {
+    const call = await post("field", "/api/calls/logCall", { LeadId: id.L06, Direction: "out", Notes: "AM live: F2 call" });
+    expect(call.status).toBe(200);
+    const moved = await post("field", "/api/leads/transferLead", {
+      LeadId: id.L06, ToUserId: id.users.roshan, ReasonId: lk.reasonId, Remarks: "AM live: F2 hand-over",
+    });
+    expect(moved.status).toBe(200);
+    expect((await post("stl", "/api/leads/fetchLeadDetail", { LeadId: id.L06 })).status).toBe(404);
+
+    const drill = { GroupBy: "team", Metric: "call", PersonId: id.users.field, FromDate: day(-7), ToDate: day(0) };
+    const stl = await post("stl", "/api/reports/salesRows", drill);
+    expect(stl.status).toBe(200);
+    expect(stl.body.data.rows.filter((x) => /^AM-L06 /.test(x.LeadName ?? ""))).toEqual([]);
+    expect(stl.body.data.hiddenCount).toBeGreaterThanOrEqual(1);
+    expect(stl.body.data.total).toBe(stl.body.data.rows.length + stl.body.data.hiddenCount);
+
+    const neha = await post("neha", "/api/reports/salesRows", drill);
+    expect(neha.status).toBe(200);
+    expect(neha.body.data.total).toBe(stl.body.data.total); // scenario 9: one number, whoever looks
+    expect(neha.body.data.hiddenCount).toBe(0);
+    expect(neha.body.data.rows.some((x) => /^AM-L06 /.test(x.LeadName ?? ""))).toBe(true);
   });
 
   it("7. nitin logs an unassigned complaint: logger and office managers see it; vinod does not", async () => {
@@ -190,11 +247,17 @@ describe("scenarios, in order", () => {
     expect(told.length).toBeGreaterThan(0);
   });
 
-  it("a file on a complaint he cannot see does not download for nitin", async () => {
-    const up = await c.as("amit").upload("/api/attachments/save", { Entity: "ticket", EntityId: id.C14 });
+  it.each([
+    ["nitin", "ticket", "C14"],
+    ["kasak", "lead", "L03"],
+  ])("a file on a record %s cannot see does not download: 404 as for a missing file", async (who, Entity, tag) => {
+    const up = await c.as("amit").upload("/api/attachments/save", { Entity, EntityId: id[tag] });
     expect(up.status).toBe(200);
-    const r = await post("nitin", "/api/attachments/download", { Id: up.body.data.attachmentId });
+    const r = await post(who, "/api/attachments/download", { Id: up.body.data.attachmentId });
+    const missing = await post(who, "/api/attachments/download", { Id: MISSING_ID });
+    expect(r.status).toBe(404);
     expect(isRefusal(r)).toBe(true);
+    expect({ status: r.status, message: r.body?.message }).toEqual({ status: missing.status, message: missing.body?.message });
   });
 
   // Review Focus 3. Last: it deactivates nitin for a moment.
