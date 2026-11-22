@@ -5,6 +5,7 @@ import { Inbox, Pencil } from "lucide-react";
 
 import { Modal, Button, Card, Chip, EmptyState, Skeleton } from "../../components/ui";
 import { useApiQuery } from "../../hooks/useApiQuery";
+import { useAccess } from "../../hooks/useAccess";
 import { SUPPORT_ENDPOINTS } from "../../api/supportQueries";
 import { formatDate } from "../../utils/format";
 import { statusTone, dueLabel } from "./ticketStatus";
@@ -28,6 +29,7 @@ function Fact({ label, value }) {
 export default function CustomerDetailModal({ customerId, open, onClose, onEdit }) {
   const navigate = useNavigate();
   const p = useTheme().tokens;
+  const seesComplaints = useAccess("complaints").view;
 
   const { data, isLoading } = useApiQuery({
     queryKey: ["customer-detail", customerId],
@@ -60,9 +62,9 @@ export default function CustomerDetailModal({ customerId, open, onClose, onEdit 
                 <Fact label="Mobile" value={customer.Mobile} />
                 <Fact label="Alternate" value={customer.AltMobile} />
                 <Fact label="Email" value={customer.Email} />
-                <Fact label="Branch" value={customer.BranchName} />
+                <Fact label="Office" value={customer.BranchName} />
                 <Fact label="Customer since" value={formatDate(customer.CreatedAt)} />
-                <Fact label="Open / total" value={`${customer.OpenTickets ?? 0} / ${customer.TotalTickets ?? 0}`} />
+                {seesComplaints && <Fact label="Open / total" value={`${customer.OpenTickets ?? 0} / ${customer.TotalTickets ?? 0}`} />}
               </div>
               {(address || customer.Remarks) && (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(calc(160rem / 15), 1fr))", gap: "calc(16rem / 15)", marginTop: "calc(16rem / 15)" }}>
@@ -72,7 +74,7 @@ export default function CustomerDetailModal({ customerId, open, onClose, onEdit 
               )}
             </Card>
 
-            <div>
+            {seesComplaints && <div>
               <h3 style={{ margin: "0 0 calc(10rem / 15)", fontSize: "calc(15rem / 15)", fontWeight: 700 }}>Complaints ({tickets.length})</h3>
               {tickets.length === 0 ? (
                 <EmptyState
@@ -106,7 +108,7 @@ export default function CustomerDetailModal({ customerId, open, onClose, onEdit 
                   ))}
                 </div>
               )}
-            </div>
+            </div>}
           </div>
         )}
       </Modal.Body>

@@ -11,13 +11,11 @@ import { buildTheme } from "../../theme";
 const FIXTURE_CUSTOMERS = [
   { Id: 3, Name: "Acme Corp", ContactPerson: "Gurpreet", Mobile: "9990001111", City: "Pune", OpenTickets: 1, TotalTickets: 3, LastTicketAt: "2026-09-15T10:00:00Z" },
 ];
-vi.mock("../../hooks/useServerTable", () => ({
-  __esModule: true,
-  default: vi.fn(() => ({
-    table: { __options: { data: FIXTURE_CUSTOMERS } },
-    data: FIXTURE_CUSTOMERS, isLoading: false, isFetching: false, error: null, refetch: vi.fn(), totalRecords: 1,
-  })),
-}));
+const defaultTable = () => ({
+  table: { __options: { data: FIXTURE_CUSTOMERS } },
+  data: FIXTURE_CUSTOMERS, isLoading: false, isFetching: false, error: null, refetch: vi.fn(), totalRecords: 1,
+});
+vi.mock("../../hooks/useServerTable", () => ({ __esModule: true, default: vi.fn(() => defaultTable()) }));
 vi.mock("material-react-table", () => ({
   MaterialReactTable: ({ table }) => (
     <div data-testid="mrt-root">
@@ -42,6 +40,7 @@ vi.mock("./CustomerDetailModal", () => ({
 
 import Customers from "./Customers";
 import useServerTable from "../../hooks/useServerTable";
+import useAuthStore from "../../stores/useAuthStore";
 
 const renderPage = (route) => render(
   <ThemeProvider theme={buildTheme("light")}><QueryClientProvider client={new QueryClient()}><MemoryRouter initialEntries={route ? [route] : undefined}><Customers /></MemoryRouter></QueryClientProvider></ThemeProvider>,
@@ -51,7 +50,7 @@ const cellOf = (key) => lastCfg().columns.find((c) => c.accessorKey === key).Cel
 const withTheme = (node) => render(<ThemeProvider theme={buildTheme("light")}>{node}</ThemeProvider>);
 
 describe("Customers page", () => {
-  beforeEach(() => { useServerTable.mockClear(); });
+  beforeEach(() => { useServerTable.mockReset(); useServerTable.mockImplementation(defaultTable); useAuthStore.setState({ access: { isAdmin: true } }); });
 
   it("wires useServerTable to fetchCustomers with the spec columns, keyed by Id", () => {
     renderPage();
@@ -129,5 +128,19 @@ describe("Customers page", () => {
   it("ignores a non-numeric customerId", () => {
     renderPage("/support/customers?customerId=abc");
     expect(screen.queryByTestId("customer-detail-modal")).toBeNull();
+  });
+
+  // F4 regression: complaint counts used to be drawn for everyone; without
+  // complaints View the columns are not there at all.
+  it("F4 regression: a user without complaints view sees no complaint columns", () => {
+    useAuthStore.setState({ access: { isAdmin: false, modules: { customers: { view: true } } } });
+    renderPage();
+    expect(lastCfg().columns.map((c) => c.accessorKey)).toEqual(["Name", "ContactPerson", "Mobile", "City"]);
+  });
+
+  it("a user with complaints view sees the counts the server sends", () => {
+    useAuthStore.setState({ access: { isAdmin: false, modules: { customers: { view: true }, complaints: { view: true } } } });
+    renderPage();
+    expect(lastCfg().columns.map((c) => c.accessorKey)).toContain("OpenTickets");
   });
 });

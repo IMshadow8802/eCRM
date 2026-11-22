@@ -82,30 +82,56 @@ describe("SalesRows", () => {
     expect(screen.getByRole("link", { name: "Priya Sharma" }).getAttribute("href")).toBe(`/reports/sales/team?${SEP}&at=3`);
   });
 
-  it("the lead opens its page; a lead out of reach has no link, no mobile, no open icon", async () => {
-    mockReportEndpoints("/api/reports/salesRows", data({
-      rows: [ev(), ev({ RefId: 2, LeadId: 506, LeadName: "DEMO Far Away", CanOpen: false, MobileNo: null, OwnerName: "Sara Khan" })], total: 2,
-    }));
+  it("the lead opens its page from the name, the icon and the row", async () => {
+    mockReportEndpoints("/api/reports/salesRows", data({ rows: [ev()], total: 1 }));
     renderRows("team", `/reports/sales/team/rows?metric=fu_missed&person=17&${SEP}`);
     const link = await screen.findByRole("link", { name: "DEMO Vihaan Nair" });
     expect(link.getAttribute("href")).toBe("/sales/leads/505");
-    const [mine, far] = bodyRows();
+    const [mine] = bodyRows();
     expect(within(mine).getByRole("link", { name: "Open lead" }).getAttribute("href")).toBe("/sales/leads/505");
-    expect(within(far).queryAllByRole("link")).toHaveLength(0);
-    expect(far).toHaveTextContent("DEMO Far Away now with Sara Khan");
-    expect(within(far).getAllByRole("cell")[4].textContent).toBe("—");
-
-    await userEvent.click(far);
-    expect(where()).toMatch(/^\/reports\/sales\/team\/rows/);
     await userEvent.click(mine);
     expect(where()).toBe("/sales/leads/505");
   });
 
-  it("states the true total when capped at 2,000", async () => {
-    const rows = Array.from({ length: 2000 }, (_, i) => ev({ RefId: i + 1 }));
-    mockReportEndpoints("/api/reports/salesRows", data({ rows, total: 6412, truncated: true }));
+  // F2: a row for a lead out of view used to be drawn with its name and "now with <owner>".
+  it("F2 regression: no row is rendered for a lead out of view", async () => {
+    mockReportEndpoints("/api/reports/salesRows", data({
+      rows: [ev(), ev({ RefId: 2, LeadId: 506, LeadName: "DEMO Far Away", CanOpen: false, MobileNo: null, OwnerName: "Sara Khan" })], total: 2,
+    }));
     renderRows("team", `/reports/sales/team/rows?metric=fu_missed&person=17&${SEP}`);
-    expect(await screen.findByText("Showing the first 2,000 of 6,412 — narrow the dates")).toBeInTheDocument();
+    await screen.findByRole("link", { name: "DEMO Vihaan Nair" });
+    expect(bodyRows()).toHaveLength(1);
+    expect(screen.queryByText(/DEMO Far Away/)).toBeNull();
+    expect(screen.queryByText(/now with/)).toBeNull();
+  });
+
+  it("hidden line shows with the count and correct singular", async () => {
+    mockReportEndpoints("/api/reports/salesRows", data({ rows: [ev()], total: 13, hiddenCount: 12 }));
+    renderRows("team", `/reports/sales/team/rows?metric=fu_missed&person=17&${SEP}`);
+    // the title is the summary cell: listed rows + hidden ones
+    expect(await screen.findByRole("heading", { level: 1, name: "13 follow-ups missed" })).toBeInTheDocument();
+    expect(screen.getByTestId("sales-rows-hidden")).toHaveTextContent("12 activities on leads no longer in your view");
+  });
+
+  it("hidden line in the singular, also when nothing is listed", async () => {
+    mockReportEndpoints("/api/reports/salesRows", data({ rows: [], total: 1, hiddenCount: 1 }));
+    renderRows("team", `/reports/sales/team/rows?metric=fu_missed&person=17&${SEP}`);
+    expect(await screen.findByTestId("sales-rows-hidden")).toHaveTextContent("1 activity on a lead no longer in your view");
+    expect(screen.getByText("Nothing in this period")).toBeInTheDocument();
+  });
+
+  it("no hidden line at 0", async () => {
+    mockReportEndpoints("/api/reports/salesRows", data({ rows: [ev()], total: 1, hiddenCount: 0 }));
+    renderRows("team", `/reports/sales/team/rows?metric=fu_missed&person=17&${SEP}`);
+    await waitFor(() => expect(bodyRows().length).toBe(1));
+    expect(screen.queryByTestId("sales-rows-hidden")).toBeNull();
+  });
+
+  it("states the true listable total when capped at 2,000", async () => {
+    const rows = Array.from({ length: 2000 }, (_, i) => ev({ RefId: i + 1 }));
+    mockReportEndpoints("/api/reports/salesRows", data({ rows, total: 6412, hiddenCount: 12, truncated: true }));
+    renderRows("team", `/reports/sales/team/rows?metric=fu_missed&person=17&${SEP}`);
+    expect(await screen.findByText("Showing the first 2,000 of 6,400 — narrow the dates")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1, name: "6,412 follow-ups missed" })).toBeInTheDocument();
   });
 
@@ -180,9 +206,9 @@ describe("SalesRows", () => {
 
   it.each([
     ["call", ["Lead", "Created", "Done on", "What", "Notes", "Mobile", "Status now", "Done by", ""]],
-    ["new", ["Lead", "Created", "Mobile", "Company", "Status now", "Value ₹", "Owner", ""]],
-    ["lost", ["Lead", "Created", "Lost on", "Reason", "Remarks", "Value ₹", "Owner", ""]],
-    ["open", ["Lead", "Created", "Age", "Status now", "Value ₹", "Last activity", "Next follow-up", "Owner", ""]],
+    ["new", ["Lead", "Created", "Mobile", "Company", "Status now", "Value ₹", "Assigned to", ""]],
+    ["lost", ["Lead", "Created", "Lost on", "Reason", "Remarks", "Value ₹", "Assigned to", ""]],
+    ["open", ["Lead", "Created", "Age", "Status now", "Value ₹", "Last activity", "Next follow-up", "Assigned to", ""]],
   ])("metric=%s has its own columns", async (metric, cols) => {
     mockReportEndpoints("/api/reports/salesRows", data({
       rows: [ev({ Metric: metric, Detail1: "call", Detail2: "rang twice", Amount: 5000, LostReason: "Price", Remarks: "too high", Company: "Acme",
