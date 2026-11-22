@@ -1,5 +1,5 @@
 const database = require("../config/database");
-const { scopeParams, scopeFor, scopeJson } = require("../middleware/permission");
+const { actor } = require("../utils/actor");
 const { asyncRoute, positiveInt } = require("../utils/controllerKit");
 const { parseReportArgs, TAT_METRICS } = require("../utils/reportKit");
 const { success, error } = require("../utils/responseHelper");
@@ -10,18 +10,10 @@ const { visibleUserIds } = require("./workSettingsController");
 class ReportController {
   async getDashboard(req, res) {
     try {
-      // sp_Dashboard used to get the branch axis only (sql/081 adds @UserId +
-      // @OwnerIdsJson), so a Self-scope rep was handed their whole branch:
-      // 222 leads where the leads report showed the correct 133.
-      const t = scopeFor(req, "complaints");
-      const result = await database.executeStoredProcedure("sp_Dashboard", {
-        CompId: req.user.CompId,
-        // Leads figures: the dashboard (= leads) scope bound by the route.
-        // Ticket figures: the complaints scope, "[]" when the role has none.
-        ...scopeParams(req),
-        TicketBranchIdsJson: scopeJson(t.branchIds),
-        TicketOwnerIdsJson: scopeJson(t.ownerIds),
-      });
+      // F6: the company and the person only. The dashboard module opens the
+      // route; every figure follows the leads / complaints definitions (132).
+      const { CompId, UserId } = actor(req);
+      const result = await database.executeStoredProcedure("sp_Dashboard", { CompId, UserId });
 
       // ponytail: extra recordsets ship in sql/055 — guard so the old SP (KPIs only) doesn't 500
       const rs = result.recordsets ?? [];
@@ -55,14 +47,11 @@ class ReportController {
 
   async ticketsByCategory(req, res) {
     try {
+      // BranchId is an optional filter that narrows; visibility is the complaints
+      // definition in the database (132), never req.user.BranchId.
+      const { CompId, UserId } = actor(req);
       const result = await database.executeStoredProcedure("sp_TicketsByCategory", {
-        CompId: req.user.CompId,
-        // The caller's own branch is NOT a visibility gate — req.scope is.
-        // Passing req.user.BranchId showed a Self-scope agent the whole
-        // branch, showed a Company-scope user only their own, and went
-        // company-wide for anyone whose tblUser.BranchId is NULL.
-        BranchId: positiveInt(req.body.BranchId),
-        ...scopeParams(req),
+        CompId, UserId, BranchId: positiveInt(req.body.BranchId),
       });
       return res.status(200).json({
         success: true,
@@ -85,10 +74,9 @@ class ReportController {
 
   async resolutionSummary(req, res) {
     try {
+      const { CompId, UserId } = actor(req);
       const result = await database.executeStoredProcedure("sp_ResolutionSummary", {
-        CompId: req.user.CompId,
-        BranchId: positiveInt(req.body.BranchId),
-        ...scopeParams(req),
+        CompId, UserId, BranchId: positiveInt(req.body.BranchId),
       });
       return res.status(200).json({
         success: true,
@@ -183,7 +171,8 @@ controller.tatClocks = asyncRoute(
 );
 
 // --- Sales reports (sql/122): summary lines and the rows behind one number ---
-// Scope is the sales_reports scope bound by the route, passed untouched ([] stays "[]").
+// The sales_reports module opens the route; what counts is the leads definition
+// in the database (132, Ruling 7), fed only the session person — no lists.
 // Totals are summed here from the lines (no totals from SQL); an 'own' line's
 // TeamSize is the whole team and is passed through as the proc sent it.
 const LINE_KEEP = ["GroupKey", "GroupLabel", "LineKind"];
@@ -201,8 +190,9 @@ controller.sales = asyncRoute(
     const parsed = parseSalesArgs(req.body);
     if (parsed.error) return error(res, parsed.error, "VALIDATION_ERROR", 400);
     const args = parsed.args;
+    const { CompId, UserId } = actor(req);
     const run = (over) => database.executeStoredProcedure("sp_RptSales",
-      { CompId: req.user.CompId, ...args, ...scopeParams(req), ...over });
+      { CompId, ...args, UserId, ...over });
     const prev = previousOf(args);
     const [result, prevResult] = await Promise.all([
       run(),
@@ -231,8 +221,9 @@ controller.salesRows = asyncRoute(
     if (parsed.error) return error(res, parsed.error, "VALIDATION_ERROR", 400);
     const args = parsed.args;
     const MaxRows = Math.min(positiveInt(req.body?.MaxRows) ?? MAX_ROWS, MAX_ROWS);
+    const { CompId, UserId } = actor(req);
     const run = (over) => database.executeStoredProcedure("sp_RptSalesRows",
-      { CompId: req.user.CompId, ...args, MaxRows, ...scopeParams(req), ...over });
+      { CompId, ...args, MaxRows, UserId, ...over });
     const prev = req.body?.WithPrevious ? previousOf(args) : null;
     const [result, prevResult] = await Promise.all([
       run(),
@@ -243,12 +234,16 @@ controller.salesRows = asyncRoute(
     const rows = (rs[0] ?? []).map((r) => numRow(r, ROW_KEEP));
     const { Total = 0, AmountTotal = 0, ...sums } = rs[1]?.[0] ?? {};
     const p = prevResult?.recordsets?.[0]?.[0] ?? {};
+    // RS4 (last, only when MaxRows > 0): matches on leads out of view. The proc
+    // lists visible rows only, and listed + hiddenCount = Total (= the summary cell).
+    const hiddenCount = num(rs[3]?.[0]?.HiddenCount ?? 0);
     return success(res, "Report fetched successfully", {
       rows,
       total: num(Total),
+      hiddenCount,
       amountTotal: num(AmountTotal),
       sums: numRow(sums),
-      truncated: num(Total) > rows.length,
+      truncated: num(Total) - hiddenCount > rows.length,
       path: toPath(rs[2]),
       range: { from: args.FromDate, to: args.ToDate },
       previous: prev ? { total: num(p.Total ?? 0), amountTotal: num(p.AmountTotal ?? 0), range: prev } : null,

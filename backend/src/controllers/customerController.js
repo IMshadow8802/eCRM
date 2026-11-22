@@ -6,6 +6,7 @@ const responseHelper = require("../utils/responseHelper");
 const { scopeParams, canSeeRecord, canWriteBranch } = require("../middleware/permission");
 const { positiveInt, pageParams } = require("../utils/controllerKit");
 const { applyMobiles } = require("../utils/mobile");
+const { actor } = require("../utils/actor");
 
 // Mutating SPs return exactly one status row: Id + ResponseCode + ResponseMess.
 // A non-200 code (400 validation, 409 duplicate mobile / tickets attached) is
@@ -37,12 +38,13 @@ const trimmed = (s) => (blank(s) ? null : String(s).trim());
 // defines no meaning for NULL. Only an explicit false / 0 / "false" / "0" is 0.
 const activeBit = (v) => (v === false || v === 0 || v === "false" || v === "0" ? 0 : 1);
 
-// A customer's owner is whoever created it. Reads the row unscoped, then applies
-// `scope` (default: the route's) — ticketController passes the customers scope.
+// A customer's owner is whoever created it. RS1 comes back whatever the caller's
+// reach (132); Node applies `scope` (default: the route's) — ticketController
+// passes the customers scope. @UserId has no default since 132 (it narrows RS2).
 async function assertCustomerVisible(req, res, customerId, scope = req.scope) {
+  const { CompId, UserId } = actor(req);
   const r = await database.executeStoredProcedure("sp_FetchCustomerDetail", {
-    CompId: req.user.CompId, CustomerId: Number(customerId) || 0,
-    UserId: null, AccessibleBranchIdsJson: "[]", OwnerIdsJson: "[]",
+    CompId, CustomerId: Number(customerId) || 0, UserId,
   });
   const row = r.recordsets?.[0]?.[0] || null;
   if (row && canSeeRecord({ ...req, scope }, row, "CreatedBy")) return row;
@@ -109,7 +111,7 @@ const customerController = {
         SearchTerm: trimmed(SearchTerm),
         BranchId: positiveInt(BranchId),
         IsActive: activeBit(IsActive),
-        ...scopeParams(req),
+        ...scopeParams(req, "customers"),
       });
 
       const customers = result.recordsets?.[0] ?? [];
@@ -130,16 +132,14 @@ const customerController = {
   },
 
   async detail(req, res) {
-    const { CompId } = req.user;
     const CustomerId = positiveInt(req.body.CustomerId);
     if (!CustomerId) return responseHelper.validationError(res, "CustomerId is required");
     try {
-      // RS1 is gated by the customers scope (req.scope); RS2 is that customer's
-      // complaints under the COMPLAINTS scope ("[]" when the role has none).
+      // RS1 is gated here by the customers scope (req.scope); RS2 (that customer's
+      // complaints) is narrowed by the database's complaint definitions (132).
+      const { CompId, UserId } = actor(req);
       const result = await database.executeStoredProcedure("sp_FetchCustomerDetail", {
-        CompId,
-        CustomerId,
-        ...scopeParams(req, "complaints"),
+        CompId, CustomerId, UserId,
       });
       const rs = result.recordsets ?? [];
       const customer = rs[0]?.[0] || null;
