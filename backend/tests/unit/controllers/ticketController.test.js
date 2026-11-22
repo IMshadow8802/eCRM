@@ -506,6 +506,31 @@ describe("ticketController lifecycle", () => {
   });
 });
 
+// These six writes rely entirely on gateTicket: their procedures have no
+// visibility check of their own. Removing the gate from any one fails here.
+describe("ticketController — gated writes refuse before the procedure", () => {
+  const cases = [
+    ["setStatus", "sp_SetTicketStatus", { TicketId: 1, StatusId: 62 }],
+    ["resolve", "sp_ResolveTicket", { TicketId: 1, ResolutionId: 8, Remarks: "x" }],
+    ["close", "sp_CloseTicket", { TicketId: 1 }],
+    ["reject", "sp_RejectTicket", { TicketId: 1, Remarks: "x" }],
+    ["reopen", "sp_ReopenTicket", { TicketId: 1, Remarks: "x" }],
+    ["escalate", "sp_EscalateTicket", { TicketId: 1, ToUserId: 16, Remarks: "x" }],
+  ];
+  it.each(cases)("%s: no detail row → 403 and CanEdit 0 → 403, %s never called", async (method, sp, body) => {
+    for (const row of [null, readOnly]) {
+      database.executeStoredProcedure.mockReset();
+      mockTicketLookup(row);
+      database.executeStoredProcedure.mockResolvedValue(okRow());
+      const res = mockRes();
+      await ticketController[method](baseReq({ body }), res);
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(calls()[0]).toEqual(["sp_FetchTicketDetail", { CompId: 5, UserId: 7, TicketId: 1 }]);
+      expect(called(sp)).toBe(false);
+    }
+  });
+});
+
 describe("ticketController.transfer", () => {
   const body = { TicketId: 1, ToUserId: 18, ReasonId: 36, Remarks: "Absent today" };
   const moved = (extra = {}) => okRow({ ResponseMess: "Complaint reassigned successfully", FromUserId: 7, ToUserId: 18, ToName: "Vivek", ...extra });
