@@ -9,10 +9,18 @@
 --   From=130  everything: the database is as it was before 130.
 --   From=131  131-134 undone; 130's columns, rows and tables stay (the old
 --             server works on them, plan Ruling 1).
---   From=133  133-134 undone (writes back to the old procs, reads stay new).
 --   From=134  only 134 undone (sp_LeadsUserWise / sp_ConvertedSummary back).
 --   From=132  REFUSED: the old sp_RptSales / sp_RptSalesRows call the 4-param
 --             fn_ReportTree that only a 131 rollback brings back. Use 131.
+--   From=133  REFUSED: no server image runs on it (the new server needs 133's
+--             writers and sp_FetchTicketEscalationTargets; the old one cannot
+--             run 132's reads; old sp_SaveTicket / sp_SaveLead never set
+--             LoggerHolds = 1). Use 131.
+-- AFTER A PARTIAL ROLLBACK (From=131 or 134) RE-RUN 130 (IT RETAKES THE
+-- SNAPSHOT) BEFORE 131-134: 135 empties tblAccessModelSnapshot, because 130
+-- only takes it while empty and 134 would otherwise compare against the old
+-- one (records created meanwhile would land in `other`); 134 refuses while
+-- the snapshot is empty.
 --
 -- AFTER A ROLLBACK OF 130 OR 131 THE OLD SERVER IMAGE MUST BE RUNNING FOR THAT
 -- COMPANY (the command is in plan Task 33). The new server cannot run on the
@@ -21,7 +29,7 @@
 -- (no difference), then apply 130-134 again.
 --
 -- How it works (all in ONE transaction; any error rolls the whole run back):
---   1. Refuse unless From is 130 / 131 / 133 / 134 and tblAccessModelBackup
+--   1. Refuse unless From is 130 / 131 / 134 and tblAccessModelBackup
 --      exists (130 applied, not yet rolled back).
 --   2. From <= 133: drop CK_tblTicket_LoggerHolds / CK_tblLeads_LoggerHolds
 --      (pseudo-row #ck_loggerholds_133).
@@ -41,11 +49,12 @@
 --      fn_AccessPeople, fn_AccessOffices, fn_RecordGiver, fn_VisibleLeads,
 --      fn_VisibleTickets, fn_VisibleFollowUps, fn_AssignableUsers,
 --      fn_RecordActions, fn_StrandedWork, sp_NotifyStranded (131),
---      sp_FetchLoggedByMe (132), fn_ReassignGate,
---      sp_FetchTicketEscalationTargets (133).
+--      sp_FetchLoggedByMe (132), fn_CompanyOffice, fn_ReassignGate,
+--      sp_FetchTicketEscalationTargets (133); 134 creates nothing.
 --      Pseudo-rows (ObjName LIKE '#%') are never EXECuted or dropped.
---   5. The backup rows of the undone scripts are deleted, so re-applying a
---      script saves the then-live text again (first save wins).
+--   5. From >= 131: the backup rows of the undone scripts are deleted, so
+--      re-applying a script saves the then-live text again (first save
+--      wins), and tblAccessModelSnapshot is emptied (re-run 130 first).
 --   6. From = 130 only, from 130's pseudo-rows:
 --      #escalation_n3          the cleared escalations are put back (only
 --                              where EscalatedTo is still empty).
@@ -88,12 +97,17 @@ GO
 DECLARE @From INT = TRY_CAST(N'$(From)' AS INT);
 IF @From IS NULL OR @From NOT IN (130, 131, 132, 133, 134)
 BEGIN
-    RAISERROR('135: run with -v From=130, 131, 133 or 134. Nothing was changed.', 16, 1);
+    RAISERROR('135: run with -v From=130, 131 or 134. Nothing was changed.', 16, 1);
     SET NOEXEC ON;
 END
 ELSE IF @From = 132
 BEGIN
     RAISERROR('135: From=132 is refused - the old report procedures need the old fn_ReportTree, which only a 131 rollback restores. Use From=131. Nothing was changed.', 16, 1);
+    SET NOEXEC ON;
+END
+ELSE IF @From = 133
+BEGIN
+    RAISERROR('135: From=133 is refused - no server image can run on 132 reads with the old writers. Roll back to 131 instead (From=131). Nothing was changed.', 16, 1);
     SET NOEXEC ON;
 END
 ELSE IF OBJECT_ID('dbo.tblAccessModelBackup', 'U') IS NULL
@@ -169,7 +183,7 @@ BEGIN TRY
     END
 
     -- 4. Drop what the undone scripts created: procedures, then functions.
-    DECLARE d CURSOR LOCAL FAST_FORWARD FOR
+    DECLARE d CURSOR LOCAL STATIC READ_ONLY FOR   -- STATIC: the loop drops what it iterates
         SELECT b.ObjName,
                CASE o.type WHEN 'P' THEN 'PROCEDURE' WHEN 'FN' THEN 'FUNCTION' WHEN 'IF' THEN 'FUNCTION'
                            WHEN 'TF' THEN 'FUNCTION' WHEN 'V' THEN 'VIEW' END
@@ -270,6 +284,13 @@ BEGIN TRY
         DELETE FROM dbo.tblAccessModelBackup WHERE ScriptNo >= @From;
         INSERT INTO @log (ObjName, Action, Result)
         VALUES ('tblAccessModelBackup', 'delete', CAST(@@ROWCOUNT AS VARCHAR(10)) + ' row(s) >= ' + CAST(@From AS VARCHAR(10)));
+        -- 130 retakes the snapshot only while empty; empty it so a re-run of
+        -- 130 before 131-134 compares against today's data, not the old one.
+        IF OBJECT_ID('dbo.tblAccessModelSnapshot', 'U') IS NOT NULL
+        BEGIN
+            TRUNCATE TABLE dbo.tblAccessModelSnapshot;
+            INSERT INTO @log (ObjName, Action, Result) VALUES ('tblAccessModelSnapshot', 'truncate', 're-run 130 next');
+        END
     END
 
     COMMIT;
@@ -280,7 +301,8 @@ BEGIN CATCH
     IF @@TRANCOUNT > 0 ROLLBACK;
     IF CURSOR_STATUS('local', 'r') >= -1 DEALLOCATE r;
     IF CURSOR_STATUS('local', 'd') >= -1 DEALLOCATE d;
-    PRINT '135: FAILED at ' + ISNULL(@name, '(no object)') + ' - nothing was changed.';
+    PRINT '135: FAILED at ' + ISNULL(@name, '(no object)') + ' - nothing was changed. Steps done before the error (rolled back):';
+    SELECT Seq, ObjName, Action, Result FROM @log ORDER BY Seq;
     THROW;
 END CATCH
 GO
@@ -294,26 +316,28 @@ GO
 -- During the run: the last result set lists every step; every 'restore' row
 -- reads 'same as saved' (a MISMATCH aborts the run before commit).
 --
--- After any From (131 / 133 / 134 shown; From=130 also passes 1-4):
+-- After From=131 / 134 (From=130 also passes 1-4):
 -- 1. Nothing an undone script created is left -> 0 rows
---    (From=133: only the last two names; From=134: none of them)
+--    (From=134: these are untouched - 134 creates none of them)
 -- SELECT name FROM sys.objects WHERE name IN ('fn_AccessGrants', 'fn_AccessScope',
 --   'fn_AccessPeople', 'fn_AccessOffices', 'fn_RecordGiver', 'fn_VisibleLeads',
 --   'fn_VisibleTickets', 'fn_VisibleFollowUps', 'fn_AssignableUsers', 'fn_RecordActions',
 --   'fn_StrandedWork', 'sp_NotifyStranded', 'sp_FetchLoggedByMe', 'fn_ReassignGate',
---   'sp_FetchTicketEscalationTargets');
+--   'sp_FetchTicketEscalationTargets', 'fn_CompanyOffice');
 -- 2. The old signatures are back (From <= 131) -> 1, 4
 -- SELECT COUNT(*) FROM sys.parameters WHERE object_id = OBJECT_ID('dbo.sp_FetchTickets')
 --   AND name = '@AccessibleBranchIdsJson';
 -- SELECT COUNT(*) FROM sys.parameters WHERE object_id = OBJECT_ID('dbo.fn_ReportTree') AND parameter_id > 0;
---    (From <= 133) sp_SetTicketStatus has @AllowReopen again -> 1
+--    (From <= 131) sp_SetTicketStatus has @AllowReopen again -> 1
 -- SELECT COUNT(*) FROM sys.parameters WHERE object_id = OBJECT_ID('dbo.sp_SetTicketStatus') AND name = '@AllowReopen';
--- 3. LoggerHolds checks gone (From <= 133) -> 0
+-- 3. LoggerHolds checks gone (From <= 131) -> 0
 -- SELECT COUNT(*) FROM sys.check_constraints WHERE name IN ('CK_tblTicket_LoggerHolds', 'CK_tblLeads_LoggerHolds');
 -- 4. 134's drops are back -> 2
 -- SELECT COUNT(*) FROM sys.objects WHERE name IN ('sp_LeadsUserWise', 'sp_ConvertedSummary') AND type = 'P';
--- 5. (From 131 / 133 / 134) no save of an undone script is left -> 0
+-- 5. (From 131 / 134) no save of an undone script is left, snapshot empty -> 0, 0
 -- SELECT COUNT(*) FROM dbo.tblAccessModelBackup WHERE ScriptNo >= 131;   -- use your From
+-- SELECT COUNT(*) FROM dbo.tblAccessModelSnapshot;
+--    Next: re-run 130 (retakes the snapshot), then 131-134.
 --
 -- After From=130 only:
 -- 6. 130's schema is gone -> NULL x6
