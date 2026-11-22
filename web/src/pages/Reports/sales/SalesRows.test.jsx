@@ -120,6 +120,16 @@ describe("SalesRows", () => {
     expect(screen.getByText("Nothing in this period")).toBeInTheDocument();
   });
 
+  it.each([
+    [3, "3 leads no longer in your view"],
+    [1, "1 lead no longer in your view"],
+  ])("a person's leads: hidden line counts leads (%i)", async (n, line) => {
+    mockReportEndpoints("/api/reports/salesRows", data({ rows: [ev({ NNew: 1 })], total: 1 + n, hiddenCount: n, path: [{ Id: 17, Name: "Amit Singh" }] }));
+    renderRows("team", `/reports/sales/team/rows?shape=leads&metric=all&person=17&${SEP}`);
+    expect(await screen.findByTestId("sales-rows-hidden")).toHaveTextContent(line);
+    expect(screen.getByTestId("sales-rows-hidden")).not.toHaveTextContent("activit");
+  });
+
   it("no hidden line at 0", async () => {
     mockReportEndpoints("/api/reports/salesRows", data({ rows: [ev()], total: 1, hiddenCount: 0 }));
     renderRows("team", `/reports/sales/team/rows?metric=fu_missed&person=17&${SEP}`);

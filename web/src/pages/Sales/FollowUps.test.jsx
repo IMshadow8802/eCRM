@@ -250,6 +250,8 @@ describe("Follow-ups queue", () => {
     ROWS = [VIA2];
     renderPage();
     expect(screen.getByTestId("log-followup-31")).toBeInTheDocument();
+    // Reschedule books on the lead, which a Via 2 caller cannot see.
+    expect(screen.queryByTestId("reschedule-followup-31")).toBeNull();
     expect(screen.getByTestId("skip-followup-31")).toBeInTheDocument();
     expect(screen.getByTestId("delete-followup-31")).toBeInTheDocument();
     expect(screen.queryByTestId("view-lead-31")).toBeNull();

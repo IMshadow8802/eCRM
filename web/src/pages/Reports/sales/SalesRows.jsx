@@ -298,7 +298,9 @@ export default function SalesRows({ report: slug }) {
         {content}
         {family && !filters.error && !error && hidden > 0 && (
           <Box data-testid="sales-rows-hidden" sx={{ px: fs(12), py: fs(10), fontSize: fs(13), color: p.text.secondary }}>
-            {hidden === 1 ? "1 activity on a lead no longer in your view" : `${int(hidden)} activities on leads no longer in your view`}
+            {family === "leads" // there hiddenCount counts leads, elsewhere activities
+              ? (hidden === 1 ? "1 lead no longer in your view" : `${int(hidden)} leads no longer in your view`)
+              : (hidden === 1 ? "1 activity on a lead no longer in your view" : `${int(hidden)} activities on leads no longer in your view`)}
           </Box>
         )}
       </Card>

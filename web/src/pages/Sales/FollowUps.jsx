@@ -241,11 +241,15 @@ const FollowUps = () => {
                   <CheckCircle2 size={16} />
                 </IconButton>
               </Tooltip>
-              <Tooltip title="Reschedule">
-                <IconButton size="sm" variant="ghost" tone="primary" aria-label="Reschedule follow-up" data-testid={`reschedule-followup-${f.Id}`} onClick={() => setRescheduling(f)}>
-                  <CalendarClock size={16} />
-                </IconButton>
-              </Tooltip>
+              {/* Reschedule books a new follow-up on the lead (sp_ScheduleFollowUp
+                  needs the lead visible), so a Via 2 line can log/skip but not move. */}
+              {opensLead(f) && (
+                <Tooltip title="Reschedule">
+                  <IconButton size="sm" variant="ghost" tone="primary" aria-label="Reschedule follow-up" data-testid={`reschedule-followup-${f.Id}`} onClick={() => setRescheduling(f)}>
+                    <CalendarClock size={16} />
+                  </IconButton>
+                </Tooltip>
+              )}
               <Tooltip title="Skip with a remark">
                 <IconButton size="sm" variant="ghost" tone="warning" aria-label="Skip follow-up" data-testid={`skip-followup-${f.Id}`} onClick={() => setSkipping(f)}>
                   <SkipForward size={16} />
