@@ -10,6 +10,7 @@ const { setupErrorHandlers } = require("./config/errorHandlers");
 const database = require("./config/database");
 const { init: initRealtime } = require("./realtime/socket");
 const sweep = require("./jobs/sweep");
+const { reportAccessModel } = require("./utils/dbReady");
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -49,6 +50,10 @@ async function startServer() {
     if (db.database === "down") {
       console.warn(`⚠️  Database unreachable at startup (${db.error}) — starting anyway; requests get 503 until it is back`);
     }
+
+    // Names the database actually reached and says loudly when 131-133 are
+    // missing. Not awaited and never throws: a down DB must not delay the boot.
+    reportAccessModel(database, process.env.DB_NAME);
 
     // Bind host: 127.0.0.1 locally (IIS reverse proxy), 0.0.0.0 in Docker.
     // Docker Compose sets HOST=0.0.0.0 so the port is reachable from outside

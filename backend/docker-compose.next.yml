@@ -1,0 +1,12 @@
+# Used only while the access-model roll-out is in progress (plan 2026-11-22, Task 33).
+# A service that has been switched is always built with BOTH files:
+#   docker compose -f docker-compose.yml -f docker-compose.next.yml up -d --build <service>
+# A service that has not been switched is built with the plain command and gets $REMOTE/src (main).
+# ./next holds the new backend (src/ + package.json, pnpm-lock.yaml,
+# pnpm-workspace.yaml, Dockerfile, .dockerignore); the main .dockerignore lists
+# `next` so the old image never swallows it.
+services:
+  crm:       { build: ./next }
+  crm_solar: { build: ./next }
+  crm_test:  { build: ./next }
+  crm_osg:   { build: ./next }
