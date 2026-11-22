@@ -5,7 +5,7 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 
 export default [
-  { ignores: ['dist', 'dist-web', 'coverage'] },
+  { ignores: ['dist', 'dist-web', 'coverage', 'test-results', 'playwright-report'] },
   {
     files: ['**/*.{js,jsx}'],
     languageOptions: {
@@ -34,5 +34,10 @@ export default [
       'react/prop-types': 'off', // Disable warnings about missing prop types
       'no-unused-vars': 'off',
     },
+  },
+  // Playwright flows and their config run in Node, not the browser.
+  {
+    files: ['e2e/**/*.js', 'playwright.config.js'],
+    languageOptions: { globals: { ...globals.node } },
   },
 ]

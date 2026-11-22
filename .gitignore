@@ -108,3 +108,8 @@ backend/CRMUploads/
 
 # SDD workspace (git-ignored scratch for plan execution)
 .superpowers/
+
+# Playwright (web/e2e): saved persona sessions and run output
+web/e2e/.auth/
+web/test-results/
+web/playwright-report/
