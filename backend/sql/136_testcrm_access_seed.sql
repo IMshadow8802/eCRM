@@ -12,12 +12,18 @@
 --   -I = QUOTED_IDENTIFIER ON, -b = stop at the first error (every refusal
 --   below also SETs NOEXEC ON).
 --
+-- RefUser is substituted as text into a '...' literal before T-SQL parses
+-- it, so a quote in it cannot be escaped from inside the script: a username
+-- containing ' must be passed with the quote doubled (O''Neil). An unknown
+-- name makes the script refuse.
+--
 -- Passwords: none in this file. Every persona gets a copy of RefUser's
 -- stored password HASH, so the owner already knows the one password and
 -- nobody else does. RefUser's company is the personas' company.
 --
 -- Refuses (nothing changed) when: the database is not TestCRM; any of
--- 130-134 is missing; a user am_% / a record AM-% / the AM Central Desk role
+-- 130-134 is missing; a user am_% / an exact-tag record (case-sensitive
+-- AM-Cnn / AM-Lnn / AM-Cust-) / the AM Central Desk role
 -- already exists (run 137 first); RefUser is unknown or inactive; a role or
 -- office named below is missing.
 --
@@ -70,7 +76,8 @@
 -- Records (office 1 and customer AM-Cust-HO unless stated; "logged" =
 -- CreatedBy; assigned at creation writes the "Assigned on creation" history
 -- row by the logger, as sp_SaveTicket / sp_SaveLead do):
---   AM-Cust-HO (office 1), AM-Cust-ND (office 6)               customers
+--   AM-Cust-HO (office 1), AM-Cust-ND (office 6),
+--   AM-Cust-SE (office 2)                                       customers
 --   AM-C01 nitin -> vinod at creation, open                     1 2 3 8 10
 --   AM-C02 nitin, unassigned, LoggerHolds 1                     7
 --   AM-C03 nitin -> vinod, then unassigned by amit, LH 0        16 F13
@@ -87,6 +94,9 @@
 --          only: prasant reports to amit, Own reach)
 --   AM-C18 nitin -> rohit, resolved by rohit                     team lead
 --          cannot reopen his own (Task 29)
+--   AM-C19 amit -> am_readonly, office 2, AM-Cust-SE, open      read-only
+--   AM-C20 amit -> am_readonly, office 1 (his read-only extra), grant case
+--          AM-Cust-HO, open
 --   AM-L01 kasak, owner kasak, open; follow-ups: open -> kasak, 6 19 10
 --          open visit -> am_field (scheduled by neha), done by kasak;
 --          one call by kasak
@@ -101,13 +111,13 @@
 --          kasak's done call + done follow-up on it
 --
 -- VERIFY AFTER APPLY (the script ends by printing these; expected):
---   1. Counts: Personas 18 (Active 17), Role 1, Customers 2, Complaints 18,
+--   1. Counts: Personas 18 (Active 17), Role 1, Customers 3, Complaints 20,
 --      Leads 9, FollowUps 4, Calls 2, BranchGrants 1.
 --   2. Persona list: 18 rows, Username -> Id, Role, ReportsTo, Office, IsActive.
---   3. Tag list: 29 rows, Tag -> Kind, Id (complaints also TicketNo).
+--   3. Tag list: 32 rows, Tag -> Kind, Id (complaints also TicketNo).
 --   4. Every check row prints PASS:
 --      SELECT CASE WHEN COUNT(*) = 0 THEN 'PASS' ELSE 'FAIL' END FROM dbo.tblTicket
---       WHERE Subject LIKE 'AM-%' AND LoggerHolds = 1 AND AssignedTo IS NOT NULL;
+--       WHERE Subject COLLATE Latin1_General_CS_AS LIKE 'AM-C[0-9][0-9] %' AND LoggerHolds = 1 AND AssignedTo IS NOT NULL;
 -- sqlcmd splits on GO even inside comments: every note is a `--` line comment.
 -- ===========================================================================
 IF DB_NAME() <> 'TestCRM'
@@ -144,9 +154,9 @@ GO
 
 IF EXISTS (SELECT 1 FROM dbo.tblUser WHERE Username LIKE 'am[_]%')
    OR EXISTS (SELECT 1 FROM dbo.tblUserGroups WHERE Name = 'AM Central Desk')
-   OR EXISTS (SELECT 1 FROM dbo.tblCustomer WHERE Name LIKE 'AM-%')
-   OR EXISTS (SELECT 1 FROM dbo.tblTicket WHERE Subject LIKE 'AM-%')
-   OR EXISTS (SELECT 1 FROM dbo.tblLeads WHERE Name LIKE 'AM-%')
+   OR EXISTS (SELECT 1 FROM dbo.tblCustomer WHERE Name COLLATE Latin1_General_CS_AS LIKE 'AM-Cust-%')
+   OR EXISTS (SELECT 1 FROM dbo.tblTicket WHERE Subject COLLATE Latin1_General_CS_AS LIKE 'AM-C[0-9][0-9] %')
+   OR EXISTS (SELECT 1 FROM dbo.tblLeads WHERE Name COLLATE Latin1_General_CS_AS LIKE 'AM-L[0-9][0-9] %')
 BEGIN
     RAISERROR('136: the seed (am_ users / AM- records / AM Central Desk) already exists. Apply 137 first. Nothing was changed.', 16, 1);
     SET NOEXEC ON;
@@ -281,9 +291,11 @@ DECLARE @Connected INT = (SELECT TOP 1 Id FROM dbo.tblLookup WHERE CompId = @Com
 -- ---- customers --------------------------------------------------------------
 INSERT INTO dbo.tblCustomer (CompId, BranchId, Name, ContactPerson, Mobile, City, IsActive, CreatedBy, CreatedAt)
 VALUES (@CompId, 1, N'AM-Cust-HO', N'AM Sharma', '9990003001', N'New Delhi', 1, @amit,  @Now),
-       (@CompId, 6, N'AM-Cust-ND', N'AM Gupta',  '9990003002', N'New Delhi', 1, @ndmgr, @Now);
+       (@CompId, 6, N'AM-Cust-ND', N'AM Gupta',  '9990003002', N'New Delhi', 1, @ndmgr, @Now),
+       (@CompId, 2, N'AM-Cust-SE', N'AM Mehta',  '9990003003', N'New Delhi', 1, @amit,  @Now);
 DECLARE @CustHO INT = (SELECT Id FROM dbo.tblCustomer WHERE CompId = @CompId AND Name = N'AM-Cust-HO');
 DECLARE @CustND INT = (SELECT Id FROM dbo.tblCustomer WHERE CompId = @CompId AND Name = N'AM-Cust-ND');
+DECLARE @CustSE INT = (SELECT Id FROM dbo.tblCustomer WHERE CompId = @CompId AND Name = N'AM-Cust-SE');
 
 -- ---- leads (before complaints: AM-C13 links AM-L03) -----------------------
 -- FirstTo = assigned at creation ("Assigned on creation" row by the logger).
@@ -375,7 +387,9 @@ INSERT INTO @C (Tag, Subject, CreatedBy, FirstTo, AssignedTo, BranchId, Customer
   ('AM-C15', N'AM-C15 Assigned by Amit',         @amit,  @vinod, @vinod, 1, @CustHO, 0, 0, NULL,     NULL, '9990001015'),
   ('AM-C16', N'AM-C16 North Delhi, Pooja',       @ndmgr, @pooja, @pooja, 6, @CustND, 0, 0, NULL,     NULL, '9990001016'),
   ('AM-C17', N'AM-C17 Escalated to Prasant',     @nitin, @vinod, @vinod, 1, @CustHO, 0, 0, @prasant, NULL, '9990001017'),
-  ('AM-C18', N'AM-C18 Resolved by Rohit',        @nitin, @rohit, @rohit, 1, @CustHO, 1, 0, NULL,     NULL, '9990001018');
+  ('AM-C18', N'AM-C18 Resolved by Rohit',        @nitin, @rohit, @rohit, 1, @CustHO, 1, 0, NULL,     NULL, '9990001018'),
+  ('AM-C19', N'AM-C19 Readonly, home office 2',  @amit,  @readonly, @readonly, 2, @CustSE, 0, 0, NULL, NULL, '9990001019'),
+  ('AM-C20', N'AM-C20 Readonly, held in office 1', @amit, @readonly, @readonly, 1, @CustHO, 0, 0, NULL, NULL, '9990001020');
 
 -- Resolved ones were logged two days ago; open ones minutes ago, in tag order.
 UPDATE c SET CreatedAt = CASE WHEN c.Resolved = 1 THEN DATEADD(DAY, -2, @Now)
@@ -428,11 +442,11 @@ GO
 SELECT (SELECT COUNT(*) FROM dbo.tblUser WHERE Username LIKE 'am[_]%')                  AS Personas,
        (SELECT COUNT(*) FROM dbo.tblUser WHERE Username LIKE 'am[_]%' AND IsActive = 1) AS Active,
        (SELECT COUNT(*) FROM dbo.tblUserGroups WHERE Name = 'AM Central Desk')          AS Role,
-       (SELECT COUNT(*) FROM dbo.tblCustomer WHERE Name LIKE 'AM-%')                    AS Customers,
-       (SELECT COUNT(*) FROM dbo.tblTicket WHERE Subject LIKE 'AM-%')                   AS Complaints,
-       (SELECT COUNT(*) FROM dbo.tblLeads WHERE Name LIKE 'AM-%')                       AS Leads,
-       (SELECT COUNT(*) FROM dbo.tblFollowUp f JOIN dbo.tblLeads l ON l.Id = f.LeadId WHERE l.Name LIKE 'AM-%') AS FollowUps,
-       (SELECT COUNT(*) FROM dbo.tblCall c JOIN dbo.tblLeads l ON l.Id = c.LeadId WHERE l.Name LIKE 'AM-%')     AS Calls,
+       (SELECT COUNT(*) FROM dbo.tblCustomer WHERE Name COLLATE Latin1_General_CS_AS LIKE 'AM-Cust-%')                    AS Customers,
+       (SELECT COUNT(*) FROM dbo.tblTicket WHERE Subject COLLATE Latin1_General_CS_AS LIKE 'AM-C[0-9][0-9] %')                   AS Complaints,
+       (SELECT COUNT(*) FROM dbo.tblLeads WHERE Name COLLATE Latin1_General_CS_AS LIKE 'AM-L[0-9][0-9] %')                       AS Leads,
+       (SELECT COUNT(*) FROM dbo.tblFollowUp f JOIN dbo.tblLeads l ON l.Id = f.LeadId WHERE l.Name COLLATE Latin1_General_CS_AS LIKE 'AM-L[0-9][0-9] %') AS FollowUps,
+       (SELECT COUNT(*) FROM dbo.tblCall c JOIN dbo.tblLeads l ON l.Id = c.LeadId WHERE l.Name COLLATE Latin1_General_CS_AS LIKE 'AM-L[0-9][0-9] %')     AS Calls,
        (SELECT COUNT(*) FROM dbo.tblUserBranchAccess a JOIN dbo.tblUser u ON u.Id = a.UserId WHERE u.Username LIKE 'am[_]%') AS BranchGrants;
 
 SELECT u.Username, u.Id, g.Name AS RoleName, b.Username AS ReportsTo, u.BranchId AS Office, u.IsActive
@@ -444,16 +458,16 @@ WHERE u.Username LIKE 'am[_]%'
 ORDER BY u.Id;
 
 SELECT LEFT(Name, CHARINDEX(' ', Name + ' ') - 1) AS Tag, 'customer' AS Kind, Id, CAST(NULL AS VARCHAR(50)) AS TicketNo
-FROM dbo.tblCustomer WHERE Name LIKE 'AM-%'
+FROM dbo.tblCustomer WHERE Name COLLATE Latin1_General_CS_AS LIKE 'AM-Cust-%'
 UNION ALL
-SELECT LEFT(Subject, 6), 'complaint', Id, TicketNo FROM dbo.tblTicket WHERE Subject LIKE 'AM-%'
+SELECT LEFT(Subject, 6), 'complaint', Id, TicketNo FROM dbo.tblTicket WHERE Subject COLLATE Latin1_General_CS_AS LIKE 'AM-C[0-9][0-9] %'
 UNION ALL
-SELECT LEFT(Name, 6), 'lead', Id, NULL FROM dbo.tblLeads WHERE Name LIKE 'AM-%'
+SELECT LEFT(Name, 6), 'lead', Id, NULL FROM dbo.tblLeads WHERE Name COLLATE Latin1_General_CS_AS LIKE 'AM-L[0-9][0-9] %'
 ORDER BY 2, 1;
 
 SELECT 'LoggerHolds only when unassigned' AS [Check],
-       CASE WHEN NOT EXISTS (SELECT 1 FROM dbo.tblTicket WHERE Subject LIKE 'AM-%' AND LoggerHolds = 1 AND AssignedTo IS NOT NULL)
-             AND NOT EXISTS (SELECT 1 FROM dbo.tblLeads WHERE Name LIKE 'AM-%' AND LoggerHolds = 1 AND OwnerId IS NOT NULL)
+       CASE WHEN NOT EXISTS (SELECT 1 FROM dbo.tblTicket WHERE Subject COLLATE Latin1_General_CS_AS LIKE 'AM-C[0-9][0-9] %' AND LoggerHolds = 1 AND AssignedTo IS NOT NULL)
+             AND NOT EXISTS (SELECT 1 FROM dbo.tblLeads WHERE Name COLLATE Latin1_General_CS_AS LIKE 'AM-L[0-9][0-9] %' AND LoggerHolds = 1 AND OwnerId IS NOT NULL)
             THEN 'PASS' ELSE 'FAIL' END AS Result
 UNION ALL
 SELECT 'every persona has exactly one role',
@@ -476,10 +490,10 @@ SELECT 'AM-C18 resolved, held by am_rohit',
                          WHERE t.Subject LIKE 'AM-C18 %')
             THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
-SELECT 'counts: 18 personas, 2 customers, 18 complaints, 9 leads',
+SELECT 'counts: 18 personas, 3 customers, 20 complaints, 9 leads',
        CASE WHEN (SELECT COUNT(*) FROM dbo.tblUser WHERE Username LIKE 'am[_]%') = 18
-             AND (SELECT COUNT(*) FROM dbo.tblCustomer WHERE Name LIKE 'AM-%') = 2
-             AND (SELECT COUNT(*) FROM dbo.tblTicket WHERE Subject LIKE 'AM-%') = 18
-             AND (SELECT COUNT(*) FROM dbo.tblLeads WHERE Name LIKE 'AM-%') = 9
+             AND (SELECT COUNT(*) FROM dbo.tblCustomer WHERE Name COLLATE Latin1_General_CS_AS LIKE 'AM-Cust-%') = 3
+             AND (SELECT COUNT(*) FROM dbo.tblTicket WHERE Subject COLLATE Latin1_General_CS_AS LIKE 'AM-C[0-9][0-9] %') = 20
+             AND (SELECT COUNT(*) FROM dbo.tblLeads WHERE Name COLLATE Latin1_General_CS_AS LIKE 'AM-L[0-9][0-9] %') = 9
             THEN 'PASS' ELSE 'FAIL' END;
 GO
