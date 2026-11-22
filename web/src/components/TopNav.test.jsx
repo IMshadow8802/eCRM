@@ -264,6 +264,34 @@ describe("TopNav notification routing", () => {
     expect(mockNavigate).toHaveBeenCalledWith("/support/tickets/7");
   });
 
+  // Access model (Task 23): every new complaint / lead notice type.
+  it.each([
+    ["ticket_assigned", "ticket", 7, "/support/tickets/7"],
+    ["ticket_sent_back", "ticket", 7, "/support/tickets/7"],
+    ["ticket_reopen_unassigned", "ticket", 7, "/support/tickets/7"],
+    ["ticket_moved_away", "ticket", 7, "/support/tickets"],
+    ["tickets_bulk_assigned", "ticket", 0, "/support/tickets"],
+    ["tickets_bulk_moved", "ticket", 0, "/support/tickets"],
+    ["lead_assigned", "lead", 9, "/sales/leads/9"],
+    ["lead_sent_back", "lead", 9, "/sales/leads/9"],
+    ["lead_moved_away", "lead", 9, "/sales/leads"],
+    ["leads_bulk_assigned", "lead", 0, "/sales/leads"],
+    ["leads_bulk_moved", "lead", 0, "/sales/leads"],
+    ["stranded_work", "ticket", 82, "/support/tickets"],
+    ["stranded_work", "lead", 82, "/sales/leads"],
+    ["some_future_type", "lead", 9, "/sales/leads/9"],
+  ])("%s (%s %s) opens %s", (Type, EntityType, EntityId, path) => {
+    renderTopNav();
+    capturedOnOpenEntity({ Type, EntityType, EntityId });
+    expect(mockNavigate).toHaveBeenCalledWith(path);
+  });
+
+  it("an unknown entity type does nothing and does not crash", () => {
+    renderTopNav();
+    capturedOnOpenEntity({ Type: "mystery", EntityType: "spaceship", EntityId: 3 });
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
   it("a not-signed-in alert opens the team tab of Today", () => {
     renderTopNav();
     capturedOnOpenEntity({ EntityType: "user", Type: "presence_not_signed_in", EntityId: 5 });

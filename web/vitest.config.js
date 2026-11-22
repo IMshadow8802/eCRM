@@ -10,7 +10,7 @@ export default defineConfig({
     setupFiles: ["./src/test/setup.js"],
     css: false,
     include: ["src/**/*.{test,spec}.{js,jsx}"],
-    exclude: ["node_modules", "dist-web", "dist"],
+    exclude: ["node_modules", "dist-web", "dist", "e2e"],
     // Instrumented (--coverage) runs on the 4-fork pool push otherwise-fast
     // tests past vitest's 5 s default (2026-09-08: a 527 ms test hit 5057 ms).
     // 15 s keeps a genuinely hung test failing fast enough while removing the

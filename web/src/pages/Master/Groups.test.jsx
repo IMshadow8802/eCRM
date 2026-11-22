@@ -184,6 +184,9 @@ describe("Roles & Permissions (Groups) page", () => {
     expect(screen.queryByTestId("reach-cards-input")).toBeNull();
     fireEvent.click(screen.getByTestId("perm-cards-CanView"));
     expect(screen.getByTestId("reach-cards-input")).toHaveValue("Own records");
+    // §4 words: the hint says "what this role can see", never "reach".
+    fireEvent.mouseOver(screen.getByTestId("module-row-cards").querySelector("span[tabindex]"));
+    expect(await screen.findByText(/visiting cards within what this role can see/)).toBeInTheDocument();
   });
 
   it("saving the attendance row with Office reach sends Reach Office", async () => {

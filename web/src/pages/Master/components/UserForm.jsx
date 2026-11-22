@@ -82,10 +82,10 @@ const HandoverSummary = ({ userId, handover }) => {
       <li key="t">{plural(OpenTasks, "open task", "open tasks")} will be unassigned. Their workspace owners are told.</li>
     ),
     OpenLeads > 0 && (
-      <li key="l">{plural(OpenLeads, "open lead", "open leads")} <Link to={`/sales/leads?OwnerId=${userId}`}>Transfer</Link></li>
+      <li key="l">{plural(OpenLeads, "open lead", "open leads")} <Link to={`/sales/leads?OwnerId=${userId}`}>Reassign</Link></li>
     ),
     OpenTickets > 0 && (
-      <li key="c">{plural(OpenTickets, "open complaint", "open complaints")} <Link to={`/support/tickets?AssignedTo=${userId}`}>Transfer</Link></li>
+      <li key="c">{plural(OpenTickets, "open complaint", "open complaints")} <Link to={`/support/tickets?AssignedTo=${userId}`}>Reassign</Link></li>
     ),
     OwnedWorkspaces > 0 && (
       <li key="w">{plural(OwnedWorkspaces, "workspace", "workspaces")} they own: {workspaces.map((w) => w.Name).join(", ")}</li>

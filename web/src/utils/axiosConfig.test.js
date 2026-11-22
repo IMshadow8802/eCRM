@@ -115,6 +115,24 @@ describe("response interceptor", () => {
   });
 });
 
+describe("403s", () => {
+  const forbidden = (data) => ({ response: { status: 403, data }, config: { url: "/api/x" } });
+
+  // REGRESSION (Task 23): the generic toast appeared beside the server's own
+  // refusal sentence, so the user read two messages for one refusal.
+  it("leaves a 403 with the server's sentence to the caller", async () => {
+    const err = forbidden({ message: "Only a manager can reassign a closed record" });
+    await expect(runResponseError(err)).rejects.toBe(err);
+    expect(enqueueSnackbar).not.toHaveBeenCalled();
+  });
+
+  it("still shows the generic toast for a message-less 403", async () => {
+    await runResponseError(forbidden(undefined)).catch(() => {});
+    expect(enqueueSnackbar).toHaveBeenCalledOnce();
+    expect(enqueueSnackbar.mock.calls[0][0]).toMatch(/Access denied/);
+  });
+});
+
 describe("session 401s re-sign in over the page (spec D7)", () => {
   // The retry goes through the real instance; this adapter stands in for the
   // network and echoes the Authorization header it was sent with.

@@ -440,7 +440,7 @@ describe("UserForm deactivation", () => {
     expect(screen.getByText(/2 open complaints/i)).toBeInTheDocument();
     expect(screen.getByText(/1 workspace they own: Ops/i)).toBeInTheDocument();
     expect(screen.getByText(/1 person reports to them: Asha/i)).toBeInTheDocument();
-    const links = screen.getAllByRole("link", { name: "Transfer" });
+    const links = screen.getAllByRole("link", { name: "Reassign" });
     expect(links[0].getAttribute("href")).toMatch(/\/sales\/leads\?OwnerId=11$/);
     expect(links[1].getAttribute("href")).toMatch(/\/support\/tickets\?AssignedTo=11$/);
 
