@@ -17,7 +17,7 @@ import { SUPPORT_ENDPOINTS } from "../../api/supportQueries";
  * whole reason every move goes through sp_SetTicketStatus rather than the
  * sp_ResolveTicket shortcut.
  */
-export default function ResolveTicketModal({ open, onClose, ticket, status, onDone }) {
+export default function ResolveTicketModal({ open, onClose, ticket, status, onDone, onError }) {
   const [resolution, setResolution] = useState(null);
   const [remarks, setRemarks] = useState("");
 
@@ -33,6 +33,8 @@ export default function ResolveTicketModal({ open, onClose, ticket, status, onDo
   const mutation = useApiMutation({
     endpoint: SUPPORT_ENDPOINTS.tickets.setTicketStatus,
     successMessage: status?.code === "closed" ? "Complaint closed" : "Complaint resolved",
+    showErrorMessage: !onError,
+    onError,
     invalidateQueries: [["tickets"], ["ticket-detail"], ["customer-detail"]],
   });
 

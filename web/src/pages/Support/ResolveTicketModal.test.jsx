@@ -78,4 +78,22 @@ describe("ResolveTicketModal", () => {
     expect(await screen.findByText("A resolution is required")).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
   });
+
+  // Review Focus 4: the detail page passes onError to leave a stale record.
+  it("hands a 403 to onError when given, instead of the toast", async () => {
+    mockTicketEndpoints();
+    server.use(http.post("*/api/tickets/setTicketStatus", () => refuse("You cannot change this complaint", 403)));
+    const onError = vi.fn();
+    renderModal({ onError });
+    const user = userEvent.setup();
+
+    await user.click(screen.getByTestId("resolution-combobox-input"));
+    await user.click(await screen.findByRole("option", { name: "Fixed" }));
+    await user.type(screen.getByTestId("resolve-remarks"), "Done");
+    await user.click(screen.getByTestId("resolve-submit"));
+
+    await waitFor(() => expect(onError).toHaveBeenCalled());
+    expect(onError.mock.calls[0][0].response.status).toBe(403);
+    expect(screen.queryByText("You cannot change this complaint")).toBeNull();
+  });
 });

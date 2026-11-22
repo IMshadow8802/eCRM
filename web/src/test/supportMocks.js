@@ -67,6 +67,7 @@ export const ticketDetail = (over = {}) => ({
   ticket: ticketRow({
     EditBy: null, CustomerContactPerson: "Gurpreet", CustomerEmail: "acme@example.com",
     CustomerCity: "Pune", CustomerAddress: "12 MG Road", PreviousTickets: 2,
+    CanEdit: 1, CanReassign: 1, CanReopen: 0, SendBackToId: null, SendBackToName: null,
   }),
   fields: [],
   activity: [

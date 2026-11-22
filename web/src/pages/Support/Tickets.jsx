@@ -3,7 +3,7 @@
 // The complaints list (spec 2 §4). The stage board is gone; this is the
 // landing page. Presets are the query — each tab maps onto presetParams
 // params via presetParams — and every label (status, priority, category,
-// channel, product, assignee, branch) is joined by the SP, so nothing is
+// channel, product, holder, office) is joined by the SP, so nothing is
 // resolved client-side any more.
 import { useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";
@@ -11,7 +11,7 @@ import { Box } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { MaterialReactTable } from "material-react-table";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowRightLeft, CircleCheck, Eye, Flag, Pencil, Plus, Trash2, Users } from "lucide-react";
+import { CircleCheck, Eye, Flag, Pencil, Plus, Trash2, Users } from "lucide-react";
 
 import { Button, Chip, Combobox, DateField, IconButton, Tabs, Tooltip } from "../../components/ui";
 import PageHeader from "../../components/ui/PageHeader";
@@ -30,6 +30,11 @@ import TicketCreateModal from "./TicketCreateModal";
 import ResolveTicketModal from "./ResolveTicketModal";
 import TransferTicketModal from "./TransferTicketModal";
 import DeleteTicketModal from "./DeleteTicketModal";
+import LoggedByMe from "./LoggedByMe";
+
+const LOGGED = "logged";
+// "Logged by me" sits beside the presets but is its own table (LoggedByMe).
+const TABS = [...TICKET_PRESETS, { value: LOGGED, label: "Logged by me" }];
 
 const num = (v) => (v === "" ? null : Number(v));
 // Hours since it was raised: "5h" under a day, "2d" after that.
@@ -113,7 +118,7 @@ const Tickets = () => {
         </span>
       ),
     },
-    { accessorKey: "AssigneeName", header: "Assignee", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "Unassigned" },
+    { accessorKey: "AssigneeName", header: "Assigned to", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "Unassigned" },
     {
       id: "escalated", header: "", enableSorting: false, size: 52,
       Cell: ({ row }) => (row.original.EscalatedTo ? (
@@ -140,7 +145,7 @@ const Tickets = () => {
 
   const { table } = useServerTable({
     columns, queryKey: "tickets", endpoint: SUPPORT_ENDPOINTS.tickets.fetchTickets, dataKey: "tickets", extraParams,
-    initialPageSize: 25, getRowId: (row) => row.Id,
+    initialPageSize: 25, getRowId: (row) => row.Id, enabled: preset !== LOGGED,
     enableRowSelection: true, enableRowActions: true,
     displayColumnDefOptions: { "mrt-row-actions": { grow: false, header: "Actions" } },
     muiTableBodyRowProps: ({ row }) => ({ hover: true, sx: { cursor: "pointer" }, onClick: () => openTicket(row.original.Id) }),
@@ -151,7 +156,7 @@ const Tickets = () => {
           <Tooltip title="Resolve"><IconButton size="sm" variant="ghost" tone="success" aria-label="Resolve complaint" data-testid={`resolve-ticket-${row.original.Id}`} onClick={() => setResolveTicket(row.original)}><CircleCheck size={16} /></IconButton></Tooltip>
         )}
         <Tooltip title="Edit details"><IconButton size="sm" variant="ghost" tone="info" aria-label="Edit complaint" data-testid={`edit-ticket-${row.original.Id}`} onClick={() => setEditTicket(row.original)}><Pencil size={16} /></IconButton></Tooltip>
-        <Tooltip title="Transfer / reassign"><IconButton size="sm" variant="ghost" tone="warning" aria-label="Transfer complaint" data-testid={`transfer-ticket-${row.original.Id}`} onClick={() => setTransferIds([row.original.Id])}><ArrowRightLeft size={16} /></IconButton></Tooltip>
+        <Tooltip title="Reassign"><IconButton size="sm" variant="ghost" tone="warning" aria-label="Reassign complaint" data-testid={`reassign-ticket-${row.original.Id}`} onClick={() => setTransferIds([row.original.Id])}><Users size={16} /></IconButton></Tooltip>
         <Tooltip title="Delete"><IconButton size="sm" variant="ghost" tone="error" aria-label="Delete complaint" data-testid={`delete-ticket-${row.original.Id}`} onClick={() => setDeleteTarget(row.original)}><Trash2 size={16} /></IconButton></Tooltip>
       </Box>
     ),
@@ -178,7 +183,7 @@ const Tickets = () => {
       />
       <Helmet><title>PRD Infotech | Complaints</title></Helmet>
 
-      <Box sx={{ mt: 1 }}><Tabs value={preset} onChange={setPreset} items={TICKET_PRESETS} data-testid="ticket-presets" /></Box>
+      <Box sx={{ mt: 1 }}><Tabs value={preset} onChange={setPreset} items={TABS} data-testid="ticket-presets" /></Box>
 
       {/* Every control in this row carries a label, or none of them may.
           Two labelled dates beside seven unlabelled dropdowns sat half a
@@ -187,19 +192,21 @@ const Tickets = () => {
           and ignores a placeholder, so an unlabelled date filter says nothing
           about what it filters. `alignItems: flex-end` no longer has to rescue
           anything, but it stays for the wrapped case. */}
+      {preset === LOGGED ? <Box sx={{ mt: 1 }}><LoggedByMe /></Box> : (<>
       <Box sx={{ display: "flex", gap: 1, mt: 1, mb: 0.5, flexWrap: "wrap", alignItems: "flex-end" }}>
         <Box sx={{ width: "calc(160rem / 15)" }}><Combobox size="sm" label="Status" placeholder="All statuses" options={opts.status} value={optById(opts.status, filters.StatusId)} onChange={setFilterValue("StatusId")} data-testid="filter-status" /></Box>
         <Box sx={{ width: "calc(150rem / 15)" }}><Combobox size="sm" label="Priority" placeholder="All priorities" options={opts.priority} value={optById(opts.priority, filters.Priority)} onChange={setFilterValue("Priority")} data-testid="filter-priority" /></Box>
         <Box sx={{ width: "calc(160rem / 15)" }}><Combobox size="sm" label="Category" placeholder="All categories" options={opts.category} value={optById(opts.category, filters.CategoryId)} onChange={setFilterValue("CategoryId")} data-testid="filter-category" /></Box>
         <Box sx={{ width: "calc(150rem / 15)" }}><Combobox size="sm" label="Channel" placeholder="All channels" options={opts.channel} value={optById(opts.channel, filters.ChannelId)} onChange={setFilterValue("ChannelId")} data-testid="filter-channel" /></Box>
         <Box sx={{ width: "calc(170rem / 15)" }}><Combobox size="sm" label="Product" placeholder="All products" options={opts.product} value={optById(opts.product, filters.ProductId)} onChange={setFilterValue("ProductId")} data-testid="filter-product" /></Box>
-        <Box sx={{ width: "calc(170rem / 15)" }}><Combobox size="sm" label="Assignee" placeholder="All assignees" options={opts.assignee} value={optById(opts.assignee, filters.AssignedTo)} onChange={setFilterValue("AssignedTo")} data-testid="filter-assignee" /></Box>
-        <Box sx={{ width: "calc(170rem / 15)" }}><Combobox size="sm" label="Branch" placeholder="All branches" options={opts.branch} value={optById(opts.branch, filters.BranchId)} onChange={setFilterValue("BranchId")} data-testid="filter-branch" /></Box>
+        <Box sx={{ width: "calc(170rem / 15)" }}><Combobox size="sm" label="Assigned to" placeholder="Anyone" options={opts.assignee} value={optById(opts.assignee, filters.AssignedTo)} onChange={setFilterValue("AssignedTo")} data-testid="filter-assigned-to" /></Box>
+        <Box sx={{ width: "calc(170rem / 15)" }}><Combobox size="sm" label="Office" placeholder="All offices" options={opts.branch} value={optById(opts.branch, filters.BranchId)} onChange={setFilterValue("BranchId")} data-testid="filter-office" /></Box>
         <Box sx={{ width: "calc(160rem / 15)" }}><DateField size="sm" label="Raised from" value={range.from} onChange={(v) => setRange((r) => ({ ...r, from: v }))} data-testid="tickets-from" /></Box>
         <Box sx={{ width: "calc(160rem / 15)" }}><DateField size="sm" label="Raised to" value={range.to} onChange={(v) => setRange((r) => ({ ...r, to: v }))} data-testid="tickets-to" /></Box>
       </Box>
 
       <MaterialReactTable table={table} />
+      </>)}
 
       <TicketCreateModal
         open={createOpen || Boolean(editTicket)}

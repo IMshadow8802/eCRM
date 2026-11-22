@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http } from "msw";
+import { http, HttpResponse } from "msw";
 import dayjs from "dayjs";
 
 import TicketCreateModal from "./TicketCreateModal";
@@ -50,7 +50,7 @@ describe("TicketCreateModal — create", () => {
     await pick(user, "ticket-priority", "High");
     await pick(user, "ticket-channel", "Phone");
     await pick(user, "ticket-product", "Gold Chain 22K");
-    await pick(user, "ticket-assignee", "Sara Khan");
+    await pick(user, "ticket-assignee", /^Sara Khan/);
     await user.type(screen.getByTestId("ticket-description"), "Flickers for a minute after power-on.");
     await user.click(screen.getByTestId("create-ticket-submit"));
 
@@ -127,6 +127,33 @@ describe("TicketCreateModal — create", () => {
     expect(await screen.findByText(new RegExp(`Due by ${dayjs().add(24, "hour").format("DD-MM-YYYY")}`))).toBeInTheDocument();
     await pick(user, "ticket-priority", "Low");               // TatHours 168
     expect(await screen.findByText(new RegExp(`Due by ${dayjs().add(168, "hour").format("DD-MM-YYYY")}`))).toBeInTheDocument();
+  });
+
+  it("a create shows the server's own message ('Logged and assigned to …')", async () => {
+    mockTicketEndpoints();
+    server.use(http.post("*/api/tickets/saveTicket", () => HttpResponse.json({
+      success: true, message: "Logged and assigned to Sara Khan", responseCode: 200,
+      data: { Id: 909, TicketNo: "TKT-0909", ResponseCode: 200, ResponseMess: "Saved" },
+    })));
+    renderModal();
+    const user = userEvent.setup();
+    await pick(user, "customer-picker", "Acme Corp · 9990001111");
+    await user.type(screen.getByTestId("ticket-subject"), "Invoice mismatch");
+    await user.click(screen.getByTestId("create-ticket-submit"));
+    expect(await screen.findByText("Logged and assigned to Sara Khan")).toBeInTheDocument();
+  });
+
+  it("a 200 that says success:false is still a refusal", async () => {
+    mockTicketEndpoints();
+    server.use(http.post("*/api/tickets/saveTicket", () => HttpResponse.json({ success: false, message: "Could not save" })));
+    const onClose = vi.fn();
+    renderModal({ onClose });
+    const user = userEvent.setup();
+    await pick(user, "customer-picker", "Acme Corp · 9990001111");
+    await user.type(screen.getByTestId("ticket-subject"), "Invoice mismatch");
+    await user.click(screen.getByTestId("create-ticket-submit"));
+    expect(await screen.findByText("Could not save")).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("keeps the modal open and shows the server's refusal", async () => {
@@ -227,7 +254,7 @@ describe("TicketCreateModal — edit", () => {
       Id: 7, CustomerId: 3, Subject: "Screen flickers and clicks",
       CategoryId: 6, Priority: 3, ChannelId: 71, LinkedLeadId: 11,
     });
-    // Transfer is the only way to move a complaint; the status dropdown is the
+    // Reassign is the only way to move a complaint; the status dropdown is the
     // only way to move its lifecycle. Neither belongs in a save.
     expect(cap.save).not.toHaveProperty("AssignedTo");
     expect(cap.save).not.toHaveProperty("StatusId");
