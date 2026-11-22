@@ -8,7 +8,10 @@ module.exports = {
   roots: ["<rootDir>/tests/live"],
   testMatch: ["<rootDir>/tests/live/**/*.live.js"],
   setupFiles: ["<rootDir>/tests/live/env.js"],
-  // matrix + legacy read the seed state, flows mutates it, shape restores itself.
+  // One fresh set of records per run (tests/live/fixtures.js), so runs repeat
+  // back to back with no re-seed. matrix / roles / legacy read it, flows
+  // moves it, shape restores what it changes.
+  globalSetup: "<rootDir>/tests/live/globalSetup.js",
   testSequencer: "<rootDir>/tests/live/sequencer.js",
   collectCoverage: false,
   testTimeout: 30000,

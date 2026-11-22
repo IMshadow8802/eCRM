@@ -1,17 +1,19 @@
 // tests/live/legacy.live.js — the bodies an installed phone build sends
 // (Review Focus 1, D23). They must keep working with the old fields present.
 //
-// One write (a reassign without SendBack), undone in the same test, so the
-// seed is left as it was. Run with matrix.live.js, before flows.live.js.
+// One write (a reassign without SendBack) on this run's C12 (fixtures.js),
+// undone in the same test. Runs before flows.live.js.
 
 const { live, lookups } = require("./client");
+const { currentRun, runIds } = require("./fixtures");
 
 const c = live();
 let id;
 let lk;
 
 beforeAll(async () => {
-  id = await c.ids();
+  const run = await currentRun();
+  id = runIds(run, await c.ids());
   lk = await lookups(c);
 });
 

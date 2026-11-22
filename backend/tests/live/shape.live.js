@@ -7,21 +7,26 @@
 //   * an inactive manager in the chain (vinod -> am_gone, who is inactive and
 //     reports to rohit).
 // Neither may hang a list (5 s), or lose anyone's own records. Restored in
-// `finally`. Mutating only for its own duration; any seed state.
+// `finally`. Mutating only for its own duration. Lists are narrowed to this
+// run's records (fixtures.js), so earlier runs' rows never push a held
+// complaint past the page.
 
 const { live, saveUser } = require("./client");
+const { currentRun } = require("./fixtures");
 
 const c = live();
 let id;
+let tag;
 
 beforeAll(async () => {
   id = await c.ids();
+  tag = (await currentRun()).tag;
 });
 
 const post = (who, path, body) => c.as(who).post(path, body);
 
 async function heldBy(who) {
-  const r = await post("amit", "/api/tickets/fetchTickets", { AssignedTo: id.users[who], PageSize: 200 });
+  const r = await post("amit", "/api/tickets/fetchTickets", { AssignedTo: id.users[who], SearchTerm: tag, PageSize: 200 });
   return r.body.data.tickets.map((t) => t.Id);
 }
 
@@ -29,7 +34,7 @@ async function heldBy(who) {
 async function listsHold(people, held) {
   for (const who of people) {
     let t = Date.now();
-    const list = await post(who, "/api/tickets/fetchTickets", { PageSize: 200 });
+    const list = await post(who, "/api/tickets/fetchTickets", { SearchTerm: tag, PageSize: 200 });
     expect({ who, status: list.status, slow: Date.now() - t > 5000 }).toEqual({ who, status: 200, slow: false });
     const got = list.body.data.tickets.map((x) => x.Id);
     expect({ who, lost: (held[who] ?? []).filter((x) => !got.includes(x)) }).toEqual({ who, lost: [] });
@@ -43,6 +48,7 @@ async function listsHold(people, held) {
 describe("bad reporting data", () => {
   it("a loop is refused at the source; with half of it in place nothing hangs or is lost", async () => {
     const held = { vinod: await heldBy("vinod"), vivek: await heldBy("vivek") };
+    expect(held.vinod.length).toBeGreaterThan(0); // this run gave him some, so "lost" can fail
     const original = id.people.vinod.ReportsTo;
     try {
       expect((await saveUser(c, "vinod", { ReportsTo: id.users.vivek })).status).toBe(200);
@@ -51,7 +57,7 @@ describe("bad reporting data", () => {
       expect(closing.body.message).toBe("Reporting line would loop back to this user");
       await listsHold(["vinod", "vivek", "rohit"], held);
       // Not widened: being vivek's report gives vinod none of vivek's complaints.
-      const vinodList = (await post("vinod", "/api/tickets/fetchTickets", { PageSize: 200 })).body.data.tickets.map((t) => t.Id);
+      const vinodList = (await post("vinod", "/api/tickets/fetchTickets", { SearchTerm: tag, PageSize: 200 })).body.data.tickets.map((t) => t.Id);
       expect(vinodList.filter((t) => held.vivek.includes(t))).toEqual([]);
     } finally {
       expect((await saveUser(c, "vinod", { ReportsTo: original })).status).toBe(200);

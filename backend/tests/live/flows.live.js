@@ -1,19 +1,22 @@
 // tests/live/flows.live.js — the scenario rows of spec §7, end to end (Task 28).
 //
-// MUTATING. Needs a fresh seed (137 then 136 on TestCRM) and runs in order:
-// each `it` builds on the ones before it. Run matrix.live.js and
-// legacy.live.js first; re-seed after. Records it creates are logged by
-// personas (subjects "AM-Fnn ..."), so 137 removes them.
+// MUTATING, but only this run's records (fixtures.js createRun(), fresh per
+// run), never the static 136 rows: runs repeat back to back with no re-seed.
+// Runs in order: each `it` builds on the ones before it. Records it creates
+// are logged by personas (subjects "<run tag>-Fnn ..."), so 137 removes them.
 
 const { live, isRefusal, lookups, noticeMark, noticesSince, saveUser, MISSING_ID, day } = require("./client");
+const { currentRun, runIds } = require("./fixtures");
 
 const c = live();
 let id;
 let lk;
+let run;
 let name; // persona -> FullName
 
 beforeAll(async () => {
-  id = await c.ids();
+  run = await currentRun();
+  id = runIds(run, await c.ids());
   lk = await lookups(c);
   name = Object.fromEntries(Object.entries(id.people).map(([k, p]) => [k, p.FullName]));
 });
@@ -27,8 +30,8 @@ const reassign = (who, TicketId, ToUserId) => post(who, "/api/tickets/transferTi
 const sendBack = (who, TicketId) => post(who, "/api/tickets/transferTicket", {
   TicketId, SendBack: true, Remarks: "AM live: not mine",
 });
-const logComplaint = (who, Subject, AssignedTo = null) => post(who, "/api/tickets/saveTicket", {
-  CustomerId: id.customers.HO, Subject, AssignedTo,
+const logComplaint = (who, key, title, AssignedTo = null) => post(who, "/api/tickets/saveTicket", {
+  CustomerId: id.customers.HO, Subject: `${run.tag}-${key} ${title}`, AssignedTo,
 });
 /** Status + the server's sentence, so a failed setup step prints why. */
 const said = (r) => ({ status: r.status, message: r.body?.message });
@@ -86,17 +89,17 @@ let handed = {}; // what scenario 6 handed to roshan: { QuotationId, followUpId 
 
 describe("scenarios, in order", () => {
   it("1. nitin logs and routes to vinod", async () => {
-    const r = await logComplaint("nitin", "AM-F01 Logged and routed", id.users.vinod);
+    const r = await logComplaint("nitin", "F01", "Logged and routed", id.users.vinod);
     expect(r.status).toBe(200);
     expect(r.body.message).toBe(`Logged and assigned to ${name.vinod}`);
     const newId = r.body.data.Id;
     expect((await ticket("vinod", newId)).status).toBe(200);
     expect((await ticket("nitin", newId)).status).toBe(404);
-    const mine = await post("nitin", "/api/tickets/fetchLoggedByMe", { SearchTerm: "AM-F01", PageSize: 50 });
-    expect(mine.body.data.rows.some((x) => /^AM-F01 /.test(x.Subject))).toBe(true);
+    const mine = await post("nitin", "/api/tickets/fetchLoggedByMe", { SearchTerm: `${run.tag}-F01`, PageSize: 50 });
+    expect(mine.body.data.rows.some((x) => x.Subject === `${run.tag}-F01 Logged and routed`)).toBe(true);
   });
 
-  it("2. vinod reassigns AM-C01 to vivek; due time unchanged; vivek is told", async () => {
+  it("2. vinod reassigns C01 to vivek; due time unchanged; vivek is told", async () => {
     const before = await asAmit(id.C01);
     const mark = await noticeMark(c, "vivek");
     const r = await reassign("vinod", id.C01, id.users.vivek);
@@ -120,7 +123,7 @@ describe("scenarios, in order", () => {
     expect((await asAmit(id.C01)).AssignedTo).toBe(id.users.nitin);
   });
 
-  it("4. rohit bulk-reassigns AM-C08..AM-C12 to vivek; one notice each", async () => {
+  it("4. rohit bulk-reassigns C08..C12 to vivek; one notice each", async () => {
     const marks = { vinod: await noticeMark(c, "vinod"), vivek: await noticeMark(c, "vivek") };
     const r = await post("rohit", "/api/tickets/bulkTransferTickets", {
       TicketIds: [id.C08, id.C09, id.C10, id.C11, id.C12], ToUserId: id.users.vivek,
@@ -134,7 +137,7 @@ describe("scenarios, in order", () => {
   });
 
   it("5. imran logs at HEAD OFFICE for pooja: it moves to North Delhi; pooja sends it back", async () => {
-    const r = await logComplaint("imran", "AM-F05 Cross-office", id.users.pooja);
+    const r = await logComplaint("imran", "F05", "Cross-office", id.users.pooja);
     expect(r.status).toBe(200);
     const newId = r.body.data.Id;
     expect(Number((await asAmit(newId)).BranchId)).toBe(6);
@@ -145,7 +148,7 @@ describe("scenarios, in order", () => {
     expect((await asAmit(newId)).AssignedTo).toBe(id.users.imran);
   });
 
-  it("6 + 19. kasak quotes AM-L01 and hands it to roshan; her follow-up moves, am_field's stays", async () => {
+  it("6 + 19. kasak quotes L01 and hands it to roshan; her follow-up moves, am_field's stays", async () => {
     const kasak = c.as("kasak");
     const prof = await kasak.post("/api/quotations/ensureQuoteProfile", { LeadId: id.L01 });
     expect(said(prof)).toMatchObject({ status: 200 });
@@ -156,8 +159,8 @@ describe("scenarios, in order", () => {
     expect(QuotationId).toBeGreaterThan(0);
 
     const fus = (await post("amit", "/api/leads/fetchLeadDetail", { LeadId: id.L01 })).body.data.followups;
-    const kasakFu = fus.find((f) => f.Status === "open" && f.AssignedTo === id.users.kasak);
-    const fieldFu = fus.find((f) => f.Status === "open" && f.AssignedTo === id.users.field);
+    const kasakFu = fus.find((f) => f.Id === run.followUp("L01_kasak_open").id && f.Status === "open" && f.AssignedTo === id.users.kasak);
+    const fieldFu = fus.find((f) => f.Id === run.followUp("L01_field_visit").id && f.Status === "open" && f.AssignedTo === id.users.field);
     expect(kasakFu && fieldFu).toBeTruthy();
 
     const mark = await noticeMark(c, "roshan");
@@ -202,7 +205,7 @@ describe("scenarios, in order", () => {
     ]);
   });
 
-  it("F2 + 9. am_field logs a call on AM-L06, hands it to roshan: stl's drill counts it hidden; neha's total is the same", async () => {
+  it("F2 + 9. am_field logs a call on L06, hands it to roshan: stl's drill counts it hidden; neha's total is the same", async () => {
     const call = await post("field", "/api/calls/logCall", { LeadId: id.L06, Direction: "out", Notes: "AM live: F2 call" });
     expect(call.status).toBe(200);
     const moved = await post("field", "/api/leads/transferLead", {
@@ -214,7 +217,7 @@ describe("scenarios, in order", () => {
     const drill = { GroupBy: "team", Metric: "call", PersonId: id.users.field, FromDate: day(-7), ToDate: day(0) };
     const stl = await post("stl", "/api/reports/salesRows", drill);
     expect(stl.status).toBe(200);
-    expect(stl.body.data.rows.filter((x) => /^AM-L06 /.test(x.LeadName ?? ""))).toEqual([]);
+    expect(stl.body.data.rows.filter((x) => x.LeadName === run.lead("L06").name)).toEqual([]);
     expect(stl.body.data.hiddenCount).toBeGreaterThanOrEqual(1);
     expect(stl.body.data.total).toBe(stl.body.data.rows.length + stl.body.data.hiddenCount);
 
@@ -222,11 +225,11 @@ describe("scenarios, in order", () => {
     expect(neha.status).toBe(200);
     expect(neha.body.data.total).toBe(stl.body.data.total); // scenario 9: one number, whoever looks
     expect(neha.body.data.hiddenCount).toBe(0);
-    expect(neha.body.data.rows.some((x) => /^AM-L06 /.test(x.LeadName ?? ""))).toBe(true);
+    expect(neha.body.data.rows.some((x) => x.LeadName === run.lead("L06").name)).toBe(true);
   });
 
   it("7. nitin logs an unassigned complaint: logger and office managers see it; vinod does not", async () => {
-    const r = await logComplaint("nitin", "AM-F07 Unassigned");
+    const r = await logComplaint("nitin", "F07", "Unassigned");
     expect(r.status).toBe(200);
     const newId = r.body.data.Id;
     for (const who of ["nitin", "neha", "amit"]) expect({ who, s: (await ticket(who, newId)).status }).toEqual({ who, s: 200 });
@@ -234,14 +237,14 @@ describe("scenarios, in order", () => {
     expect((await reassign("nitin", newId, id.users.vinod)).status).toBe(200);
   });
 
-  it("11-12. rohit opens escalated AM-C04; amit reassigns it to prasant: rohit loses it, escalation cleared", async () => {
+  it("11-12. rohit opens escalated C04; amit reassigns it to prasant: rohit loses it, escalation cleared", async () => {
     expect((await ticket("rohit", id.C04)).status).toBe(200);
     expect((await reassign("amit", id.C04, id.users.prasant)).status).toBe(200);
     expect((await ticket("rohit", id.C04)).status).toBe(404);
     expect((await asAmit(id.C04)).EscalatedTo).toBeNull();
   });
 
-  it("13. amit takes AM-C15 from vinod to rohit: vinod is told who moved it; rohit's send back names amit", async () => {
+  it("13. amit takes C15 from vinod to rohit: vinod is told who moved it; rohit's send back names amit", async () => {
     const mark = await noticeMark(c, "vinod");
     expect((await reassign("amit", id.C15, id.users.rohit)).status).toBe(200);
     const moved = await noticesSince(c, "vinod", mark, "ticket_moved_away");
@@ -249,7 +252,7 @@ describe("scenarios, in order", () => {
     expect((await ticket("rohit", id.C15)).body.data.ticket.SendBackToName).toBe(name.amit);
   });
 
-  it("14. vinod cannot reopen his own AM-C05; neha can", async () => {
+  it("14. vinod cannot reopen his own C05; neha can", async () => {
     const own = await post("vinod", "/api/tickets/reopenTicket", { TicketId: id.C05, Remarks: "AM live: not fixed" });
     expect(own.status).toBe(403);
     expect(own.body.message).toBe("Reopening requires a manager");
@@ -257,7 +260,7 @@ describe("scenarios, in order", () => {
     expect(r.status).toBe(200);
   });
 
-  it("16. amit unassigns AM-C11 (nitin logged it): nitin does not get it back", async () => {
+  it("16. amit unassigns C11 (nitin logged it): nitin does not get it back", async () => {
     const r = await reassign("amit", id.C11, null);
     expect(r.status).toBe(200);
     expect(r.body.message).toBe("Complaint unassigned");
@@ -279,7 +282,7 @@ describe("scenarios, in order", () => {
     }
   });
 
-  it("D27 / N4. neha reopens AM-C07 (held by inactive am_gone): unassigned, office managers told", async () => {
+  it("D27 / N4. neha reopens C07 (held by inactive am_gone): unassigned, office managers told", async () => {
     const marks = { amit: await noticeMark(c, "amit"), neha: await noticeMark(c, "neha") };
     const r = await post("neha", "/api/tickets/reopenTicket", { TicketId: id.C07, Remarks: "AM live: back again" });
     expect(r.status).toBe(200);
@@ -306,7 +309,7 @@ describe("scenarios, in order", () => {
 
   // Review Focus 3. Last: it deactivates nitin for a moment.
   it("send back to a giver deactivated meanwhile is refused with the gate-4 sentence", async () => {
-    const r = await logComplaint("nitin", "AM-F99 Send-back race", id.users.vivek);
+    const r = await logComplaint("nitin", "F99", "Send-back race", id.users.vivek);
     expect(r.status).toBe(200);
     const newId = r.body.data.Id;
     try {

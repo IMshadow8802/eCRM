@@ -1,9 +1,10 @@
 // tests/live/matrix.live.js — read-only and refused writes (plan Task 28).
 //
-// Changes nothing when the backend is right, so it can be repeated without
-// re-seeding; it expects the 136 seed state: run it before flows.live.js, or
-// after a re-seed (137, then 136). A refused write that SUCCEEDS here is a leak
-// and does change data: re-seed after fixing it.
+// Changes nothing when the backend is right. Works on this run's records
+// (fixtures.js createRun(), made fresh by globalSetup), never on the static
+// 136 rows, so it repeats back to back with no re-seed. Runs before
+// flows.live.js, which moves those records. A refused write that SUCCEEDS
+// here is a leak; the next run starts from fresh records anyway.
 //
 // Contract (exact statuses, no "either" answers):
 //   404 = not visible. A record the caller cannot see answers exactly what a
@@ -14,15 +15,19 @@
 // Never data on a refusal.
 
 const { live, MISSING_ID, day, isRefusal, lookups } = require("./client");
+const { currentRun, runIds } = require("./fixtures");
 
 const c = live();
 let id;
 let lk;
+let run;
 
 beforeAll(async () => {
-  id = await c.ids(); // refuses the whole file off TestCRM
+  run = await currentRun(); // after the TestCRM proof (client.js)
+  id = runIds(run, await c.ids());
   lk = await lookups(c);
 });
+
 
 const post = (who, path, body) => c.as(who).post(path, body);
 const opens = async (who, path, key, recordId) => (await post(who, path, { [key]: recordId })).status;
@@ -51,7 +56,7 @@ async function expectUploadRefused(who, Entity, recordId, expected) {
 }
 
 // ---------------------------------------------------------------------------
-describe("kasak on roshan's lead AM-L03 (scenario 10)", () => {
+describe("kasak on roshan's lead L03 (scenario 10)", () => {
   const LEAD_404 = { status: 404, message: "Lead not found" };
   const L = (m) => (m ? MISSING_ID : id.L03);
 
@@ -89,28 +94,30 @@ describe("kasak's lists only narrow (F9, scenario 10)", () => {
     expect(r.body.data.leads).toEqual([]);
   });
 
-  it.each(["AM-L03", "9990002003", "AM-L09", "AM-L05"])("fetchLeads { SearchTerm: %s } finds nothing", async (SearchTerm) => {
-    const r = await post("kasak", "/api/leads/fetchLeads", { SearchTerm, PageSize: 200 });
+  it.each([["L03", "name"], ["L03", "mobile"], ["L09", "name"], ["L05", "name"]])("fetchLeads { SearchTerm: %s's %s } finds nothing", async (k, field) => {
+    const r = await post("kasak", "/api/leads/fetchLeads", { SearchTerm: run.lead(k)[field], PageSize: 200 });
     expect(r.status).toBe(200);
     expect(r.body.data.leads).toEqual([]);
   });
 });
 
-describe("kasak after handing AM-L09 over (F1)", () => {
+describe("kasak after handing L09 over (F1)", () => {
   it("detail is 404 as for a missing id", () => expectAllRefused("kasak", [
     ["fetchLeadDetail", "/api/leads/fetchLeadDetail", (m) => ({ LeadId: m ? MISSING_ID : id.L09 }), { status: 404, message: "Lead not found" }],
   ]));
 
-  it("done follow-ups list no row of AM-L09", async () => {
-    const r = await post("kasak", "/api/followups/fetchFollowups", { Status: "done", PageSize: 200 });
+  it("done follow-ups list no row of L09 (and do list her L01 one, so the search works)", async () => {
+    const r = await post("kasak", "/api/followups/fetchFollowups", { Status: "done", SearchTerm: run.tag, PageSize: 200 });
     expect(r.status).toBe(200);
-    const leak = r.body.data.followups.filter((f) => f.LeadId === id.L09 || /^AM-L09 /.test(f.LeadName ?? ""));
+    const rows = r.body.data.followups;
+    expect(rows.map((f) => f.Id)).toContain(run.followUp("L01_kasak_done").id);
+    const leak = rows.filter((f) => f.LeadId === id.L09 || f.LeadName === run.lead("L09").name);
     expect(leak).toEqual([]);
   });
 
   it("her own done follow-up on it cannot be completed, skipped or deleted: 404 as for a missing one", async () => {
     const fus = (await post("amit", "/api/leads/fetchLeadDetail", { LeadId: id.L09 })).body.data.followups;
-    const fu = fus.find((f) => f.AssignedTo === id.users.kasak);
+    const fu = fus.find((f) => f.Id === run.followUp("L09_kasak_done").id && f.AssignedTo === id.users.kasak);
     expect(fu).toBeDefined();
     const F = (m) => (m ? MISSING_ID : fu.Id);
     const FU_404 = { status: 404, message: "Follow-up not found" };
@@ -128,13 +135,13 @@ describe("kasak after handing AM-L09 over (F1)", () => {
     expect(outcome(r)).toEqual({ ...NO_MODULE, refused: true });
   });
 
-  it("AM-L05 (unassigned by a manager) is 404 for its logger (F13)", () => expectAllRefused("kasak", [
+  it("L05 (unassigned by a manager) is 404 for its logger (F13)", () => expectAllRefused("kasak", [
     ["fetchLeadDetail", "/api/leads/fetchLeadDetail", (m) => ({ LeadId: m ? MISSING_ID : id.L05 }), { status: 404, message: "Lead not found" }],
   ]));
 });
 
 // ---------------------------------------------------------------------------
-describe("nitin on AM-C01, which he logged and gave to vinod", () => {
+describe("nitin on C01, which he logged and gave to vinod", () => {
   const C_404 = { status: 404, message: "Complaint not found" };
   const T = (m) => (m ? MISSING_ID : id.C01);
 
@@ -166,16 +173,16 @@ describe("nitin on AM-C01, which he logged and gave to vinod", () => {
     expect(r.body.data.users).toEqual([]);
   });
 
-  it.each(["AM-C01", "9990001001", "AM-C03"])("fetchTickets { SearchTerm: %s } finds nothing", async (SearchTerm) => {
-    const r = await post("nitin", "/api/tickets/fetchTickets", { SearchTerm, PageSize: 200 });
+  it.each([["C01", "subject"], ["C01", "contact"], ["C03", "subject"]])("fetchTickets { SearchTerm: %s's %s } finds nothing", async (k, field) => {
+    const r = await post("nitin", "/api/tickets/fetchTickets", { SearchTerm: run.complaint(k)[field], PageSize: 200 });
     expect(r.status).toBe(200);
     expect(r.body.data.tickets).toEqual([]);
   });
 
   it("Logged by me holds one line with exactly the twelve fields, Id null", async () => {
-    const r = await post("nitin", "/api/tickets/fetchLoggedByMe", { SearchTerm: "AM-C01", PageSize: 50 });
+    const r = await post("nitin", "/api/tickets/fetchLoggedByMe", { SearchTerm: run.complaint("C01").subject, PageSize: 50 });
     expect(r.status).toBe(200);
-    const rows = r.body.data.rows.filter((x) => /^AM-C01 /.test(x.Subject ?? ""));
+    const rows = r.body.data.rows.filter((x) => x.Subject === run.complaint("C01").subject);
     expect(rows).toHaveLength(1);
     expect(Object.keys(rows[0]).sort()).toEqual([
       "AssignedToName", "CanOpen", "ClosedOn", "CreatedAt", "CustomerName", "DueAt",
@@ -188,7 +195,7 @@ describe("nitin on AM-C01, which he logged and gave to vinod", () => {
 });
 
 describe("nitin elsewhere", () => {
-  it("AM-C03 (unassigned by a manager) is 404 for its logger (D15)", () => expectAllRefused("nitin", [
+  it("C03 (unassigned by a manager) is 404 for its logger (D15)", () => expectAllRefused("nitin", [
     ["fetchTicketDetail", "/api/tickets/fetchTicketDetail", (m) => ({ TicketId: m ? MISSING_ID : id.C03 }), { status: 404, message: "Complaint not found" }],
   ]));
 
@@ -211,14 +218,14 @@ describe("nitin elsewhere", () => {
 
   it("logging a complaint for kasak, who cannot work it, is refused (scenario 15)", async () => {
     const r = await post("nitin", "/api/tickets/saveTicket", {
-      CustomerId: id.customers.HO, Subject: "AM-M15 must not be saved", AssignedTo: id.users.kasak,
+      CustomerId: id.customers.HO, Subject: `${run.tag}-M15 must not be saved`, AssignedTo: id.users.kasak,
     });
     expect(outcome(r)).toEqual({ status: 403, message: "You cannot assign records to that person", refused: true });
   });
 });
 
 describe("escalation targets on a complaint that is not theirs", () => {
-  it.each(["vinod", "rohit"])("%s on AM-C16 (North Delhi) gets none", async (who) => {
+  it.each(["vinod", "rohit"])("%s on C16 (North Delhi) gets none", async (who) => {
     const r = await post(who, "/api/tickets/fetchEscalationTargets", { TicketId: id.C16 });
     expect(r.status).toBe(200);
     expect(r.body.data.users).toEqual([]);
@@ -226,8 +233,8 @@ describe("escalation targets on a complaint that is not theirs", () => {
 });
 
 // ---------------------------------------------------------------------------
-describe("vinod, holder of AM-C01: visible, so refusals are 403 with the gate's sentence", () => {
-  it("AM-C13's linked lead (roshan's) is blanked (F24)", async () => {
+describe("vinod, holder of C01: visible, so refusals are 403 with the gate's sentence", () => {
+  it("C13's linked lead (roshan's) is blanked (F24)", async () => {
     const r = await post("vinod", "/api/tickets/fetchTicketDetail", { TicketId: id.C13 });
     expect(r.status).toBe(200);
     expect(r.body.data.ticket.LinkedLeadId).toBeNull();
@@ -238,17 +245,17 @@ describe("vinod, holder of AM-C01: visible, so refusals are 403 with the gate's 
     TicketId, ToUserId, ReasonId: lk.reasonId, Remarks: "AM live",
   });
 
-  it("cannot reassign his resolved AM-C05 (F26)", async () => {
+  it("cannot reassign his resolved C05 (F26)", async () => {
     expect(outcome(await reassign(id.C05, id.users.vivek)))
       .toEqual({ status: 403, message: "Only a manager can reassign a closed record", refused: true });
   });
 
-  it.each(["kasak", "hr", "gone"])("cannot hand AM-C01 to %s, who cannot work it (F5)", async (who) => {
+  it.each(["kasak", "hr", "gone"])("cannot hand C01 to %s, who cannot work it (F5)", async (who) => {
     expect(outcome(await reassign(id.C01, id.users[who])))
       .toEqual({ status: 403, message: "You cannot assign records to that person", refused: true });
   });
 
-  it("cannot unassign AM-C01 (a manager's act)", async () => {
+  it("cannot unassign C01 (a manager's act)", async () => {
     expect(outcome(await reassign(id.C01, null)))
       .toEqual({ status: 403, message: "Only a manager can leave a record unassigned", refused: true });
   });
@@ -258,13 +265,13 @@ describe("walls", () => {
   const C = (tag) => (m) => ({ TicketId: m ? MISSING_ID : id[tag] });
   const C_404 = { status: 404, message: "Complaint not found" };
 
-  it("prasant: AM-C06's closed escalation gives nothing (F23)", () =>
+  it("prasant: C06's closed escalation gives nothing (F23)", () =>
     expectAllRefused("prasant", [["detail", "/api/tickets/fetchTicketDetail", C("C06"), C_404]]));
 
-  it("pooja (North Delhi): AM-C01 is 404", () =>
+  it("pooja (North Delhi): C01 is 404", () =>
     expectAllRefused("pooja", [["detail", "/api/tickets/fetchTicketDetail", C("C01"), C_404]]));
 
-  it("ndmgr (North Delhi manager): AM-C01 and AM-L01 are 404", () => expectAllRefused("ndmgr", [
+  it("ndmgr (North Delhi manager): C01 and L01 are 404", () => expectAllRefused("ndmgr", [
     ["complaint", "/api/tickets/fetchTicketDetail", C("C01"), C_404],
     ["lead", "/api/leads/fetchLeadDetail", (m) => ({ LeadId: m ? MISSING_ID : id.L01 }), { status: 404, message: "Lead not found" }],
   ]));
@@ -309,7 +316,7 @@ describe("customer pages (customers keep their own rule: out of reach = 403, mis
   const detail = (who, tag) => post(who, "/api/customers/fetchCustomerDetail", { CustomerId: id.customers[tag] });
   const NO_CUSTOMER = { status: 403, message: "You do not have access to this customer", refused: true };
 
-  it("pooja and ndmgr (North Delhi) open AM-Cust-ND with AM-C16 on it, and are refused HEAD OFFICE and SOUTH EXTENSION", async () => {
+  it("pooja and ndmgr (North Delhi) open customer ND with C16 on it, and are refused HEAD OFFICE and SOUTH EXTENSION", async () => {
     for (const who of ["pooja", "ndmgr"]) {
       const nd = await detail(who, "ND");
       expect({ who, status: nd.status }).toEqual({ who, status: 200 });
@@ -321,19 +328,21 @@ describe("customer pages (customers keep their own rule: out of reach = 403, mis
     expect(outcome(missing)).toEqual({ status: 404, message: "Customer not found", refused: true });
   });
 
-  it("vikram (Company) opens all three; AM-Cust-ND lists AM-C16", async () => {
+  it("vikram (Company) opens all three; customer ND lists C16", async () => {
     for (const tag of ["HO", "ND", "SE"]) expect({ tag, status: (await detail("vikram", tag)).status }).toEqual({ tag, status: 200 });
     expect((await detail("vikram", "ND")).body.data.tickets.map((t) => t.Id)).toContain(id.C16);
   });
 
   it("pooja cannot edit a customer (no customers edit): 403 at the route", async () => {
-    const r = await post("pooja", "/api/customers/saveCustomer", { Id: id.customers.ND, Name: "AM-Cust-ND", Mobile: "9990003002" });
+    const nd = run.customer("ND");
+    const r = await post("pooja", "/api/customers/saveCustomer", { Id: nd.id, Name: nd.name, Mobile: nd.mobile });
     expect(outcome(r)).toEqual({ ...NO_MODULE, refused: true });
   });
 
-  it("ndmgr cannot move AM-Cust-ND into HEAD OFFICE", async () => {
+  it("ndmgr cannot move customer ND into HEAD OFFICE", async () => {
+    const nd = run.customer("ND");
     const r = await post("ndmgr", "/api/customers/saveCustomer", {
-      Id: id.customers.ND, Name: "AM-Cust-ND", Mobile: "9990003002", BranchId: 1,
+      Id: nd.id, Name: nd.name, Mobile: nd.mobile, BranchId: 1,
     });
     expect(outcome(r)).toEqual({ status: 403, message: "You cannot add customers to that office", refused: true });
   });
@@ -368,7 +377,7 @@ describe("report drills with someone else in the cell", () => {
 });
 
 describe("result leads cannot be moved by staff (scenario 18)", () => {
-  it("kasak bulk-reassigning her lost AM-L02 and won AM-L08 is 403 and nothing moves", async () => {
+  it("kasak bulk-reassigning her lost L02 and won L08 is 403 and nothing moves", async () => {
     const r = await post("kasak", "/api/leads/bulkTransferLeads", {
       LeadIds: [id.L02, id.L08], ToUserId: id.users.roshan, ReasonId: lk.reasonId, Remarks: "AM live",
     });
@@ -381,10 +390,10 @@ describe("result leads cannot be moved by staff (scenario 18)", () => {
 });
 
 describe("a delegated follow-up seen by a team lead (scenario 19, D5)", () => {
-  it("stl sees am_field's visit on AM-L01 as Via 3 without the mobile, and cannot complete it", async () => {
-    const r = await post("stl", "/api/followups/fetchFollowups", { Status: "open", PageSize: 200 });
+  it("stl sees am_field's visit on L01 as Via 3 without the mobile, and cannot complete it", async () => {
+    const r = await post("stl", "/api/followups/fetchFollowups", { Status: "open", SearchTerm: run.tag, PageSize: 200 });
     expect(r.status).toBe(200);
-    const row = r.body.data.followups.find((f) => f.LeadId === id.L01 && f.AssignedTo === id.users.field);
+    const row = r.body.data.followups.find((f) => f.Id === run.followUp("L01_field_visit").id);
     expect(row).toBeDefined();
     expect(row.Via).toBe(3);
     expect(row.LeadMobile).toBeNull();
@@ -445,13 +454,13 @@ describe("the assign picker", () => {
 
 // Positive cases: allowed things work, or the refusals above prove nothing.
 describe("allowed", () => {
-  it("rohit opens AM-C01 (his team) and AM-C04 (escalated to him)", async () => {
+  it("rohit opens C01 (his team) and C04 (escalated to him)", async () => {
     expect(await opens("rohit", "/api/tickets/fetchTicketDetail", "TicketId", id.C01)).toBe(200);
     expect(await opens("rohit", "/api/tickets/fetchTicketDetail", "TicketId", id.C04)).toBe(200);
   });
 
   it("neha and amit open every HEAD OFFICE complaint and lead", async () => {
-    const complaints = Object.keys(id).filter((k) => /^C\d\d$/.test(k) && !["C16", "C19"].includes(k));
+    const complaints = Object.keys(id).filter((k) => /^C\d\d$/.test(k) && !["C16", "C19", "C21"].includes(k));
     const leads = Object.keys(id).filter((k) => /^L\d\d$/.test(k));
     for (const who of ["neha", "amit"]) {
       const shut = [];
@@ -461,12 +470,12 @@ describe("allowed", () => {
     }
   });
 
-  it("vikram opens AM-C16 (North Delhi)", async () => {
+  it("vikram opens C16 (North Delhi)", async () => {
     expect(await opens("vikram", "/api/tickets/fetchTicketDetail", "TicketId", id.C16)).toBe(200);
   });
 
-  it("stl's lead list holds am_field's unassigned AM-L07", async () => {
-    const r = await post("stl", "/api/leads/fetchLeads", { SearchTerm: "AM-L07", PageSize: 50 });
+  it("stl's lead list holds am_field's unassigned L07", async () => {
+    const r = await post("stl", "/api/leads/fetchLeads", { SearchTerm: run.lead("L07").name, PageSize: 50 });
     expect(r.status).toBe(200);
     expect(r.body.data.leads.map((l) => l.Id)).toContain(id.L07);
   });

@@ -230,11 +230,58 @@ describe("helpers", () => {
     expect(day(0)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
-  it("the sequencer runs matrix, legacy, flows, shape in that order", () => {
-    const paths = ["shape", "flows", "legacy", "matrix"].map((n) => ({ path: `/x/tests/live/${n}.live.js` }));
+  it("the sequencer runs matrix, roles, legacy, flows, shape in that order", () => {
+    const paths = ["shape", "flows", "legacy", "roles", "matrix"].map((n) => ({ path: `/x/tests/live/${n}.live.js` }));
     expect(new LiveSequencer().sort(paths).map((t) => t.path.split("/").pop())).toEqual([
-      "matrix.live.js", "legacy.live.js", "flows.live.js", "shape.live.js",
+      "matrix.live.js", "roles.live.js", "legacy.live.js", "flows.live.js", "shape.live.js",
     ]);
-    expect(rank("/x/other.live.js")).toBe(4);
+    expect(rank("/x/other.live.js")).toBe(5);
+  });
+});
+
+describe("fixtures (tests/live/fixtures.js)", () => {
+  const fs = require("fs");
+  const os = require("os");
+  const path = require("path");
+  const { hydrate, runIds, stamp, writeRun } = require("../../live/fixtures");
+  const data = {
+    runId: "20261122101112", tag: "AMR-20261122101112", users: { solo: 501 },
+    complaints: { C01: { id: 11, subject: "AMR-20261122101112-C01 x" } }, leads: { L01: { id: 21 } },
+    customers: { HO: { id: 31 } }, followUps: { L01_kasak_open: { id: 41 } },
+  };
+
+  it("stamp is the local yyyymmddHHMMss", () => {
+    expect(stamp(new Date(2026, 0, 2, 3, 4, 5))).toBe("20260102030405");
+  });
+
+  it("accessors return the record and throw on a key the run does not have", () => {
+    const run = hydrate(data);
+    expect(run.complaint("C01").id).toBe(11);
+    expect(run.lead("L01").id).toBe(21);
+    expect(run.customer("HO").id).toBe(31);
+    expect(run.followUp("L01_kasak_open").id).toBe(41);
+    expect(() => run.complaint("C99")).toThrow("This run has no complaint C99");
+  });
+
+  it("runIds puts this run's records over the proof's people", () => {
+    const out = runIds(hydrate(data), { users: { amit: 1 }, people: { amit: { FullName: "AM Amit" } }, C01: 999 });
+    expect(out).toEqual({ users: { amit: 1, solo: 501 }, people: { amit: { FullName: "AM Amit" } }, customers: { HO: 31 }, C01: 11, L01: 21 });
+  });
+
+  it("currentRun reads the run file globalSetup wrote, without creating anything", async () => {
+    const file = writeRun(hydrate(data));
+    expect(file.startsWith(os.tmpdir())).toBe(true);
+    const before = process.env.LIVE_RUN_FILE;
+    process.env.LIVE_RUN_FILE = file;
+    try {
+      let fresh;
+      jest.isolateModules(() => { fresh = require("../../live/fixtures"); });
+      const run = await fresh.currentRun();
+      expect(run.complaint("C01").subject).toBe(data.complaints.C01.subject);
+      expect(run.users).toEqual({ solo: 501 });
+    } finally {
+      process.env.LIVE_RUN_FILE = before;
+      fs.unlinkSync(path.resolve(file));
+    }
   });
 });
