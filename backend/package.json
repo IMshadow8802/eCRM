@@ -15,7 +15,8 @@
     "pm2:delete": "pm2 delete attendance-api",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "test:live": "jest -c jest.live.config.js --runInBand"
   },
   "keywords": [],
   "author": "",
