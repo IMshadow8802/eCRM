@@ -74,3 +74,20 @@ describe("after init (mocked io)", () => {
     expect(io.to).not.toHaveBeenCalled();
   });
 });
+
+describe("records scope + twin contract", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const scopesText = (f) =>
+    fs.readFileSync(path.join(__dirname, f), "utf8").match(/SCOPES = \{[\s\S]*?\n\};/)[0].replace(/SCOPES = /, "");
+
+  it("RECORDS is the string 'records'", () => {
+    expect(SCOPES.RECORDS).toBe("records");
+  });
+
+  it("the two contract files export identical SCOPES", () => {
+    const server = scopesText("../../../src/realtime/contract.js");
+    const web = scopesText("../../../../web/src/realtime/contract.js");
+    expect(web).toBe(server);
+  });
+});

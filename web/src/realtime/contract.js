@@ -23,4 +23,5 @@ export const SCOPES = {
   NOTIFICATIONS: "notifications",     // { }                        bell unread count + list
   SESSION: "session",                 // { reason }                 this user's sessions were ended (SESSION_FORCED)
   ACCESS: "access",                   // { }                        this user's role grants / office / manager changed: re-read access
+  RECORDS: "records",                 // { module }                this user's leads / complaints changed: refetch lists, drop open details (no id, no data)
 };
