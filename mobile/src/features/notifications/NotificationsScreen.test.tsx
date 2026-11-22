@@ -6,15 +6,20 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
 } from "../../api/notificationQueries";
+import { fetchLeadDetail } from "../../api/leadQueries";
+import { fetchTicketDetail } from "../../api/ticketQueries";
+import { RECORD_GONE_MESSAGE } from "../../api/errors";
 import { badgeTones, colors, typography } from "../../theme";
 import type { AppNotification } from "../../types/api";
-import { envelope, pagination } from "../../test/fixtures";
+import { envelope, pagination, serverError } from "../../test/fixtures";
 import { makeNavigation, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import { flat } from "../../test/style";
 import { PHONE, setWindow } from "../../test/window";
 import NotificationsScreen from "./NotificationsScreen";
 
 jest.mock("../../api/notificationQueries");
+jest.mock("../../api/leadQueries");
+jest.mock("../../api/ticketQueries");
 
 const mockNav = makeNavigation<"Tabs">();
 jest.mock("@react-navigation/native", () => ({
@@ -67,6 +72,8 @@ beforeEach(() => {
   seedAuth();
   jest.mocked(markNotificationRead).mockResolvedValue(envelope({}));
   jest.mocked(markAllNotificationsRead).mockResolvedValue(envelope({ updatedCount: 0 }));
+  jest.mocked(fetchTicketDetail).mockResolvedValue({ ticket: null, fields: [], activity: [], assignments: [], linkedLead: null } as never);
+  jest.mocked(fetchLeadDetail).mockResolvedValue({} as never);
 });
 
 describe("E 18 — Today / Earlier", () => {
@@ -256,9 +263,58 @@ describe("tap → read + open", () => {
     await mountInbox();
     await fireEvent.press(await screen.findByText("Tap me"));
     expect(markNotificationRead).toHaveBeenCalledWith(n.Id);
-    expect(mockNav.navigate).toHaveBeenCalledWith(...target);
+    await waitFor(() => expect(mockNav.navigate).toHaveBeenCalledWith(...target));
     // The receipt refetches the inbox so the dot goes away.
     await waitFor(() => expect(fetchNotifications).toHaveBeenCalledTimes(2));
+  });
+
+  // Task 27: the access-model notices (Task 5).
+  it.each([
+    ["a single lead", { Type: "lead_assigned", EntityType: "lead", EntityId: 21 }, ["LeadDetail", { leadId: 21 }]],
+    ["a sent-back lead", { Type: "lead_sent_back", EntityType: "lead", EntityId: 22 }, ["LeadDetail", { leadId: 22 }]],
+    ["a sent-back complaint", { Type: "ticket_sent_back", EntityType: "ticket", EntityId: 23 }, ["ComplaintDetail", { ticketId: 23 }]],
+    ["a reopened unassigned complaint", { Type: "ticket_reopen_unassigned", EntityType: "ticket", EntityId: 24 }, ["ComplaintDetail", { ticketId: 24 }]],
+    // Never a record the reader cannot open: these go to the list.
+    ["a complaint moved away", { Type: "ticket_moved_away", EntityType: "ticket", EntityId: 25 }, ["Complaints"]],
+    ["a lead moved away", { Type: "lead_moved_away", EntityType: "lead", EntityId: 26 }, ["Leads"]],
+    ["a bulk complaint notice (EntityId 0)", { Type: "tickets_bulk_assigned", EntityType: "ticket", EntityId: 0 }, ["Complaints"]],
+    ["a bulk lead move", { Type: "leads_bulk_moved", EntityType: "lead", EntityId: 0 }, ["Leads"]],
+    ["stranded complaints (EntityId is a person)", { Type: "stranded_work", EntityType: "ticket", EntityId: 82 }, ["Complaints"]],
+    ["stranded leads", { Type: "stranded_work", EntityType: "lead", EntityId: 82 }, ["Leads"]],
+  ] as const)("tapping %s opens the right place", async (_label, patch, target) => {
+    jest.mocked(fetchNotifications).mockResolvedValue(reply([note({ ...patch, Title: "Tap me" })]));
+    await mountInbox();
+    await fireEvent.press(await screen.findByText("Tap me"));
+    await waitFor(() => expect(mockNav.navigate).toHaveBeenCalledWith(...target));
+    expect(mockNav.navigate).toHaveBeenCalledTimes(1);
+  });
+
+  it("a list-only notice never fetches the record it names", async () => {
+    jest.mocked(fetchNotifications).mockResolvedValue(reply([note({ Type: "ticket_moved_away", EntityType: "ticket", EntityId: 25, Title: "Tap me" })]));
+    await mountInbox();
+    await fireEvent.press(await screen.findByText("Tap me"));
+    expect(fetchTicketDetail).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["complaint", { Type: "ticket_assigned", EntityType: "ticket", EntityId: 31 }, fetchTicketDetail],
+    ["lead", { Type: "lead_assigned", EntityType: "lead", EntityId: 32 }, fetchLeadDetail],
+  ] as const)("a single %s notice whose record is gone toasts and stays on the Inbox", async (_l, patch, fetcher) => {
+    jest.mocked(fetcher).mockRejectedValue(serverError(404, "Not found"));
+    jest.mocked(fetchNotifications).mockResolvedValue(reply([note({ ...patch, Title: "Tap me" })]));
+    await mountInbox();
+    await fireEvent.press(await screen.findByText("Tap me"));
+    expect(await screen.findByText(RECORD_GONE_MESSAGE)).toBeOnTheScreen();
+    expect(mockNav.navigate).not.toHaveBeenCalled();
+  });
+
+  it("any other failure still opens the record (its screen shows the error)", async () => {
+    jest.mocked(fetchTicketDetail).mockRejectedValue(serverError(500, "Boom"));
+    jest.mocked(fetchNotifications).mockResolvedValue(reply([note({ Type: "ticket_assigned", EntityType: "ticket", EntityId: 33, Title: "Tap me" })]));
+    await mountInbox();
+    await fireEvent.press(await screen.findByText("Tap me"));
+    await waitFor(() => expect(mockNav.navigate).toHaveBeenCalledWith("ComplaintDetail", { ticketId: 33 }));
+    expect(screen.queryByText(RECORD_GONE_MESSAGE)).toBeNull();
   });
 
   // parity: NOTIF-02 — a null EntityType must not crash the tap.

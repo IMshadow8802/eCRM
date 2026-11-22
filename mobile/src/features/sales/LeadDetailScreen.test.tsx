@@ -141,6 +141,14 @@ describe("when the lead cannot be shown", () => {
     expect(mockBar.actions).toEqual([]);
   });
 
+  // X404: 404 alone means gone; a 403 is a refusal and reads as a load failure.
+  it("a 403 is not 'not available'", async () => {
+    jest.mocked(fetchLeadDetail).mockRejectedValue(serverError(403, "No"));
+    await mount();
+    expect(await screen.findByText("The lead could not be loaded. Check your connection and try again.")).toBeOnTheScreen();
+    expect(screen.queryByText("Lead not available")).toBeNull();
+  });
+
   it("a resolved detail with no lead row is treated the same way", async () => {
     jest.mocked(fetchLeadDetail).mockResolvedValue(detail(null));
     await mount();
@@ -665,6 +673,32 @@ describe("reassign and send back", () => {
     expect(await screen.findByRole("header", { name: "Anil Kumar" })).toBeOnTheScreen();
     expect(bar()).toEqual(["Call", "Message"]);
     expect(screen.queryByLabelText("Lead actions")).toBeNull();
+  });
+
+  // Task 26 review Important 1: a follow-up answers for itself (CanAct), not through the lead.
+  it("a follow-up delegated to me (CanAct) stays actionable on a lead I cannot edit", async () => {
+    jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead({ CanEdit: false }), { followups: [followUp({ CanAct: true })] }));
+    await mount();
+    expect(await screen.findByRole("header", { name: "Anil Kumar" })).toBeOnTheScreen();
+    expect(bar()).toEqual(["Call", "Message"]);
+    const { present } = spySheets();
+    await fireEvent.press(screen.getByTestId("next-followup"));
+    expect(present).toHaveBeenCalledTimes(1);
+    present.mockClear();
+    await fireEvent.press(menuItem("Mark done"));
+    // The done sheet opens (it is mounted for the grant, not for the lead).
+    expect(present).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Log the call")).toBeOnTheScreen();
+  });
+
+  it("a follow-up I may not act on (CanAct false) offers nothing, even on a lead I can edit", async () => {
+    jest.mocked(fetchLeadDetail).mockResolvedValue(
+      detail(lead(), { followups: [followUp({ CanAct: false }), followUp({ Id: 71, DueAt: "2099-01-03T15:00:00", CanAct: false })] }),
+    );
+    await mount();
+    await loaded();
+    expect(screen.getByTestId("next-followup").props.accessibilityRole).toBeUndefined();
+    expect(screen.getByTestId("followup-71").props.accessibilityRole).toBeUndefined();
   });
 
   it("Send back is offered only when the server names who gave it", async () => {

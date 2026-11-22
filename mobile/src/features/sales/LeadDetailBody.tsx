@@ -163,6 +163,10 @@ export function LeadDetailBody({ leadId, navigation, onBack, onGone = onBack, us
   // The server's per-record answers (fn_RecordActions) on top of the module grant.
   const canEdit = can.edit && lead?.CanEdit === true;
   const canReassign = canEdit && lead?.CanReassign === true;
+  // A follow-up answers for itself (its CanAct, Task 13): one delegated to the
+  // caller stays actionable on a lead they cannot edit. Rows without the field
+  // follow the lead. The routes still need the leads edit grant.
+  const actsOn = (f: FollowUp) => can.edit && (f.CanAct ?? canEdit);
   const ref = useLeadRefData();
   // Per record, so the server can mark who gave it (IsGiver) — only once the sheet opens.
   const [picking, setPicking] = useState(false);
@@ -256,7 +260,8 @@ export function LeadDetailBody({ leadId, navigation, onBack, onGone = onBack, us
 
   if (!lead) {
     const code = isAxiosError(detailQuery.error) ? detailQuery.error.response?.status : undefined;
-    const forbidden = code === 403 || code === 404 || detailQuery.isSuccess;
+    // 404 = not visible / gone (X404); a 403 is a refusal, not a missing record.
+    const forbidden = code === 404 || detailQuery.isSuccess;
     return (
       <>
         <Band variant="record" title="Lead" onBack={onBack} tone={pane ? "raised" : "band"} gutter={pane ? metrics.pane.detailBand : undefined} />
@@ -374,9 +379,10 @@ export function LeadDetailBody({ leadId, navigation, onBack, onGone = onBack, us
               next={next}
               plannedBy={plannedBy}
               wide={wide}
-              onOpen={canEdit ? openRowMenu : undefined}
-              onDone={canEdit ? (f) => followUpSheets.current?.done(f) : undefined}
-              onReschedule={canEdit ? (f) => followUpSheets.current?.reschedule(f) : undefined}
+              acts={actsOn}
+              onOpen={openRowMenu}
+              onDone={(f) => followUpSheets.current?.done(f)}
+              onReschedule={(f) => followUpSheets.current?.reschedule(f)}
             />
           ) : timeline.length ? (
             <Timeline entries={timeline} />
@@ -455,11 +461,15 @@ export function LeadDetailBody({ leadId, navigation, onBack, onGone = onBack, us
         )}
       </BandSheet>
 
-      {canEdit ? (
+      {can.edit ? (
         <>
           <FollowUpSheets ref={followUpSheets} />
-          <ActionSheet ref={menuRef} title="Lead actions" actions={menuActions} />
           <ActionSheet ref={rowMenuRef} title="Follow-up" actions={rowActions} />
+        </>
+      ) : null}
+      {canEdit ? (
+        <>
+          <ActionSheet ref={menuRef} title="Lead actions" actions={menuActions} />
           <StatusSheet
             ref={statusRef}
             lead={lead}

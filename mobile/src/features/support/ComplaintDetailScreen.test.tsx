@@ -91,6 +91,14 @@ describe("when the complaint cannot be shown", () => {
     expect(published()).toEqual([]);
   });
 
+  // X404: 404 alone means gone; a 403 is a refusal and offers a retry.
+  it("a 403 is not 'not available'", async () => {
+    jest.mocked(fetchTicketDetail).mockRejectedValue(serverError(403, "No"));
+    await mount();
+    expect(await screen.findByRole("button", { name: "Try again" })).toBeOnTheScreen();
+    expect(screen.queryByText("Complaint not available")).toBeNull();
+  });
+
   it("a resolved detail with no ticket row is the same", async () => {
     jest.mocked(fetchTicketDetail).mockResolvedValue(detail(null));
     await mount();

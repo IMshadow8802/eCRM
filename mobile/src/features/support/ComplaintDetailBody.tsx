@@ -81,7 +81,7 @@ export interface ComplaintDetailBodyProps {
   /** Phone: the band's back. The tablet pane has none. */
   onBack?: () => void;
   onEdit: (ticketId: number) => void;
-  /** Deleted, or no longer the caller's (reassigned, sent back, a 403/404): leave the record. */
+  /** Deleted, or no longer the caller's (reassigned, sent back, a 404): leave the record. */
   onDeleted: () => void;
   /** Another of the customer's complaints. */
   onOpenTicket: (ticketId: number) => void;
@@ -222,7 +222,8 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
 
   if (!ticket) {
     const status = isAxiosError(detailQuery.error) ? detailQuery.error.response?.status : undefined;
-    const forbidden = status === 403 || status === 404 || (detailQuery.isSuccess && !ticket);
+    // 404 = not visible / gone (X404); a 403 is a refusal, not a missing record.
+    const forbidden = status === 404 || (detailQuery.isSuccess && !ticket);
     return (
       <>
         <Band variant="record" title="Complaint" titleVariant="h2" tone={inBand ? "raised" : "band"} gutter={inBand ? metrics.pane.detailBand : undefined} {...back} />

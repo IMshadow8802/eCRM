@@ -2,7 +2,7 @@ import {
   Archive, BadgeCheck, Bell, CalendarCheck, CalendarClock, CalendarX, Check, ChevronsUp, Circle, CircleCheck, CircleDot,
   CirclePause, CirclePlay, CircleX, Clock, Ellipsis, FileText, Flag, Headset, House, Inbox, LayoutDashboard,
   ListChecks, Lock, MapPin, MessageSquare, OctagonAlert, Pencil, Phone, PhoneCall, Plus, Sparkles,
-  SquareCheckBig, Target, Timer, Trophy, UserCheck, UserPlus, Users,
+  SquareCheckBig, Target, Timer, TriangleAlert, Trophy, Undo2, UserCheck, UserMinus, UserPlus, Users,
 } from "lucide-react-native";
 
 import {
@@ -84,6 +84,19 @@ describe("E §1.6 status → badge", () => {
     ["task_due_soon", "butter", Timer],
     ["task_assigned", "indigo", UserCheck],
     ["ticket_assigned", "indigo", UserCheck],
+    // Access-model notices (Task 5).
+    ["lead_assigned", "indigo", UserCheck],
+    ["tickets_bulk_assigned", "indigo", UserCheck],
+    ["leads_bulk_assigned", "indigo", UserCheck],
+    ["ticket_moved_away", "slate", UserMinus],
+    ["lead_moved_away", "slate", UserMinus],
+    ["tickets_bulk_moved", "slate", UserMinus],
+    ["leads_bulk_moved", "slate", UserMinus],
+    ["ticket_sent_back", "teal", Undo2],
+    ["lead_sent_back", "teal", Undo2],
+    // "unassigned" is not "assigned": it is a reopen.
+    ["ticket_reopen_unassigned", "sky", CircleDot],
+    ["stranded_work", "butter", TriangleAlert],
     ["comment_added", "teal", MessageSquare],
     ["reply", "teal", MessageSquare],
     ["workspace_invite", "indigo", UserPlus],
