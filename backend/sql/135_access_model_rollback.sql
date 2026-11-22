@@ -9,7 +9,8 @@
 --   From=130  everything: the database is as it was before 130.
 --   From=131  131-134 undone; 130's columns, rows and tables stay (the old
 --             server works on them, plan Ruling 1).
---   From=134  only 134 undone (sp_LeadsUserWise / sp_ConvertedSummary back).
+--   From=134  only 134 undone (sp_LeadsUserWise / sp_ConvertedSummary back
+--             where they still compile, see step 7).
 --   From=132  REFUSED: the old sp_RptSales / sp_RptSalesRows call the 4-param
 --             fn_ReportTree that only a 131 rollback brings back. Use 131.
 --   From=133  REFUSED: no server image runs on it (the new server needs 133's
@@ -26,14 +27,17 @@
 -- COMPANY (the command is in plan Task 33). The new server cannot run on the
 -- old procedures. The rollback is rehearsed on TestCRM at Gate G1:
 -- apply 130-134, run 135 -v From=130, compare with the pre-130 capture below
--- (no difference), then apply 130-134 again.
+-- (no difference apart from 134's dead procedures, see step 7), then apply
+-- 130-134 again.
 --
--- How it works (all in ONE transaction; any error rolls the whole run back):
+-- How it works (steps 1-6 in ONE transaction; any error rolls them all back;
+-- step 7 runs after the commit):
 --   1. Refuse unless From is 130 / 131 / 134 and tblAccessModelBackup
 --      exists (130 applied, not yet rolled back).
 --   2. From <= 133: drop CK_tblTicket_LoggerHolds / CK_tblLeads_LoggerHolds
 --      (pseudo-row #ck_loggerholds_133).
---   3. Every backup row with ScriptNo >= From and Definition NOT NULL is put
+--   3. Every backup row with ScriptNo >= From (except 134's, step 7) and
+--      Definition NOT NULL is put
 --      back from its saved text: FUNCTIONS first, oldest script first, then
 --      PROCEDURES oldest first (pre-flight S1: the old report procs need the
 --      old fn_ReportTree in place before they compile). The object is dropped
@@ -42,7 +46,7 @@
 --      refuses to commit on any mismatch. (Drop + create rather than a header
 --      rewrite: saved texts start with comments that can contain the word
 --      CREATE; none of these objects carries an explicit GRANT, checked on
---      TestCRM 2026-11-22.) An object 134 dropped is simply created again.
+--      TestCRM 2026-11-22.)
 --   4. Every backup row with ScriptNo >= From and Definition NULL (the object
 --      did not exist before) is dropped: procedures first, then functions,
 --      newest script first. Today: fn_AccessGrants, fn_AccessScope,
@@ -67,13 +71,28 @@
 --      then CK_tblGroupModule_AssignReach + AssignReach, DF_tblTicket_LoggerHolds
 --      + tblTicket.LoggerHolds, DF_tblLeads_LoggerHolds + tblLeads.LoggerHolds,
 --      tblAccessModelSnapshot, sp_AccessModelBackup, tblAccessModelBackup.
+--   7. After the commit, best effort: the two dead procedures 134 drops
+--      (ScriptNo = 134: sp_LeadsUserWise, sp_ConvertedSummary). Their saved
+--      texts reference columns removed long ago (tblLeads.AssignTo, LeadDate,
+--      LeadStatus, InvoiceDate) and a missing COLUMN is not deferred, so on
+--      today's schema they do not compile (G1 on TestCRM, 2026-11-22: Msg 207
+--      rolled the whole run back). Each is EXECuted from its saved text in its
+--      own TRY/CATCH with XACT_ABORT OFF and no open transaction: on success the
+--      hash is checked as in step 3; on failure the run prints
+--      "135: <name> not restored ..." and goes on, leaving it dropped. The
+--      texts are read before step 5/6 removes their rows; the rows go by the
+--      same rule as every other row (deleted with From >= 131, the table
+--      dropped with From = 130), restored or not - dead objects, not worth
+--      keeping a save for.
 -- Not undone: notifications the new procedures wrote stay; data the new
 -- procedures wrote (assignments, history rows) stays - it is ordinary data.
 -- The rule: first save wins, so an object two scripts altered keeps the text
 -- from before the first one; 130-134 alter no object twice (checked).
 --
 -- G1 pre-130 capture: run BEFORE 130 and AFTER 135 -v From=130; save both
--- outputs; they must be identical (diff gives nothing).
+-- outputs; they must be identical except the first query may lack
+-- P sp_ConvertedSummary and P sp_LeadsUserWise (step 7: dead, left dropped;
+-- on TestCRM both are, so the diff is exactly those two lines).
 -- SELECT o.type, o.name, CONVERT(VARCHAR(66), HASHBYTES('SHA2_256', m.definition), 1) AS DefHash
 -- FROM sys.sql_modules m JOIN sys.objects o ON o.object_id = m.object_id
 -- ORDER BY o.name;
@@ -118,7 +137,7 @@ END
 GO
 
 -- ---------------------------------------------------------------------------
--- 2-6. The rollback, one transaction.
+-- 2-6. The rollback, one transaction; 7. best effort after it.
 -- ---------------------------------------------------------------------------
 SET XACT_ABORT ON;
 SET NOCOUNT ON;
@@ -126,9 +145,15 @@ DECLARE @From INT = TRY_CAST(N'$(From)' AS INT);
 DECLARE @name SYSNAME, @type CHAR(2), @def NVARCHAR(MAX), @kw NVARCHAR(20),
         @sql NVARCHAR(MAX), @json NVARCHAR(MAX), @n INT;
 DECLARE @log TABLE (Seq INT IDENTITY PRIMARY KEY, ObjName SYSNAME, Action VARCHAR(20), Result VARCHAR(40));
+DECLARE @best TABLE (ObjName SYSNAME PRIMARY KEY, Definition NVARCHAR(MAX));
 
 BEGIN TRY
     BEGIN TRAN;
+
+    -- 7's texts, read now: step 5/6 removes their rows.
+    INSERT INTO @best (ObjName, Definition)
+    SELECT ObjName, Definition FROM dbo.tblAccessModelBackup
+    WHERE ScriptNo = 134 AND ScriptNo >= @From AND Definition IS NOT NULL AND ObjName NOT LIKE '#%';
 
     -- 2. LoggerHolds checks (133).
     IF @From <= 133
@@ -149,7 +174,8 @@ BEGIN TRY
     DECLARE r CURSOR LOCAL FAST_FORWARD FOR
         SELECT ObjName, ObjType, Definition
         FROM dbo.tblAccessModelBackup
-        WHERE ScriptNo >= @From AND Definition IS NOT NULL AND ObjName NOT LIKE '#%'
+        WHERE ScriptNo >= @From AND ScriptNo <> 134   -- 134's: step 7, after the commit
+          AND Definition IS NOT NULL AND ObjName NOT LIKE '#%'
         ORDER BY CASE WHEN ObjType IN ('FN', 'IF', 'TF') THEN 0 ELSE 1 END, ScriptNo, ObjName;
     OPEN r;
     FETCH NEXT FROM r INTO @name, @type, @def;
@@ -294,6 +320,37 @@ BEGIN TRY
     END
 
     COMMIT;
+
+    -- 7. Best effort, outside the transaction: 134's dead procedures.
+    SET XACT_ABORT OFF;
+    SET @name = NULL;
+    WHILE 1 = 1
+    BEGIN
+        SELECT TOP (1) @name = ObjName, @def = Definition
+        FROM @best WHERE ObjName > ISNULL(@name, N'') ORDER BY ObjName;
+        IF @@ROWCOUNT = 0 BREAK;
+        IF OBJECT_ID(N'dbo.' + QUOTENAME(@name)) IS NOT NULL
+            INSERT INTO @log (ObjName, Action, Result) VALUES (@name, 'restore (best)', 'already there');
+        ELSE
+        BEGIN
+            BEGIN TRY
+                EXEC sys.sp_executesql @def;
+                INSERT INTO @log (ObjName, Action, Result)
+                SELECT @name, 'restore (best)',
+                       CASE WHEN HASHBYTES('SHA2_256', OBJECT_DEFINITION(OBJECT_ID(N'dbo.' + QUOTENAME(@name))))
+                                 = HASHBYTES('SHA2_256', @def)
+                            THEN 'same as saved' ELSE 'MISMATCH (left in place)' END;
+            END TRY
+            BEGIN CATCH
+                IF @@TRANCOUNT > 0 ROLLBACK;
+                PRINT '135: ' + @name + ' not restored - its saved text does not compile on today''s schema (dead object, left dropped)';
+                PRINT '     ' + ERROR_MESSAGE();
+                INSERT INTO @log (ObjName, Action, Result) VALUES (@name, 'restore (best)', 'skipped: does not compile');
+            END CATCH
+        END
+    END
+    SET XACT_ABORT ON;
+
     SELECT Seq, ObjName, Action, Result FROM @log ORDER BY Seq;
     PRINT '135: rolled back scripts ' + CAST(@From AS VARCHAR(10)) + '-134.';
 END TRY
@@ -314,7 +371,9 @@ GO
 -- Verify after apply. Each query's expected answer follows it.
 --
 -- During the run: the last result set lists every step; every 'restore' row
--- reads 'same as saved' (a MISMATCH aborts the run before commit).
+-- reads 'same as saved' (a MISMATCH aborts the run before commit). The two
+-- 'restore (best)' rows (step 7) read 'same as saved' or 'skipped: does not
+-- compile' (with the printed "not restored" line); on TestCRM both skip.
 --
 -- After From=131 / 134 (From=130 also passes 1-4):
 -- 1. Nothing an undone script created is left -> 0 rows
@@ -332,7 +391,8 @@ GO
 -- SELECT COUNT(*) FROM sys.parameters WHERE object_id = OBJECT_ID('dbo.sp_SetTicketStatus') AND name = '@AllowReopen';
 -- 3. LoggerHolds checks gone (From <= 131) -> 0
 -- SELECT COUNT(*) FROM sys.check_constraints WHERE name IN ('CK_tblTicket_LoggerHolds', 'CK_tblLeads_LoggerHolds');
--- 4. 134's drops are back -> 2
+-- 4. 134's drops are back where they compile -> 2 minus the step-7 skips
+--    (on today's schema both skip -> 0; that is expected, not a failure)
 -- SELECT COUNT(*) FROM sys.objects WHERE name IN ('sp_LeadsUserWise', 'sp_ConvertedSummary') AND type = 'P';
 -- 5. (From 131 / 134) no save of an undone script is left, snapshot empty -> 0, 0
 -- SELECT COUNT(*) FROM dbo.tblAccessModelBackup WHERE ScriptNo >= 131;   -- use your From
@@ -354,5 +414,7 @@ GO
 -- SELECT CompId, Id FROM dbo.tblUserGroups WHERE Name = 'Support Team Lead';
 -- 9. N3 escalations back -> TestCRM 17 (the run's '#escalation_n3' row reads
 --    '17 of 17 put back'), other databases 0.
--- 10. G1: the pre-130 capture in the header, run again -> identical output.
+-- 10. G1: the pre-130 capture in the header, run again -> identical output,
+--     except the first query lacks P sp_ConvertedSummary and P sp_LeadsUserWise
+--     when step 7 skipped them (TestCRM: exactly those two lines).
 -- ===========================================================================
