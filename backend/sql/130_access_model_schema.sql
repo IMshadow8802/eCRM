@@ -249,7 +249,8 @@ BEGIN
         INSERT INTO dbo.tblAccessModelBackup (ObjName, ScriptNo, ObjType, Definition, SavedAt)
         VALUES ('#role_support_team_lead', 130, NULL, @ids, GETDATE());
 END
-PRINT '130: Support Team Lead added in ' + CAST((SELECT COUNT(*) FROM @new) AS VARCHAR(10)) + ' company(ies)';
+DECLARE @newCount INT = (SELECT COUNT(*) FROM @new);
+PRINT '130: Support Team Lead added in ' + CAST(@newCount AS VARCHAR(10)) + ' company(ies)';
 COMMIT;
 GO
 
@@ -296,7 +297,8 @@ BEGIN
     UPDATE t SET EscalatedTo = NULL, EscalatedAt = NULL
     FROM dbo.tblTicket t JOIN @n3 n ON n.Id = t.Id;
 END
-PRINT '130: N3 escalations cleared: ' + CAST((SELECT COUNT(*) FROM @n3) AS VARCHAR(10));
+DECLARE @n3Count INT = (SELECT COUNT(*) FROM @n3);
+PRINT '130: N3 escalations cleared: ' + CAST(@n3Count AS VARCHAR(10));
 COMMIT;
 GO
 
