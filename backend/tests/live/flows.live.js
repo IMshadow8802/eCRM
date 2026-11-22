@@ -30,6 +30,46 @@ const sendBack = (who, TicketId) => post(who, "/api/tickets/transferTicket", {
 const logComplaint = (who, Subject, AssignedTo = null) => post(who, "/api/tickets/saveTicket", {
   CustomerId: id.customers.HO, Subject, AssignedTo,
 });
+/** Status + the server's sentence, so a failed setup step prints why. */
+const said = (r) => ({ status: r.status, message: r.body?.message });
+
+/**
+ * The body the web sends for "Create quotation" on a lead
+ * (web/src/pages/Sales/Quotations/quoteForm.js draftBodyFromLead): the lead's
+ * customer details, the branch's letterhead from ensureQuoteProfile, one line.
+ * sp_SaveQuotation needs ToName ("Customer name is required").
+ */
+const draftBody = (lead, profile) => ({
+  Id: 0,
+  LeadId: lead.Id,
+  TemplateCode: profile?.DefaultTemplate || "classic",
+  QuoteDate: day(0),
+  ValidTill: day(15),
+  Subject: "AM live quote",
+  ToName: lead.Name,
+  ToCompany: lead.Company ?? "",
+  ToMobile: lead.MobileNo ?? "",
+  ToEmail: lead.Email ?? "",
+  ToAddress: lead.Address ?? "",
+  ToCity: lead.City ?? "",
+  ToStateCode: "",
+  ToPincode: lead.Pincode ?? "",
+  ToGSTIN: "",
+  Company: {
+    name: profile?.CompanyName ?? "", address: profile?.Address ?? "", city: profile?.City ?? "",
+    stateCode: profile?.StateCode ?? "", pincode: profile?.Pincode ?? "", gstin: profile?.GSTIN ?? "",
+    phone: profile?.Phone ?? "", email: profile?.Email ?? "", website: profile?.Website ?? "",
+    bank: profile?.BankDetails ?? "", signatory: profile?.SignatoryName ?? "",
+    logoAttachmentId: profile?.LogoAttachmentId ?? null, headerAttachmentId: profile?.HeaderAttachmentId ?? null,
+    showLogo: true, showHeader: true, accent: profile?.AccentColor || "#1e3a8a",
+  },
+  Content: { intro: profile?.DefaultIntro ?? "", terms: profile?.DefaultTerms ?? "", notes: "", sections: [] },
+  Lines: [{
+    productId: null, description: "AM panel", hsn: "", qty: 1, unit: "", rate: 100,
+    discountType: "pct", discountValue: "", taxPct: 18,
+  }],
+});
+
 const outcome = (r) => ({ status: r.status, message: r.body?.message, refused: isRefusal(r) });
 
 /** [name, path, body(missing?), expected]: real id and MISSING_ID refused identically. */
@@ -107,12 +147,13 @@ describe("scenarios, in order", () => {
 
   it("6 + 19. kasak quotes AM-L01 and hands it to roshan; her follow-up moves, am_field's stays", async () => {
     const kasak = c.as("kasak");
-    expect((await kasak.post("/api/quotations/ensureQuoteProfile", { LeadId: id.L01 })).status).toBe(200);
-    const q = await kasak.post("/api/quotations/saveQuotation", {
-      LeadId: id.L01, Subject: "AM live quote", Lines: [{ description: "AM panel", qty: 1, rate: 100, taxPct: 18 }],
-    });
-    expect(q.status).toBe(200);
+    const prof = await kasak.post("/api/quotations/ensureQuoteProfile", { LeadId: id.L01 });
+    expect(said(prof)).toMatchObject({ status: 200 });
+    const lead = (await kasak.post("/api/leads/fetchLeadDetail", { LeadId: id.L01 })).body.data.lead;
+    const q = await kasak.post("/api/quotations/saveQuotation", draftBody(lead, prof.body.data.profile));
+    expect(said(q)).toMatchObject({ status: 200 }); // a failure shows the server's sentence
     const QuotationId = q.body.data.Id;
+    expect(QuotationId).toBeGreaterThan(0);
 
     const fus = (await post("amit", "/api/leads/fetchLeadDetail", { LeadId: id.L01 })).body.data.followups;
     const kasakFu = fus.find((f) => f.Status === "open" && f.AssignedTo === id.users.kasak);
@@ -123,7 +164,7 @@ describe("scenarios, in order", () => {
     const r = await kasak.post("/api/leads/transferLead", {
       LeadId: id.L01, ToUserId: id.users.roshan, ReasonId: lk.reasonId, Remarks: "AM live: handing over",
     });
-    expect(r.status).toBe(200);
+    expect(said(r)).toMatchObject({ status: 200 });
 
     expect((await post("roshan", "/api/leads/fetchLeadDetail", { LeadId: id.L01 })).status).toBe(200);
     expect((await post("roshan", "/api/quotations/fetchQuotationDetail", { QuotationId })).status).toBe(200);
@@ -139,6 +180,9 @@ describe("scenarios, in order", () => {
   });
 
   it("6b. after the hand-over kasak can act on nothing she gave away: 404 as for a missing id", async () => {
+    if (!handed.QuotationId || !handed.followUpId) {
+      throw new Error("6b needs scenario 6 (quotation + hand-over) to have passed; fix that failure first.");
+    }
     const Q = (m) => (m ? MISSING_ID : handed.QuotationId);
     const F = (m) => (m ? MISSING_ID : handed.followUpId);
     const Q_404 = { status: 404, message: "Quotation not found" };
@@ -252,7 +296,7 @@ describe("scenarios, in order", () => {
     ["kasak", "lead", "L03"],
   ])("a file on a record %s cannot see does not download: 404 as for a missing file", async (who, Entity, tag) => {
     const up = await c.as("amit").upload("/api/attachments/save", { Entity, EntityId: id[tag] });
-    expect(up.status).toBe(200);
+    expect(said(up)).toMatchObject({ status: 201 }); // sp_SaveAttachment answers 201 Created
     const r = await post(who, "/api/attachments/download", { Id: up.body.data.attachmentId });
     const missing = await post(who, "/api/attachments/download", { Id: MISSING_ID });
     expect(r.status).toBe(404);
