@@ -22,12 +22,14 @@ const breaks = (src) => LIST_PARAMS.test(src) || PERSON_FROM_REQUEST.test(src);
 
 describe("actor contract — converted controllers", () => {
   const files = DONE.map(file);
-  it.each(files.length ? files : ["(none yet)"])("%s never names a list parameter", (f) => {
-    if (f === "(none yet)") return expect(PENDING).toHaveLength(4);
+  if (!files.length) {
+    it("no controller converted yet", () => expect(DONE).toEqual([]));
+    return;
+  }
+  it.each(files)("%s never names a list parameter", (f) => {
     expect(read(f)).not.toMatch(LIST_PARAMS);
   });
-  it.each(files.length ? files : ["(none yet)"])("%s never takes the person or company from the request", (f) => {
-    if (f === "(none yet)") return expect(PENDING).toHaveLength(4);
+  it.each(files)("%s never takes the person or company from the request", (f) => {
     expect(read(f)).not.toMatch(PERSON_FROM_REQUEST);
   });
 });

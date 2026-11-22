@@ -186,6 +186,10 @@ describe("Can assign to (AssignReach)", () => {
     expect(roleWithin(giver, [row("Team")])).toBe(true);
     expect(roleWithin(giver, [row("Office")])).toBe(false);
   });
+  it("refuses an unknown AssignReach value (fail closed)", () => {
+    const giver = buildAccess(rs({ modules: [{ ...mod("leads", "Office"), AssignReach: "Company" }], lists: LISTS }), 7);
+    expect(roleWithin(giver, [{ Module: "leads", Reach: "Own", CanView: 1, AssignReach: "Everyone" }])).toBe(false);
+  });
   it("ignores AssignReach on a row that grants no view", () => {
     const giver = buildAccess(rs({ modules: [mod("leads", "Office")], lists: LISTS }), 7);
     expect(roleWithin(giver, [{ Module: "leads", Reach: "Own", CanView: 0, AssignReach: "Company" }])).toBe(true);

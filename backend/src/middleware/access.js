@@ -99,7 +99,11 @@ function roleWithin(access, roleRows = []) {
     const acts = [["CanView", "view"], ["CanAdd", "add"], ["CanEdit", "edit"], ["CanDelete", "delete"]];
     if (acts.some(([col, k]) => bit(r[col]) && !mine[k])) return false;
     if (!bit(r.CanView)) return true;
-    if (r.AssignReach && ASSIGN_ORDER.indexOf(r.AssignReach) > ASSIGN_ORDER.indexOf(mine.assignReach || "Team")) return false;
+    if (r.AssignReach) {
+      const want = ASSIGN_ORDER.indexOf(r.AssignReach);
+      // An unknown level is never "within" (fail closed).
+      if (want < 0 || want > ASSIGN_ORDER.indexOf(mine.assignReach || "Team")) return false;
+    }
     if (!r.Reach) return true;
     return REACH_ORDER.indexOf(r.Reach) <= REACH_ORDER.indexOf(mine.reach || "Own");
   });
