@@ -18,6 +18,7 @@ const USERS = [
   { Id: 2, FullName: "Bob", BranchId: 2, BranchName: "Pune" },
 ];
 let rosterCalls = 0;
+let lastRoster = null;
 const SOURCES = [
   { Id: 5, Value: "Website" },
   { Id: 6, Value: "Referral" },
@@ -39,8 +40,9 @@ const json = (data) =>
 
 const mockReads = (customFields = []) =>
   server.use(
-    http.post("*/api/users/fetchAssignableUsers", async () => {
+    http.post("*/api/users/fetchAssignableUsers", async ({ request }) => {
       rosterCalls += 1;
+      lastRoster = await request.json();
       return json({ users: USERS });
     }),
     http.post("*/api/config/fetchLookups", async ({ request }) => {
@@ -59,11 +61,11 @@ const mockReads = (customFields = []) =>
     http.post("*/api/partners/fetchPartners", async () => json({ partners: PARTNERS })),
   );
 
-const mockSave = (capture) =>
+const mockSave = (capture, message = "Lead created") =>
   server.use(
     http.post("*/api/leads/saveLeads", async ({ request }) => {
       capture?.(await request.json());
-      return json({ Id: 42, ResponseCode: 200, ResponseMess: "Lead created" });
+      return HttpResponse.json({ success: true, message, responseCode: 200, data: { Id: 42, ResponseCode: 200, ResponseMess: "Lead created" } });
     }),
   );
 
@@ -102,7 +104,7 @@ describe("LeadCreateModal", () => {
     await user.type(screen.getByTestId("lead-city"), "Pune");
     await user.type(screen.getByTestId("lead-pincode"), "411001");
     await pick(user, "lead-product", "TV 43in");
-    await pick(user, "lead-owner", "Bob");
+    await pick(user, "lead-owner", /^Bob/);
     await user.type(screen.getByTestId("lead-remarks"), "Walk-in, wants delivery Friday");
     await user.click(screen.getByTestId("lead-create-submit"));
 
@@ -124,6 +126,45 @@ describe("LeadCreateModal", () => {
     expect(captured).not.toHaveProperty("StageId");
     expect(captured.CustomJSON).toBe("[]");
     expect(onClose).toHaveBeenCalled();
+  }, 20000);
+
+  it("'Assign to' asks the leads roster and the create toast is the server's sentence", async () => {
+    // The server names the person (leadController.assignedMessage); the page
+    // shows its words, not a sentence rebuilt from the pick.
+    mockSave(null, "Lead saved and assigned to Bob Kumar");
+    renderWithProviders(<LeadCreateModal open onClose={() => {}} />, { router: false });
+    const user = userEvent.setup();
+    expect(screen.getByText("Assign to")).toBeInTheDocument();
+    expect(screen.queryByText("Owner")).toBeNull();
+    await user.type(screen.getByTestId("lead-name"), "Sharma");
+    await user.type(screen.getByTestId("lead-mobile"), "9820012345");
+    await pick(user, "lead-owner", /^Bob/);
+    expect(lastRoster).toEqual({ Module: "leads" });
+    await user.click(screen.getByTestId("lead-create-submit"));
+    expect(await screen.findByText("Lead saved and assigned to Bob Kumar")).toBeInTheDocument();
+  }, 20000);
+
+  it("a save the server answers with success false shows its message and keeps the form open", async () => {
+    server.use(http.post("*/api/leads/saveLeads", async () =>
+      HttpResponse.json({ success: false, message: "That mobile is already a lead", responseCode: 200 })));
+    const onClose = vi.fn();
+    renderWithProviders(<LeadCreateModal open onClose={onClose} />, { router: false });
+    const user = userEvent.setup();
+    await user.type(screen.getByTestId("lead-name"), "Sharma");
+    await user.type(screen.getByTestId("lead-mobile"), "9820012345");
+    await user.click(screen.getByTestId("lead-create-submit"));
+    expect(await screen.findByText("That mobile is already a lead")).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  }, 20000);
+
+  it("a create with nobody assigned shows the server's own sentence", async () => {
+    mockSave();
+    renderWithProviders(<LeadCreateModal open onClose={() => {}} />, { router: false });
+    const user = userEvent.setup();
+    await user.type(screen.getByTestId("lead-name"), "Sharma");
+    await user.type(screen.getByTestId("lead-mobile"), "9820012345");
+    await user.click(screen.getByTestId("lead-create-submit"));
+    expect(await screen.findByText("Lead created")).toBeInTheDocument();
   }, 20000);
 
   const fillBasics = async (user) => {
@@ -182,7 +223,7 @@ describe("LeadCreateModal", () => {
     await user.type(screen.getByTestId("lead-name"), "Beta");
     await user.type(screen.getByTestId("lead-mobile"), "8887776665");
     await pick(user, "lead-source", "Referral");
-    await pick(user, "lead-owner", "Bob");
+    await pick(user, "lead-owner", /^Bob/);
     await user.type(screen.getByLabelText("Region"), "West");
 
     await user.click(screen.getByTestId("lead-create-submit"));
@@ -265,7 +306,7 @@ describe("LeadCreateModal", () => {
     expect(onClose).toHaveBeenCalled();
   }, 20000);
 
-  it("edit hides Owner and Status and sends neither", async () => {
+  it("edit hides Assign to and Status and sends neither", async () => {
     let captured;
     mockSave((body) => {
       captured = body;

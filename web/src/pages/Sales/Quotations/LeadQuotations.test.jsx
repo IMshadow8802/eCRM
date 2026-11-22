@@ -8,7 +8,7 @@ import { server } from "../../../test/mocks/server";
 import renderWithProviders from "../../../test/renderWithProviders";
 
 const json = (data) => HttpResponse.json({ success: true, message: "ok", responseCode: 200, data });
-const LEAD = { Id: 9, Name: "Ramesh Patel", Company: "", MobileNo: "9825012345", City: "Ahmedabad", State: "Gujarat", ProductId: 7, StatusCode: "qualified" };
+const LEAD = { Id: 9, Name: "Ramesh Patel", Company: "", MobileNo: "9825012345", City: "Ahmedabad", State: "Gujarat", ProductId: 7, StatusCode: "qualified", CanEdit: 1 };
 const ROWS = [
   { Id: 4, QuoteNo: "QT-2627-0042", Revision: 1, Status: "final", QuoteDate: "2026-09-18", ValidTill: "2026-10-03", GrandTotal: 302400, IsExpired: false },
   { Id: 5, QuoteNo: null, Revision: 2, Status: "draft", QuoteDate: "2026-09-19", ValidTill: null, GrandTotal: 296800, IsExpired: false },
@@ -89,6 +89,14 @@ describe("LeadQuotations", () => {
   it("offers no Create on a lead that is won, lost or junk", async () => {
     mocks();
     draw({ ...LEAD, StatusCode: "converted" });
+    await screen.findByText("QT-2627-0042");
+    expect(screen.queryByRole("button", { name: /create quotation/i })).toBeNull();
+  });
+
+  // A lead the caller can see but not change: Create could only earn a 403.
+  it("offers no Create when the server says the lead is not editable (CanEdit 0)", async () => {
+    mocks();
+    draw({ ...LEAD, CanEdit: 0 });
     await screen.findByText("QT-2627-0042");
     expect(screen.queryByRole("button", { name: /create quotation/i })).toBeNull();
   });

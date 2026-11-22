@@ -14,6 +14,7 @@ import {
   NumberInput,
   Combobox,
   MobileInput,
+  AssigneePicker,
 } from "../../components/ui";
 import FormGrid from "../../components/ui/FormGrid";
 import DynamicField from "../../components/DynamicField";
@@ -21,8 +22,8 @@ import Attachments from "../../components/Attachments";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { useApiMutation } from "../../hooks/useApiMutation";
 import { useLookups } from "../../hooks/useLookups";
-import { useAssignableUsers } from "../../hooks/useAssignableUsers";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
+import { apiClient } from "../../utils/axiosConfig";
 import { PARTNER_ENDPOINTS } from "../../api/partnerQueries";
 import DueInputs from "./DueInputs";
 import { dueAt, isPastDue } from "./followUpDue";
@@ -152,10 +153,6 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
   const [termsKnown, setTermsKnown] = useState(true);
   const attachmentsRef = useRef(null);
 
-  // Only owners the server will accept: sp_FetchAssignableUsers is the same
-  // roster leadController.save re-checks, so a pick can't come back 403.
-  const { users } = useAssignableUsers({ enabled: Boolean(open) && !isEdit });
-
   const { lookups: sources } = useLookups("lead_source", {
     enabled: Boolean(open),
     showErrorMessage: false,
@@ -212,10 +209,6 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
     () => products.map((p) => ({ value: p.Id, label: p.Name })),
     [products]
   );
-  const ownerOpts = useMemo(
-    () => users.map((u) => ({ value: u.Id, label: u.FullName })),
-    [users]
-  );
 
   // Prefill from the lead being edited (or clear back to blank for create).
   useEffect(() => {
@@ -251,7 +244,15 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
 
   const saveMutation = useApiMutation({
     endpoint: SALES_ENDPOINTS.leads.saveLeads,
-    successMessage: isEdit ? "Lead updated" : "Lead created",
+    // The server's sentence travels with the row, so a create can say who got
+    // it ("Lead saved and assigned to Vivek") in the server's own words.
+    mutationFn: async (body) => {
+      const { data } = await apiClient.post(SALES_ENDPOINTS.leads.saveLeads, body);
+      if (!data.success) throw new Error(data.message || "Operation failed");
+      return { ...data.data, message: data.message };
+    },
+    successMessage: "Lead updated",
+    showSuccessMessage: isEdit,
     invalidateQueries: [["leads"], ["sales-leads"], ["lead-detail"]],
   });
 
@@ -303,8 +304,8 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
         ProductId: values.ProductId ?? null,
         EstValue: values.EstValue === "" ? null : Number(values.EstValue),
         Remarks: values.Remarks?.trim() || null,
-        // Ownership and status are create-time only; edits move them through
-        // Transfer and the status dropdown, never through this form.
+        // Assignment and status are create-time only; edits move them through
+        // Reassign and the status dropdown, never through this form.
         ...(isEdit
           ? {}
           : {
@@ -325,6 +326,7 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
         // skip the custom-value merge, so stored custom fields survive.
         CustomJSON: isEdit ? null : JSON.stringify(customJson),
       });
+      if (!isEdit) enqueueSnackbar(saved?.message || "Lead saved", { variant: "success" });
       const newId = saved?.Id;
       if (!isEdit && newId && attachmentsRef.current?.stagedCount) {
         const { failed } = await attachmentsRef.current.uploadStaged(newId);
@@ -585,11 +587,13 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
                   control={control}
                   name="OwnerId"
                   render={({ field }) => (
-                    <Combobox
-                      label="Owner"
-                      options={ownerOpts}
-                      value={ownerOpts.find((o) => o.value === field.value) ?? null}
-                      onChange={(opt) => field.onChange(opt?.value ?? null)}
+                    <AssigneePicker
+                      module="leads"
+                      enabled={Boolean(open) && !isEdit}
+                      label="Assign to"
+                      allowUnassigned
+                      value={field.value ?? null}
+                      onChange={(id) => field.onChange(id)}
                       placeholder="Leave blank to assign later"
                       data-testid="lead-owner"
                     />

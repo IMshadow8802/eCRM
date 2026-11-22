@@ -113,14 +113,26 @@ describe("Leads page (spec 1)", () => {
     expect(lastCfg().enableRowSelection).toBe(true);
   });
 
-  it("canCrossBranch follows the leads reach: Own is false, Office is true", () => {
-    mockAccess = { isAdmin: false, modules: { leads: { view: true, reach: "Own" } } };
+  it("the reassign dialog decides office choices itself; a finished reassign clears the selection", () => {
     renderPage();
-    expect(TransferLeadModal.mock.calls.at(-1)[0].canCrossBranch).toBe(false);
-    mockAccess = { isAdmin: false, modules: { leads: { view: true, reach: "Office" } } };
+    const props = TransferLeadModal.mock.calls.at(-1)[0];
+    expect(props).not.toHaveProperty("canCrossBranch");
+    expect(() => props.onDone()).not.toThrow();
+  });
+
+  it("the Leads table has an \"Assigned to\" header and no \"Owner\" header", () => {
     renderPage();
-    expect(TransferLeadModal.mock.calls.at(-1)[0].canCrossBranch).toBe(true);
-    mockAccess = null;
+    const headers = screen.getAllByRole("columnheader").map((h) => h.textContent);
+    expect(headers.some((h) => h.includes("Assigned to"))).toBe(true);
+    expect(headers.some((h) => /owner/i.test(h))).toBe(false);
+  });
+
+  it("filters say Assigned to and offices, never owner or branch", () => {
+    renderPage();
+    expect(screen.getByTestId("filter-owner-input")).toHaveAttribute("placeholder", "Assigned to");
+    expect(screen.getByTestId("filter-branch-input")).toHaveAttribute("placeholder", "All offices");
+    expect(screen.getByLabelText("Reassign lead", { selector: "[data-testid=reassign-lead-101]" })).toBeInTheDocument();
+    expect(document.body.innerHTML).not.toMatch(/All owners|All branches|Transfer/);
   });
 
   it("hides Reassign with nothing selected", () => {
@@ -208,7 +220,7 @@ describe("Leads page (spec 1)", () => {
 
     // The real table draws the row actions.
     const user = userEvent.setup();
-    await user.click(screen.getByTestId("transfer-lead-101"));
+    await user.click(screen.getByTestId("reassign-lead-101"));
     expect(screen.getByTestId("transfer-modal")).toHaveTextContent("101");
     await user.click(screen.getByTestId("delete-lead-101"));
     expect(await screen.findByTestId("delete-lead-modal")).toBeInTheDocument();
@@ -227,7 +239,7 @@ describe("Leads page (spec 1)", () => {
     expect(mockNavigate).toHaveBeenCalledWith("/sales/leads/101");
 
     expect(screen.getByTestId("edit-lead-101")).toHaveAttribute("data-tone", "info");
-    expect(screen.getByTestId("transfer-lead-101")).toHaveAttribute("data-tone", "warning");
+    expect(screen.getByTestId("reassign-lead-101")).toHaveAttribute("data-tone", "warning");
     expect(screen.getByTestId("delete-lead-101")).toHaveAttribute("data-tone", "error");
   });
 
@@ -240,7 +252,7 @@ describe("Leads page (spec 1)", () => {
   it("columns: Created and Last activity right after the name, no City", () => {
     renderPage();
     const headers = screen.getAllByRole("columnheader").map((h) => h.querySelector(".Mui-TableHeadCell-Content-Wrapper")?.textContent).filter(Boolean);
-    expect(headers).toEqual(["Name", "Created", "Last activity", "Company", "Mobile", "Status", "Product", "Owner", "Partner", "Value", "Next Follow-up", "Actions"]);
+    expect(headers).toEqual(["Name", "Created", "Last activity", "Company", "Mobile", "Status", "Product", "Assigned to", "Partner", "Value", "Next Follow-up", "Actions"]);
     expect(lastCfg().columns.filter((c) => c.enableSorting).map((c) => c.id)).toEqual(["name", "created", "lastActivity", "value", "nextFollowUp"]);
   });
 

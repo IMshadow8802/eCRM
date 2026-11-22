@@ -132,8 +132,8 @@ export const HELP_GUIDES = {
     titleEn: "How to manage Leads",
     steps: [
       {
-        hi: "Status / Owner / Product / Source फ़िल्टर और presets (My leads, Overdue, Unassigned) से लीड्स ढूँढें।",
-        en: "Use the Status / Owner / Product / Source filters and the presets (My leads, Overdue, Unassigned) to find leads.",
+        hi: "Status / Assigned to / Product / Source फ़िल्टर और presets (My leads, Overdue, Unassigned) से लीड्स ढूँढें।",
+        en: "Use the Status / Assigned to / Product / Source filters and the presets (My leads, Overdue, Unassigned) to find leads.",
       },
       {
         hi: "किसी लीड की पंक्ति (row) पर क्लिक करके उसका विवरण, custom fields और activity timeline देखें।",
