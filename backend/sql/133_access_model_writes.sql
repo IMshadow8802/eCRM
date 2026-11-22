@@ -128,7 +128,7 @@ WHERE b.Id = @BranchId AND b.IsActive = 1
   AND (   EXISTS (SELECT 1 FROM dbo.tblUser u
                   WHERE u.BranchId = b.Id AND u.CompId = @CompId AND u.IsActive = 1)
        OR EXISTS (SELECT 1 FROM dbo.tblUserBranchAccess a
-                  WHERE a.BranchId = b.Id AND a.CompId = @CompId));
+                  WHERE a.BranchId = b.Id AND a.CompId = @CompId AND a.CanRead = 1));
 GO
 
 -- ---------------------------------------------------------------------------
@@ -2493,7 +2493,9 @@ GO
 -- BEGIN TRAN;
 -- UPDATE dbo.tblBranch SET IsActive = 0 WHERE Id = 7;
 -- DECLARE @r TABLE (Id INT, ResponseCode INT, ResponseMess NVARCHAR(400), FromUserId INT, ToUserId INT, ToName NVARCHAR(200));
--- INSERT INTO @r EXEC dbo.sp_TransferTicket @CompId = 1, @TicketId = 1087, @ToUserId = 84, @ToBranchId = 7,
+-- -- vikram.rao (75) is Company / Can assign to Company, and sunita.iyer (77, office 7) works
+-- -- complaints, so gate 6 passes and the 400 comes from gate 7 (office 7 closed).
+-- INSERT INTO @r EXEC dbo.sp_TransferTicket @CompId = 1, @TicketId = 1087, @ToUserId = 77, @ToBranchId = 7,
 --      @ReasonId = 37, @Remarks = N'verify 133', @UserId = 75, @SendBack = 0;
 -- INSERT INTO @r EXEC dbo.sp_TransferTicket @CompId = 1, @TicketId = 1087, @ToUserId = NULL, @ToBranchId = 2147483647,
 --      @ReasonId = 37, @Remarks = N'verify 133', @UserId = 75, @SendBack = 0;
