@@ -1,0 +1,19 @@
+# Kasak (tele-caller): her Mine count equals All (she sees only her own
+# leads), and she has no Complaints tab. Env: KASAK_ALL, KASAK_MINE.
+appId: com.shadowider.eCRM
+---
+- runFlow: ../common/open-work.yaml
+- assertNotVisible:
+    id: "pill-Complaints"
+- assertNotVisible: "Open My complaints"
+- tapOn: "Leads, \\d+ yours"
+- extendedWaitUntil:
+    visible:
+      id: "leads-list"
+    timeout: 15000
+- extendedWaitUntil:
+    visible: "Mine, ${KASAK_MINE}"
+    timeout: 15000
+- assertVisible: "All, ${KASAK_ALL}"
+- assertVisible: "All, ${KASAK_MINE}"
+- takeScreenshot: st-kasak-leads
