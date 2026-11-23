@@ -1,14 +1,54 @@
-# Escalate, then Reassign to an agent (reason + remarks). Reassign comes last:
-# a reassign takes the record back to the list.
+# Reassign to an agent (search the grouped picker, reason + remarks), then
+# Escalate to that agent's manager. Reassign first: the owner has nobody above
+# them, so an unassigned complaint has no one to escalate to ("Nobody above
+# you…"); once Imran Khan holds it, his chain (Vikram Rao) is offered. A
+# reassign takes the record back to the list, so it is opened again from Team.
 appId: com.shadowider.eCRM
 ---
 - runFlow: common/new-complaint.yaml
 
-# Escalate is on the action bar once the chain above is known.
+- tapOn: "Reassign"
+- assertVisible: "Reassign complaint"
+# Wait for the list (it loads when the sheet opens) before typing.
+- extendedWaitUntil:
+    visible: "Your manager and team|Your office"
+    timeout: 15000
+- tapOn:
+    id: "reassign-search"
+- inputText: "Imran Khan"
+# The row, not the search box that now reads the same.
+- tapOn:
+    text: "Imran Khan"
+    below:
+      id: "reassign-search"
+- waitForAnimationToEnd
+# The pick folds the list to him, so the reason sits right below.
+- assertVisible: "Reassign to Imran"
+- tapOn: "Overloaded"
+- tapOn:
+    id: "reassign-remarks"
+- inputText: "MAESTRO reassign ${output.stamp}"
+- takeScreenshot: reassign-sheet
+- tapOn: "Reassign to Imran"
+- waitForAnimationToEnd
+- assertNotVisible: "Reassign complaint"
+
+# Back on the list, search still set: it is now on the Team preset.
+- runFlow:
+    file: access/preset.yaml
+    env:
+      NAME: "Team, \\d+"
+- tapOn: "TKT-.*MAESTRO complaint ${output.stamp}"
+- assertVisible: "Reassigned to Imran Khan — Overloaded"
+
 - tapOn: "Escalate"
 - assertVisible: "Escalate complaint"
-- assertVisible: "TKT-\\d+ · it stays.*"
-- tapOn: "Neha Gupta \\(TL Head Office\\)"
+- assertVisible: "TKT-\\d+ · it stays with Imran Khan"
+# The chain loads when the sheet opens.
+- extendedWaitUntil:
+    visible: "Vikram Rao"
+    timeout: 15000
+- tapOn: "Vikram Rao"
 - tapOn:
     id: "escalate-remarks"
 - inputText: "MAESTRO escalate ${output.stamp}"
@@ -19,23 +59,6 @@ appId: com.shadowider.eCRM
       id: "escalate-remarks"
 - waitForAnimationToEnd
 - assertNotVisible: "Escalate complaint"
-- assertVisible: "Escalated to Neha Gupta.*"
-- assertVisible: "Escalated to Neha Gupta .* — MAESTRO escalate ${output.stamp}"
+- assertVisible: "Escalated to Vikram Rao"
+- assertVisible: "Escalated to Vikram Rao — MAESTRO.*"   # typed text can drop letters on the emulator keyboard
 - takeScreenshot: escalate-history
-
-- tapOn: "Reassign"
-- assertVisible: "Reassign complaint"
-# Picked from the list, not typed: adb input into a sheet that is still
-# settling drops a character now and then ("Ait Singh", run 3).
-- waitForAnimationToEnd
-- tapOn: "Amit Singh \\(Exec HO, under Neha\\)"
-# The pick folds the list to Amit, so the reason sits right below it.
-- tapOn: "Overloaded"
-- tapOn:
-    id: "reassign-remarks"
-- inputText: "MAESTRO reassign ${output.stamp}"
-- takeScreenshot: reassign-sheet
-- tapOn: "Reassign to Amit"
-- waitForAnimationToEnd
-- assertVisible: "Reassigned to Amit Singh.*"
-- assertNotVisible: "Reassign complaint"

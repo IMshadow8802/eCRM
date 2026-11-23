@@ -20,15 +20,26 @@ appId: com.shadowider.eCRM
 
 - tapOn: "Reassign"
 - assertVisible: "Reassign lead"
-- assertVisible: "Reassign to"
+# Wait for the grouped list (it loads when the sheet opens) before typing.
+- extendedWaitUntil:
+    visible: "Your manager and team|Your office"
+    timeout: 15000
 - takeScreenshot: lead-reassign-picker
-- tapOn: "Amit Singh \\(Exec HO, under Neha\\)"
-- assertVisible: "Reassign to Amit"
+- tapOn:
+    id: "reassign-search"
+- inputText: "Priya Singh"
+# The row, not the search box that now reads the same.
+- tapOn:
+    text: "Priya Singh"
+    below:
+      id: "reassign-search"
+- waitForAnimationToEnd
+- assertVisible: "Reassign to Priya"
 - tapOn: "Overloaded"
 - tapOn:
     id: "reassign-remarks"
 - inputText: "MAESTRO lead reassign ${output.stamp}"
-- tapOn: "Reassign to Amit"
+- tapOn: "Reassign to Priya"
 - waitForAnimationToEnd
-- assertVisible: "Reassigned to Amit Singh.*"
+- assertVisible: "Reassigned to Priya Singh.*"
 - takeScreenshot: lead-reassigned
