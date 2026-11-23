@@ -2,7 +2,7 @@ import { useTheme } from "@mui/material/styles";
 import useUiScale from "../../hooks/useUiScale";
 import { Box, Typography } from "@mui/material";
 import { ArrowUpRight, ArrowDownRight } from "lucide-react";
-import SampleBadge from "./SampleBadge";
+import ChartEmpty from "./ChartEmpty";
 import {
   Area,
   AreaChart,
@@ -17,16 +17,6 @@ import {
  * Hero area chart with inline KPI summary. Two series (Leads, Converted)
  * with gradient fills + floating totals and week-over-week delta chips.
  */
-const FALLBACK = [
-  { name: "Mon", leads: 18, converted: 6 },
-  { name: "Tue", leads: 26, converted: 9 },
-  { name: "Wed", leads: 22, converted: 11 },
-  { name: "Thu", leads: 31, converted: 14 },
-  { name: "Fri", leads: 28, converted: 16 },
-  { name: "Sat", leads: 20, converted: 10 },
-  { name: "Sun", leads: 24, converted: 12 },
-];
-
 const DeltaChip = ({ delta, tone }) => {
   const theme = useTheme();
   const p = theme.tokens;
@@ -68,7 +58,8 @@ export default function AreaTrend({ data, height = 240 }) {
   const k = useUiScale();
   const p = theme.tokens;
   const hasData = Array.isArray(data) && data.length > 0;
-  const rows = hasData ? data : FALLBACK;
+  if (!hasData) return <ChartEmpty height={height * k} />;
+  const rows = data;
 
   const totalLeads = rows.reduce((s, r) => s + (r.leads ?? 0), 0);
   const totalConv = rows.reduce((s, r) => s + (r.converted ?? 0), 0);
@@ -124,7 +115,6 @@ export default function AreaTrend({ data, height = 240 }) {
           </Box>
         </Box>
         <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
-          {!hasData && <SampleBadge inline />}
           <LegendDot color={p.primary.main} label="Leads" value={totalLeads} />
           <LegendDot color={p.accent.main} label="Converted" value={totalConv} />
         </Box>

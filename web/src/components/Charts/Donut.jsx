@@ -1,7 +1,7 @@
 import { useTheme } from "@mui/material/styles";
 import useUiScale from "../../hooks/useUiScale";
 import { Box } from "@mui/material";
-import SampleBadge from "./SampleBadge";
+import ChartEmpty from "./ChartEmpty";
 import {
   Cell,
   Legend,
@@ -13,22 +13,15 @@ import {
 
 /**
  * Donut chart (recharts). Colorful palette pulled from design tokens.
- * Pass `data: [{name, value}]` or falls back to a demo series.
+ * Pass `data: [{name, value}]`; renders ChartEmpty without it.
  */
-const FALLBACK = [
-  { name: "Google", value: 42 },
-  { name: "Direct", value: 28 },
-  { name: "Email", value: 18 },
-  { name: "Referral", value: 12 },
-  { name: "Social", value: 9 },
-];
-
 export default function Donut({ data, height = 240, variant = "donut" }) {
   const theme = useTheme();
   const k = useUiScale();
   const p = theme.tokens;
   const hasData = Array.isArray(data) && data.length > 0;
-  const rows = hasData ? data : FALLBACK;
+  if (!hasData) return <ChartEmpty height={height * k} />;
+  const rows = data;
 
   const palette = [
     p.primary.main,
@@ -41,7 +34,6 @@ export default function Donut({ data, height = 240, variant = "donut" }) {
 
   return (
     <Box sx={{ position: "relative" }}>
-      {!hasData && <SampleBadge />}
       <ResponsiveContainer width="100%" height={height * k}>
       <RechartsPie>
         <Pie

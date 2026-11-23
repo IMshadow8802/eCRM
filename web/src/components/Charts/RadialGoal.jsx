@@ -14,21 +14,19 @@ import {
  * previous period, and a secondary stat row underneath.
  */
 export default function RadialGoal({
-  value = 62,
-  goal = 100,
-  previousValue = 54,
-  label = "Conversion rate",
-  suffix = "%",
-  secondary = [
-    { label: "Target", value: "100%" },
-    { label: "Last week", value: "54%" },
-  ],
+  value = 0,
+  goal = null, // no real target → no "of N goal" line, the ring just fills
+  previousValue = null,
+  label,
+  suffix = "",
+  secondary = [],
   height = 220,
 }) {
   const theme = useTheme();
   const k = useUiScale();
   const p = theme.tokens;
-  const pct = Math.max(0, Math.min(goal, value));
+  const top = goal ?? Math.max(value, 1);
+  const pct = Math.max(0, Math.min(top, value));
   const delta = value - previousValue;
   const up = delta >= 0;
 
@@ -41,24 +39,26 @@ export default function RadialGoal({
             {label}
           </Typography>
         </Box>
-        <Box
-          sx={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 0.25,
-            px: 0.75,
-            py: 0.25,
-            borderRadius: 999,
-            backgroundColor: up ? p.success.subtle : p.error.subtle,
-            color: up ? p.success.main : p.error.main,
-            fontSize: "0.7rem",
-            fontWeight: 600,
-          }}
-        >
-          {up ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />}
-          {Math.abs(delta)}
-          {suffix}
-        </Box>
+        {previousValue != null && (
+          <Box
+            sx={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 0.25,
+              px: 0.75,
+              py: 0.25,
+              borderRadius: 999,
+              backgroundColor: up ? p.success.subtle : p.error.subtle,
+              color: up ? p.success.main : p.error.main,
+              fontSize: "0.7rem",
+              fontWeight: 600,
+            }}
+          >
+            {up ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />}
+            {Math.abs(delta)}
+            {suffix}
+          </Box>
+        )}
       </Box>
 
       <Box sx={{ position: "relative", height: height * k }}>
@@ -78,7 +78,7 @@ export default function RadialGoal({
             </defs>
             <PolarAngleAxis
               type="number"
-              domain={[0, goal]}
+              domain={[0, top]}
               angleAxisId={0}
               tick={false}
             />
@@ -114,12 +114,14 @@ export default function RadialGoal({
               {suffix}
             </span>
           </Typography>
-          <Typography
-            sx={{ fontSize: "0.7rem", color: "text.tertiary", mt: 0.5, textAlign: "center" }}
-          >
-            of {goal}
-            {suffix} goal
-          </Typography>
+          {goal != null && (
+            <Typography
+              sx={{ fontSize: "0.7rem", color: "text.tertiary", mt: 0.5, textAlign: "center" }}
+            >
+              of {goal}
+              {suffix} goal
+            </Typography>
+          )}
         </Box>
       </Box>
 

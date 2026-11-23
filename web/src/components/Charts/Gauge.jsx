@@ -14,8 +14,8 @@ import {
  */
 export default function Gauge({
   label = "Missed follow-ups",
-  value = 8,
-  max = 50,
+  value = 0,
+  max = null, // no real cap → any value > 0 reads as full and red
   warnAt = 0.3,
   dangerAt = 0.6,
   unit = "",
@@ -24,7 +24,8 @@ export default function Gauge({
   const theme = useTheme();
   const k = useUiScale();
   const p = theme.tokens;
-  const ratio = Math.max(0, Math.min(1, value / max));
+  const top = max ?? Math.max(value, 1);
+  const ratio = Math.max(0, Math.min(1, value / top));
   const color =
     ratio >= dangerAt
       ? p.error.main
@@ -50,7 +51,7 @@ export default function Gauge({
           >
             <PolarAngleAxis
               type="number"
-              domain={[0, max]}
+              domain={[0, top]}
               angleAxisId={0}
               tick={false}
             />
@@ -80,11 +81,13 @@ export default function Gauge({
               </span>
             )}
           </Typography>
-          <Typography
-            sx={{ fontSize: "0.65rem", color: "text.tertiary", mt: 0.25 }}
-          >
-            of {max}
-          </Typography>
+          {max != null && (
+            <Typography
+              sx={{ fontSize: "0.65rem", color: "text.tertiary", mt: 0.25 }}
+            >
+              of {max}
+            </Typography>
+          )}
         </Box>
       </Box>
     </Box>

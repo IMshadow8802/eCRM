@@ -13,8 +13,6 @@ import {
  * Compact line+area sparkline card. Shows label, big value, delta chip,
  * gradient area trend underneath.
  */
-const FALLBACK = [12, 14, 11, 18, 15, 22, 19, 25, 23, 29, 27, 34];
-
 export default function SparkLine({
   label = "Follow-ups this week",
   value,
@@ -26,7 +24,9 @@ export default function SparkLine({
   const theme = useTheme();
   const k = useUiScale();
   const p = theme.tokens;
-  const series = Array.isArray(data) && data.length ? data : FALLBACK;
+  // No series = no trend drawn: only the real value, never a demo line.
+  const series = Array.isArray(data) ? data : [];
+  const hasTrend = series.length > 0;
   const rows = series.map((v, i) => ({ i, v }));
   const total = value ?? series[series.length - 1];
   const color = p[tone]?.main ?? p.primary.main;
@@ -50,23 +50,25 @@ export default function SparkLine({
         <Typography sx={{ fontSize: "0.7333rem", color: "text.secondary" }}>
           {label}
         </Typography>
-        <Box
-          sx={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 0.5,
-            px: 0.75,
-            py: 0.25,
-            borderRadius: 999,
-            backgroundColor: up ? p.success.subtle : p.error.subtle,
-            color: up ? p.success.main : p.error.main,
-            fontSize: "0.7rem",
-            fontWeight: 600,
-          }}
-        >
-          {up ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />}
-          {Math.abs(delta).toFixed(0)}%
-        </Box>
+        {hasTrend && (
+          <Box
+            sx={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 0.5,
+              px: 0.75,
+              py: 0.25,
+              borderRadius: 999,
+              backgroundColor: up ? p.success.subtle : p.error.subtle,
+              color: up ? p.success.main : p.error.main,
+              fontSize: "0.7rem",
+              fontWeight: 600,
+            }}
+          >
+            {up ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />}
+            {Math.abs(delta).toFixed(0)}%
+          </Box>
+        )}
       </Box>
       <Typography
         sx={{ fontSize: "1.5rem", fontWeight: 700, color: "text.primary", lineHeight: 1.2 }}
@@ -78,38 +80,40 @@ export default function SparkLine({
           </span>
         )}
       </Typography>
-      <Box sx={{ height: height * k, mt: 0.5 }}>
-        <ResponsiveContainer width="100%" height={height * k}>
-          <AreaChart data={rows} margin={{ top: 4 * k, right: 0, left: 0, bottom: 0 }}>
-            <defs>
-              <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={color} stopOpacity={0.45} />
-                <stop offset="100%" stopColor={color} stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <Tooltip
-              contentStyle={{
-                background: p.surface.card,
-                border: `1px solid ${p.border.default}`,
-                borderRadius: 6,
-                fontSize: 11,
-                padding: "calc(4rem / 15) calc(8rem / 15)",
-              }}
-              labelFormatter={() => ""}
-              formatter={(v) => [v, ""]}
-              cursor={{ stroke: p.border.strong }}
-            />
-            <Area
-              type="monotone"
-              dataKey="v"
-              stroke={color}
-              strokeWidth={2}
-              fill={`url(#${gradId})`}
-              dot={false}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-      </Box>
+      {hasTrend && (
+        <Box sx={{ height: height * k, mt: 0.5 }}>
+          <ResponsiveContainer width="100%" height={height * k}>
+            <AreaChart data={rows} margin={{ top: 4 * k, right: 0, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={color} stopOpacity={0.45} />
+                  <stop offset="100%" stopColor={color} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <Tooltip
+                contentStyle={{
+                  background: p.surface.card,
+                  border: `1px solid ${p.border.default}`,
+                  borderRadius: 6,
+                  fontSize: 11,
+                  padding: "calc(4rem / 15) calc(8rem / 15)",
+                }}
+                labelFormatter={() => ""}
+                formatter={(v) => [v, ""]}
+                cursor={{ stroke: p.border.strong }}
+              />
+              <Area
+                type="monotone"
+                dataKey="v"
+                stroke={color}
+                strokeWidth={2}
+                fill={`url(#${gradId})`}
+                dot={false}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </Box>
+      )}
     </Box>
   );
 }
