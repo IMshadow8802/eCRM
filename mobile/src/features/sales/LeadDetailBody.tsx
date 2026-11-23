@@ -57,6 +57,7 @@ import {
   type SheetRef,
   type TimelineEntry,
 } from "../../ui";
+import { activityText } from "../../utils/activityText";
 import AttachmentList from "../attachments/AttachmentList";
 import { useAccess } from "../auth/useAccess";
 import { lookupMap } from "../support/ticketHelpers";
@@ -307,7 +308,7 @@ export function LeadDetailBody({ leadId, navigation, onBack, onGone = onBack, us
       .filter((a) => (a.Type ?? "").toLowerCase() !== "call")
       .map((a) => {
         const node = ACTIVITY_NODE[(a.Type ?? "").toLowerCase()] ?? { Icon: History, tone: "textSecondary" as const };
-        return { key: `a-${a.Id}`, at: a.CreatedAt, title: a.Summary ?? a.Type, meta: `${a.UserName ?? "System"} · ${relativeTime(a.CreatedAt)}`, icon: node.Icon, tone: node.tone };
+        return { key: `a-${a.Id}`, at: a.CreatedAt, title: activityText(a.Summary) ?? a.Type, meta: `${a.UserName ?? "System"} · ${relativeTime(a.CreatedAt)}`, icon: node.Icon, tone: node.tone };
       }),
     ...(calls ?? []).map((c) => ({
       key: `c-${c.Id}`,

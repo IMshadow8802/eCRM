@@ -76,6 +76,27 @@ const cellOf = (key) => lastCfg().columns.find((c) => c.accessorKey === key).Cel
 describe("Leads page (spec 1)", () => {
   beforeEach(() => { rowSelection = {}; useServerTable.mockClear(); useApiQuery.mockClear(); mockNavigate.mockClear(); });
 
+  it("the header shows the server's total for the list, not the page", () => {
+    renderPage();
+    expect(screen.getByTestId("leads-total")).toHaveTextContent("2 leads");
+  });
+
+  it("one lead reads singular; nothing while the first page loads", () => {
+    const original = useApiQuery.getMockImplementation();
+    useApiQuery.mockImplementation((cfg) => (cfg?.endpoint === "/api/leads/fetchLeads"
+      ? { data: { leads: [FIXTURE_LEADS[0]], pagination: { totalRecords: 1 } }, isLoading: false, isFetching: false }
+      : { data: {} }));
+    const { unmount } = renderPage();
+    expect(screen.getByTestId("leads-total")).toHaveTextContent(/^1 lead$/);
+    unmount();
+    useApiQuery.mockImplementation((cfg) => (cfg?.endpoint === "/api/leads/fetchLeads"
+      ? { data: undefined, isLoading: true, isFetching: true }
+      : { data: {} }));
+    renderPage();
+    expect(screen.queryByTestId("leads-total")).toBeNull();
+    useApiQuery.mockImplementation(original);
+  });
+
   it("renders presets and the five filters", () => {
     renderPage();
     for (const p of ["All", "My leads", "Overdue", "Unassigned", "Lost"]) expect(screen.getByRole("tab", { name: p })).toBeInTheDocument();

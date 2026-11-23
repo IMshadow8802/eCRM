@@ -40,8 +40,8 @@ export interface AssignSheetProps {
   awayLabel?: string;
   /** The chip on the `giver` row ("Gave it to you"); omit for none. */
   giverLabel?: string;
-  /** Reason lookups; omit for no reason row. */
-  reasons?: { Id: number; Value: string }[];
+  /** Reason lookups; omit for no reason row. `sent_back` is never offered. */
+  reasons?: { Id: number; Value: string; Code?: string | null }[];
   remarksPlaceholder: (name: string | null) => string;
   remarksError: string;
   /** The muted line above the button ("Due stays 12:40 pm…"). */
@@ -118,8 +118,12 @@ export const AssignSheet = forwardRef<SheetRef, AssignSheetProps>(function Assig
       : p.giver && giverLabel ? { label: giverLabel, tone: "lilac" } : undefined,
   });
   const name = people.find((p) => p.Id === person)?.FullName ?? null;
-  const needsReason = !!reasons;
-  const noReasons = !!reasons && !reasons.length;
+  // "Sent back" is written only by the Send back action. Picked by hand it would
+  // hide the giver from the next person's Send back (fn_RecordGiver skips it);
+  // the server refuses it too (143).
+  const options = reasons?.filter((r) => r.Code !== "sent_back");
+  const needsReason = !!options;
+  const noReasons = !!options && !options.length;
 
   const submit = () => {
     setTried(true);
@@ -173,7 +177,7 @@ export const AssignSheet = forwardRef<SheetRef, AssignSheetProps>(function Assig
       </View>
       <FieldHelp error={tried && person == null ? `Pick who it goes to.` : null} />
 
-      {reasons ? (
+      {options ? (
         <View style={styles.block}>
           <FieldLabel label="Reason" required />
           {noReasons ? (
@@ -186,7 +190,7 @@ export const AssignSheet = forwardRef<SheetRef, AssignSheetProps>(function Assig
                 wrap
                 label="Reason"
                 value={reason}
-                options={reasons.map((r) => ({ value: r.Id, label: r.Value }))}
+                options={options.map((r) => ({ value: r.Id, label: r.Value }))}
                 onChange={setReason}
               />
               <FieldHelp error={tried && reason == null ? "Pick a reason." : null} />

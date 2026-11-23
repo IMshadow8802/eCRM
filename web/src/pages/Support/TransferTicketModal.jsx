@@ -41,7 +41,11 @@ export default function TransferTicketModal({ open, onClose, ticketIds = [], onD
     enabled: open && wide,
     showErrorMessage: false,
   });
-  const reasonOptions = reasons.map((r) => ({ value: r.Id, label: r.Value }));
+  // "Sent back" is written only by the Send back action; picked by hand it would hide
+  // the giver from the next person's Send back (fn_RecordGiver skips it). 143 refuses it too.
+  const reasonOptions = reasons
+    .filter((r) => r.Code !== "sent_back")
+    .map((r) => ({ value: r.Id, label: r.Value }));
   const officeOptions = (officeData?.branches ?? []).map((b) => ({ value: b.Id, label: b.BranchName }));
 
   const mutation = useApiMutation({

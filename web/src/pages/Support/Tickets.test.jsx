@@ -90,6 +90,27 @@ describe("Tickets list (spec 2)", () => {
     useServerTable.mockClear();
   });
 
+  it("the header shows the server's total; none on Logged by me or while loading", async () => {
+    renderPage();
+    expect(screen.getByTestId("tickets-total")).toHaveTextContent("1 complaint");
+    await userEvent.setup().click(screen.getByRole("tab", { name: "Logged by me" }));
+    expect(screen.queryByTestId("tickets-total")).toBeNull();
+  });
+
+  it("the total says complaints in the plural, and nothing while the first page loads", () => {
+    useServerTable.mockImplementationOnce(() => ({
+      table: { __options: { data: [] }, getState: () => ({ rowSelection }) }, data: [], isLoading: false, totalRecords: 93,
+    }));
+    const { unmount } = renderPage();
+    expect(screen.getByTestId("tickets-total")).toHaveTextContent("93 complaints");
+    unmount();
+    useServerTable.mockImplementationOnce(() => ({
+      table: { __options: { data: [] }, getState: () => ({ rowSelection }) }, data: [], isLoading: true, totalRecords: 0,
+    }));
+    renderPage();
+    expect(screen.queryByTestId("tickets-total")).toBeNull();
+  });
+
   it("renders the eight presets, the seven filters and the range, and lands on My team", () => {
     renderPage();
     for (const label of ["My queue", "My team", "Unassigned", "Overdue", "Escalated", "On hold", "Closed", "All"]) {

@@ -232,6 +232,17 @@ describe("E 11 · facts and activity", () => {
     expect(verb!.parent).toHaveTextContent(/^Resolved$/);
   });
 
+  it("a legacy 'Transferred to' row reads 'Reassigned to' (stored text, reworded on display)", async () => {
+    jest.mocked(fetchTicketDetail).mockResolvedValue(
+      detail(ticket(), { activity: [act_(1, "assigned", "Transferred to Vinod Kumar — Wrong branch")] }),
+    );
+    await mount();
+    await loaded();
+    const verb = await screen.findByText("Reassigned");
+    expect(verb.parent).toHaveTextContent(/^Reassigned to Vinod Kumar — Wrong branch$/);
+    expect(screen.queryByText(/Transferred/)).toBeNull();
+  });
+
   it("nothing yet says so", async () => {
     await mount();
     await loaded();

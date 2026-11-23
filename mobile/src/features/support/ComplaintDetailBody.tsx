@@ -59,6 +59,7 @@ import {
   type SheetAction,
   type SheetRef,
 } from "../../ui";
+import { activityText } from "../../utils/activityText";
 import AttachmentList from "../attachments/AttachmentList";
 import { useAccess } from "../auth/useAccess";
 import { ComplaintSheets, type ComplaintAction, type ComplaintSheetsHandle } from "./ComplaintSheets";
@@ -267,7 +268,7 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
           key: `a-${a.Id}`,
           at: a.CreatedAt,
           badge: { tone: b.tone, icon: b.icon, size: rowBadge },
-          ...activityTitle(a.Summary ?? a.Type ?? ""),
+          ...activityTitle(activityText(a.Summary ?? a.Type ?? "")),
           meta: a.UserName ? `By ${a.UserName}` : undefined,
           right: { text: whenText(a.CreatedAt) },
         };

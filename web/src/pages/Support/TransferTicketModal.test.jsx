@@ -56,6 +56,17 @@ describe("TransferTicketModal (Reassign)", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("never offers Sent back as a reason (only the Send back action writes it)", async () => {
+    server.use(http.post("*/api/config/fetchLookups", () => json({ lookups: [
+      { Id: 36, Value: "Absent", Code: "absent" }, { Id: 39, Value: "Sent back", Code: "sent_back" },
+    ] })));
+    renderWithProviders(<TransferTicketModal open ticketIds={[7]} onClose={vi.fn()} />, { router: false });
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("ticket-reassign-reason-input"));
+    expect(await screen.findByRole("option", { name: /^Absent/ })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Sent back/ })).toBeNull();
+  });
+
   it("never says Transfer, Branch or Assignee", async () => {
     renderWithProviders(<TransferTicketModal open ticketIds={[7]} onClose={vi.fn()} />, { router: false });
     await screen.findByText("Reassign complaint");

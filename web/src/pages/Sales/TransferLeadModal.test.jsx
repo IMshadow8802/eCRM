@@ -71,6 +71,18 @@ describe("TransferLeadModal — Reassign / Send back", () => {
     expect(onDone).toHaveBeenCalledWith(expect.objectContaining({ ToName: "Vivek Shah" }));
   });
 
+  it("never offers Sent back as a reason (only the Send back action writes it)", async () => {
+    mocks();
+    server.use(http.post("*/api/config/fetchLookups", async () => json({ lookups: [
+      { Id: 1, Value: "Absent", Code: "absent" }, { Id: 39, Value: "Sent back", Code: "sent_back" },
+    ] })));
+    render();
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("reassign-reason-input"));
+    expect(await screen.findByRole("option", { name: /^Absent/ })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Sent back/ })).toBeNull();
+  });
+
   it("never says Transfer, Branch, Owner or Assignee", async () => {
     mocks();
     setReach("Office");

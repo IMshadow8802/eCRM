@@ -541,6 +541,7 @@ describe("leadController.transfer", () => {
     [403, "You cannot assign records to that person"],
     [404, "Record not found"],
     [400, "There is nobody to send this back to."],
+    [400, "Choose another reason. Sent back is set only by the Send back button."],   // 143: a hand-picked sent_back reason
   ])("relays the procedure's %i and its message, and tells nobody", async (code, message) => {
     mockLeadLookup(visibleLead);
     database.executeStoredProcedure.mockResolvedValueOnce({ recordset: [{ Id: 9, ResponseCode: code, ResponseMess: message }] });

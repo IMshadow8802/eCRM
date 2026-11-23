@@ -204,6 +204,24 @@ it("with no reasons set up, Reassign says so and cannot be sent", async () => {
   expect(screen.getByRole("button", { name: "Reassign" })).toBeDisabled();
 });
 
+it("Reassign never offers Sent back as a reason (only Send back writes it)", async () => {
+  lookups[LOOKUP_KIND.transferReason] = [
+    lookup(30, LOOKUP_KIND.transferReason, "Specialist needed"),
+    lookup(31, LOOKUP_KIND.transferReason, "Sent back", "sent_back"),
+  ];
+  const open = await mount();
+  await open("reassign");
+  expect(screen.getByRole("radio", { name: "Specialist needed" })).toBeOnTheScreen();
+  expect(screen.queryByRole("radio", { name: "Sent back" })).toBeNull();
+});
+
+it("only a Sent back reason set up reads as no reasons", async () => {
+  lookups[LOOKUP_KIND.transferReason] = [lookup(31, LOOKUP_KIND.transferReason, "Sent back", "sent_back")];
+  const open = await mount();
+  await open("reassign");
+  expect(screen.getByText("No reasons are set up. Add them on the web first.")).toBeOnTheScreen();
+});
+
 it("a dismissed Resolve or Reassign sheet forgets what was typed", async () => {
   const open = await mount();
   await open("resolve");

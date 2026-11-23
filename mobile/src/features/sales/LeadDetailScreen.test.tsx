@@ -857,6 +857,21 @@ it("Activity weaves activity, calls and transfers newest first, dropping the dup
   expect(titles).toEqual(["Ravi Mehta → Priya Shah — covering", "Incoming call", "Spoke to owner", "Lead created", "something_new"]);
 });
 
+it("Activity rewords a legacy 'Transferred to' row as 'Reassigned to'", async () => {
+  jest.mocked(fetchLeadDetail).mockResolvedValue(
+    detail(lead(), {
+      activity: [
+        { Id: 1, LeadId: 11, UserId: 42, UserName: "Test User", Type: "assigned", Summary: "Transferred to Pooja Nair — Absent", CreatedAt: "2026-11-01T10:00:00" },
+      ],
+    }),
+  );
+  await mount();
+  await loaded();
+  await fireEvent.press(screen.getByRole("tab", { name: "Activity" }));
+  expect(await screen.findByText("Reassigned to Pooja Nair — Absent")).toBeOnTheScreen();
+  expect(screen.queryByText(/Transferred/)).toBeNull();
+});
+
 it("Activity with nothing on it says so", async () => {
   await mount();
   await loaded();

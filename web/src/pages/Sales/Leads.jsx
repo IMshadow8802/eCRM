@@ -110,7 +110,7 @@ const Leads = () => {
     ...presetParams(preset, userId),
   }), [filters, created, preset, userId]);
 
-  const { table, sorting } = useServerTable({
+  const { table, sorting, totalRecords, isLoading } = useServerTable({
     columns, queryKey: "leads", endpoint: SALES_ENDPOINTS.leads.fetchLeads, dataKey: "leads", extraParams,
     initialPageSize: 25, initialSorting: initial.sorting, enableSortingRemoval: false, getRowId: (row) => row.Id,
     enableRowSelection: true, enableRowActions: true,
@@ -140,6 +140,8 @@ const Leads = () => {
     <Box sx={{ display: "flex", flexDirection: "column", flexGrow: 1 }}>
       <PageHeader
         title="Leads"
+        // The server's total for this preset + filters, not the page (SolarTest finding 2026-11-23).
+        titleSuffix={isLoading ? null : <Chip label={`${totalRecords} lead${totalRecords === 1 ? "" : "s"}`} size="sm" data-testid="leads-total" />}
         subtitle="Every prospect, who holds it, and what happens next."
         actions={
           <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>

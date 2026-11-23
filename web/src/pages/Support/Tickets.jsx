@@ -143,7 +143,7 @@ const Tickets = () => {
     ...presetParams(preset, userId),
   }), [filters, range, preset, userId]);
 
-  const { table } = useServerTable({
+  const { table, totalRecords, isLoading } = useServerTable({
     columns, queryKey: "tickets", endpoint: SUPPORT_ENDPOINTS.tickets.fetchTickets, dataKey: "tickets", extraParams,
     initialPageSize: 25, getRowId: (row) => row.Id, enabled: preset !== LOGGED,
     enableRowSelection: true, enableRowActions: true,
@@ -168,6 +168,9 @@ const Tickets = () => {
     <Box sx={{ display: "flex", flexDirection: "column", flexGrow: 1 }}>
       <PageHeader
         title="Complaints"
+        // The server's total for this preset + filters; Logged by me has its own table.
+        titleSuffix={isLoading || preset === LOGGED ? null
+          : <Chip label={`${totalRecords} complaint${totalRecords === 1 ? "" : "s"}`} size="sm" data-testid="tickets-total" />}
         subtitle="Every complaint, who holds it, and when it is due."
         actions={
           <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>

@@ -583,7 +583,7 @@ describe("ticketController.transfer", () => {
 
   it("relays the gates' refusals unchanged and notifies nobody", async () => {
     for (const [code, mess] of [[404, "Record not found"], [403, "You cannot assign records to that person"],
-      [400, "There is nobody to send this back to."], [409, "This complaint changed while you were working on it. Open it again and retry."]]) {
+      [400, "There is nobody to send this back to."], [400, "Choose another reason. Sent back is set only by the Send back button."], [409, "This complaint changed while you were working on it. Open it again and retry."]]) {
       database.executeStoredProcedure.mockReset();
       database.executeStoredProcedure.mockResolvedValueOnce(spRefusal(code, mess));
       const res = mockRes();
