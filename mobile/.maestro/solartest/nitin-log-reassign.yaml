@@ -1,5 +1,5 @@
 # Nitin (call desk): logs a complaint for an existing customer with nobody
-# assigned, finds it under Unassigned, Reassign -> search "viv" -> Vivek.
+# assigned, finds it under Unassigned, Reassign -> search "vivek" -> Vivek.
 # Env: TAG, CUST, REASON.
 appId: com.shadowider.eCRM
 ---
@@ -65,11 +65,29 @@ appId: com.shadowider.eCRM
 # 143: "Sent back" is never a reason you pick (only the Send back button writes it).
 - assertVisible: "${REASON}"
 - assertNotVisible: "Sent back"
+# Type, then wait for the debounced filter to drop the others. adb typing into a
+# settling sheet drops a character now and then (nothing matches): retype.
 - tapOn:
     id: "reassign-search"
-- inputText: "viv"
+- inputText: "vivek"
+- extendedWaitUntil:
+    notVisible: "Vinod Kumar\\s*"
+    timeout: 10000
+- repeat:
+    times: 3
+    while:
+      notVisible: "Vivek Kumar"
+    commands:
+      - tapOn:
+          id: "reassign-search"
+      - eraseText
+      - inputText: "vivek"
+      - extendedWaitUntil:
+          visible: "Vivek Kumar"
+          timeout: 10000
+          optional: true
 - assertVisible: "Vivek Kumar"
-- assertNotVisible: "Vinod Kumar"
+- assertNotVisible: "Vinod Kumar\\s*"
 - hideKeyboard
 - tapOn: "Vivek Kumar"
 - tapOn: "${REASON}"

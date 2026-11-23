@@ -24,6 +24,11 @@ export const P = {
   rohit: { u: "Rohit ", name: "ROHIT GAUR" },
   vinod: { u: "Vinod ", name: "Vinod Kumar" },
   vivek: { u: "Vivek", name: "Vivek Kumar" },
+  deeksha: { u: "Deeksha", name: "Deeksha Sharma" },
+  sarika: { u: "Sarika ", name: "Sarika" },
+  tanu: { u: "Tanu ", name: "tanu" },
+  ashish: { u: "Ashish ", name: "Ashish" },
+  pawan: { u: "Pawan ", name: "Pawan Trivedi" },
 };
 
 /** API sign-in (for looking records up, never for the action under test). */

@@ -1,0 +1,144 @@
+# Screen click-through for ${WHO}: Today, every bottom tab the role has, and
+# the More screen's items (Inbox, Workspaces, Follow-ups, Profile). Read only.
+# Fails on "Could not load" anywhere. Screenshots: ${WHO}-<n>-<screen>.
+appId: com.shadowider.eCRM
+---
+- runFlow: ../common/open-work.yaml
+- extendedWaitUntil:
+    visible:
+      id: "home-list"
+    timeout: 15000
+- assertNotVisible: "Could not load.*"
+- takeScreenshot: ${WHO}-01-today
+- runFlow:
+    when:
+      visible:
+        id: "pill-Tasks"
+    commands:
+      - tapOn:
+          id: "pill-Tasks"
+      - waitForAnimationToEnd
+      - extendedWaitUntil:
+          notVisible: "Loading.*"
+          timeout: 15000
+          optional: true
+      - assertNotVisible: "Could not load.*"
+      - takeScreenshot: ${WHO}-02-tasks
+- runFlow:
+    when:
+      visible:
+        id: "pill-Complaints"
+    commands:
+      - tapOn:
+          id: "pill-Complaints"
+      - waitForAnimationToEnd
+      - extendedWaitUntil:
+          notVisible: "Loading.*"
+          timeout: 15000
+          optional: true
+      - assertNotVisible: "Could not load.*"
+      - takeScreenshot: ${WHO}-03-complaints
+- runFlow:
+    when:
+      visible:
+        id: "pill-Leads"
+    commands:
+      - tapOn:
+          id: "pill-Leads"
+      - waitForAnimationToEnd
+      - extendedWaitUntil:
+          notVisible: "Loading.*"
+          timeout: 15000
+          optional: true
+      - assertNotVisible: "Could not load.*"
+      - takeScreenshot: ${WHO}-04-leads
+- runFlow:
+    when:
+      visible:
+        id: "pill-FollowUps"
+    commands:
+      - tapOn:
+          id: "pill-FollowUps"
+      - waitForAnimationToEnd
+      - extendedWaitUntil:
+          notVisible: "Loading.*"
+          timeout: 15000
+          optional: true
+      - assertNotVisible: "Could not load.*"
+      - takeScreenshot: ${WHO}-05-followups
+- tapOn:
+    id: "pill-More"
+- waitForAnimationToEnd
+- takeScreenshot: ${WHO}-06-more
+- runFlow:
+    when:
+      visible: "Inbox"
+    commands:
+      - tapOn: "Inbox"
+      - waitForAnimationToEnd
+      - assertNotVisible: "Could not load.*"
+      - takeScreenshot: ${WHO}-07-more-inbox
+      - back
+      - waitForAnimationToEnd
+      - runFlow:
+          when:
+            notVisible:
+              id: "pill-More"
+          commands:
+            - back
+      - tapOn:
+          id: "pill-More"
+- runFlow:
+    when:
+      visible: "Workspaces"
+    commands:
+      - tapOn: "Workspaces"
+      - waitForAnimationToEnd
+      - assertNotVisible: "Could not load.*"
+      - takeScreenshot: ${WHO}-08-more-workspaces
+      - back
+      - waitForAnimationToEnd
+      - runFlow:
+          when:
+            notVisible:
+              id: "pill-More"
+          commands:
+            - back
+      - tapOn:
+          id: "pill-More"
+- runFlow:
+    when:
+      visible: "Follow-ups"
+    commands:
+      - tapOn: "Follow-ups"
+      - waitForAnimationToEnd
+      - assertNotVisible: "Could not load.*"
+      - takeScreenshot: ${WHO}-09-more-follow-ups
+      - back
+      - waitForAnimationToEnd
+      - runFlow:
+          when:
+            notVisible:
+              id: "pill-More"
+          commands:
+            - back
+      - tapOn:
+          id: "pill-More"
+- runFlow:
+    when:
+      visible: "Profile"
+    commands:
+      - tapOn: "Profile"
+      - waitForAnimationToEnd
+      - assertNotVisible: "Could not load.*"
+      - takeScreenshot: ${WHO}-10-more-profile
+      - back
+      - waitForAnimationToEnd
+      - runFlow:
+          when:
+            notVisible:
+              id: "pill-More"
+          commands:
+            - back
+      - tapOn:
+          id: "pill-More"

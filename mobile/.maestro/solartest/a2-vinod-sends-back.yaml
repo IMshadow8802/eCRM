@@ -1,0 +1,20 @@
+# A2 Vinod opens it from Mine; the menu offers "Send back to Nitin"; he sends it back.
+appId: com.shadowider.eCRM
+---
+- runFlow:
+    file: ../access/find-complaint.yaml
+    env:
+      PRESET: "Mine"
+      KEY: "${TAG}"
+- tapOn: "Complaint actions"
+- assertVisible: "Send back to Nitin.*"
+- takeScreenshot: a2-vinod-send-back-menu
+- tapOn: "Send back to Nitin.*"
+- tapOn: "Why it goes back — they get a notification"
+- inputText: "${TAG} not mine"
+- hideKeyboard
+- tapOn: "Send back to Nitin"
+- extendedWaitUntil:
+    visible:
+      id: "complaint-presets"
+    timeout: 15000

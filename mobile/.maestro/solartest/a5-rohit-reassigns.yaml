@@ -1,0 +1,50 @@
+# A5 Rohit finds it under Escalated, opens it, reassigns it to Vinod.
+appId: com.shadowider.eCRM
+---
+- runFlow:
+    file: ../access/find-complaint.yaml
+    env:
+      PRESET: "Escalated"
+      KEY: "${TAG}"
+- scrollUntilVisible:
+    element: "Escalated to"
+- takeScreenshot: a5-rohit-escalated
+- tapOn: "Reassign"
+- assertVisible: "Reassign complaint"
+- extendedWaitUntil:
+    visible: "Your manager and team|Your office"
+    timeout: 15000
+- assertNotVisible: "Sent back"
+# Type, then wait for the debounced filter to drop the others. adb typing into a
+# settling sheet drops a character now and then (nothing matches): retype.
+- tapOn:
+    id: "reassign-search"
+- inputText: "vinod"
+# (Vivek stays on screen: the sheet's subtitle names him as the current holder.)
+- waitForAnimationToEnd
+- repeat:
+    times: 3
+    while:
+      notVisible: "Vinod Kumar\\s*"
+    commands:
+      - tapOn:
+          id: "reassign-search"
+      - eraseText
+      - inputText: "vinod"
+      - extendedWaitUntil:
+          visible: "Vinod Kumar\\s*"
+          timeout: 10000
+          optional: true
+- assertVisible: "Vinod Kumar\\s*"
+- hideKeyboard
+- tapOn: "Vinod Kumar\\s*"
+- tapOn: "${REASON}"
+- tapOn:
+    id: "reassign-remarks"
+- inputText: "${TAG} you take it"
+- hideKeyboard
+- tapOn: "Reassign to Vinod"
+- extendedWaitUntil:
+    visible:
+      id: "complaint-presets"
+    timeout: 15000

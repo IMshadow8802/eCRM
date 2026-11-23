@@ -1,0 +1,25 @@
+# A7 Vinod resolves it (resolution + remarks); then no Reopen anywhere for him.
+appId: com.shadowider.eCRM
+---
+- runFlow:
+    file: ../access/find-complaint.yaml
+    env:
+      PRESET: "Mine"
+      KEY: "${TAG}"
+- tapOn: "Resolve"
+- assertVisible: "Resolve complaint"
+- tapOn: "How was it fixed\\?"
+- tapOn: "${RESOLUTION}"
+- tapOn:
+    id: "resolve-remarks"
+- inputText: "${TAG} fixed"
+- hideKeyboard
+- tapOn: "Save · mark resolved"
+- extendedWaitUntil:
+    notVisible: "Resolve complaint"
+    timeout: 15000
+- assertNotVisible: "Reopen"
+- tapOn: "Complaint actions"
+- assertNotVisible: "Reopen"
+- takeScreenshot: a7-vinod-no-reopen
+- back

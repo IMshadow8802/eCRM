@@ -1,0 +1,11 @@
+# C (tele-callers: Leads, no Complaints): Today loads, and the bar shows the right modules.
+appId: com.shadowider.eCRM
+---
+- runFlow: ../common/open-work.yaml
+- assertVisible:
+    id: "home-list"
+- assertVisible:
+    id: "pill-Leads"
+- assertNotVisible:
+    id: "pill-Complaints"
+- assertNotVisible: "Open My complaints"

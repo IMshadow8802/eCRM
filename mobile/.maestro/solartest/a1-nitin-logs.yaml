@@ -1,0 +1,43 @@
+# A1 Nitin (call desk) logs "${TAG} journey" for an existing customer and routes it to Vinod.
+appId: com.shadowider.eCRM
+---
+- runFlow: ../common/open-work.yaml
+- tapOn: "Open My complaints"
+- assertVisible:
+    id: "complaint-presets"
+- tapOn: "New complaint"
+- assertVisible: "Customer \\*"
+- tapOn: "Search customer \\(mobile or name\\)"
+- inputText: "${CUST}"
+- extendedWaitUntil:
+    visible:
+      text: "${CUST}"
+      index: 1
+    timeout: 15000
+- tapOn:
+    text: "${CUST}"
+    index: 1
+- assertVisible: "Change customer"
+- scrollUntilVisible:
+    element: "One line — what is wrong"
+    centerElement: true
+- tapOn: "One line — what is wrong"
+- inputText: "${TAG} journey"
+- hideKeyboard
+- scrollUntilVisible:
+    element: "Assign to: Nobody yet"
+- tapOn: "Assign to: Nobody yet"
+- assertVisible: "Who picks this up\\?"
+- tapOn: "Vinod Kumar\\s*"
+- assertVisible: "Assign to: Vinod Kumar\\s*"
+- takeScreenshot: a1-nitin-form
+- tapOn: "Submit complaint"
+- extendedWaitUntil:
+    visible: "Logged and assigned to Vinod.*"
+    timeout: 5000
+    optional: true
+- extendedWaitUntil:
+    visible:
+      id: "complaint-presets"
+    timeout: 15000
+- assertNotVisible: "Complaint actions"

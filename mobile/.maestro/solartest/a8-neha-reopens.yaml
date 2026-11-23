@@ -1,0 +1,54 @@
+# A8 Neha (manager): Team → search → the resolved pill → opens it → Reopen.
+appId: com.shadowider.eCRM
+---
+- runFlow: ../common/open-work.yaml
+- tapOn: "Open My complaints"
+- assertVisible:
+    id: "complaint-presets"
+- runFlow:
+    file: ../access/preset.yaml
+    env:
+      NAME: "Team"
+- tapOn: "Search number, customer, mobile"
+- inputText: "${TAG}"
+- hideKeyboard
+# The list opens on Active; a resolved complaint is under its status pill.
+- repeat:
+    times: 4
+    while:
+      notVisible: "${RESOLVED_LABEL}"
+    commands:
+      - swipe:
+          from:
+            id: "status-pills"
+          direction: LEFT
+      - waitForAnimationToEnd
+- tapOn: "${RESOLVED_LABEL}"
+- extendedWaitUntil:
+    visible: ".*${TAG} journey.*"
+    timeout: 15000
+- repeat:
+    times: 3
+    while:
+      notVisible: "Complaint actions"
+    commands:
+      - waitForAnimationToEnd
+      - tapOn:
+          text: "TKT-.*${TAG} journey.*"
+          optional: true
+      - extendedWaitUntil:
+          visible: "Complaint actions"
+          timeout: 8000
+          optional: true
+- tapOn: "Reopen"
+- assertVisible: "Reopen complaint"
+- tapOn: "Why — this goes on the history"
+- inputText: "${TAG} not fixed"
+- hideKeyboard
+- tapOn:
+    text: "Reopen"
+    below: "Reopen complaint"
+- extendedWaitUntil:
+    visible: "Resolve"
+    timeout: 15000
+- takeScreenshot: a8-neha-reopened
