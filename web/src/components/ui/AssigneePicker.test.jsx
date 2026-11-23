@@ -68,6 +68,24 @@ describe("AssigneePicker", () => {
     expect(onChange).toHaveBeenCalledWith(2, USERS[2]);
   });
 
+  it("finds a person by job title, case-insensitively", async () => {
+    wrap();
+    const user = await open();
+    await user.type(screen.getByRole("combobox"), "TEAM LE");
+    expect(screen.getByText("Nitin Manager")).toBeInTheDocument();
+    expect(screen.queryByText("Zara Other")).toBeNull();
+    expect(screen.queryByText("Vivek Office")).toBeNull();
+  });
+
+  it("finds people by office name", async () => {
+    wrap();
+    const user = await open();
+    await user.type(screen.getByRole("combobox"), "head off");
+    expect(screen.getByText("Nitin Manager")).toBeInTheDocument();
+    expect(screen.getByText("Vivek Office")).toBeInTheDocument();
+    expect(screen.queryByText("Zara Other")).toBeNull();
+  });
+
   it("says nothing found when typing matches nobody", async () => {
     wrap();
     const user = await open();

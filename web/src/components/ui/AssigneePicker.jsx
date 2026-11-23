@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { Box } from "@mui/material";
+import { createFilterOptions } from "@mui/material/Autocomplete";
 import { useTheme } from "@mui/material/styles";
 
 import Combobox from "./Combobox";
@@ -8,10 +9,15 @@ import { useAssignableUsers } from "../../hooks/useAssignableUsers";
 
 const GROUPS = { 1: "Your manager and team", 2: "Your office", 3: "Other offices" };
 const EMPTY = "Nobody can take this. Ask a manager.";
+// Typing matches the name, job title or office (case-insensitive substring).
+const filterOptions = createFilterOptions({
+  stringify: (o) => [o.user.FullName, o.user.JobTitle, o.user.BranchName].filter(Boolean).join("\n"),
+});
 
 /**
  * "Assign to" picker over the server's Can-assign-to list (useAssignableUsers).
- * Grouped by GroupRank, filtered on the client as you type. Shows name, job
+ * Grouped by GroupRank, filtered on the client as you type (name, job title
+ * or office). Shows name, job
  * title and office only — never phone, email or counts.
  * `value` is a user Id (or null); `onChange(id | null, user | null)`.
  * `allowUnassigned` lets the field be cleared (null = Unassigned).
@@ -45,6 +51,7 @@ export default function AssigneePicker({
       onChange={(o) => onChange?.(o?.value ?? null, o?.user ?? null)}
       options={options}
       loading={isLoading}
+      filterOptions={filterOptions}
       groupBy={(o) => GROUPS[o.user.GroupRank] ?? GROUPS[3]}
       noOptionsText={users.length ? "Nothing found" : EMPTY}
       placeholder={allowUnassigned ? "Unassigned" : undefined}

@@ -33,7 +33,8 @@ export interface AssignSheetProps {
   /** "Reassign to", "Escalate to". */
   pickLabel: string;
   people: AssignPerson[];
-  /** A filter over `people` on the device (E 23). */
+  /** A filter over `people` on the device (E 23): name + `note`, so a caller
+   *  whose note is "JobTitle · Office" gets search by job title and office. */
   searchable?: boolean;
   /** The chip on an `away` row ("Away today"); omit for none. */
   awayLabel?: string;
