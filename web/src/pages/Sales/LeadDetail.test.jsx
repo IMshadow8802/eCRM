@@ -21,7 +21,7 @@ vi.mock("./TransferLeadModal", () => ({ __esModule: true, default: ({ open, lead
     {leadIds.join(",")}{sendBackTo ? ` back:${sendBackTo.id}:${sendBackTo.name}` : ""}
     <button type="button" onClick={() => onDone?.({ ToName: "Vivek Shah" })}>mock-done</button>
     <button type="button" onClick={() => onFailed?.()}>mock-failed</button>
-    <button type="button" onClick={() => onError?.({ response: { status: 404 } })}>mock-gone</button>
+    <button type="button" onClick={() => onError?.({ response: { status: 404, data: { code: "NOT_FOUND" } } })}>mock-gone</button>
   </div>
 ) : null) }));
 vi.mock("./LeadCreateModal", () => ({ __esModule: true, default: ({ open, lead }) => (open ? <div data-testid="edit-modal">{lead?.Id}</div> : null) }));
@@ -389,7 +389,7 @@ describe("LeadDetail — Assigned to, Reassign, Send back, record gone", () => {
       <Route path="/sales/leads" element={<div data-testid="leads-list" />} />
     </Routes>, { route: "/sales/leads/9" },
   );
-  const gone = (status = 404) => HttpResponse.json({ success: false, message: "Lead not found", responseCode: status }, { status });
+  const gone = (status = 404) => HttpResponse.json({ success: false, message: "Lead not found", code: status === 404 ? "NOT_FOUND" : "FORBIDDEN", responseCode: status }, { status });
 
   it("labels the holder 'Assigned to' and the office 'Office' — no Owner or Branch", async () => {
     mocks();
@@ -440,6 +440,15 @@ describe("LeadDetail — Assigned to, Reassign, Send back, record gone", () => {
     await screen.findByTestId("lead-detail");
     expect(screen.queryByTestId("schedule-followup-btn")).toBeNull();
     expect(screen.queryByTestId("log-followup-btn")).toBeNull();
+  });
+
+  // Final review m2: Send back is a reassign; never offered when the server
+  // would refuse the reassign ("Only a manager can reassign a closed record").
+  it("no Send back without CanReassign, even with a SendBackToId", async () => {
+    mocks({}, { CanReassign: 0, SendBackToId: 5, SendBackToName: "Nitin Kale" });
+    renderDetail();
+    await screen.findByTestId("lead-detail");
+    expect(screen.queryByTestId("send-back-btn")).toBeNull();
   });
 
   it("Send back is labelled from the server's name and opens the dialog for that person", async () => {
@@ -524,6 +533,72 @@ describe("LeadDetail — Assigned to, Reassign, Send back, record gone", () => {
     renderWithList();
     expect(await screen.findByTestId("leads-list")).toBeInTheDocument();
     expect(await screen.findByText("This record is no longer with you")).toBeInTheDocument();
+  });
+
+  // Final review I2 (FR-I2): a closed lead goes back to an active status only
+  // with the server's CanReopen (the complaint rule). REGRESSION: staff could
+  // move a lost lead back to open and then pass it on.
+  describe("reopening a closed lead", () => {
+    const LOST = { StatusId: 15, StatusName: "Lost", StatusCode: "lost" };
+    const optionNames = async (user) => {
+      await user.click(screen.getByTestId("lead-status-select-input"));
+      await screen.findAllByRole("option");
+      return screen.getAllByRole("option").map((o) => o.textContent);
+    };
+
+    it("without CanReopen the active statuses are not offered", async () => {
+      mocks({}, { ...LOST, CanReopen: 0 });
+      renderDetail();
+      await screen.findByTestId("lead-detail");
+      expect(await optionNames(userEvent.setup())).toEqual(["Lost", "Converted"]);
+    });
+
+    it("with CanReopen they are, and picking one posts the move", async () => {
+      const cap = {};
+      mocks(cap, { ...LOST, CanReopen: 1 });
+      renderDetail();
+      await screen.findByTestId("lead-detail");
+      const user = userEvent.setup();
+      expect(await optionNames(user)).toEqual(["New", "Contacted", "Lost", "Converted"]);
+      await user.click(screen.getByRole("option", { name: "New" }));
+      await waitFor(() => expect(cap.status).toEqual({ LeadId: 9, StatusId: 11, LostReasonId: null }));
+    });
+
+    it("an open lead offers everything whatever CanReopen says", async () => {
+      mocks({}, { CanReopen: 0 });
+      renderDetail();
+      await screen.findByTestId("lead-detail");
+      expect(await optionNames(userEvent.setup())).toEqual(["New", "Contacted", "Lost", "Converted"]);
+    });
+
+    it("the server's refusal (stale page) shows its sentence and stays", async () => {
+      mocks({}, { ...LOST, CanReopen: 1 });
+      server.use(http.post("*/api/leads/setLeadStatus", async () => HttpResponse.json(
+        { success: false, message: "Only a manager can reopen a closed lead", code: "SP_ERROR", responseCode: 403 }, { status: 403 })));
+      renderWithList();
+      await screen.findByTestId("lead-detail");
+      const user = userEvent.setup();
+      await user.click(screen.getByTestId("lead-status-select-input"));
+      await user.click(await screen.findByRole("option", { name: "New" }));
+      expect(await screen.findByText("Only a manager can reopen a closed lead")).toBeInTheDocument();
+      expect(screen.queryByTestId("leads-list")).toBeNull();
+    });
+  });
+
+  // Final review m1: a 404 that is not the lead's own not-found (here a stale
+  // status list: 'Status not found', which 139 answers 400 — but even a 404
+  // without NOT_FOUND) must not throw the user out of a lead they still see.
+  it("a 404 without NOT_FOUND on a status change stays on the lead", async () => {
+    mocks();
+    server.use(http.post("*/api/leads/setLeadStatus", async () => HttpResponse.json(
+      { success: false, message: "Status not found", code: "SP_ERROR", responseCode: 404 }, { status: 404 })));
+    renderWithList();
+    await screen.findByTestId("lead-detail");
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("lead-status-select-input"));
+    await user.click(await screen.findByRole("option", { name: "New" }));
+    expect(await screen.findByText("Status not found")).toBeInTheDocument();
+    expect(screen.queryByTestId("leads-list")).toBeNull();
   });
 
   it.each([[400, "Use convert to win a lead"], [403, "You do not have permission for this action"]])(

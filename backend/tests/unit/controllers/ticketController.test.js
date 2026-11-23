@@ -438,7 +438,8 @@ describe("ticketController lifecycle", () => {
       const res = mockRes();
       await ticketController.setStatus(baseReq({ body: { TicketId: 1, StatusId: 61, Remarks: "x" } }), res);
       expect(res.status).toHaveBeenCalledWith(code);
-      expect(res.json.mock.calls[0][0]).toMatchObject({ success: false, code: "SP_ERROR", message: mess });
+      // A procedure's 404 goes out as NOT_FOUND, the code the clients leave on (m1).
+      expect(res.json.mock.calls[0][0]).toMatchObject({ success: false, code: code === 404 ? "NOT_FOUND" : "SP_ERROR", message: mess });
     }
   });
 

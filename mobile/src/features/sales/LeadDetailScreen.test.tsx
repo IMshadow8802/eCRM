@@ -338,6 +338,30 @@ describe("status (E 25)", () => {
     expect(spy).toHaveBeenCalledWith({ queryKey: ["followups"] });
   });
 
+  // Final review I2 (FR-I2): a closed lead goes back to an active status only
+  // with the server's CanReopen. REGRESSION: staff could reopen a lost lead and
+  // then pass it on.
+  it("a lost lead without CanReopen offers no active status", async () => {
+    jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead({ StatusId: 4, StatusName: "Lost", StatusCode: "lost", CanReopen: false })));
+    await mount();
+    await loaded();
+    expect(screen.getByRole("radio", { name: "Lost" })).toBeOnTheScreen();
+    expect(screen.getByRole("radio", { name: "Won" })).toBeOnTheScreen();
+    expect(screen.queryByRole("radio", { name: "New" })).toBeNull();
+    expect(screen.queryByRole("radio", { name: "Qualified" })).toBeNull();
+  });
+
+  it("a lost lead with CanReopen offers them; a refusal shows the server's sentence in the sheet", async () => {
+    jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead({ StatusId: 4, StatusName: "Lost", StatusCode: "lost", CanReopen: true })));
+    jest.mocked(setLeadStatus).mockRejectedValueOnce(serverError(403, "Only a manager can reopen a closed lead"));
+    await mount();
+    await loaded();
+    await fireEvent.press(screen.getByRole("radio", { name: "New" }));
+    await fireEvent.press(screen.getByText("Save · mark new"));
+    expect(await screen.findByText("Only a manager can reopen a closed lead")).toBeOnTheScreen();
+    expect(screen.getByRole("header", { name: "Anil Kumar" })).toBeOnTheScreen();
+  });
+
   it("Lost sends its reason; a refusal shows in the sheet", async () => {
     jest.mocked(setLeadStatus).mockRejectedValueOnce(serverError(400, "Lead is locked"));
     await mount();
@@ -704,6 +728,16 @@ describe("reassign and send back", () => {
   it("Send back is offered only when the server names who gave it", async () => {
     await mount();
     await loaded();
+    expect(screen.queryByText(/Send back/)).toBeNull();
+  });
+
+  // Final review m2: a send back is a reassign; not offered where the server
+  // would refuse the reassign.
+  it("no Send back without CanReassign, even when the server names a giver", async () => {
+    jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead({ CanReassign: false, SendBackToId: 14, SendBackToName: "Nitin Verma" })));
+    await mount();
+    expect(await screen.findByRole("header", { name: "Anil Kumar" })).toBeOnTheScreen();
+    await screen.findAllByText("Reached");
     expect(screen.queryByText(/Send back/)).toBeNull();
   });
 

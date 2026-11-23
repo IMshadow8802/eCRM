@@ -165,7 +165,16 @@ describe("nitin on C01, which he logged and gave to vinod", () => {
     ["attachment list", "/api/attachments/fetch", (m) => ({ Entity: "ticket", EntityId: T(m) }), C_404],
   ]));
 
-  it("attachment upload: 404 as for a missing complaint", () => expectUploadRefused("nitin", "ticket", id.C01, C_404));
+  // FR-I1 (139): nitin logged C01 onto vinod in this run, so he may still add the
+  // photos he staged — upload only, for 15 minutes after CreatedAt. Every read
+  // above stays refused; a missing id is still the plain 404. (createRun makes C01
+  // fresh at the start of the run, well inside the window.)
+  it("attachment upload: the logger may still add files right after logging it; a missing id is 404", async () => {
+    const r = await c.as("nitin").upload("/api/attachments/save", { Entity: "ticket", EntityId: id.C01 });
+    const missing = await c.as("nitin").upload("/api/attachments/save", { Entity: "ticket", EntityId: MISSING_ID });
+    expect(r.status).toBe(201);
+    expect(outcome(missing)).toEqual({ ...C_404, refused: true });
+  });
 
   it("escalation targets for the complaint are empty", async () => {
     const r = await post("nitin", "/api/tickets/fetchEscalationTargets", { TicketId: id.C01 });
@@ -312,9 +321,9 @@ describe("walls", () => {
   });
 });
 
-describe("customer pages (customers keep their own rule: out of reach = 403, missing = 404)", () => {
+describe("customer pages (out of reach answers exactly like missing: 404, final review m5)", () => {
   const detail = (who, tag) => post(who, "/api/customers/fetchCustomerDetail", { CustomerId: id.customers[tag] });
-  const NO_CUSTOMER = { status: 403, message: "You do not have access to this customer", refused: true };
+  const NO_CUSTOMER = { status: 404, message: "Customer not found", refused: true };
 
   it("pooja and ndmgr (North Delhi) open customer ND with C16 on it, and are refused HEAD OFFICE and SOUTH EXTENSION", async () => {
     for (const who of ["pooja", "ndmgr"]) {
@@ -389,6 +398,18 @@ describe("result leads cannot be moved by staff (scenario 18)", () => {
   });
 });
 
+describe("a closed lead cannot be reopened by staff (FR-I2, 139)", () => {
+  it("kasak's lost L02: CanReopen 0 and setLeadStatus -> Open is 403; neha's detail says CanReopen 1", async () => {
+    const mine = await post("kasak", "/api/leads/fetchLeadDetail", { LeadId: id.L02 });
+    expect(Boolean(mine.body.data.lead.CanReopen)).toBe(false);
+    const r = await post("kasak", "/api/leads/setLeadStatus", { LeadId: id.L02, StatusId: lk.leadOpen });
+    expect(outcome(r)).toEqual({ status: 403, message: "Only a manager can reopen a closed lead", refused: true });
+    const d = await post("neha", "/api/leads/fetchLeadDetail", { LeadId: id.L02 });
+    expect(Boolean(d.body.data.lead.CanReopen)).toBe(true);
+    expect(d.body.data.lead.StatusCode).toBe("lost");
+  });
+});
+
 describe("a delegated follow-up seen by a team lead (scenario 19, D5)", () => {
   it("stl sees am_field's visit on L01 as Via 3 without the mobile, and cannot complete it", async () => {
     const r = await post("stl", "/api/followups/fetchFollowups", { Status: "open", SearchTerm: run.tag, PageSize: 200 });
@@ -430,6 +451,13 @@ describe("the assign picker", () => {
     const plain = await ids("kasak", { Module: "leads" });
     const widened = await ids("kasak", { Module: "leads", BranchId: 6, ForUserId: id.users.ndmgr, RecordId: id.L03 });
     expect(widened).toEqual(plain);
+  });
+
+  it("vinod's (complaints) ranks his manager rohit and his peer vivek in the team group (140)", async () => {
+    const r = await post("vinod", "/api/users/fetchAssignableUsers", { Module: "complaints" });
+    expect(r.status).toBe(200);
+    const rank = (who) => r.body.data.users.find((u) => u.Id === id.users[who])?.GroupRank;
+    expect({ rohit: rank("rohit"), vivek: rank("vivek") }).toEqual({ rohit: 1, vivek: 1 });
   });
 
   it("nitin asking for the leads list (no leads module) is refused", async () => {

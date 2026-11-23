@@ -198,18 +198,21 @@ export default function TicketCreateModal({ open, onClose, ticket = null, onSave
       Description: clean(v.Description),
       CustomJSON: JSON.stringify(fieldRows.map(({ def }) => ({ fieldId: def.Id, type: def.Type, value: custom[def.Id] }))),
     };
+    // Assigned to someone else, the logger can no longer open the record (the
+    // server hands it over). The staged files still go up: the logger may
+    // upload to what they just logged for 15 minutes (139, sp_LoggerMayAttach).
+    const assignedAway = !isEdit && Boolean(v.AssignedTo) && v.AssignedTo !== myId;
     try {
       const saved = await saveMutation.mutateAsync(body);
       if (!isEdit) enqueueSnackbar(saved?.message || "Complaint logged", { variant: "success" });
       if (!isEdit && saved?.Id && attachmentsRef.current?.stagedCount) {
         const { failed } = await attachmentsRef.current.uploadStaged(saved.Id);
-        if (failed) enqueueSnackbar(`${failed} file(s) failed to upload — add them from the complaint`, { variant: "warning" });
+        if (failed) enqueueSnackbar(`${failed} file(s) failed to upload — ${assignedAway ? "send them to the person it is assigned to" : "add them from the complaint"}`, { variant: "warning" });
       }
       reset(EMPTY);
       setCustom({});
-      // Assigned to someone else, the logger can no longer open the record
-      // (the server hands it over); the caller must not navigate to it.
-      onSaved?.(saved, { assignedAway: !isEdit && Boolean(v.AssignedTo) && v.AssignedTo !== myId });
+      // The caller must not navigate to a record handed away.
+      onSaved?.(saved, { assignedAway });
       onClose?.();
     } catch {
       // useApiMutation already surfaced the server's message.

@@ -288,7 +288,7 @@ describe("Follow-ups queue", () => {
 
   it("a 404 on delete closes the prompt and says the record is no longer with you", async () => {
     const { enqueueSnackbar } = await import("notistack");
-    post.mockRejectedValueOnce({ response: { status: 404 } });
+    post.mockRejectedValueOnce({ response: { status: 404, data: { code: "NOT_FOUND" } } });
     renderPage();
     const user = userEvent.setup();
     await user.click(screen.getByTestId("delete-followup-21"));

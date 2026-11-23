@@ -444,6 +444,17 @@ describe("access model on the record", () => {
     expect(present).toHaveBeenCalled();
   });
 
+  // Final review m2: Send back is a reassign; gate 3 refuses it on a closed
+  // complaint for an Own agent, so the menu must not offer it.
+  it("no Send back without CanReassign, even when the server names the giver", async () => {
+    jest.mocked(fetchTicketDetail).mockResolvedValue(
+      detail(ticket({ CanReassign: false, SendBackToId: 30, SendBackToName: "Nitin Verma" })),
+    );
+    await mount();
+    await loaded();
+    expect(screen.queryByRole("menuitem", { name: /^Send back/ })).toBeNull();
+  });
+
   it("nothing on the record or its sheets says transfer", async () => {
     await mount();
     await loaded();

@@ -348,7 +348,7 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
   const menu: SheetAction[] = [
     ...(canEdit ? [{ key: "edit", label: "Edit complaint", icon: Pencil, onPress: () => onEdit(ticketId) }] : []),
     // Only when the server names who gave it (fn_RecordGiver); the bar is full at five.
-    ...(canEdit && ticket.SendBackToId && ticket.SendBackToName
+    ...(canEdit && ticket.CanReassign === true && ticket.SendBackToId && ticket.SendBackToName
       ? [{ key: "sendback", label: `Send back to ${ticket.SendBackToName}`, icon: Undo2, onPress: run("sendback") }]
       : []),
     ...(canEdit ? [{ key: "status", label: "Change status", icon: ArrowLeftRight, onPress: () => statusRef.current?.present() }] : []),

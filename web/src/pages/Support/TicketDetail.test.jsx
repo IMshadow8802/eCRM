@@ -18,7 +18,7 @@ vi.mock("./ResolveTicketModal", () => ({
     <div data-testid="resolve-modal">
       status:{status?.value}
       <button type="button" onClick={onClose}>close-resolve</button>
-      <button type="button" onClick={() => onError({ response: { status: 404, data: { message: "Complaint not found" } } })}>resolve-404</button>
+      <button type="button" onClick={() => onError({ response: { status: 404, data: { message: "Complaint not found", code: "NOT_FOUND" } } })}>resolve-404</button>
     </div>
   ) : null),
 }));
@@ -385,6 +385,15 @@ describe("TicketDetail (spec 2)", () => {
 
     it("has no Send back button when SendBackToId is null", async () => {
       mockTicketEndpoints();
+      renderDetail();
+      await screen.findByTestId("ticket-detail");
+      expect(screen.queryByTestId("send-back-ticket-btn")).toBeNull();
+    });
+
+    // Final review m2: a send back is a reassign (gate 3 runs first), so it is
+    // never offered where the server would answer "Only a manager can reassign".
+    it("no Send back on a record the caller may not reassign, even with a SendBackToId", async () => {
+      mockTicketEndpoints({}, { detail: withTicket({ CanReassign: 0, SendBackToId: 16, SendBackToName: "Nitin" }) });
       renderDetail();
       await screen.findByTestId("ticket-detail");
       expect(screen.queryByTestId("send-back-ticket-btn")).toBeNull();

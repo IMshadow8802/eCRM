@@ -281,8 +281,17 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
 
   const createCustomer = useMutation({ mutationFn: saveCustomer });
 
+  /**
+   * Where a failed upload's files should go: the complaint, or — when it was
+   * logged onto someone else, who now holds it and the logger cannot open it —
+   * to that person. (139: the logger may still upload for 15 minutes, so a
+   * failure here is a real one.)
+   */
+  const failedUploads = (n: number, away: boolean) =>
+    `${n} file(s) failed to upload — ${away ? "send them to the person it is assigned to" : "add them from the complaint"}`;
+
   /** One at a time, after the complaint is saved. A failure never undoes the complaint. */
-  const uploadStaged = async (ticketId: number) => {
+  const uploadStaged = async (ticketId: number, away: boolean) => {
     let failed = 0;
     for (const { size: _size, ...file } of files) {
       try {
@@ -291,7 +300,7 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
         failed += 1;
       }
     }
-    if (failed) toast.error(`${failed} file(s) failed to upload — add them from the complaint`);
+    if (failed) toast.error(failedUploads(failed, away));
   };
 
   const save = useMutation({
@@ -302,14 +311,16 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
         return;
       }
       const newId = response.data?.Id;
+      // Handed to someone else, the logger loses it: say where it went — first,
+      // so an upload failure (one toast at a time) is the one left showing.
+      const away = !ticket && !!sent.AssignedTo && sent.AssignedTo !== myId;
+      if (away) toast.success(response.message);
       if (!ticket && files.length) {
-        if (newId) await uploadStaged(newId);
-        else toast.error(`${files.length} file(s) failed to upload — add them from the complaint`);
+        if (newId) await uploadStaged(newId, away);
+        else toast.error(failedUploads(files.length, away));
       }
       void queryClient.invalidateQueries({ queryKey: ["tickets"] });
       if (ticket) void queryClient.invalidateQueries({ queryKey: ["ticket", ticket.Id] });
-      // Handed to someone else, the logger loses it: say where it went.
-      if (!ticket && sent.AssignedTo && sent.AssignedTo !== myId) toast.success(response.message);
       navigation.goBack();
     },
     onError: (err) => setError(apiErrorMessage(err, "Could not save this complaint. Check your connection.")),

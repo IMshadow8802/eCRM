@@ -63,7 +63,7 @@ import { lookupMap } from "../support/ticketHelpers";
 import { relativeTime } from "../tasks/taskHelpers";
 import { FollowUpSheets, type FollowUpSheetsHandle } from "./FollowUpSheets";
 import { ContactCard, DetailsFacts, FollowUpsTab } from "./LeadDetailParts";
-import { FOLLOWUP_TYPES, leadStatusBadge, nextOpen, rupees } from "./leadHelpers";
+import { FOLLOWUP_TYPES, isActiveLead, leadStatusBadge, nextOpen, rupees } from "./leadHelpers";
 import { StatusSheet, type StatusChange } from "./StatusSheet";
 import { useLeadRefData } from "./useLeadRefData";
 
@@ -163,6 +163,11 @@ export function LeadDetailBody({ leadId, navigation, onBack, onGone = onBack, us
   // The server's per-record answers (fn_RecordActions) on top of the module grant.
   const canEdit = can.edit && lead?.CanEdit === true;
   const canReassign = canEdit && lead?.CanReassign === true;
+  // A send back is a reassign: offered only where the server would take one.
+  const canSendBack = canReassign && !!lead?.SendBackToId && !!lead?.SendBackToName;
+  // A closed lead goes back to an active status only with CanReopen (139, the
+  // complaint rule); without it the status sheet does not offer those rows.
+  const lockedClosed = !!lead && !isActiveLead(lead.StatusCode) && lead.CanReopen !== true;
   // A follow-up answers for itself (its CanAct, Task 13): one delegated to the
   // caller stays actionable on a lead they cannot edit. Rows without the field
   // follow the lead. The routes still need the leads edit grant.
@@ -330,7 +335,7 @@ export function LeadDetailBody({ leadId, navigation, onBack, onGone = onBack, us
     { key: "call", label: "Log a call", sublabel: "Goes straight onto the history", icon: PhoneCall, onPress: () => openSheet(callRef) },
     { key: "schedule", label: "Schedule follow-up", icon: CalendarPlus, onPress: () => openSheet(scheduleRef) },
     // Only when the server names who gave it (fn_RecordGiver); the bar is full at five.
-    ...(lead.SendBackToId && lead.SendBackToName
+    ...(canSendBack
       ? [{ key: "sendback", label: `Send back to ${lead.SendBackToName}`, icon: Undo2, onPress: () => sendBackRef.current?.present() }]
       : []),
     ...(next ? [{ key: "skip", label: "Skip follow-up", sublabel: "It is not happening", icon: CalendarX, onPress: () => followUpSheets.current?.skip(next) }] : []),
@@ -473,7 +478,7 @@ export function LeadDetailBody({ leadId, navigation, onBack, onGone = onBack, us
           <StatusSheet
             ref={statusRef}
             lead={lead}
-            statuses={ref.statuses}
+            statuses={lockedClosed ? ref.statuses.filter((s) => !isActiveLead(s.Code)) : ref.statuses}
             lostReasons={ref.lostReasons}
             lostReasonsLoaded={ref.lostReasonsLoaded}
             busy={status.isPending || won.isPending}
@@ -544,7 +549,7 @@ export function LeadDetailBody({ leadId, navigation, onBack, onGone = onBack, us
               }
             />
           ) : null}
-          {lead.SendBackToId && lead.SendBackToName ? (
+          {canSendBack ? (
             <ComposeSheet
               ref={sendBackRef}
               title={lead.SendBackToName ? `Send back to ${lead.SendBackToName}` : "Send back"}

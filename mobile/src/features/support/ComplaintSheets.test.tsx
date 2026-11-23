@@ -293,6 +293,19 @@ describe("Reassign (23)", () => {
     expect(transferTicket).not.toHaveBeenCalled();
   });
 
+  it("search finds a person by job title or office, any case; a miss says so", async () => {
+    const open = await mount();
+    await open("reassign");
+    await fireEvent.changeText(screen.getByTestId("reassign-search"), "AC TECH");
+    expect(screen.getByText("Vikram Singh")).toBeOnTheScreen();
+    expect(screen.queryByText("Priya Shah")).toBeNull();
+    await fireEvent.changeText(screen.getByTestId("reassign-search"), "head off");
+    expect(screen.getByText("Priya Shah")).toBeOnTheScreen();
+    expect(screen.queryByText("Vikram Singh")).toBeNull();
+    await fireEvent.changeText(screen.getByTestId("reassign-search"), "plumber");
+    expect(screen.getByText("Nobody matches.")).toBeOnTheScreen();
+  });
+
   it("filters people in reach, then sends the controller's payload", async () => {
     const open = await mount();
     await open("reassign");
@@ -448,6 +461,9 @@ describe("access model: Reassign words, groups, Away today, Send back, gone", ()
     expect(await screen.findByText("Reassigned to Vivek Rao")).toBeOnTheScreen();
     expect(onGone).toHaveBeenCalledTimes(1);
     expect(removed).toHaveBeenCalledWith({ queryKey: ["ticket", 7] });
+    // Regression (Maestro 2026-11-23): the old holder's chain must not survive
+    // the reassign, or the reopened record offers nobody to escalate to.
+    expect(removed).toHaveBeenCalledWith({ queryKey: ["escalation-targets", 7] });
   });
 
   it("Send back posts SendBack with the remarks and no reason, then leaves", async () => {
@@ -474,6 +490,7 @@ describe("access model: Reassign words, groups, Away today, Send back, gone", ()
     await fireEvent.press(screen.getByRole("button", { name: "Send back to Nitin" }));
     expect(await screen.findByText("Nitin Verma can no longer take this. Reassign it instead.")).toBeOnTheScreen();
     expect(invalidated).toHaveBeenCalledWith({ queryKey: ["ticket", 7] });
+    expect(invalidated).toHaveBeenCalledWith({ queryKey: ["escalation-targets", 7] });
     expect(onGone).not.toHaveBeenCalled();
   });
 

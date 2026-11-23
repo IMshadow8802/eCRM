@@ -560,6 +560,37 @@ describe("files picked on create (CMP-08)", () => {
     expect(saveTicket).toHaveBeenCalledTimes(1);
   });
 
+  // Final review I1 (FR-I1): logged onto Priya, the complaint leaves the logger.
+  // The server takes the logger's uploads for 15 minutes, so the files go to the
+  // new Id; a real failure must not say "add them from the complaint" — a
+  // complaint the logger can no longer open.
+  it("logged for someone else: the files go to the new complaint", async () => {
+    const navigation = makeNavigation<"ComplaintForm">();
+    await mount(undefined, navigation);
+    await screen.findByText("Wiring");
+    await fillValidComplaint();
+    await fireEvent.press(screen.getByText("Priya Shah"));
+    await pickFiles("meter.jpg");
+    await fireEvent.press(screen.getByText("Submit complaint"));
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+    expect(uploadAttachment).toHaveBeenCalledWith(expect.objectContaining({ Entity: "ticket", EntityId: 101 }));
+    expect(screen.queryByText(/failed to upload/)).toBeNull();
+  });
+
+  // REGRESSION: the warning pointed at a complaint the logger cannot open.
+  it("logged for someone else: a failed upload says to send the files to the assignee", async () => {
+    jest.mocked(uploadAttachment).mockRejectedValueOnce(new Error("timeout"));
+    const navigation = makeNavigation<"ComplaintForm">();
+    await mount(undefined, navigation);
+    await screen.findByText("Wiring");
+    await fillValidComplaint();
+    await fireEvent.press(screen.getByText("Priya Shah"));
+    await pickFiles("meter.jpg");
+    await fireEvent.press(screen.getByText("Submit complaint"));
+    expect(await screen.findByText("1 file(s) failed to upload — send them to the person it is assigned to")).toBeOnTheScreen();
+    expect(screen.queryByText(/add them from the complaint/)).toBeNull();
+  });
+
   it("a save that answers no Id says the staged files did not go", async () => {
     jest.mocked(saveTicket).mockResolvedValue(envelope({ Id: 0 }));
     const navigation = makeNavigation<"ComplaintForm">();

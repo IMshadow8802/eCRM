@@ -146,7 +146,8 @@ WHERE (m.definition LIKE '%tblTicket%' OR m.definition LIKE '%tblLeads%' OR m.de
                      'sp_RefreshLeadNextFollowup', 'sp_SaveQuotation', 'sp_FinaliseQuotation',
                      'sp_ReviseQuotation', 'sp_SaveLeadSource', 'sp_FetchLeadSource', 'sp_DeleteLeadSource',
                      'fn_RecordGiver', 'fn_StrandedWork', 'sp_NotifyStranded', 'sp_AccessModelBackup',
-                     'sp_SetTicketStatus', 'sp_EscalateTicket')
+                     'sp_SetTicketStatus', 'sp_EscalateTicket',
+                     'sp_LoggerMayAttach')   -- 139: logger upload window, never a read
 UNION ALL
 SELECT o.name, 'still takes a list parameter'
 FROM sys.parameters p JOIN sys.objects o ON o.object_id = p.object_id

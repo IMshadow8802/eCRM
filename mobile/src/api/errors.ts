@@ -43,11 +43,13 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
 export const RECORD_GONE_MESSAGE = "This record is no longer with you";
 
 /**
- * A lead / complaint / follow-up call answered 404: the record left this user
- * (reassigned, moved, deleted) while the screen was open. Callers drop the
- * cached detail, go back to the list and say RECORD_GONE_MESSAGE. A 403 means
- * the record is still visible but the action was refused: show the server's
- * message (apiErrorMessage) and stay.
+ * A lead / complaint / follow-up call answered 404 NOT_FOUND: the record left
+ * this user (reassigned, moved, deleted) while the screen was open. Callers drop
+ * the cached detail, go back to the list and say RECORD_GONE_MESSAGE. Only the
+ * record's own not-found carries NOT_FOUND (the access gates and a procedure's
+ * 404), so another 404 — a proxy page, a missing route — never ejects. A 403
+ * means the record is still visible but the action was refused: show the
+ * server's message (apiErrorMessage) and stay. Same rule as the web.
  */
 export const recordGone = (error: unknown): boolean =>
-  isAxiosError(error) && error.response?.status === 404;
+  isAxiosError(error) && error.response?.status === 404 && error.response.data?.code === "NOT_FOUND";

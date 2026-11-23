@@ -54,7 +54,7 @@ async function assertCustomerVisible(req, res, customerId, scope = req.scope) {
 
 const customerController = {
   async save(req, res) {
-    const { CompId, UserId } = req.user;
+    const { CompId, UserId } = actor(req);
     const Id = positiveInt(req.body.Id) ?? 0;
     const fields = pick(req.body, CUSTOMER_FIELDS);
     // The SP enforces both rules too (spec §1); refusing here names the field
@@ -97,7 +97,7 @@ const customerController = {
 
   async fetch(req, res) {
     try {
-      const { CompId } = req.user;
+      const { CompId } = actor(req);
       const { SearchTerm = null, BranchId = null, IsActive = 1 } = req.body;
       // Clamped, not taken raw: PageSize goes straight to the SP, which has no
       // ceiling of its own. Default 25 matches the SP's own default.
@@ -143,9 +143,10 @@ const customerController = {
       });
       const rs = result.recordsets ?? [];
       const customer = rs[0]?.[0] || null;
-      if (!customer) return responseHelper.error(res, "Customer not found", "NOT_FOUND", 404);
-      if (!canSeeRecord(req, customer, "CreatedBy")) {
-        return responseHelper.error(res, "You do not have access to this customer", "FORBIDDEN", 403);
+      // Hidden answers exactly like missing (X404): no walking ids to learn
+      // which customers exist.
+      if (!customer || !canSeeRecord(req, customer, "CreatedBy")) {
+        return responseHelper.error(res, "Customer not found", "NOT_FOUND", 404);
       }
       return responseHelper.success(res, "Customer detail fetched successfully", {
         customer,
@@ -160,7 +161,7 @@ const customerController = {
   // requireAdmin sits on the route. The SP soft-deletes and answers 409 while
   // any ticket still references the customer — surfaced as-is.
   async delete(req, res) {
-    const { CompId } = req.user;
+    const { CompId } = actor(req);
     const Id = positiveInt(req.body.Id);
     if (!Id) return responseHelper.validationError(res, "Id is required");
     return runSp(res, "sp_DeleteCustomer", { Id, CompId }, "Failed to delete customer");

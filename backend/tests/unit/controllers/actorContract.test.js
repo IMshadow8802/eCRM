@@ -20,6 +20,12 @@ const DONE = ["ticket", "lead", "followup", "quotation"].filter((n) => !PENDING.
 
 const breaks = (src) => LIST_PARAMS.test(src) || PERSON_FROM_REQUEST.test(src);
 
+// Final review m6: the person comes from actor(req) only — never read straight off
+// req.user (same values today, but outside this guard). Call and customer
+// controllers write on leads / complaints / their customers, so they are held to it.
+const PERSON_FROM_SESSION_RAW = /=\s*req\.user\b|req\.user\??\.(UserId|CompId)\b/;
+const ACTOR_ONLY = [...DONE, "call", "customer"];
+
 describe("actor contract — converted controllers", () => {
   const files = DONE.map(file);
   if (!files.length) {
@@ -31,6 +37,18 @@ describe("actor contract — converted controllers", () => {
   });
   it.each(files)("%s never takes the person or company from the request", (f) => {
     expect(read(f)).not.toMatch(PERSON_FROM_REQUEST);
+  });
+});
+
+describe("actor contract — the person only through actor(req)", () => {
+  it.each(ACTOR_ONLY.map(file))("%s never reads UserId/CompId off req.user", (f) => {
+    expect(read(f)).not.toMatch(PERSON_FROM_SESSION_RAW);
+  });
+  it("the pattern catches the forms and leaves actor(req) alone", () => {
+    for (const s of ["const { CompId, UserId } = req.user", "const { CompId } = req.user;", "req.user.UserId", "req.user?.CompId"])
+      expect(s).toMatch(PERSON_FROM_SESSION_RAW);
+    for (const s of ["const { CompId, UserId } = actor(req)", "req.user.BranchId", "// req.user.BranchId"])
+      expect(s).not.toMatch(PERSON_FROM_SESSION_RAW);
   });
 });
 

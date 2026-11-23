@@ -271,11 +271,19 @@ describe("customerController.detail", () => {
     expect(database.executeStoredProcedure).not.toHaveBeenCalled();
   });
 
-  it("403s a customer outside customers reach", async () => {
+  // REGRESSION (final review m5, X404): a hidden customer used to answer 403
+  // while a missing one answered 404, so an Own agent could walk ids and learn
+  // which customers exist. Both now read the same.
+  it("answers a customer outside customers reach exactly like a missing one", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ Id: 31, BranchId: 9, CreatedBy: 3 }], []] });
-    const res = mockRes();
-    await customerController.detail(accessReq(COMPLAINTS_OWN, { CustomerId: 31 }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    const hidden = mockRes();
+    await customerController.detail(accessReq(COMPLAINTS_OWN, { CustomerId: 31 }), hidden);
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[], []] });
+    const missing = mockRes();
+    await customerController.detail(accessReq(COMPLAINTS_OWN, { CustomerId: 32 }), missing);
+    expect(hidden.status).toHaveBeenCalledWith(404);
+    const strip = ({ timestamp, ...rest }) => rest;
+    expect(strip(hidden.json.mock.calls[0][0])).toEqual(strip(missing.json.mock.calls[0][0]));
   });
 
   it("400s without a CustomerId before touching the DB", async () => {

@@ -2,6 +2,7 @@ const database = require("../config/database");
 const responseHelper = require("../utils/responseHelper");
 const { logActivity, ACTIONS } = require("../utils/activityLogger");
 const { assertRecordAccess } = require("../middleware/permission");
+const { actor } = require("../utils/actor");
 
 // Save-type SP: returns a single row with ResponseCode/ResponseMess.
 // Optional (req, log) fire an audit entry to tblActivityLog on success.
@@ -25,7 +26,7 @@ async function runSp(res, spName, params, failMessage, req, log) {
 const callController = {
   // Logs a call against a lead OR a ticket (exactly one of LeadId/TicketId set).
   async logCall(req, res) {
-    const { CompId, UserId } = req.user;
+    const { CompId, UserId } = actor(req);
     const {
       LeadId = null,
       TicketId = null,
@@ -70,22 +71,23 @@ const callController = {
   },
 
   /**
-   * Fetches calls by lead, by ticket, or — when neither id is given — the
-   * caller's own calls.
+   * Fetches the calls of one lead or one ticket, gated on visibility the same
+   * way logCall is: asking for another branch's lead by id must not hand back
+   * its call history, which includes free-text notes.
    *
-   * The record filters gate on visibility the same way logCall does: asking
-   * for another branch's lead by id must not hand back its call history, which
-   * includes free-text notes. The own-calls fallback needs no check, since it
-   * is scoped to the caller by definition.
+   * There is no "my own calls" listing any more (final review m4): it returned
+   * notes and ids of records that had since left the caller (D8: such activity
+   * stays in your numbers, it is not listed), and no client asked for it.
    */
   async fetchCalls(req, res) {
+    const { LeadId = null, TicketId = null } = req.body || {};
+    if (!LeadId && !TicketId) {
+      return responseHelper.validationError(res, "LeadId or TicketId is required");
+    }
     try {
-      const { CompId, UserId } = req.user;
-      const { LeadId = null, TicketId = null } = req.body;
-
+      const { CompId, UserId } = actor(req);
       if (LeadId && !(await assertRecordAccess(req, res, "lead", LeadId))) return;
-      if (!LeadId && TicketId
-          && !(await assertRecordAccess(req, res, "ticket", TicketId))) return;
+      if (!LeadId && !(await assertRecordAccess(req, res, "ticket", TicketId))) return;
 
       const result = await database.executeStoredProcedure("sp_FetchCalls", {
         CompId,

@@ -55,6 +55,12 @@
 --      fn_RecordActions, fn_StrandedWork, sp_NotifyStranded (131),
 --      sp_FetchLoggedByMe (132), fn_CompanyOffice, fn_ReassignGate,
 --      sp_FetchTicketEscalationTargets (133); 134 creates nothing.
+--      139 (review fixes) files its saves under ScriptNo 133, so it is
+--      undone with From=130/131 (sp_LoggerMayAttach dropped here,
+--      sp_SetLeadStatus restored in step 3 from 139's save = its pre-130
+--      text; fn_RecordActions and the patched procedures come back from
+--      their 131-133 saves) and kept with From=134. After a partial
+--      rollback re-apply 130-134 AND 139.
 --      Pseudo-rows (ObjName LIKE '#%') are never EXECuted or dropped.
 --   5. From >= 131: the backup rows of the undone scripts are deleted, so
 --      re-applying a script saves the then-live text again (first save
@@ -382,7 +388,9 @@ GO
 --   'fn_AccessPeople', 'fn_AccessOffices', 'fn_RecordGiver', 'fn_VisibleLeads',
 --   'fn_VisibleTickets', 'fn_VisibleFollowUps', 'fn_AssignableUsers', 'fn_RecordActions',
 --   'fn_StrandedWork', 'sp_NotifyStranded', 'sp_FetchLoggedByMe', 'fn_ReassignGate',
---   'sp_FetchTicketEscalationTargets', 'fn_CompanyOffice');
+--   'sp_FetchTicketEscalationTargets', 'fn_CompanyOffice', 'sp_LoggerMayAttach');
+--    139 undone too (From <= 131): no 139 marker left in sp_SetLeadStatus -> 0
+-- SELECT CHARINDEX('139:', OBJECT_DEFINITION(OBJECT_ID('dbo.sp_SetLeadStatus')));
 -- 2. The old signatures are back (From <= 131) -> 1, 4
 -- SELECT COUNT(*) FROM sys.parameters WHERE object_id = OBJECT_ID('dbo.sp_FetchTickets')
 --   AND name = '@AccessibleBranchIdsJson';

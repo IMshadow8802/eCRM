@@ -743,6 +743,8 @@ export interface Lead {
   /** Detail only (132) — the server's verdict on what the caller may do. Hints; the server re-checks. */
   CanEdit?: boolean;
   CanReassign?: boolean;
+  /** 139: may move a closed (lost / junk / won) lead back to an active status. */
+  CanReopen?: boolean;
   /** Who "Send back" returns it to; null when there is no one to send it back to. */
   SendBackToId?: number | null;
   SendBackToName?: string | null;

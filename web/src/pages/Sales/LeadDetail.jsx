@@ -16,7 +16,7 @@ import { SALES_ENDPOINTS } from "../../api/salesQueries";
 import { formatCurrency, formatDue } from "../../utils/format";
 import { dueAt, isPastDue } from "./followUpDue";
 import DueInputs from "./DueInputs";
-import { FOLLOWUP_TYPES } from "./leadStatus";
+import { FOLLOWUP_TYPES, isActiveCode } from "./leadStatus";
 import Timeline from "./Timeline";
 import { recordGone, RECORD_GONE_MESSAGE } from "../../utils/recordGone";
 import LogFollowUpModal from "./LogFollowUpModal";
@@ -141,9 +141,17 @@ export default function LeadDetail({ leadId: leadIdProp }) {
   // which refuses it ("Use convert…"). Picking it opens WonDialog, which posts
   // to convertLead: one engine writes a win, whether it arrives from here or
   // from "Accepted" on a quotation.
+  //
+  // A closed lead (lost / junk / won) goes back to an active status only with
+  // the server's CanReopen (139, the complaint reopen rule): without it the
+  // active statuses are not offered. A refusal that slips through (stale page)
+  // shows the server's sentence and stays.
+  const lockedClosed = Boolean(lead) && !isActiveCode(lead.StatusCode) && !lead.CanReopen;
   const statusOpts = useMemo(
-    () => statuses.map((s) => ({ value: s.Id, label: s.Value, code: s.Code })),
-    [statuses],
+    () => statuses
+      .filter((s) => !lockedClosed || !isActiveCode(s.Code))
+      .map((s) => ({ value: s.Id, label: s.Value, code: s.Code })),
+    [statuses, lockedClosed],
   );
   const lostOpts = useMemo(() => lostReasons.map((r) => ({ value: r.Id, label: r.Value })), [lostReasons]);
 
@@ -261,7 +269,7 @@ export default function LeadDetail({ leadId: leadIdProp }) {
             {Boolean(lead.CanReassign) && (
               <Button variant="tonal" leftIcon={<UserRoundPen size={14} />} onClick={() => setMoving("reassign")} data-testid="reassign-lead-btn">Reassign</Button>
             )}
-            {lead.SendBackToId != null && (
+            {lead.SendBackToId != null && Boolean(lead.CanReassign) && (
               <Button variant="tonal" leftIcon={<Undo2 size={14} />} onClick={() => setMoving("back")} data-testid="send-back-btn">Send back to {lead.SendBackToName}</Button>
             )}
             {openFollowups[0]

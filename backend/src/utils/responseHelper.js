@@ -10,11 +10,15 @@ const success = (res, message, data = null, statusCode = 200) => {
   });
 };
 
+// A procedure's 404 always means "that record is not there for you" (139 turned
+// the lookups that meant something else — a bad status or customer id — into
+// 400). It goes out as NOT_FOUND like the Node gates' own 404, which is the one
+// answer the clients treat as "this record left you" (utils/recordGone).
 const error = (res, message, code = "SERVER_ERROR", statusCode = 500) => {
   return res.status(statusCode).json({
     success: false,
     message,
-    code,
+    code: code === "SP_ERROR" && statusCode === 404 ? "NOT_FOUND" : code,
     responseCode: statusCode,
     timestamp: new Date().toISOString(),
   });

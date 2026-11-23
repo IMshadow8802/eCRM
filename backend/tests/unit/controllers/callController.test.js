@@ -241,18 +241,21 @@ describe("callController.fetchCalls", () => {
     );
   });
 
-  it("fetches by user when neither id is in the body", async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce({ recordset: [] });
-    const req = baseReq();
+  // REGRESSION (final review m4): with no id the call listed the caller's own
+  // calls — notes and ids of leads that had since been reassigned away.
+  it("400s when neither id is in the body, without listing anything", async () => {
     const res = mockRes();
-    await callController.fetchCalls(req, res);
+    await callController.fetchCalls(baseReq(), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
 
-    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
-      "sp_FetchCalls",
-      expect.objectContaining({ CompId: 5, LeadId: null, TicketId: null, UserId: 7 }),
-    );
-    const json = res.json.mock.calls[0][0];
-    expect(json.data.calls).toEqual([]);
+  it("takes the person from the session, never the body", async () => {
+    mockLeadLookup({ Id: 9, BranchId: 2, OwnerId: 7, CanEdit: 1 });
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordset: [] });
+    await callController.fetchCalls(baseReq({ body: { LeadId: 9, UserId: 99, CompId: 98 } }), mockRes());
+    expect(database.executeStoredProcedure).toHaveBeenLastCalledWith(
+      "sp_FetchCalls", expect.objectContaining({ CompId: 5, UserId: 7 }));
   });
 
   // Call notes are free text about a customer — reading them must be gated the
@@ -279,7 +282,7 @@ describe("callController.fetchCalls", () => {
 
   it("handles DB error as 500", async () => {
     database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
-    const req = baseReq();
+    const req = baseReq({ body: { LeadId: 9 } });
     const res = mockRes();
     await callController.fetchCalls(req, res);
     expect(res.status).toHaveBeenCalledWith(500);

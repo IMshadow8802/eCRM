@@ -28,6 +28,7 @@ import { PARTNER_ENDPOINTS } from "../../api/partnerQueries";
 import DueInputs from "./DueInputs";
 import { dueAt, isPastDue } from "./followUpDue";
 import { useAccess } from "../../hooks/useAccess";
+import useAuthStore from "../../stores/useAuthStore";
 import { mobileSchema } from "../../utils/mobile";
 
 // Only the columns sp_SaveLead accepts. CompId/BranchId/UserId are injected
@@ -132,6 +133,7 @@ const leadToForm = (lead) => ({
  */
 export default function LeadCreateModal({ open, onClose, onSaved, lead = null }) {
   const isEdit = Boolean(lead?.Id);
+  const myId = useAuthStore((st) => st.user?.UserId ?? st.UserId);
   const {
     control,
     handleSubmit,
@@ -329,11 +331,16 @@ export default function LeadCreateModal({ open, onClose, onSaved, lead = null })
       if (!isEdit) enqueueSnackbar(saved?.message || "Lead saved", { variant: "success" });
       const newId = saved?.Id;
       if (!isEdit && newId && attachmentsRef.current?.stagedCount) {
+        // Created onto someone else, the lead is theirs and the logger cannot
+        // open it; the files still go up (139: the logger may upload for 15
+        // minutes), so only a real failure is reported — with where to send them.
+        const assignedAway = Boolean(values.OwnerId) && values.OwnerId !== myId;
         const { failed } = await attachmentsRef.current.uploadStaged(newId);
         if (failed)
-          enqueueSnackbar(`${failed} file(s) failed to upload — add them from the record`, {
-            variant: "warning",
-          });
+          enqueueSnackbar(
+            `${failed} file(s) failed to upload — ${assignedAway ? "send them to the person it is assigned to" : "add them from the record"}`,
+            { variant: "warning" },
+          );
       }
       reset(EMPTY);
       setCustom({});

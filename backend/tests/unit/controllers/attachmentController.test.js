@@ -51,6 +51,9 @@ function mockTaskPermission(allowed) {
 function mockQuotationLookup(quote) {
   database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [quote ? [quote] : [], [], []] });
 }
+function mockLoggerWindow(mayAttach) {
+  database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ MayAttach: mayAttach }]] });
+}
 const draftQuote = { Id: 4, LeadId: 9, Status: "draft", OwnerId: 7, BranchId: 2, CreatedBy: 7, CanEdit: 1 };
 
 describe("attachmentController.save", () => {
@@ -136,12 +139,70 @@ describe("attachmentController.save", () => {
     expect(res.status).toHaveBeenCalledWith(201);
   });
 
-  it("404s uploading to a lead outside the caller's scope", async () => {
+  it("404s uploading to a lead outside the caller's scope (and not theirs to attach to)", async () => {
     mockLeadLookup(null);
+    mockLoggerWindow(0);
     const res = mockRes();
     await attachmentController.save(baseReq({ file, body: { Entity: "lead", EntityId: 8 } }), res);
     expect(res.status).toHaveBeenCalledWith(404);
-    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
+    expect(res.json.mock.calls[0][0]).toMatchObject({ message: "Lead not found", code: "NOT_FOUND" });
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(2);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalledWith("sp_SaveAttachment", expect.anything());
+  });
+
+  // REGRESSION (final review I1, ruling FR-I1): a desk agent logs a complaint
+  // onto the electrician with photos staged; the complaint is no longer theirs
+  // to see, and every upload used to 404 — the files were lost.
+  describe("the logger's upload window (FR-I1)", () => {
+    const saved = () => database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[{ ResponseCode: 201, ResponseMess: "Attachment saved", AttachmentId: 77 }]],
+    });
+
+    it("lets the logger upload to a complaint they just created onto someone else", async () => {
+      mockTicketLookup(null);   // assigned away: not visible to the logger
+      mockLoggerWindow(1);
+      saved();
+      const res = mockRes();
+      await attachmentController.save(baseReq({ file, body: { Entity: "ticket", EntityId: 42 } }), res);
+      expect(database.executeStoredProcedure).toHaveBeenNthCalledWith(2, "sp_LoggerMayAttach",
+        { CompId: 5, UserId: 7, Entity: "ticket", EntityId: 42 });
+      expect(database.executeStoredProcedure).toHaveBeenNthCalledWith(3, "sp_SaveAttachment",
+        expect.objectContaining({ Entity: "ticket", EntityId: 42, UploadedBy: 7 }));
+      expect(res.status).toHaveBeenCalledWith(201);
+    });
+
+    it("lets the logger upload to a lead they created that they see but may not edit", async () => {
+      mockLeadLookup({ Id: 8, CanEdit: 0 });
+      mockLoggerWindow(true);
+      saved();
+      const res = mockRes();
+      await attachmentController.save(baseReq({ file, body: { Entity: "lead", EntityId: 8 } }), res);
+      expect(res.status).toHaveBeenCalledWith(201);
+    });
+
+    it("keeps the 403 on a visible, not-editable record outside the window", async () => {
+      mockLeadLookup({ Id: 8, CanEdit: 0 });
+      mockLoggerWindow(0);
+      const res = mockRes();
+      await attachmentController.save(baseReq({ file, body: { Entity: "lead", EntityId: 8 } }), res);
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+
+    it("never asks for tasks or quotations", async () => {
+      mockTaskPermission(false);
+      const res = mockRes();
+      await attachmentController.save(baseReq({ file, body: { Entity: "task", EntityId: 3 } }), res);
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not ask when the record gate itself failed (500 stays 500)", async () => {
+      database.executeStoredProcedure.mockRejectedValueOnce(new Error("db down"));
+      const res = mockRes();
+      await attachmentController.save(baseReq({ file, body: { Entity: "ticket", EntityId: 42 } }), res);
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("500s ATTACHMENT_SAVE_ERROR when the insert SP throws after the guard passes", async () => {

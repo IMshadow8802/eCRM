@@ -49,4 +49,13 @@ describe("recordGone", () => {
     expect(recordGone(new Error("boom"))).toBe(false);
     expect(RECORD_GONE_MESSAGE).toBe("This record is no longer with you");
   });
+
+  // REGRESSION (final review m1): a 404 that is not the record's own not-found
+  // (no NOT_FOUND code: another meaning, a proxy page) must not eject the user.
+  it("is false for a 404 without the NOT_FOUND code", () => {
+    expect(recordGone(serverError(404, "Status not found", "SP_ERROR"))).toBe(false);
+    const htmlPage = serverError(404, "x");
+    if (htmlPage.response) htmlPage.response.data = "<html>Not Found</html>";
+    expect(recordGone(htmlPage)).toBe(false);
+  });
 });

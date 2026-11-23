@@ -266,7 +266,7 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
             {Boolean(ticket.CanReassign) && (
               <Button variant="tonal" leftIcon={<Users size={14} />} onClick={() => setTransferOpen(true)} data-testid="reassign-ticket-btn">Reassign</Button>
             )}
-            {ticket.SendBackToId != null && (
+            {ticket.SendBackToId != null && Boolean(ticket.CanReassign) && (
               <Button
                 variant="tonal"
                 leftIcon={<Undo2 size={14} />}

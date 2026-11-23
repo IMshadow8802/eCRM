@@ -114,6 +114,8 @@ export const ComplaintSheets = forwardRef<ComplaintSheetsHandle, ComplaintSheets
 
   const invalidate = (id: number) => {
     void queryClient.invalidateQueries({ queryKey: ["ticket", id] });
+    // The chain is the holder's: a refused write may mean someone else holds it now.
+    void queryClient.invalidateQueries({ queryKey: ["escalation-targets", id] });
     void queryClient.invalidateQueries({ queryKey: ["tickets"] });
   };
 
@@ -122,6 +124,9 @@ export const ComplaintSheets = forwardRef<ComplaintSheetsHandle, ComplaintSheets
     for (const r of [resolveRef, moveRef, reassignRef, sendBackRef, escalateRef, callRef]) r.current?.dismiss();
     onGone?.();
     queryClient.removeQueries({ queryKey: ["ticket", id] });
+    // The chain belongs to the old holder: kept (staleTime 60 s), a reopened
+    // record offered nobody above the new one (Maestro, 2026-11-23).
+    queryClient.removeQueries({ queryKey: ["escalation-targets", id] });
     void queryClient.invalidateQueries({ queryKey: ["tickets"] });
     say();
   };
