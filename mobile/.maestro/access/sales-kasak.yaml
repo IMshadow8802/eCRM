@@ -1,0 +1,60 @@
+# am_kasak (Sales Executive) — §7 rows 6, 9. L01's detail shows "Assigned
+# to"; "Reassign" -> "Reassign lead" -> AM Roshan -> "Reassign to AM" -> back
+# on the list; a search for it finds nothing; Follow-ups has no row for it.
+# Env: L01.
+appId: com.shadowider.eCRM
+---
+- runFlow:
+    file: find-lead.yaml
+    env:
+      NAME: "${L01}"
+- assertVisible: "Assigned to"
+- runFlow: no-old-words.yaml
+- tapOn: "Reassign"
+- assertVisible: "Reassign lead"
+- assertVisible: "Reassign to \\*"
+# The list loads when the sheet opens; picked from it, not typed (adb input
+# into a settling sheet drops a character now and then — agent-vinod covers
+# the search).
+- extendedWaitUntil:
+    visible: "Your manager and team|Your office"
+    timeout: 15000
+- scrollUntilVisible:
+    element: "AM Roshan"
+- runFlow: no-old-words.yaml
+- takeScreenshot: sales-kasak-reassign-picker
+- tapOn: "AM Roshan"
+- tapOn: "Overloaded"
+- tapOn:
+    id: "reassign-remarks"
+- inputText: "AM maestro handing over"
+- hideKeyboard
+- tapOn: "Reassign to AM"
+# The success toast lasts 2.5 s and a tap's settle can outlast it, so it is
+# looked for but not required; what follows checks the outcome itself.
+- extendedWaitUntil:
+    visible: "Reassigned to AM Roshan"
+    timeout: 5000
+    optional: true
+- extendedWaitUntil:
+    notVisible: "Lead actions"
+    timeout: 15000
+- tapOn: "Clear search"
+- tapOn: "Search name, company, mobile"
+- inputText: "${L01}"
+- extendedWaitUntil:
+    visible: "Nothing matches"
+    timeout: 15000
+- tapOn: "Clear search"
+- takeScreenshot: sales-kasak-lead-gone
+# Follow-ups -> All: nothing for it.
+- runFlow: ../common/open-work.yaml
+- tapOn: "Follow-ups, \\d+ due today"
+- tapOn: "All.*"
+- tapOn: "Search follow-ups"
+- inputText: "${L01}"
+- extendedWaitUntil:
+    visible: "Nothing matches"
+    timeout: 15000
+- runFlow: no-old-words.yaml
+- tapOn: "Close search"

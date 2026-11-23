@@ -1,0 +1,22 @@
+# Nitin was deactivated after the screen loaded: "Send back to AM Nitin" is
+# refused (403) with the server's sentence, the record stays open, and the
+# refetched record no longer offers it. Starts on C08's open record.
+appId: com.shadowider.eCRM
+---
+- tapOn: "Complaint actions"
+- tapOn: "Send back to AM Nitin"
+- tapOn: "Why it goes back.*"
+- inputText: "AM maestro wrong area"
+- hideKeyboard
+- tapOn: "Send back to AM"
+- extendedWaitUntil:
+    visible: ".*can no longer take this\\. Reassign it instead\\..*"
+    timeout: 15000
+- takeScreenshot: agent-vinod-send-back-refused
+# 403 stays on the record.
+- assertVisible: "Complaint actions"
+- assertNotVisible: "This record is no longer with you"
+- waitForAnimationToEnd
+- tapOn: "Complaint actions"
+- assertNotVisible: "Send back to AM Nitin"
+- back

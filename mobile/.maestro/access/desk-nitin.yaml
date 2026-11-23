@@ -1,0 +1,100 @@
+# am_nitin (Support Agent, no team: the call desk) — spec §7 rows 1, 8, 15.
+# Logs a complaint with "Assign to" -> AM Vinod (marked "Away today" by
+# live.js), the toast names him and the list stays; "Logged by me" lists it
+# and tapping the row does nothing; a row he can no longer open (C07) is plain.
+# Env: TAG, CUST_HO, C07 (subjects / names of this run's records).
+appId: com.shadowider.eCRM
+---
+- runFlow: ../common/open-work.yaml
+- tapOn: "Open My complaints"
+- assertVisible:
+    id: "complaint-presets"
+- runFlow: no-old-words.yaml
+
+- tapOn: "New complaint"
+- assertVisible: "Customer \\*"
+- tapOn: "Search customer \\(mobile or name\\)"
+- inputText: "${CUST_HO}"
+# The match row, not the search field holding the same text.
+- extendedWaitUntil:
+    visible:
+      text: "${CUST_HO}"
+      index: 1
+    timeout: 15000
+- tapOn:
+    text: "${CUST_HO}"
+    index: 1
+- assertVisible: "Change customer"
+- scrollUntilVisible:
+    element: "One line — what is wrong"
+    centerElement: true
+- tapOn: "One line — what is wrong"
+- inputText: "${TAG}-M01 Desk logs for Vinod"
+- hideKeyboard
+- scrollUntilVisible:
+    element: "Category: Not set"
+- tapOn: "Category: Not set"
+- tapOn: "Technical"
+- tapOn: "Priority: Not set"
+- tapOn: "medium"
+- scrollUntilVisible:
+    element: "Assign to: Nobody yet"
+- runFlow: no-old-words.yaml
+- tapOn: "Assign to: Nobody yet"
+- assertVisible: "Who picks this up\\?"
+# Field staff only, and the Away today mark on Vinod's line.
+- assertVisible: "AM Vinod"
+- assertVisible: ".*Away today.*"
+- assertNotVisible: "AM Kasak"
+- assertNotVisible: "AM Roshan"
+- takeScreenshot: desk-nitin-assign-to
+- tapOn: "AM Vinod"
+- assertVisible: "Assign to: AM Vinod"
+- tapOn: "Submit complaint"
+# Assigned to someone else: the server's sentence, and he stays on the list.
+# The success toast lasts 2.5 s and a tap's settle can outlast it, so it is
+# looked for but not required; what follows checks the outcome itself.
+- extendedWaitUntil:
+    visible: "Logged and assigned to AM Vinod.*"
+    timeout: 5000
+    optional: true
+- extendedWaitUntil:
+    visible:
+      id: "complaint-presets"
+    timeout: 15000
+- assertNotVisible: "Complaint actions"
+
+- runFlow:
+    file: preset.yaml
+    env:
+      NAME: "Logged by me"
+- assertVisible:
+    id: "logged-list"
+- tapOn: "Search number, subject or customer"
+- inputText: "${TAG}-M01"
+- extendedWaitUntil:
+    visible: "${TAG}-M01 Desk logs for Vinod"
+    timeout: 15000
+- assertVisible: "Assigned to AM Vinod · Logged .*"
+- takeScreenshot: desk-nitin-logged-by-me
+# Not his to open: the row does not react.
+- tapOn: "${TAG}-M01 Desk logs for Vinod"
+- waitForAnimationToEnd
+- assertNotVisible: "Complaint actions"
+- assertVisible:
+    id: "logged-list"
+- tapOn: "Clear search"
+- tapOn: "Search number, subject or customer"
+- inputText: "${C07}"
+- extendedWaitUntil:
+    visible: "${C07}"
+    timeout: 15000
+- tapOn: "${C07}"
+- waitForAnimationToEnd
+- assertNotVisible: "Complaint actions"
+- runFlow: no-old-words.yaml
+- tapOn: "Clear search"
+- runFlow:
+    file: preset.yaml
+    env:
+      NAME: "Mine"

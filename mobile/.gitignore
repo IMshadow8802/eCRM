@@ -48,3 +48,6 @@ andrroid/
 
 # Screenshot comparison output (spec §5.2): review material, not source.
 e2e-shots/
+
+# Maestro access-model run: this run's record ids (.maestro/access/live.js)
+.maestro/.run.json

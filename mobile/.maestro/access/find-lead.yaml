@@ -1,0 +1,26 @@
+# Leads (Home's "Leads, n yours" tile), search env NAME, open its row.
+appId: com.shadowider.eCRM
+---
+- runFlow: ../common/open-work.yaml
+- tapOn: "Leads, \\d+ yours"
+- tapOn: "Search name, company, mobile"
+- inputText: "${NAME}"
+- extendedWaitUntil:
+    visible: ".*${NAME}.*"
+    timeout: 15000
+# Debounced search: tap again if the first tap lands while the rows re-lay.
+- repeat:
+    times: 3
+    while:
+      notVisible: "Lead actions"
+    commands:
+      - waitForAnimationToEnd
+      - tapOn:
+          text: ".*${NAME}.*"
+          below: "Search name, company, mobile"
+          optional: true
+      - extendedWaitUntil:
+          visible: "Lead actions"
+          timeout: 8000
+          optional: true
+- assertVisible: "Lead actions"

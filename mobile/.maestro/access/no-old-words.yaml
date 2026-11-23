@@ -1,0 +1,11 @@
+# Spec §4: words that never appear on these screens (same on web and phone).
+# Case-sensitive ((?-i): Maestro ignores case, and "How to reach them back"
+# is a hint, not the word). A person's job title / role is data, not a UI
+# word: pickers show "Owner · HEAD OFFICE", so Owner is not matched next to
+# a " · ". Offices and roles carry "Branch" in their names ("North Delhi
+# Branch", "Branch Manager"), so Branch is matched only as a label.
+appId: com.shadowider.eCRM
+---
+- assertNotVisible: "(?-i).*\\b(Transfer|Transferred|Lead owner|Assignee|New assignee|Keep current branch|Sent back to manager|Reach)\\b.*"
+- assertNotVisible: "(?-i).*(?<!· )\\bOwner\\b(?! ·).*"
+- assertNotVisible: "(?-i)(Branch|Branch \\*|Branch: .*)"

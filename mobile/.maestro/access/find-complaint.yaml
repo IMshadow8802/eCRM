@@ -1,0 +1,35 @@
+# Opens a preset, searches for env KEY ("<run tag>-C02": one complaint of this
+# run; the search matches words, so a whole subject also finds every earlier
+# run's copy) and opens its row. Env PRESET is the tab's label start ("Mine",
+# "Team", "Unassigned", "Escalated").
+appId: com.shadowider.eCRM
+---
+- runFlow: ../common/open-work.yaml
+- tapOn: "Open My complaints"
+- assertVisible:
+    id: "complaint-presets"
+- runFlow:
+    file: preset.yaml
+    env:
+      NAME: "${PRESET}"
+- tapOn: "Search number, customer, mobile"
+- inputText: "${KEY}"
+- extendedWaitUntil:
+    visible: ".*${KEY}.*"
+    timeout: 15000
+# The search is debounced: the old rows are re-laid under the new term for a
+# moment, and a tap in that moment lands on nothing. Tap again until it opens.
+- repeat:
+    times: 3
+    while:
+      notVisible: "Complaint actions"
+    commands:
+      - waitForAnimationToEnd
+      - tapOn:
+          text: "TKT-.*${KEY}.*"
+          optional: true
+      - extendedWaitUntil:
+          visible: "Complaint actions"
+          timeout: 8000
+          optional: true
+- assertVisible: "Complaint actions"

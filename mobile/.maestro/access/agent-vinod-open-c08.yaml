@@ -1,0 +1,13 @@
+# am_vinod opens C08 (logged by nitin for him) and stops there: run.sh then
+# deactivates nitin while the screen is open (Review Focus 3). Env: TAG.
+appId: com.shadowider.eCRM
+---
+- runFlow:
+    file: find-complaint.yaml
+    env:
+      PRESET: "Mine"
+      KEY: "${TAG}-C08"
+- tapOn: "Complaint actions"
+- assertVisible: "Send back to AM Nitin"
+- takeScreenshot: agent-vinod-send-back-menu
+- back

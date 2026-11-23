@@ -1,0 +1,35 @@
+# am_vivek (Support Agent) — §7 row 3. C01 (reassigned to him by vinod) is in
+# Mine; the menu offers "Send back to AM Vinod"; remarks -> gone. Env: TAG.
+appId: com.shadowider.eCRM
+---
+- runFlow:
+    file: find-complaint.yaml
+    env:
+      PRESET: "Mine"
+      KEY: "${TAG}-C01"
+- assertVisible: "AM Vivek"
+- runFlow: no-old-words.yaml
+- tapOn: "Complaint actions"
+- tapOn: "Send back to AM Vinod"
+- assertVisible: "Send back to AM Vinod"
+- tapOn: "Why it goes back.*"
+- inputText: "AM maestro wrong area"
+- hideKeyboard
+- takeScreenshot: agent-vivek-send-back
+- tapOn: "Send back to AM"
+# The success toast lasts 2.5 s and a tap's settle can outlast it, so it is
+# looked for but not required; what follows checks the outcome itself.
+- extendedWaitUntil:
+    visible: "Sent back to AM Vinod"
+    timeout: 5000
+    optional: true
+- extendedWaitUntil:
+    notVisible: "Complaint actions"
+    timeout: 15000
+- tapOn: "Clear search"
+- tapOn: "Search number, customer, mobile"
+- inputText: "${TAG}-C01"
+- extendedWaitUntil:
+    visible: "Nothing matches"
+    timeout: 15000
+- tapOn: "Clear search"

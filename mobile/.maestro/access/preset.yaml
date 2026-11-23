@@ -1,0 +1,25 @@
+# Taps complaint preset ${NAME}. The preset row scrolls sideways when the
+# tabs do not fit, so it swipes the row (left, then right) until it shows.
+appId: com.shadowider.eCRM
+---
+- repeat:
+    times: 2
+    while:
+      notVisible: "${NAME}.*"
+    commands:
+      - swipe:
+          from:
+            id: "complaint-presets"
+          direction: LEFT
+      - waitForAnimationToEnd
+- repeat:
+    times: 2
+    while:
+      notVisible: "${NAME}.*"
+    commands:
+      - swipe:
+          from:
+            id: "complaint-presets"
+          direction: RIGHT
+      - waitForAnimationToEnd
+- tapOn: "${NAME}.*"

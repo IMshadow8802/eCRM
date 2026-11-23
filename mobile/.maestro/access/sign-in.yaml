@@ -1,0 +1,84 @@
+# Signs in as ${LOGIN}: am_<persona> from run.sh, or the owner's test account
+# from run-default.sh. Personas use (owner ruling T28-pw2) their generated
+# test-only password, passed by run.sh as env PASSWORD from backend/.env.live
+# at run time — never written into a flow). Signs out whoever is signed in.
+# The app must point at the local backend on TestCRM (run.sh checks).
+appId: com.shadowider.eCRM
+---
+- launchApp:
+    stopApp: false
+- waitForAnimationToEnd
+# A freshly started dev build loads its bundle first.
+- extendedWaitUntil:
+    visible:
+      text: "More|Username"
+    timeout: 60000
+# Back out of any stack to the tab bar, or to the sign-in screen.
+- repeat:
+    times: 6
+    while:
+      notVisible:
+        text: "More|Sign in"
+    commands:
+      - back
+      - launchApp:
+          stopApp: false
+      - waitForAnimationToEnd
+- runFlow:
+    when:
+      visible: "More"
+    commands:
+      - tapOn:
+          id: "pill-More"
+      - scroll
+      # A sheet or keyboard left open by a failed flow swallows the tab tap:
+      # back out of it and try again.
+      - repeat:
+          times: 4
+          while:
+            notVisible: "Sign out"
+          commands:
+            - back
+            - launchApp:
+                stopApp: false
+            - waitForAnimationToEnd
+            - tapOn:
+                id: "pill-More"
+                optional: true
+            - scroll
+      - tapOn: "Sign out"
+      - extendedWaitUntil:
+          visible: "Sign out\\?"
+          timeout: 10000
+      - tapOn:
+          text: "Sign out"
+          below: "You will need your password.*"
+      # Sign-out waits for the server call up to the 15 s request timeout,
+      # then clears the session anyway (useSignOut).
+      - extendedWaitUntil:
+          visible: "Username"
+          timeout: 30000
+- tapOn: "Username"
+- eraseText
+- inputText: "${LOGIN}"
+- tapOn: "Password"
+- eraseText
+- inputText: ${PASSWORD}
+- hideKeyboard
+- tapOn:
+    text: "Sign in"
+    index: 1
+# First sign-in after go-live: the presence notice.
+- extendedWaitUntil:
+    visible:
+      text: "What this workplace records|More"
+    timeout: 20000
+- runFlow:
+    when:
+      visible: "What this workplace records"
+    commands:
+      - tapOn: "OK"
+- extendedWaitUntil:
+    visible:
+      id: "pill-More"
+    timeout: 20000

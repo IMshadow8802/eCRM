@@ -1,0 +1,29 @@
+# am_rohit (Support Team Lead) — §7 rows 4, 11. Team shows Vinod's complaint
+# (C09); Escalated has the one escalated to him (C04) and it opens; Escalate
+# on a team complaint lists the seniors above its holder. Env: TAG.
+appId: com.shadowider.eCRM
+---
+- runFlow:
+    file: find-complaint.yaml
+    env:
+      PRESET: "Team"
+      KEY: "${TAG}-C09"
+- assertVisible: "AM Vinod"
+- runFlow: no-old-words.yaml
+- tapOn: "Escalate"
+- assertVisible: "Escalate complaint"
+- assertVisible: "Escalate to \\*"
+- assertVisible: "AM Amit"
+- assertVisible: "Direct manager.*|\\d levels up.*"
+- runFlow: no-old-words.yaml
+- takeScreenshot: teamlead-rohit-escalate-seniors
+- back
+- runFlow:
+    file: find-complaint.yaml
+    env:
+      PRESET: "Escalated"
+      KEY: "${TAG}-C04"
+- assertVisible: "Escalated to"
+- assertVisible: "AM Rohit"
+- runFlow: no-old-words.yaml
+- takeScreenshot: teamlead-rohit-escalated
