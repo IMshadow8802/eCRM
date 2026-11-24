@@ -1,0 +1,61 @@
+Ref No.,Name,Anniversary,Contact,Mobile2,Address,GroupName,BranchName
+ST-000-001,Sunita Shukla T01,02-02-2011,9000000001,9000000501,"Plot 1, Indira Nagar, Lucknow",Solar Rooftop,Lucknow
+ST-000-002,Arvind Pandey T02,03-03-2012,9000000002,9000000502,"Plot 2, Aliganj, Lucknow",Residential,Lucknow
+ST-000-003,Kavita Srivastava T03,04-04-2013,9000000003,9000000503,"Plot 3, Alambagh, Lucknow",Solar Rooftop,Lucknow
+ST-000-004,Manoj Chauhan T04,05-05-2014,9000000004,9000000504,"Plot 4, Hazratganj, Lucknow",Residential,Lucknow
+ST-000-005,Pooja Yadav T05,06-06-2015,9000000005,9000000505,"Plot 5, Jankipuram, Lucknow",Solar Rooftop,Lucknow
+ST-000-006,Rakesh Mishra T06,07-07-2016,9000000006,,"Plot 6, Gomti Nagar, Lucknow",Residential,Lucknow
+ST-000-007,Neelam Rastogi T07,08-08-2017,9000000007,,"Plot 7, Indira Nagar, Lucknow",Solar Rooftop,Lucknow
+ST-000-008,Suresh Gupta T08,09-09-2018,9000000008,,"Plot 8, Aliganj, Lucknow",Residential,Lucknow
+ST-000-009,Anjali Tiwari T09,10-10-2019,9000000009,,"Plot 9, Alambagh, Lucknow",Solar Rooftop,Lucknow
+ST-000-010,Dinesh Verma T10,11-11-2020,9000000010,,"Plot 10, Hazratganj, Lucknow",Residential,Lucknow
+ST-000-011,Meena Shukla T11,12-12-2021,9000000011,,"Plot 11, Jankipuram, Lucknow",Solar Rooftop,Lucknow
+ST-000-012,Vijay Pandey T12,13-01-2022,9000000012,,"Plot 12, Gomti Nagar, Lucknow",Residential,Lucknow
+ST-000-013,Rekha Srivastava T13,14-02-2023,9000000013,,"Plot 13, Indira Nagar, Lucknow",Solar Rooftop,Lucknow
+ST-000-014,Ajay Chauhan T14,15-03-2024,9000000014,,"Plot 14, Aliganj, Lucknow",Residential,Lucknow
+ST-000-015,Seema Yadav T15,16-04-2010,9000000015,,"Plot 15, Alambagh, Lucknow",Solar Rooftop,Lucknow
+ST-000-016,Pankaj Mishra T16,17-05-2011,9000000016,,"Plot 16, Hazratganj, Lucknow",Residential,Lucknow
+ST-000-017,Geeta Rastogi T17,18-06-2012,9000000017,,"Plot 17, Jankipuram, Lucknow",Solar Rooftop,Lucknow
+ST-000-018,Sanjay Gupta T18,19-07-2013,9000000018,,"Plot 18, Gomti Nagar, Lucknow",Residential,Lucknow
+ST-000-019,Usha Tiwari T19,20-08-2014,9000000019,,"Plot 19, Indira Nagar, Lucknow",Solar Rooftop,Lucknow
+ST-000-020,Ramesh Verma T20,21-09-2015,9000000020,,"Plot 20, Aliganj, Lucknow",Residential,Lucknow
+ST-000-021,Sunita Shukla T21,22-10-2016,9000000021,,"Plot 21, Alambagh, Lucknow",Solar Rooftop,Lucknow
+ST-000-022,Arvind Pandey T22,23-11-2017,9000000022,,"Plot 22, Hazratganj, Lucknow",Residential,Lucknow
+ST-000-023,Kavita Srivastava T23,24-12-2018,9000000023,,"Plot 23, Jankipuram, Lucknow",Solar Rooftop,Lucknow
+ST-000-024,Manoj Chauhan T24,25-01-2019,9000000024,,"Plot 24, Gomti Nagar, Lucknow",Residential,Lucknow
+ST-000-025,Pooja Yadav T25,26-02-2020,9000000025,,"Plot 25, Indira Nagar, Lucknow",Solar Rooftop,Lucknow
+ST-000-026,Rakesh Mishra T26,27-03-2021,9000000026,,"Plot 26, Aliganj, Lucknow",Residential,Lucknow
+ST-000-027,Neelam Rastogi T27,28-04-2022,9000000027,,"Plot 27, Alambagh, Lucknow",Solar Rooftop,Lucknow
+ST-000-028,Suresh Gupta T28,01-05-2023,9000000028,,"Plot 28, Hazratganj, Lucknow",Residential,Lucknow
+ST-000-029,Anjali Tiwari T29,02-06-2024,9000000029,,"Plot 29, Jankipuram, Lucknow",Solar Rooftop,Lucknow
+ST-000-030,Dinesh Verma T30,03-07-2010,9000000030,,"Plot 30, Gomti Nagar, Lucknow",Residential,Lucknow
+ST-000-031,Meena Shukla T31,04-08-2011,9000000031,,"Plot 31, Indira Nagar, Lucknow",Solar Rooftop,Lucknow
+ST-000-032,Vijay Pandey T32,05-09-2012,9000000032,,"Plot 32, Aliganj, Lucknow",Residential,Lucknow
+ST-000-033,Rekha Srivastava T33,06-10-2013,9000000033,,"Plot 33, Alambagh, Lucknow",Solar Rooftop,Lucknow
+ST-000-034,Ajay Chauhan T34,07-11-2014,9000000034,,"Plot 34, Hazratganj, Lucknow",Residential,Lucknow
+ST-000-035,Seema Yadav T35,08-12-2015,9000000035,,"Plot 35, Jankipuram, Lucknow",Solar Rooftop,Lucknow
+ST-000-036,Pankaj Mishra T36,09-01-2016,9000000036,,"Plot 36, Gomti Nagar, Lucknow",Residential,Lucknow
+ST-000-037,Geeta Rastogi T37,10-02-2017,9000000037,,"Plot 37, Indira Nagar, Lucknow",Solar Rooftop,Lucknow
+ST-000-038,Sanjay Gupta T38,11-03-2018,9000000038,,"Plot 38, Aliganj, Lucknow",Residential,Lucknow
+ST-000-039,Usha Tiwari T39,12-04-2019,9000000039,,"Plot 39, Alambagh, Lucknow",Solar Rooftop,Lucknow
+ST-000-040,Ramesh Verma T40,13-05-2020,9000000040,,"Plot 40, Hazratganj, Lucknow",Residential,Lucknow
+ST-000-041,Sunita Shukla T41,14-06-2021,9000000001,,"Plot 41, Jankipuram, Lucknow",Solar Rooftop,Lucknow
+ST-000-042,Arvind Pandey T42,15-07-2022,9000000002,,"Plot 42, Gomti Nagar, Lucknow",Residential,Lucknow
+ST-000-043,Kavita Srivastava T43,16-08-2023,9000000003,,"Plot 43, Indira Nagar, Lucknow",Solar Rooftop,Lucknow
+ST-000-044,Manoj Chauhan T44,17-09-2024,12345,,"Plot 44, Aliganj, Lucknow",Residential,Lucknow
+ST-000-045,Pooja Yadav T45,18-10-2010,98765abc,,"Plot 45, Alambagh, Lucknow",Solar Rooftop,Lucknow
+ST-000-046,Rakesh Mishra T46,19-11-2011,9.00000E+09,,"Plot 46, Hazratganj, Lucknow",Residential,Lucknow
+ST-000-047,Neelam Rastogi T47,20-12-2012,5000000047,,"Plot 47, Jankipuram, Lucknow",Solar Rooftop,Lucknow
+ST-000-048,Suresh Gupta T48,21-01-2013,,9000000048,"Plot 48, Gomti Nagar, Lucknow",Residential,Lucknow
+ST-000-049,Anjali Tiwari T49,22-02-2014,,9000000049,"Plot 49, Indira Nagar, Lucknow",Solar Rooftop,Lucknow
+ST-000-050,Dinesh Verma T50,23-03-2015,9000000050 / 9000000051,,"Plot 50, Aliganj, Lucknow",Residential,Lucknow
+ST-000-051,Meena Shukla T51,24-04-2016,9000000990,,"Plot 51, Alambagh, Lucknow",Solar Rooftop,Lucknow
+ST-000-052,Vijay Pandey T52,25-05-2017,9000000991,,"Plot 52, Hazratganj, Lucknow",Residential,Lucknow
+ST-000-053,Rekha Srivastava T53,26-06-2018,9000000053,,"Plot 53, Jankipuram, Lucknow",Solar Rooftop,Lucknow
+ST-000-054,Ajay Chauhan T54,27-07-2019,9000000054,,"Plot 54, Gomti Nagar, Lucknow",Residential,Lucknow
+ST-000-055,Seema Yadav T55,28-08-2020,9000000055,,"Plot 55, Indira Nagar, Lucknow",Solar Rooftop,Lucknow
+ST-000-056,Pankaj Mishra T56,01-09-2021,9000000056,,"Plot 56, Aliganj, Lucknow",Residential,Lucknow
+ST-000-057,Geeta Rastogi T57,02-10-2022,9000000057,,"Plot 57, Alambagh, Lucknow",Solar Rooftop,Lucknow
+ST-000-058,Sanjay Gupta T58,03-11-2023,9000000058,,"Plot 58, Hazratganj, Lucknow",Residential,Lucknow
+ST-000-059,Usha Tiwari T59,04-12-2024,9000000059,,"Plot 59, Jankipuram, Lucknow",Solar Rooftop,Lucknow
+ST-000-060,Ramesh Verma T60,05-01-2010,9000000060,,"Plot 60, Gomti Nagar, Lucknow",Residential,Lucknow

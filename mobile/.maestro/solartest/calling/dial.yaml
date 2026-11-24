@@ -1,0 +1,26 @@
+# Call ${NAME}: the dialler opens, back returns to the app, the result sheet opens by
+# itself for that contact, and ${LABEL} is saved.
+appId: com.shadowider.eCRM
+---
+- tapOn: "Call ${NAME}"
+- extendedWaitUntil:
+    notVisible: "Call ${NAME}"
+    timeout: 15000
+- takeScreenshot: st-calling-dialler-${WHO}
+# The dialler may take more than one back (keypad, then the app) to hand the screen back.
+- repeat:
+    times: 3
+    while:
+      visible: "Keypad|Create new contact|Voicemail"
+    commands:
+      - back
+      - waitForAnimationToEnd
+- takeScreenshot: st-calling-back-from-dialler-${WHO}
+- extendedWaitUntil:
+    visible: "${LABEL}"
+    timeout: 15000
+- takeScreenshot: st-calling-result-sheet-${WHO}
+- tapOn: "${LABEL}"
+- extendedWaitUntil:
+    notVisible: "Save result for ${NAME}"
+    timeout: 15000

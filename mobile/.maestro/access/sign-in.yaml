@@ -11,8 +11,23 @@ appId: com.shadowider.eCRM
 # A freshly started dev build loads its bundle first.
 - extendedWaitUntil:
     visible:
-      text: "More|Username"
+      text: "More|Username|Sign in again"
     timeout: 60000
+# A dev client whose data was wiped shows its developer-menu intro once.
+- runFlow:
+    when:
+      visible: "This is the developer menu.*"
+    commands:
+      - tapOn: "Continue"
+# A session that ended (shift over) leaves the re-sign-in dialog up: start over as someone else.
+- runFlow:
+    when:
+      visible: "Sign in again"
+    commands:
+      - tapOn: "Sign in as someone else"
+      - extendedWaitUntil:
+          visible: "Username"
+          timeout: 30000
 # Back out of any stack to the tab bar, or to the sign-in screen.
 - repeat:
     times: 6

@@ -1,0 +1,16 @@
+# Save a plain result for ${NAME} (no dialling): ${LABEL} = No answer | Busy | Not interested | Wrong number.
+appId: com.shadowider.eCRM
+---
+- scrollUntilVisible:
+    element:
+      text: "Save result for ${NAME}"
+    direction: DOWN
+    timeout: 10000
+- tapOn: "Save result for ${NAME}"
+- extendedWaitUntil:
+    visible: "${LABEL}"
+    timeout: 10000
+- tapOn: "${LABEL}"
+- extendedWaitUntil:
+    notVisible: "Save result for ${NAME}"
+    timeout: 15000

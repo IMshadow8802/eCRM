@@ -4,6 +4,7 @@
 # Usage: mobile/.maestro/solartest/run.sh [flow ...]   the slices (default: all, in order)
 #        mobile/.maestro/solartest/run.sh full [flow ...]  journeys A (complaint), B (lead), C (menus, all 14 people)
 #        mobile/.maestro/solartest/run.sh screens [user ...]  every bottom tab + More item per person, screenshots
+#        mobile/.maestro/solartest/run.sh calling  calling lists: Ashish + Pawan work their 5, support has no Calling
 # Env: DEVICE (default emulator-5554), SHOTS (screenshot dir, default a temp dir).
 set -uo pipefail
 
@@ -32,12 +33,46 @@ code="$(PW="$PASSWORD" node -e 'process.stdout.write(JSON.stringify({username:"N
 adb -s "$DEVICE" reverse tcp:5001 tcp:5001 >/dev/null
 adb -s "$DEVICE" reverse tcp:8081 tcp:8081 >/dev/null
 
+# The bundle proof, before any password is typed. .env.local alone proves nothing:
+# Metro can serve a bundle transformed before it existed (start it with --clear),
+# and then the app signs in wherever its persisted company points — a live client.
+# With the app's data wiped there is no persisted company, so the sign-in screen
+# skips the company-code step only when the bundle carries the localhost override.
+adb -s "$DEVICE" shell pm clear com.shadowider.eCRM >/dev/null
+adb -s "$DEVICE" shell am start -a android.intent.action.VIEW \
+  -d "exp+ecrm://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081" >/dev/null
+seen=""
+for _ in $(seq 1 60); do
+  seen="$(adb -s "$DEVICE" exec-out uiautomator dump /dev/tty 2>/dev/null)"
+  # A wiped dev client opens its developer menu (intro, then the menu) over the app: Continue, then Close.
+  if grep -q 'Runtime version' <<<"$seen"; then
+    for want in 'text="Continue"' 'content-desc="Close"'; do
+      node_="$(grep -oE "<node [^>]*${want}[^>]*>" <<<"$seen" | head -1)"
+      [ -n "$node_" ] || continue
+      read -r x1 y1 x2 y2 <<<"$(grep -oE 'bounds="[^"]+"' <<<"$node_" | grep -oE '[0-9]+' | tr '\n' ' ')"
+      adb -s "$DEVICE" shell input tap $(((x1 + x2) / 2)) $(((y1 + y2) / 2)); break
+    done
+    sleep 2; continue
+  fi
+  grep -qE 'text="(Username|Enter your company code)"' <<<"$seen" && break
+  sleep 3
+done
+grep -q 'text="Username"' <<<"$seen" && ! grep -q 'company code' <<<"$seen" \
+  || { echo "run.sh: the app's bundle has no localhost override (company-code step shown) — restart Metro with --clear; stopping before any sign-in" >&2; exit 1; }
+
 RUN="$DEBUG/run.json"
-MODE=slices; [ "${1:-}" = full ] && MODE=full; [ "${1:-}" = screens ] && MODE=screens
-LIVE_PASSWORD="$PASSWORD" node "$HERE/setup.js" "$RUN" "$([ "$MODE" = slices ] && echo slices || echo full)" >/dev/null || { echo "run.sh: setup failed" >&2; exit 1; }
+MODE=slices; [ "${1:-}" = full ] && MODE=full; [ "${1:-}" = screens ] && MODE=screens; [ "${1:-}" = calling ] && MODE=calling
 val() { node -e "console.log(require('$RUN').$1)"; }
 ENV=()
-for k in TAG CUST REASON ESC KASAK_ALL KASAK_MINE NEHA_LEAD T60 ROSHAN_LEAD RESOLUTION RESOLVED_LABEL; do ENV+=(-e "$k=$(val $k)"); done
+if [ "$MODE" = calling ]; then
+  # Its own list (calling-setup.mjs); calling hours opened for the run and restored, everything pulled back, on exit.
+  node "$HERE/calling-setup.mjs" "$RUN" >/dev/null || { echo "run.sh: calling setup failed" >&2; exit 1; }
+  trap 'node "$HERE/calling-setup.mjs" teardown >/dev/null 2>&1; keep_shots; rm -rf "$DEBUG"' EXIT
+  for k in TAG LIST A1 A2 A3 A4 A5 P1 P2 P3 P4 P5 ANEXT PNEXT; do ENV+=(-e "$k=$(val $k)"); done
+else
+  LIVE_PASSWORD="$PASSWORD" node "$HERE/setup.js" "$RUN" "$([ "$MODE" = slices ] && echo slices || echo full)" >/dev/null || { echo "run.sh: setup failed" >&2; exit 1; }
+  for k in TAG CUST REASON ESC KASAK_ALL KASAK_MINE NEHA_LEAD T60 ROSHAN_LEAD RESOLUTION RESOLVED_LABEL; do ENV+=(-e "$k=$(val $k)"); done
+fi
 
 # Fresh app process per person: the dev build's heap grows while flows drive it.
 restart_app() {
@@ -64,6 +99,9 @@ if [ "$MODE" = full ]; then
     keep=(); for st in "${STEPS[@]}"; do for f in "${@:2}"; do [ "${st##*|}" = "$f" ] && keep+=("$st"); done; done
     STEPS=("${keep[@]}")
   fi
+elif [ "$MODE" = calling ]; then
+  STEPS=("-|Ashish |calling-ashish" "-|Pawan |calling-pawan" "-|Rohit |calling-none" "-|Nitin |calling-none" "-|Vivek|calling-none")
+  [ $# -gt 1 ] && { keep=(); for st in "${STEPS[@]}"; do for f in "${@:2}"; do [[ "$st" == *"|$f" || "$st" == *"|$f "* ]] && keep+=("$st"); done; done; STEPS=("${keep[@]}"); }
 elif [ "$MODE" = screens ]; then
   # run.sh screens [user ...]: every screen per person (default: all 14).
   USERS=("Amit" "Neha " "Deeksha" "Roshan" "Kasak " "Sarika " "Tanu " "Ashish " "Pawan " "Nitin " "Prasant " "Rohit " "Vinod " "Vivek")

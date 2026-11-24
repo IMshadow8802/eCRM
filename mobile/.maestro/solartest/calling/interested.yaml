@@ -1,0 +1,12 @@
+# Interested: ${NAME} becomes the caller's lead (name prefilled, follow-up tomorrow).
+appId: com.shadowider.eCRM
+---
+- tapOn: "Save result for ${NAME}"
+- tapOn: "Interested"
+- extendedWaitUntil:
+    visible: "Create lead"
+    timeout: 10000
+- tapOn: "Create lead"
+- extendedWaitUntil:
+    visible: "Lead created"
+    timeout: 15000

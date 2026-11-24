@@ -1,0 +1,24 @@
+# Do not call ${NAME}, with the required note.
+appId: com.shadowider.eCRM
+---
+- tapOn: "Save result for ${NAME}"
+- scrollUntilVisible:
+    element:
+      text: "Do not call"
+    direction: DOWN
+    timeout: 10000
+- tapOn: "Do not call"
+- extendedWaitUntil:
+    visible:
+      id: "compose-dnc"
+    timeout: 10000
+- tapOn:
+    id: "compose-dnc"
+- inputText: "Asked not to be called test"
+- tapOn:
+    text: "Do not call"
+    below:
+      id: "compose-dnc"
+- extendedWaitUntil:
+    notVisible: "Save result for ${NAME}"
+    timeout: 15000

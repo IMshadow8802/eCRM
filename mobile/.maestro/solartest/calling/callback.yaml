@@ -1,0 +1,12 @@
+# Call back for ${NAME}: ${WHEN} = Tomorrow (stays with the caller) | No time (back to the pool).
+appId: com.shadowider.eCRM
+---
+- tapOn: "Save result for ${NAME}"
+- tapOn: "Call back"
+- extendedWaitUntil:
+    visible: "Call back when\\?"
+    timeout: 10000
+- tapOn: "${WHEN}"
+- extendedWaitUntil:
+    notVisible: "Save result for ${NAME}"
+    timeout: 15000
