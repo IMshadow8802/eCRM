@@ -22,12 +22,10 @@ const TASK_ENDPOINTS = {
   moveTaskColumn: "/api/tasks/moveTaskColumn",
   claimTask: "/api/tasks/claimTask",
   deleteTask: "/api/tasks/deleteTask",
-  bulkDeleteTasks: "/api/tasks/bulkDeleteTasks",
   addTaskComment: "/api/tasks/addTaskComment",
   getTaskComments: "/api/tasks/getTaskComments",
   deleteTaskComment: "/api/tasks/deleteTaskComment",
   pinTaskComment: "/api/tasks/pinTaskComment",
-  markTaskCommentRead: "/api/tasks/markTaskCommentRead",
   saveTaskChecklist: "/api/tasks/saveTaskChecklist",
   getTaskChecklist: "/api/tasks/getTaskChecklist",
   deleteTaskChecklist: "/api/tasks/deleteTaskChecklist",
@@ -200,12 +198,6 @@ export const deleteTask = (params: {
 }): Promise<ApiEnvelope<unknown>> =>
   post(TASK_ENDPOINTS.deleteTask, { WorkspaceId: null, ...params });
 
-export const bulkDeleteTasks = (params: {
-  TaskIds: number[];
-  WorkspaceId?: number | null;
-}): Promise<ApiEnvelope<unknown>> =>
-  post(TASK_ENDPOINTS.bulkDeleteTasks, { WorkspaceId: null, ...params });
-
 // ------------------------------------------------------------- comments
 
 /**
@@ -260,11 +252,6 @@ export const pinTaskComment = (params: {
     WorkspaceId: null,
     ...params,
   });
-
-export const markTaskCommentRead = (params: {
-  CommentId: number;
-}): Promise<ApiEnvelope<unknown>> =>
-  post(TASK_ENDPOINTS.markTaskCommentRead, params);
 
 // ------------------------------------------------------------ checklist
 
