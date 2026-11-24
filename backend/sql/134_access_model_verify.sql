@@ -100,7 +100,9 @@ BEGIN
 END
 GO
 
+-- An empty snapshot is fine when the company has no records at all (OSG, 2026-11-24).
 IF NOT EXISTS (SELECT 1 FROM dbo.tblAccessModelSnapshot)
+   AND (EXISTS (SELECT 1 FROM dbo.tblLeads) OR EXISTS (SELECT 1 FROM dbo.tblTicket) OR EXISTS (SELECT 1 FROM dbo.tblFollowUp))
 BEGIN
     RAISERROR('134: tblAccessModelSnapshot is empty (130 step 10 did not run). Nothing was changed.', 16, 1);
     SET NOEXEC ON;
