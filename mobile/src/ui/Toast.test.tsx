@@ -79,3 +79,17 @@ it("useToast outside the provider throws instead of silently doing nothing", asy
     quiet.mockRestore();
   }
 });
+
+it("a confirmation can offer one action; taking it runs it and closes the toast", async () => {
+  const onUndo = jest.fn();
+  function Offer() {
+    const toast = useToast();
+    return <Button title="save" onPress={() => toast.success("Saved: Busy", { label: "Undo", onPress: onUndo })} />;
+  }
+  await renderWithProviders(<Offer />);
+  await fireEvent.press(screen.getByText("save"));
+  expect(screen.getByRole("alert")).toHaveAccessibleName("Saved: Busy");
+  await fireEvent.press(screen.getByRole("button", { name: "Undo" }));
+  expect(onUndo).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole("alert")).toBeNull();
+});

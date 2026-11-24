@@ -281,6 +281,10 @@ describe("tap → read + open", () => {
     ["a bulk lead move", { Type: "leads_bulk_moved", EntityType: "lead", EntityId: 0 }, ["Leads"]],
     ["stranded complaints (EntityId is a person)", { Type: "stranded_work", EntityType: "ticket", EntityId: 82 }, ["Complaints"]],
     ["stranded leads", { Type: "stranded_work", EntityType: "lead", EntityId: 82 }, ["Leads"]],
+    // 149: calling notifications open the caller's screen; a due callback its Callbacks tab.
+    ["contacts handed out", { Type: "call_assigned", EntityType: "call_list", EntityId: 3 }, ["Calling", undefined]],
+    ["a callback due", { Type: "call_callback_due", EntityType: "call_contact", EntityId: 9 }, ["Calling", { tab: "callbacks" }]],
+    ["a missed callback", { Type: "call_callback_missed", EntityType: "call_list", EntityId: 3 }, ["Calling", undefined]],
   ] as const)("tapping %s opens the right place", async (_label, patch, target) => {
     jest.mocked(fetchNotifications).mockResolvedValue(reply([note({ ...patch, Title: "Tap me" })]));
     await mountInbox();

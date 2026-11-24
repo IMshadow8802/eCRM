@@ -3,8 +3,9 @@ import { StyleSheet, View } from "react-native";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useNavigation } from "@react-navigation/native";
 import type { StackNavigationProp } from "@react-navigation/stack";
-import { Bell, Clock, Hand, Headset, ListChecks, Lock, Plus, Search, Target, Timer, Users } from "lucide-react-native";
+import { Bell, CalendarClock, Clock, Hand, Headset, ListChecks, Lock, Plus, Search, Target, Timer, Users } from "lucide-react-native";
 
+import { fetchMyCallList } from "../../api/callingQueries";
 import { fetchLookups, LOOKUP_KIND } from "../../api/configQueries";
 import { fetchFollowUps } from "../../api/followupQueries";
 import { fetchLeads } from "../../api/leadQueries";
@@ -17,12 +18,13 @@ import useAuthStore from "../../stores/useAuthStore";
 import {
   colors, complaintBadge, followUpBadge, metrics, notificationBadge, priorityChip, spacing, type UiModule,
 } from "../../theme";
-import type { DayTask, FollowUp, Ticket } from "../../types/api";
+import type { CallContact, DayTask, FollowUp, Ticket } from "../../types/api";
 import {
   Avatar, Band, BandSheet, EmptyState, GroupHeader, HeaderButton, HeroCard, IconButton, ListGroup,
   ListRow, ModuleTile, Screen, SearchField, Text, useLayout, type HeroStat, type ListRowProps,
 } from "../../ui";
 import { useAccess } from "../auth/useAccess";
+import { CALLING_QUERY, titleOf } from "../calling/callingHelpers";
 import { useUnreadCount } from "../notifications/useUnreadCount";
 import { firstOpenStatus, followUpTypeLabel, openValue as sumOpenValue, followUpViewParams, leadCountQuery, leadQueueParams, rupees, type LeadQueue } from "../sales/leadHelpers";
 import { complaintCountQuery, complaintQueueParams, type ComplaintQueue } from "../support/ticketHelpers";
@@ -201,6 +203,15 @@ export default function HomeScreen() {
     enabled: canLeads && me,
   });
   const nextAt = dueClock(dueToday.data?.data?.followups[0]?.DueAt);
+
+  // ------------------------------------------------------------ calling (149)
+  // Anyone who can add leads may be given contacts; the tile shows once they are on a list.
+  const canCall = leadsAccess.add;
+  const calling = useQuery({ queryKey: CALLING_QUERY, queryFn: fetchMyCallList, enabled: canCall && me });
+  const callHead = calling.data?.data?.head;
+  const showCalling = canCall && !!callHead?.Active;
+  const todayYmd = ymd(new Date());
+  const callbacksToday = (calling.data?.data?.callbacks ?? []).filter((c) => c.CallbackAt?.slice(0, 10) === todayYmd);
   const fuOverdueCount = total(fuOverdue.data);
 
   // ------------------------------------------------------------ inbox (G27)
@@ -337,16 +348,21 @@ export default function HomeScreen() {
     module: "inbox", title: "Inbox", subtitle: escalations ? plural(escalations, "escalation") : undefined,
     value: unread, unit: "unread", onPress: () => navigation.navigate("Inbox"),
   };
+  const callingTile: Tile = {
+    module: "calling", title: "Calling", subtitle: callHead?.Callbacks ? plural(callHead.Callbacks, "callback") : undefined,
+    value: callHead?.ToCall, unit: "to call", onPress: () => navigation.navigate("Calling"),
+  };
   const modules = [canTasks, canComplaints, canLeads].filter(Boolean).length;
   let tiles: Tile[];
   if (modules > 1) {
-    tiles = [...(canTasks ? [tasksTile] : []), ...(canLeads ? [fuTile, leadsTile] : []), inboxTile];
+    // Calling leads the bento (mockup P1).
+    tiles = [...(showCalling ? [callingTile] : []), ...(canTasks ? [tasksTile] : []), ...(canLeads ? [fuTile, leadsTile] : []), inboxTile];
     // Two columns: an odd count past two leaves a hole; Inbox gives way (the bell carries it).
     if (!tablet && tiles.length > 2 && tiles.length % 2 === 1) tiles = tiles.slice(0, -1);
     // Tablet: My team takes the hero row's third column (T1), so every tile
     // goes to rows of three; one left alone on the last row gives way too.
     if (tablet && teamCard && tiles.length > 3 && tiles.length % 3 === 1) tiles = tiles.slice(0, -1);
-  } else if (canLeads) tiles = [leadsTile, fuTile];
+  } else if (canLeads) tiles = showCalling ? [callingTile, leadsTile, fuTile, inboxTile] : [leadsTile, fuTile];
   else if (canTasks) tiles = [tasksTile, inboxTile];
   else if (canComplaints) tiles = [inboxTile];
   else tiles = [];
@@ -409,15 +425,24 @@ export default function HomeScreen() {
       onPress: () => navigation.navigate("LeadDetail", { leadId: f.LeadId }),
     };
   };
+  const callbackRow = (c: CallContact): ListRowProps & { key: string } => ({
+    key: `cb${c.Id}`,
+    badge: { tone: "teal", icon: CalendarClock },
+    title: `Call back ${titleOf(c)}`,
+    right: { text: dueClock(c.CallbackAt) ?? "Today" },
+    meta: c.ListName,
+    onPress: () => navigation.navigate("Calling", { tab: "callbacks" }),
+  });
   const needRows = [
     ...myOverdueTickets.map(ticketRow),
     ...needs.map(taskRow),
     ...(canLeads ? (fuOverdueRows.data?.data?.followups ?? []).map((f) => followUpRow(f, true)) : []),
+    ...callbacksToday.map(callbackRow),
     ...(hero === "leads" ? (dueToday.data?.data?.followups ?? []).map((f) => followUpRow(f, false)) : []),
   ];
   const needCount =
     myOverdueTickets.length + needs.length + (canLeads ? (fuOverdueCount ?? 0) : 0)
-    + (hero === "leads" ? (total(dueToday.data) ?? 0) : 0);
+    + (hero === "leads" ? (total(dueToday.data) ?? 0) : 0) + callbacksToday.length;
   const seeAll = canTasks ? toTasks : canComplaints ? () => toComplaints("overdue") : toFollowUps;
 
   const needsBlock = needRows.length ? (
@@ -432,7 +457,7 @@ export default function HomeScreen() {
 
   // ------------------------------------------------------------ refresh
   const refreshable = [myTasks, myDone, myDay, ticketsMine, ticketsOverdue, ticketsResolved, leadsMine, leadsOverdue,
-    leadsNew, leadsWon, dueToday, fuOverdue, fuOverdueRows, inbox, ...ticketsTeam, ...leadsTeam];
+    leadsNew, leadsWon, dueToday, fuOverdue, fuOverdueRows, inbox, calling, ...ticketsTeam, ...leadsTeam];
   const refreshing = refreshable.some((q) => q.isRefetching && !q.isLoading);
   const refresh = () => {
     for (const q of refreshable) if (q.isFetched || q.isError) void q.refetch();
@@ -527,7 +552,10 @@ export default function HomeScreen() {
       />
     );
   } else if (tablet) {
-    const todayRows = (dueToday.data?.data?.followups ?? []).map((f) => followUpRow(f, false, true));
+    const todayRows = [
+      ...callbacksToday.map(callbackRow),
+      ...(dueToday.data?.data?.followups ?? []).map((f) => followUpRow(f, false, true)),
+    ];
     body = (
       <View style={{ gap }}>
         {/* T1: hero spans 2 of 3. My team, when there is one, takes the third

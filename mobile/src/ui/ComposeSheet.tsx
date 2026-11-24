@@ -8,7 +8,7 @@ import type { StatusBadgeProps } from "./StatusBadge";
 import { FilterPills } from "./Tabs";
 import { Sheet, type SheetRef } from "./Sheet";
 import { Text } from "./Text";
-import { EMPTY_WHEN, WhenField, isPastDue, whenDue, type WhenValue } from "./WhenField";
+import { EMPTY_WHEN, WhenField, isPastDue, whenDue, type WhenChip, type WhenValue } from "./WhenField";
 
 export interface ComposeField {
   key: string;
@@ -46,6 +46,8 @@ export interface ComposeWhen {
   required?: boolean;
   /** "HH:mm" put in the time row each time the sheet opens (reschedule keeps the old time of day). */
   initialTime?: string | null;
+  /** The day chip picked each time the sheet opens (a new lead's follow-up: Tomorrow). */
+  initialChip?: WhenChip | null;
 }
 
 export interface ComposeSheetProps {
@@ -104,11 +106,12 @@ export const ComposeSheet = forwardRef<SheetRef, ComposeSheetProps>(
     }
     const [picked, setPicked] = useState<Record<string, string | number>>({});
 
-    const initialWhen = (): WhenValue => ({ ...EMPTY_WHEN, time: when?.initialTime ?? null });
+    const initialWhen = (): WhenValue => ({ ...EMPTY_WHEN, chip: when?.initialChip ?? null, time: when?.initialTime ?? null });
     const [whenValue, setWhenValue] = useState<WhenValue>(initialWhen);
-    const [whenSeed, setWhenSeed] = useState(when?.initialTime);
-    if (whenSeed !== when?.initialTime) {
-      setWhenSeed(when?.initialTime);
+    const seedKey = `${when?.initialChip ?? ""}|${when?.initialTime ?? ""}`;
+    const [whenSeed, setWhenSeed] = useState(seedKey);
+    if (whenSeed !== seedKey) {
+      setWhenSeed(seedKey);
       setWhenValue(initialWhen());
     }
     const due = when ? whenDue(whenValue) : null;

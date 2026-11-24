@@ -3,6 +3,9 @@
 import type { CallContact, CallResult, MyCallList } from "../../types/api";
 import { addDays, clock, localDay, parseDate } from "../sales/leadHelpers";
 
+/** One key for the calling screen and the Home tile: every write's reply replaces it. */
+export const CALLING_QUERY = ["calling", "mine"] as const;
+
 export const RESULT_LABELS: Record<CallResult | "interested", string> = {
   no_answer: "No answer",
   busy: "Busy",
