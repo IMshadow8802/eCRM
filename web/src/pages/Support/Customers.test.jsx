@@ -65,6 +65,12 @@ describe("Customers page", () => {
     expect(screen.getByTestId("customer-row-3")).toHaveTextContent("Acme Corp");
   });
 
+  it("a marked number carries its dot in the Mobile cell", () => {
+    renderPage();
+    withTheme(cellOf("Mobile")({ cell: { getValue: () => "9990001111" }, row: { original: { PhoneMark: "dnc" } } }));
+    expect(screen.getByTestId("phone-mark-dot")).toHaveAttribute("aria-label", "Do not call");
+  });
+
   it("adds an Office column only when the rows span more than one office", () => {
     renderPage();
     expect(lastCfg().columns.some((c) => c.accessorKey === "BranchName")).toBe(false);

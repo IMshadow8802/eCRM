@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
 import { useTheme } from "@mui/material/styles";
-import { CalendarPlus, Undo2, UserRoundPen, Pencil, Save as SaveIcon, Trophy } from "lucide-react";
+import { Ban, CalendarPlus, Undo2, UserRoundPen, Pencil, Save as SaveIcon, Trophy } from "lucide-react";
 import dayjs from "dayjs";
 
 import { PageHeader, Card, Chip, Button, Tabs, EmptyState, Skeleton, Combobox, Modal } from "../../components/ui";
@@ -12,6 +12,9 @@ import Attachments from "../../components/Attachments";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { useApiMutation } from "../../hooks/useApiMutation";
 import { useLookups } from "../../hooks/useLookups";
+import { useAccess } from "../../hooks/useAccess";
+import PhoneMarkBanner from "../../components/PhoneMarkBanner";
+import PhoneMarkModal from "../../components/PhoneMarkModal";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
 import { formatCurrency, formatDue } from "../../utils/format";
 import { dueAt, isPastDue } from "./followUpDue";
@@ -71,6 +74,8 @@ export default function LeadDetail({ leadId: leadIdProp }) {
 
   const [tab, setTab] = useState("details");
   const [editOpen, setEditOpen] = useState(false);
+  const [marking, setMarking] = useState(false);
+  const calling = useAccess("calling");
   const [moving, setMoving] = useState(null);         // "reassign" | "back" | null
   const [logging, setLogging] = useState(null);          // follow-up row being completed
   const [rescheduling, setRescheduling] = useState(null); // follow-up row being moved
@@ -269,6 +274,9 @@ export default function LeadDetail({ leadId: leadIdProp }) {
             {Boolean(lead.CanReassign) && (
               <Button variant="tonal" leftIcon={<UserRoundPen size={14} />} onClick={() => setMoving("reassign")} data-testid="reassign-lead-btn">Reassign</Button>
             )}
+            {calling.edit && lead.MobileNo && (
+              <Button variant="tonal" leftIcon={<Ban size={14} />} onClick={() => setMarking(true)} data-testid="mark-number-btn">Mark number</Button>
+            )}
             {lead.SendBackToId != null && Boolean(lead.CanReassign) && (
               <Button variant="tonal" leftIcon={<Undo2 size={14} />} onClick={() => setMoving("back")} data-testid="send-back-btn">Send back to {lead.SendBackToName}</Button>
             )}
@@ -279,6 +287,11 @@ export default function LeadDetail({ leadId: leadIdProp }) {
         }
       />
 
+      {lead.PhoneMark && (
+        <div style={{ marginBottom: "calc(16rem / 15)" }}>
+          <PhoneMarkBanner mark={lead.PhoneMark} note={lead.PhoneMarkNote} by={lead.PhoneMarkBy} at={lead.PhoneMarkAt} />
+        </div>
+      )}
       <Tabs value={tab} onChange={setTab} data-testid="lead-detail-tabs" items={[
         { value: "details", label: "Details" },
         { value: "followups", label: "Follow-ups", badge: openFollowups.length },
@@ -313,6 +326,11 @@ export default function LeadDetail({ leadId: leadIdProp }) {
                 <InfoItem label="Assigned to" value={lead.OwnerName || "Unassigned"} />
                 <InfoItem label="Office" value={lead.BranchName} />
                 <InfoItem label="Source" value={lead.SourceName} />
+                {lead.CallListName && (
+                  <InfoItem label="Calling list" value={calling.view
+                    ? <Link to={`/sales/calling-lists/${lead.CallListId}`} data-testid="lead-call-list">{lead.CallListName}</Link>
+                    : lead.CallListName} />
+                )}
                 <InfoItem label="Next follow-up" value={formatDue(lead.NextFollowupDate) || null} />
                 <InfoItem label="Assigned since" value={fmt(lead.AssignedAt)} />
                 {Boolean(lead.LostReason) && <InfoItem label="Lost reason" value={lead.LostReason} />}
@@ -462,6 +480,7 @@ export default function LeadDetail({ leadId: leadIdProp }) {
       />
       <LeadCreateModal open={editOpen} lead={lead} onClose={() => setEditOpen(false)} onSaved={refetch} />
       <WonDialog open={wonOpen} lead={lead} onClose={() => setWonOpen(false)} onWon={refetch} />
+      {marking && <PhoneMarkModal open mobile={lead.MobileNo} onClose={() => setMarking(false)} invalidate={[["lead-detail", leadId]]} />}
     </div>
   );
 }

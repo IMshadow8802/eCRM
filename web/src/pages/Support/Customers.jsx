@@ -14,6 +14,7 @@ import { SUPPORT_ENDPOINTS } from "../../api/supportQueries";
 import { formatDate } from "../../utils/format";
 import CustomerFormModal from "./CustomerFormModal";
 import CustomerDetailModal from "./CustomerDetailModal";
+import { PhoneMarkDot } from "../../components/PhoneMarkBanner";
 
 const idParam = (v) => (v && /^\d+$/.test(v) ? Number(v) : null);
 
@@ -39,7 +40,8 @@ const Customers = () => {
   const columns = useMemo(() => [
     { accessorKey: "Name", header: "Name", enableSorting: true },
     { accessorKey: "ContactPerson", header: "Contact", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "—" },
-    { accessorKey: "Mobile", header: "Mobile", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "—" },
+    { accessorKey: "Mobile", header: "Mobile", enableSorting: false, Cell: ({ cell, row }) => (row?.original?.PhoneMark
+      ? <>{cell.getValue() || "—"}<PhoneMarkDot mark={row.original.PhoneMark} /></> : cell.getValue() || "—") },
     ...(multiOffice ? [{ accessorKey: "BranchName", header: "Office", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "—" }] : []),
     { accessorKey: "City", header: "City", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "—" },
     ...(seesComplaints ? [

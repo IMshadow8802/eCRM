@@ -113,6 +113,14 @@ describe("Leads page (spec 1)", () => {
     expect(lastExtraParams()).toMatchObject({ OwnerId: 7 });
   });
 
+  it("the Mobile cell shows a dot when the number is marked", () => {
+    renderPage();
+    const cell = cellOf("MobileNo");
+    expect(cell({ cell: { getValue: () => "9825012345" }, row: { original: {} } })).toBe("9825012345");
+    render(<ThemeProvider theme={buildTheme("light")}>{cell({ cell: { getValue: () => "9825012345" }, row: { original: { PhoneMark: "caution" } } })}</ThemeProvider>);
+    expect(screen.getByTestId("phone-mark-dot")).toHaveAttribute("aria-label", "Call with caution");
+  });
+
   it("status column shows the label the SP returned", () => {
     renderPage();
     const col = useServerTable.mock.calls.at(-1)[0].columns.find((c) => c.accessorKey === "StatusName");
