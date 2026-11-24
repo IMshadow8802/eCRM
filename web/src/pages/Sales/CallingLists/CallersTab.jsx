@@ -52,7 +52,7 @@ export default function CallersTab({ list, callers = [], canEdit = false }) {
         <Box sx={{ p: 2, color: p.text.secondary, fontSize: "calc(13rem / 15)" }}>Nobody works this list yet. Give contacts to someone, or add a caller for automatic hand-out.</Box>
       ) : (
         <Box component="table" sx={{ width: "100%", borderCollapse: "collapse", "& th": { ...cell, color: p.text.secondary, fontWeight: 600 }, "& td": cell }}>
-          <thead><tr><th>Caller</th><th>Holds at a time</th><th>Holding now</th><th>Callbacks</th><th>Called today</th><th>Leads (list)</th><th>Paused</th>{canEdit && <th />}</tr></thead>
+          <thead><tr><th>Caller</th><th>Holds at a time</th><th>Holding now</th><th>Callbacks</th><th>Called today</th><th>Turned lead</th><th>Paused</th>{canEdit && <th />}</tr></thead>
           <tbody>
             {callers.map((c) => (
               <tr key={c.UserId} data-testid={`caller-row-${c.UserId}`}>

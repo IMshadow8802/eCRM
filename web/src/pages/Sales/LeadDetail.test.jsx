@@ -24,6 +24,8 @@ vi.mock("./TransferLeadModal", () => ({ __esModule: true, default: ({ open, lead
     <button type="button" onClick={() => onError?.({ response: { status: 404, data: { code: "NOT_FOUND" } } })}>mock-gone</button>
   </div>
 ) : null) }));
+const markInvalidate = [];
+vi.mock("../../components/PhoneMarkModal", () => ({ __esModule: true, default: ({ mobile, invalidate }) => { markInvalidate.push(invalidate); return <div>{`Mark ${mobile}`}</div>; } }));
 vi.mock("./LeadCreateModal", () => ({ __esModule: true, default: ({ open, lead }) => (open ? <div data-testid="edit-modal">{lead?.Id}</div> : null) }));
 
 const json = (data) => HttpResponse.json({ success: true, message: "ok", responseCode: 200, data });
@@ -638,6 +640,7 @@ describe("LeadDetail — Assigned to, Reassign, Send back, record gone", () => {
       expect(await screen.findByTestId("lead-call-list")).toHaveAttribute("href", "/sales/calling-lists/5");
       fireEvent.click(screen.getByTestId("mark-number-btn"));
       expect(await screen.findByText("Mark 98200")).toBeInTheDocument();
+      expect(markInvalidate.at(-1)).toEqual([["lead-detail", 9], ["leads"]]);
       useAuthStore.setState({ access: null });
     });
 

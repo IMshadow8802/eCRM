@@ -44,11 +44,11 @@ function Overview({ list, callers, admin }) {
     params: { GroupBy: "calllist", CallListId: list.Id }, enabled: reports.view, showErrorMessage: false, retry: false,
   });
   const line = (data?.rows ?? []).find((r) => Number(r.GroupKey) === list.Id) ?? data?.rows?.[0] ?? null;
-  const steps = line ? [["Contacts", line.ListContacts], ["Called", line.DialContacts], ["Reached", line.DialReached], ["Leads", line.New], ["Won", line.CohortWon]] : [];
+  const steps = line ? [["Contacts", line.ListContacts], ["Called", line.DialContacts], ["Reached", line.DialReached], ["Turned lead", list.Leads], ["Won", line.CohortWon]] : [];
   const top = Number(steps[0]?.[1]) || 0;
   const cost = line?.ListCost;
   const pool = [["in pool", list.InPool, p.border.strong], ["with callers", list.Held, p.primary.main], ["callbacks", list.Callbacks, p.info.main],
-    ["closed", list.Closed, p.text.secondary], ["leads", list.Leads, p.success.main]];
+    ["closed", list.Closed, p.text.secondary], ["turned lead", list.Leads, p.success.main]];
   const poolTotal = pool.reduce((a, [, v]) => a + Number(v ?? 0), 0);
 
   return (
@@ -77,7 +77,7 @@ function Overview({ list, callers, admin }) {
         {admin && cost != null && (
           <Panel title="Money" testId="money">
             <Box sx={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 2 }}>
-              {[["Cost", inr(cost)], ["Cost per lead", Number(line.New) ? inr(cost / line.New) : "—"], ["Won value", inr(line.CohortWonValue ?? 0)],
+              {[["Cost", inr(cost)], ["Cost per lead", Number(list.Leads) ? inr(cost / list.Leads) : "—"], ["Won value", inr(line.CohortWonValue ?? 0)],
                 ["Back per ₹1 spent", Number(cost) ? `₹${(Number(line.CohortWonValue ?? 0) / Number(cost)).toFixed(1)}` : "—"]].map(([k, v]) => (
                 <Box key={k}><Box sx={{ fontSize: "calc(12rem / 15)", color: p.text.secondary }}>{k}</Box><Box sx={{ fontWeight: 700, fontSize: "calc(18rem / 15)" }}>{v}</Box></Box>
               ))}
@@ -89,7 +89,7 @@ function Overview({ list, callers, admin }) {
         <Panel title={`Today · ${num(list.CalledToday)} calls`} testId="today">
           {!callers.length ? <Box sx={{ color: p.text.secondary, fontSize: "calc(13rem / 15)" }}>No callers on this list yet.</Box> : (
             <Box component="table" sx={{ width: "100%", borderCollapse: "collapse", fontSize: "calc(13rem / 15)", "& th, & td": { p: "calc(6rem / 15) 0", textAlign: "left" }, "& th": { color: p.text.secondary, fontWeight: 600 } }}>
-              <thead><tr><th>Caller</th><th>Calls</th><th>Leads</th><th>Holding</th></tr></thead>
+              <thead><tr><th>Caller</th><th>Calls</th><th>Turned lead</th><th>Holding</th></tr></thead>
               <tbody>{callers.map((c) => <tr key={c.UserId}><td>{c.FullName}</td><td>{num(c.CalledToday)}</td><td>{num(c.Leads)}</td><td>{num(c.Holding)}</td></tr>)}</tbody>
             </Box>
           )}

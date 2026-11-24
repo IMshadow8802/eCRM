@@ -120,7 +120,6 @@ export function splitNumbers(cell) {
  * which then becomes the number (owner rule 2026-11-24).
  */
 export function buildRows(rows, mapping, headers) {
-  const hasAlt = mapping.includes("AltMobile");
   const seen = new Set();
   const out = [];
   const repeated = [];
@@ -137,7 +136,7 @@ export function buildRows(rows, mapping, headers) {
     });
     const [m1, m2] = splitNumbers(row.Mobile);
     const alt = splitNumbers(altRaw)[0];
-    if (m1) { row.Mobile = m1; row.AltMobile = hasAlt ? alt : m2; }
+    if (m1) { row.Mobile = m1; row.AltMobile = alt ?? m2; }
     else if (alt) { row.Mobile = alt; row.AltMobile = null; }
     if (Object.keys(extra).length) row.Extra = extra;
     const clean = cleanNumber(row.Mobile);

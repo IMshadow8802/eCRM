@@ -480,7 +480,7 @@ export default function LeadDetail({ leadId: leadIdProp }) {
       />
       <LeadCreateModal open={editOpen} lead={lead} onClose={() => setEditOpen(false)} onSaved={refetch} />
       <WonDialog open={wonOpen} lead={lead} onClose={() => setWonOpen(false)} onWon={refetch} />
-      {marking && <PhoneMarkModal open mobile={lead.MobileNo} onClose={() => setMarking(false)} invalidate={[["lead-detail", leadId]]} />}
+      {marking && <PhoneMarkModal open mobile={lead.MobileNo} onClose={() => setMarking(false)} invalidate={[["lead-detail", leadId], ["leads"]]} />}
     </div>
   );
 }

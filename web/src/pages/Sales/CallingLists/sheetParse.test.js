@@ -72,6 +72,11 @@ describe("sheetParse", () => {
     expect(rows[0]).not.toHaveProperty("I");
   });
 
+  it("a mapped but empty alt column still takes the second number of the mobile cell", () => {
+    const { rows } = buildRows([["9825012345 / 9898011111", ""]], ["Mobile", "AltMobile"], ["M", "A"]);
+    expect(rows[0]).toMatchObject({ Mobile: "9825012345", AltMobile: "9898011111" });
+  });
+
   it("chunks by 500", () => expect(chunks(Array.from({ length: 1201 }, (_, i) => ({ RowNo: i }))).map((c) => c.length)).toEqual([500, 500, 201]));
 
   it("reads a CSV file through the CSV parser", async () => {

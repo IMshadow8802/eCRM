@@ -123,7 +123,7 @@ describe("ContactsTab", () => {
     mockCallingEndpoints({
       contacts: ROWS,
       history: {
-        contact: contactRow({ Extra: '{"Ref No.":"MLSS-0001"}', Attempts: 2 }),
+        contact: { ...contactRow({ Attempts: 2 }), Extra: undefined, extras: [{ label: "Ref No.", value: "MLSS-0001" }] },
         attempts: [
           { Id: 9, Result: "callback", Notes: "Call at 4", DialedAt: null, CalledAt: "2026-11-24T11:05:00", CallbackAt: "2026-11-24T16:00:00", UserName: "Rohit Sharma" },
           { Id: 8, Result: "no_answer", Notes: null, DialedAt: "2026-11-23T16:09:00", CalledAt: "2026-11-23T16:10:00", UserName: "Rohit Sharma" },
@@ -142,11 +142,11 @@ describe("ContactsTab", () => {
     expect(ids).toEqual(["attempt-9", "attempt-8"]);
   });
 
-  it("history: a closed contact with its reason, an undone call, a kept callback, bad extras, and a contact out of view", async () => {
+  it("history: a closed contact with its reason, an undone call, a kept callback", async () => {
     mockCallingEndpoints({
       contacts: ROWS,
       history: {
-        contact: contactRow({ Status: "closed", CloseReason: "no_response", Extra: "not json", HeldByName: null }),
+        contact: { ...contactRow({ Status: "closed", CloseReason: "no_response", HeldByName: null }), Extra: undefined, extras: [] },
         attempts: [{ Id: 7, Result: "callback", DialedAt: "2026-11-23T10:00:00", CalledAt: "2026-11-23T10:01:00", CallbackAt: "2026-11-23T16:00:00", CallbackOutcome: "kept", UndoneAt: "2026-11-23T10:02:00", UserName: "Rohit Sharma" }],
       },
     });
@@ -160,7 +160,7 @@ describe("ContactsTab", () => {
   });
 
   it("history: a contact with no calls, and one the server will not show", async () => {
-    mockCallingEndpoints({ contacts: ROWS, history: { contact: contactRow(), attempts: [] } });
+    mockCallingEndpoints({ contacts: ROWS, history: { contact: { ...contactRow(), Extra: undefined, extras: [] }, attempts: [] } });
     render();
     const user = userEvent.setup();
     await user.click(await screen.findByText("Mrs. HARJEET KAUR"));

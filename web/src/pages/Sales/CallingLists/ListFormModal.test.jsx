@@ -64,6 +64,8 @@ describe("ListFormModal", () => {
     expect(screen.getByTestId("map-4-input")).toHaveValue("Alt mobile");
     expect(screen.getByTestId("map-6-input")).toHaveValue("Keep as extra");
     expect(screen.getAllByTestId(/^preview-row-/)).toHaveLength(10);
+    // Row numbers are the sheet's own: the header is row 1, the first contact row 2.
+    expect(within(screen.getByTestId("preview-row-1")).getAllByRole("cell")[0]).toHaveTextContent("2");
     expect(within(screen.getByTestId("preview-row-3")).getByText("9873301145")).toBeInTheDocument();
     expect(screen.getByTestId("preview-btn")).toBeEnabled();
     await option(user, "map-3", "Keep as extra");
@@ -122,7 +124,7 @@ describe("ListFormModal", () => {
     pickFile();
     await user.click(await screen.findByTestId("preview-btn"));
     await user.click(await screen.findByTestId("import-btn"));
-    expect(await screen.findByText("Stopped at row 501. Nothing is lost — press Import to continue")).toBeInTheDocument();
+    expect(await screen.findByText("Stopped at row 502. Nothing is lost — press Import to continue")).toBeInTheDocument();
     await user.click(screen.getByTestId("import-btn"));
     expect(await screen.findByTestId("import-done")).toHaveTextContent("9 contacts added");
     expect(importedCalls(cap)).toEqual([1, 501, 501, 1001]);

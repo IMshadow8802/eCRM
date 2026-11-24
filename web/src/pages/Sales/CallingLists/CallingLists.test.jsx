@@ -29,9 +29,10 @@ describe("Calling Lists page", () => {
     expect(within(row).getByText(/Delhi office · Auto · holds 10/)).toBeInTheDocument();
     const surat = screen.getByText("Surat traders").closest("tr");
     expect(within(surat).getAllByText("—").length).toBeGreaterThanOrEqual(3);
-    // Totals strip, admin sees the money.
-    expect(screen.getByText("Spent")).toBeInTheDocument();
-    expect(screen.getByTestId("stat-pool")).toHaveTextContent("6,804");
+    // No totals strip: the server sends no company-wide totals, and a page's sum would mislead.
+    expect(screen.queryByTestId("stat-pool")).toBeNull();
+    expect(screen.queryByText("Spent")).toBeNull();
+    expect(screen.getByText("Turned lead")).toBeInTheDocument();
   });
 
   it("shows a used-up list as a state", async () => {
@@ -47,7 +48,6 @@ describe("Calling Lists page", () => {
     await screen.findByText("MLSS Delhi — Lucky draw, Nov");
     expect(screen.queryByText("Cost")).toBeNull();
     expect(screen.queryByText("Cost / lead")).toBeNull();
-    expect(screen.queryByText("Spent")).toBeNull();
     expect(screen.queryByTestId("new-list-btn")).toBeNull();
   });
 

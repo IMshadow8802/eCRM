@@ -8,11 +8,6 @@ import { useApiQuery } from "../../../hooks/useApiQuery";
 import { CALLING_ENDPOINTS, CALL_RESULT, CLOSE_REASON, CONTACT_STATUS } from "../../../api/callingQueries";
 import { formatDateTime } from "../../../utils/format";
 
-export const extras = (json) => {
-  if (!json) return [];
-  try { return Object.entries(typeof json === "string" ? JSON.parse(json) : json); } catch { return []; }
-};
-
 export default function ContactHistoryDrawer({ contactId, onClose }) {
   const p = useTheme().tokens;
   const { data, isLoading, error } = useApiQuery({
@@ -24,7 +19,9 @@ export default function ContactHistoryDrawer({ contactId, onClose }) {
   const st = CONTACT_STATUS[c?.Status];
   const facts = c ? [
     ["Mobile", [c.Mobile, c.AltMobile].filter(Boolean).join(" · ")], ["City", c.City], ["Company", c.Company], ["Address", c.Address],
-    ["With", c.HeldByName], ["Attempts", String(c.Attempts ?? 0)], ...extras(c.Extra),
+    ["With", c.HeldByName], ["Attempts", String(c.Attempts ?? 0)],
+    // The sheet's own columns, as callingService.withExtras sends them.
+    ...(c.extras ?? []).map((x) => [x.label, x.value]),
   ].filter(([, v]) => v) : [];
 
   return (

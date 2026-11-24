@@ -33,7 +33,7 @@ describe("ListDetail", () => {
     expect(cap.fetchLists).toMatchObject({ Id: 5 });
     expect(within(screen.getByTestId("funnel-Called")).getByText("744")).toBeInTheDocument();
     expect(within(screen.getByTestId("funnel-Called")).getByText("17.8%")).toBeInTheDocument();
-    expect(within(screen.getByTestId("funnel-Leads")).getByText("78")).toBeInTheDocument();
+    expect(within(screen.getByTestId("funnel-Turned lead")).getByText("78")).toBeInTheDocument();
     expect(screen.getByText("Today · 81 calls")).toBeInTheDocument();
     const money = screen.getByTestId("money");
     for (const t of ["₹42,000", "₹538", "₹11,40,000", "₹27.1"]) expect(within(money).getByText(t)).toBeInTheDocument();
@@ -128,6 +128,23 @@ describe("ListDetail", () => {
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith("/sales/calling-lists"));
   });
 
+  it("Turned lead is one number: the funnel, the pool and the callers agree", async () => {
+    mockCallingEndpoints({
+      lists: [listRow({ Leads: 78 })],
+      listCallers: [callerRow({ Leads: 50 }), callerRow({ UserId: 18, FullName: "Priya Verma", Leads: 28 })],
+      report: { rows: [{ ...LINE, New: 90 }] }, // the report's reach-filtered count is not used here
+    });
+    open();
+    const step = await screen.findByTestId("funnel-Turned lead");
+    expect(within(step).getByText("78")).toBeInTheDocument();
+    expect(screen.getByTestId("pool")).toHaveTextContent("78 turned lead");
+    const today = screen.getByTestId("today");
+    expect(within(today).getByText("Turned lead")).toBeInTheDocument();
+    const perCaller = [...today.querySelectorAll("tbody tr")].map((r) => Number(r.children[2].textContent));
+    expect(perCaller.reduce((a, b) => a + b, 0)).toBe(78);
+    expect(within(screen.getByTestId("money")).getByText("₹538")).toBeInTheDocument();
+  });
+
   it("Callers tab lists the callers from the list fetch", async () => {
     mockCallingEndpoints({ listCallers: [callerRow(), callerRow({ UserId: 18, FullName: "Priya Verma", IsPaused: true })] });
     open("/sales/calling-lists/5?tab=callers");
@@ -135,7 +152,7 @@ describe("ListDetail", () => {
   });
 
   it("Overview: a failed report, a list with no leads and no callers", async () => {
-    mockCallingEndpoints({ listCallers: [], report: { rows: [{ ...LINE, New: 0, ListCost: 0, CohortWonValue: null }] } });
+    mockCallingEndpoints({ lists: [listRow({ Leads: 0 })], listCallers: [], report: { rows: [{ ...LINE, New: 0, ListCost: 0, CohortWonValue: null }] } });
     open();
     expect(await screen.findByText("No callers on this list yet.")).toBeInTheDocument();
     const money = await screen.findByTestId("money");

@@ -27,6 +27,8 @@ const COUNT_LABELS = [["Added", "Will be added"], ["InPool", "Already in pool"],
 const ZERO = Object.fromEntries(COUNT_LABELS.map(([k]) => [k, 0]));
 const GROUPS = { 1: "Your manager and team", 2: "Your office", 3: "Other offices" };
 const PREVIEW_ROWS = 10;
+// RowNo counts data rows from 1; the user sees the sheet's own row number (the header is row 1).
+const sheetRow = (rowNo) => rowNo + 1;
 
 /** The original sheet rows that were skipped, plus a Reason column — to argue with the vendor. */
 export function skippedCsv(headers, rows, skipped) {
@@ -189,7 +191,7 @@ function SheetStep({ list, adding, onBack, onDone }) {
         setBusy(false);
         if (dry) return setError(r.message);
         setImported({ at: i, counts, done: false });
-        return setError(`Stopped at row ${parts[i][0].RowNo}. Nothing is lost — press Import to continue`);
+        return setError(`Stopped at row ${sheetRow(parts[i][0].RowNo)}. Nothing is lost — press Import to continue`);
       }
       for (const [k] of COUNT_LABELS) counts[k] += Number(r.data?.counts?.[k] ?? 0);
       skipped.push(...(r.data?.skipped ?? []));
@@ -265,7 +267,7 @@ function SheetStep({ list, adding, onBack, onDone }) {
                     const why = reasons.get(RowNo);
                     return (
                       <tr key={RowNo} data-testid={`preview-row-${RowNo}`}>
-                        <td>{RowNo}</td><td>{r?.Name ?? "—"}</td><td>{r?.Mobile || "—"}</td><td>{r?.AltMobile ?? "—"}</td><td>{r?.City ?? "—"}</td>
+                        <td>{sheetRow(RowNo)}</td><td>{r?.Name ?? "—"}</td><td>{r?.Mobile || "—"}</td><td>{r?.AltMobile ?? "—"}</td><td>{r?.City ?? "—"}</td>
                         <td>{r?.Extra ? Object.entries(r.Extra).map(([k, v]) => `${k} ${v}`).join(" · ") : "—"}</td>
                         {preview && <td><Chip size="sm" tone={why ? "warning" : "success"} label={why ?? "Will be added"} /></td>}
                       </tr>

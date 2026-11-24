@@ -38,33 +38,6 @@ export function ListStatusChip({ list }) {
   return <Chip size="sm" tone={s.tone} label={s.label} />;
 }
 
-function Stats({ rows, admin }) {
-  const p = useTheme().tokens;
-  const live = rows.filter((l) => l.Status !== "archived");
-  const sum = (k) => live.reduce((a, l) => a + Number(l[k] ?? 0), 0);
-  const cost = sum("Cost");
-  const leads = sum("Leads");
-  const items = [
-    ["lists", "Active lists", num(rows.filter((l) => l.Status === "active").length), `${rows.length} on this page`],
-    ["contacts", "Contacts", num(sum("Contacts")), `on ${live.length} lists`],
-    ["pool", "In pool", num(sum("InPool")), "ready to hand out"],
-    ["held", "With callers now", num(sum("Held")), `+ ${num(sum("Callbacks"))} booked callbacks`],
-    ["leads", "Leads made", num(leads), "from these lists"],
-    ...(admin ? [["spent", "Spent", inr(cost), leads ? `${inr(cost / leads)} per lead` : "no leads yet"]] : []),
-  ];
-  return (
-    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(2, 1fr)", md: `repeat(${items.length}, 1fr)` }, gap: "calc(12rem / 15)", mb: "calc(16rem / 15)" }}>
-      {items.map(([key, k, v, s]) => (
-        <Box key={key} data-testid={`stat-${key}`} sx={{ background: p.surface.card, border: `1px solid ${p.border.default}`, borderRadius: "calc(12rem / 15)", p: "calc(12rem / 15) calc(16rem / 15)" }}>
-          <Box sx={{ fontSize: "calc(12rem / 15)", fontWeight: 600, color: p.text.secondary }}>{k}</Box>
-          <Box sx={{ fontSize: "calc(20rem / 15)", fontWeight: 700, color: p.text.primary, fontVariantNumeric: "tabular-nums" }}>{v}</Box>
-          <Box sx={{ fontSize: "calc(12rem / 15)", color: p.text.tertiary }}>{s}</Box>
-        </Box>
-      ))}
-    </Box>
-  );
-}
-
 export default function CallingLists() {
   const navigate = useNavigate();
   const p = useTheme().tokens;
@@ -94,7 +67,7 @@ export default function CallingLists() {
     { accessorKey: "Vendor", header: "Vendor", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "—" },
     { accessorKey: "PurchasedOn", header: "Bought", enableSorting: false, Cell: ({ cell }) => formatDate(cell.getValue(), { empty: "—" }) },
     ...(admin ? [{ accessorKey: "Cost", header: "Cost", enableSorting: false, Cell: ({ cell }) => inr(cell.getValue()) }] : []),
-    ...[["Contacts", "Contacts"], ["InPool", "In pool"], ["Held", "With callers"], ["Callbacks", "Callbacks"], ["Closed", "Closed"], ["Leads", "Leads"]]
+    ...[["Contacts", "Contacts"], ["InPool", "In pool"], ["Held", "With callers"], ["Callbacks", "Callbacks"], ["Closed", "Closed"], ["Leads", "Turned lead"]]
       .map(([k, header]) => ({ accessorKey: k, header, enableSorting: false, Cell: ({ cell }) => num(cell.getValue()) })),
     { id: "leadPct", header: "Lead %", enableSorting: false, accessorFn: (l) => pct(l.Leads, l.Contacts) },
     ...(admin ? [{ id: "costPerLead", header: "Cost / lead", enableSorting: false, accessorFn: (l) => (l.Cost != null && Number(l.Leads) ? inr(l.Cost / l.Leads) : "—") }] : []),
@@ -162,10 +135,7 @@ export default function CallingLists() {
         <EmptyState icon={<FileSpreadsheet size={32} />} title="No calling lists yet"
           description="Upload a sheet of bought contacts. Your team gets them on the phone a few at a time, and only the interested ones become leads." />
       ) : (
-        <>
-          <Stats rows={data} admin={admin} />
-          <MaterialReactTable table={table} />
-        </>
+        <MaterialReactTable table={table} />
       )}
       {form && (
         <Suspense fallback={null}>

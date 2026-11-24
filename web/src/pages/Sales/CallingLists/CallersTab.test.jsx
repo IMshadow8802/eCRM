@@ -20,6 +20,7 @@ describe("CallersTab", () => {
     for (const t of ["Rohit Sharma", "10 / 10", "4", "34", "3"]) expect(within(rohit).getByText(t)).toBeInTheDocument();
     expect(within(screen.getByTestId("caller-row-18")).getByText("7 / 5")).toBeInTheDocument();
     expect(screen.getByTestId("pause-18")).toBeChecked();
+    expect(screen.getByText("Turned lead")).toBeInTheDocument();
   });
 
   it("gives N to a caller", async () => {
