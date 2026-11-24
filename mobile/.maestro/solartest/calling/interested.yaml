@@ -1,7 +1,15 @@
 # Interested: ${NAME} becomes the caller's lead (name prefilled, follow-up tomorrow).
 appId: com.shadowider.eCRM
 ---
-- tapOn: "Save result for ${NAME}"
+# The tap can land while the last save's toast and sheet are still settling: retry it.
+- waitForAnimationToEnd
+- repeat:
+    times: 3
+    while:
+      notVisible: "Interested"
+    commands:
+      - tapOn: "Save result for ${NAME}"
+      - waitForAnimationToEnd
 - tapOn: "Interested"
 - extendedWaitUntil:
     visible: "Create lead"

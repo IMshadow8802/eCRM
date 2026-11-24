@@ -6,10 +6,15 @@ appId: com.shadowider.eCRM
       text: "Save result for ${NAME}"
     direction: DOWN
     timeout: 10000
-- tapOn: "Save result for ${NAME}"
-- extendedWaitUntil:
-    visible: "${LABEL}"
-    timeout: 10000
+# The tap can land while the last save's toast and sheet are still settling: retry it.
+- waitForAnimationToEnd
+- repeat:
+    times: 3
+    while:
+      notVisible: "${LABEL}"
+    commands:
+      - tapOn: "Save result for ${NAME}"
+      - waitForAnimationToEnd
 - tapOn: "${LABEL}"
 - extendedWaitUntil:
     notVisible: "Save result for ${NAME}"

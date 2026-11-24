@@ -1,7 +1,15 @@
 # Do not call ${NAME}, with the required note.
 appId: com.shadowider.eCRM
 ---
-- tapOn: "Save result for ${NAME}"
+# The tap can land while the last save's toast and sheet are still settling: retry it.
+- waitForAnimationToEnd
+- repeat:
+    times: 3
+    while:
+      notVisible: "Not interested"
+    commands:
+      - tapOn: "Save result for ${NAME}"
+      - waitForAnimationToEnd
 - scrollUntilVisible:
     element:
       text: "Do not call"
