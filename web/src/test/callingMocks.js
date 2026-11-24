@@ -82,7 +82,8 @@ export function mockCallingEndpoints({
   route("/api/phoneMark/set", "markSet", () => ({ Id: 40, ResponseCode: 200, ResponseMess: "Number marked" }));
   route("/api/phoneMark/clear", "markClear", () => ({ Id: 31, ResponseCode: 200, ResponseMess: "Mark cleared" }));
   route("/api/users/fetchAssignableUsers", "assignable", () => ({ users: callers }));
-  route("/api/users/fetchBranches", "branches", () => ({ branches: [{ Id: 1, BranchName: "Delhi" }, { Id: 2, BranchName: "Noida" }] }));
+  // tblBranch.Id is BIGINT: mssql hands it over as a string ("1"), so the mock does too.
+  route("/api/users/fetchBranches", "branches", () => ({ branches: [{ Id: "1", BranchName: "Delhi" }, { Id: "2", BranchName: "Noida" }] }));
   route("/api/products/fetchProducts", "products", () => ({ products: [{ Id: 3, Name: "Rooftop solar 3 kW" }], pagination: page([1]) }));
   route("/api/reports/sales", "report", () => report);
   route("/api/reports/salesRows", "reportRows", () => reportRows);

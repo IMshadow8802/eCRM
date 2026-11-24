@@ -89,7 +89,8 @@ function DetailsStep({ saved, onSaved, onCancel }) {
   const [busy, setBusy] = useState(false);
   const { data: branchData } = useApiQuery({ queryKey: ["branches"], endpoint: SALES_ENDPOINTS.users.fetchBranches, showErrorMessage: false });
   const { data: productData } = useApiQuery({ queryKey: ["products", "active"], endpoint: SALES_ENDPOINTS.products.fetchProducts, params: { PageSize: 200, IsActive: true }, showErrorMessage: false });
-  const branches = useMemo(() => (branchData?.branches ?? []).map((b) => ({ value: b.Id, label: b.BranchName })), [branchData]);
+  // tblBranch.Id is BIGINT, which arrives as a string; the schema wants a number.
+  const branches = useMemo(() => (branchData?.branches ?? []).map((b) => ({ value: Number(b.Id), label: b.BranchName })), [branchData]);
   const products = useMemo(() => (productData?.products ?? []).map((x) => ({ value: x.Id, label: x.Name })), [productData]);
   const { control, handleSubmit, formState: { errors } } = useForm({
     resolver: zodResolver(schema(admin)),
