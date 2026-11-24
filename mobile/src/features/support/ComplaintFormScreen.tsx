@@ -155,6 +155,7 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
   // Office/OfficeTree reach would be offered offices the server 403s.
   const wideCustomers = useAccess("customers").reach === "Company";
   const homeOffice = useAuthStore((s) => s.BranchId);
+  const myId = useAuthStore((s) => s.UserId);
   const [office, setOffice] = useState<number | null>(homeOffice);
   // Also names the office in the band (G24), so it is always asked (cached).
   const { data: branchRows } = useQuery({ queryKey: ["branches"], queryFn: fetchBranches });
@@ -178,7 +179,7 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
   const [priority, setPriority] = useState<number | null>(ticket?.Priority ?? null);
   const [product, setProduct] = useState<number | null>(ticket?.ProductId ?? null);
   // Create-only: sp_SaveTicket does not touch AssignedTo on update, and
-  // reassigning is transferTicket's job.
+  // reassigning is transferTicket's job (Reassign, on the record).
   const [assignee, setAssignee] = useState<number | null>(null);
   const [description, setDescription] = useState(ticket?.Description ?? "");
   const [draft, setDraft] = useState<Record<number, string | boolean>>(() =>
@@ -241,7 +242,7 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
       users.map((u) => ({
         value: u.Id,
         label: u.FullName,
-        sublabel: [u.JobTitle, u.BranchName].filter(Boolean).join(" · ") || undefined,
+        sublabel: [u.JobTitle, u.BranchName, u.AwayToday === true ? "Away today" : null].filter(Boolean).join(" · ") || undefined,
         avatar: { name: u.FullName, userId: u.Id },
       })),
     [users],
@@ -280,8 +281,17 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
 
   const createCustomer = useMutation({ mutationFn: saveCustomer });
 
+  /**
+   * Where a failed upload's files should go: the complaint, or — when it was
+   * logged onto someone else, who now holds it and the logger cannot open it —
+   * to that person. (139: the logger may still upload for 15 minutes, so a
+   * failure here is a real one.)
+   */
+  const failedUploads = (n: number, away: boolean) =>
+    `${n} file(s) failed to upload — ${away ? "send them to the person it is assigned to" : "add them from the complaint"}`;
+
   /** One at a time, after the complaint is saved. A failure never undoes the complaint. */
-  const uploadStaged = async (ticketId: number) => {
+  const uploadStaged = async (ticketId: number, away: boolean) => {
     let failed = 0;
     for (const { size: _size, ...file } of files) {
       try {
@@ -290,20 +300,24 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
         failed += 1;
       }
     }
-    if (failed) toast.error(`${failed} file(s) failed to upload — add them from the complaint`);
+    if (failed) toast.error(failedUploads(failed, away));
   };
 
   const save = useMutation({
     mutationFn: saveTicket,
-    onSuccess: async (response) => {
+    onSuccess: async (response, sent) => {
       if (!response.success) {
         setError(response.message || "Could not save this complaint.");
         return;
       }
       const newId = response.data?.Id;
+      // Handed to someone else, the logger loses it: say where it went — first,
+      // so an upload failure (one toast at a time) is the one left showing.
+      const away = !ticket && !!sent.AssignedTo && sent.AssignedTo !== myId;
+      if (away) toast.success(response.message);
       if (!ticket && files.length) {
-        if (newId) await uploadStaged(newId);
-        else toast.error(`${files.length} file(s) failed to upload — add them from the complaint`);
+        if (newId) await uploadStaged(newId, away);
+        else toast.error(failedUploads(files.length, away));
       }
       void queryClient.invalidateQueries({ queryKey: ["tickets"] });
       if (ticket) void queryClient.invalidateQueries({ queryKey: ["ticket", ticket.Id] });
@@ -625,7 +639,7 @@ function ComplaintForm({ navigation, ticket, detail }: ComplaintFormProps) {
                 keyboardType="email-address"
               />
               {/* Create only: on update the SP ignores AssignedTo — handing it
-                  on is Transfer's job, on the record. */}
+                  on is Reassign's job, on the record. */}
               {editing ? null : (
                 <Select
                   label="Assign to"

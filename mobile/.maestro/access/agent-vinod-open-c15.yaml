@@ -1,0 +1,10 @@
+# am_vinod opens C15 (assigned to him by amit) and stops: run.sh then has
+# amit reassign it to vivek while it is open (Review Focus 4). Env: TAG.
+appId: com.shadowider.eCRM
+---
+- runFlow:
+    file: find-complaint.yaml
+    env:
+      PRESET: "Mine"
+      KEY: "${TAG}-C15"
+- assertVisible: "On hold"

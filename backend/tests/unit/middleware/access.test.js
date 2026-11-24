@@ -155,3 +155,43 @@ describe("publicAccess", () => {
     expect(pub).not.toHaveProperty("lists");
   });
 });
+
+describe("Can assign to (AssignReach)", () => {
+  const withAssign = (Module, Reach, AssignReach) => ({ ...mod(Module, Reach, 1, 1, 1), AssignReach });
+  it("reads AssignReach into modules.<m>.assignReach and exposes it publicly", () => {
+    const a = buildAccess(rs({ modules: [withAssign("leads", "Own", "Office"), withAssign("complaints", "Team", null)], lists: LISTS }), 7);
+    expect(a.modules.leads.assignReach).toBe("Office");
+    expect(a.modules.complaints.assignReach).toBeNull();
+    expect(publicAccess(a).modules.leads.assignReach).toBe("Office");
+  });
+  it("is null for modules that have no Can assign to", () => {
+    const a = buildAccess(rs({ modules: [withAssign("people", "Office", "Company")], lists: LISTS }), 7);
+    expect(a.modules.people.assignReach).toBeNull();
+  });
+  it("an RS2 without AssignReach gives null, not a crash", () => {
+    const a = buildAccess(rs({ modules: [mod("leads", "Office")], lists: LISTS }), 7);
+    expect(a.modules.leads.assignReach).toBeNull();
+  });
+  it("roleWithin refuses a wider Can-assign-to than the giver has", () => {
+    const giver = buildAccess(rs({ modules: [withAssign("leads", "Office", "Office")], lists: LISTS }), 7);
+    const row = (AssignReach) => ({ Module: "leads", Reach: "Own", CanView: 1, CanAdd: 0, CanEdit: 0, CanDelete: 0, AssignReach });
+    expect(roleWithin(giver, [row("OfficeTree")])).toBe(false);
+    expect(roleWithin(giver, [row("Office")])).toBe(true);
+    expect(roleWithin(giver, [row("Team")])).toBe(true);
+    expect(roleWithin(giver, [row(null)])).toBe(true);
+  });
+  it("an actor without AssignReach reads Team", () => {
+    const giver = buildAccess(rs({ modules: [mod("leads", "Office")], lists: LISTS }), 7);
+    const row = (AssignReach) => ({ Module: "leads", Reach: "Own", CanView: 1, AssignReach });
+    expect(roleWithin(giver, [row("Team")])).toBe(true);
+    expect(roleWithin(giver, [row("Office")])).toBe(false);
+  });
+  it("refuses an unknown AssignReach value (fail closed)", () => {
+    const giver = buildAccess(rs({ modules: [{ ...mod("leads", "Office"), AssignReach: "Company" }], lists: LISTS }), 7);
+    expect(roleWithin(giver, [{ Module: "leads", Reach: "Own", CanView: 1, AssignReach: "Everyone" }])).toBe(false);
+  });
+  it("ignores AssignReach on a row that grants no view", () => {
+    const giver = buildAccess(rs({ modules: [mod("leads", "Office")], lists: LISTS }), 7);
+    expect(roleWithin(giver, [{ Module: "leads", Reach: "Own", CanView: 0, AssignReach: "Company" }])).toBe(true);
+  });
+});

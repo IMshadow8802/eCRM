@@ -77,6 +77,8 @@ describe("customerController.save", () => {
     database.executeStoredProcedure.mockResolvedValueOnce(okRow({ Id: 31 }));
     await customerController.save(baseReq({ body: { ...FULL, Id: "31" } }), mockRes());
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(2);
+    // 132 gave @UserId no default: the visibility lookup must send the session person.
+    expect(database.executeStoredProcedure.mock.calls[0]).toEqual(["sp_FetchCustomerDetail", { CompId: 5, CustomerId: 31, UserId: 7 }]);
     expect(database.executeStoredProcedure.mock.calls[1][1]).toMatchObject({ Id: 31, CompId: 5, BranchId: 2, MoveToBranchId: null });
   });
 
@@ -229,7 +231,7 @@ describe("customerController.fetch", () => {
 describe("customerController.detail", () => {
   const COMPLAINTS_OWN = [["customers", "v", "Office"], ["complaints", "v", "Own"]];
 
-  it("gates RS1 by customers and lists complaints under the complaints scope", async () => {
+  it("gates RS1 by customers in Node; the database narrows the complaints (CompId, CustomerId, UserId only)", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [
         [{ Id: 31, Name: "Sharma Traders", BranchId: 2, CreatedBy: 3 }],
@@ -240,24 +242,48 @@ describe("customerController.detail", () => {
     const req = accessReq(COMPLAINTS_OWN, { CustomerId: "31" });
     await customerController.detail(req, res);
     expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_FetchCustomerDetail", {
-      CompId: 5, CustomerId: 31, UserId: 7, AccessibleBranchIdsJson: "[2]", OwnerIdsJson: "[7]",
+      CompId: 5, CustomerId: 31, UserId: 7,
     });
     const { data } = res.json.mock.calls[0][0];
     expect(data.customer.Id).toBe(31);
     expect(data.tickets).toHaveLength(1);
   });
 
-  it("sends an empty complaints allow-list when the caller has no complaints module", async () => {
+  // REGRESSION F4: the old call sent the complaints lists (Node-judged RS2).
+  it("F4 regression: customer detail no longer passes complaint lists", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ Id: 31, BranchId: 2, CreatedBy: 3 }], []] });
     await customerController.detail(accessReq([["customers", "v", "Office"]], { CustomerId: 31 }), mockRes());
-    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({ AccessibleBranchIdsJson: "[]", OwnerIdsJson: "[]" });
+    const params = database.executeStoredProcedure.mock.calls[0][1];
+    expect(params).not.toHaveProperty("AccessibleBranchIdsJson");
+    expect(params).not.toHaveProperty("OwnerIdsJson");
   });
 
-  it("403s a customer outside customers reach", async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ Id: 31, BranchId: 9, CreatedBy: 3 }], []] });
+  it("takes the person from the session, never the body", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ Id: 31, BranchId: 2, CreatedBy: 7 }], []] });
+    await customerController.detail(baseReq({ body: { CustomerId: 31, UserId: 99, CompId: 98 } }), mockRes());
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toEqual({ CompId: 5, CustomerId: 31, UserId: 7 });
+  });
+
+  it("500s without a session person (NO_ACTOR), before touching the DB", async () => {
     const res = mockRes();
-    await customerController.detail(accessReq(COMPLAINTS_OWN, { CustomerId: 31 }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    await customerController.detail(baseReq({ user: { CompId: 5 }, body: { CustomerId: 31 } }), res);
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  // REGRESSION (final review m5, X404): a hidden customer used to answer 403
+  // while a missing one answered 404, so an Own agent could walk ids and learn
+  // which customers exist. Both now read the same.
+  it("answers a customer outside customers reach exactly like a missing one", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ Id: 31, BranchId: 9, CreatedBy: 3 }], []] });
+    const hidden = mockRes();
+    await customerController.detail(accessReq(COMPLAINTS_OWN, { CustomerId: 31 }), hidden);
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[], []] });
+    const missing = mockRes();
+    await customerController.detail(accessReq(COMPLAINTS_OWN, { CustomerId: 32 }), missing);
+    expect(hidden.status).toHaveBeenCalledWith(404);
+    const strip = ({ timestamp, ...rest }) => rest;
+    expect(strip(hidden.json.mock.calls[0][0])).toEqual(strip(missing.json.mock.calls[0][0]));
   });
 
   it("400s without a CustomerId before touching the DB", async () => {

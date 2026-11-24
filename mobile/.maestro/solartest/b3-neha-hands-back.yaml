@@ -1,0 +1,75 @@
+# B3 Neha sees it under All and hands it back to Kasak.
+appId: com.shadowider.eCRM
+---
+- runFlow: ../common/open-work.yaml
+- tapOn: "Leads, \\d+ yours"
+- extendedWaitUntil:
+    visible:
+      id: "leads-list"
+    timeout: 15000
+- tapOn: "All, \\d+"
+- tapOn: "Search name, company, mobile"
+- inputText: "${NEHA_LEAD}"
+- extendedWaitUntil:
+    visible:
+      text: ".*${NEHA_LEAD}.*"
+      below: "Search name, company, mobile"
+    timeout: 15000
+- repeat:
+    times: 3
+    while:
+      notVisible: "Lead actions"
+    commands:
+      - waitForAnimationToEnd
+      - tapOn:
+          text: ".*${NEHA_LEAD}.*"
+          below: "Search name, company, mobile"
+          optional: true
+      - extendedWaitUntil:
+          visible: "Lead actions"
+          timeout: 8000
+          optional: true
+- assertVisible: "Roshan"
+- tapOn: "Reassign"
+- assertVisible: "Reassign lead"
+- extendedWaitUntil:
+    visible: "Your manager and team|Your office"
+    timeout: 15000
+- assertNotVisible: "Sent back"
+- scrollUntilVisible:
+    element: "Kasak\\s*"
+- tapOn: "Kasak\\s*"
+- tapOn: "${REASON}"
+- tapOn:
+    id: "reassign-remarks"
+- inputText: "${TAG} back"
+- hideKeyboard
+- tapOn: "Reassign to Kasak"
+- extendedWaitUntil:
+    visible: "Reassigned to Kasak.*"
+    timeout: 5000
+    optional: true
+- extendedWaitUntil:
+    notVisible: "Reassign lead"
+    timeout: 15000
+- takeScreenshot: b3-neha-after-reassign
+# She keeps it (office reach) but the app returns to the list: open it again.
+- repeat:
+    times: 3
+    while:
+      notVisible: "Lead actions"
+    commands:
+      - waitForAnimationToEnd
+      - tapOn:
+          text: ".*${NEHA_LEAD}.*"
+          below: "Search name, company, mobile"
+          optional: true
+      - extendedWaitUntil:
+          visible: "Lead actions"
+          timeout: 8000
+          optional: true
+- assertVisible: "Assigned to"
+- extendedWaitUntil:
+    visible: "Kasak\\s*"
+    timeout: 15000
+- takeScreenshot: b3-neha-assigned-kasak

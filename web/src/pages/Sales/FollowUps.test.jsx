@@ -11,9 +11,10 @@ import { buildTheme } from "../../theme";
 
 // The queue is a work list, not a lead list: an open row can be logged,
 // skipped or deleted; a logged one is history and carries no actions.
-const ROWS = [
-  { Id: 21, LeadId: 9, LeadName: "Sharma", Type: "call", DueAt: "2026-09-01T00:00:00", Status: "open", AssignedToName: "Bob", IsOverdue: true },
-  { Id: 20, LeadId: 9, LeadName: "Sharma", Type: "visit", DueAt: "2026-08-30T00:00:00", Status: "done", Outcome: "Connected", Remarks: "ok" },
+let ROWS;
+const BASE_ROWS = [
+  { Id: 21, Via: 1, LeadId: 9, LeadName: "Sharma", Type: "call", DueAt: "2026-09-01T00:00:00", Status: "open", AssignedToName: "Bob", IsOverdue: true },
+  { Id: 20, Via: 1, LeadId: 9, LeadName: "Sharma", Type: "visit", DueAt: "2026-08-30T00:00:00", Status: "done", Outcome: "Connected", Remarks: "ok" },
 ];
 
 const mockNavigate = vi.fn();
@@ -79,6 +80,7 @@ const withTheme = (node) => render(<ThemeProvider theme={buildTheme("light")}>{n
 describe("Follow-ups queue", () => {
   beforeEach(() => {
     useServerTable.mockClear();
+    ROWS = BASE_ROWS;
     mockNavigate.mockClear();
     post.mockReset();
     post.mockResolvedValue({ data: { success: true, data: {} } });
@@ -204,7 +206,7 @@ describe("Follow-ups queue", () => {
     const rowClick = vi.fn();
     const { container } = withTheme(
       <div onClick={rowClick}>
-        {cellOf("LeadName")({ row: { original: { Id: 21, LeadId: 9, LeadName: "Sharma", LeadMobile: "9990001111" } } })}
+        {cellOf("LeadName")({ row: { original: { Id: 21, Via: 1, LeadId: 9, LeadName: "Sharma", LeadMobile: "9990001111" } } })}
       </div>,
     );
     expect(container).toHaveTextContent("Sharma · 9990001111");
@@ -215,10 +217,83 @@ describe("Follow-ups queue", () => {
 
   it("a row click opens that follow-up's lead", () => {
     renderPage();
-    lastCfg().muiTableBodyRowProps({ row: { original: { LeadId: 9 } } }).onClick();
+    lastCfg().muiTableBodyRowProps({ row: { original: { Via: 1, LeadId: 9 } } }).onClick();
     expect(mockNavigate).toHaveBeenCalledWith("/sales/leads/9");
     expect(lastCfg().getRowId({ Id: 21 })).toBe(21);
     expect(lastCfg().dataKey).toBe("followups");
     expect(lastCfg().endpoint).toBe("/api/followups/fetchFollowups");
+  });
+
+  // Access model: Via 2 = an open follow-up given to the caller on a lead they
+  // cannot see; Via 3 = a manager's look-only line. Neither opens the lead.
+  const VIA2 = { Id: 31, Via: 2, LeadId: 50, LeadName: "Mehta", LeadCompany: "Mehta Steel", LeadMobile: "9876500000", Type: "call", Status: "open", AssignedToName: "Me" };
+  const VIA3 = { Id: 32, Via: 3, LeadId: 51, LeadName: "Joshi", LeadCompany: "Joshi Traders", LeadMobile: "9876511111", Type: "visit", Status: "open", AssignedToName: "Vivek" };
+
+  it("Via 3 row has no phone and no actions", () => {
+    ROWS = [VIA3];
+    renderPage();
+    const row = screen.getByTestId("followup-row-32");
+    expect(screen.queryByTestId("view-lead-32")).toBeNull();
+    for (const a of ["log", "reschedule", "skip", "delete"]) expect(screen.queryByTestId(`${a}-followup-32`)).toBeNull();
+    expect(row).toBeInTheDocument();
+
+    const cell = withTheme(cellOf("LeadName")({ row: { original: VIA3 } }));
+    expect(cell.container).toHaveTextContent("Joshi · Joshi Traders");
+    expect(cell.container).toHaveTextContent("Assigned to Vivek");
+    expect(cell.container).not.toHaveTextContent("9876511111");
+    expect(screen.queryByTestId("lead-link-32")).toBeNull();
+    const props = lastCfg().muiTableBodyRowProps({ row: { original: VIA3 } });
+    expect(props.onClick).toBeUndefined();
+  });
+
+  it("Via 2 row keeps phone and actions but does not open the lead", () => {
+    ROWS = [VIA2];
+    renderPage();
+    expect(screen.getByTestId("log-followup-31")).toBeInTheDocument();
+    // Reschedule books on the lead, which a Via 2 caller cannot see.
+    expect(screen.queryByTestId("reschedule-followup-31")).toBeNull();
+    expect(screen.getByTestId("skip-followup-31")).toBeInTheDocument();
+    expect(screen.getByTestId("delete-followup-31")).toBeInTheDocument();
+    expect(screen.queryByTestId("view-lead-31")).toBeNull();
+    const cell = withTheme(cellOf("LeadName")({ row: { original: VIA2 } }));
+    expect(cell.container).toHaveTextContent("Mehta · Mehta Steel · 9876500000");
+    expect(screen.queryByTestId("lead-link-31")).toBeNull();
+    expect(lastCfg().muiTableBodyRowProps({ row: { original: VIA2 } }).onClick).toBeUndefined();
+  });
+
+  // 403 = the follow-up is still visible but the action is refused: say the
+  // server's words and stay. 404 = it is gone: close and reload.
+  it("a 403 on skip shows the server's message and keeps the prompt open", async () => {
+    const { enqueueSnackbar } = await import("notistack");
+    post.mockRejectedValueOnce({ response: { status: 403, data: { message: "You can view this follow-up but not act on it" } } });
+    renderPage();
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("skip-followup-21"));
+    await user.type(screen.getByTestId("skip-remarks"), "x");
+    await user.click(screen.getByTestId("skip-submit"));
+    await waitFor(() => expect(enqueueSnackbar).toHaveBeenCalledWith("You can view this follow-up but not act on it", { variant: "error" }));
+    expect(screen.getByTestId("skip-remarks")).toBeInTheDocument();
+  });
+
+  it("any other failure on delete keeps the prompt open with the server's message", async () => {
+    const { enqueueSnackbar } = await import("notistack");
+    post.mockRejectedValueOnce({ response: { status: 500, data: { message: "Boom" } } });
+    renderPage();
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("delete-followup-21"));
+    await user.click(screen.getByTestId("delete-followup-confirm"));
+    await waitFor(() => expect(enqueueSnackbar).toHaveBeenCalledWith("Boom", { variant: "error" }));
+    expect(screen.getByTestId("delete-followup-modal")).toBeInTheDocument();
+  });
+
+  it("a 404 on delete closes the prompt and says the record is no longer with you", async () => {
+    const { enqueueSnackbar } = await import("notistack");
+    post.mockRejectedValueOnce({ response: { status: 404, data: { code: "NOT_FOUND" } } });
+    renderPage();
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("delete-followup-21"));
+    await user.click(screen.getByTestId("delete-followup-confirm"));
+    await waitFor(() => expect(enqueueSnackbar).toHaveBeenCalledWith("This record is no longer with you", { variant: "error" }));
+    await waitFor(() => expect(screen.queryByTestId("delete-followup-confirm")).toBeNull());
   });
 });

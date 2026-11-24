@@ -1,0 +1,17 @@
+# am_roshan (Sales Executive) — §7 row 10. L01 is his now, with its
+# follow-up; the menu offers "Send back to AM Kasak". Env: L01.
+appId: com.shadowider.eCRM
+---
+- runFlow:
+    file: find-lead.yaml
+    env:
+      NAME: "${L01}"
+- assertVisible: "Assigned to"
+- assertVisible: "AM Roshan"
+- runFlow: no-old-words.yaml
+- tapOn: "Follow-ups.*"
+- assertVisible: "Call.*"
+- tapOn: "Lead actions"
+- assertVisible: "Send back to AM Kasak"
+- takeScreenshot: sales-roshan-send-back
+- back

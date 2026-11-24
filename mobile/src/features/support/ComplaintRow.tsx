@@ -2,9 +2,9 @@ import { memo } from "react";
 import { ChevronsUp, CircleCheck, CirclePause, Phone } from "lucide-react-native";
 
 import { complaintBadge, priorityChip } from "../../theme";
-import type { Ticket } from "../../types/api";
-import { ListRow, SwipeRow, type ChipProps, type SwipeAction } from "../../ui";
-import { isTerminal, lifecycleOf, rowDue } from "./ticketHelpers";
+import type { LoggedByMeRow, Ticket } from "../../types/api";
+import { ListRow, SwipeRow, Text, type ChipProps, type SwipeAction } from "../../ui";
+import { asStatusCode, isTerminal, lifecycleOf, rowDue, whenText } from "./ticketHelpers";
 
 export type RowAction = "call" | "hold" | "resolve" | "escalate";
 
@@ -77,3 +77,42 @@ function ComplaintRowBase({ ticket, onPress, onAction, canWrite = true, canHold 
 }
 
 export const ComplaintRow = memo(ComplaintRowBase);
+
+/**
+ * A "Logged by me" row (§2.5): number · subject · customer · status, who has it,
+ * when it was logged, and its due (or the day it was resolved / closed). It
+ * opens only when the server says the caller still can (`CanOpen`); the others
+ * are plain rows that do not react to a press.
+ */
+function LoggedRowBase({ row, onOpen, first = false }: { row: LoggedByMeRow; onOpen: (id: number) => void; first?: boolean }) {
+  const code = asStatusCode(row.StatusCode);
+  const badge = complaintBadge(code);
+  const id = row.CanOpen ? row.Id : null;
+  const due = isTerminal(code)
+    ? row.ClosedOn
+      ? { text: `${code === "resolved" ? "Resolved" : "Closed"} ${whenText(row.ClosedOn)}`, tone: "default" as const }
+      : null
+    : rowDue({ DueAt: row.DueAt, IsOverdue: row.IsOverdue, StatusCode: code, ResolvedAt: null, ClosedAt: null, UpdatedAt: null });
+  return (
+    <ListRow
+      testID={`logged-${row.TicketNo}`}
+      badge={{ tone: badge.tone, icon: badge.icon }}
+      title={row.Subject}
+      titleTone={code === "closed" ? "muted" : "default"}
+      right={due ? { text: due.text, tone: DUE_TONE[due.tone] } : undefined}
+      number={row.TicketNo}
+      meta={row.CustomerName || "Unnamed customer"}
+      chips={[{ label: row.StatusName || code, tone: badge.chip }]}
+      line3={
+        <Text variant="meta" numberOfLines={1}>
+          {`${row.AssignedToName ? `Assigned to ${row.AssignedToName}` : "Unassigned"} · Logged ${whenText(row.CreatedAt)}`}
+        </Text>
+      }
+      noSeparator={first}
+      onPress={id != null ? () => onOpen(id) : undefined}
+      accessibilityLabel={`${row.TicketNo}, ${row.Subject}`}
+    />
+  );
+}
+
+export const LoggedRow = memo(LoggedRowBase);

@@ -7,7 +7,7 @@ import { Chip, Combobox, Tabs } from "../../components/ui";
 import DateField from "../../components/ui/DateField";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { useLookups } from "../../hooks/useLookups";
-import { useAssignableUsers } from "../../hooks/useAssignableUsers";
+import { useUsers } from "../../hooks";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
 import { PRESETS, DATE_BASES, readFilters, writeFilters, rangeError } from "./reportUtils";
 
@@ -56,8 +56,9 @@ export default function ReportFilters({
   ownerLabel = "Owner",
   children,
 }) {
-  // Pick-lists. The owner roster is the caller's assignable set, so the filter
-  // can never name someone the report would not show anyway.
+  // Pick-lists. The person roster is the plain names list (Attendance and TAT
+  // are not assignment pickers, so it must not follow "Can assign to"); the
+  // server keeps the report itself inside the caller's reach.
   // A picker that is hidden fetches nothing.
   const has = (name) => pickers.includes(name);
   const { data: branchData } = useApiQuery({
@@ -66,7 +67,8 @@ export default function ReportFilters({
     enabled: has("branch"),
     showErrorMessage: false,
   });
-  const { users } = useAssignableUsers({ enabled: has("owner") });
+  const { data: usersData } = useUsers({ PageSize: 1000 }, has("owner"));
+  const users = usersData?.users ?? [];
   const { lookups: sources } = useLookups("lead_source", { enabled: has("source"), showErrorMessage: false });
   const { data: productData } = useApiQuery({
     queryKey: ["products", "active"],

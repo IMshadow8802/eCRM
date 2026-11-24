@@ -1,0 +1,19 @@
+# am_amit (Admin, whole company) — sees North Delhi's complaint (C16, another
+# office) in Team; its Reassign picker groups people by office, other offices
+# included. Env: TAG.
+appId: com.shadowider.eCRM
+---
+- runFlow:
+    file: find-complaint.yaml
+    env:
+      PRESET: "Team"
+      KEY: "${TAG}-C16"
+- assertVisible: "AM Pooja"
+- runFlow: no-old-words.yaml
+- tapOn: "Reassign"
+- assertVisible: "Reassign complaint"
+- scrollUntilVisible:
+    element: "Other offices"
+- runFlow: no-old-words.yaml
+- takeScreenshot: admin-amit-other-offices
+- back

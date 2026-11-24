@@ -30,8 +30,9 @@ beforeEach(() => {
   database.executeStoredProcedure.mockReset();
 });
 
-// Entity-access guard lookups. lead/ticket route through their detail SP +
-// canSeeRecord; task routes through sp_CheckTaskPermission.
+// Entity-access guard lookups. lead/ticket/quotation: their detail procedure,
+// asked with the session person, answers a row (CanEdit for a write) or no
+// row = not visible. task routes through sp_CheckTaskPermission.
 function mockLeadLookup(lead) {
   database.executeStoredProcedure.mockResolvedValueOnce({
     recordsets: [lead ? [lead] : [], [], []],
@@ -50,7 +51,10 @@ function mockTaskPermission(allowed) {
 function mockQuotationLookup(quote) {
   database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [quote ? [quote] : [], [], []] });
 }
-const draftQuote = { Id: 4, LeadId: 9, Status: "draft", OwnerId: 7, BranchId: 2, CreatedBy: 7 };
+function mockLoggerWindow(mayAttach) {
+  database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ MayAttach: mayAttach }]] });
+}
+const draftQuote = { Id: 4, LeadId: 9, Status: "draft", OwnerId: 7, BranchId: 2, CreatedBy: 7, CanEdit: 1 };
 
 describe("attachmentController.save", () => {
   const file = {
@@ -76,13 +80,14 @@ describe("attachmentController.save", () => {
   });
 
   it("inserts metadata and injects CompId/UploadedBy", async () => {
-    mockTicketLookup({ Id: 42, BranchId: 2, AssignedTo: 3, CreatedBy: 3 });
+    mockTicketLookup({ Id: 42, BranchId: 2, AssignedTo: 3, CreatedBy: 3, CanEdit: 1 });
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [[{ ResponseCode: 201, ResponseMess: "Attachment saved", AttachmentId: 9 }]],
     });
     const res = mockRes();
     await attachmentController.save(baseReq({ file, body: { Entity: "ticket", EntityId: 42 } }), res);
 
+    expect(database.executeStoredProcedure).toHaveBeenNthCalledWith(1, "sp_FetchTicketDetail", { CompId: 5, UserId: 7, TicketId: 42 });
     expect(database.executeStoredProcedure).toHaveBeenCalledWith(
       "sp_SaveAttachment",
       expect.objectContaining({
@@ -134,12 +139,70 @@ describe("attachmentController.save", () => {
     expect(res.status).toHaveBeenCalledWith(201);
   });
 
-  it("403s uploading to a lead outside the caller's scope", async () => {
-    mockLeadLookup({ Id: 8, BranchId: 9, OwnerId: 3, CreatedBy: 3 });
+  it("404s uploading to a lead outside the caller's scope (and not theirs to attach to)", async () => {
+    mockLeadLookup(null);
+    mockLoggerWindow(0);
     const res = mockRes();
     await attachmentController.save(baseReq({ file, body: { Entity: "lead", EntityId: 8 } }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
-    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json.mock.calls[0][0]).toMatchObject({ message: "Lead not found", code: "NOT_FOUND" });
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(2);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalledWith("sp_SaveAttachment", expect.anything());
+  });
+
+  // REGRESSION (final review I1, ruling FR-I1): a desk agent logs a complaint
+  // onto the electrician with photos staged; the complaint is no longer theirs
+  // to see, and every upload used to 404 — the files were lost.
+  describe("the logger's upload window (FR-I1)", () => {
+    const saved = () => database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[{ ResponseCode: 201, ResponseMess: "Attachment saved", AttachmentId: 77 }]],
+    });
+
+    it("lets the logger upload to a complaint they just created onto someone else", async () => {
+      mockTicketLookup(null);   // assigned away: not visible to the logger
+      mockLoggerWindow(1);
+      saved();
+      const res = mockRes();
+      await attachmentController.save(baseReq({ file, body: { Entity: "ticket", EntityId: 42 } }), res);
+      expect(database.executeStoredProcedure).toHaveBeenNthCalledWith(2, "sp_LoggerMayAttach",
+        { CompId: 5, UserId: 7, Entity: "ticket", EntityId: 42 });
+      expect(database.executeStoredProcedure).toHaveBeenNthCalledWith(3, "sp_SaveAttachment",
+        expect.objectContaining({ Entity: "ticket", EntityId: 42, UploadedBy: 7 }));
+      expect(res.status).toHaveBeenCalledWith(201);
+    });
+
+    it("lets the logger upload to a lead they created that they see but may not edit", async () => {
+      mockLeadLookup({ Id: 8, CanEdit: 0 });
+      mockLoggerWindow(true);
+      saved();
+      const res = mockRes();
+      await attachmentController.save(baseReq({ file, body: { Entity: "lead", EntityId: 8 } }), res);
+      expect(res.status).toHaveBeenCalledWith(201);
+    });
+
+    it("keeps the 403 on a visible, not-editable record outside the window", async () => {
+      mockLeadLookup({ Id: 8, CanEdit: 0 });
+      mockLoggerWindow(0);
+      const res = mockRes();
+      await attachmentController.save(baseReq({ file, body: { Entity: "lead", EntityId: 8 } }), res);
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+
+    it("never asks for tasks or quotations", async () => {
+      mockTaskPermission(false);
+      const res = mockRes();
+      await attachmentController.save(baseReq({ file, body: { Entity: "task", EntityId: 3 } }), res);
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not ask when the record gate itself failed (500 stays 500)", async () => {
+      database.executeStoredProcedure.mockRejectedValueOnce(new Error("db down"));
+      const res = mockRes();
+      await attachmentController.save(baseReq({ file, body: { Entity: "ticket", EntityId: 42 } }), res);
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("500s ATTACHMENT_SAVE_ERROR when the insert SP throws after the guard passes", async () => {
@@ -152,7 +215,7 @@ describe("attachmentController.save", () => {
   });
 
   it("surfaces the SP's error status and returns null data", async () => {
-    mockTicketLookup({ Id: 42, BranchId: 2, AssignedTo: 7, CreatedBy: 7 });
+    mockTicketLookup({ Id: 42, BranchId: 2, AssignedTo: 7, CreatedBy: 7, CanEdit: 1 });
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [[{ ResponseCode: 404, ResponseMess: "Parent record not found" }]],
     });
@@ -171,7 +234,7 @@ describe("attachmentController.fetch", () => {
   });
 
   it("returns a list scoped to CompId after checking the parent record", async () => {
-    mockLeadLookup({ Id: 8, BranchId: 2, OwnerId: 3, CreatedBy: 3 });
+    mockLeadLookup({ Id: 8, BranchId: 2, OwnerId: 3, CreatedBy: 3, CanEdit: 1 });
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [[{ Id: 1, Entity: "lead", EntityId: 8, FileName: "x.pdf", StoredName: "u.pdf" }]],
     });
@@ -184,11 +247,11 @@ describe("attachmentController.fetch", () => {
     expect(res.json.mock.calls[0][0].data.attachments).toHaveLength(1);
   });
 
-  it("403s listing attachments of a lead the caller cannot see", async () => {
-    mockLeadLookup({ Id: 8, BranchId: 9, OwnerId: 3, CreatedBy: 3 });
+  it("404s listing attachments of a lead the caller cannot see", async () => {
+    mockLeadLookup(null);
     const res = mockRes();
     await attachmentController.fetch(baseReq({ body: { Id: 0, Entity: "lead", EntityId: 8 } }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1); // no list call
   });
 
@@ -200,7 +263,9 @@ describe("attachmentController.fetch", () => {
     mockTaskPermission(false);
     const res = mockRes();
     await attachmentController.fetch(baseReq({ body: { Id: 3 } }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    // hidden parent == missing id: 200 with an empty list, not a 403
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json.mock.calls[0][0].data.attachments).toEqual([]);
     expect(database.executeStoredProcedure).toHaveBeenCalledWith(
       "sp_CheckTaskPermission",
       expect.objectContaining({ TaskId: 12, Action: "view_task" }),
@@ -208,7 +273,7 @@ describe("attachmentController.fetch", () => {
   });
 
   it("500s when the DB throws", async () => {
-    mockLeadLookup({ Id: 8, BranchId: 2, OwnerId: 7, CreatedBy: 7 });
+    mockLeadLookup({ Id: 8, BranchId: 2, OwnerId: 7, CreatedBy: 7, CanEdit: 1 });
     database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
     const res = mockRes();
     await attachmentController.fetch(baseReq({ body: { Id: 0, Entity: "lead", EntityId: 8 } }), res);
@@ -233,17 +298,60 @@ describe("attachmentController.download", () => {
 
   // REGRESSION: any user in the company could download any attachment by Id —
   // including files on tasks in a colleague's personal workspace.
-  it("403s downloading a file whose parent record the caller cannot see", async () => {
+  it("404s downloading a file whose parent record the caller cannot see", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [[{ Id: 3, Entity: "lead", EntityId: 8, StoredName: "u.pdf", FileName: "x.pdf" }]],
     });
-    mockLeadLookup({ Id: 8, BranchId: 9, OwnerId: 3, CreatedBy: 3 });
+    mockLeadLookup(null);
     const res = mockRes();
     await attachmentController.download(baseReq({ body: { Id: 3 } }), res);
+    expect(res.status).toHaveBeenCalledWith(404);
+  });
+
+  // REGRESSION (existence oracle): a hidden parent used to answer
+  // "Lead not found" / "Complaint not found", unlike a missing id.
+  it.each([["lead", mockLeadLookup], ["ticket", mockTicketLookup]])(
+    "a hidden %s parent answers byte-for-byte like a missing attachment",
+    async (entity, lookup) => {
+      database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[]] });
+      const missing = mockRes();
+      await attachmentController.download(baseReq({ body: { Id: 99 } }), missing);
+
+      database.executeStoredProcedure.mockResolvedValueOnce({
+        recordsets: [[{ Id: 3, Entity: entity, EntityId: 8, StoredName: "u.pdf", FileName: "x.pdf" }]],
+      });
+      lookup(null);
+      const hidden = mockRes();
+      await attachmentController.download(baseReq({ body: { Id: 3 } }), hidden);
+
+      expect(hidden.status.mock.calls).toEqual(missing.status.mock.calls);
+      expect(hidden.json.mock.calls[0][0]).toEqual(missing.json.mock.calls[0][0]);
+      expect(hidden.json.mock.calls[0][0].message).toBe("Attachment not found");
+    },
+  );
+
+  it("delete: a hidden parent answers like a missing attachment (404 NOT_FOUND)", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[{ Id: 3, Entity: "lead", EntityId: 8, StoredName: "u.pdf", FileName: "x.pdf" }]],
+    });
+    mockLeadLookup(null);
+    const res = mockRes();
+    await attachmentController.delete(baseReq({ body: { Id: 3 } }), res);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json.mock.calls[0][0]).toMatchObject({ message: "Attachment not found", code: "NOT_FOUND" });
+  });
+
+  it("delete: a visible but not-editable parent keeps its 403", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[{ Id: 3, Entity: "lead", EntityId: 8, StoredName: "u.pdf", FileName: "x.pdf" }]],
+    });
+    mockLeadLookup({ Id: 8, BranchId: 2, OwnerId: 3, CreatedBy: 3, CanEdit: 0 });
+    const res = mockRes();
+    await attachmentController.delete(baseReq({ body: { Id: 3 } }), res);
     expect(res.status).toHaveBeenCalledWith(403);
   });
 
-  it("403s downloading a task file the workspace SP denies (personal beats admin)", async () => {
+  it("404s (as a missing attachment) downloading a task file the workspace SP denies", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [[{ Id: 3, Entity: "task", EntityId: 12, StoredName: "u.png", FileName: "x.png" }]],
     });
@@ -252,7 +360,8 @@ describe("attachmentController.download", () => {
     req.body = { Id: 3 };
     const res = mockRes();
     await attachmentController.download(req, res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json.mock.calls[0][0].message).toBe("Attachment not found");
   });
 
   it("streams the file with download headers when access is allowed and the file exists", async () => {
@@ -261,7 +370,7 @@ describe("attachmentController.download", () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [[{ Id: 3, Entity: "lead", EntityId: 8, StoredName: "u.pdf", FileName: "x.pdf", MimeType: "application/pdf" }]],
     });
-    mockLeadLookup({ Id: 8, BranchId: 2, OwnerId: 7, CreatedBy: 7 });
+    mockLeadLookup({ Id: 8, BranchId: 2, OwnerId: 7, CreatedBy: 7, CanEdit: 1 });
     const res = mockRes();
     res.setHeader = jest.fn();
     res.sendFile = jest.fn();
@@ -284,7 +393,7 @@ describe("attachmentController.download", () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [[{ Id: 3, Entity: "lead", EntityId: 8, StoredName: "u.apk", FileName: "app.apk", MimeType: "application/vnd.android.package-archive" }]],
     });
-    mockLeadLookup({ Id: 8, BranchId: 2, OwnerId: 7, CreatedBy: 7 });
+    mockLeadLookup({ Id: 8, BranchId: 2, OwnerId: 7, CreatedBy: 7, CanEdit: 1 });
     const req = baseReq({ body: undefined });
     req.params = { id: "3" };
     const res = mockRes();
@@ -295,16 +404,16 @@ describe("attachmentController.download", () => {
     existsSpy.mockRestore();
   });
 
-  it("403s on the GET form too when the parent record is out of scope", async () => {
+  it("404s on the GET form too when the parent record is out of scope", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [[{ Id: 3, Entity: "lead", EntityId: 8, StoredName: "u.apk", FileName: "app.apk" }]],
     });
-    mockLeadLookup({ Id: 8, BranchId: 9, OwnerId: 3, CreatedBy: 3 });
+    mockLeadLookup(null);
     const req = baseReq({ body: undefined });
     req.params = { id: "3" };
     const res = mockRes();
     await attachmentController.download(req, res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
   });
 
   it("400s on a non-numeric route param rather than querying with NaN", async () => {
@@ -320,7 +429,7 @@ describe("attachmentController.download", () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [[{ Id: 3, Entity: "lead", EntityId: 8, StoredName: "does-not-exist.pdf", FileName: "x.pdf" }]],
     });
-    mockLeadLookup({ Id: 8, BranchId: 2, OwnerId: 7, CreatedBy: 7 });
+    mockLeadLookup({ Id: 8, BranchId: 2, OwnerId: 7, CreatedBy: 7, CanEdit: 1 });
     const res = mockRes();
     await attachmentController.download(baseReq({ body: { Id: 3 } }), res);
     expect(res.status).toHaveBeenCalledWith(404);
@@ -347,7 +456,7 @@ describe("attachmentController.delete", () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [[{ Id: 3, Entity: "ticket", EntityId: 42, StoredName: "u.png", FileName: "x.png" }]],
     });
-    mockTicketLookup({ Id: 42, BranchId: 2, AssignedTo: 3, CreatedBy: 3 });
+    mockTicketLookup({ Id: 42, BranchId: 2, AssignedTo: 3, CreatedBy: 3, CanEdit: 1 });
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [[{ ResponseCode: 200, ResponseMess: "Attachment deleted", StoredName: "u.png", Entity: "ticket" }]],
     });
@@ -369,14 +478,14 @@ describe("attachmentController.delete", () => {
   });
 
   // REGRESSION: delete used to run before any record-level check.
-  it("403s deleting a file whose parent record the caller cannot see, without deleting", async () => {
+  it("404s deleting a file whose parent record the caller cannot see, without deleting", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [[{ Id: 3, Entity: "lead", EntityId: 8, StoredName: "u.pdf", FileName: "x.pdf" }]],
     });
-    mockLeadLookup({ Id: 8, BranchId: 9, OwnerId: 3, CreatedBy: 3 });
+    mockLeadLookup(null);
     const res = mockRes();
     await attachmentController.delete(baseReq({ body: { Id: 3 } }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(2); // no delete call
   });
 

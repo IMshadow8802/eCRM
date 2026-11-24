@@ -1,124 +1,125 @@
 // src/pages/Support/TransferTicketModal.jsx
-import { useEffect, useState } from "react";
-import { ArrowRightLeft } from "lucide-react";
+import { useState } from "react";
+import { Users } from "lucide-react";
 import { enqueueSnackbar } from "notistack";
 
-import { Modal, Button, Combobox, TextArea } from "../../components/ui";
+import { Modal, Button, Combobox, TextArea, Checkbox, AssigneePicker } from "../../components/ui";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { useApiMutation } from "../../hooks/useApiMutation";
-import { useAssignableUsers } from "../../hooks/useAssignableUsers";
+import { useAccess } from "../../hooks/useAccess";
 import { useLookups } from "../../hooks/useLookups";
 import { SUPPORT_ENDPOINTS } from "../../api/supportQueries";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
 
+const WIDE = new Set(["Office", "OfficeTree", "Company"]);
+const firstName = (name) => String(name ?? "").trim().split(/\s+/)[0];
+
 /**
- * Hand one complaint, or many, to someone else — always with a reason and
- * remarks (spec 2 §2). Those two are what make the assignment history readable
- * by whoever inherits the complaint, so the button stays disabled until both
- * are there; sp_TransferTicket refuses without them too.
+ * Reassign one complaint, or many — always with a reason and remarks, which
+ * are what make the history readable by whoever inherits it. The person list
+ * is the server's "Can assign to" list (AssigneePicker). Only a caller who
+ * can see a whole office ("Can see" Office or wider) may leave it Unassigned
+ * or move it to another office; the server decides either way.
  *
- * The branch picker is always offered: assertCanAssign is the real gate and
- * answers a Team/Self caller with a clear 403. Picking a branch reloads that
- * branch's roster and sends ToBranchId.
+ * `onError`, when given, takes every refusal instead of the default toast
+ * (the detail page uses it to leave a record that is no longer the caller's).
  */
-export default function TransferTicketModal({ open, onClose, ticketIds = [], onDone }) {
-  const [branch, setBranch] = useState(null);
-  const [assignee, setAssignee] = useState(null);
+export default function TransferTicketModal({ open, onClose, ticketIds = [], onDone, onError }) {
+  const [person, setPerson] = useState(null);       // { Id, FullName }
+  const [unassign, setUnassign] = useState(false);
+  const [office, setOffice] = useState(null);
   const [reason, setReason] = useState(null);
   const [remarks, setRemarks] = useState("");
 
   const bulk = ticketIds.length > 1;
+  const wide = WIDE.has(useAccess("complaints").reach);
 
-  const { users } = useAssignableUsers({ branchId: branch?.value ?? null, enabled: open, module: "complaints" });
   const { lookups: reasons } = useLookups("transfer_reason", { enabled: open, showErrorMessage: false });
-  const { data: branchData } = useApiQuery({
+  const { data: officeData } = useApiQuery({
     queryKey: ["branches"],
     endpoint: SALES_ENDPOINTS.users.fetchBranches,
-    enabled: open,
+    enabled: open && wide,
     showErrorMessage: false,
   });
-
-  const assigneeOptions = users.map((u) => ({ value: u.Id, label: u.FullName }));
-  const reasonOptions = reasons.map((r) => ({ value: r.Id, label: r.Value }));
-  const branchOptions = (branchData?.branches ?? []).map((b) => ({ value: b.Id, label: b.BranchName }));
-
-  // A new branch means a new roster — the old pick no longer exists in it.
-  useEffect(() => setAssignee(null), [branch?.value]);
+  // "Sent back" is written only by the Send back action; picked by hand it would hide
+  // the giver from the next person's Send back (fn_RecordGiver skips it). 143 refuses it too.
+  const reasonOptions = reasons
+    .filter((r) => r.Code !== "sent_back")
+    .map((r) => ({ value: r.Id, label: r.Value }));
+  const officeOptions = (officeData?.branches ?? []).map((b) => ({ value: b.Id, label: b.BranchName }));
 
   const mutation = useApiMutation({
     endpoint: bulk ? SUPPORT_ENDPOINTS.tickets.bulkTransferTickets : SUPPORT_ENDPOINTS.tickets.transferTicket,
-    // Bulk has a skip case (sp_BulkTransferTickets leaves an already-correct
-    // assignment alone) that a fixed "transferred" toast would misreport, so
-    // it reports its own outcome below from the resolved payload instead of
-    // the mutation's own fire-and-forget success message. Single-complaint
-    // has no skip case — it keeps the plain message.
-    showSuccessMessage: !bulk,
-    successMessage: "Complaint transferred",
-    invalidateQueries: [["tickets"], ["ticket-detail"], ["customer-detail"]],
+    showSuccessMessage: false,   // worded below: the person's name, or the server's bulk count
+    showErrorMessage: !onError,
+    onError,
+    invalidateQueries: [["tickets"], ["ticket-detail"], ["customer-detail"], ["logged-by-me"]],
   });
 
-  const reset = () => { setBranch(null); setAssignee(null); setReason(null); setRemarks(""); };
+  const reset = () => { setPerson(null); setUnassign(false); setOffice(null); setReason(null); setRemarks(""); };
   const handleClose = () => { if (mutation.isPending) return; reset(); onClose?.(); };
-  const ready = Boolean(assignee && reason && remarks.trim());
-
-  // sp_BulkTransferTickets returns { Transferred, Skipped, ResponseMess } —
-  // Transferred:0 means every selected complaint already sat with the target
-  // (not a failure, but not a move either), so it must never read as the
-  // green "it moved" toast. Prefer the server's own wording when it sent one.
-  const announceBulkResult = (result) => {
-    const transferred = result?.Transferred ?? 0;
-    const skipped = result?.Skipped ?? 0;
-    const message = result?.ResponseMess || (
-      transferred === 0
-        ? `Nothing moved — already with that person (${skipped} skipped)`
-        : skipped > 0
-          ? `${transferred} transferred, ${skipped} already with that person`
-          : `${transferred} complaint(s) transferred`
-    );
-    enqueueSnackbar(message, { variant: transferred > 0 ? "success" : "warning" });
-  };
+  const ready = Boolean((person || unassign) && reason && remarks.trim());
 
   const submit = async () => {
     if (!ready) return;
-    const common = { ToUserId: assignee.value, ToBranchId: branch?.value ?? null, ReasonId: reason.value, Remarks: remarks.trim() };
+    const common = {
+      ToUserId: unassign ? null : person.Id,
+      ToBranchId: office?.value ?? null,
+      ReasonId: reason.value,
+      Remarks: remarks.trim(),
+    };
     try {
       const result = await mutation.mutateAsync(bulk ? { TicketIds: ticketIds, ...common } : { TicketId: ticketIds[0], ...common });
-      if (bulk) announceBulkResult(result);
+      const said = bulk ? result?.ResponseMess : null;
+      enqueueSnackbar(said || (unassign ? "Unassigned" : `Reassigned to ${person.FullName}`), { variant: "success" });
       reset();
-      onDone?.();
+      onDone?.(result);
       onClose?.();
     } catch {
-      // useApiMutation already surfaced the server's message (a 403 from
-      // assertCanAssign, a 400 from the SP's no-op check).
+      // Refusal already surfaced (toast or onError); the dialog stays open.
     }
   };
 
+  const label = unassign ? "Leave unassigned" : person ? `Reassign to ${firstName(person.FullName)}` : "Reassign";
+
   return (
-    <Modal open={open} onClose={handleClose} size="sm" data-testid="transfer-ticket-modal">
+    <Modal open={open} onClose={handleClose} size="sm" data-testid="reassign-ticket-modal">
       <Modal.Header
-        title={bulk ? `Reassign ${ticketIds.length} complaints` : "Transfer complaint"}
-        icon={<ArrowRightLeft size={18} />}
+        title={bulk ? `Reassign ${ticketIds.length} complaints` : "Reassign complaint"}
+        icon={<Users size={18} />}
         onClose={handleClose}
       />
       <Modal.Body>
         <div style={{ display: "flex", flexDirection: "column", gap: "calc(16rem / 15)" }}>
-          <Combobox
-            label="Branch"
-            options={branchOptions}
-            value={branch}
-            onChange={setBranch}
-            placeholder="Keep current branch"
-            data-testid="ticket-transfer-branch"
+          <AssigneePicker
+            module="complaints"
+            recordId={bulk ? null : ticketIds[0] ?? null}
+            enabled={open}
+            label="Assigned to"
+            required={!unassign}
+            disabled={unassign}
+            value={person?.Id ?? null}
+            onChange={(id, user) => setPerson(id ? { Id: id, FullName: user?.FullName ?? "" } : null)}
+            data-testid="ticket-reassign-person"
           />
-          <Combobox
-            label="New assignee"
-            required
-            options={assigneeOptions}
-            value={assignee}
-            onChange={setAssignee}
-            placeholder="Who takes it over?"
-            data-testid="ticket-transfer-assignee"
-          />
+          {wide && (
+            <>
+              <Checkbox
+                label="Unassigned"
+                checked={unassign}
+                onChange={(e) => setUnassign(e.target.checked)}
+                data-testid="ticket-reassign-unassigned"
+              />
+              <Combobox
+                label="Move to another office"
+                options={officeOptions}
+                value={office}
+                onChange={setOffice}
+                placeholder="Stays in its office"
+                data-testid="ticket-reassign-office"
+              />
+            </>
+          )}
           <Combobox
             label="Reason"
             required
@@ -126,7 +127,7 @@ export default function TransferTicketModal({ open, onClose, ticketIds = [], onD
             value={reason}
             onChange={setReason}
             placeholder="Why is this moving?"
-            data-testid="ticket-transfer-reason"
+            data-testid="ticket-reassign-reason"
           />
           <TextArea
             label="Remarks"
@@ -134,20 +135,14 @@ export default function TransferTicketModal({ open, onClose, ticketIds = [], onD
             value={remarks}
             onChange={(e) => setRemarks(e.target.value)}
             placeholder="What the next person needs to know"
-            data-testid="ticket-transfer-remarks"
+            data-testid="ticket-reassign-remarks"
           />
         </div>
       </Modal.Body>
       <Modal.Footer>
         <Button variant="ghost" onClick={handleClose} disabled={mutation.isPending}>Cancel</Button>
-        <Button
-          variant="primary"
-          onClick={submit}
-          disabled={!ready}
-          loading={mutation.isPending}
-          data-testid="ticket-transfer-submit"
-        >
-          {bulk ? "Reassign" : "Transfer"}
+        <Button variant="primary" onClick={submit} disabled={!ready} loading={mutation.isPending} data-testid="ticket-reassign-submit">
+          {label}
         </Button>
       </Modal.Footer>
     </Modal>

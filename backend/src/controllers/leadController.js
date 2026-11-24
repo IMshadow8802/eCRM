@@ -1,27 +1,26 @@
 const database = require("../config/database");
 const responseHelper = require("../utils/responseHelper");
 const attachmentController = require("./attachmentController");
-const {
-  scopeParams,
-  canSeeRecord,
-  assertRecordAccess,
-  assertCanAssign,
-  scopeFor,
-} = require("../middleware/permission");
+const { assertRecordAccess, scopeFor } = require("../middleware/permission");
+const { actor } = require("../utils/actor");
+const { emitToUser } = require("../realtime/events");
+const { SCOPES } = require("../realtime/contract");
 const { positiveInt, pageParams, optionalDateTime } = require("../utils/controllerKit");
 const { applyMobiles } = require("../utils/mobile");
 const { parseDay } = require("../utils/reportKit");
 const { termsError } = require("../utils/commission");
 
 // Mutating SPs log their own activity server-side and return exactly one
-// status row: Id + ResponseCode + ResponseMess.
-async function runSp(res, spName, params, failMessage) {
+// status row: Id + ResponseCode + ResponseMess. `onOk(result, row)` runs on a
+// 200 and may return a replacement message.
+async function runSp(res, spName, params, failMessage, onOk) {
   try {
     const result = await database.executeStoredProcedure(spName, params);
     const spResponse = result.recordset?.[0] ?? result.recordsets?.[0]?.[0];
     const message = spResponse.ResponseMess || spResponse.ResponseMessage;
     if (spResponse.ResponseCode === 200) {
-      return responseHelper.success(res, message, spResponse);
+      const better = onOk ? await onOk(result, spResponse) : null;
+      return responseHelper.success(res, better || message, spResponse);
     }
     return responseHelper.error(res, message, "SP_ERROR", spResponse.ResponseCode);
   } catch (err) {
@@ -55,12 +54,36 @@ const transferArgs = (body) => ({
 // reportKit's round-trip parse, not a bare regex: 2026-02-30 matches the shape
 // but is not a date, and reaching @FromDate DATE with it is a 500 where the
 // report it drilled from answers 400.
+// "This person's leads changed": the previous and the new holder refetch.
+// Invalidation only, no data (realtime/contract.js).
+const tellHolders = (ids) => {
+  for (const id of new Set(ids.map(Number).filter(Boolean))) emitToUser(id, SCOPES.RECORDS, { module: "leads" });
+};
+
 const isoDay = (s) => (typeof s === "string" && parseDay(s) ? s : null);
 const LEAD_SORTS = ["created", "lastActivity", "name", "value", "nextFollowUp"];
 
+// "Lead saved and assigned to Vinod". sp_SaveLead does not return the name, so
+// it is read from the caller's own assign list (the person was just accepted
+// there). Any failure keeps the procedure's plain message.
+async function assignedMessage(CompId, UserId, OwnerId) {
+  try {
+    const result = await database.executeStoredProcedure("sp_FetchAssignableUsers", {
+      CompId, UserId, Module: "leads", RecordId: null, TargetUserId: OwnerId,
+    });
+    const name = result.recordsets?.[0]?.[0]?.FullName;
+    return name ? `Lead saved and assigned to ${name}` : null;
+  } catch {
+    return null;
+  }
+}
+
 const leadController = {
   async save(req, res) {
-    const { CompId, BranchId, UserId } = req.user;
+    const { CompId, UserId } = actor(req);
+    // A new lead starts in the caller's live home office (W6), not the one
+    // frozen into the token at sign-in. sp_SaveLead ignores it on update.
+    const BranchId = req.access?.primaryBranchId ?? null;
     const Id = positiveInt(req.body.Id) ?? 0;
     const fields = pick(req.body, LEAD_FIELDS);
     // Before anything touches the DB. sp_ConvertLead matches a customer on this
@@ -104,23 +127,21 @@ const leadController = {
       fields.StatusId = null;
       fields.FirstFollowupAt = null;
     }
-    // Assigning on create is still an assignment: same roster rule as transfer.
-    // Only when a target is named — an unassigned create is legal for everyone,
-    // while assertCanAssign 403s a null target below Branch scope.
-    if (Id === 0 && fields.OwnerId
-        && !(await assertCanAssign(req, res, { toUserId: fields.OwnerId, toBranchId: null }))) return;
+    // Who may be named on create is sp_SaveLead's call (its 403 is relayed).
     const partner = {
       SetPartner: partnerSent ? 1 : 0, PartnerId: partnerSent ? PartnerId : null,
       CommType: partnerSent ? CommType : null, CommValue: partnerSent ? CommValue : null,
       // A missing CommType key keeps the terms (the proc's usual rule); an explicit null means "no commission".
       SetTerms: partnerSent && canTerms && Object.prototype.hasOwnProperty.call(req.body, "CommType") ? 1 : 0,
     };
-    return runSp(res, "sp_SaveLead", { Id, CompId, BranchId, UserId, ...fields, ...partner }, "Failed to save lead");
+    const OwnerId = Id === 0 ? positiveInt(fields.OwnerId) : null;
+    return runSp(res, "sp_SaveLead", { Id, CompId, BranchId, UserId, ...fields, ...partner }, "Failed to save lead",
+      OwnerId ? () => assignedMessage(CompId, UserId, OwnerId) : undefined);
   },
 
   async fetch(req, res) {
     try {
-      const { CompId } = req.user;
+      const { CompId, UserId } = actor(req);
       const {
         BranchId = null, SearchTerm = null,
         StatusId = null, StatusCode = null, ProductId = null, OwnerId = null, SourceId = null,
@@ -136,11 +157,10 @@ const leadController = {
       const { PageNumber, PageSize } = pageParams(req.body);
 
       const result = await database.executeStoredProcedure("sp_FetchLeads", {
-        CompId, BranchId, PageNumber, PageSize, SearchTerm,
+        CompId, UserId, BranchId, PageNumber, PageSize, SearchTerm,
         StatusId, StatusCode, ProductId, OwnerId, SourceId, PartnerId: positiveInt(PartnerId),
         Overdue: bit(Overdue), Unassigned: bit(Unassigned),
         FromDate: isoDay(FromDate), ToDate: isoDay(ToDate), ...sort,
-        ...scopeParams(req),
       });
 
       const leads = result.recordsets[0] || [];
@@ -162,13 +182,14 @@ const leadController = {
 
   async detail(req, res) {
     try {
-      const { CompId } = req.user;
-      const { LeadId } = req.body;
-      const result = await database.executeStoredProcedure("sp_FetchLeadDetail", { CompId, LeadId });
+      const { CompId, UserId } = actor(req);
+      const LeadId = positiveInt(req.body.LeadId) ?? 0;
+      const result = await database.executeStoredProcedure("sp_FetchLeadDetail", { CompId, UserId, LeadId });
       const rs = result.recordsets ?? [];
       let lead = rs[0]?.[0] || null;
-      // 404 rather than 403: a user who cannot see a lead should not learn it exists.
-      if (!canSeeRecord(req, lead, "OwnerId")) {
+      // The procedure returns no row when the caller may not see the lead.
+      // 404 rather than 403: they should not learn it exists.
+      if (!lead) {
         return responseHelper.error(res, "Lead not found", "NOT_FOUND", 404);
       }
       // Agreed terms and commission rows (the last result set) need `partners` view.
@@ -189,7 +210,7 @@ const leadController = {
   },
 
   async setStatus(req, res) {
-    const { CompId, UserId } = req.user;
+    const { CompId, UserId } = actor(req);
     const { LeadId, StatusId, LostReasonId = null } = req.body;
     if (!(await assertRecordAccess(req, res, "lead", LeadId, "write"))) return;
     return runSp(
@@ -206,7 +227,7 @@ const leadController = {
   // value from the quotation and ignores WonValue; without one the agent's
   // number is the value — small leads are won with no quotation at all.
   async convert(req, res) {
-    const { CompId, UserId } = req.user;
+    const { CompId, UserId } = actor(req);
     const LeadId = positiveInt(req.body.LeadId);
     const QuotationId = positiveInt(req.body.QuotationId);
     const raw = req.body.WonValue;
@@ -231,20 +252,28 @@ const leadController = {
     );
   },
 
+  // Reassign, send back (SendBack: true — back to whoever gave it; remarks, no
+  // reason) and unassign. sp_TransferLead decides who may go where (gates 1-8)
+  // and its refusal is relayed as-is. Installed phone builds send no SendBack.
   async transfer(req, res) {
-    const { CompId, UserId } = req.user;
-    const { LeadId } = req.body;
+    const { CompId, UserId } = actor(req);
+    const LeadId = positiveInt(req.body.LeadId);
+    const SendBack = bit(req.body.SendBack) ? 1 : 0;
     const args = transferArgs(req.body);
-    if (blank(args.Remarks) || !args.ReasonId) {
-      return responseHelper.validationError(res, "A reason and remarks are required for a transfer");
+    if (!LeadId) return responseHelper.validationError(res, "LeadId is required");
+    if (SendBack && blank(args.Remarks)) {
+      return responseHelper.validationError(res, "Remarks are required to send this back");
+    }
+    if (!SendBack && (blank(args.Remarks) || !args.ReasonId)) {
+      return responseHelper.validationError(res, "A reason and remarks are required to reassign");
     }
     if (!(await assertRecordAccess(req, res, "lead", LeadId, "write"))) return;
-    if (!(await assertCanAssign(req, res, { toUserId: args.ToUserId, toBranchId: args.ToBranchId }))) return;
-    return runSp(res, "sp_TransferLead", { CompId, LeadId, ...args, UserId }, "Failed to transfer lead");
+    return runSp(res, "sp_TransferLead", { CompId, LeadId, ...args, UserId, SendBack }, "Failed to reassign lead",
+      (_result, row) => { tellHolders([row.FromUserId, row.ToUserId]); });
   },
 
   async bulkTransfer(req, res) {
-    const { CompId, UserId } = req.user;
+    const { CompId, UserId } = actor(req);
     const ids = Array.isArray(req.body.LeadIds)
       ? [...new Set(req.body.LeadIds.map(positiveInt).filter(Boolean))]
       : [];
@@ -253,26 +282,22 @@ const leadController = {
       return responseHelper.validationError(res, "Pick between 1 and 200 leads");
     }
     if (blank(args.Remarks) || !args.ReasonId) {
-      return responseHelper.validationError(res, "A reason and remarks are required for a transfer");
+      return responseHelper.validationError(res, "A reason and remarks are required to reassign");
     }
-    // Every lead must be visible to the caller; the SP is tenant-scoped only.
-    // ponytail: N sequential sp_FetchLeadDetail reads (5 recordsets each), ≤200 ids;
-    // upgrade path = one sp_FetchLeadsVisibility(@LeadIdsJson) returning
-    // Id/BranchId/OwnerId/CreatedBy + canSeeRecord per row.
-    for (const id of ids) {
-      if (!(await assertRecordAccess(req, res, "lead", id, "write"))) return;
-    }
-    if (!(await assertCanAssign(req, res, { toUserId: args.ToUserId, toBranchId: args.ToBranchId }))) return;
+    // One call: sp_BulkTransferLeads runs every gate per id and refuses the
+    // whole batch on the first failure ("<gate sentence> (n of m refused)").
+    // Its second result set lists every previous and new holder.
     return runSp(
       res,
       "sp_BulkTransferLeads",
       { CompId, LeadIdsJson: JSON.stringify(ids), ...args, UserId },
-      "Failed to transfer leads",
+      "Failed to reassign leads",
+      (result) => { tellHolders((result.recordsets?.[1] ?? []).map((r) => r.UserId)); },
     );
   },
 
   async delete(req, res) {
-    const { CompId } = req.user;
+    const { CompId } = actor(req);
     const { Id } = req.body;
     if (!(await assertRecordAccess(req, res, "lead", Id, "write"))) return;
     try {

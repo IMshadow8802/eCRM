@@ -31,7 +31,7 @@ appId: com.shadowider.eCRM
 - waitForAnimationToEnd
 - back
 - waitForAnimationToEnd
-- tapOn: "Transfer"
+- tapOn: "Reassign"
 - waitForAnimationToEnd
 - takeScreenshot: e2e-shots/app/23
 - back

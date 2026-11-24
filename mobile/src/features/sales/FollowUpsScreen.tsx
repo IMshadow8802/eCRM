@@ -61,6 +61,16 @@ const EMPTY: Record<FollowUpView, { title: string; message: string }> = {
   all: { title: "No follow-ups", message: "Schedule one from a lead." },
 };
 
+/**
+ * Why the caller sees a row (fn_VisibleFollowUps, Task 13): 1 = its lead is
+ * visible; 2 = an open one assigned to them on a lead they cannot see — they
+ * act on it, but the lead does not open; 3 = look-only (a manager's line): no
+ * phone (the server sends none), no actions, no lead. Missing (an older
+ * server) reads as 1.
+ */
+const opensLead = (f: FollowUp) => f.Via == null || f.Via === 1;
+const acts = (f: FollowUp) => f.Via !== 3 && f.CanAct !== false;
+
 const count = (q: { data?: { data?: { pagination?: { totalRecords?: number } } | null } }) =>
   q.data?.data?.pagination?.totalRecords;
 
@@ -154,12 +164,12 @@ export default function FollowUpsScreen({ navigation, route, pushed = false }: P
   const now = new Date();
   const meta = `${shortDay(now)} · ${left == null ? "—" : left} ${left === 1 ? "call or visit" : "calls and visits"} left today`;
 
-  const openLead = (f: FollowUp) => navigation.navigate("LeadDetail", { leadId: f.LeadId });
+  const openLead = (f: FollowUp) => (opensLead(f) ? () => navigation.navigate("LeadDetail", { leadId: f.LeadId }) : undefined);
 
   const row = (f: FollowUp, index: number, last: boolean) => {
     const open = f.Status === "open";
     const badge = followUpBadge(f.Type, open ? (f.IsOverdue ? "overdue" : "open") : f.Status);
-    const actionable = open && can.edit;
+    const actionable = open && can.edit && acts(f);
     const body = (
       <ListRow
         badge={{ tone: badge.tone, icon: badge.icon }}
@@ -175,7 +185,7 @@ export default function FollowUpsScreen({ navigation, route, pushed = false }: P
           ) : null
         }
         noSeparator={index === 0}
-        onPress={() => openLead(f)}
+        onPress={openLead(f)}
         testID={`followup-row-${f.Id}`}
       />
     );
@@ -184,7 +194,8 @@ export default function FollowUpsScreen({ navigation, route, pushed = false }: P
         {actionable ? (
           <SwipeRow
             left={[{ key: "done", label: "Done", icon: Check, color: "success", onPress: () => sheets.current?.done(f) }]}
-            right={[{ key: "reschedule", label: "Reschedule", icon: CalendarClock, color: "primary", onPress: () => sheets.current?.reschedule(f) }]}
+            // Reschedule books on the lead (sp_ScheduleFollowUp needs it visible): not on a Via 2 line.
+            right={opensLead(f) ? [{ key: "reschedule", label: "Reschedule", icon: CalendarClock, color: "primary", onPress: () => sheets.current?.reschedule(f) }] : []}
           >
             {body}
           </SwipeRow>
@@ -240,14 +251,14 @@ export default function FollowUpsScreen({ navigation, route, pushed = false }: P
                   right={{ text: when(f, now) }}
                   meta={[followUpTypeLabel(f.Type), f.LeadCompany].filter(Boolean).join(" · ")}
                   noSeparator={i === 0}
-                  onPress={() => openLead(f)}
+                  onPress={openLead(f)}
                 />
               ))}
             </ListGroup>
           ) : null}
         </>
       ) : null}
-      {can.edit && rows.some((f) => f.Status === "open") ? (
+      {can.edit && rows.some((f) => f.Status === "open" && acts(f)) ? (
         <Footnote icon={ArrowRight}>Swipe a row right to mark it done, left to reschedule.</Footnote>
       ) : null}
     </>

@@ -5,7 +5,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ArrowLeft, Plus } from "lucide-react-native";
 import type { StackScreenProps } from "@react-navigation/stack";
 
-import { fetchTickets } from "../../api/ticketQueries";
+import { fetchLoggedByMe, fetchTickets } from "../../api/ticketQueries";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { useParamState } from "../../hooks/useParamState";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
@@ -30,7 +30,7 @@ import {
 } from "../../ui";
 import { useAccess } from "../auth/useAccess";
 import { ComplaintDetailBody } from "./ComplaintDetailBody";
-import { ComplaintRow, type RowAction } from "./ComplaintRow";
+import { ComplaintRow, LoggedRow, type RowAction } from "./ComplaintRow";
 import { ComplaintSheets, type ComplaintSheetsHandle } from "./ComplaintSheets";
 import {
   complaintCountQuery,
@@ -43,6 +43,13 @@ import { useTicketRefData } from "./useTicketRefData";
 
 type Props = StackScreenProps<RootStackParamList, "Complaints">;
 
+/**
+ * The band's presets: the five ticket queues, then "Logged by me" (§2.5) — a
+ * different list (fetchLoggedByMe: every status, wherever it went), so it has
+ * no count, no status pills and no swipes.
+ */
+type Preset = ComplaintQueue | "logged";
+
 /** §7.1: Unassigned stays, a fifth preset; the row scrolls sideways when it does not fit. */
 const QUEUES: { value: ComplaintQueue; label: string }[] = [
   { value: "mine", label: "Mine" },
@@ -53,11 +60,12 @@ const QUEUES: { value: ComplaintQueue; label: string }[] = [
 ];
 
 /** 20a, per preset. Escalated is E's copy; the others are proposed. */
-const EMPTY: Record<ComplaintQueue, { title: string; message: string; showMine?: boolean }> = {
+const EMPTY: Record<Preset, { title: string; message: string; showMine?: boolean }> = {
   mine: { title: "Nothing assigned to you", message: "Complaints assigned to you show up here." },
   team: { title: "No complaints here", message: "Nothing your team can see matches." },
   unassigned: { title: "Nobody is waiting", message: "Complaints that nobody has picked up show up here." },
   overdue: { title: "Nothing past its due time", message: "Every open complaint is inside its due time." },
+  logged: { title: "Nothing logged by you", message: "Complaints you log show up here, wherever they go." },
   escalated: {
     title: "No complaints here",
     message: "Nothing is escalated to you right now. New escalations appear here and in your Inbox.",
@@ -88,7 +96,7 @@ export default function ComplaintsScreen({ navigation, route }: Props) {
   // "Mine" unless a navigate() (Home's numbers, Search's "See all") asks for
   // another queue — which also resets the pill and takes the carried term, so
   // the list is exactly what was counted.
-  const [queue, setQueue] = useParamState<ComplaintQueue>(route.params, route.params?.queue, "mine", () => {
+  const [queue, setQueue] = useParamState<Preset>(route.params, route.params?.queue, "mine", () => {
     setStatus("active");
     setSearch(route.params?.term ?? "");
   });
@@ -101,7 +109,9 @@ export default function ComplaintsScreen({ navigation, route }: Props) {
   }, []);
 
   const term = useDebouncedValue(search.trim());
-  const params = useMemo(() => complaintQueueParams(queue, status, userId, term), [queue, status, userId, term]);
+  const logged = queue === "logged";
+  const ticketQueue: ComplaintQueue = logged ? "mine" : queue;
+  const params = useMemo(() => complaintQueueParams(ticketQueue, status, userId, term), [ticketQueue, status, userId, term]);
 
   // No user yet: a "mine" filter would be AssignedTo null — the whole reach,
   // labelled Mine. Ask nothing until there is one (as Leads).
@@ -109,11 +119,22 @@ export default function ComplaintsScreen({ navigation, route }: Props) {
   const ticketsQuery = useInfiniteQuery({
     queryKey: ["tickets", params],
     queryFn: ({ pageParam }) => fetchTickets({ ...params, PageNumber: pageParam }),
-    enabled: known(queue),
+    enabled: !logged && known(ticketQueue),
     initialPageParam: 1,
     placeholderData: keepPreviousData,
     getNextPageParam: (last, _all, page) => (page < (last.data?.pagination.totalPages ?? 1) ? page + 1 : undefined),
   });
+
+  // Under "tickets" so a write's invalidation of the lists refreshes it too.
+  const loggedQuery = useInfiniteQuery({
+    queryKey: ["tickets", "logged", term],
+    queryFn: ({ pageParam }) => fetchLoggedByMe({ SearchTerm: term || null, PageNumber: pageParam }),
+    enabled: logged,
+    initialPageParam: 1,
+    placeholderData: keepPreviousData,
+    getNextPageParam: (last, _all, page) => (page < last.pagination.totalPages ? page + 1 : undefined),
+  });
+  const loggedRows = useMemo(() => loggedQuery.data?.pages.flatMap((p) => p.rows) ?? [], [loggedQuery.data]);
 
   const { statuses } = useTicketRefData();
 
@@ -128,7 +149,7 @@ export default function ComplaintsScreen({ navigation, route }: Props) {
   });
   // While a search is set the pills go without counts, as on Leads: 1 + N
   // requests per settled term is a storm for little use.
-  const pillQueries: ReturnType<typeof complaintCountQuery>[] = term || !known(queue)
+  const pillQueries: ReturnType<typeof complaintCountQuery>[] = term || logged || !known(ticketQueue)
     ? []
     : [
       complaintCountQuery(complaintQueueParams(queue, "active", userId, "")),
@@ -136,11 +157,14 @@ export default function ComplaintsScreen({ navigation, route }: Props) {
     ];
   const pillCounts = useQueries({ queries: pillQueries, combine: (rs) => rs.map(total) });
 
-  const tabs: TabOption<ComplaintQueue>[] = QUEUES.map((q, i) => ({
-    ...q,
-    count: presetCounts[i],
-    countTone: q.value === "overdue" ? ("danger" as const) : undefined,
-  }));
+  const tabs: TabOption<Preset>[] = [
+    ...QUEUES.map((q, i) => ({
+      ...q,
+      count: presetCounts[i],
+      countTone: q.value === "overdue" ? ("danger" as const) : undefined,
+    })),
+    { value: "logged", label: "Logged by me" },
+  ];
   const pills: FilterOption<ComplaintStatusFilter>[] = [
     // E draws "All"; the controller ruled "Active" so the first pill equals its preset (ledgered deviation).
     { value: "active", label: "Active", count: pillCounts[0] },
@@ -154,7 +178,10 @@ export default function ComplaintsScreen({ navigation, route }: Props) {
   ];
 
   const tickets = useMemo(() => ticketsQuery.data?.pages.flatMap((p) => p.data?.tickets ?? []) ?? [], [ticketsQuery.data]);
-  const { hasNextPage, isFetchingNextPage, fetchNextPage, isPlaceholderData } = ticketsQuery;
+  // The list on screen: the ticket queue's, or Logged by me's.
+  const shown = logged ? loggedQuery : ticketsQuery;
+  const count = logged ? loggedRows.length : tickets.length;
+  const { hasNextPage, isFetchingNextPage, fetchNextPage, isPlaceholderData } = shown;
   // The old rows under a new search are placeholders: their end is not this
   // query's end, so it asks for nothing more until the new page 1 lands.
   const loadMore = useCallback(() => {
@@ -162,13 +189,14 @@ export default function ComplaintsScreen({ navigation, route }: Props) {
   }, [hasNextPage, isFetchingNextPage, isPlaceholderData, fetchNextPage]);
   const narrowed = status !== "active" || term.length > 0;
 
-  const openTicket = useCallback(
-    (ticket: Ticket) => {
-      if (layout.isTwoPane) setSelected(ticket.Id);
-      else navigation.navigate("ComplaintDetail", { ticketId: ticket.Id });
+  const openId = useCallback(
+    (id: number) => {
+      if (layout.isTwoPane) setSelected(id);
+      else navigation.navigate("ComplaintDetail", { ticketId: id });
     },
     [layout.isTwoPane, navigation],
   );
+  const openTicket = useCallback((ticket: Ticket) => openId(ticket.Id), [openId]);
 
   // A swipe only reveals the blocks; a block opens its sheet (or the dialler).
   const onAction = useCallback(
@@ -191,21 +219,25 @@ export default function ComplaintsScreen({ navigation, route }: Props) {
           <HeaderButton label="New" icon={Plus} onPress={() => navigation.navigate("ComplaintForm", {})} accessibilityLabel="New complaint" />
         ) : null
       }
-      search={{ value: search, onChangeText: setSearch, placeholder: "Search number, customer, mobile" }}
+      search={{
+        value: search,
+        onChangeText: setSearch,
+        placeholder: logged ? "Search number, subject or customer" : "Search number, customer, mobile",
+      }}
       tabs={{ value: queue, options: tabs, onChange: setQueue as (v: string) => void, spread: true, size: "sm", testID: "complaint-presets" }}
     />
   );
 
-  const nothingAtAll = !term && status === "active" && pillCounts.every((c) => c === 0);
+  const nothingAtAll = logged || (!term && status === "active" && pillCounts.every((c) => c === 0));
   const pillBleed = { marginRight: layout.isTwoPane ? layout.gutter - metrics.gutter : 0 };
   const empty = EMPTY[queue];
   let body;
-  if (ticketsQuery.isLoading) {
-    body = <SkeletonRows pills rows={6} />;
-  } else if (ticketsQuery.isError && !tickets.length) {
+  if (shown.isLoading) {
+    body = <SkeletonRows pills={!logged} rows={6} />;
+  } else if (shown.isError && !count) {
     body = (
       <View testID="error-top" style={styles.errorTop}>
-        <ErrorCard onRetry={() => void ticketsQuery.refetch()} />
+        <ErrorCard onRetry={() => void shown.refetch()} />
       </View>
     );
   } else {
@@ -218,59 +250,93 @@ export default function ComplaintsScreen({ navigation, route }: Props) {
             <FilterPills label="Filter by status" value={status} options={pills} onChange={setStatus} testID="status-pills" />
           </View>
         )}
-        <FlatList
-          testID="complaints-list"
-          style={styles.list}
-          data={tickets}
-          keyExtractor={(t) => String(t.Id)}
-          onEndReached={loadMore}
-          onEndReachedThreshold={0.5}
-          contentContainerStyle={[styles.listContent, !tickets.length && styles.grow]}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          refreshControl={
-            <Refresher refreshing={ticketsQuery.isRefetching && !isPlaceholderData} onRefresh={ticketsQuery.refetch} />
-          }
-          renderItem={({ item, index }) => (
-            // One white group (E `.lg`), built per cell so the list stays virtualised.
-            <ListGroupCell first={index === 0} last={index === tickets.length - 1}>
-              <ComplaintRow
-                ticket={item}
-                first={index === 0}
-                selected={layout.isTwoPane && item.Id === selected}
-                onPress={openTicket}
-                onAction={onAction}
-                canWrite={can.edit}
-                canHold={canHold}
-              />
-            </ListGroupCell>
-          )}
-          ListFooterComponent={
-            hint && tickets.length && can.edit ? (
-              <View style={styles.hint}>
-                <InfoNote icon={ArrowLeft}>
-                  Swipe left: Call · On hold · Resolve. Swipe right: Escalate. Each opens its sheet; nothing changes on the swipe alone.
-                </InfoNote>
-              </View>
-            ) : null
-          }
-          ListEmptyComponent={
-            // Placeholder rows are the previous preset's: no verdict on this one yet.
-            isPlaceholderData ? (
-              <SkeletonRows rows={6} />
-            ) : (
-              <EmptyState
-                top
-                module="complaints"
-                accents={["done", "escalated"]}
-                title={narrowed ? "Nothing matches" : empty.title}
-                message={narrowed ? "Try another status, or clear the search." : empty.message}
-                actionLabel={!narrowed && empty.showMine ? "Show all of mine" : undefined}
-                onAction={() => setQueue("mine")}
-              />
-            )
-          }
-        />
+        {logged ? (
+          <FlatList
+            testID="logged-list"
+            style={styles.list}
+            data={loggedRows}
+            // Id is null on a row the caller can no longer open; the number is unique.
+            keyExtractor={(r) => r.TicketNo}
+            onEndReached={loadMore}
+            onEndReachedThreshold={0.5}
+            contentContainerStyle={[styles.listContent, !loggedRows.length && styles.grow]}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            refreshControl={<Refresher refreshing={loggedQuery.isRefetching && !isPlaceholderData} onRefresh={loggedQuery.refetch} />}
+            renderItem={({ item, index }) => (
+              <ListGroupCell first={index === 0} last={index === loggedRows.length - 1}>
+                <LoggedRow row={item} first={index === 0} onOpen={openId} />
+              </ListGroupCell>
+            )}
+            ListEmptyComponent={
+              isPlaceholderData ? (
+                <SkeletonRows rows={6} />
+              ) : (
+                <EmptyState
+                  top
+                  module="complaints"
+                  accents={["done", "escalated"]}
+                  title={term ? "Nothing matches" : empty.title}
+                  message={term ? "Clear the search." : empty.message}
+                />
+              )
+            }
+          />
+        ) : (
+          <FlatList
+            testID="complaints-list"
+            style={styles.list}
+            data={tickets}
+            keyExtractor={(t) => String(t.Id)}
+            onEndReached={loadMore}
+            onEndReachedThreshold={0.5}
+            contentContainerStyle={[styles.listContent, !tickets.length && styles.grow]}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            refreshControl={
+              <Refresher refreshing={ticketsQuery.isRefetching && !isPlaceholderData} onRefresh={ticketsQuery.refetch} />
+            }
+            renderItem={({ item, index }) => (
+              // One white group (E `.lg`), built per cell so the list stays virtualised.
+              <ListGroupCell first={index === 0} last={index === tickets.length - 1}>
+                <ComplaintRow
+                  ticket={item}
+                  first={index === 0}
+                  selected={layout.isTwoPane && item.Id === selected}
+                  onPress={openTicket}
+                  onAction={onAction}
+                  canWrite={can.edit}
+                  canHold={canHold}
+                />
+              </ListGroupCell>
+            )}
+            ListFooterComponent={
+              hint && tickets.length && can.edit ? (
+                <View style={styles.hint}>
+                  <InfoNote icon={ArrowLeft}>
+                    Swipe left: Call · On hold · Resolve. Swipe right: Escalate. Each opens its sheet; nothing changes on the swipe alone.
+                  </InfoNote>
+                </View>
+              ) : null
+            }
+            ListEmptyComponent={
+              // Placeholder rows are the previous preset's: no verdict on this one yet.
+              isPlaceholderData ? (
+                <SkeletonRows rows={6} />
+              ) : (
+                <EmptyState
+                  top
+                  module="complaints"
+                  accents={["done", "escalated"]}
+                  title={narrowed ? "Nothing matches" : empty.title}
+                  message={narrowed ? "Try another status, or clear the search." : empty.message}
+                  actionLabel={!narrowed && empty.showMine ? "Show all of mine" : undefined}
+                  onAction={() => setQueue("mine")}
+                />
+              )
+            }
+          />
+        )}
       </>
     );
   }

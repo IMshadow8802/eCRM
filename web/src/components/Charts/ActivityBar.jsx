@@ -1,7 +1,7 @@
 import { useTheme } from "@mui/material/styles";
 import useUiScale from "../../hooks/useUiScale";
 import { Box } from "@mui/material";
-import SampleBadge from "./SampleBadge";
+import ChartEmpty from "./ChartEmpty";
 import {
   Bar,
   BarChart,
@@ -16,23 +16,16 @@ import {
 /**
  * Quarterly / period-over-period grouped bar chart. 3–4 series.
  */
-const FALLBACK = [
-  { name: "Q1", leads: 320, calls: 120, tickets: 48 },
-  { name: "Q2", leads: 410, calls: 168, tickets: 62 },
-  { name: "Q3", leads: 380, calls: 154, tickets: 58 },
-  { name: "Q4", leads: 460, calls: 196, tickets: 70 },
-];
-
 export default function ActivityBar({ data, height = 240 }) {
   const theme = useTheme();
   const k = useUiScale();
   const p = theme.tokens;
   const hasData = Array.isArray(data) && data.length > 0;
-  const rows = hasData ? data : FALLBACK;
+  if (!hasData) return <ChartEmpty height={height * k} />;
+  const rows = data;
 
   return (
     <Box sx={{ position: "relative" }}>
-      {!hasData && <SampleBadge />}
       <ResponsiveContainer width="100%" height={height * k}>
         <BarChart data={rows} margin={{ top: 6 * k, right: 8 * k, left: 0, bottom: 0 }}>
         <CartesianGrid

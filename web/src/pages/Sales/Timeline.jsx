@@ -36,6 +36,11 @@ const formatType = (type) =>
 const metaFor = (type) =>
   TYPE_META[String(type || "").toLowerCase()] ?? { label: formatType(type), Icon: Clock, tone: "primary" };
 
+// Summaries are stored text. Rows written before the access model say
+// "Transferred to <name> — <reason>"; the screens now say "Reassigned".
+// Reworded on display, history untouched (mobile: utils/activityText.ts).
+export const activityText = (summary) => summary?.replace(/^Transferred to /i, "Reassigned to ");
+
 const activityDate = (item) => item.CreatedAt ?? item.CreatedDate ?? null;
 
 const isCall = (item) => String(item?.Type || "").toLowerCase().includes("call");
@@ -74,7 +79,7 @@ export default function Timeline({ activity = [], calls = [], outcomes = [] }) {
           title: meta.label,
           Icon: meta.Icon,
           tone: meta.tone,
-          detail: item.Summary,
+          detail: activityText(item.Summary),
           at: activityDate(item),
         };
       });

@@ -132,6 +132,8 @@ export type ModuleKey =
   | "people" | "tasks" | "teams" | "projects" | "roles" | "offices"
   | "settings" | "dashboard" | "attendance" | "partners" | "cards";
 export type Reach = "Own" | "Team" | "Office" | "OfficeTree" | "Company";
+/** "Can assign to" on a role's leads/complaints grant (130). NULL reads as Team on the server. */
+export type AssignReach = "Team" | "Office" | "OfficeTree" | "Company";
 
 /** Role module grants (backend publicAccess). Hiding a control is a courtesy; the server decides. */
 export interface Access {
@@ -141,7 +143,15 @@ export interface Access {
   modules: Partial<
     Record<
     ModuleKey,
-    { view: boolean; add: boolean; edit: boolean; delete: boolean; reach: Reach | null }
+    {
+      view: boolean;
+      add: boolean;
+      edit: boolean;
+      delete: boolean;
+      reach: Reach | null;
+      /** leads/complaints only; null elsewhere, absent on an older server. */
+      assignReach?: AssignReach | null;
+    }
     >
   >;
 }
@@ -589,6 +599,13 @@ export interface Ticket {
   CustomerAddress?: string | null;
   /** How many other complaints this customer has raised. */
   PreviousTickets?: number | null;
+  /** Detail only (132) — the server's verdict on what the caller may do. Hints; the server re-checks. */
+  CanEdit?: boolean;
+  CanReassign?: boolean;
+  CanReopen?: boolean;
+  /** Who "Send back" returns it to; null when there is no one to send it back to. */
+  SendBackToId?: number | null;
+  SendBackToName?: string | null;
 }
 
 /** A row of tblTicketActivity (sp_FetchTicketDetail RS3), author joined. */
@@ -723,6 +740,14 @@ export interface Lead {
   UpdatedAt: string | null;
   /** sp_FetchLeads (122): the latest activity. The phone does not show it yet. */
   LastActivityAt?: string | null;
+  /** Detail only (132) — the server's verdict on what the caller may do. Hints; the server re-checks. */
+  CanEdit?: boolean;
+  CanReassign?: boolean;
+  /** 139: may move a closed (lost / junk / won) lead back to an active status. */
+  CanReopen?: boolean;
+  /** Who "Send back" returns it to; null when there is no one to send it back to. */
+  SendBackToId?: number | null;
+  SendBackToName?: string | null;
 }
 
 /** A row of tblLeadActivity (sp_FetchLeadDetail RS3), author joined. */
@@ -777,6 +802,13 @@ export interface FollowUp {
   OwnerName?: string | null;
   LeadStatus?: string | null;
   LeadStatusCode?: LeadStatusCode | null;
+  /**
+   * Why the caller sees it (fn_VisibleFollowUps): 1 = through the lead,
+   * 2 = assigned to them (open only), 3 = view-only (e.g. logged by them).
+   */
+  Via?: 1 | 2 | 3;
+  /** The server lets the caller complete/skip/delete it (403 otherwise). */
+  CanAct?: boolean;
 }
 
 /**
@@ -897,6 +929,33 @@ export interface AssignableUser {
   BranchId: number | null;
   BranchName: string | null;
   ReportsTo: number | null;
+  /**
+   * 1 = me, my manager, my people, whoever gave me the record · 2 = my
+   * offices · 3 = everyone else. The server sorts by GroupRank, FullName.
+   * Optional here only so a missing field never crashes a screen.
+   */
+  GroupRank?: 1 | 2 | 3;
+  /** The person who handed the caller this record (RecordId given). */
+  IsGiver?: boolean;
+  /** Full-day leave or a holiday at their office today. */
+  AwayToday?: boolean;
+}
+
+/** A row of /api/tickets/fetchLoggedByMe — complaints the caller logged, wherever they went. */
+export interface LoggedByMeRow {
+  /** null when the caller can no longer open it (CanOpen false). */
+  Id: number | null;
+  TicketNo: string;
+  CreatedAt: string;
+  CustomerName: string;
+  Subject: string;
+  StatusName: string;
+  StatusCode: string;
+  AssignedToName: string | null;
+  DueAt: string | null;
+  IsOverdue: boolean;
+  ClosedOn: string | null;
+  CanOpen: boolean;
 }
 
 /** A row of sp_FetchProducts RS1 (tblProduct + category name). */

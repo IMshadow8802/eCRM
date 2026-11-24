@@ -148,11 +148,15 @@ export const convertLead = (params: {
 }): Promise<ApiEnvelope<unknown>> =>
   post(LEAD_ENDPOINTS.convertLead, { Remarks: null, ...params });
 
-/** Reason and remarks are required. `ToBranchId` only for a cross-office move. */
+/**
+ * Reassign (reason + remarks) or, with `SendBack`, return it to whoever gave
+ * it to the caller (remarks only). `ToBranchId` only for a cross-office move.
+ */
 export const transferLead = (params: {
   LeadId: number;
   ToUserId: number;
   ToBranchId: number | null;
-  ReasonId: number;
+  ReasonId?: number | null;
   Remarks: string;
+  SendBack?: boolean;
 }): Promise<ApiEnvelope<unknown>> => post(LEAD_ENDPOINTS.transferLead, params);

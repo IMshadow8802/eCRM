@@ -1,0 +1,16 @@
+# C15 left vinod while open: "On hold" answers 404, the record closes, the
+# list comes back and says "This record is no longer with you".
+appId: com.shadowider.eCRM
+---
+- tapOn: "On hold"
+- assertVisible: "Put on hold"
+- tapOn:
+    text: "Put on hold"
+    index: 1
+- extendedWaitUntil:
+    visible: "This record is no longer with you"
+    timeout: 15000
+- takeScreenshot: agent-vinod-record-gone
+- assertNotVisible: "Complaint actions"
+- assertVisible:
+    id: "complaint-presets"

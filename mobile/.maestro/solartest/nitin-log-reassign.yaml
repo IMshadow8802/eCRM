@@ -1,0 +1,107 @@
+# Nitin (call desk): logs a complaint for an existing customer with nobody
+# assigned, finds it under Unassigned, Reassign -> search "vivek" -> Vivek.
+# Env: TAG, CUST, REASON.
+appId: com.shadowider.eCRM
+---
+- runFlow: ../common/open-work.yaml
+- tapOn: "Open My complaints"
+- assertVisible:
+    id: "complaint-presets"
+- tapOn: "New complaint"
+- assertVisible: "Customer \\*"
+- tapOn: "Search customer \\(mobile or name\\)"
+- inputText: "${CUST}"
+- extendedWaitUntil:
+    visible:
+      text: "${CUST}"
+      index: 1
+    timeout: 15000
+- tapOn:
+    text: "${CUST}"
+    index: 1
+- assertVisible: "Change customer"
+- scrollUntilVisible:
+    element: "One line — what is wrong"
+    centerElement: true
+- tapOn: "One line — what is wrong"
+- inputText: "${TAG} phone desk"
+- hideKeyboard
+- scrollUntilVisible:
+    element: "Assign to: Nobody yet"
+- takeScreenshot: st-nitin-form
+- tapOn: "Submit complaint"
+- extendedWaitUntil:
+    visible:
+      id: "complaint-presets"
+    timeout: 15000
+- runFlow:
+    file: ../access/preset.yaml
+    env:
+      NAME: "Unassigned"
+- tapOn: "Search number, customer, mobile"
+- inputText: "${TAG}"
+- extendedWaitUntil:
+    visible: ".*${TAG} phone desk.*"
+    timeout: 15000
+- repeat:
+    times: 3
+    while:
+      notVisible: "Complaint actions"
+    commands:
+      - waitForAnimationToEnd
+      - tapOn:
+          text: ".*${TAG} phone desk.*"
+          optional: true
+      - extendedWaitUntil:
+          visible: "Complaint actions"
+          timeout: 8000
+          optional: true
+- tapOn: "Reassign"
+- assertVisible: "Reassign complaint"
+- extendedWaitUntil:
+    visible: "Your manager and team|Your office|Everyone.*"
+    timeout: 15000
+- takeScreenshot: st-nitin-reassign-picker
+# 143: "Sent back" is never a reason you pick (only the Send back button writes it).
+- assertVisible: "${REASON}"
+- assertNotVisible: "Sent back"
+# Type, then wait for the debounced filter to drop the others. adb typing into a
+# settling sheet drops a character now and then (nothing matches): retype.
+- tapOn:
+    id: "reassign-search"
+- inputText: "vivek"
+- extendedWaitUntil:
+    notVisible: "Vinod Kumar\\s*"
+    timeout: 10000
+- repeat:
+    times: 3
+    while:
+      notVisible: "Vivek Kumar"
+    commands:
+      - tapOn:
+          id: "reassign-search"
+      - eraseText
+      - inputText: "vivek"
+      - extendedWaitUntil:
+          visible: "Vivek Kumar"
+          timeout: 10000
+          optional: true
+- assertVisible: "Vivek Kumar"
+- assertNotVisible: "Vinod Kumar\\s*"
+- hideKeyboard
+- tapOn: "Vivek Kumar"
+- tapOn: "${REASON}"
+- tapOn:
+    id: "reassign-remarks"
+- inputText: "${TAG} route"
+- hideKeyboard
+- tapOn: "Reassign to Vivek"
+- extendedWaitUntil:
+    visible: "Reassigned to Vivek.*"
+    timeout: 5000
+    optional: true
+- extendedWaitUntil:
+    visible:
+      id: "complaint-presets"
+    timeout: 15000
+- takeScreenshot: st-nitin-reassigned

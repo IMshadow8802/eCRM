@@ -6,10 +6,16 @@ import dayjs from "dayjs";
 
 vi.mock("../../components/ui/DateField", () => import("../../test/DateFieldStub"));
 import LeadCreateModal from "./LeadCreateModal";
+import { uploadAttachment } from "../../api/attachmentQueries";
 import useAuthStore from "../../stores/useAuthStore";
 import { server } from "../../test/mocks/server";
 import { pickTime } from "../../test/pickTime";
 import renderWithProviders from "../../test/renderWithProviders";
+
+vi.mock("../../api/attachmentQueries", async (importOriginal) => ({
+  ...(await importOriginal()),
+  uploadAttachment: vi.fn(),
+}));
 
 // The assignable roster, not every user — the owner picker must only offer
 // people leadController.save will accept (it 403s anyone outside this list).
@@ -18,6 +24,7 @@ const USERS = [
   { Id: 2, FullName: "Bob", BranchId: 2, BranchName: "Pune" },
 ];
 let rosterCalls = 0;
+let lastRoster = null;
 const SOURCES = [
   { Id: 5, Value: "Website" },
   { Id: 6, Value: "Referral" },
@@ -39,8 +46,9 @@ const json = (data) =>
 
 const mockReads = (customFields = []) =>
   server.use(
-    http.post("*/api/users/fetchAssignableUsers", async () => {
+    http.post("*/api/users/fetchAssignableUsers", async ({ request }) => {
       rosterCalls += 1;
+      lastRoster = await request.json();
       return json({ users: USERS });
     }),
     http.post("*/api/config/fetchLookups", async ({ request }) => {
@@ -59,11 +67,11 @@ const mockReads = (customFields = []) =>
     http.post("*/api/partners/fetchPartners", async () => json({ partners: PARTNERS })),
   );
 
-const mockSave = (capture) =>
+const mockSave = (capture, message = "Lead created") =>
   server.use(
     http.post("*/api/leads/saveLeads", async ({ request }) => {
       capture?.(await request.json());
-      return json({ Id: 42, ResponseCode: 200, ResponseMess: "Lead created" });
+      return HttpResponse.json({ success: true, message, responseCode: 200, data: { Id: 42, ResponseCode: 200, ResponseMess: "Lead created" } });
     }),
   );
 
@@ -102,7 +110,7 @@ describe("LeadCreateModal", () => {
     await user.type(screen.getByTestId("lead-city"), "Pune");
     await user.type(screen.getByTestId("lead-pincode"), "411001");
     await pick(user, "lead-product", "TV 43in");
-    await pick(user, "lead-owner", "Bob");
+    await pick(user, "lead-owner", /^Bob/);
     await user.type(screen.getByTestId("lead-remarks"), "Walk-in, wants delivery Friday");
     await user.click(screen.getByTestId("lead-create-submit"));
 
@@ -124,6 +132,86 @@ describe("LeadCreateModal", () => {
     expect(captured).not.toHaveProperty("StageId");
     expect(captured.CustomJSON).toBe("[]");
     expect(onClose).toHaveBeenCalled();
+  }, 20000);
+
+  it("'Assign to' asks the leads roster and the create toast is the server's sentence", async () => {
+    // The server names the person (leadController.assignedMessage); the page
+    // shows its words, not a sentence rebuilt from the pick.
+    mockSave(null, "Lead saved and assigned to Bob Kumar");
+    renderWithProviders(<LeadCreateModal open onClose={() => {}} />, { router: false });
+    const user = userEvent.setup();
+    expect(screen.getByText("Assign to")).toBeInTheDocument();
+    expect(screen.queryByText("Owner")).toBeNull();
+    await user.type(screen.getByTestId("lead-name"), "Sharma");
+    await user.type(screen.getByTestId("lead-mobile"), "9820012345");
+    await pick(user, "lead-owner", /^Bob/);
+    expect(lastRoster).toEqual({ Module: "leads" });
+    await user.click(screen.getByTestId("lead-create-submit"));
+    expect(await screen.findByText("Lead saved and assigned to Bob Kumar")).toBeInTheDocument();
+  }, 20000);
+
+  // Final review I1 (FR-I1): a lead created onto a colleague with files staged.
+  // The server accepts the logger's uploads for 15 minutes; a real failure must
+  // not send the logger to a record they can no longer open.
+  describe("staged files on a lead created for someone else", () => {
+    beforeEach(() => {
+      URL.createObjectURL = vi.fn(() => "blob:staged");   // jsdom has neither
+      URL.revokeObjectURL = vi.fn();
+    });
+    const createWithFile = async (owner) => {
+      mockSave();
+      renderWithProviders(<LeadCreateModal open onClose={() => {}} />, { router: false });
+      const user = userEvent.setup();
+      await user.type(screen.getByTestId("lead-name"), "Sharma");
+      await user.type(screen.getByTestId("lead-mobile"), "9820012345");
+      if (owner) await pick(user, "lead-owner", owner);
+      await user.upload(screen.getByTestId("attachment-input"), new File(["x"], "site.png", { type: "image/png" }));
+      await user.click(screen.getByTestId("lead-create-submit"));
+    };
+
+    it("uploads them to the new lead and says nothing about failures", async () => {
+      vi.mocked(uploadAttachment).mockReset().mockResolvedValue({ success: true });
+      await createWithFile(/^Bob/);
+      await waitFor(() => expect(uploadAttachment).toHaveBeenCalledWith(
+        expect.objectContaining({ Entity: "lead", EntityId: 42 })));
+      expect(screen.queryByText(/failed to upload/)).toBeNull();
+    }, 20000);
+
+    // REGRESSION: the warning used to say "add them from the record".
+    it("a real failure says to send the files to the assignee", async () => {
+      vi.mocked(uploadAttachment).mockReset().mockRejectedValue(new Error("boom"));
+      await createWithFile(/^Bob/);
+      expect(await screen.findByText("1 file(s) failed to upload — send them to the person it is assigned to")).toBeInTheDocument();
+    }, 20000);
+
+    it("kept by the logger, a failure still says to add them from the record", async () => {
+      vi.mocked(uploadAttachment).mockReset().mockRejectedValue(new Error("boom"));
+      await createWithFile(/^Alice/);   // Alice = me (UserId 1)
+      expect(await screen.findByText("1 file(s) failed to upload — add them from the record")).toBeInTheDocument();
+    }, 20000);
+  });
+
+  it("a save the server answers with success false shows its message and keeps the form open", async () => {
+    server.use(http.post("*/api/leads/saveLeads", async () =>
+      HttpResponse.json({ success: false, message: "That mobile is already a lead", responseCode: 200 })));
+    const onClose = vi.fn();
+    renderWithProviders(<LeadCreateModal open onClose={onClose} />, { router: false });
+    const user = userEvent.setup();
+    await user.type(screen.getByTestId("lead-name"), "Sharma");
+    await user.type(screen.getByTestId("lead-mobile"), "9820012345");
+    await user.click(screen.getByTestId("lead-create-submit"));
+    expect(await screen.findByText("That mobile is already a lead")).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  }, 20000);
+
+  it("a create with nobody assigned shows the server's own sentence", async () => {
+    mockSave();
+    renderWithProviders(<LeadCreateModal open onClose={() => {}} />, { router: false });
+    const user = userEvent.setup();
+    await user.type(screen.getByTestId("lead-name"), "Sharma");
+    await user.type(screen.getByTestId("lead-mobile"), "9820012345");
+    await user.click(screen.getByTestId("lead-create-submit"));
+    expect(await screen.findByText("Lead created")).toBeInTheDocument();
   }, 20000);
 
   const fillBasics = async (user) => {
@@ -182,7 +270,7 @@ describe("LeadCreateModal", () => {
     await user.type(screen.getByTestId("lead-name"), "Beta");
     await user.type(screen.getByTestId("lead-mobile"), "8887776665");
     await pick(user, "lead-source", "Referral");
-    await pick(user, "lead-owner", "Bob");
+    await pick(user, "lead-owner", /^Bob/);
     await user.type(screen.getByLabelText("Region"), "West");
 
     await user.click(screen.getByTestId("lead-create-submit"));
@@ -265,7 +353,7 @@ describe("LeadCreateModal", () => {
     expect(onClose).toHaveBeenCalled();
   }, 20000);
 
-  it("edit hides Owner and Status and sends neither", async () => {
+  it("edit hides Assign to and Status and sends neither", async () => {
     let captured;
     mockSave((body) => {
       captured = body;

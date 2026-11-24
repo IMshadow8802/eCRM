@@ -132,12 +132,20 @@ export const HELP_GUIDES = {
     titleEn: "How to manage Leads",
     steps: [
       {
-        hi: "Status / Owner / Product / Source फ़िल्टर और presets (My leads, Overdue, Unassigned) से लीड्स ढूँढें।",
-        en: "Use the Status / Owner / Product / Source filters and the presets (My leads, Overdue, Unassigned) to find leads.",
+        hi: "Status / Assigned to / Product / Source फ़िल्टर और presets (My leads, Overdue, Unassigned) से लीड्स ढूँढें।",
+        en: "Use the Status / Assigned to / Product / Source filters and the presets (My leads, Overdue, Unassigned) to find leads.",
       },
       {
         hi: "किसी लीड की पंक्ति (row) पर क्लिक करके उसका विवरण, custom fields और activity timeline देखें।",
         en: "Click a lead row to open its detail — core info, custom fields and activity timeline.",
+      },
+      {
+        hi: "'Reassign' से लीड किसी और को दें (जैसे 'Reassign to Vivek') — कारण और remarks ज़रूरी हैं। सूची में कई लीड चुनकर एक साथ 'Reassign' करें। जिसने लीड आपको दी, उसे लौटाने के लिए 'Send back' दबाएं (जैसे 'Send back to Nitin')।",
+        en: "Use 'Reassign' to give a lead to someone else (for example 'Reassign to Vivek') — a reason and remarks are required. Select several rows to 'Reassign' them together. To return a lead to whoever gave it to you, press 'Send back' (for example 'Send back to Nitin').",
+      },
+      {
+        hi: "आप किसे देख सकते हैं और किसे दे सकते हैं, यह आपकी role तय करती है: 'Can see' = आप किनके records खोल सकते हैं, 'Can assign to' = आप किसे record दे सकते हैं। किसी को record देने से आप उसके records नहीं देख पाते। सूची में 'Away today' का निशान बताता है कि वह व्यक्ति आज पूरे दिन छुट्टी पर है या उसके office में छुट्टी है — उसे भी दे सकते हैं, पर वह आज काम नहीं करेगा।",
+        en: "Your role decides what you see and who you can give work to: 'Can see' = whose records you can open, 'Can assign to' = who you can give a record to. Giving someone a record does not let you see theirs. 'Away today' beside a name means that person is on full-day leave or their office has a holiday — you can still pick them, but they will not work on it today.",
       },
     ],
   },
@@ -183,8 +191,8 @@ export const HELP_GUIDES = {
     titleEn: "How to handle complaints (Tickets)",
     steps: [
       {
-        hi: "ऊपर के टैब से अपनी सूची चुनें — My queue (मुझे सौंपी गई), My team, Unassigned, Overdue (समय सीमा पार), Escalated, On hold, Closed, All। Status / Priority / Category / Channel / Product / Assignee / Branch फ़िल्टर और तारीख सीमा से और छाँटें।",
-        en: "Pick a list from the tabs — My queue (assigned to me), My team, Unassigned, Overdue (past due), Escalated, On hold, Closed, All. Narrow further with the Status / Priority / Category / Channel / Product / Assignee / Branch filters and the date range.",
+        hi: "ऊपर के टैब से अपनी सूची चुनें — My queue (मुझे सौंपी गई), My team, Unassigned, Overdue (समय सीमा पार), Escalated, On hold, Closed, All। Status / Priority / Category / Channel / Product / Assigned to / Office फ़िल्टर और तारीख सीमा से और छाँटें। 'Logged by me' में वे सब शिकायतें हैं जो आपने दर्ज कीं — अभी किसके पास हैं और किस हाल में, चाहे वे आपके पास न हों।",
+        en: "Pick a list from the tabs — My queue (assigned to me), My team, Unassigned, Overdue (past due), Escalated, On hold, Closed, All. Narrow further with the Status / Priority / Category / Channel / Product / Assigned to / Office filters and the date range. 'Logged by me' lists every complaint you logged — who has it now and where it stands — even after it left you.",
       },
       {
         hi: "'New ticket' में ग्राहक का मोबाइल या नाम टाइप करें — मौजूदा ग्राहक चुनें या '+ New customer' से तुरंत बनाएं। विषय, category, priority (priority से due date तय होती है), channel, product, विवरण और फ़ोटो जोड़ें।",
@@ -195,8 +203,12 @@ export const HELP_GUIDES = {
         en: "Past its due date a complaint shows a red 'overdue' on every list and appears in the manager's Escalated tab. To flag a senior directly press 'Escalate' (remarks required) — the complaint stays with you, the senior is notified.",
       },
       {
-        hi: "'Transfer' से शिकायत किसी और को दें — कारण और remarks ज़रूरी हैं और इतिहास में दर्ज होते हैं। सूची में कई शिकायतें चुनकर एक साथ 'Reassign' करें।",
-        en: "Use 'Transfer' to hand a complaint to someone else — a reason and remarks are required and go into its history. Select several rows in the list to 'Reassign' them together.",
+        hi: "'Reassign' से शिकायत किसी और को दें (जैसे 'Reassign to Vivek') — कारण और remarks ज़रूरी हैं और इतिहास में दर्ज होते हैं। सूची में कई शिकायतें चुनकर एक साथ 'Reassign' करें। जिसने शिकायत आपको दी, उसे लौटाने के लिए 'Send back' दबाएं (जैसे 'Send back to Nitin') — सिर्फ़ remarks लिखें।",
+        en: "Use 'Reassign' to give a complaint to someone else (for example 'Reassign to Vivek') — a reason and remarks are required and go into its history. Select several rows in the list to 'Reassign' them together. To return it to whoever gave it to you, press 'Send back' (for example 'Send back to Nitin') — remarks only.",
+      },
+      {
+        hi: "आप किसे देख सकते हैं और किसे दे सकते हैं, यह आपकी role तय करती है: 'Can see' = आप किनके records खोल सकते हैं, 'Can assign to' = आप किसे record दे सकते हैं। किसी को record देने से आप उसके records नहीं देख पाते। सूची में 'Away today' का निशान बताता है कि वह व्यक्ति आज पूरे दिन छुट्टी पर है या उसके office में छुट्टी है — उसे भी दे सकते हैं, पर वह आज काम नहीं करेगा।",
+        en: "Your role decides what you see and who you can give work to: 'Can see' = whose records you can open, 'Can assign to' = who you can give a record to. Giving someone a record does not let you see theirs. 'Away today' beside a name means that person is on full-day leave or their office has a holiday — you can still pick them, but they will not work on it today.",
       },
       {
         hi: "शीर्षक के status ड्रॉपडाउन से जीवनचक्र चलाएं: Resolved के लिए resolution + remarks, Rejected के लिए remarks, Closed = ग्राहक ने पुष्टि की। बंद शिकायत को Reopen सिर्फ़ मैनेजर कर सकता है (remarks के साथ) — due date फिर से शुरू होती है।",

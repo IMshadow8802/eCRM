@@ -5,7 +5,7 @@ import { fetchAttachments } from "../../api/attachmentQueries";
 import { fetchCalls } from "../../api/callQueries";
 import { fetchCustomerDetail } from "../../api/customerQueries";
 import { fetchLookups, LOOKUP_KIND } from "../../api/configQueries";
-import { deleteTicket, fetchEscalationTargets, fetchTicketDetail, setTicketStatus } from "../../api/ticketQueries";
+import { deleteTicket, fetchEscalationTargets, fetchTicketDetail, setTicketStatus, transferTicket } from "../../api/ticketQueries";
 import { fetchAssignableUsers } from "../../api/userQueries";
 import type { BarAction } from "../../ui";
 import type { Call, Lookup, Ticket, TicketActivityEntry, TicketDetail } from "../../types/api";
@@ -48,8 +48,10 @@ const LOOKUPS: Record<string, Lookup[]> = {
   [LOOKUP_KIND.callOutcome]: [lookup(40, LOOKUP_KIND.callOutcome, "Reached")],
 };
 
+// The server's per-record answers default to "yes"; a test overrides them on the row.
 const detail = (row: Ticket | null = ticket(), extra: Partial<TicketDetail> = {}): TicketDetail => ({
-  ticket: row, fields: [], activity: [], assignments: [], linkedLead: null, ...extra,
+  ticket: row && { CanEdit: true, CanReassign: true, CanReopen: true, ...row },
+  fields: [], activity: [], assignments: [], linkedLead: null, ...extra,
 });
 const act_ = (Id: number, Type: string, Summary: string, CreatedAt = "2026-11-01T11:00:00"): TicketActivityEntry => ({
   Id, TicketId: 7, UserId: 1, UserName: "Ravi Kumar", UserAvatar: null, Type, Summary, MetaJSON: null, CreatedAt,
@@ -87,6 +89,14 @@ describe("when the complaint cannot be shown", () => {
     expect(await screen.findByText("Complaint not available")).toBeOnTheScreen();
     expect(screen.queryByText(/Check your connection/)).toBeNull();
     expect(published()).toEqual([]);
+  });
+
+  // X404: 404 alone means gone; a 403 is a refusal and offers a retry.
+  it("a 403 is not 'not available'", async () => {
+    jest.mocked(fetchTicketDetail).mockRejectedValue(serverError(403, "No"));
+    await mount();
+    expect(await screen.findByRole("button", { name: "Try again" })).toBeOnTheScreen();
+    expect(screen.queryByText("Complaint not available")).toBeNull();
   });
 
   it("a resolved detail with no ticket row is the same", async () => {
@@ -222,6 +232,17 @@ describe("E 11 · facts and activity", () => {
     expect(verb!.parent).toHaveTextContent(/^Resolved$/);
   });
 
+  it("a legacy 'Transferred to' row reads 'Reassigned to' (stored text, reworded on display)", async () => {
+    jest.mocked(fetchTicketDetail).mockResolvedValue(
+      detail(ticket(), { activity: [act_(1, "assigned", "Transferred to Vinod Kumar — Wrong branch")] }),
+    );
+    await mount();
+    await loaded();
+    const verb = await screen.findByText("Reassigned");
+    expect(verb.parent).toHaveTextContent(/^Reassigned to Vinod Kumar — Wrong branch$/);
+    expect(screen.queryByText(/Transferred/)).toBeNull();
+  });
+
   it("nothing yet says so", async () => {
     await mount();
     await loaded();
@@ -270,11 +291,11 @@ describe("E 11 · facts and activity", () => {
 });
 
 describe("E 11 · the action bar", () => {
-  it("open: Log call · On hold · Resolve (main) · Transfer · Escalate; each opens a sheet, none writes", async () => {
+  it("open: Log call · On hold · Resolve (main) · Reassign · Escalate; each opens a sheet, none writes", async () => {
     const { present } = spySheets();
     await mount();
     await loaded();
-    await waitFor(() => expect(labels()).toEqual(["Log call", "On hold", "Resolve*", "Transfer", "Escalate"]));
+    await waitFor(() => expect(labels()).toEqual(["Log call", "On hold", "Resolve*", "Reassign", "Escalate"]));
     for (const a of published()) await act(async () => a.onPress());
     expect(present).toHaveBeenCalledTimes(5);
     expect(setTicketStatus).not.toHaveBeenCalled();
@@ -284,21 +305,44 @@ describe("E 11 · the action bar", () => {
     jest.mocked(fetchTicketDetail).mockResolvedValue(detail(ticket({ StatusCode: "onhold", StatusId: 2 })));
     await mount();
     await loaded();
-    await waitFor(() => expect(labels()).toEqual(["Log call", "Resume", "Resolve*", "Transfer", "Escalate"]));
+    await waitFor(() => expect(labels()).toEqual(["Log call", "Resume", "Resolve*", "Reassign", "Escalate"]));
   });
 
   it("terminal: Reopen is the main action; On hold, Resolve and Escalate go", async () => {
     jest.mocked(fetchTicketDetail).mockResolvedValue(detail(ticket({ StatusCode: "resolved", StatusId: 3 })));
     await mount();
     await screen.findByRole("header", { name: "T-7" });
-    await waitFor(() => expect(labels()).toEqual(["Log call", "Reopen*", "Transfer"]));
+    await waitFor(() => expect(labels()).toEqual(["Log call", "Reopen*", "Reassign"]));
   });
 
-  it("nobody above in the chain: no Escalate", async () => {
+  it("nobody above in the chain: Escalate stays, and its sheet says why (N3)", async () => {
     jest.mocked(fetchEscalationTargets).mockResolvedValue([]);
+    jest.mocked(fetchTicketDetail).mockResolvedValue(detail(ticket({ AssignedTo: 9, AssigneeName: "Priya Shah" })));
     await mount();
     await loaded();
-    expect(labels()).toEqual(["Log call", "On hold", "Resolve*", "Transfer"]);
+    await waitFor(() => expect(labels()).toEqual(["Log call", "On hold", "Resolve*", "Reassign", "Escalate"]));
+    await act(async () => published().find((a) => a.key === "escalate")!.onPress());
+    expect(await screen.findByText("Nobody above Priya Shah can open complaints. Reassign it or tell a manager.")).toBeOnTheScreen();
+  });
+
+  it("the server's CanReassign / CanReopen / CanEdit decide: no Reassign, no Reopen, no actions", async () => {
+    jest.mocked(fetchTicketDetail).mockResolvedValue(
+      detail(ticket({ StatusCode: "resolved", StatusId: 3, CanReassign: false, CanReopen: false })),
+    );
+    await mount();
+    await screen.findByRole("header", { name: "T-7" });
+    await waitFor(() => expect(labels()).toEqual(["Log call"]));
+    expect(screen.queryByRole("menuitem", { name: "Reopen" })).toBeNull();
+    // No reopen through Change status either.
+    expect(screen.queryByRole("menuitem", { name: "Move to Open" })).toBeNull();
+    expect(screen.getByRole("menuitem", { name: "Move to Closed" })).toBeOnTheScreen();
+  });
+
+  it("CanEdit false on the record: no actions, whatever the module grant", async () => {
+    jest.mocked(fetchTicketDetail).mockResolvedValue(detail(ticket({ CanEdit: false })));
+    await mount();
+    await screen.findByRole("header", { name: "T-7" });
+    expect(published()).toEqual([]);
   });
 
   it("no edit grant: no actions at all — every one is a write the server refuses", async () => {
@@ -353,7 +397,7 @@ describe("E 11 · the ⋮ menu", () => {
     await loaded();
     await fireEvent.press(screen.getByRole("menuitem", { name: "Delete complaint" }));
     expect(screen.getByText("Delete this complaint?")).toBeOnTheScreen();
-    jest.mocked(deleteTicket).mockRejectedValueOnce(serverError(403, "Only admins delete"));
+    jest.mocked(deleteTicket).mockRejectedValueOnce(serverError(400, "Only admins delete"));
     await fireEvent.press(screen.getByText("Delete"));
     expect(await screen.findByText("Only admins delete")).toBeOnTheScreen();
     await fireEvent.press(screen.getByText("Delete"));
@@ -376,10 +420,10 @@ describe("T2 · at the rail", () => {
     await mount();
     await loaded();
     const band = screen.getAllByRole("button").map((b) => b.props.accessibilityLabel).filter((l) =>
-      ["Log call", "On hold", "Transfer", "Escalate", "Resolve"].includes(l),
+      ["Log call", "On hold", "Reassign", "Escalate", "Resolve"].includes(l),
     );
     // The band comes first in the tree; the sheets (kept mounted by the mock) follow.
-    expect(band.slice(0, 4)).toEqual(["Log call", "On hold", "Transfer", "Resolve"]);
+    expect(band.slice(0, 4)).toEqual(["Log call", "On hold", "Reassign", "Resolve"]);
     expect(screen.getByRole("menuitem", { name: "Escalate" })).toBeOnTheScreen();
     expect(screen.getByText("Contact: Rakesh Sharma")).toBeOnTheScreen();
     // T2 keeps the direction on a call row; the phone (11) drops it.
@@ -392,5 +436,99 @@ describe("T2 · at the rail", () => {
     const { present } = spySheets();
     await fireEvent.press(within(screen.getByRole("button", { name: "Resolve" })).getByText("Resolve"));
     expect(present).toHaveBeenCalled();
+  });
+});
+
+describe("access model on the record", () => {
+  it("no giver, no Send back", async () => {
+    await mount();
+    await loaded();
+    expect(screen.queryByRole("menuitem", { name: /^Send back/ })).toBeNull();
+  });
+
+  it("Send back is in the ⋮ menu when the server names the giver", async () => {
+    jest.mocked(fetchTicketDetail).mockResolvedValue(detail(ticket({ SendBackToId: 30, SendBackToName: "Nitin Verma" })));
+    const { present } = spySheets();
+    await mount();
+    await loaded();
+    await fireEvent.press(screen.getByRole("menuitem", { name: "Send back to Nitin Verma" }));
+    expect(present).toHaveBeenCalled();
+  });
+
+  // Final review m2: Send back is a reassign; gate 3 refuses it on a closed
+  // complaint for an Own agent, so the menu must not offer it.
+  it("no Send back without CanReassign, even when the server names the giver", async () => {
+    jest.mocked(fetchTicketDetail).mockResolvedValue(
+      detail(ticket({ CanReassign: false, SendBackToId: 30, SendBackToName: "Nitin Verma" })),
+    );
+    await mount();
+    await loaded();
+    expect(screen.queryByRole("menuitem", { name: /^Send back/ })).toBeNull();
+  });
+
+  it("nothing on the record or its sheets says transfer", async () => {
+    await mount();
+    await loaded();
+    expect(screen.queryByText(/transfer/i)).toBeNull();
+    expect(screen.getByText("Reassign complaint")).toBeOnTheScreen();
+  });
+
+  it("after a reassign the record goes back to the list with its cached detail gone", async () => {
+    jest.mocked(fetchAssignableUsers).mockResolvedValue([
+      { Id: 21, FullName: "Vivek Rao", Avatar: null, JobTitle: null, BranchId: 1, BranchName: null, ReportsTo: null, GroupRank: 1 },
+    ]);
+    jest.mocked(transferTicket).mockResolvedValue(envelope(null));
+    LOOKUPS[LOOKUP_KIND.transferReason] = [lookup(30, LOOKUP_KIND.transferReason, "Specialist needed")];
+    const navigation = makeNavigation<"ComplaintDetail">();
+    const view = await mount(navigation);
+    await loaded();
+    const removed = jest.spyOn(view.queryClient, "removeQueries");
+    await act(async () => published().find((a) => a.key === "reassign")!.onPress());
+    await fireEvent.press(await screen.findByRole("radio", { name: "Vivek Rao" }));
+    await fireEvent.press(screen.getByRole("radio", { name: "Specialist needed" }));
+    await fireEvent.changeText(screen.getByTestId("reassign-remarks"), "Your area");
+    await fireEvent.press(screen.getByRole("button", { name: "Reassign to Vivek" }));
+    expect(await screen.findByText("Reassigned to Vivek Rao")).toBeOnTheScreen();
+    expect(navigation.goBack).toHaveBeenCalled();
+    expect(removed).toHaveBeenCalledWith({ queryKey: ["ticket", 7] });
+    delete LOOKUPS[LOOKUP_KIND.transferReason];
+  });
+
+  // Review Focus 4.
+  it("a 404 on Resolve from a stale screen goes back and says the record is no longer with you", async () => {
+    jest.mocked(setTicketStatus).mockRejectedValue(serverError(404, "Complaint not found"));
+    const navigation = makeNavigation<"ComplaintDetail">();
+    await mount(navigation);
+    await loaded();
+    await act(async () => published().find((a) => a.key === "resolve")!.onPress());
+    await fireEvent.press(screen.getByRole("radio", { name: "Fixed on site" }));
+    await fireEvent.changeText(screen.getByTestId("resolve-remarks"), "Done");
+    await fireEvent.press(screen.getByRole("button", { name: "Save · mark resolved" }));
+    expect(await screen.findByText("This record is no longer with you")).toBeOnTheScreen();
+    expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  // 403 = still visible, the delete refused: say why and stay.
+  it("a 403 on delete shows the server's message and stays on the complaint", async () => {
+    jest.mocked(deleteTicket).mockRejectedValue(serverError(403, "You do not have permission for this action"));
+    const navigation = makeNavigation<"ComplaintDetail">();
+    await mount(navigation);
+    await loaded();
+    await fireEvent.press(screen.getByRole("menuitem", { name: "Delete complaint" }));
+    await fireEvent.press(screen.getByText("Delete"));
+    expect(await screen.findByText("You do not have permission for this action")).toBeOnTheScreen();
+    expect(screen.queryByText("This record is no longer with you")).toBeNull();
+    expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+
+  it("a 404 on delete is the same", async () => {
+    jest.mocked(deleteTicket).mockRejectedValue(serverError(404, "Record not found"));
+    const navigation = makeNavigation<"ComplaintDetail">();
+    await mount(navigation);
+    await loaded();
+    await fireEvent.press(screen.getByRole("menuitem", { name: "Delete complaint" }));
+    await fireEvent.press(screen.getByText("Delete"));
+    expect(await screen.findByText("This record is no longer with you")).toBeOnTheScreen();
+    expect(navigation.goBack).toHaveBeenCalled();
   });
 });

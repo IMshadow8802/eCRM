@@ -1,6 +1,7 @@
 import React from "react";
 import { Helmet } from "react-helmet-async";
 import { Box, Typography, Skeleton } from "@mui/material";
+import { useNavigate } from "react-router-dom";
 import {
   PeopleOutlined,
   PersonAddAltOutlined,
@@ -10,6 +11,8 @@ import {
 
 import PageHeader from "./ui/PageHeader";
 import Card from "./ui/Card";
+import EmptyState from "./ui/EmptyState";
+import Button from "./ui/Button";
 import StatisticsCard from "./StatCard";
 import AreaTrend from "./Charts/AreaTrend";
 import Donut from "./Charts/Donut";
@@ -23,6 +26,16 @@ import Gauge from "./Charts/Gauge";
 import { useApiQuery } from "../hooks/useApiQuery";
 import { PLATFORM_ENDPOINTS } from "../api/platformQueries";
 import { formatCurrency } from "../utils/format";
+import { useAccess } from "../hooks/useAccess";
+import useAuthStore from "../stores/useAuthStore";
+import { canAccessPath } from "../utils/routeAccess";
+
+// Where someone without the leads module does their work. Shown only when
+// their menu rights grant the page.
+const ELSEWHERE = [
+  { path: "/support/tickets", label: "Open Complaints" },
+  { path: "/today", label: "Open Today" },
+];
 
 const KPI_CONFIG = {
   TotalLeads:      { color: "blue",  icon: PeopleOutlined,        title: "Total Leads" },
@@ -93,12 +106,45 @@ const Tile = ({ children, title, subtitle, spanCol = 4, spanRow = 1 }) => (
   </Box>
 );
 
+// Every number on the dashboard is about leads. A user whose role cannot see
+// leads (e.g. support staff, who land here) gets this instead of a page of
+// zeros and empty charts.
+const NotForYou = () => {
+  const navigate = useNavigate();
+  const menuRights = useAuthStore((s) => s.menuRights);
+  const links = ELSEWHERE.filter((l) => canAccessPath(menuRights, l.path));
+  return (
+    <EmptyState
+      title="Nothing to show here"
+      description="Your dashboard shows sales numbers. Your work is in Complaints and Today."
+      size="lg"
+      data-testid="dashboard-not-for-you"
+      action={
+        links.length ? (
+          <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", justifyContent: "center" }}>
+            {links.map((l, i) => (
+              <Button
+                key={l.path}
+                variant={i === 0 ? "primary" : "tonal"}
+                onClick={() => navigate(l.path)}
+              >
+                {l.label}
+              </Button>
+            ))}
+          </Box>
+        ) : null
+      }
+    />
+  );
+};
+
 const Dashboard = () => {
+  const canSeeLeads = useAccess("leads").view;
   const { data: dashboardData, isLoading } = useApiQuery({
     queryKey: ["dashboard"],
     endpoint: PLATFORM_ENDPOINTS.reports.getDashboard,
     params: {},
-    enabled: true,
+    enabled: canSeeLeads,
   });
 
   const dashboardStats = dashboardData?.dashboard || [];
@@ -106,8 +152,8 @@ const Dashboard = () => {
     Number(dashboardStats.find((s) => s.Type === type)?.Number) || 0;
 
   // A series only counts as "real" when it has rows AND at least one non-zero
-  // value; otherwise return undefined so the chart shows its sample-data demo
-  // (fresh company / SP not applied yet — page should never look bare).
+  // value; otherwise undefined, and the chart says "No data yet". Charts never
+  // draw a demo series: a client once read those as their own numbers.
   const series = (rows, keys) =>
     Array.isArray(rows) && rows.some((r) => keys.some((k) => Number(r[k]) > 0))
       ? rows
@@ -170,6 +216,11 @@ const Dashboard = () => {
         subtitle="Overview of leads, follow-ups, and team activity"
       />
 
+      {!canSeeLeads ? (
+        <NotForYou />
+      ) : (
+      <>
+
       {/* KPI row */}
       <Box
         sx={{
@@ -228,14 +279,9 @@ const Dashboard = () => {
         <Tile spanCol={4} spanRow={2}>
           <RadialGoal
             value={statBy("TodayNewLeads")}
-            goal={100}
             previousValue={yesterdayLeads}
             label="Today's new leads"
-            suffix=""
-            secondary={[
-              { label: "Goal", value: "100" },
-              { label: "Yesterday", value: String(yesterdayLeads) },
-            ]}
+            secondary={[{ label: "Yesterday", value: String(yesterdayLeads) }]}
             height={170}
           />
         </Tile>
@@ -269,7 +315,6 @@ const Dashboard = () => {
           <Gauge
             label="Missed follow-ups"
             value={statBy("MissedFollowups")}
-            max={50}
           />
         </Tile>
 
@@ -287,6 +332,8 @@ const Dashboard = () => {
           <ActivityBar data={quarterlyActivity} height={260} />
         </Tile>
       </Box>
+      </>
+      )}
     </Box>
   );
 };

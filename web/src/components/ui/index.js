@@ -8,6 +8,7 @@ export { default as Checkbox } from "./Checkbox";
 export { default as Switch } from "./Switch";
 export { default as RadioGroup } from "./RadioGroup";
 export { default as Combobox } from "./Combobox";
+export { default as AssigneePicker } from "./AssigneePicker";
 export { default as DateField } from "./DateField";
 export { default as DateRangeField } from "./DateRangeField";
 export { default as Card } from "./Card";

@@ -1,15 +1,10 @@
 const database = require("../config/database");
 const responseHelper = require("../utils/responseHelper");
 const attachmentController = require("./attachmentController");
-const {
-  scopeParams,
-  scopeFor,
-  canSeeRecord,
-  assertRecordAccess,
-  visibleRecord,
-  assertCanAssign,
-  canReopen,
-} = require("../middleware/permission");
+const { scopeFor, assertRecordAccess } = require("../middleware/permission");
+const { actor } = require("../utils/actor");
+const { emitToUser } = require("../realtime/events");
+const { SCOPES } = require("../realtime/contract");
 const { assertCustomerVisible } = require("./customerController");
 const { positiveInt, pageParams, optionalDateTime } = require("../utils/controllerKit");
 const { parseDay } = require("../utils/reportKit");
@@ -17,15 +12,17 @@ const ticketDue = require("../services/ticketDue");
 
 // Mutating SPs log their own activity server-side and return exactly one
 // status row: Id + ResponseCode + ResponseMess (+ TicketNo from sp_SaveTicket).
-// A non-200 code (400 validation, 403 reopen gate, 404 customer) is passed
-// through with its message, never flattened into a 500.
-async function runSp(res, spName, params, failMessage) {
+// A non-200 code (400 validation, 403/404 gate, 409 race) is passed through
+// with its message, never flattened into a 500. `after(row, result)` runs on
+// 200 only (notify, re-word) and may return the message to answer with.
+async function runSp(res, spName, params, failMessage, after) {
   try {
     const result = await database.executeStoredProcedure(spName, params);
     const spResponse = result.recordset?.[0] ?? result.recordsets?.[0]?.[0];
     const message = spResponse.ResponseMess || spResponse.ResponseMessage;
-    if (spResponse.ResponseCode === 200) return responseHelper.success(res, message, spResponse);
-    return responseHelper.error(res, message, "SP_ERROR", spResponse.ResponseCode);
+    if (spResponse.ResponseCode !== 200) return responseHelper.error(res, message, "SP_ERROR", spResponse.ResponseCode);
+    const said = after ? await after(spResponse, result) : null;
+    return responseHelper.success(res, said || message, spResponse);
   } catch (err) {
     console.error(`${spName} error:`, err);
     return responseHelper.error(res, failMessage);
@@ -57,11 +54,10 @@ const bit = (v) => (v === true || v === 1 || v === "1" || v === "true" ? 1 : 0);
 const isoDay = (s) => (typeof s === "string" && parseDay(s) ? s : null);
 
 // Every write that names a ticket starts the same way: a real TicketId, then
-// the record gate. Resolves to the fetched row (assertRecordAccess hands it
-// back since spec 2 — the reopen gate needs AssignedTo) or null once the 400 /
-// 403 has gone out. Node validates SHAPE here; the lifecycle rules — remarks
-// required, resolution required, whether a move is a reopen — are
-// sp_SetTicketStatus's (spec 2 §2), and runSp surfaces its 400 / 403 untouched.
+// the record gate (the detail procedure answers: a row the caller can see, with
+// CanEdit). Resolves to that row or null once the 400 / 403 has gone out. Node
+// validates SHAPE here; the lifecycle rules — remarks required, resolution
+// required, who may reopen — are the procedures', surfaced untouched by runSp.
 async function gateTicket(req, res, TicketId) {
   if (!TicketId) {
     responseHelper.validationError(res, "TicketId is required");
@@ -70,32 +66,53 @@ async function gateTicket(req, res, TicketId) {
   return (await assertRecordAccess(req, res, "ticket", TicketId, "write")) || null;
 }
 
-// Shared by transfer and bulkTransfer: the SP requires a reason and remarks,
-// and refusing here saves the lookup round-trips. Blank remarks become null.
+// Shared by transfer and bulkTransfer: the SP requires a reason and remarks
+// (a send back: remarks only), and refusing here saves the round-trip. Blank
+// remarks become null.
 const transferArgs = (body) => ({
   ToUserId: positiveInt(body.ToUserId),
   ToBranchId: positiveInt(body.ToBranchId),
   ReasonId: positiveInt(body.ReasonId),
   Remarks: trimmed(body.Remarks),
 });
+const REASON_AND_REMARKS = "A reason and remarks are required to reassign";
 
-// A complaint's linked lead carries the lead's name, mobile and email, and the
-// detail SP is CompId-scoped only — so it is shown only to someone who may see
-// that lead. Hidden on any doubt, a failed lookup included: the complaint itself
-// still opens.
-async function linkedLeadFor(req, lead) {
-  if (!lead) return null;
+// "this person's complaints changed" — no id, no data; clients refetch.
+const notifyHolders = (ids) => {
+  for (const id of new Set(ids.map(Number).filter(Boolean))) emitToUser(id, SCOPES.RECORDS, { module: "complaints" });
+};
+
+// The name for "Logged and assigned to <name>". sp_FetchAssignableUsers with a
+// target answers that one row; the create already passed the same rule. Any
+// failure just keeps the procedure's own message — the complaint is saved.
+async function assigneeName({ CompId, UserId }, AssignedTo) {
   try {
-    return (await visibleRecord(req, "lead", lead.Id)) ? lead : null;
+    const r = await database.executeStoredProcedure("sp_FetchAssignableUsers", {
+      CompId, UserId, Module: "complaints", RecordId: null, TargetUserId: AssignedTo,
+    });
+    return r.recordsets?.[0]?.[0]?.FullName || null;
   } catch (err) {
-    console.error("linked lead check failed:", err.message);
+    console.error("assignee name lookup failed:", err.message);
     return null;
   }
 }
 
+const pageOf = (result, PageNumber, PageSize, rows) => {
+  const p = result.recordsets?.[1]?.[0] ?? {};
+  return {
+    currentPage: p.CurrentPage ?? PageNumber,
+    pageSize: p.PageSize ?? PageSize,
+    totalRecords: p.TotalRecords ?? rows.length,
+    totalPages: p.TotalPages ?? 1,
+  };
+};
+
 const ticketController = {
   async save(req, res) {
-    const { CompId, BranchId, UserId } = req.user;
+    const { CompId, UserId } = actor(req);
+    // W6: a new complaint belongs to the caller's live home office (re-read per
+    // request), not the one in the token. The procedure reads it on create only.
+    const BranchId = req.access?.primaryBranchId ?? null;
     const Id = positiveInt(req.body.Id) ?? 0;
     const fields = pick(req.body, TICKET_FIELDS);
     for (const k of TICKET_ID_FIELDS) fields[k] = positiveInt(fields[k]);
@@ -106,11 +123,8 @@ const ticketController = {
       // checks too; refusing here names the field and saves the round-trip.
       if (!fields.CustomerId) return responseHelper.validationError(res, "CustomerId is required");
       if (!fields.Subject) return responseHelper.validationError(res, "Subject is required");
-      // Assigning on create is an assignment: same roster rule as transfer.
-      // Only when a target is named — an unassigned create is legal for
-      // everyone, while assertCanAssign 403s a null target below Branch scope.
-      if (fields.AssignedTo
-          && !(await assertCanAssign(req, res, { toUserId: fields.AssignedTo, toBranchId: null }))) return;
+      // Assigning on create: sp_SaveTicket checks "Can assign to" and answers
+      // 403, relayed by runSp.
     }
     let current = null;
     if (Id > 0) {
@@ -156,13 +170,19 @@ const ticketController = {
     } catch (err) {
       console.error("TICKET_DUE_FAILED:", err.message);
     }
-    return runSp(res, "sp_SaveTicket", { Id, CompId, BranchId, UserId, ...fields, DueAtOverride }, "Failed to save ticket");
+    const assigned = Id === 0 && fields.AssignedTo;
+    return runSp(res, "sp_SaveTicket", { Id, CompId, UserId, BranchId, ...fields, DueAtOverride }, "Failed to save ticket",
+      async () => {
+        if (!assigned) return null;
+        const name = await assigneeName({ CompId, UserId }, fields.AssignedTo);
+        return name && `Logged and assigned to ${name}`;
+      });
   },
 
   async fetch(req, res) {
     try {
-      const { CompId } = req.user;
       const b = req.body;
+      const { CompId, UserId } = actor(req);
       // Clamped, not taken raw: PageSize goes straight to the SP, which has no
       // ceiling of its own. Default 25 matches the SP's own default.
       const { PageNumber, PageSize } = pageParams(b, 25);
@@ -175,10 +195,10 @@ const ticketController = {
       }
 
       const result = await database.executeStoredProcedure("sp_FetchTickets", {
+        // Visibility is the procedure's, from the session person alone.
         CompId,
-        // An optional UI filter: narrows within scope, never widens it.
-        // Visibility comes from scopeParams — passing req.user.BranchId here
-        // is what once hid every out-of-branch ticket.
+        UserId,
+        // An optional UI filter: narrows within what the caller can see.
         BranchId: positiveInt(b.BranchId),
         PageNumber,
         PageSize,
@@ -201,23 +221,12 @@ const ticketController = {
         // Only when set: every key is bound, and a DB without 118 would reject the parameter.
         ...(ResolvedFrom && { ResolvedFrom }),
         ...(ResolvedTo && { ResolvedTo }),
-        ...scopeParams(req),
-        // Escalated = escalated to me OR overdue in my ReportsTo subtree (incl. self), not overdue anywhere in reach.
-        EscalatedSubtreeJson: bit(b.Escalated)
-          ? JSON.stringify([...new Set([...(req.access?.teamOwners ?? []), Number(req.user.UserId)])])
-          : null,
       });
 
       const tickets = result.recordsets?.[0] ?? [];
-      const pagination = result.recordsets?.[1]?.[0] ?? {};
       return responseHelper.success(res, "Tickets fetched successfully", {
         tickets,
-        pagination: {
-          currentPage: pagination.CurrentPage ?? PageNumber,
-          pageSize: pagination.PageSize ?? PageSize,
-          totalRecords: pagination.TotalRecords ?? tickets.length,
-          totalPages: pagination.TotalPages ?? 1,
-        },
+        pagination: pageOf(result, PageNumber, PageSize, tickets),
       });
     } catch (err) {
       console.error("sp_FetchTickets error:", err);
@@ -226,29 +235,27 @@ const ticketController = {
   },
 
   async detail(req, res) {
-    const { CompId } = req.user;
     const TicketId = positiveInt(req.body.TicketId);
     if (!TicketId) return responseHelper.validationError(res, "TicketId is required");
     try {
-      const result = await database.executeStoredProcedure("sp_FetchTicketDetail", {
-        CompId,
-        TicketId,
-      });
+      const { CompId, UserId } = actor(req);
+      const result = await database.executeStoredProcedure("sp_FetchTicketDetail", { CompId, UserId, TicketId });
       const rs = result.recordsets ?? [];
       const ticket = rs[0]?.[0] || null;
-      // The detail SP is CompId-scoped only, so gate the row here. 404 rather
-      // than 403: a user who cannot see a ticket should not learn it exists.
-      if (!canSeeRecord(req, ticket, "AssignedTo")) {
-        return responseHelper.error(res, "Ticket not found", "NOT_FOUND", 404);
-      }
-      // 086: RS1 core + customer columns, RS2 custom values, RS3 timeline,
-      // RS4 assignment history, RS5 linked lead (empty when none).
+      // No row = not visible, or no such id: one answer for both, so ids
+      // cannot be probed (404, never 403).
+      if (!ticket) return responseHelper.error(res, "Complaint not found", "NOT_FOUND", 404);
+      // RS1 core (+ CanEdit, CanReassign, CanReopen, SendBackToId,
+      // SendBackToName), RS2 custom values, RS3 timeline, RS4 assignment
+      // history, RS5 linked lead. The procedure blanks LinkedLeadId and RS5
+      // when the caller cannot see that lead; Node attaches only what the row
+      // carries and never looks the lead up itself.
       return responseHelper.success(res, "Ticket detail fetched successfully", {
         ticket,
         fields: rs[1] || [],
         activity: rs[2] || [],
         assignments: rs[3] || [],
-        linkedLead: await linkedLeadFor(req, rs[4]?.[0]),
+        linkedLead: (ticket.LinkedLeadId && rs[4]?.[0]) || null,
       });
     } catch (err) {
       console.error("sp_FetchTicketDetail error:", err);
@@ -256,18 +263,16 @@ const ticketController = {
     }
   },
 
-  // Spec 2 §2: the one lifecycle engine. Node answers the reopen gate on EVERY
-  // call (plan ambiguity 2) and sp_SetTicketStatus alone decides whether the
-  // requested move is a reopen — a Self agent moving New → In Progress passes
-  // AllowReopen 0 and the SP never consults it.
+  // Spec 2 §2: the one lifecycle engine. sp_SetTicketStatus decides whether a
+  // move is a reopen and who may make it (133: CanReopen from the access
+  // definitions); its 403 comes back as-is.
   async setStatus(req, res) {
-    const { CompId, UserId } = req.user;
+    const { CompId, UserId } = actor(req);
     const TicketId = positiveInt(req.body.TicketId);
     const StatusId = positiveInt(req.body.StatusId);
     // Both shape checks before the round-trip; gateTicket answers for TicketId.
     if (TicketId && !StatusId) return responseHelper.validationError(res, "StatusId is required");
-    const ticket = await gateTicket(req, res, TicketId);
-    if (!ticket) return;
+    if (!(await gateTicket(req, res, TicketId))) return;
     return runSp(
       res,
       "sp_SetTicketStatus",
@@ -278,7 +283,6 @@ const ticketController = {
         UserId,
         ResolutionId: positiveInt(req.body.ResolutionId),
         Remarks: trimmed(req.body.Remarks),
-        AllowReopen: canReopen(req, ticket) ? 1 : 0,
         // The SP uses it only on a reopen; computed for every move since Node
         // does not know which moves are reopens.
         DueAtOverride: await ticketDue.forReopen(CompId, TicketId),
@@ -288,11 +292,10 @@ const ticketController = {
   },
 
   // Shortcuts (spec §2): "first status of that code by SortOrder", delegating
-  // to sp_SetTicketStatus inside SQL. Only reopen declares @AllowReopen —
-  // node-mssql rejects a parameter the procedure does not declare, so it is
-  // sent only where it exists.
+  // to sp_SetTicketStatus inside SQL. node-mssql rejects a parameter the
+  // procedure does not declare, so each sends exactly its own list.
   async resolve(req, res) {
-    const { CompId, UserId } = req.user;
+    const { CompId, UserId } = actor(req);
     const TicketId = positiveInt(req.body.TicketId);
     if (!(await gateTicket(req, res, TicketId))) return;
     return runSp(
@@ -304,7 +307,7 @@ const ticketController = {
   },
 
   async close(req, res) {
-    const { CompId, UserId } = req.user;
+    const { CompId, UserId } = actor(req);
     const TicketId = positiveInt(req.body.TicketId);
     if (!(await gateTicket(req, res, TicketId))) return;
     return runSp(
@@ -316,7 +319,7 @@ const ticketController = {
   },
 
   async reject(req, res) {
-    const { CompId, UserId } = req.user;
+    const { CompId, UserId } = actor(req);
     const TicketId = positiveInt(req.body.TicketId);
     if (!(await gateTicket(req, res, TicketId))) return;
     return runSp(
@@ -328,38 +331,39 @@ const ticketController = {
   },
 
   async reopen(req, res) {
-    const { CompId, UserId } = req.user;
+    const { CompId, UserId } = actor(req);
     const TicketId = positiveInt(req.body.TicketId);
-    const ticket = await gateTicket(req, res, TicketId);
-    if (!ticket) return;
+    if (!(await gateTicket(req, res, TicketId))) return;
     return runSp(
       res,
       "sp_ReopenTicket",
       {
-        CompId, TicketId, Remarks: trimmed(req.body.Remarks), UserId, AllowReopen: canReopen(req, ticket) ? 1 : 0,
+        CompId, TicketId, Remarks: trimmed(req.body.Remarks), UserId,
         DueAtOverride: await ticketDue.forReopen(CompId, TicketId),
       },
       "Failed to reopen ticket",
     );
   },
 
-  // Spec 2 §2 Transfer — the lead playbook: validation that needs no DB first,
-  // then the record gate, then the target gate, then the SP. Ownership only
-  // ever moves through here (history row + notification live in the SP).
+  // Reassign / send back / unassign / move office — one procedure, whose gates
+  // (visible, may reassign, "Can assign to", office rule; 133 fn_ReassignGate)
+  // answer 404/403/400 relayed as-is. Node checks shape only. SendBack is
+  // optional: installed phone builds never send it (D23).
   async transfer(req, res) {
-    const { CompId, UserId } = req.user;
+    const { CompId, UserId } = actor(req);
     const TicketId = positiveInt(req.body.TicketId);
+    const SendBack = bit(req.body.SendBack);
     const args = transferArgs(req.body);
-    if (!args.Remarks || !args.ReasonId) {
-      return responseHelper.validationError(res, "A reason and remarks are required for a transfer");
-    }
-    if (!(await gateTicket(req, res, TicketId))) return;
-    if (!(await assertCanAssign(req, res, { toUserId: args.ToUserId, toBranchId: args.ToBranchId }))) return;
-    return runSp(res, "sp_TransferTicket", { CompId, TicketId, ...args, UserId }, "Failed to transfer ticket");
+    if (!TicketId) return responseHelper.validationError(res, "TicketId is required");
+    if (SendBack && !args.Remarks) return responseHelper.validationError(res, "Remarks are required to send this back");
+    if (!SendBack && (!args.Remarks || !args.ReasonId)) return responseHelper.validationError(res, REASON_AND_REMARKS);
+    return runSp(res, "sp_TransferTicket", { CompId, TicketId, ...args, UserId, SendBack },
+      "Failed to reassign complaint",
+      (row) => notifyHolders([row.FromUserId, row.ToUserId]));
   },
 
   async bulkTransfer(req, res) {
-    const { CompId, UserId } = req.user;
+    const { CompId, UserId } = actor(req);
     const ids = Array.isArray(req.body.TicketIds)
       ? [...new Set(req.body.TicketIds.map(positiveInt).filter(Boolean))]
       : [];
@@ -367,23 +371,16 @@ const ticketController = {
     if (ids.length === 0 || ids.length > 200) {
       return responseHelper.validationError(res, "Pick between 1 and 200 tickets");
     }
-    if (!args.Remarks || !args.ReasonId) {
-      return responseHelper.validationError(res, "A reason and remarks are required for a transfer");
-    }
-    // Every ticket must be visible to the caller; the SP is tenant-scoped only,
-    // and one invisible id fails the whole call before anything is written.
-    // ponytail: N sequential sp_FetchTicketDetail reads (5 recordsets each), ≤200 ids;
-    // upgrade path = one sp_FetchTicketsVisibility(@TicketIdsJson) returning
-    // Id/BranchId/AssignedTo/CreatedBy + canSeeRecord per row.
-    for (const id of ids) {
-      if (!(await assertRecordAccess(req, res, "ticket", id, "write"))) return;
-    }
-    if (!(await assertCanAssign(req, res, { toUserId: args.ToUserId, toBranchId: args.ToBranchId }))) return;
+    if (!args.Remarks || !args.ReasonId) return responseHelper.validationError(res, REASON_AND_REMARKS);
+    // One call. The procedure runs every gate per id, all-or-nothing (Ruling
+    // 6): one refusal answers that gate's code + message + "(n of m refused)".
+    // On 200 its RS2 lists every previous and new holder.
     return runSp(
       res,
       "sp_BulkTransferTickets",
       { CompId, TicketIdsJson: JSON.stringify(ids), ...args, UserId },
-      "Failed to transfer tickets",
+      "Failed to reassign complaints",
+      (row, result) => notifyHolders((result.recordsets?.[1] ?? []).map((r) => r.UserId)),
     );
   },
 
@@ -391,9 +388,9 @@ const ticketController = {
   // caller must see the ticket; the SP validates the rest — target is an
   // ancestor of the assignee (ReportsTo, ≤ 20 hops), ticket non-terminal,
   // remarks given — and notifies the senior. No roster check: the target is
-  // by definition above the caller's subtree, so assertCanAssign would refuse.
+  // by definition above the caller's subtree, outside "Can assign to".
   async escalate(req, res) {
-    const { CompId, UserId } = req.user;
+    const { CompId, UserId } = actor(req);
     const TicketId = positiveInt(req.body.TicketId);
     const ToUserId = positiveInt(req.body.ToUserId);
     // Shape checks before the round-trip; gateTicket answers for TicketId.
@@ -407,28 +404,49 @@ const ticketController = {
     );
   },
 
-  // The ancestor chain the Escalate picker offers, nearest first. ForUserId
-  // lets the client ask for the ASSIGNEE's chain — the SP's rule is "a senior
-  // of the assignee" — and defaults to the caller's own.
+  // The ancestor chain the Escalate picker offers, nearest first, for a
+  // complaint the caller can see (TicketId, new clients). Old clients send
+  // ForUserId: answered only when the caller can see an in-progress complaint
+  // held by that person (Ruling 4) — the procedure decides; else no rows.
   async escalationTargets(req, res) {
-    const { CompId, UserId } = req.user;
-    const ForUserId = positiveInt(req.body.ForUserId) ?? UserId;
+    const { CompId, UserId } = actor(req);
+    const TicketId = positiveInt(req.body?.TicketId) ?? null;
+    const ForUserId = positiveInt(req.body?.ForUserId) ?? (TicketId ? null : UserId);
     try {
-      const result = await database.executeStoredProcedure("sp_FetchEscalationTargets", {
-        CompId,
-        UserId: ForUserId,
+      const result = await database.executeStoredProcedure("sp_FetchTicketEscalationTargets", {
+        CompId, UserId, TicketId, ForUserId,
       });
       return responseHelper.success(res, "Escalation targets fetched successfully", {
         users: result.recordsets?.[0] ?? result.recordset ?? [],
       });
     } catch (err) {
-      console.error("sp_FetchEscalationTargets error:", err);
+      console.error("sp_FetchTicketEscalationTargets error:", err);
       return responseHelper.error(res, "Failed to fetch escalation targets");
     }
   },
 
+  // Logged by me: complaints the caller created, wherever they are now. A row
+  // the caller can no longer open carries Id NULL / CanOpen 0 (sp_FetchLoggedByMe).
+  async loggedByMe(req, res) {
+    const { PageNumber, PageSize } = pageParams(req.body ?? {}, 25);
+    try {
+      const { CompId, UserId } = actor(req);
+      const result = await database.executeStoredProcedure("sp_FetchLoggedByMe", {
+        CompId, UserId, SearchTerm: trimmed(req.body?.SearchTerm), PageNumber, PageSize,
+      });
+      const rows = result.recordsets?.[0] ?? [];
+      return responseHelper.success(res, "Logged by me fetched successfully", {
+        rows,
+        pagination: pageOf(result, PageNumber, PageSize, rows),
+      });
+    } catch (err) {
+      console.error("sp_FetchLoggedByMe error:", err);
+      return responseHelper.error(res, "Failed to fetch complaints logged by me");
+    }
+  },
+
   async delete(req, res) {
-    const { CompId } = req.user;
+    const { CompId } = actor(req);
     const Id = positiveInt(req.body.Id);
     if (!Id) return responseHelper.validationError(res, "Id is required");
     // Spec 2 §2 Delete: the record gate. Without it any authenticated user

@@ -29,8 +29,9 @@ beforeEach(() => {
   database.executeStoredProcedure.mockReset();
 });
 
-// Guard lookup: logCall now verifies the caller can see the lead/ticket the
-// call is logged against (sp_FetchLeadDetail / sp_FetchTicketDetail).
+// Guard lookup: the detail procedure (sp_FetchLeadDetail / sp_FetchTicketDetail,
+// asked with the session person) answers a row the caller can see — with
+// CanEdit for a write — or no row at all.
 function mockLeadLookup(lead) {
   database.executeStoredProcedure.mockResolvedValueOnce({
     recordsets: [lead ? [lead] : [], [], []],
@@ -44,13 +45,14 @@ function mockTicketLookup(ticket) {
 
 describe("callController.logCall", () => {
   it("logs a ticket call (TicketId set, LeadId null)", async () => {
-    mockTicketLookup({ Id: 4, BranchId: 2, AssignedTo: 3, CreatedBy: 3 });
+    mockTicketLookup({ Id: 4, BranchId: 2, AssignedTo: 3, CreatedBy: 3, CanEdit: 1 });
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordset: [{ ResponseCode: 200, ResponseMess: "Logged", Id: 60 }],
     });
     const req = baseReq({ body: { TicketId: 4, Direction: "out" } });
     const res = mockRes();
     await callController.logCall(req, res);
+    expect(database.executeStoredProcedure).toHaveBeenNthCalledWith(1, "sp_FetchTicketDetail", { CompId: 5, UserId: 7, TicketId: 4 });
     expect(database.executeStoredProcedure).toHaveBeenCalledWith(
       "sp_LogCall",
       expect.objectContaining({ CompId: 5, UserId: 7, LeadId: null, TicketId: 4, Direction: "out" }),
@@ -59,7 +61,7 @@ describe("callController.logCall", () => {
   });
 
   it("injects CompId/UserId and forwards a lead call with NextFollowupDate", async () => {
-    mockLeadLookup({ Id: 9, BranchId: 2, OwnerId: 3, CreatedBy: 3 });
+    mockLeadLookup({ Id: 9, BranchId: 2, OwnerId: 3, CreatedBy: 3, CanEdit: 1 });
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordset: [{ ResponseCode: 200, ResponseMess: "Logged", Id: 55 }],
     });
@@ -98,7 +100,7 @@ describe("callController.logCall", () => {
   });
 
   it("defaults optional fields to null when absent from body", async () => {
-    mockLeadLookup({ Id: 9, BranchId: 2, OwnerId: 3, CreatedBy: 3 });
+    mockLeadLookup({ Id: 9, BranchId: 2, OwnerId: 3, CreatedBy: 3, CanEdit: 1 });
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordset: [{ ResponseCode: 200, ResponseMess: "Logged", Id: 56 }],
     });
@@ -129,7 +131,7 @@ describe("callController.logCall", () => {
   });
 
   it("returns error status when SP rejects", async () => {
-    mockLeadLookup({ Id: 9, BranchId: 2, OwnerId: 7, CreatedBy: 7 });
+    mockLeadLookup({ Id: 9, BranchId: 2, OwnerId: 7, CreatedBy: 7, CanEdit: 1 });
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordset: [{ ResponseCode: 400, ResponseMess: "Direction required" }],
     });
@@ -143,38 +145,39 @@ describe("callController.logCall", () => {
   // REGRESSION: logCall used to trust the client-supplied LeadId/TicketId — a
   // Self-scoped user could pollute any record's timeline (and reschedule its
   // follow-up) by posting a foreign Id.
-  it("403s logging a call against a lead the caller cannot see", async () => {
-    mockLeadLookup({ Id: 9, BranchId: 9, OwnerId: 3, CreatedBy: 3 });
+  it("404s logging a call against a lead the caller cannot see", async () => {
+    mockLeadLookup(null); // the database returns no row
+
     const req = baseReq({
       scope: { branchIds: [2], ownerIds: [7] },
       body: { LeadId: 9, Direction: "Outbound" },
     });
     const res = mockRes();
     await callController.logCall(req, res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1); // lookup only
   });
 
-  // The calls route is open(), so assertRecordAccess("write") is the only edit gate.
+  // The calls route is open(), so assertRecordAccess("write") is the only edit
+  // gate: the row comes back (visible) with CanEdit 0 (no edit right).
   it("403s logging a call for a view-only role, even on a lead it can see", async () => {
-    mockLeadLookup({ Id: 9, BranchId: 2, OwnerId: 7, CreatedBy: 7 });
+    mockLeadLookup({ Id: 9, BranchId: 2, OwnerId: 7, CreatedBy: 7, CanEdit: 0 });
     const req = baseReq({ body: { LeadId: 9, Direction: "Outbound" } });
-    req.access = accessForScope(req.scope, req.user.UserId, "v");
     const res = mockRes();
     await callController.logCall(req, res);
     expect(res.status).toHaveBeenCalledWith(403);
     expect(database.executeStoredProcedure).not.toHaveBeenCalledWith("sp_LogCall", expect.anything());
   });
 
-  it("403s logging a call against a ticket outside the caller's scope", async () => {
-    mockTicketLookup({ Id: 4, BranchId: 9, AssignedTo: 3, CreatedBy: 3 });
+  it("404s logging a call against a ticket outside the caller's scope", async () => {
+    mockTicketLookup(null);
     const req = baseReq({
       scope: { branchIds: [2], ownerIds: [7] },
       body: { TicketId: 4, Direction: "in" },
     });
     const res = mockRes();
     await callController.logCall(req, res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
   });
 
   it("handles DB error as 500", async () => {
@@ -238,18 +241,21 @@ describe("callController.fetchCalls", () => {
     );
   });
 
-  it("fetches by user when neither id is in the body", async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce({ recordset: [] });
-    const req = baseReq();
+  // REGRESSION (final review m4): with no id the call listed the caller's own
+  // calls — notes and ids of leads that had since been reassigned away.
+  it("400s when neither id is in the body, without listing anything", async () => {
     const res = mockRes();
-    await callController.fetchCalls(req, res);
+    await callController.fetchCalls(baseReq(), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
 
-    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
-      "sp_FetchCalls",
-      expect.objectContaining({ CompId: 5, LeadId: null, TicketId: null, UserId: 7 }),
-    );
-    const json = res.json.mock.calls[0][0];
-    expect(json.data.calls).toEqual([]);
+  it("takes the person from the session, never the body", async () => {
+    mockLeadLookup({ Id: 9, BranchId: 2, OwnerId: 7, CanEdit: 1 });
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordset: [] });
+    await callController.fetchCalls(baseReq({ body: { LeadId: 9, UserId: 99, CompId: 98 } }), mockRes());
+    expect(database.executeStoredProcedure).toHaveBeenLastCalledWith(
+      "sp_FetchCalls", expect.objectContaining({ CompId: 5, UserId: 7 }));
   });
 
   // Call notes are free text about a customer — reading them must be gated the
@@ -261,7 +267,7 @@ describe("callController.fetchCalls", () => {
     await callController.fetchCalls(req, res);
 
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
   });
 
   it("refuses a ticket the caller cannot see, without querying calls", async () => {
@@ -271,12 +277,12 @@ describe("callController.fetchCalls", () => {
     await callController.fetchCalls(req, res);
 
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
   });
 
   it("handles DB error as 500", async () => {
     database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
-    const req = baseReq();
+    const req = baseReq({ body: { LeadId: 9 } });
     const res = mockRes();
     await callController.fetchCalls(req, res);
     expect(res.status).toHaveBeenCalledWith(500);

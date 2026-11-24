@@ -1,0 +1,43 @@
+# am_field (Sales Executive) — a follow-up delegated to him (Via 2: neha
+# booked a visit for him on Kasak's lead L01, which he cannot see). It is in
+# his Upcoming queue and actionable — Done works — but the row does not open
+# the lead. Env: L01.
+appId: com.shadowider.eCRM
+---
+- runFlow: ../common/open-work.yaml
+- tapOn: "Follow-ups, \\d+ due today"
+- tapOn: "Upcoming.*"
+- tapOn: "Search follow-ups"
+- inputText: "${L01}"
+- extendedWaitUntil:
+    visible: "${L01}"
+    timeout: 15000
+- hideKeyboard
+- runFlow: no-old-words.yaml
+- takeScreenshot: field-via2-row
+# The lead does not open.
+- tapOn: "${L01}"
+- waitForAnimationToEnd
+- assertNotVisible: "Lead actions"
+# But the follow-up is his to finish.
+- tapOn: "Mark ${L01} done"
+- assertVisible: "Log the visit"
+# The search field takes the keyboard back when the sheet opens; it covers the sheet.
+- hideKeyboard
+- scrollUntilVisible:
+    element: "What was discussed.*"
+    centerElement: true
+- tapOn: "What was discussed.*"
+- inputText: "AM maestro visit done"
+- hideKeyboard
+- scrollUntilVisible:
+    element: "Mark done"
+- tapOn: "Mark done"
+- extendedWaitUntil:
+    notVisible: "Log the visit"
+    timeout: 15000
+- extendedWaitUntil:
+    visible: "Nothing matches"
+    timeout: 15000
+- takeScreenshot: field-via2-done
+- tapOn: "Close search"

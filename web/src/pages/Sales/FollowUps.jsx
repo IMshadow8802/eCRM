@@ -4,6 +4,8 @@
 // is late, what is next — so they are tabs over fetchFollowups' own filters
 // rather than a filter bar the user has to assemble.
 import { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { enqueueSnackbar } from "notistack";
 import { Helmet } from "react-helmet-async";
 import { Box } from "@mui/material";
 import { MaterialReactTable } from "material-react-table";
@@ -19,6 +21,7 @@ import useServerTable from "../../hooks/useServerTable";
 import { useApiMutation } from "../../hooks/useApiMutation";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
 import { formatDate, formatDue } from "../../utils/format";
+import { recordGone, RECORD_GONE_MESSAGE } from "../../utils/recordGone";
 import { FOLLOWUP_TYPES } from "./leadStatus";
 import LogFollowUpModal from "./LogFollowUpModal";
 import RescheduleFollowUpModal from "./RescheduleFollowUpModal";
@@ -46,6 +49,12 @@ const viewParams = (view) => {
   }
 };
 
+// Via (fn_VisibleFollowUps): 1 = its lead is visible, 2 = an open one assigned to
+// the caller on a lead they cannot see, 3 = a manager's look-only line. Only
+// Via 1 opens the lead; Via 3 carries no phone and no actions. Missing = neither.
+const opensLead = (f) => Number(f.Via) === 1;
+const canAct = (f) => [1, 2].includes(Number(f.Via));
+
 const typeLabel = (t) => FOLLOWUP_TYPES.find((x) => x.value === t)?.label ?? t;
 
 const FollowUps = () => {
@@ -56,29 +65,55 @@ const FollowUps = () => {
   const [skipping, setSkipping] = useState(null);
   const [skipRemarks, setSkipRemarks] = useState("");
   const [deleting, setDeleting] = useState(null);
+  const queryClient = useQueryClient();
+
+  // Gone (recordGone: 404): the follow-up left the caller while the page was
+  // open — close the prompt and reload the queue. Anything else (403 = visible
+  // but refused, e.g. "You can view this follow-up but not act on it"): the
+  // server's own words, prompt stays.
+  const onActError = (error) => {
+    const gone = recordGone(error);
+    enqueueSnackbar(gone ? RECORD_GONE_MESSAGE : error?.response?.data?.message || error?.message || "Operation failed", { variant: "error" });
+    if (!gone) return;
+    setSkipping(null);
+    setDeleting(null);
+    queryClient.invalidateQueries({ queryKey: ["followups"] });
+  };
 
   const skipMutation = useApiMutation({
     endpoint: SALES_ENDPOINTS.followups.skipFollowUp,
     successMessage: "Follow-up skipped",
     invalidateQueries: [["followups"], ["leads"]],
+    showErrorMessage: false,
+    onError: onActError,
   });
   const deleteMutation = useApiMutation({
     endpoint: SALES_ENDPOINTS.followups.deleteFollowup,
     successMessage: "Follow-up deleted",
     invalidateQueries: [["followups"], ["leads"]],
+    showErrorMessage: false,
+    onError: onActError,
   });
 
   // Remarks are required: the server 400s without them, and a skipped
   // follow-up with no reason tells the next person nothing.
   const submitSkip = async () => {
     if (!skipping || !skipRemarks.trim()) return;
-    await skipMutation.mutateAsync({ Id: skipping.Id, Remarks: skipRemarks.trim() });
+    try {
+      await skipMutation.mutateAsync({ Id: skipping.Id, Remarks: skipRemarks.trim() });
+    } catch {
+      return; // onActError has spoken
+    }
     setSkipping(null);
     setSkipRemarks("");
   };
   const submitDelete = async () => {
     if (!deleting) return;
-    await deleteMutation.mutateAsync({ Id: deleting.Id });
+    try {
+      await deleteMutation.mutateAsync({ Id: deleting.Id });
+    } catch {
+      return;
+    }
     setDeleting(null);
   };
 
@@ -90,27 +125,41 @@ const FollowUps = () => {
         enableSorting: false,
         // The name reads as a link because it is one — the whole history sits
         // one click away and nothing on the row said so.
-        Cell: ({ row }) => (
-          <span>
-            <Box
-              component="span"
-              data-testid={`lead-link-${row.original.Id}`}
-              sx={{
-                color: "primary.main",
-                fontWeight: 600,
-                cursor: "pointer",
-                "&:hover": { textDecoration: "underline" },
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                navigate(`/sales/leads/${row.original.LeadId}`);
-              }}
-            >
-              {row.original.LeadName}
-            </Box>
-            {row.original.LeadMobile ? ` · ${row.original.LeadMobile}` : ""}
-          </span>
-        ),
+        Cell: ({ row }) => {
+          const f = row.original;
+          const lookOnly = Number(f.Via) === 3;
+          return (
+            <span>
+              {opensLead(f) ? (
+                <Box
+                  component="span"
+                  data-testid={`lead-link-${f.Id}`}
+                  sx={{
+                    color: "primary.main",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    "&:hover": { textDecoration: "underline" },
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(`/sales/leads/${f.LeadId}`);
+                  }}
+                >
+                  {f.LeadName}
+                </Box>
+              ) : (
+                <Box component="span" sx={{ fontWeight: 600 }} data-testid={`lead-name-${f.Id}`}>{f.LeadName}</Box>
+              )}
+              {f.LeadCompany ? ` · ${f.LeadCompany}` : ""}
+              {!lookOnly && f.LeadMobile ? ` · ${f.LeadMobile}` : ""}
+              {lookOnly && (
+                <Box component="span" sx={{ display: "block", fontSize: "calc(12rem / 15)", color: "text.secondary" }}>
+                  Assigned to {f.AssignedToName || "nobody"}
+                </Box>
+              )}
+            </span>
+          );
+        },
       },
       {
         accessorKey: "DueAt",
@@ -168,34 +217,39 @@ const FollowUps = () => {
     getRowId: (row) => row.Id,
     enableRowActions: true,
     displayColumnDefOptions: { "mrt-row-actions": { grow: false, header: "Actions" } },
-    muiTableBodyRowProps: ({ row }) => ({
-      hover: true,
-      sx: { cursor: "pointer" },
-      onClick: () => navigate(`/sales/leads/${row.original.LeadId}`),
-    }),
+    muiTableBodyRowProps: ({ row }) =>
+      opensLead(row.original)
+        ? { hover: true, sx: { cursor: "pointer" }, onClick: () => navigate(`/sales/leads/${row.original.LeadId}`) }
+        : { hover: true },
     // A logged follow-up is history: nothing to do, nothing to delete — but
     // its lead is still worth opening, so the eye is on every row.
     renderRowActions: ({ row }) => {
       const f = row.original;
       return (
         <Box sx={{ display: "flex", gap: 0.5 }} onClick={(e) => e.stopPropagation()}>
-          <Tooltip title="View lead & history">
-            <IconButton size="sm" variant="ghost" tone="primary" aria-label="View lead" data-testid={`view-lead-${f.Id}`} onClick={() => navigate(`/sales/leads/${f.LeadId}`)}>
-              <Eye size={16} />
-            </IconButton>
-          </Tooltip>
-          {f.Status === "open" && (
+          {opensLead(f) && (
+            <Tooltip title="View lead & history">
+              <IconButton size="sm" variant="ghost" tone="primary" aria-label="View lead" data-testid={`view-lead-${f.Id}`} onClick={() => navigate(`/sales/leads/${f.LeadId}`)}>
+                <Eye size={16} />
+              </IconButton>
+            </Tooltip>
+          )}
+          {f.Status === "open" && canAct(f) && (
             <>
               <Tooltip title="Log this follow-up">
                 <IconButton size="sm" variant="ghost" tone="success" aria-label="Log follow-up" data-testid={`log-followup-${f.Id}`} onClick={() => setLogging(f)}>
                   <CheckCircle2 size={16} />
                 </IconButton>
               </Tooltip>
-              <Tooltip title="Reschedule">
-                <IconButton size="sm" variant="ghost" tone="primary" aria-label="Reschedule follow-up" data-testid={`reschedule-followup-${f.Id}`} onClick={() => setRescheduling(f)}>
-                  <CalendarClock size={16} />
-                </IconButton>
-              </Tooltip>
+              {/* Reschedule books a new follow-up on the lead (sp_ScheduleFollowUp
+                  needs the lead visible), so a Via 2 line can log/skip but not move. */}
+              {opensLead(f) && (
+                <Tooltip title="Reschedule">
+                  <IconButton size="sm" variant="ghost" tone="primary" aria-label="Reschedule follow-up" data-testid={`reschedule-followup-${f.Id}`} onClick={() => setRescheduling(f)}>
+                    <CalendarClock size={16} />
+                  </IconButton>
+                </Tooltip>
+              )}
               <Tooltip title="Skip with a remark">
                 <IconButton size="sm" variant="ghost" tone="warning" aria-label="Skip follow-up" data-testid={`skip-followup-${f.Id}`} onClick={() => setSkipping(f)}>
                   <SkipForward size={16} />

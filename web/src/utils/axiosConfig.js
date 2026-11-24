@@ -102,8 +102,10 @@ const createAxiosInstance = () => {
         return Promise.reject(new Error('Authentication failed'));
       }
 
-      // Handle 403 Forbidden responses
-      if (error.response?.status === 403) {
+      // A 403 that carries the server's sentence is shown by the caller
+      // (useApiMutation / the page); a second, generic toast beside it said
+      // the same thing twice. Only a message-less 403 gets the generic one.
+      if (error.response?.status === 403 && !error.response.data?.message) {
         enqueueSnackbar('Access denied. You do not have permission to perform this action.', { 
           variant: 'error',
           autoHideDuration: 4000 

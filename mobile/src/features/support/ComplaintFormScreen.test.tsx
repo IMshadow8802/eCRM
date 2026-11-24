@@ -123,6 +123,17 @@ it("only the customer and the subject are required", async () => {
   );
 });
 
+it("Assign to lists the complaints list with an Away today mark; it is optional", async () => {
+  jest.mocked(fetchAssignableUsers).mockResolvedValue([
+    { Id: 9, FullName: "Priya Shah", Avatar: null, JobTitle: "Technician", BranchId: 1, BranchName: null, ReportsTo: null, AwayToday: true },
+  ]);
+  await mount();
+  await screen.findByText("Wiring");
+  expect(screen.getByText(/^Assign to/)).toBeOnTheScreen();
+  expect(fetchAssignableUsers).toHaveBeenCalledWith({ Module: "complaints" });
+  expect(await screen.findByText("Technician · Away today")).toBeOnTheScreen();
+});
+
 it("a valid create posts Id 0 with the picked ids, prefills 'reported by', and goes back", async () => {
   const navigation = makeNavigation<"ComplaintForm">();
   await mount(undefined, navigation);
@@ -150,6 +161,29 @@ it("a valid create posts Id 0 with the picked ids, prefills 'reported by', and g
     },
     expect.anything(),
   );
+});
+
+it("assigned to someone else: goes back and toasts the server's sentence; unassigned says nothing", async () => {
+  jest.mocked(saveTicket).mockResolvedValue(envelope({ Id: 101 }, { message: "Logged and assigned to Priya Shah" }));
+  const navigation = makeNavigation<"ComplaintForm">();
+  await mount(undefined, navigation);
+  await screen.findByText("Wiring");
+  await fillValidComplaint();
+  await fireEvent.press(screen.getByText("Priya Shah"));
+  await fireEvent.press(screen.getByText("Submit complaint"));
+  await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+  expect(await screen.findByText("Logged and assigned to Priya Shah")).toBeOnTheScreen();
+});
+
+it("created unassigned: goes back with no assignment toast", async () => {
+  jest.mocked(saveTicket).mockResolvedValue(envelope({ Id: 101 }, { message: "Logged and assigned to Nobody" }));
+  const navigation = makeNavigation<"ComplaintForm">();
+  await mount(undefined, navigation);
+  await screen.findByText("Wiring");
+  await fillValidComplaint();
+  await fireEvent.press(screen.getByText("Submit complaint"));
+  await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+  expect(screen.queryByText("Logged and assigned to Nobody")).toBeNull();
 });
 
 it("success:false shows the server's message and stays on the form", async () => {
@@ -524,6 +558,37 @@ describe("files picked on create (CMP-08)", () => {
     expect(await screen.findByText("1 file(s) failed to upload — add them from the complaint")).toBeOnTheScreen();
     expect(navigation.goBack).toHaveBeenCalled();
     expect(saveTicket).toHaveBeenCalledTimes(1);
+  });
+
+  // Final review I1 (FR-I1): logged onto Priya, the complaint leaves the logger.
+  // The server takes the logger's uploads for 15 minutes, so the files go to the
+  // new Id; a real failure must not say "add them from the complaint" — a
+  // complaint the logger can no longer open.
+  it("logged for someone else: the files go to the new complaint", async () => {
+    const navigation = makeNavigation<"ComplaintForm">();
+    await mount(undefined, navigation);
+    await screen.findByText("Wiring");
+    await fillValidComplaint();
+    await fireEvent.press(screen.getByText("Priya Shah"));
+    await pickFiles("meter.jpg");
+    await fireEvent.press(screen.getByText("Submit complaint"));
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+    expect(uploadAttachment).toHaveBeenCalledWith(expect.objectContaining({ Entity: "ticket", EntityId: 101 }));
+    expect(screen.queryByText(/failed to upload/)).toBeNull();
+  });
+
+  // REGRESSION: the warning pointed at a complaint the logger cannot open.
+  it("logged for someone else: a failed upload says to send the files to the assignee", async () => {
+    jest.mocked(uploadAttachment).mockRejectedValueOnce(new Error("timeout"));
+    const navigation = makeNavigation<"ComplaintForm">();
+    await mount(undefined, navigation);
+    await screen.findByText("Wiring");
+    await fillValidComplaint();
+    await fireEvent.press(screen.getByText("Priya Shah"));
+    await pickFiles("meter.jpg");
+    await fireEvent.press(screen.getByText("Submit complaint"));
+    expect(await screen.findByText("1 file(s) failed to upload — send them to the person it is assigned to")).toBeOnTheScreen();
+    expect(screen.queryByText(/add them from the complaint/)).toBeNull();
   });
 
   it("a save that answers no Id says the staged files did not go", async () => {

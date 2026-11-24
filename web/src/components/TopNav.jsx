@@ -30,6 +30,9 @@ import { buildDynamicMenu, menuTrail } from "../utils/menuBuilder";
 import { chrome } from "../styles/tokens";
 import { rem } from "../utils/rem";
 
+const RECORD_LISTS = { ticket: "/support/tickets", lead: "/sales/leads" };
+const LIST_ONLY_TYPE = /_moved_away$|_bulk_|^stranded_work$/;
+
 /**
  * Thin top bar sitting above the main content area.
  *
@@ -186,11 +189,17 @@ const TopNav = ({ onOpenMobileSidebar }) => {
             // 'task' lowercase (comments arrive as task too), so compare
             // case-insensitively.
             const entity = String(n?.EntityType ?? "").toLowerCase();
+            const list = RECORD_LISTS[entity];
             if (entity === "task" && n?.EntityId) {
               navigate(`/tasks?taskId=${n.EntityId}`);
-            } else if (entity === "ticket" && n?.EntityId) {
-              // ticket_assigned / ticket_escalated (spec 2) — open the complaint.
-              navigate(`/support/tickets/${n.EntityId}`);
+            } else if (list) {
+              // Complaints and leads. A bulk notice carries EntityId 0, a
+              // stranded_work notice carries a person's id, and a moved-away
+              // notice names a record the reader can no longer open — all
+              // three open the list. Every other one opens the record; one
+              // that has gone since lands back on the list (detail pages).
+              const toList = !n.EntityId || LIST_ONLY_TYPE.test(String(n.Type ?? ""));
+              navigate(toList ? list : `${list}/${n.EntityId}`);
             } else if (entity === "user" && n?.Type === "presence_not_signed_in") {
               navigate("/today?tab=team");
             } else if (entity === "workspace") {

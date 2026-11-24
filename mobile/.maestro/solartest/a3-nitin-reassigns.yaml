@@ -1,0 +1,57 @@
+# A3 Nitin has it again (Mine); Reassign → search "vivek" → Vivek, no "Sent back"
+# reason; then his list no longer has it.
+appId: com.shadowider.eCRM
+---
+- runFlow:
+    file: ../access/find-complaint.yaml
+    env:
+      PRESET: "Mine"
+      KEY: "${TAG}"
+- tapOn: "Reassign"
+- assertVisible: "Reassign complaint"
+- extendedWaitUntil:
+    visible: "Your manager and team|Your office"
+    timeout: 15000
+- assertVisible: "${REASON}"
+- assertNotVisible: "Sent back"
+# Type, then wait for the debounced filter to drop the others. adb typing into a
+# settling sheet drops a character now and then (nothing matches): retype.
+- tapOn:
+    id: "reassign-search"
+- inputText: "vivek"
+- extendedWaitUntil:
+    notVisible: "Vinod Kumar\\s*"
+    timeout: 10000
+- repeat:
+    times: 3
+    while:
+      notVisible: "Vivek Kumar"
+    commands:
+      - tapOn:
+          id: "reassign-search"
+      - eraseText
+      - inputText: "vivek"
+      - extendedWaitUntil:
+          visible: "Vivek Kumar"
+          timeout: 10000
+          optional: true
+- assertVisible: "Vivek Kumar"
+- assertNotVisible: "Vinod Kumar\\s*"
+- hideKeyboard
+- tapOn: "Vivek Kumar"
+- tapOn: "${REASON}"
+- tapOn:
+    id: "reassign-remarks"
+- inputText: "${TAG} route"
+- hideKeyboard
+- takeScreenshot: a3-nitin-reassign
+- tapOn: "Reassign to Vivek"
+- extendedWaitUntil:
+    visible:
+      id: "complaint-presets"
+    timeout: 15000
+- runFlow:
+    file: complaint-gone.yaml
+    env:
+      PRESET: "Mine"
+      KEY: "${TAG}"

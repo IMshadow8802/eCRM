@@ -332,6 +332,63 @@ it("tapping a row opens its lead", async () => {
   expect(navigation.navigate).toHaveBeenCalledWith("LeadDetail", { leadId: 55 });
 });
 
+describe("Via (Task 27: why the caller sees the row)", () => {
+  it("Via 3, a look-only line: no phone, no Done, no swipes, and the lead does not open", async () => {
+    const navigation = makeNavigation<"FollowUps">();
+    // The server sends no phone on a Via 3 row; even if one came, the row would not print it.
+    answer(() => Promise.resolve(reply([followUp({ Via: 3, CanAct: false, LeadId: 55 })])));
+    await mount(navigation);
+    await fireEvent.press(await screen.findByText("Ramesh Patel"));
+    expect(navigation.navigate).not.toHaveBeenCalled();
+    expect(screen.queryByText(/9825012345/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Mark .+ done$/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Done" })).toBeNull();
+    // Only the (closed) reschedule sheet's own submit: no swipe block.
+    expect(screen.getAllByRole("button", { name: "Reschedule" })).toHaveLength(1);
+    expect(screen.queryByText(/^Swipe a row/)).toBeNull();
+  });
+
+  it("Via 2, assigned to me on a lead I cannot see: Done stays, the lead does not open, no Reschedule (it books on the lead)", async () => {
+    const navigation = makeNavigation<"FollowUps">();
+    answer(() => Promise.resolve(reply([followUp({ Via: 2, CanAct: true, LeadId: 55 })])));
+    await mount(navigation);
+    await fireEvent.press(await screen.findByText("Ramesh Patel"));
+    expect(navigation.navigate).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Mark Ramesh Patel done" })).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Done" })).toBeOnTheScreen();
+    // Only the (closed) reschedule sheet's own submit: no swipe block.
+    expect(screen.getAllByRole("button", { name: "Reschedule" })).toHaveLength(1);
+  });
+
+  it("Via 1 opens the lead and keeps every action", async () => {
+    const navigation = makeNavigation<"FollowUps">();
+    answer(() => Promise.resolve(reply([followUp({ Via: 1, CanAct: true, LeadId: 55 })])));
+    await mount(navigation);
+    await fireEvent.press(await screen.findByText("Ramesh Patel"));
+    expect(navigation.navigate).toHaveBeenCalledWith("LeadDetail", { leadId: 55 });
+    // The swipe block and the sheet's submit.
+    expect(screen.getAllByRole("button", { name: "Reschedule" })).toHaveLength(2);
+  });
+
+  it("CanAct false takes the actions away even on a Via 1 row", async () => {
+    answer(() => Promise.resolve(reply([followUp({ Via: 1, CanAct: false })])));
+    await mount();
+    await screen.findByText("Ramesh Patel");
+    expect(screen.queryByRole("button", { name: /^Mark .+ done$/ })).toBeNull();
+  });
+
+  it("a done-today row the caller only looks at does not open the lead", async () => {
+    const navigation = makeNavigation<"FollowUps">();
+    answer(
+      () => Promise.resolve(reply([])),
+      () => Promise.resolve(reply([followUp({ Id: 90, Status: "done", DoneAt: `${today}T09:00:00`, LeadName: "Looked at", Via: 3 })])),
+    );
+    await mount(navigation);
+    await fireEvent.press(await screen.findByText("Looked at"));
+    expect(navigation.navigate).not.toHaveBeenCalled();
+  });
+});
+
 it("an empty Today says nothing is due", async () => {
   answer(() => Promise.resolve(reply([])));
   await mount();

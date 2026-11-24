@@ -16,7 +16,14 @@ import renderWithProviders from "../../test/renderWithProviders";
 
 vi.mock("./LogFollowUpModal", () => ({ __esModule: true, default: ({ open, followUp }) => (open ? <div data-testid="log-modal">{followUp?.Id}</div> : null) }));
 vi.mock("./RescheduleFollowUpModal", () => ({ __esModule: true, default: ({ open, followUp }) => (open ? <div data-testid="reschedule-modal">{followUp?.Id}</div> : null) }));
-vi.mock("./TransferLeadModal", () => ({ __esModule: true, default: ({ open, leadIds }) => (open ? <div data-testid="transfer-modal">{leadIds.join(",")}</div> : null) }));
+vi.mock("./TransferLeadModal", () => ({ __esModule: true, default: ({ open, leadIds, sendBackTo, onDone, onFailed, onError }) => (open ? (
+  <div data-testid="transfer-modal">
+    {leadIds.join(",")}{sendBackTo ? ` back:${sendBackTo.id}:${sendBackTo.name}` : ""}
+    <button type="button" onClick={() => onDone?.({ ToName: "Vivek Shah" })}>mock-done</button>
+    <button type="button" onClick={() => onFailed?.()}>mock-failed</button>
+    <button type="button" onClick={() => onError?.({ response: { status: 404, data: { code: "NOT_FOUND" } } })}>mock-gone</button>
+  </div>
+) : null) }));
 vi.mock("./LeadCreateModal", () => ({ __esModule: true, default: ({ open, lead }) => (open ? <div data-testid="edit-modal">{lead?.Id}</div> : null) }));
 
 const json = (data) => HttpResponse.json({ success: true, message: "ok", responseCode: 200, data });
@@ -24,7 +31,7 @@ const LEAD = { Id: 9, Name: "Sharma", Company: "Sharma Traders", MobileNo: "9820
   Address: "12 MG Road", City: "Pune", State: "MH", Pincode: "411001",
   StatusId: 12, StatusName: "Contacted", StatusCode: "open", ProductId: 7, ProductName: "TV 43in", OwnerName: "Bob",
   SourceId: 3, SourceName: "Website",
-  EstValue: 50000, Remarks: "Walk-in", NextFollowupDate: "2026-09-10", BranchName: "Pune", OwnerId: 2, CreatedBy: 2 };
+  EstValue: 50000, Remarks: "Walk-in", NextFollowupDate: "2026-09-10", BranchName: "Pune", OwnerId: 2, CreatedBy: 2, CanEdit: 1 };
 const DETAIL = {
   lead: LEAD, fields: [],
   activity: [{ Id: 1, Type: "created", Summary: "Lead created", CreatedAt: "2026-09-01T10:00:00Z" }],
@@ -33,8 +40,8 @@ const DETAIL = {
   assignments: [{ Id: 31, FromUserName: null, ToUserName: "Bob", Reason: null, Remarks: "Assigned on creation", AssignedByName: "Alice", AssignedAt: "2026-09-01T10:00:00Z" }],
 };
 
-const mocks = (cap = {}) => server.use(
-  http.post("*/api/leads/fetchLeadDetail", async () => json(DETAIL)),
+const mocks = (cap = {}, leadOver = {}) => server.use(
+  http.post("*/api/leads/fetchLeadDetail", async () => json({ ...DETAIL, lead: { ...LEAD, ...leadOver } })),
   http.post("*/api/config/fetchCustomFields", async () => json({ customFields: [] })),
   http.post("*/api/config/fetchLookups", async ({ request }) => {
     const { Kind } = await request.json();
@@ -114,15 +121,16 @@ describe("LeadDetail (spec 1)", () => {
     expect(screen.getByTestId("reschedule-modal")).toHaveTextContent("21");
   });
 
-  it("history tab shows the assignment trail and Transfer opens the modal", async () => {
-    mocks();
+  it("history tab shows the assignment trail and Reassign opens the modal", async () => {
+    mocks({}, { CanReassign: 1 });
     renderDetail();
     await screen.findByTestId("lead-detail");
     const user = userEvent.setup();
     await user.click(screen.getByText(/History/));
     expect(screen.getByText(/Assigned on creation/)).toBeInTheDocument();
-    await user.click(screen.getByTestId("transfer-lead-btn"));
+    await user.click(screen.getByTestId("reassign-lead-btn"));
     expect(screen.getByTestId("transfer-modal")).toHaveTextContent("9");
+    expect(screen.getByTestId("transfer-modal")).not.toHaveTextContent("back:");
   });
 
   // With nothing open there is nothing to log, so the header offers the other
@@ -369,5 +377,242 @@ describe("LeadDetail (spec 1)", () => {
       json({ ...DETAIL, lead: { ...LEAD, PartnerId: 3, PartnerName: "Sharma Traders" }, commissions: [] })));
     renderDetail();
     expect(await screen.findByText("Sent by Sharma Traders")).toBeInTheDocument();
+  });
+});
+
+describe("LeadDetail — Assigned to, Reassign, Send back, record gone", () => {
+  beforeEach(() => useAuthStore.setState({ isAuthenticated: true, token: null, user: { UserId: 1 }, UserId: 1, API_BASE_URL: "https://prdinfotech.in/CRM" }));
+
+  const renderWithList = () => renderWithProviders(
+    <Routes>
+      <Route path="/sales/leads/:leadId" element={<LeadDetail />} />
+      <Route path="/sales/leads" element={<div data-testid="leads-list" />} />
+    </Routes>, { route: "/sales/leads/9" },
+  );
+  const gone = (status = 404) => HttpResponse.json({ success: false, message: "Lead not found", code: status === 404 ? "NOT_FOUND" : "FORBIDDEN", responseCode: status }, { status });
+
+  it("labels the holder 'Assigned to' and the office 'Office' — no Owner or Branch", async () => {
+    mocks();
+    renderDetail();
+    const info = await screen.findByTestId("lead-core-info");
+    expect(within(info).getByText("Assigned to")).toBeInTheDocument();
+    expect(within(info).getByText("Office")).toBeInTheDocument();
+    expect(screen.getByTestId("lead-detail").textContent).not.toMatch(/owner|branch|transfer/i);
+  });
+
+  it("no Reassign without CanReassign, no Send back without SendBackToId", async () => {
+    mocks({}, { CanReassign: 0, SendBackToId: null, SendBackToName: null });
+    renderDetail();
+    await screen.findByTestId("lead-detail");
+    expect(screen.queryByTestId("reassign-lead-btn")).toBeNull();
+    expect(screen.queryByTestId("send-back-btn")).toBeNull();
+  });
+
+  // A lead the caller may see but not change: every control that could only
+  // earn a 403 is gone. Follow-up rows answer for themselves (CanAct).
+  it("CanEdit 0: no Edit, status select, Schedule, custom-field Save or Reassign; follow-up rows keep Log by CanAct", async () => {
+    mocks({}, { CanEdit: 0, CanReassign: 0 });
+    server.use(
+      http.post("*/api/config/fetchCustomFields", async () => json({ customFields: [{ Id: 1, Label: "GST", Type: "text" }] })),
+      http.post("*/api/leads/fetchLeadDetail", async () => json({
+        ...DETAIL, lead: { ...LEAD, CanEdit: 0, CanReassign: 0 },
+        followups: [{ Id: 21, Type: "call", DueAt: "2026-09-10T00:00:00", Status: "open", CanAct: 1 },
+                    { Id: 22, Type: "call", DueAt: "2026-09-11T00:00:00", Status: "open", CanAct: 0 }],
+      })),
+    );
+    renderDetail();
+    await screen.findByTestId("lead-detail");
+    for (const id of ["edit-lead-btn", "lead-status-select", "schedule-followup-btn", "reassign-lead-btn", "save-custom-fields-btn"]) {
+      expect(screen.queryByTestId(id)).toBeNull();
+    }
+    expect(screen.getByTestId("log-followup-btn")).toBeInTheDocument();   // the first open one can act
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: /follow-ups/i }));
+    expect(screen.getByTestId("log-followup-21")).toBeInTheDocument();
+    expect(screen.queryByTestId("log-followup-22")).toBeNull();
+    expect(screen.queryByTestId("reschedule-followup-22")).toBeNull();
+  });
+
+  it("CanEdit 0 with no open follow-up: no Schedule button either", async () => {
+    mocks({}, { CanEdit: 0 });
+    server.use(http.post("*/api/leads/fetchLeadDetail", async () => json({ ...DETAIL, lead: { ...LEAD, CanEdit: 0 }, followups: [] })));
+    renderDetail();
+    await screen.findByTestId("lead-detail");
+    expect(screen.queryByTestId("schedule-followup-btn")).toBeNull();
+    expect(screen.queryByTestId("log-followup-btn")).toBeNull();
+  });
+
+  // Final review m2: Send back is a reassign; never offered when the server
+  // would refuse the reassign ("Only a manager can reassign a closed record").
+  it("no Send back without CanReassign, even with a SendBackToId", async () => {
+    mocks({}, { CanReassign: 0, SendBackToId: 5, SendBackToName: "Nitin Kale" });
+    renderDetail();
+    await screen.findByTestId("lead-detail");
+    expect(screen.queryByTestId("send-back-btn")).toBeNull();
+  });
+
+  it("Send back is labelled from the server's name and opens the dialog for that person", async () => {
+    mocks({}, { CanReassign: 1, SendBackToId: 5, SendBackToName: "Nitin Kale" });
+    renderDetail();
+    await screen.findByTestId("lead-detail");
+    const user = userEvent.setup();
+    expect(screen.getByTestId("send-back-btn")).toHaveTextContent("Send back to Nitin Kale");
+    await user.click(screen.getByTestId("send-back-btn"));
+    expect(screen.getByTestId("transfer-modal")).toHaveTextContent("9 back:5:Nitin Kale");
+  });
+
+  it("a refused send back refetches the detail, which drops the button", async () => {
+    let calls = 0;
+    mocks();
+    server.use(http.post("*/api/leads/fetchLeadDetail", async () => {
+      calls += 1;
+      return json({ ...DETAIL, lead: { ...LEAD, CanReassign: 1, ...(calls === 1 ? { SendBackToId: 5, SendBackToName: "Nitin Kale" } : { SendBackToId: null }) } });
+    }));
+    renderDetail();
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId("send-back-btn"));
+    await user.click(screen.getByText("mock-failed"));
+    await waitFor(() => expect(screen.queryByTestId("send-back-btn")).toBeNull());
+    expect(screen.getByTestId("reassign-lead-btn")).toBeInTheDocument();
+  });
+
+  it("after a reassign that takes the lead away: drops the cache and returns to the list without the gone message", async () => {
+    const { QueryClient } = await import("@tanstack/react-query");
+    const removeSpy = vi.spyOn(QueryClient.prototype, "removeQueries");
+    let calls = 0;
+    mocks();
+    server.use(http.post("*/api/leads/fetchLeadDetail", async () => {
+      calls += 1;
+      return calls === 1 ? json({ ...DETAIL, lead: { ...LEAD, CanReassign: 1 } }) : gone();
+    }));
+    renderWithList();
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId("reassign-lead-btn"));
+    await user.click(screen.getByText("mock-done"));
+    expect(await screen.findByTestId("leads-list")).toBeInTheDocument();
+    expect(removeSpy).toHaveBeenCalledWith({ queryKey: ["lead-detail", 9] });
+    expect(screen.queryByText("This record is no longer with you")).toBeNull();
+    removeSpy.mockRestore();
+  });
+
+  it("a 404 from the reassign dialog leaves for the list with the gone message", async () => {
+    mocks({}, { CanReassign: 1 });
+    renderWithList();
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId("reassign-lead-btn"));
+    await user.click(screen.getByText("mock-gone"));
+    expect(await screen.findByTestId("leads-list")).toBeInTheDocument();
+    expect(await screen.findByText("This record is no longer with you")).toBeInTheDocument();
+  });
+
+  it("a reassign that leaves the lead visible stays on the page", async () => {
+    mocks({}, { CanReassign: 1 });
+    renderWithList();
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId("reassign-lead-btn"));
+    await user.click(screen.getByText("mock-done"));
+    await waitFor(() => expect(screen.getByTestId("lead-detail")).toBeInTheDocument());
+    expect(screen.queryByTestId("leads-list")).toBeNull();
+  });
+
+  it("a 404 on a status change from a stale page goes to the list and says the record is gone", async () => {
+    mocks();
+    server.use(http.post("*/api/leads/setLeadStatus", async () => gone(404)));
+    renderWithList();
+    await screen.findByTestId("lead-detail");
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("lead-status-select-input"));
+    await user.click(await screen.findByRole("option", { name: "New" }));
+    expect(await screen.findByTestId("leads-list")).toBeInTheDocument();
+    expect(await screen.findByText("This record is no longer with you")).toBeInTheDocument();
+  });
+
+  it("opening a lead that is no longer visible goes to the list with the gone message", async () => {
+    mocks();
+    server.use(http.post("*/api/leads/fetchLeadDetail", async () => gone(404)));
+    renderWithList();
+    expect(await screen.findByTestId("leads-list")).toBeInTheDocument();
+    expect(await screen.findByText("This record is no longer with you")).toBeInTheDocument();
+  });
+
+  // Final review I2 (FR-I2): a closed lead goes back to an active status only
+  // with the server's CanReopen (the complaint rule). REGRESSION: staff could
+  // move a lost lead back to open and then pass it on.
+  describe("reopening a closed lead", () => {
+    const LOST = { StatusId: 15, StatusName: "Lost", StatusCode: "lost" };
+    const optionNames = async (user) => {
+      await user.click(screen.getByTestId("lead-status-select-input"));
+      await screen.findAllByRole("option");
+      return screen.getAllByRole("option").map((o) => o.textContent);
+    };
+
+    it("without CanReopen the active statuses are not offered", async () => {
+      mocks({}, { ...LOST, CanReopen: 0 });
+      renderDetail();
+      await screen.findByTestId("lead-detail");
+      expect(await optionNames(userEvent.setup())).toEqual(["Lost", "Converted"]);
+    });
+
+    it("with CanReopen they are, and picking one posts the move", async () => {
+      const cap = {};
+      mocks(cap, { ...LOST, CanReopen: 1 });
+      renderDetail();
+      await screen.findByTestId("lead-detail");
+      const user = userEvent.setup();
+      expect(await optionNames(user)).toEqual(["New", "Contacted", "Lost", "Converted"]);
+      await user.click(screen.getByRole("option", { name: "New" }));
+      await waitFor(() => expect(cap.status).toEqual({ LeadId: 9, StatusId: 11, LostReasonId: null }));
+    });
+
+    it("an open lead offers everything whatever CanReopen says", async () => {
+      mocks({}, { CanReopen: 0 });
+      renderDetail();
+      await screen.findByTestId("lead-detail");
+      expect(await optionNames(userEvent.setup())).toEqual(["New", "Contacted", "Lost", "Converted"]);
+    });
+
+    it("the server's refusal (stale page) shows its sentence and stays", async () => {
+      mocks({}, { ...LOST, CanReopen: 1 });
+      server.use(http.post("*/api/leads/setLeadStatus", async () => HttpResponse.json(
+        { success: false, message: "Only a manager can reopen a closed lead", code: "SP_ERROR", responseCode: 403 }, { status: 403 })));
+      renderWithList();
+      await screen.findByTestId("lead-detail");
+      const user = userEvent.setup();
+      await user.click(screen.getByTestId("lead-status-select-input"));
+      await user.click(await screen.findByRole("option", { name: "New" }));
+      expect(await screen.findByText("Only a manager can reopen a closed lead")).toBeInTheDocument();
+      expect(screen.queryByTestId("leads-list")).toBeNull();
+    });
+  });
+
+  // Final review m1: a 404 that is not the lead's own not-found (here a stale
+  // status list: 'Status not found', which 139 answers 400 — but even a 404
+  // without NOT_FOUND) must not throw the user out of a lead they still see.
+  it("a 404 without NOT_FOUND on a status change stays on the lead", async () => {
+    mocks();
+    server.use(http.post("*/api/leads/setLeadStatus", async () => HttpResponse.json(
+      { success: false, message: "Status not found", code: "SP_ERROR", responseCode: 404 }, { status: 404 })));
+    renderWithList();
+    await screen.findByTestId("lead-detail");
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("lead-status-select-input"));
+    await user.click(await screen.findByRole("option", { name: "New" }));
+    expect(await screen.findByText("Status not found")).toBeInTheDocument();
+    expect(screen.queryByTestId("leads-list")).toBeNull();
+  });
+
+  it.each([[400, "Use convert to win a lead"], [403, "You do not have permission for this action"]])(
+    "a %i on an action stays on the lead and shows the server's sentence", async (status, message) => {
+    mocks();
+    server.use(http.post("*/api/leads/setLeadStatus", async () =>
+      HttpResponse.json({ success: false, message, responseCode: status }, { status })));
+    renderWithList();
+    await screen.findByTestId("lead-detail");
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("lead-status-select-input"));
+    await user.click(await screen.findByRole("option", { name: "New" }));
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(screen.getByTestId("lead-detail")).toBeInTheDocument();
+    expect(screen.queryByTestId("leads-list")).toBeNull();
   });
 });

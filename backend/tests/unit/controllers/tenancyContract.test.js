@@ -228,7 +228,7 @@ const KNOWN_WRAPPERS = new Set([
   "callController.js:runSp",
   "configController.js:runSp",
   "configController.js:fetchRows",
-  "permission.js:visibleRecord", // assertRecordAccess's lookup half; ENTITY_LOOKUP SPs all take CompId
+  "permission.js:lookupRecord", // visibleRecord + assertRecordAccess lookup; ENTITY_LOOKUP SPs all take CompId
 ]);
 
 /**

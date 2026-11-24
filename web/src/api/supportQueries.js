@@ -21,6 +21,7 @@ export const SUPPORT_ENDPOINTS = {
     escalateTicket: "/api/tickets/escalateTicket",
     fetchEscalationTargets: "/api/tickets/fetchEscalationTargets",
     deleteTicket: "/api/tickets/deleteTicket",
+    fetchLoggedByMe: "/api/tickets/fetchLoggedByMe",
   },
   customers: {
     saveCustomer: "/api/customers/saveCustomer",
@@ -53,6 +54,7 @@ export const bulkTransferTickets = post(SUPPORT_ENDPOINTS.tickets.bulkTransferTi
 export const escalateTicket = post(SUPPORT_ENDPOINTS.tickets.escalateTicket);
 export const fetchEscalationTargets = post(SUPPORT_ENDPOINTS.tickets.fetchEscalationTargets);
 export const deleteTicket = post(SUPPORT_ENDPOINTS.tickets.deleteTicket);
+export const fetchLoggedByMe = post(SUPPORT_ENDPOINTS.tickets.fetchLoggedByMe);
 
 // Customers
 export const saveCustomer = post(SUPPORT_ENDPOINTS.customers.saveCustomer);

@@ -1,6 +1,7 @@
 import { Linking } from "react-native";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react-native";
 
+import { RECORD_GONE_MESSAGE } from "../../api/errors";
 import { fetchAttachments } from "../../api/attachmentQueries";
 import { fetchCalls, logCall } from "../../api/callQueries";
 import { fetchLookups, LOOKUP_KIND } from "../../api/configQueries";
@@ -82,6 +83,7 @@ const lead = (patch: Partial<Lead> = {}): Lead =>
     PartnerName: null, ProductId: 1, ProductName: "Solar 5kW", StatusId: 2, StatusName: "Qualified",
     StatusCode: "qualified", OwnerId: 5, OwnerName: "Ravi Mehta", EstValue: 120000, Remarks: null,
     NextFollowupDate: null, IsOverdue: false, WonAt: null, WonValue: null, CreatedAt: "2026-10-26T10:00:00",
+    CanEdit: true, CanReassign: true, SendBackToId: null, SendBackToName: null,
     ...patch,
   });
 
@@ -105,7 +107,6 @@ const loaded = async () => {
   expect(await screen.findByRole("header", { name: "Anil Kumar" })).toBeOnTheScreen();
   await screen.findByText("On leave");
   await screen.findAllByText("Reached");
-  await screen.findByText("Priya Shah");
 };
 
 beforeEach(() => {
@@ -138,6 +139,14 @@ describe("when the lead cannot be shown", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Go back" }));
     expect(navigation.goBack).toHaveBeenCalled();
     expect(mockBar.actions).toEqual([]);
+  });
+
+  // X404: 404 alone means gone; a 403 is a refusal and reads as a load failure.
+  it("a 403 is not 'not available'", async () => {
+    jest.mocked(fetchLeadDetail).mockRejectedValue(serverError(403, "No"));
+    await mount();
+    expect(await screen.findByText("The lead could not be loaded. Check your connection and try again.")).toBeOnTheScreen();
+    expect(screen.queryByText("Lead not available")).toBeNull();
   });
 
   it("a resolved detail with no lead row is treated the same way", async () => {
@@ -205,15 +214,15 @@ describe("E 15 band and contact card", () => {
     await loaded();
     expect(screen.queryByRole("button", { name: "Call" })).toBeNull();
     expect(screen.queryByText("Est. value")).toBeNull();
-    expect(bar()).toEqual(["Call (off)", "Message (off)", "Log follow-up (main)", "Status", "Transfer"]);
+    expect(bar()).toEqual(["Call (off)", "Message (off)", "Log follow-up (main)", "Status", "Reassign"]);
   });
 });
 
 describe("the action bar", () => {
-  it("Call · Message · Log follow-up (main) · Status · Transfer", async () => {
+  it("Call · Message · Log follow-up (main) · Status · Reassign", async () => {
     await mount();
     await loaded();
-    expect(bar()).toEqual(["Call", "Message", "Log follow-up (main)", "Status", "Transfer"]);
+    expect(bar()).toEqual(["Call", "Message", "Log follow-up (main)", "Status", "Reassign"]);
   });
 
   it("Log follow-up completes the next open one: remarks required, a call defaults to out and books the next", async () => {
@@ -299,16 +308,17 @@ describe("the action bar", () => {
     expect(await screen.findByText("Due date is in the past")).toBeOnTheScreen();
   });
 
-  it("Status opens the status sheet; Transfer the pick list (owner left out)", async () => {
+  it("Status opens the status sheet; Reassign the per-lead pick list (the person it is with left out)", async () => {
     const { present } = spySheets();
     await mount();
     await loaded();
     present.mockClear();
     await pressBar("Status");
-    await pressBar("Transfer");
+    await pressBar("Reassign");
     expect(present).toHaveBeenCalledTimes(2);
     expect(screen.getByText("Anil Kumar · now Qualified")).toBeOnTheScreen();
-    expect(screen.getByText("Sales · Head Office")).toBeOnTheScreen();
+    await waitFor(() => expect(fetchAssignableUsers).toHaveBeenCalledWith({ Module: "leads", RecordId: 11 }));
+    expect(await screen.findByText("Sales · Head Office")).toBeOnTheScreen();
     expect(screen.queryByText("Manager · Head Office")).toBeNull();
   });
 });
@@ -326,6 +336,30 @@ describe("status (E 25)", () => {
     expect(spy).toHaveBeenCalledWith({ queryKey: ["lead", 11] });
     expect(spy).toHaveBeenCalledWith({ queryKey: ["leads"] });
     expect(spy).toHaveBeenCalledWith({ queryKey: ["followups"] });
+  });
+
+  // Final review I2 (FR-I2): a closed lead goes back to an active status only
+  // with the server's CanReopen. REGRESSION: staff could reopen a lost lead and
+  // then pass it on.
+  it("a lost lead without CanReopen offers no active status", async () => {
+    jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead({ StatusId: 4, StatusName: "Lost", StatusCode: "lost", CanReopen: false })));
+    await mount();
+    await loaded();
+    expect(screen.getByRole("radio", { name: "Lost" })).toBeOnTheScreen();
+    expect(screen.getByRole("radio", { name: "Won" })).toBeOnTheScreen();
+    expect(screen.queryByRole("radio", { name: "New" })).toBeNull();
+    expect(screen.queryByRole("radio", { name: "Qualified" })).toBeNull();
+  });
+
+  it("a lost lead with CanReopen offers them; a refusal shows the server's sentence in the sheet", async () => {
+    jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead({ StatusId: 4, StatusName: "Lost", StatusCode: "lost", CanReopen: true })));
+    jest.mocked(setLeadStatus).mockRejectedValueOnce(serverError(403, "Only a manager can reopen a closed lead"));
+    await mount();
+    await loaded();
+    await fireEvent.press(screen.getByRole("radio", { name: "New" }));
+    await fireEvent.press(screen.getByText("Save · mark new"));
+    expect(await screen.findByText("Only a manager can reopen a closed lead")).toBeOnTheScreen();
+    expect(screen.getByRole("header", { name: "Anil Kumar" })).toBeOnTheScreen();
   });
 
   it("Lost sends its reason; a refusal shows in the sheet", async () => {
@@ -500,13 +534,26 @@ describe("the ⋮ menu", () => {
     );
   });
 
-  it("a refused call shows the sentence in the sheet", async () => {
+  it("a refused call (403) shows the sentence in the sheet and stays on the lead", async () => {
     jest.mocked(logCall).mockRejectedValue(serverError(403, "Not yours"));
-    await mount();
+    const navigation = makeNavigation<"LeadDetail">();
+    await mount(navigation);
     await loaded();
     await fireEvent.changeText(screen.getByTestId("logcall-notes"), "x");
     await fireEvent.press(screen.getByText("Save call"));
     expect(await screen.findByText("Not yours")).toBeOnTheScreen();
+    expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+
+  it("a call on a lead that has gone (404) leaves the record and says so", async () => {
+    jest.mocked(logCall).mockRejectedValue(serverError(404, "Not found"));
+    const navigation = makeNavigation<"LeadDetail">();
+    await mount(navigation);
+    await loaded();
+    await fireEvent.changeText(screen.getByTestId("logcall-notes"), "x");
+    await fireEvent.press(screen.getByText("Save call"));
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+    expect(await screen.findByText(RECORD_GONE_MESSAGE)).toBeOnTheScreen();
   });
 
   it("Files goes to the Details tab, where the attachments are", async () => {
@@ -533,41 +580,210 @@ describe("the ⋮ menu", () => {
   });
 });
 
-describe("transfer", () => {
-  it("needs a reason and remarks, and never sends an office", async () => {
-    jest.mocked(fetchAssignableUsers).mockResolvedValue([ravi, user(9, "Priya Shah", "Sales", 2)]);
+describe("reassign and send back", () => {
+  const amit: AssignableUser = { ...user(12, "Amit Singh", "Sales", 2), GroupRank: 3, AwayToday: true };
+  const nitin: AssignableUser = { ...user(14, "Nitin Verma", "Sales"), GroupRank: 1, IsGiver: true };
+
+  const openReassign = async (people: AssignableUser[] = [ravi, { ...priya, GroupRank: 2 }, amit, nitin]) => {
+    jest.mocked(fetchAssignableUsers).mockResolvedValue(people);
+    await pressBar("Reassign");
+    await screen.findByText("Priya Shah");
+  };
+  const fillAndSubmit = async (name = "Priya Shah") => {
+    await fireEvent.press(screen.getByText(name));
+    await fireEvent.press(screen.getByText("On leave"));
+    await fireEvent.changeText(screen.getByTestId("reassign-remarks"), "covering");
+    await fireEvent.press(screen.getByText(`Reassign to ${name.split(" ")[0]}`));
+  };
+
+  it("never says Transfer or Owner on the lead", async () => {
     await mount();
     await loaded();
+    await openReassign();
+    expect(screen.queryAllByText(/transfer|owner/i)).toEqual([]);
+    expect(screen.getByText("Reassign lead")).toBeOnTheScreen();
+    expect(screen.getByText("Anil Kumar · now with Ravi Mehta")).toBeOnTheScreen();
+  });
+
+  it("groups the people, marks Away today and the giver, and search narrows the list", async () => {
+    await mount();
+    await loaded();
+    await openReassign();
+    for (const t of ["Your manager and team", "Your office", "Other offices", "Away today", "Gave it to you"]) {
+      expect(screen.getByText(t)).toBeOnTheScreen();
+    }
+    await fireEvent.changeText(screen.getByTestId("reassign-search"), "amit");
+    expect(screen.queryByText("Priya Shah")).toBeNull();
+    expect(screen.queryByText("Your office")).toBeNull();
+    expect(screen.getByText("Amit Singh")).toBeOnTheScreen();
+  });
+
+  it("needs a reason and remarks; success posts no office, drops the cached lead, goes back and toasts", async () => {
+    const navigation = makeNavigation<"LeadDetail">();
+    const { queryClient } = await mount(navigation);
+    const remove = jest.spyOn(queryClient, "removeQueries");
+    await loaded();
+    await openReassign();
     await fireEvent.press(screen.getByText("Priya Shah"));
-    expect(screen.getByText("Transfer to Priya Shah")).toBeOnTheScreen();
-    await fireEvent.press(screen.getAllByText("Transfer").at(-1)!);
+    await fireEvent.press(screen.getByText("Reassign to Priya"));
     expect(transferLead).not.toHaveBeenCalled();
+    expect(screen.getByText("Pick a reason.")).toBeOnTheScreen();
     await fireEvent.press(screen.getByText("On leave"));
-    await fireEvent.changeText(screen.getByPlaceholderText("Anything the next person should know"), "covering");
-    await fireEvent.press(screen.getAllByText("Transfer").at(-1)!);
+    await fireEvent.changeText(screen.getByTestId("reassign-remarks"), "covering");
+    await fireEvent.press(screen.getByText("Reassign to Priya"));
     await waitFor(() =>
       expect(transferLead).toHaveBeenCalledWith(
         { LeadId: 11, ToUserId: 9, ToBranchId: null, ReasonId: 30, Remarks: "covering" },
         expect.anything(),
       ),
     );
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+    expect(remove).toHaveBeenCalledWith({ queryKey: ["lead", 11] });
+    expect(await screen.findByText("Reassigned to Priya Shah")).toBeOnTheScreen();
   });
 
-  it("with no transfer reasons configured the sheet says so, but not while loading", async () => {
+  it("with no reasons configured the sheet says so and cannot be sent", async () => {
     jest.mocked(fetchLookups).mockImplementation(async ({ Kind }) => (Kind === LOOKUP_KIND.transferReason ? [] : (LOOKUPS[Kind] ?? [])));
     await mount();
-    expect(await screen.findByText("No transfer reasons are set up. Add them on the web first.")).toBeOnTheScreen();
+    expect(await screen.findByText("No reasons are set up. Add them on the web first.")).toBeOnTheScreen();
   });
 
-  it("a refused transfer shows the sentence in the sheet", async () => {
+  it("a refused reassign (403) shows the server's sentence, refetches and stays", async () => {
     jest.mocked(transferLead).mockRejectedValue(serverError(403, "Not in your team"));
+    const navigation = makeNavigation<"LeadDetail">();
+    await mount(navigation);
+    await loaded();
+    await openReassign();
+    const calls = jest.mocked(fetchLeadDetail).mock.calls.length;
+    await fillAndSubmit();
+    expect(await screen.findByText("Not in your team")).toBeOnTheScreen();
+    await waitFor(() => expect(jest.mocked(fetchLeadDetail).mock.calls.length).toBeGreaterThan(calls));
+    expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+
+  it("a reassign on a lead someone else moved (404) leaves and says it is no longer with you", async () => {
+    jest.mocked(transferLead).mockRejectedValue(serverError(404, "Not found"));
+    const navigation = makeNavigation<"LeadDetail">();
+    await mount(navigation);
+    await loaded();
+    await openReassign();
+    await fillAndSubmit();
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+    expect(await screen.findByText(RECORD_GONE_MESSAGE)).toBeOnTheScreen();
+  });
+
+  it("nobody to pick says ask a manager", async () => {
     await mount();
     await loaded();
-    await fireEvent.press(screen.getByText("Priya Shah"));
-    await fireEvent.press(screen.getByText("On leave"));
-    await fireEvent.changeText(screen.getByPlaceholderText("Anything the next person should know"), "x");
-    await fireEvent.press(screen.getAllByText("Transfer").at(-1)!);
-    expect(await screen.findByText("Not in your team")).toBeOnTheScreen();
+    jest.mocked(fetchAssignableUsers).mockResolvedValue([ravi]);
+    await pressBar("Reassign");
+    expect(await screen.findByText("Nobody can take this. Ask a manager.")).toBeOnTheScreen();
+  });
+
+  it("Reassign is not offered on a lost lead for an Own-reach user (CanReassign false)", async () => {
+    jest.mocked(fetchLeadDetail).mockResolvedValue(
+      detail(lead({ StatusId: 4, StatusName: "Lost", StatusCode: "lost", CanReassign: false })),
+    );
+    await mount();
+    expect(await screen.findByRole("header", { name: "Anil Kumar" })).toBeOnTheScreen();
+    await screen.findAllByText("Reached");
+    expect(bar()).toEqual(["Call", "Message", "Log follow-up (main)", "Status"]);
+    expect(screen.queryByText("Reassign lead")).toBeNull();
+  });
+
+  it("CanEdit false hides every write action", async () => {
+    jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead({ CanEdit: false })));
+    await mount();
+    expect(await screen.findByRole("header", { name: "Anil Kumar" })).toBeOnTheScreen();
+    expect(bar()).toEqual(["Call", "Message"]);
+    expect(screen.queryByLabelText("Lead actions")).toBeNull();
+  });
+
+  // Task 26 review Important 1: a follow-up answers for itself (CanAct), not through the lead.
+  it("a follow-up delegated to me (CanAct) stays actionable on a lead I cannot edit", async () => {
+    jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead({ CanEdit: false }), { followups: [followUp({ CanAct: true })] }));
+    await mount();
+    expect(await screen.findByRole("header", { name: "Anil Kumar" })).toBeOnTheScreen();
+    expect(bar()).toEqual(["Call", "Message"]);
+    const { present } = spySheets();
+    await fireEvent.press(screen.getByTestId("next-followup"));
+    expect(present).toHaveBeenCalledTimes(1);
+    present.mockClear();
+    await fireEvent.press(menuItem("Mark done"));
+    // The done sheet opens (it is mounted for the grant, not for the lead).
+    expect(present).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Log the call")).toBeOnTheScreen();
+  });
+
+  it("a follow-up I may not act on (CanAct false) offers nothing, even on a lead I can edit", async () => {
+    jest.mocked(fetchLeadDetail).mockResolvedValue(
+      detail(lead(), { followups: [followUp({ CanAct: false }), followUp({ Id: 71, DueAt: "2099-01-03T15:00:00", CanAct: false })] }),
+    );
+    await mount();
+    await loaded();
+    expect(screen.getByTestId("next-followup").props.accessibilityRole).toBeUndefined();
+    expect(screen.getByTestId("followup-71").props.accessibilityRole).toBeUndefined();
+  });
+
+  it("Send back is offered only when the server names who gave it", async () => {
+    await mount();
+    await loaded();
+    expect(screen.queryByText(/Send back/)).toBeNull();
+  });
+
+  // Final review m2: a send back is a reassign; not offered where the server
+  // would refuse the reassign.
+  it("no Send back without CanReassign, even when the server names a giver", async () => {
+    jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead({ CanReassign: false, SendBackToId: 14, SendBackToName: "Nitin Verma" })));
+    await mount();
+    expect(await screen.findByRole("header", { name: "Anil Kumar" })).toBeOnTheScreen();
+    await screen.findAllByText("Reached");
+    expect(screen.queryByText(/Send back/)).toBeNull();
+  });
+
+  it("Send back posts remarks with SendBack and no reason, then leaves", async () => {
+    jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead({ SendBackToId: 14, SendBackToName: "Nitin Verma" })));
+    const navigation = makeNavigation<"LeadDetail">();
+    await mount(navigation);
+    await loaded();
+    // The ⋮ item, then the sheet title.
+    expect(screen.getAllByText("Send back to Nitin Verma")).toHaveLength(2);
+    await fireEvent.changeText(screen.getByTestId("compose-sendback"), "Wrong city");
+    await fireEvent.press(screen.getByText("Send back to Nitin"));
+    await waitFor(() =>
+      expect(transferLead).toHaveBeenCalledWith(
+        { LeadId: 11, ToUserId: 14, ToBranchId: null, Remarks: "Wrong city", SendBack: true },
+        expect.anything(),
+      ),
+    );
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+    expect(await screen.findByText("Sent back to Nitin Verma")).toBeOnTheScreen();
+  });
+
+  it("a refused send back shows the server's sentence, refetches and drops the item (Review Focus 3)", async () => {
+    jest.mocked(fetchLeadDetail).mockResolvedValueOnce(detail(lead({ SendBackToId: 14, SendBackToName: "Nitin Verma" })));
+    jest.mocked(transferLead).mockRejectedValue(serverError(400, "Nitin Verma can no longer take this. Reassign it instead."));
+    const navigation = makeNavigation<"LeadDetail">();
+    await mount(navigation);
+    await loaded();
+    await fireEvent.changeText(screen.getByTestId("compose-sendback"), "Wrong city");
+    await fireEvent.press(screen.getByText("Send back to Nitin"));
+    expect(await screen.findByText("Nitin Verma can no longer take this. Reassign it instead.")).toBeOnTheScreen();
+    await waitFor(() => expect(screen.queryByText("Send back to Nitin Verma")).toBeNull());
+    expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+});
+
+describe("a write on a lead that has gone", () => {
+  it("a 404 on a status change leaves and toasts", async () => {
+    jest.mocked(setLeadStatus).mockRejectedValue(serverError(404, "Not found"));
+    const navigation = makeNavigation<"LeadDetail">();
+    await mount(navigation);
+    await loaded();
+    await fireEvent.press(screen.getByRole("radio", { name: "New" }));
+    await fireEvent.press(screen.getByText("Save · mark new"));
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+    expect(await screen.findByText(RECORD_GONE_MESSAGE)).toBeOnTheScreen();
   });
 });
 
@@ -641,6 +857,21 @@ it("Activity weaves activity, calls and transfers newest first, dropping the dup
   expect(titles).toEqual(["Ravi Mehta → Priya Shah — covering", "Incoming call", "Spoke to owner", "Lead created", "something_new"]);
 });
 
+it("Activity rewords a legacy 'Transferred to' row as 'Reassigned to'", async () => {
+  jest.mocked(fetchLeadDetail).mockResolvedValue(
+    detail(lead(), {
+      activity: [
+        { Id: 1, LeadId: 11, UserId: 42, UserName: "Test User", Type: "assigned", Summary: "Transferred to Pooja Nair — Absent", CreatedAt: "2026-11-01T10:00:00" },
+      ],
+    }),
+  );
+  await mount();
+  await loaded();
+  await fireEvent.press(screen.getByRole("tab", { name: "Activity" }));
+  expect(await screen.findByText("Reassigned to Pooja Nair — Absent")).toBeOnTheScreen();
+  expect(screen.queryByText(/Transferred/)).toBeNull();
+});
+
 it("Activity with nothing on it says so", async () => {
   await mount();
   await loaded();
@@ -684,10 +915,10 @@ describe("T3: at the rail", () => {
     await mount();
     await loaded();
     expect(screen.getByText("Estimated value")).toBeOnTheScreen();
-    // The band's Transfer comes before the transfer sheet's submit.
-    expect(screen.getAllByRole("button", { name: "Transfer" })[0]).toBeOnTheScreen();
+    // The band's Reassign comes before the reassign sheet's submit.
+    expect(screen.getAllByRole("button", { name: "Reassign" })[0]).toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Edit" })).toBeOnTheScreen();
-    for (const label of ["Owner", "Source", "Product", "Roof type", "Created"]) expect(screen.getByText(label)).toBeOnTheScreen();
+    for (const label of ["Assigned to", "Source", "Product", "Roof type", "Created"]) expect(screen.getByText(label)).toBeOnTheScreen();
     expect(screen.getByText("RCC flat")).toBeOnTheScreen();
 
     present.mockClear();
@@ -695,7 +926,7 @@ describe("T3: at the rail", () => {
     const card = within(screen.getByTestId("next-followup"));
     await fireEvent.press(card.getByRole("button", { name: "Mark done" }));
     await fireEvent.press(card.getByRole("button", { name: "Reschedule" }));
-    await fireEvent.press(screen.getAllByRole("button", { name: "Transfer" })[0]!);
+    await fireEvent.press(screen.getAllByRole("button", { name: "Reassign" })[0]!);
     expect(present).toHaveBeenCalledTimes(4);
   });
 });

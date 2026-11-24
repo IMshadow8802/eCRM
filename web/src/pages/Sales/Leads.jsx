@@ -5,7 +5,7 @@ import { Box, Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { MaterialReactTable } from "material-react-table";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowRightLeft, Eye, Pencil, Plus, Trash2, Users } from "lucide-react";
+import { Eye, UserRoundPen, Pencil, Plus, Trash2, Users } from "lucide-react";
 
 import { Button, Combobox, IconButton, Tooltip, Tabs, Chip } from "../../components/ui";
 import DateRangeField from "../../components/ui/DateRangeField";
@@ -16,7 +16,6 @@ import useServerTable from "../../hooks/useServerTable";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { useUsers } from "../../hooks";
 import { useLookups } from "../../hooks/useLookups";
-import { useAccess } from "../../hooks/useAccess";
 import useAuthStore from "../../stores/useAuthStore";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
 import { PARTNER_ENDPOINTS } from "../../api/partnerQueries";
@@ -28,14 +27,13 @@ import LeadCreateModal from "./LeadCreateModal";
 import TransferLeadModal from "./TransferLeadModal";
 import DeleteLeadModal from "./DeleteLeadModal";
 
-// Name, Owner and Partner wrap so the list fits without sideways scroll.
+// Name, Assigned to and Partner wrap so the list fits without sideways scroll.
 const wrap = { sx: { whiteSpace: "normal", overflowWrap: "anywhere" } };
 const num = (v) => (v === "" ? null : Number(v));
 
 const Leads = () => {
   const navigate = useNavigate();
   const theme = useTheme();
-  const leadsAccess = useAccess("leads");
   const userId = useAuthStore((s) => s.user?.UserId ?? s.UserId);
 
   // The filters, the Created range and the sort live in the address bar, so a
@@ -95,7 +93,7 @@ const Leads = () => {
     { accessorKey: "StatusName", header: "Status", enableSorting: false, size: 110,
       Cell: ({ row }) => <Chip label={row.original.StatusName || "—"} size="sm" tone={isActiveCode(row.original.StatusCode) ? "primary" : "default"} colors={statusChipColors(row.original.StatusCode)} /> },
     { accessorKey: "ProductName", header: "Product", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "—" },
-    { accessorKey: "OwnerName", header: "Owner", enableSorting: false, muiTableBodyCellProps: wrap, Cell: ({ cell }) => cell.getValue() || "Unassigned" },
+    { accessorKey: "OwnerName", header: "Assigned to", enableSorting: false, muiTableBodyCellProps: wrap, Cell: ({ cell }) => cell.getValue() || "Unassigned" },
     { accessorKey: "PartnerName", header: "Partner", enableSorting: false, muiTableBodyCellProps: wrap, Cell: ({ cell }) => cell.getValue() || "—" },
     { id: "value", accessorKey: "EstValue", header: "Value", enableSorting: true,
       Cell: ({ row }) => (row.original.StatusCode === "converted"
@@ -112,7 +110,7 @@ const Leads = () => {
     ...presetParams(preset, userId),
   }), [filters, created, preset, userId]);
 
-  const { table, sorting } = useServerTable({
+  const { table, sorting, totalRecords, isLoading } = useServerTable({
     columns, queryKey: "leads", endpoint: SALES_ENDPOINTS.leads.fetchLeads, dataKey: "leads", extraParams,
     initialPageSize: 25, initialSorting: initial.sorting, enableSortingRemoval: false, getRowId: (row) => row.Id,
     enableRowSelection: true, enableRowActions: true,
@@ -124,7 +122,7 @@ const Leads = () => {
       <Box sx={{ display: "flex", gap: 0.5 }} onClick={(e) => e.stopPropagation()}>
         <Tooltip title="View lead & history"><IconButton size="sm" variant="ghost" tone="primary" aria-label="View lead" data-testid={`view-lead-${row.original.Id}`} onClick={() => navigate(`/sales/leads/${row.original.Id}`)}><Eye size={16} /></IconButton></Tooltip>
         <Tooltip title="Edit details"><IconButton size="sm" variant="ghost" tone="info" aria-label="Edit lead" data-testid={`edit-lead-${row.original.Id}`} onClick={() => setEditLead(row.original)}><Pencil size={16} /></IconButton></Tooltip>
-        <Tooltip title="Transfer / reassign"><IconButton size="sm" variant="ghost" tone="warning" aria-label="Transfer lead" data-testid={`transfer-lead-${row.original.Id}`} onClick={() => setTransferIds([row.original.Id])}><ArrowRightLeft size={16} /></IconButton></Tooltip>
+        <Tooltip title="Reassign"><IconButton size="sm" variant="ghost" tone="warning" aria-label="Reassign lead" data-testid={`reassign-lead-${row.original.Id}`} onClick={() => setTransferIds([row.original.Id])}><UserRoundPen size={16} /></IconButton></Tooltip>
         <Tooltip title="Delete"><IconButton size="sm" variant="ghost" tone="error" aria-label="Delete lead" data-testid={`delete-lead-${row.original.Id}`} onClick={() => setDeleteLead(row.original)}><Trash2 size={16} /></IconButton></Tooltip>
       </Box>
     ),
@@ -142,6 +140,8 @@ const Leads = () => {
     <Box sx={{ display: "flex", flexDirection: "column", flexGrow: 1 }}>
       <PageHeader
         title="Leads"
+        // The server's total for this preset + filters, not the page (SolarTest finding 2026-11-23).
+        titleSuffix={isLoading ? null : <Chip label={`${totalRecords} lead${totalRecords === 1 ? "" : "s"}`} size="sm" data-testid="leads-total" />}
         subtitle="Every prospect, who holds it, and what happens next."
         actions={
           <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
@@ -163,10 +163,10 @@ const Leads = () => {
         <DateRangeField means="Created" heading="Show leads created…" allowAny value={created} onChange={(v) => setCreated({ ...v, error: null })} data-testid="filter-created" />
         <Box sx={{ flex: "1 1 calc(150rem / 15)", maxWidth: "calc(220rem / 15)" }}><Combobox size="sm" placeholder="All statuses" options={opts.status} value={optById(opts.status, filters.StatusId)} onChange={setFilterValue("StatusId")} data-testid="filter-status" /></Box>
         <Box sx={{ flex: "1 1 calc(150rem / 15)", maxWidth: "calc(220rem / 15)" }}><Combobox size="sm" placeholder="All products" options={opts.product} value={optById(opts.product, filters.ProductId)} onChange={setFilterValue("ProductId")} data-testid="filter-product" /></Box>
-        <Box sx={{ flex: "1 1 calc(150rem / 15)", maxWidth: "calc(220rem / 15)" }}><Combobox size="sm" placeholder="All owners" options={opts.owner} value={optById(opts.owner, filters.OwnerId)} onChange={setFilterValue("OwnerId")} data-testid="filter-owner" /></Box>
+        <Box sx={{ flex: "1 1 calc(150rem / 15)", maxWidth: "calc(220rem / 15)" }}><Combobox size="sm" placeholder="Assigned to" options={opts.owner} value={optById(opts.owner, filters.OwnerId)} onChange={setFilterValue("OwnerId")} data-testid="filter-owner" /></Box>
         <Box sx={{ flex: "1 1 calc(150rem / 15)", maxWidth: "calc(220rem / 15)" }}><Combobox size="sm" placeholder="All sources" options={opts.source} value={optById(opts.source, filters.SourceId)} onChange={setFilterValue("SourceId")} data-testid="filter-source" /></Box>
         <Box sx={{ flex: "1 1 calc(150rem / 15)", maxWidth: "calc(220rem / 15)" }}><Combobox size="sm" placeholder="All partners" options={opts.partner} value={partnerOpt} onChange={setFilterValue("PartnerId")} data-testid="filter-partner" /></Box>
-        <Box sx={{ flex: "1 1 calc(150rem / 15)", maxWidth: "calc(220rem / 15)" }}><Combobox size="sm" placeholder="All branches" options={opts.branch} value={optById(opts.branch, filters.BranchId)} onChange={setFilterValue("BranchId")} data-testid="filter-branch" /></Box>
+        <Box sx={{ flex: "1 1 calc(150rem / 15)", maxWidth: "calc(220rem / 15)" }}><Combobox size="sm" placeholder="All offices" options={opts.branch} value={optById(opts.branch, filters.BranchId)} onChange={setFilterValue("BranchId")} data-testid="filter-branch" /></Box>
       </Box>
 
       {created.error && (
@@ -176,7 +176,7 @@ const Leads = () => {
       <MaterialReactTable table={table} />
 
       <LeadCreateModal open={createOpen || Boolean(editLead)} lead={editLead} onClose={() => { setCreateOpen(false); setEditLead(null); }} />
-      <TransferLeadModal open={transferIds.length > 0} leadIds={transferIds} canCrossBranch={leadsAccess.wide} onClose={() => setTransferIds([])} onTransferred={() => table.resetRowSelection?.()} />
+      <TransferLeadModal open={transferIds.length > 0} leadIds={transferIds} onClose={() => setTransferIds([])} onDone={() => table.resetRowSelection?.()} />
       <DeleteLeadModal open={Boolean(deleteLead)} leadId={deleteLead?.Id} leadName={deleteLead?.Name} onClose={() => setDeleteLead(null)} />
     </Box>
   );

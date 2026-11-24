@@ -30,10 +30,11 @@ const baseReq = (overrides = {}) => {
 
 beforeEach(() => database.executeStoredProcedure.mockReset());
 
-// The two gate lookups. A quotation's header carries its LEAD's owner/branch.
-const visibleLead = { Id: 9, BranchId: 2, OwnerId: 7, CreatedBy: 7 };
-const hiddenLead = { Id: 9, BranchId: 77, OwnerId: 999, CreatedBy: 999 };
-const draft = { Id: 4, LeadId: 9, Status: "draft", OwnerId: 7, BranchId: 2, CreatedBy: 7 };
+// The two gate lookups, asked as the session person. Since 132 a lead or
+// quotation the caller cannot see comes back as no row; a write needs CanEdit.
+const visibleLead = { Id: 9, BranchId: 2, OwnerId: 7, CreatedBy: 7, CanEdit: 1 };
+const hiddenLead = null;
+const draft = { Id: 4, LeadId: 9, Status: "draft", OwnerId: 7, BranchId: 2, CreatedBy: 7, CanEdit: 1 };
 const mockLead = (lead) => database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [lead ? [lead] : [], [], [], [], []] });
 const mockQuote = (q) => database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [q ? [q] : [], [], []] });
 const okRow = (extra = {}) => ({ recordset: [{ Id: 4, ResponseCode: 200, ResponseMess: "Quotation saved", ...extra }] });
@@ -83,11 +84,11 @@ describe("quotationController.save", () => {
     expect(database.executeStoredProcedure.mock.calls[1][1].SellerStateCode).toBe("99");
   });
 
-  it("403s a create on a lead the caller cannot see, before the SP", async () => {
+  it("404s a create on a lead the caller cannot see, before the SP", async () => {
     mockLead(hiddenLead);
     const res = mockRes();
     await quotationController.save(baseReq({ body: BODY }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
   });
 
@@ -95,7 +96,7 @@ describe("quotationController.save", () => {
     mockQuote(draft);
     database.executeStoredProcedure.mockResolvedValueOnce(okRow());
     await quotationController.save(baseReq({ body: { ...BODY, Id: 4, LeadId: 12345 } }), mockRes());
-    expect(database.executeStoredProcedure.mock.calls[0]).toEqual(["sp_FetchQuotationDetail", { CompId: 5, QuotationId: 4 }]);
+    expect(database.executeStoredProcedure.mock.calls[0]).toEqual(["sp_FetchQuotationDetail", { CompId: 5, UserId: 7, QuotationId: 4 }]);
     expect(database.executeStoredProcedure.mock.calls[1][1]).toMatchObject({ Id: 4, LeadId: 9 });
   });
 
@@ -147,16 +148,15 @@ describe("quotationController.save", () => {
 });
 
 describe("quotationController.fetch", () => {
-  it("lists under the caller's scope, clamps paging, and drops filters it does not recognise", async () => {
+  it("lists as the session person only (no scope lists), clamps paging, and drops filters it does not recognise", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [[{ Id: 4, QuoteNo: "QT-2627-0042" }], [{ TotalRecords: 1, TotalPages: 1, CurrentPage: 1, PageSize: 200 }]],
     });
     const res = mockRes();
-    await quotationController.fetch(baseReq({ body: { PageSize: 99999, Status: "final", LeadId: "9", FromDate: "2026-09-01", ToDate: "junk", OwnerId: "x" } }), res);
+    await quotationController.fetch(baseReq({ body: { PageSize: 99999, Status: "final", LeadId: "9", FromDate: "2026-09-01", ToDate: "junk", OwnerId: "x", UserId: 999, CompId: 999 } }), res);
     expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_FetchQuotations", {
-      CompId: 5, PageNumber: 1, PageSize: 200, SearchTerm: null, Status: "final",
+      CompId: 5, UserId: 7, PageNumber: 1, PageSize: 200, SearchTerm: null, Status: "final",
       OwnerId: null, BranchId: null, LeadId: 9, FromDate: "2026-09-01", ToDate: null,
-      UserId: 7, AccessibleBranchIdsJson: "[2]", OwnerIdsJson: null,
     });
     expect(res.json.mock.calls[0][0].data).toEqual({
       quotations: [{ Id: 4, QuoteNo: "QT-2627-0042" }],
@@ -184,22 +184,34 @@ describe("quotationController.detail", () => {
   it("returns header (JSON parsed, raw strings dropped), lines and revisions", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[header], [{ Id: 1 }], [{ Id: 4, Revision: 1 }]] });
     const res = mockRes();
-    await quotationController.detail(baseReq({ body: { QuotationId: 4 } }), res);
+    await quotationController.detail(baseReq({ body: { QuotationId: 4, UserId: 999 } }), res);
+    expect(database.executeStoredProcedure.mock.calls[0]).toEqual(["sp_FetchQuotationDetail", { CompId: 5, UserId: 7, QuotationId: 4 }]);
     const { quotation, lines, revisions } = res.json.mock.calls[0][0].data;
     expect(quotation.Company).toEqual({ name: "Solar Care" });
     expect(quotation.Content).toEqual({ intro: "<p>hi</p>" });
     expect(quotation).not.toHaveProperty("CompanyJSON");
+    expect(quotation.CanEdit).toBe(1);
     expect(lines).toEqual([{ Id: 1 }]);
     expect(revisions).toEqual([{ Id: 4, Revision: 1 }]);
   });
 
   // 404 rather than 403: a user who cannot see a lead should not learn that it
   // has quotations. Same rule as leadController.detail.
-  it("404s a quotation whose lead the caller cannot see", async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ ...header, OwnerId: 999, BranchId: 77, CreatedBy: 999 }], [], []] });
+  it("quotation detail of a lead out of view answers 404", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[], [], []] });
     const res = mockRes();
     await quotationController.detail(baseReq({ body: { QuotationId: 4 } }), res);
     expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json.mock.calls[0][0].message).toBe("Quotation not found");
+  });
+
+  // W3: a row the procedure returns is shown; Node no longer re-judges it
+  // against the old Own/Office lists.
+  it("W3 regression: shows a row the procedure returns even outside the old scope lists", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ ...header, OwnerId: 999, BranchId: 77, CreatedBy: 999 }], [], []] });
+    const res = mockRes();
+    await quotationController.detail(baseReq({ scope: { branchIds: [2], ownerIds: [7] }, body: { QuotationId: 4 } }), res);
+    expect(res.status).toHaveBeenCalledWith(200);
   });
 
   it("survives corrupt JSON in a row instead of 500ing the whole page", async () => {
@@ -234,16 +246,16 @@ describe("quotationController lifecycle", () => {
     expect(res.status).toHaveBeenCalledWith(200);
   });
 
-  it.each(["finalise", "revise", "reject", "remove"])("%s 400s without an id and 403s a hidden lead", async (method) => {
+  it.each(["finalise", "revise", "reject", "remove"])("%s 400s without an id and 404s a hidden lead", async (method) => {
     const res = mockRes();
     await quotationController[method](baseReq({ body: {} }), res);
     expect(res.status).toHaveBeenCalledWith(400);
     expect(database.executeStoredProcedure).not.toHaveBeenCalled();
 
-    mockQuote({ ...draft, OwnerId: 999, BranchId: 77, CreatedBy: 999 });
+    mockQuote(null);
     const res2 = mockRes();
     await quotationController[method](baseReq({ body: { QuotationId: 4 } }), res2);
-    expect(res2.status).toHaveBeenCalledWith(403);
+    expect(res2.status).toHaveBeenCalledWith(404);
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
   });
 
@@ -264,6 +276,29 @@ describe("quotationController lifecycle", () => {
     await quotationController.finalise(baseReq({ body: { QuotationId: 4 } }), res);
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json.mock.calls[0][0].message).toMatch(/GST depends on it/);
+  });
+});
+
+// Seen but not editable (the lead's CanEdit is 0): every write 403s before its procedure.
+describe("quotationController writes need CanEdit", () => {
+  it.each(["finalise", "revise", "reject", "remove"])("%s 403s a quotation without CanEdit", async (method) => {
+    mockQuote({ ...draft, CanEdit: 0 });
+    const res = mockRes();
+    await quotationController[method](baseReq({ body: { QuotationId: 4 } }), res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
+  });
+
+  it("save and saveProfile 403 a lead without CanEdit", async () => {
+    mockLead({ ...visibleLead, CanEdit: 0 });
+    const res = mockRes();
+    await quotationController.save(baseReq({ body: BODY }), res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    mockLead({ ...visibleLead, CanEdit: 0 });
+    const res2 = mockRes();
+    await quotationController.ensureProfile(baseReq({ body: { LeadId: 9 } }), res2);
+    expect(res2.status).toHaveBeenCalledWith(403);
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -319,7 +354,7 @@ describe("quotationController profile", () => {
     expect(res.json.mock.calls[0][0].data.profile).toEqual({ Id: 3, BranchId: 6, IsSet: false });
   });
 
-  it("ensureProfile 400s without a lead, 403s a hidden one, 500s on a DB error", async () => {
+  it("ensureProfile 400s without a lead, 404s a hidden one, 500s on a DB error", async () => {
     const res = mockRes();
     await quotationController.ensureProfile(baseReq({ body: {} }), res);
     expect(res.status).toHaveBeenCalledWith(400);
@@ -327,7 +362,7 @@ describe("quotationController profile", () => {
     mockLead(hiddenLead);
     const res2 = mockRes();
     await quotationController.ensureProfile(baseReq({ body: { LeadId: 9 } }), res2);
-    expect(res2.status).toHaveBeenCalledWith(403);
+    expect(res2.status).toHaveBeenCalledWith(404);
 
     mockLead(visibleLead);
     database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
@@ -382,11 +417,11 @@ describe("quotationController profile", () => {
     expect(database.executeStoredProcedure).not.toHaveBeenCalled();
   });
 
-  it("saveProfile 403s a hidden lead without calling sp_SaveQuoteProfile", async () => {
+  it("saveProfile 404s a hidden lead without calling sp_SaveQuoteProfile", async () => {
     mockLead(hiddenLead);
     const res = mockRes();
     await quotationController.saveProfile(baseReq({ body: { LeadId: 9, ...PROFILE } }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
     expect(database.executeStoredProcedure).not.toHaveBeenCalledWith("sp_SaveQuoteProfile", expect.anything());
   });

@@ -26,6 +26,7 @@ describe("SUPPORT_ENDPOINTS", () => {
       escalateTicket: "/api/tickets/escalateTicket",
       fetchEscalationTargets: "/api/tickets/fetchEscalationTargets",
       deleteTicket: "/api/tickets/deleteTicket",
+      fetchLoggedByMe: "/api/tickets/fetchLoggedByMe",
     });
     expect(SUPPORT_ENDPOINTS.customers).toEqual({
       saveCustomer: "/api/customers/saveCustomer",
@@ -61,6 +62,7 @@ const FETCHERS = {
   escalateTicket: SUPPORT_ENDPOINTS.tickets.escalateTicket,
   fetchEscalationTargets: SUPPORT_ENDPOINTS.tickets.fetchEscalationTargets,
   deleteTicket: SUPPORT_ENDPOINTS.tickets.deleteTicket,
+  fetchLoggedByMe: SUPPORT_ENDPOINTS.tickets.fetchLoggedByMe,
   saveCustomer: SUPPORT_ENDPOINTS.customers.saveCustomer,
   fetchCustomers: SUPPORT_ENDPOINTS.customers.fetchCustomers,
   fetchCustomerDetail: SUPPORT_ENDPOINTS.customers.fetchCustomerDetail,

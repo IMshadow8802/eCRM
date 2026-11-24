@@ -1,7 +1,7 @@
 import { useTheme } from "@mui/material/styles";
 import useUiScale from "../../hooks/useUiScale";
 import { Box } from "@mui/material";
-import SampleBadge from "./SampleBadge";
+import ChartEmpty from "./ChartEmpty";
 import {
   Legend,
   PolarAngleAxis,
@@ -15,19 +15,13 @@ import {
  * Multi-series radial bars — useful for weekday load / channel mix.
  * Each series renders concentric rings.
  */
-const FALLBACK = [
-  { name: "Calls", value: 82 },
-  { name: "Emails", value: 64 },
-  { name: "Demos", value: 48 },
-  { name: "Visits", value: 30 },
-];
-
 export default function RadialLoad({ data, height = 240 }) {
   const theme = useTheme();
   const k = useUiScale();
   const p = theme.tokens;
   const hasData = Array.isArray(data) && data.length > 0;
-  const rows = hasData ? data : FALLBACK;
+  if (!hasData) return <ChartEmpty height={height * k} />;
+  const rows = data;
   const palette = [
     p.primary.main,
     p.accent.main,
@@ -42,7 +36,6 @@ export default function RadialLoad({ data, height = 240 }) {
 
   return (
     <Box sx={{ position: "relative" }}>
-      {!hasData && <SampleBadge />}
       <ResponsiveContainer width="100%" height={height * k}>
         <RadialBarChart
         innerRadius="30%"

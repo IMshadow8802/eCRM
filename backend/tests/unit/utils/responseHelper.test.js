@@ -32,6 +32,20 @@ describe("responseHelper", () => {
   });
 
   describe("error", () => {
+    // Final review m1: the clients leave a record only on code NOT_FOUND, so a
+    // procedure's record-not-found 404 must carry it; other SP codes keep SP_ERROR.
+    it("sends a procedure's 404 as NOT_FOUND, any other SP code as SP_ERROR", () => {
+      const gone = mockRes();
+      error(gone, "Record not found", "SP_ERROR", 404);
+      expect(gone.json).toHaveBeenCalledWith(expect.objectContaining({ code: "NOT_FOUND", responseCode: 404 }));
+      const refused = mockRes();
+      error(refused, "Status not found", "SP_ERROR", 400);
+      expect(refused.json).toHaveBeenCalledWith(expect.objectContaining({ code: "SP_ERROR", responseCode: 400 }));
+      const other = mockRes();
+      error(other, "nope", "FORBIDDEN", 404);
+      expect(other.json).toHaveBeenCalledWith(expect.objectContaining({ code: "FORBIDDEN" }));
+    });
+
     it("defaults to 500 with SERVER_ERROR code", () => {
       const res = mockRes();
       error(res, "boom");

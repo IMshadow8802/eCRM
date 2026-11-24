@@ -21,9 +21,8 @@ describe("EscalateTicketModal", () => {
     mockSupportRefData();
   });
 
-  // Spec §2: the target must be an ancestor of the ASSIGNEE, not of the
-  // caller — so the chain is fetched for the assignee.
-  it("lists the assignee's chain, nearest first, and posts the escalation", async () => {
+  // The chain is the holder's, answered by the server for this complaint.
+  it("lists the complaint's chain, nearest first, and posts the escalation", async () => {
     const cap = mockTicketEndpoints();
     let askedFor;
     server.use(http.post("*/api/tickets/fetchEscalationTargets", async ({ request }) => {
@@ -40,7 +39,7 @@ describe("EscalateTicketModal", () => {
     await user.click(screen.getByTestId("escalate-target-input"));
     const options = await screen.findAllByRole("option");
     expect(options.map((o) => o.textContent)).toEqual(["Neha Verma · Team Lead", "Rahul Mehta · Branch Manager"]);
-    expect(askedFor).toEqual({ ForUserId: 17 });
+    expect(askedFor).toEqual({ TicketId: 7 });
 
     await user.click(options[0]);
     await user.type(screen.getByTestId("escalate-remarks"), "Customer is threatening to cancel");
@@ -51,7 +50,18 @@ describe("EscalateTicketModal", () => {
     expect(onDone).toHaveBeenCalled();
   });
 
-  it("asks for the caller's own chain when nobody holds the complaint", async () => {
+  // Review N3: an empty chain is a sentence, not an empty select.
+  it("says nobody above the holder can open complaints when the chain is empty", async () => {
+    mockTicketEndpoints();
+    server.use(http.post("*/api/tickets/fetchEscalationTargets", () => json({ users: [] })));
+    renderModal();
+    expect(await screen.findByTestId("escalate-nobody"))
+      .toHaveTextContent("Nobody above Amit Singh can open complaints. Reassign it or tell a manager.");
+    expect(screen.queryByTestId("escalate-target")).toBeNull();
+    expect(screen.getByTestId("escalate-submit")).toBeDisabled();
+  });
+
+  it("an unheld complaint asks by ticket too, and the empty sentence speaks to the caller", async () => {
     mockTicketEndpoints();
     let askedFor;
     server.use(http.post("*/api/tickets/fetchEscalationTargets", async ({ request }) => {
@@ -59,7 +69,22 @@ describe("EscalateTicketModal", () => {
       return json({ users: [] });
     }));
     renderModal({ ticket: ticketRow({ AssignedTo: null, AssigneeName: null }) });
-    await waitFor(() => expect(askedFor).toEqual({ ForUserId: null }));
+    expect(await screen.findByTestId("escalate-nobody")).toHaveTextContent("Nobody above you can open complaints.");
+    expect(askedFor).toEqual({ TicketId: 7 });
+  });
+
+  it("hands a refusal to onError when given", async () => {
+    mockTicketEndpoints();
+    server.use(http.post("*/api/tickets/escalateTicket", () => refuse("Complaint not found", 404)));
+    const onError = vi.fn();
+    renderModal({ onError });
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("escalate-target-input"));
+    await user.click(await screen.findByRole("option", { name: /Neha Verma/ }));
+    await user.type(screen.getByTestId("escalate-remarks"), "Please look");
+    await user.click(screen.getByTestId("escalate-submit"));
+    await waitFor(() => expect(onError).toHaveBeenCalled());
+    expect(screen.queryByText("Complaint not found")).toBeNull();
   });
 
   it("refuses without a target and without remarks, and surfaces the SP's refusal", async () => {

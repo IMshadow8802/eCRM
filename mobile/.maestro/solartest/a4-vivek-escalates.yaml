@@ -1,0 +1,24 @@
+# A4 Vivek opens it from Mine and escalates it to Rohit (his manager); it stays with him.
+appId: com.shadowider.eCRM
+---
+- runFlow:
+    file: ../access/find-complaint.yaml
+    env:
+      PRESET: "Mine"
+      KEY: "${TAG}"
+- tapOn: "Escalate"
+- assertVisible: "Escalate complaint"
+- extendedWaitUntil:
+    visible: "ROHIT GAUR"
+    timeout: 15000
+- tapOn: "ROHIT GAUR"
+- tapOn: "What they need to know — they get a notification"
+- inputText: "${TAG} need senior"
+- hideKeyboard
+- tapOn: "Escalate to ROHIT GAUR"
+- extendedWaitUntil:
+    notVisible: "Escalate complaint"
+    timeout: 15000
+- scrollUntilVisible:
+    element: "Escalated to"
+- takeScreenshot: a4-vivek-escalated

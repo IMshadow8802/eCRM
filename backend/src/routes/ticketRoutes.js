@@ -7,8 +7,8 @@ const { requirePayload, allowEmptyPayload } = require("../middleware/payloadVali
 const router = express.Router();
 
 // Governed by the complaints module: view / add+edit (saveAction) / edit / delete
-// per route. The record and target gates in the controller (assertRecordAccess /
-// assertCanAssign / canReopen) do the per-row authorising.
+// per route. Per-row authorising is the database's (132/133: visibility, CanEdit,
+// reassign / reopen / send-back gates); the controller relays its answers.
 router.use(verifyToken, loadScope);
 
 router.post("/saveTicket", requirePayload, requireModule("complaints", saveAction), ticketController.save);
@@ -24,8 +24,10 @@ router.post("/reopenTicket", requirePayload, requireModule("complaints", "edit")
 router.post("/transferTicket", requirePayload, requireModule("complaints", "edit"), ticketController.transfer);
 router.post("/bulkTransferTickets", requirePayload, requireModule("complaints", "edit"), ticketController.bulkTransfer);
 router.post("/escalateTicket", requirePayload, requireModule("complaints", "edit"), ticketController.escalate);
-// ForUserId is optional (defaults to the caller), so an empty body is legal.
+// TicketId (new) or ForUserId (old clients); neither = the caller, so an empty body is legal.
 router.post("/fetchEscalationTargets", allowEmptyPayload, requireModule("complaints", "view"), ticketController.escalationTargets);
+// Complaints the caller logged, wherever they are now. Search and paging optional.
+router.post("/fetchLoggedByMe", allowEmptyPayload, requireModule("complaints", "view"), ticketController.loggedByMe);
 router.post("/deleteTicket", requirePayload, requireModule("complaints", "delete"), ticketController.delete);
 
 module.exports = router;

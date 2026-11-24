@@ -12,11 +12,11 @@ import { SUPPORT_ENDPOINTS } from "../../api/supportQueries";
  * a shout for help, not a reassignment — and the senior gets an in-app
  * notification.
  *
- * The chain is the ASSIGNEE's, not the caller's: sp_EscalateTicket requires
- * the target to be an ancestor of whoever holds the complaint (of the caller
- * when nobody does, which is what ForUserId = null asks the controller for).
+ * The chain is the holder's, not the caller's: the server answers it for the
+ * complaint (`{ TicketId }`), listing only people above the holder who can
+ * open complaints. An empty chain says so instead of offering an empty select.
  */
-export default function EscalateTicketModal({ open, onClose, ticket, onDone }) {
+export default function EscalateTicketModal({ open, onClose, ticket, onDone, onError }) {
   const [target, setTarget] = useState(null);
   const [remarks, setRemarks] = useState("");
 
@@ -26,14 +26,16 @@ export default function EscalateTicketModal({ open, onClose, ticket, onDone }) {
     setRemarks("");
   }, [open]);
 
-  const forUserId = ticket?.AssignedTo ?? null;
-  const { data } = useApiQuery({
-    queryKey: ["escalation-targets", forUserId],
+  const ticketId = ticket?.Id ?? null;
+  const { data, isLoading } = useApiQuery({
+    queryKey: ["escalation-targets", "ticket", ticketId],
     endpoint: SUPPORT_ENDPOINTS.tickets.fetchEscalationTargets,
-    params: { ForUserId: forUserId },
-    enabled: open,
+    params: { TicketId: ticketId },
+    enabled: open && Boolean(ticketId),
     showErrorMessage: false,
   });
+  const holder = ticket?.AssigneeName || "you";
+  const nobody = !isLoading && data && (data.users ?? []).length === 0;
   // Nearest first — the SP orders by Depth, so the list is already the chain.
   const options = (data?.users ?? []).map((u) => ({
     value: u.Id,
@@ -43,6 +45,8 @@ export default function EscalateTicketModal({ open, onClose, ticket, onDone }) {
   const mutation = useApiMutation({
     endpoint: SUPPORT_ENDPOINTS.tickets.escalateTicket,
     successMessage: "Complaint escalated",
+    showErrorMessage: !onError,
+    onError,
     invalidateQueries: [["tickets"], ["ticket-detail"]],
   });
 
@@ -71,16 +75,21 @@ export default function EscalateTicketModal({ open, onClose, ticket, onDone }) {
       />
       <Modal.Body>
         <div style={{ display: "flex", flexDirection: "column", gap: "calc(16rem / 15)" }}>
-          <Combobox
-            label="Escalate to"
-            required
-            options={options}
-            value={target}
-            onChange={setTarget}
-            placeholder="Someone above the assignee"
-            noOptionsText="Nobody senior to escalate to"
-            data-testid="escalate-target"
-          />
+          {nobody ? (
+            <div data-testid="escalate-nobody" style={{ fontSize: "calc(14rem / 15)" }}>
+              Nobody above {holder} can open complaints. Reassign it or tell a manager.
+            </div>
+          ) : (
+            <Combobox
+              label="Escalate to"
+              required
+              options={options}
+              value={target}
+              onChange={setTarget}
+              placeholder={`Someone above ${holder}`}
+              data-testid="escalate-target"
+            />
+          )}
           <TextArea
             label="Remarks"
             required

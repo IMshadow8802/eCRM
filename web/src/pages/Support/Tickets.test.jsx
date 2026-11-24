@@ -65,8 +65,9 @@ vi.mock("material-react-table", () => ({
 const mockNavigate = vi.fn();
 vi.mock("react-router-dom", async () => ({ ...(await vi.importActual("react-router-dom")), useNavigate: () => mockNavigate }));
 vi.mock("./ResolveTicketModal", () => ({ __esModule: true, default: ({ open, ticket, status }) => (open ? <div data-testid="resolve-modal">ticket:{ticket?.Id} status:{status?.value}</div> : null) }));
-vi.mock("./TicketCreateModal", () => ({ __esModule: true, default: ({ open, ticket }) => (open ? <div data-testid="ticket-form-modal">{ticket?.Id ?? "new"}</div> : null) }));
+vi.mock("./TicketCreateModal", () => ({ __esModule: true, default: ({ open, ticket, onSaved }) => (open ? <div data-testid="ticket-form-modal">{ticket?.Id ?? "new"}<button data-testid="fake-save-away" onClick={() => onSaved({ Id: 55 }, { assignedAway: true })} /><button data-testid="fake-save-mine" onClick={() => onSaved({ Id: 56 }, { assignedAway: false })} /></div> : null) }));
 vi.mock("./TransferTicketModal", () => ({ __esModule: true, default: ({ open, ticketIds }) => (open ? <div data-testid="transfer-ticket-modal">{ticketIds.join(",")}</div> : null) }));
+vi.mock("./LoggedByMe", () => ({ __esModule: true, default: () => <div data-testid="logged-by-me-stub" /> }));
 vi.mock("./DeleteTicketModal", () => ({ __esModule: true, default: ({ open, ticketId }) => (open ? <div data-testid="delete-ticket-modal">delete:{ticketId}</div> : null) }));
 
 import Tickets from "./Tickets";
@@ -89,12 +90,33 @@ describe("Tickets list (spec 2)", () => {
     useServerTable.mockClear();
   });
 
+  it("the header shows the server's total; none on Logged by me or while loading", async () => {
+    renderPage();
+    expect(screen.getByTestId("tickets-total")).toHaveTextContent("1 complaint");
+    await userEvent.setup().click(screen.getByRole("tab", { name: "Logged by me" }));
+    expect(screen.queryByTestId("tickets-total")).toBeNull();
+  });
+
+  it("the total says complaints in the plural, and nothing while the first page loads", () => {
+    useServerTable.mockImplementationOnce(() => ({
+      table: { __options: { data: [] }, getState: () => ({ rowSelection }) }, data: [], isLoading: false, totalRecords: 93,
+    }));
+    const { unmount } = renderPage();
+    expect(screen.getByTestId("tickets-total")).toHaveTextContent("93 complaints");
+    unmount();
+    useServerTable.mockImplementationOnce(() => ({
+      table: { __options: { data: [] }, getState: () => ({ rowSelection }) }, data: [], isLoading: true, totalRecords: 0,
+    }));
+    renderPage();
+    expect(screen.queryByTestId("tickets-total")).toBeNull();
+  });
+
   it("renders the eight presets, the seven filters and the range, and lands on My team", () => {
     renderPage();
     for (const label of ["My queue", "My team", "Unassigned", "Overdue", "Escalated", "On hold", "Closed", "All"]) {
       expect(screen.getByRole("tab", { name: label })).toBeInTheDocument();
     }
-    for (const id of ["filter-status", "filter-priority", "filter-category", "filter-channel", "filter-product", "filter-assignee", "filter-branch"]) {
+    for (const id of ["filter-status", "filter-priority", "filter-category", "filter-channel", "filter-product", "filter-assigned-to", "filter-office"]) {
       expect(screen.getByTestId(`${id}-input`)).toBeInTheDocument();
     }
     expect(screen.getByTestId("tickets-from")).toBeInTheDocument();
@@ -136,7 +158,7 @@ describe("Tickets list (spec 2)", () => {
     const user = userEvent.setup();
     await user.click(screen.getByTestId("filter-priority-input"));
     await user.click(await screen.findByRole("option", { name: "High" }));
-    await user.click(screen.getByTestId("filter-branch-input"));
+    await user.click(screen.getByTestId("filter-office-input"));
     await user.click(await screen.findByRole("option", { name: "SOUTH EXTENSION" }));
     fireEvent.change(screen.getByTestId("tickets-from"), { target: { value: "2026-09-01" } });
 
@@ -255,12 +277,12 @@ describe("Tickets list (spec 2)", () => {
     const user = userEvent.setup();
     expect(screen.getByTestId("view-ticket-7")).toHaveAttribute("data-tone", "primary");
     expect(screen.getByTestId("edit-ticket-7")).toHaveAttribute("data-tone", "info");
-    expect(screen.getByTestId("transfer-ticket-7")).toHaveAttribute("data-tone", "warning");
+    expect(screen.getByTestId("reassign-ticket-7")).toHaveAttribute("data-tone", "warning");
     expect(screen.getByTestId("delete-ticket-7")).toHaveAttribute("data-tone", "error");
 
     await user.click(screen.getByTestId("edit-ticket-7"));
     expect(await screen.findByTestId("ticket-form-modal")).toHaveTextContent("7");
-    await user.click(screen.getByTestId("transfer-ticket-7"));
+    await user.click(screen.getByTestId("reassign-ticket-7"));
     expect(screen.getByTestId("transfer-ticket-modal")).toHaveTextContent("7");
     await user.click(screen.getByTestId("delete-ticket-7"));
     expect(screen.getByTestId("delete-ticket-modal")).toHaveTextContent("delete:7");
@@ -272,8 +294,39 @@ describe("Tickets list (spec 2)", () => {
     expect(await screen.findByTestId("ticket-form-modal")).toHaveTextContent("new");
   });
 
+  it("after creating, opens the new complaint; but not when it was assigned to someone else", async () => {
+    mockNavigate.mockClear();
+    renderPage();
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("new-ticket-btn"));
+    await user.click(await screen.findByTestId("fake-save-away"));
+    expect(mockNavigate).not.toHaveBeenCalled();
+    await user.click(screen.getByTestId("new-ticket-btn"));
+    await user.click(await screen.findByTestId("fake-save-mine"));
+    expect(mockNavigate).toHaveBeenCalledWith("/support/tickets/56");
+  });
+
   it("asks the server for nothing about stages any more", () => {
     renderPage();
     expect(JSON.stringify(lastCfg())).not.toContain("Stage");
+  });
+
+  it("labels the holder 'Assigned to' and never says Transfer, Branch or Assignee", () => {
+    renderPage();
+    expect(columnOf("AssigneeName").header).toBe("Assigned to");
+    expect(screen.getByText("Assigned to")).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/transfer|branch|assignee/i);
+    withTheme(lastCfg().renderRowActions({ row: { original: FIXTURE_TICKETS[0] } }));
+    expect(screen.getByTestId("reassign-ticket-7")).toHaveAttribute("aria-label", "Reassign complaint");
+  });
+
+  it("a Logged by me tab beside the presets shows that table and pauses the list", async () => {
+    renderPage();
+    expect(lastCfg().enabled).toBe(true);
+    await userEvent.setup().click(screen.getByRole("tab", { name: "Logged by me" }));
+    expect(screen.getByTestId("logged-by-me-stub")).toBeInTheDocument();
+    expect(screen.queryByTestId("filter-status-input")).toBeNull();
+    expect(screen.queryByTestId("mrt-root")).toBeNull();
+    expect(lastCfg().enabled).toBe(false);
   });
 });

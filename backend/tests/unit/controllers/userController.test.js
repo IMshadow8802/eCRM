@@ -598,31 +598,53 @@ const accessReq = (modules, body = {}) => baseReq({ body, access: mockAccess({ m
 const LEADS_OFFICE = [["leads", "v", "Office"]];
 
 describe("userController.assignableUsers", () => {
-  it("calls the roster SP with the leads scope by default and strips the envelope", async () => {
+  it("calls the roster SP for leads by default, with the session's person, and strips the envelope", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce(
-      spResult([{ Id: 3, FullName: "Ravi", BranchId: 2, ResponseCode: 200, ResponseMess: "ok" }]),
+      spResult([{ Id: 3, FullName: "Ravi", Avatar: null, JobTitle: "Exec", BranchId: 2, BranchName: "Pune", ReportsTo: 7,
+        GroupRank: 1, IsGiver: false, AwayToday: true, ResponseCode: 200, ResponseMess: "ok" }]),
     );
     const res = mockRes();
     await userController.assignableUsers(accessReq(LEADS_OFFICE), res);
     expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_FetchAssignableUsers", {
-      UserId: 7, CompId: 1, BranchId: null, AccessibleBranchIdsJson: "[2]", OwnerIdsJson: null,
+      CompId: 1, UserId: 7, Module: "leads", RecordId: null, TargetUserId: null,
     });
-    expect(res.json.mock.calls[0][0].data.users).toEqual([{ Id: 3, FullName: "Ravi", BranchId: 2 }]);
+    expect(res.json.mock.calls[0][0].data.users).toEqual([{ Id: 3, FullName: "Ravi", Avatar: null, JobTitle: "Exec",
+      BranchId: 2, BranchName: "Pune", ReportsTo: 7, GroupRank: 1, IsGiver: false, AwayToday: true }]);
   });
 
-  it("forwards a destination BranchId for cross-branch pickers", async () => {
+  // D23: installed phones send { BranchId } and no Module.
+  it("legacy payload: { BranchId: 3 } is ignored, not an error", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce(spResult([]));
-    await userController.assignableUsers(accessReq(LEADS_OFFICE, { BranchId: "4" }), mockRes());
-    expect(database.executeStoredProcedure.mock.calls[0][1].BranchId).toBe(4);
+    const res = mockRes();
+    await userController.assignableUsers(accessReq(LEADS_OFFICE, { BranchId: 3 }), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    const params = database.executeStoredProcedure.mock.calls[0][1];
+    expect(params).toEqual({ CompId: 1, UserId: 7, Module: "leads", RecordId: null, TargetUserId: null });
   });
 
-  it("uses the scope of the requested module", async () => {
+  it("RecordId is passed through", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(spResult([]));
+    await userController.assignableUsers(accessReq(LEADS_OFFICE, { Module: "leads", RecordId: "42" }), mockRes());
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({ Module: "leads", RecordId: 42 });
+  });
+
+  it("a junk RecordId reads as no record", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(spResult([]));
+    await userController.assignableUsers(accessReq(LEADS_OFFICE, { RecordId: "abc" }), mockRes());
+    expect(database.executeStoredProcedure.mock.calls[0][1].RecordId).toBeNull();
+  });
+
+  it("the person comes from the session, never from the body", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(spResult([]));
+    await userController.assignableUsers(accessReq(LEADS_OFFICE, { UserId: 99, CompId: 9, TargetUserId: 5 }), mockRes());
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({ UserId: 7, CompId: 1, TargetUserId: null });
+  });
+
+  it("passes the requested module", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce(spResult([]));
     await userController.assignableUsers(
       accessReq([["leads", "v", "Company"], ["complaints", "v", "Own"]], { Module: "complaints" }), mockRes());
-    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({
-      AccessibleBranchIdsJson: "[2]", OwnerIdsJson: "[7]",
-    });
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({ Module: "complaints" });
   });
 
   // REGRESSION (I1): old clients send no Module; support roles got 403 from the leads default.
@@ -631,7 +653,7 @@ describe("userController.assignableUsers", () => {
     const res = mockRes();
     await userController.assignableUsers(accessReq([["complaints", "v", "Own"]]), res);
     expect(res.status).toHaveBeenCalledWith(200);
-    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({ OwnerIdsJson: "[7]" });
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({ Module: "complaints" });
   });
 
   it("an explicit Module stays strict: leads for a support role is 403", async () => {
@@ -641,7 +663,7 @@ describe("userController.assignableUsers", () => {
     expect(database.executeStoredProcedure).not.toHaveBeenCalled();
   });
 
-  it("rejects an unknown Module with 400", async () => {
+  it("Module outside leads/complaints is a 400", async () => {
     const res = mockRes();
     await userController.assignableUsers(accessReq(LEADS_OFFICE, { Module: "people" }), res);
     expect(res.status).toHaveBeenCalledWith(400);
@@ -1253,5 +1275,53 @@ describe("userController.save sets the work profile (099)", () => {
     await userController.save(baseReq({ body }), res);
     expect(res.status).toHaveBeenCalledWith(404);
     expect(res.json.mock.calls[0][0]).toMatchObject({ success: false, message: "Saved, but the shift could not be set: Calendar not found" });
+  });
+});
+
+describe("userController.save: Can assign to and stranded work (Task 15)", () => {
+  const { buildAccess } = require("../../../src/middleware/access");
+  // HR who also holds leads at Office, Can assign to = Team.
+  const hrWithLeads = buildAccess([[{ PrimaryBranchId: 2, IsActive: 1, IsAdmin: 0, CanSeeSensitive: 1 }], [
+    { Module: "people", Reach: "Office", CanView: 1, CanAdd: 1, CanEdit: 1, CanDelete: 0 },
+    { Module: "leads", Reach: "Office", AssignReach: "Team", CanView: 1, CanAdd: 1, CanEdit: 1, CanDelete: 0 },
+  ], [{ Reach: "Office", BranchId: 2, CanWrite: 1 }], []], 7);
+  const role = (AssignReach) => ({ recordsets: [
+    [{ ResponseCode: 200, ResponseMess: "ok", CanSeeSensitive: false, IsAdmin: false }],
+    [{ Module: "leads", Reach: "Own", AssignReach, CanView: 1, CanAdd: 1, CanEdit: 0, CanDelete: 0 }],
+  ] });
+  const save = async (access) => {
+    hashPassword.mockResolvedValue("hash");
+    const res = mockRes();
+    await userController.save(baseReq({ body: { GroupId: 20, Username: "bob", FullName: "Bob", Password: "x" }, access }), res);
+    return res;
+  };
+
+  it("a non-admin cannot save a role with a wider AssignReach than their own (403)", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(role("Company"));
+    const res = await save(hrWithLeads);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json.mock.calls[0][0].message).toBe("You can only give roles within your own access");
+    expect(spCall("sp_SaveUser")).toBeUndefined();
+  });
+
+  it("the same role at Team passes", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(role("Team"))
+      .mockResolvedValueOnce(spResult([{ ResponseCode: 201, ResponseMess: "ok", UserId: 9 }]));
+    const res = await save(hrWithLeads);
+    expect(res.status).toHaveBeenCalledWith(201);
+  });
+
+  it("saveUser returns stranded counts", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(
+      spResult([{ ResponseCode: 200, ResponseMess: "ok", UserId: 9, StrandedLeads: 2, StrandedComplaints: 5 }]));
+    const res = await save(mockAccess({ admin: true }, 7));
+    expect(spCall("sp_SaveUser").ActorUserId).toBe(7);
+    expect(res.json.mock.calls[0][0].data.stranded).toEqual({ leads: 2, complaints: 5 });
+  });
+
+  it("stranded reads 0/0 when the status row has no counts (old database)", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(spResult([{ ResponseCode: 201, ResponseMess: "ok", UserId: 9 }]));
+    const res = await save(mockAccess({ admin: true }, 7));
+    expect(res.json.mock.calls[0][0].data.stranded).toEqual({ leads: 0, complaints: 0 });
   });
 });

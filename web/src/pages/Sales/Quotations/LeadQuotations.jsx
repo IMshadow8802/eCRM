@@ -60,7 +60,7 @@ export default function LeadQuotations({ lead, onCount }) {
 
   return (
     <div data-testid="lead-quotations" style={{ display: "flex", flexDirection: "column", gap: "calc(10rem / 15)" }}>
-      {isActiveCode(lead.StatusCode) && (
+      {isActiveCode(lead.StatusCode) && Boolean(lead.CanEdit) && (
         <div><Button variant="primary" size="sm" leftIcon={<FilePlus2 size={14} />} onClick={() => setPicking(true)} data-testid="create-quotation-btn">Create quotation</Button></div>
       )}
       {rows.length === 0 && <EmptyState title="No quotations yet" description="A quotation is optional — small leads are often won without one." size="sm" />}

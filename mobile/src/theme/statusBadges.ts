@@ -7,7 +7,8 @@ import {
   Archive, BadgeCheck, Bell, CalendarCheck, CalendarClock, CalendarX, ChevronsUp, Check, Circle,
   CircleCheck, CircleDot, CirclePause, CirclePlay, CircleX, Clock, Ellipsis, FileText, Flag, Headset,
   House, Inbox, LayoutDashboard, ListChecks, Lock, MapPin, MessageSquare, OctagonAlert, Pencil, Phone,
-  PhoneCall, Plus, Sparkles, SquareCheckBig, Target, Timer, Trophy, UserCheck, UserPlus, Users,
+  PhoneCall, Plus, Sparkles, SquareCheckBig, Target, Timer, TriangleAlert, Trophy, Undo2, UserCheck, UserMinus,
+  UserPlus, Users,
   type LucideIcon,
 } from "lucide-react-native";
 
@@ -127,6 +128,11 @@ export function notificationBadge(type: string | null | undefined): BadgeSpec {
   const words = new Set((type ?? "").toLowerCase().split(/[^a-z]+/).filter(Boolean));
   const has = (...w: string[]) => w.some((x) => words.has(x));
   if (has("escalated", "escalation", "escalate")) return b("lilac", ChevronsUp);
+  // Access-model notices (Task 5). Before "assigned": ticket_reopen_unassigned is a reopen.
+  if (has("stranded")) return b("butter", TriangleAlert);
+  if (has("reopen", "reopened")) return b("sky", CircleDot);
+  if (has("moved")) return b("slate", UserMinus);
+  if (words.has("sent") && words.has("back")) return b("teal", Undo2);
   if (has("breach", "breached", "miss", "missed")) return b("red", OctagonAlert);
   if (has("warn", "warning", "due", "overdue")) return b("butter", Timer);
   // Before "added": comment_added is a comment, not a membership.

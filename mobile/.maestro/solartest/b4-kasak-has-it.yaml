@@ -1,0 +1,22 @@
+# B4 Kasak has it again; one of Roshan's leads (${ROSHAN_LEAD}) is not found.
+appId: com.shadowider.eCRM
+---
+- runFlow:
+    file: ../access/find-lead.yaml
+    env:
+      NAME: "${NEHA_LEAD}"
+- assertVisible: "Assigned to"
+- runFlow: ../common/open-work.yaml
+- tapOn: "Leads, \\d+ yours"
+- extendedWaitUntil:
+    visible:
+      id: "leads-list"
+    timeout: 15000
+- tapOn: "All, \\d+"
+- tapOn: "Search name, company, mobile"
+- inputText: "${ROSHAN_LEAD}"
+- extendedWaitUntil:
+    visible: "Nothing matches"
+    timeout: 15000
+- takeScreenshot: b4-kasak-roshan-lead-not-found
+- tapOn: "Clear search"

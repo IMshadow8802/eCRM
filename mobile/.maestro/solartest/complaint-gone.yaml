@@ -1,0 +1,17 @@
+# Complaints → preset ${PRESET} → search ${KEY}: nothing matches.
+appId: com.shadowider.eCRM
+---
+- runFlow: ../common/open-work.yaml
+- tapOn: "Open My complaints"
+- assertVisible:
+    id: "complaint-presets"
+- runFlow:
+    file: ../access/preset.yaml
+    env:
+      NAME: "${PRESET}"
+- tapOn: "Search number, customer, mobile"
+- inputText: "${KEY}"
+- extendedWaitUntil:
+    visible: "Nothing matches"
+    timeout: 15000
+- tapOn: "Clear search"

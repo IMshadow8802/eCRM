@@ -1,0 +1,48 @@
+# Vinod (Support Agent, reports to Rohit): Mine lists TKT-000002; it opens; its history reads "Reassigned to";
+# Escalate offers Rohit (his manager). Nothing is escalated. Env: T60.
+appId: com.shadowider.eCRM
+---
+- runFlow: ../common/open-work.yaml
+- tapOn: "Open My complaints"
+- assertVisible:
+    id: "complaint-presets"
+- runFlow:
+    file: ../access/preset.yaml
+    env:
+      NAME: "Mine"
+- tapOn: "Search number, customer, mobile"
+- inputText: "${T60}"
+- extendedWaitUntil:
+    visible: ".*${T60}.*"
+    timeout: 15000
+- repeat:
+    times: 3
+    while:
+      notVisible: "Complaint actions"
+    commands:
+      - waitForAnimationToEnd
+      - tapOn:
+          text: ".*${T60}.*"
+          below: "Search number, customer, mobile"
+          optional: true
+      - extendedWaitUntil:
+          visible: "Complaint actions"
+          timeout: 8000
+          optional: true
+- assertVisible: "Complaint actions"
+- takeScreenshot: st-vinod-t60
+# 143: the old stored "Transferred to …" rows read "Reassigned to …".
+- scrollUntilVisible:
+    element: ".*Reassigned to.*"
+- assertNotVisible: ".*Transferred to.*"
+- takeScreenshot: st-vinod-t60-history
+- scrollUntilVisible:
+    element: "Escalate"
+    direction: UP
+- tapOn: "Escalate"
+- assertVisible: "Escalate complaint"
+- extendedWaitUntil:
+    visible: "ROHIT GAUR"
+    timeout: 15000
+- takeScreenshot: st-vinod-escalate-sheet
+- back

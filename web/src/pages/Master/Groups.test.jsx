@@ -184,6 +184,9 @@ describe("Roles & Permissions (Groups) page", () => {
     expect(screen.queryByTestId("reach-cards-input")).toBeNull();
     fireEvent.click(screen.getByTestId("perm-cards-CanView"));
     expect(screen.getByTestId("reach-cards-input")).toHaveValue("Own records");
+    // §4 words: the hint says "what this role can see", never "reach".
+    fireEvent.mouseOver(screen.getByTestId("module-row-cards").querySelector("span[tabindex]"));
+    expect(await screen.findByText(/visiting cards within what this role can see/)).toBeInTheDocument();
   });
 
   it("saving the attendance row with Office reach sends Reach Office", async () => {
@@ -230,11 +233,138 @@ describe("Roles & Permissions (Groups) page", () => {
     expect(body.CanSeeSensitive).toBe(true);
     expect(body.Modules.map((m) => m.Module).sort()).toEqual(["dashboard", "leads", "tasks"]);
     expect(body.Modules).toContainEqual({
-      Module: "leads", CanView: true, CanAdd: true, CanEdit: true, CanDelete: false, Reach: "Company",
+      Module: "leads", CanView: true, CanAdd: true, CanEdit: true, CanDelete: false, Reach: "Company", AssignReach: "Team",
     });
     expect(body.Modules).toContainEqual({
       Module: "dashboard", CanView: true, CanAdd: false, CanEdit: false, CanDelete: false, Reach: null,
     });
+  });
+
+  it("heads the reach column 'Can see', never 'Reach', and explains both settings", async () => {
+    await openRole(1);
+    await screen.findByText(/Salesperson — Permissions/);
+    expect(screen.getByRole("columnheader", { name: "Can see" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Can assign to" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Reach" })).toBeNull();
+    expect(screen.getByText(
+      "Can see = whose records this role can open. Can assign to = who this role can give a record to. Assigning to someone does not let you see their records."
+    )).toBeInTheDocument();
+  });
+
+  it("offers Can assign to only on the Leads and Complaints rows", async () => {
+    await openRole(1);
+    await screen.findByText(/Salesperson — Permissions/);
+    // leads is viewed and has no stored AssignReach: NULL reads as Team.
+    expect(screen.getByTestId("assign-leads-input")).toHaveValue("Their manager and team");
+    expect(screen.queryByTestId("assign-complaints-input")).toBeNull();
+    expect(screen.getByTestId("assign-complaints-none")).toHaveTextContent("—");
+    fireEvent.click(screen.getByTestId("perm-complaints-CanView"));
+    expect(screen.getByTestId("assign-complaints-input")).toHaveValue("Their manager and team");
+    for (const k of ["customers", "people", "cards", "attendance", "tasks", "dashboard"]) {
+      fireEvent.click(screen.getByTestId(`perm-${k}-CanView`));
+      expect(screen.queryByTestId(`assign-${k}-input`)).toBeNull();
+      expect(screen.queryByTestId(`assign-${k}-none`)).toBeNull();
+    }
+  });
+
+  it("seeds Can assign to from the stored AssignReach and saves it per module", async () => {
+    modulesByGroup[1].modules = [
+      { Module: "leads", CanView: 1, CanAdd: 1, CanEdit: 1, CanDelete: 0, Reach: "Office", AssignReach: "Office" },
+      { Module: "complaints", CanView: 1, CanAdd: 0, CanEdit: 0, CanDelete: 0, Reach: "Team", AssignReach: null },
+      { Module: "customers", CanView: 1, CanAdd: 0, CanEdit: 0, CanDelete: 0, Reach: "Office", AssignReach: null },
+    ];
+    const user = await openRole(1);
+    await screen.findByText(/Salesperson — Permissions/);
+    expect(screen.getByTestId("assign-leads-input")).toHaveValue("Their office");
+    await user.click(screen.getByTestId("assign-complaints-input"));
+    await user.click(await screen.findByRole("option", { name: "Their office + offices below" }));
+    await user.click(screen.getByTestId("save-permissions-btn"));
+    await waitFor(() => expect(savedBody()).toBeDefined());
+    const m = Object.fromEntries(savedBody().Modules.map((x) => [x.Module, x]));
+    expect(m.leads.AssignReach).toBe("Office");
+    expect(m.complaints.AssignReach).toBe("OfficeTree");
+    expect("AssignReach" in m.customers).toBe(false);
+  });
+
+  it("warns that a record can leave the office on Company, not on Office", async () => {
+    const note = "This role can send a record to another office. The record then belongs to that office.";
+    const user = await openRole(1);
+    await screen.findByText(/Salesperson — Permissions/);
+    expect(screen.queryByText(note)).toBeNull();
+    await user.click(screen.getByTestId("assign-leads-input"));
+    await user.click(await screen.findByRole("option", { name: "Their office" }));
+    expect(screen.queryByText(note)).toBeNull();
+    await user.click(screen.getByTestId("assign-leads-input"));
+    await user.click(await screen.findByRole("option", { name: "Whole company" }));
+    expect(screen.getByText(note)).toBeInTheDocument();
+    // Dropping View on that row drops the setting with it.
+    fireEvent.click(screen.getByTestId("perm-leads-CanView"));
+    expect(screen.queryByText(note)).toBeNull();
+  });
+
+  it("softly warns when customers Add is ticked with Can see Own, and not with Their office", async () => {
+    const warn = /A role that registers customers usually needs Customers 'Can see: Their office'/;
+    const user = await openRole(1);
+    await screen.findByText(/Salesperson — Permissions/);
+    expect(screen.queryByText(warn)).toBeNull();
+    fireEvent.click(screen.getByTestId("perm-customers-CanAdd")); // View on, Can see Own
+    expect(screen.getByText(warn)).toHaveTextContent(
+      "A role that registers customers usually needs Customers 'Can see: Their office'. Below that, an agent cannot find a customer a colleague registered."
+    );
+    await user.click(screen.getByLabelText("Customers"));
+    await user.click(await screen.findByRole("option", { name: "Their office" }));
+    expect(screen.queryByText(warn)).toBeNull();
+    // Not blocking: Save still goes through with the warning showing.
+    await user.click(screen.getByLabelText("Customers"));
+    await user.click(await screen.findByRole("option", { name: "Their team" }));
+    expect(screen.getByText(warn)).toBeInTheDocument();
+    await user.click(screen.getByTestId("save-permissions-btn"));
+    await waitFor(() => expect(savedBody()).toBeDefined());
+  });
+
+  it("after a save that strands open work, lists each person and says their manager was told", async () => {
+    postMock.mockResolvedValue({
+      data: {
+        success: true,
+        data: {
+          groupId: 1,
+          stranded: {
+            count: 2,
+            people: [
+              { UserId: 5, FullName: "Asha", Leads: 0, Complaints: 4 },
+              { UserId: 6, FullName: "Vivek", Leads: 3, Complaints: 1 },
+            ],
+          },
+        },
+      },
+    });
+    const user = await openRole(1);
+    await screen.findByText(/Salesperson — Permissions/);
+    await user.click(screen.getByTestId("save-permissions-btn"));
+    expect(await screen.findByText("4 open complaints are still assigned to Asha")).toBeInTheDocument();
+    expect(screen.queryByText(/open leads are still assigned to Asha/)).toBeNull();
+    expect(screen.getByText("3 open leads are still assigned to Vivek")).toBeInTheDocument();
+    expect(screen.getByText("1 open complaint is still assigned to Vivek")).toBeInTheDocument();
+    expect(screen.getByText("Their manager has been told.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "OK" }));
+    await waitFor(() => expect(screen.queryByText("Their manager has been told.")).toBeNull());
+  });
+
+  it("shows no stranded dialog when nothing is stranded (or an old server sends none)", async () => {
+    postMock.mockResolvedValueOnce({ data: { success: true, data: { groupId: 1, stranded: { count: 0, people: [] } } } });
+    const user = await openRole(1);
+    await screen.findByText(/Salesperson — Permissions/);
+    await user.click(screen.getByTestId("save-permissions-btn"));
+    await waitFor(() => expect(enqueueSnackbar).toHaveBeenCalledWith("Permissions saved successfully!", { variant: "success" }));
+    await user.click(screen.getByTestId("save-permissions-btn")); // default mock: no stranded at all
+    await waitFor(() => expect(enqueueSnackbar).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText("Their manager has been told.")).toBeNull();
+  });
+
+  it("lists a role like Support Team Lead the same as any other", () => {
+    groupsData = [...groupsData, { Id: 9, Name: "Support Team Lead", Description: "", IsActive: true }];
+    renderPage();
+    expect(screen.getByTestId("group-item-9")).toHaveTextContent("Support Team Lead");
   });
 
   it("reports a refused save", async () => {

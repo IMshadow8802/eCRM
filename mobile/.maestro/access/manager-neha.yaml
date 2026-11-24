@@ -1,0 +1,28 @@
+# am_neha (Branch Manager) — §7 row 7. Unassigned lists C02 (still with its
+# logger); its Reassign picker is grouped and marks AM Vinod "Away today".
+# Env: TAG.
+appId: com.shadowider.eCRM
+---
+- runFlow:
+    file: find-complaint.yaml
+    env:
+      PRESET: "Unassigned"
+      KEY: "${TAG}-C02"
+- assertVisible: "Unassigned"
+- runFlow: no-old-words.yaml
+- tapOn: "Reassign"
+- assertVisible: "Reassign complaint"
+- assertVisible: "Your manager and team|Your office"
+# Wait for the list (it loads when the sheet opens) before typing.
+- extendedWaitUntil:
+    visible: "Your manager and team|Your office"
+    timeout: 15000
+- tapOn:
+    id: "reassign-search"
+- inputText: "Vinod"
+- assertVisible: "AM Vinod"
+- assertVisible: "Away today"
+- hideKeyboard
+- runFlow: no-old-words.yaml
+- takeScreenshot: manager-neha-away-today
+- back

@@ -27,7 +27,7 @@ const renderModal = (props = {}) =>
 describe("CustomerDetailModal", () => {
   beforeEach(() => {
     mockNavigate.mockClear();
-    useAuthStore.setState({ isAuthenticated: true, token: null, user: { UserId: 17 }, UserId: 17, API_BASE_URL: "https://shadowcodes.in/CRM" });
+    useAuthStore.setState({ isAuthenticated: true, token: null, user: { UserId: 17 }, UserId: 17, API_BASE_URL: "https://shadowcodes.in/CRM", access: { isAdmin: true } });
   });
 
   it("shows the profile and every complaint with its status, due and assignee", async () => {
@@ -79,5 +79,15 @@ describe("CustomerDetailModal", () => {
     renderModal({ open: false });
     expect(screen.queryByTestId("customer-detail-modal")).toBeNull();
     expect(cap.detail).toBeUndefined();
+  });
+
+  it("F4 regression: without complaints view there is no complaints section and no counts", async () => {
+    useAuthStore.setState({ access: { isAdmin: false, modules: { customers: { view: true } } } });
+    mockCustomerEndpoints({}, { detail: { customer: customerRow(), tickets: TICKETS } });
+    renderModal();
+    expect(await screen.findByTestId("customer-profile")).toBeInTheDocument();
+    expect(screen.queryByText(/Complaints \(/)).toBeNull();
+    expect(screen.queryByTestId("customer-ticket-7")).toBeNull();
+    expect(screen.queryByText("Open / total")).toBeNull();
   });
 });

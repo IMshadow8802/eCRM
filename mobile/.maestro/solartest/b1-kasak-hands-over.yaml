@@ -1,0 +1,43 @@
+# B1 Kasak opens her lead (${NEHA_LEAD}), schedules a visit for tomorrow, hands
+# it to Roshan; her search then finds nothing.
+appId: com.shadowider.eCRM
+---
+- runFlow:
+    file: ../access/find-lead.yaml
+    env:
+      NAME: "${NEHA_LEAD}"
+- tapOn: "Lead actions"
+- tapOn: "Schedule follow-up"
+- assertVisible: "Schedule follow-up"
+- tapOn: "Visit"
+- tapOn: "Tomorrow"
+- tapOn: "Add follow-up"
+- extendedWaitUntil:
+    notVisible: "Add follow-up"
+    timeout: 15000
+- tapOn: "Reassign"
+- assertVisible: "Reassign lead"
+- extendedWaitUntil:
+    visible: "Your manager and team|Your office"
+    timeout: 15000
+- assertNotVisible: "Sent back"
+- scrollUntilVisible:
+    element: "Roshan"
+- tapOn: "Roshan"
+- tapOn: "${REASON}"
+- tapOn:
+    id: "reassign-remarks"
+- inputText: "${TAG} handover"
+- hideKeyboard
+- tapOn: "Reassign to Roshan"
+- extendedWaitUntil:
+    notVisible: "Lead actions"
+    timeout: 15000
+- tapOn: "Clear search"
+- tapOn: "Search name, company, mobile"
+- inputText: "${NEHA_LEAD}"
+- extendedWaitUntil:
+    visible: "Nothing matches"
+    timeout: 15000
+- takeScreenshot: b1-kasak-gone
+- tapOn: "Clear search"

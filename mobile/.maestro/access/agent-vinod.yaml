@@ -1,0 +1,58 @@
+# am_vinod (Support Agent with a team: reports to Rohit, with Vivek) — §7 row 2.
+# C01 is in Mine; "Reassign" -> the grouped picker, search "viv" narrows it ->
+# "Reassign to AM" (personas are "AM <Name>": the first-name button reads AM)
+# -> back on the list, C01 gone. Env: TAG.
+appId: com.shadowider.eCRM
+---
+- runFlow:
+    file: find-complaint.yaml
+    env:
+      PRESET: "Mine"
+      KEY: "${TAG}-C01"
+- assertVisible: "Assigned to"
+- assertVisible: "AM Vinod"
+- runFlow: no-old-words.yaml
+- tapOn: "Reassign"
+- assertVisible: "Reassign complaint"
+- assertVisible: "Reassign to \\*"
+# §6 groups: his manager and team first. He is the holder, so not offered.
+- assertVisible: "Your manager and team"
+- assertVisible: "AM Vivek"
+- assertVisible: "AM Rohit"
+- runFlow: no-old-words.yaml
+- takeScreenshot: agent-vinod-reassign-picker
+# Wait for the list (it loads when the sheet opens) before typing.
+- extendedWaitUntil:
+    visible: "Your manager and team|Your office"
+    timeout: 15000
+- tapOn:
+    id: "reassign-search"
+- inputText: "viv"
+- assertVisible: "AM Vivek"
+- assertNotVisible: "AM Rohit"
+- hideKeyboard
+- tapOn: "AM Vivek"
+- tapOn: "Overloaded"
+- tapOn:
+    id: "reassign-remarks"
+- inputText: "AM maestro not mine"
+- hideKeyboard
+- tapOn: "Reassign to AM"
+# The success toast lasts 2.5 s and a tap's settle can outlast it, so it is
+# looked for but not required; what follows checks the outcome itself.
+- extendedWaitUntil:
+    visible: "Reassigned to AM Vivek"
+    timeout: 5000
+    optional: true
+- extendedWaitUntil:
+    visible:
+      id: "complaint-presets"
+    timeout: 15000
+- tapOn: "Clear search"
+- tapOn: "Search number, customer, mobile"
+- inputText: "${TAG}-C01"
+- extendedWaitUntil:
+    visible: "Nothing matches"
+    timeout: 15000
+- takeScreenshot: agent-vinod-c01-gone
+- tapOn: "Clear search"

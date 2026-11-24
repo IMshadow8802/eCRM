@@ -134,17 +134,27 @@ describe("assignee / manager actions", () => {
     expect(calls("sp_TatAcknowledge")[0]).toEqual({ CompId: 1, TaskId: 5, UserId: 7 });
   });
 
-  it("hold Mine: own clock, auto-release 3 working days on, emits to the notified managers", async () => {
-    cc.load.mockResolvedValue(new Map([[7, { ctx }]]));
-    database.executeStoredProcedure.mockResolvedValue(ok({ Held: 1 }, [{ UserId: 3 }]));
-    const before = Date.now();
-    const res = await run("hold", { TaskId: 5, Mine: true, ReasonId: 4, Remarks: "client" });
-    expect(status(res)).toBe(200);
-    const p = calls("sp_TatHold")[0];
-    expect(p).toMatchObject({ CompId: 1, TaskId: 5, UserId: 7, ReasonId: 4, Remarks: "client", ActorUserId: 7 });
-    expect(p.AutoReleaseAt).toBeInstanceOf(Date);
-    expect(p.AutoReleaseAt.getTime()).toBeGreaterThanOrEqual(before + 3 * 86400000);
-    expect(emitToUser).toHaveBeenCalledWith(3, SCOPES.NOTIFICATIONS);
+  // The clock is pinned: 3 working days (24 working hours, 9-18 with a 1 h break,
+  // Sunday off) land on a fixed instant. Unpinned, a weekend run starts Monday
+  // and the old "now + 72 h" check failed.
+  it.each([
+    ["a Sunday: Mon, Tue, Wed in full", "2026-11-22T10:00:00+05:30", "2026-11-25T18:00:00+05:30"],
+    ["a Thursday: Thu 7 h + Fri + Sat, 1 h on Monday", "2026-11-19T10:00:00+05:30", "2026-11-23T10:00:00+05:30"],
+  ])("hold Mine on %s: own clock, auto-release 3 working days on, emits to the notified managers", async (_label, now, due) => {
+    jest.useFakeTimers({ now: new Date(now), doNotFake: ["nextTick", "setImmediate", "setTimeout", "setInterval", "queueMicrotask"] });
+    try {
+      cc.load.mockResolvedValue(new Map([[7, { ctx }]]));
+      database.executeStoredProcedure.mockResolvedValue(ok({ Held: 1 }, [{ UserId: 3 }]));
+      const res = await run("hold", { TaskId: 5, Mine: true, ReasonId: 4, Remarks: "client" });
+      expect(status(res)).toBe(200);
+      const p = calls("sp_TatHold")[0];
+      expect(p).toMatchObject({ CompId: 1, TaskId: 5, UserId: 7, ReasonId: 4, Remarks: "client", ActorUserId: 7 });
+      expect(p.AutoReleaseAt).toBeInstanceOf(Date);
+      expect(p.AutoReleaseAt.toISOString()).toBe(new Date(due).toISOString());
+      expect(emitToUser).toHaveBeenCalledWith(3, SCOPES.NOTIFICATIONS);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it.each([[1], ["true"]])("hold Mine accepts %p", async (Mine) => {

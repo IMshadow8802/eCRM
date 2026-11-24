@@ -52,7 +52,12 @@ describe("QuotationList", () => {
 
   it("labels every filter — a date picker draws its own mask and ignores a placeholder", () => {
     draw();
-    for (const label of ["Status", "Owner", "Branch", "From", "To"]) expect(screen.getByLabelText(label)).toBeInTheDocument();
+    for (const label of ["Status", "Assigned to", "Office", "From", "To"]) expect(screen.getByLabelText(label)).toBeInTheDocument();
+    // §4 words: never "Owner" or "Branch" on a lead screen.
+    for (const banned of ["Owner", "Branch"]) {
+      expect(screen.queryByLabelText(banned)).toBeNull();
+      expect(screen.queryByText(banned)).toBeNull();
+    }
   });
 
   it("sends the chosen filters, and nothing for the ones left alone — and writes them into the URL, not just memory", () => {
@@ -117,7 +122,7 @@ describe("QuotationList", () => {
     useUsers.mockReturnValueOnce({ data: undefined });
     useApiQuery.mockReturnValueOnce({ data: undefined });
     draw();
-    expect(screen.getByLabelText("Owner")).toBeInTheDocument();
-    expect(screen.getByLabelText("Branch")).toBeInTheDocument();
+    expect(screen.getByLabelText("Assigned to")).toBeInTheDocument();
+    expect(screen.getByLabelText("Office")).toBeInTheDocument();
   });
 });

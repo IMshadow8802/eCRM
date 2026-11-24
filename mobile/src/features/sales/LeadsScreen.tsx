@@ -63,7 +63,7 @@ const EMPTY: Record<LeadQueue, { title: string; message: string }> = {
   all: { title: "No leads", message: "Nothing in the leads you can see." },
   overdue: { title: "Nothing overdue", message: "Every follow-up is on time." },
   new: { title: "No new leads", message: "Every lead has been contacted." },
-  unassigned: { title: "Nothing unassigned", message: "Every lead has an owner." },
+  unassigned: { title: "Nothing unassigned", message: "Every lead is assigned to someone." },
 };
 
 /** The T3 pane's band is the record's; it publishes no action bar (the rail is up). */
@@ -347,7 +347,7 @@ export default function LeadsScreen({ navigation, route }: Props) {
       {list}
       <View style={styles.fill}>
         {shownId != null ? (
-          <LeadDetailBody key={shownId} leadId={shownId} navigation={navigation} useBar={inPane} pane />
+          <LeadDetailBody key={shownId} leadId={shownId} navigation={navigation} useBar={inPane} onGone={() => setSelected(null)} pane />
         ) : (
           <BandSheet center gutter={metrics.pane.detailSheet}>
             <EmptyState module="leads" title="No lead selected" message="Pick a lead on the left to see it here." />

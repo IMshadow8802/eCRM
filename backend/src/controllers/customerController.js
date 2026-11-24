@@ -6,6 +6,7 @@ const responseHelper = require("../utils/responseHelper");
 const { scopeParams, canSeeRecord, canWriteBranch } = require("../middleware/permission");
 const { positiveInt, pageParams } = require("../utils/controllerKit");
 const { applyMobiles } = require("../utils/mobile");
+const { actor } = require("../utils/actor");
 
 // Mutating SPs return exactly one status row: Id + ResponseCode + ResponseMess.
 // A non-200 code (400 validation, 409 duplicate mobile / tickets attached) is
@@ -37,12 +38,13 @@ const trimmed = (s) => (blank(s) ? null : String(s).trim());
 // defines no meaning for NULL. Only an explicit false / 0 / "false" / "0" is 0.
 const activeBit = (v) => (v === false || v === 0 || v === "false" || v === "0" ? 0 : 1);
 
-// A customer's owner is whoever created it. Reads the row unscoped, then applies
-// `scope` (default: the route's) — ticketController passes the customers scope.
+// A customer's owner is whoever created it. RS1 comes back whatever the caller's
+// reach (132); Node applies `scope` (default: the route's) — ticketController
+// passes the customers scope. @UserId has no default since 132 (it narrows RS2).
 async function assertCustomerVisible(req, res, customerId, scope = req.scope) {
+  const { CompId, UserId } = actor(req);
   const r = await database.executeStoredProcedure("sp_FetchCustomerDetail", {
-    CompId: req.user.CompId, CustomerId: Number(customerId) || 0,
-    UserId: null, AccessibleBranchIdsJson: "[]", OwnerIdsJson: "[]",
+    CompId, CustomerId: Number(customerId) || 0, UserId,
   });
   const row = r.recordsets?.[0]?.[0] || null;
   if (row && canSeeRecord({ ...req, scope }, row, "CreatedBy")) return row;
@@ -52,7 +54,7 @@ async function assertCustomerVisible(req, res, customerId, scope = req.scope) {
 
 const customerController = {
   async save(req, res) {
-    const { CompId, UserId } = req.user;
+    const { CompId, UserId } = actor(req);
     const Id = positiveInt(req.body.Id) ?? 0;
     const fields = pick(req.body, CUSTOMER_FIELDS);
     // The SP enforces both rules too (spec §1); refusing here names the field
@@ -95,7 +97,7 @@ const customerController = {
 
   async fetch(req, res) {
     try {
-      const { CompId } = req.user;
+      const { CompId } = actor(req);
       const { SearchTerm = null, BranchId = null, IsActive = 1 } = req.body;
       // Clamped, not taken raw: PageSize goes straight to the SP, which has no
       // ceiling of its own. Default 25 matches the SP's own default.
@@ -109,7 +111,7 @@ const customerController = {
         SearchTerm: trimmed(SearchTerm),
         BranchId: positiveInt(BranchId),
         IsActive: activeBit(IsActive),
-        ...scopeParams(req),
+        ...scopeParams(req, "customers"),
       });
 
       const customers = result.recordsets?.[0] ?? [];
@@ -130,22 +132,21 @@ const customerController = {
   },
 
   async detail(req, res) {
-    const { CompId } = req.user;
     const CustomerId = positiveInt(req.body.CustomerId);
     if (!CustomerId) return responseHelper.validationError(res, "CustomerId is required");
     try {
-      // RS1 is gated by the customers scope (req.scope); RS2 is that customer's
-      // complaints under the COMPLAINTS scope ("[]" when the role has none).
+      // RS1 is gated here by the customers scope (req.scope); RS2 (that customer's
+      // complaints) is narrowed by the database's complaint definitions (132).
+      const { CompId, UserId } = actor(req);
       const result = await database.executeStoredProcedure("sp_FetchCustomerDetail", {
-        CompId,
-        CustomerId,
-        ...scopeParams(req, "complaints"),
+        CompId, CustomerId, UserId,
       });
       const rs = result.recordsets ?? [];
       const customer = rs[0]?.[0] || null;
-      if (!customer) return responseHelper.error(res, "Customer not found", "NOT_FOUND", 404);
-      if (!canSeeRecord(req, customer, "CreatedBy")) {
-        return responseHelper.error(res, "You do not have access to this customer", "FORBIDDEN", 403);
+      // Hidden answers exactly like missing (X404): no walking ids to learn
+      // which customers exist.
+      if (!customer || !canSeeRecord(req, customer, "CreatedBy")) {
+        return responseHelper.error(res, "Customer not found", "NOT_FOUND", 404);
       }
       return responseHelper.success(res, "Customer detail fetched successfully", {
         customer,
@@ -160,7 +161,7 @@ const customerController = {
   // requireAdmin sits on the route. The SP soft-deletes and answers 409 while
   // any ticket still references the customer — surfaced as-is.
   async delete(req, res) {
-    const { CompId } = req.user;
+    const { CompId } = actor(req);
     const Id = positiveInt(req.body.Id);
     if (!Id) return responseHelper.validationError(res, "Id is required");
     return runSp(res, "sp_DeleteCustomer", { Id, CompId }, "Failed to delete customer");

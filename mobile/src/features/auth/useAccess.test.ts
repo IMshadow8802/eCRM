@@ -17,25 +17,37 @@ describe("useAccess", () => {
   it("returns the role's grant for the module, with isAdmin false", async () => {
     useAuthStore.getState().login(loginData({ access: access({ modules: { complaints } }) }));
     const { result } = await renderHook(() => useAccess("complaints"));
-    expect(result.current).toEqual({ ...complaints, isAdmin: false });
+    expect(result.current).toEqual({ ...complaints, assignReach: null, isAdmin: false });
   });
 
   it("a module the role has no grant for is all false", async () => {
     useAuthStore.getState().login(loginData({ access: access({ modules: { complaints } }) }));
     const { result } = await renderHook(() => useAccess("leads"));
-    expect(result.current).toEqual({ view: false, add: false, edit: false, delete: false, reach: null, isAdmin: false });
+    expect(result.current).toEqual({ view: false, add: false, edit: false, delete: false, reach: null, assignReach: null, isAdmin: false });
   });
 
   it("an admin may do everything company-wide", async () => {
     useAuthStore.getState().login(loginData({ access: access({ isAdmin: true }) }));
     const { result } = await renderHook(() => useAccess("cards"));
-    expect(result.current).toEqual({ view: true, add: true, edit: true, delete: true, reach: "Company", isAdmin: true });
+    expect(result.current).toEqual({ view: true, add: true, edit: true, delete: true, reach: "Company", assignReach: "Company", isAdmin: true });
   });
 
   it("nothing is granted before access is known, even for a login-time admin flag", async () => {
     seedAuth({ user: { IsAdmin: true } });
     const { result } = await renderHook(() => useAccess("complaints"));
-    expect(result.current).toEqual({ view: false, add: false, edit: false, delete: false, reach: null, isAdmin: false });
+    expect(result.current).toEqual({ view: false, add: false, edit: false, delete: false, reach: null, assignReach: null, isAdmin: false });
+  });
+
+  it("reads Can assign to from the sign-in payload", async () => {
+    useAuthStore.getState().login(loginData({ access: access({ modules: { complaints: { ...complaints, assignReach: "Office" } } }) }));
+    const { result } = await renderHook(() => useAccess("complaints"));
+    expect(result.current.assignReach).toBe("Office");
+  });
+
+  it("Can assign to is null for a payload without it (an older server)", async () => {
+    useAuthStore.getState().login(loginData({ access: access({ modules: { complaints } }) }));
+    const { result } = await renderHook(() => useAccess("complaints"));
+    expect(result.current.assignReach).toBeNull();
   });
 
   it("follows a refreshed grant without a re-login", async () => {

@@ -8,10 +8,14 @@ const MODULES = ["leads", "sales_reports", "complaints", "support_reports", "cus
   "tasks", "teams", "projects", "roles", "offices", "settings", "dashboard", "attendance", "partners", "cards"];
 const REACH_MODULES = new Set(["leads", "complaints", "customers", "people", "attendance", "cards"]);
 // Report modules have their own on/off but read with the source module's reach;
-// everything else that has no reach of its own reads with people's.
+// everything else that has no reach of its own reads with people's. Since 131 this
+// feeds no data (lead/complaint visibility is decided in SQL); it still opens report routes.
 const REACH_SOURCE = { sales_reports: "leads", support_reports: "complaints", dashboard: "leads" };
 const WIDE = new Set(["Office", "OfficeTree", "Company"]);
 const REACH_ORDER = ["Own", "Team", "Office", "OfficeTree", "Company"];
+// "Can assign to" exists on these two only; NULL reads as Team.
+const ASSIGN_MODULES = new Set(["leads", "complaints"]);
+const ASSIGN_ORDER = ["Team", "Office", "OfficeTree", "Company"];
 const NONE = { view: false, add: false, edit: false, delete: false };
 const ALL = { view: true, add: true, edit: true, delete: true };
 
@@ -22,7 +26,9 @@ function buildAccess(recordsets = [], userId) {
   const isAdmin = bit(head.IsAdmin);
   const modules = {};
   for (const r of recordsets[1] || []) {
-    modules[r.Module] = { view: bit(r.CanView), add: bit(r.CanAdd), edit: bit(r.CanEdit), delete: bit(r.CanDelete), reach: r.Reach || null };
+    modules[r.Module] = { view: bit(r.CanView), add: bit(r.CanAdd), edit: bit(r.CanEdit), delete: bit(r.CanDelete), reach: r.Reach || null,
+      // An old database has no AssignReach column: null, never a crash.
+      assignReach: ASSIGN_MODULES.has(r.Module) ? r.AssignReach || null : null };
   }
   const lists = { Own: [], Team: [], Office: [], OfficeTree: [], Company: [] };
   for (const r of recordsets[2] || []) {
@@ -84,14 +90,21 @@ function stripSensitive(access, viewerId, user) {
 
 // A non-admin may hand out a role only if it grants nothing they lack
 // (sp_FetchGroupModules RS2 rows): no action the actor's grant does not have,
-// and no reach wider than the actor's reach for that module.
+// no reach wider than the actor's reach for that module, and no "Can assign to"
+// wider than the actor's own (NULL reads as Team on both sides).
 function roleWithin(access, roleRows = []) {
   if (access?.isAdmin) return true;
   return roleRows.every((r) => {
     const mine = access?.modules?.[r.Module] || NONE;
     const acts = [["CanView", "view"], ["CanAdd", "add"], ["CanEdit", "edit"], ["CanDelete", "delete"]];
     if (acts.some(([col, k]) => bit(r[col]) && !mine[k])) return false;
-    if (!r.Reach || !bit(r.CanView)) return true;
+    if (!bit(r.CanView)) return true;
+    if (r.AssignReach) {
+      const want = ASSIGN_ORDER.indexOf(r.AssignReach);
+      // An unknown level is never "within" (fail closed).
+      if (want < 0 || want > ASSIGN_ORDER.indexOf(mine.assignReach || "Team")) return false;
+    }
+    if (!r.Reach) return true;
     return REACH_ORDER.indexOf(r.Reach) <= REACH_ORDER.indexOf(mine.reach || "Own");
   });
 }

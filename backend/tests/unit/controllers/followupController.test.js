@@ -33,9 +33,11 @@ const leadLookup = (lead) =>
 const fuLookup = (row) =>
   database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [row ? [row] : []] });
 const status = (row) => database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[row]] });
-// assertCanAssign's roster lookup (sp_FetchAssignableUsers).
-const roster = (...ids) =>
-  database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [ids.map((Id) => ({ Id }))] });
+// sp_FetchFollowUpLead rows as 132 answers them: Via 1 = lead visible, 2 = open and
+// mine, 3 = a manager's look-only line (CanAct 0). No row = not visible.
+const via1 = { Id: 21, LeadId: 9, Status: "open", AssignedTo: 7, BranchId: 2, OwnerId: 7, CreatedBy: 7, Via: 1, CanAct: true };
+const via2 = { Id: 21, LeadId: 9, Status: "open", AssignedTo: 7, BranchId: null, OwnerId: null, CreatedBy: null, Via: 2, CanAct: true };
+const via3 = { Id: 21, LeadId: 9, Status: "open", AssignedTo: 8, BranchId: null, OwnerId: null, CreatedBy: null, Via: 3, CanAct: false };
 const spNames = () => database.executeStoredProcedure.mock.calls.map(([name]) => name);
 
 beforeEach(() => database.executeStoredProcedure.mockReset());
@@ -51,7 +53,6 @@ describe("schedule", () => {
     ["offset instant → IST wall clock", "2026-10-12T12:00:00+05:30", "2026-10-12 12:00:00"],
     ["other offset", "2026-10-11T23:00:00-02:00", "2026-10-12 06:30:00"],
   ])("normalises DueAt: %s", async (_l, DueAt, want) => {
-    leadLookup(visibleLead);
     status({ Id: 21, ResponseCode: 201, ResponseMess: "ok" });
     const res = mockRes();
     await followupController.schedule(baseReq({ body: { LeadId: 9, DueAt } }), res);
@@ -74,18 +75,18 @@ describe("schedule", () => {
     await followupController.complete(baseReq({ body: { Id: 21, Remarks: "x", NextType: "call", NextDueAt: "2026-10-12T12:00:00+05:30x" } }), res);
     expect(res.status).toHaveBeenCalledWith(400);
     expect(database.executeStoredProcedure).not.toHaveBeenCalled();
-    fuLookup({ Id: 21, LeadId: 9, BranchId: 2, OwnerId: 7, CreatedBy: 7, AssignedTo: 7 });
+    fuLookup(via1);
     status({ Id: 21, ResponseCode: 200, ResponseMess: "ok" });
     res = mockRes();
     await followupController.complete(baseReq({ body: { Id: 21, Remarks: "x", NextType: "call", NextDueAt: "2026-10-12T06:30:00Z" } }), res);
     expect(database.executeStoredProcedure.mock.calls.at(-1)[1].NextDueAt).toBe("2026-10-12 12:00:00");
   });
 
-  it("gates on the lead and forwards the row", async () => {
-    leadLookup(visibleLead);
+  it("hands the lead and person to the procedure, which gates them, and forwards the row", async () => {
     status({ Id: 21, ResponseCode: 201, ResponseMess: "Follow-up scheduled" });
     const res = mockRes();
-    await followupController.schedule(baseReq({ body: { LeadId: 9, Type: "visit", DueAt: "2026-09-12" } }), res);
+    await followupController.schedule(baseReq({ body: { LeadId: 9, Type: "visit", DueAt: "2026-09-12", UserId: 99, CompId: 98 } }), res);
+    expect(spNames()).toEqual(["sp_ScheduleFollowUp"]);
     expect(database.executeStoredProcedure).toHaveBeenLastCalledWith("sp_ScheduleFollowUp", {
       CompId: 5, LeadId: 9, UserId: 7, Type: "visit", DueAt: "2026-09-12", AssignedTo: null,
     });
@@ -93,11 +94,12 @@ describe("schedule", () => {
     expect(res.json.mock.calls[0][0].data.Id).toBe(21);
   });
 
-  it("403s a lead outside scope", async () => {
-    leadLookup({ Id: 9, BranchId: 9, OwnerId: 3, CreatedBy: 3 });
+  it("relays the procedure's 404 for a lead the caller cannot see", async () => {
+    status({ Id: 0, ResponseCode: 404, ResponseMess: "Lead not found" });
     const res = mockRes();
     await followupController.schedule(baseReq({ body: { LeadId: 9, DueAt: "2026-09-12" } }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json.mock.calls[0][0].message).toBe("Lead not found");
   });
 
   it("400s without a due date, before any lookup", async () => {
@@ -107,34 +109,28 @@ describe("schedule", () => {
     expect(database.executeStoredProcedure).not.toHaveBeenCalled();
   });
 
-  // Scheduling onto another user is an assignment. Without this gate a Branch
-  // user could park work on anyone in the company by posting their Id.
-  it("403s an AssignedTo outside the caller's roster and never reaches the SP", async () => {
-    leadLookup(visibleLead);
-    roster(7, 8); // 12 is not assignable to this caller
+  it("400s without a lead, before any lookup", async () => {
+    const res = mockRes();
+    await followupController.schedule(baseReq({ body: { DueAt: "2026-09-12" } }), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  // Scheduling onto another person is an assignment; since 133 the procedure judges
+  // it (Can assign to) and Node relays the refusal — no roster lookup in Node.
+  it("schedule onto a person relays the procedure's 403", async () => {
+    status({ Id: 0, ResponseCode: 403, ResponseMess: "You cannot assign records to that person" });
     const res = mockRes();
     await followupController.schedule(baseReq({ body: { LeadId: 9, DueAt: "2026-09-12", AssignedTo: 12 } }), res);
     expect(res.status).toHaveBeenCalledWith(403);
-    expect(spNames()).toEqual(["sp_FetchLeadDetail", "sp_FetchAssignableUsers"]);
-    expect(spNames()).not.toContain("sp_ScheduleFollowUp");
-  });
-
-  it("schedules onto a user the roster does list", async () => {
-    leadLookup(visibleLead);
-    roster(7, 8);
-    status({ Id: 22, ResponseCode: 201, ResponseMess: "Follow-up scheduled" });
-    const res = mockRes();
-    await followupController.schedule(baseReq({ body: { LeadId: 9, DueAt: "2026-09-12", AssignedTo: 8 } }), res);
-    expect(database.executeStoredProcedure).toHaveBeenLastCalledWith("sp_ScheduleFollowUp", {
-      CompId: 5, LeadId: 9, UserId: 7, Type: "call", DueAt: "2026-09-12", AssignedTo: 8,
-    });
-    expect(res.status).toHaveBeenCalledWith(201);
+    expect(res.json.mock.calls[0][0].message).toBe("You cannot assign records to that person");
+    expect(spNames()).toEqual(["sp_ScheduleFollowUp"]);
+    expect(database.executeStoredProcedure.mock.calls[0][1].AssignedTo).toBe(12);
   });
 
   // A destructuring default only fires on `undefined`; the client sends an
   // explicit null when the Type picker is untouched.
   it("defaults an explicit null Type to 'call'", async () => {
-    leadLookup(visibleLead);
     status({ Id: 23, ResponseCode: 201, ResponseMess: "Follow-up scheduled" });
     const res = mockRes();
     await followupController.schedule(baseReq({ body: { LeadId: 9, Type: null, DueAt: "2026-09-12" } }), res);
@@ -145,7 +141,7 @@ describe("schedule", () => {
 });
 
 describe("complete", () => {
-  const row = { Id: 21, LeadId: 9, Status: "open", AssignedTo: 7, BranchId: 2, OwnerId: 7, CreatedBy: 7 };
+  const row = via1;
 
   it("400s without remarks before any lookup", async () => {
     const res = mockRes();
@@ -162,7 +158,7 @@ describe("complete", () => {
       baseReq({ body: { Id: 21, OutcomeId: 3, Remarks: "Spoke", Direction: "out", Duration: 5, NextType: "visit", NextDueAt: "2026-09-14" } }),
       res,
     );
-    expect(database.executeStoredProcedure).toHaveBeenNthCalledWith(1, "sp_FetchFollowUpLead", { CompId: 5, Id: 21 });
+    expect(database.executeStoredProcedure).toHaveBeenNthCalledWith(1, "sp_FetchFollowUpLead", { CompId: 5, UserId: 7, Id: 21 });
     expect(database.executeStoredProcedure).toHaveBeenLastCalledWith("sp_CompleteFollowUp", {
       CompId: 5, Id: 21, UserId: 7, OutcomeId: 3, Remarks: "Spoke", Direction: "out", Duration: 5,
       NextType: "visit", NextDueAt: "2026-09-14",
@@ -170,13 +166,31 @@ describe("complete", () => {
     expect(res.json.mock.calls[0][0].data).toEqual({ Id: 21, NextId: 22 });
   });
 
-  // The follow-up is assigned to me though the lead is a colleague's: still mine to log.
-  it("allows the assignee even when the lead is outside their owner scope", async () => {
-    fuLookup({ ...row, OwnerId: 3, CreatedBy: 3, AssignedTo: 7 });
+  // The follow-up is assigned to me though the lead is a colleague's (Via 2): still mine to log.
+  it("allows the assignee of an open follow-up whose lead they cannot see (Via 2)", async () => {
+    fuLookup(via2);
+    status({ Id: 21, NextId: null, ResponseCode: 200, ResponseMess: "ok" });
+    const res = mockRes();
+    await followupController.complete(baseReq({ body: { Id: 21, Remarks: "ok" } }), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  // The database's word decides, not the Node lists: a row outside req.scope is still actionable.
+  it("acts on a Via-1 row even when req.scope would have hidden it", async () => {
+    fuLookup({ ...via1, BranchId: 9, OwnerId: 3, AssignedTo: 3 });
     status({ Id: 21, NextId: null, ResponseCode: 200, ResponseMess: "ok" });
     const res = mockRes();
     await followupController.complete(baseReq({ scope: { branchIds: [2], ownerIds: [7] }, body: { Id: 21, Remarks: "ok" } }), res);
     expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it("403s a manager's look-only line (Via 3) without completing it", async () => {
+    fuLookup(via3);
+    const res = mockRes();
+    await followupController.complete(baseReq({ body: { Id: 21, Remarks: "ok" } }), res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json.mock.calls[0][0].message).toBe("You can view this follow-up but not act on it");
+    expect(spNames()).toEqual(["sp_FetchFollowUpLead"]);
   });
 
   it("404s an unknown follow-up", async () => {
@@ -204,7 +218,7 @@ describe("complete", () => {
 
 describe("skip", () => {
   it("requires remarks and forwards", async () => {
-    fuLookup({ Id: 21, LeadId: 9, Status: "open", AssignedTo: 7, BranchId: 2, OwnerId: 7, CreatedBy: 7 });
+    fuLookup(via1);
     status({ Id: 21, ResponseCode: 200, ResponseMess: "Follow-up skipped" });
     await followupController.skip(baseReq({ body: { Id: 21, Remarks: "Customer travelling" } }), mockRes());
     expect(database.executeStoredProcedure).toHaveBeenLastCalledWith("sp_SkipFollowUp", {
@@ -217,6 +231,22 @@ describe("skip", () => {
     await followupController.skip(baseReq({ body: { Remarks: "Customer travelling" } }), res);
     expect(res.status).toHaveBeenCalledWith(400);
     expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  it("403s a Via-3 follow-up", async () => {
+    fuLookup(via3);
+    const res = mockRes();
+    await followupController.skip(baseReq({ body: { Id: 21, Remarks: "x" } }), res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(spNames()).toEqual(["sp_FetchFollowUpLead"]);
+  });
+
+  it("404s a follow-up the database does not return", async () => {
+    fuLookup(null);
+    const res = mockRes();
+    await followupController.skip(baseReq({ body: { Id: 21, Remarks: "x" } }), res);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(spNames()).toEqual(["sp_FetchFollowUpLead"]);
   });
 
   it("400s without remarks", async () => {
@@ -240,7 +270,7 @@ describe("fetch", () => {
     expect(res.json.mock.calls[0][0].data).toEqual({ followups: [{ Id: 21 }, { Id: 22 }] });
   });
 
-  it("queue mode passes scope + filters and maps pagination", async () => {
+  it("queue mode passes the person + filters, no list keys, and maps pagination", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [[{ Id: 21 }], [{ TotalRecords: 1, TotalPages: 1, CurrentPage: 1, PageSize: 25 }]],
     });
@@ -251,16 +281,33 @@ describe("fetch", () => {
     );
     expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_FetchFollowUps", expect.objectContaining({
       CompId: 5, LeadId: 0, Overdue: true, AssignedTo: 7, DueTo: "2026-09-30",
-      UserId: 7, AccessibleBranchIdsJson: "[2]", OwnerIdsJson: "[7]", PageNumber: 1, PageSize: 25,
+      UserId: 7, PageNumber: 1, PageSize: 25,
     }));
     expect(res.json.mock.calls[0][0].data.pagination).toEqual({ currentPage: 1, pageSize: 25, totalRecords: 1, totalPages: 1 });
   });
 
-  it("403s the per-lead mode when the lead is out of scope, without fetching rows", async () => {
-    leadLookup({ Id: 9, BranchId: 9, OwnerId: 3, CreatedBy: 3 });
+  it("fetch sends no list keys and takes the person from the session only", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[], []] });
+    await followupController.fetch(baseReq({ body: { UserId: 99, CompId: 98 } }), mockRes());
+    const params = database.executeStoredProcedure.mock.calls[0][1];
+    expect(Object.keys(params).filter((k) => /Json$/.test(k))).toEqual([]);
+    expect(params).toMatchObject({ CompId: 5, UserId: 7 });
+  });
+
+  // Rows go out as the procedure shaped them: a Via-3 row already has LeadMobile NULL.
+  it("returns rows exactly as the procedure gives them (Via 3 keeps its NULL phone)", async () => {
+    const row = { Id: 21, Via: 3, LeadMobile: null, LeadName: "A" };
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[row], [{ TotalRecords: 1 }]] });
+    const res = mockRes();
+    await followupController.fetch(baseReq({ body: {} }), res);
+    expect(res.json.mock.calls[0][0].data.followups).toEqual([row]);
+  });
+
+  it("404s the per-lead mode when the database does not return the lead, without fetching rows", async () => {
+    leadLookup(null);
     const res = mockRes();
     await followupController.fetch(baseReq({ body: { LeadId: 9 } }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
   });
 
@@ -322,7 +369,7 @@ describe("fetch", () => {
 
 describe("delete", () => {
   it("resolves the lead, gates, then deletes", async () => {
-    fuLookup({ Id: 21, LeadId: 9, Status: "open", AssignedTo: 7, BranchId: 2, OwnerId: 7, CreatedBy: 7 });
+    fuLookup(via1);
     status({ ResponseCode: 200, ResponseMess: "Follow-up deleted successfully" });
     const res = mockRes();
     await followupController.delete(baseReq({ body: { Id: 21 } }), res);
@@ -330,37 +377,53 @@ describe("delete", () => {
     expect(res.status).toHaveBeenCalledWith(200);
   });
 
-  it("403s when the lead is out of scope", async () => {
-    fuLookup({ Id: 21, LeadId: 9, Status: "open", AssignedTo: 3, BranchId: 9, OwnerId: 3, CreatedBy: 3 });
+  it("403s a Via-3 follow-up", async () => {
+    fuLookup(via3);
     const res = mockRes();
     await followupController.delete(baseReq({ body: { Id: 21 } }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
-    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
-  });
-
-  // REGRESSION (F1 write half, 2026-11-21): "assigned to me" once opened the
-  // gate in any state, so a lead's past owner could still act on its done
-  // follow-ups after a transfer (which re-points only open ones).
-  it("403s a past assignee acting on a done follow-up of a lead they no longer hold", async () => {
-    fuLookup({ Id: 21, LeadId: 9, Status: "done", AssignedTo: 7, BranchId: 2, OwnerId: 3, CreatedBy: 3 });
-    const res = mockRes();
-    await followupController.delete(baseReq({ scope: { branchIds: [2], ownerIds: [7] }, body: { Id: 21 } }), res);
     expect(res.status).toHaveBeenCalledWith(403);
     expect(spNames()).toEqual(["sp_FetchFollowUpLead"]);
   });
 
-  it("lets the lead's holder act on a done follow-up assigned to someone else", async () => {
-    fuLookup({ Id: 21, LeadId: 9, Status: "done", AssignedTo: 3, BranchId: 2, OwnerId: 7, CreatedBy: 3 });
-    status({ ResponseCode: 409, ResponseMess: "Only an open follow-up can be deleted" });
+  it("404s a follow-up the database does not return", async () => {
+    fuLookup(null);
     const res = mockRes();
-    await followupController.delete(baseReq({ scope: { branchIds: [2], ownerIds: [7] }, body: { Id: 21 } }), res);
+    await followupController.delete(baseReq({ body: { Id: 21 } }), res);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(spNames()).toEqual(["sp_FetchFollowUpLead"]);
+  });
+
+  // REGRESSION (F1, 2026-11-21): a lead's past holder kept acting on its done
+  // follow-ups after a transfer (which re-points only open ones). The database
+  // no longer returns that row (Via 2 is open-only), so it is a 404.
+  it("F1 regression: a done follow-up assigned to me whose lead left is not actionable (404)", async () => {
+    fuLookup(null);
+    const res = mockRes();
+    await followupController.delete(baseReq({ body: { Id: 21 } }), res);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(spNames()).toEqual(["sp_FetchFollowUpLead"]);
+  });
+
+  // Belt for the same rule: "mine" (Via 2) is only ever an OPEN follow-up.
+  it("403s a Via-2 row that is not open, whatever CanAct says", async () => {
+    fuLookup({ ...via2, Status: "done" });
+    const res = mockRes();
+    await followupController.delete(baseReq({ body: { Id: 21 } }), res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(spNames()).toEqual(["sp_FetchFollowUpLead"]);
+  });
+
+  it("lets the lead's holder act on a done follow-up assigned to someone else (Via 1)", async () => {
+    fuLookup({ ...via1, Status: "done", AssignedTo: 3 });
+    status({ ResponseCode: 409, ResponseMess: "Only an open follow-up can be deleted" });
+    await followupController.delete(baseReq({ body: { Id: 21 } }), mockRes());
     expect(spNames()).toEqual(["sp_FetchFollowUpLead", "sp_DeleteFollowUp"]); // past the gate; the SP rules on state
   });
 
   // Done rows are history: the SP refuses them and the controller must not
   // dress that 409 up as a success.
   it("passes the SP's 409 for a done follow-up through", async () => {
-    fuLookup({ Id: 21, LeadId: 9, Status: "done", AssignedTo: 7, BranchId: 2, OwnerId: 7, CreatedBy: 7 });
+    fuLookup({ ...via1, Status: "done" });
     status({ ResponseCode: 409, ResponseMess: "Only an open follow-up can be deleted" });
     const res = mockRes();
     await followupController.delete(baseReq({ body: { Id: 21 } }), res);

@@ -21,6 +21,7 @@ import { WORK_ENDPOINTS } from "../../../api/workQueries";
 import { useConfirmation } from "../../../hooks/useConfirmation";
 import ConfirmationDialog from "../../../components/ConfirmationDialog";
 import Tooltip from "../../../components/ui/Tooltip";
+import StrandedWorkDialog from "./StrandedWorkDialog";
 import { useApiQuery } from "../../../hooks/useApiQuery";
 import {
   FormModal,
@@ -81,10 +82,10 @@ const HandoverSummary = ({ userId, handover }) => {
       <li key="t">{plural(OpenTasks, "open task", "open tasks")} will be unassigned. Their workspace owners are told.</li>
     ),
     OpenLeads > 0 && (
-      <li key="l">{plural(OpenLeads, "open lead", "open leads")} <Link to={`/sales/leads?OwnerId=${userId}`}>Transfer</Link></li>
+      <li key="l">{plural(OpenLeads, "open lead", "open leads")} <Link to={`/sales/leads?OwnerId=${userId}`}>Reassign</Link></li>
     ),
     OpenTickets > 0 && (
-      <li key="c">{plural(OpenTickets, "open complaint", "open complaints")} <Link to={`/support/tickets?AssignedTo=${userId}`}>Transfer</Link></li>
+      <li key="c">{plural(OpenTickets, "open complaint", "open complaints")} <Link to={`/support/tickets?AssignedTo=${userId}`}>Reassign</Link></li>
     ),
     OwnedWorkspaces > 0 && (
       <li key="w">{plural(OwnedWorkspaces, "workspace", "workspaces")} they own: {workspaces.map((w) => w.Name).join(", ")}</li>
@@ -175,6 +176,7 @@ const UserForm = ({
   // must not wipe what the admin has picked so far.
   const grantKey = loadedGrants.map((g) => g.BranchId).join(",");
   const [extraOffices, setExtraOffices] = useState([]);
+  const [stranded, setStranded] = useState([]);
   const seedExtraOffices = () => setExtraOffices(grantKey ? grantKey.split(",") : []);
   useEffect(seedExtraOffices, [grantKey]);
 
@@ -279,6 +281,10 @@ const UserForm = ({
           await syncExtraOffices(editingUser?.Id ?? response.data.data?.userId, payload.BranchId);
         }
         const n = response.data.data?.unassignedTasks;
+        const s = response.data.data?.stranded;
+        if (s?.leads > 0 || s?.complaints > 0) {
+          setStranded([{ name: payload.FullName, leads: s.leads, complaints: s.complaints }]);
+        }
         enqueueSnackbar(
           `User ${editingUser ? "updated" : "created"} successfully!` +
             (n > 0 ? ` ${n} open task${n === 1 ? " was" : "s were"} unassigned.` : ""),
@@ -368,6 +374,7 @@ const UserForm = ({
   };
 
   return (
+    <>
     <FormModal
       open={open}
       onClose={handleClose}
@@ -532,6 +539,7 @@ const UserForm = ({
                   options={reportsToOptions}
                   placeholder="No manager (top of the chain)"
                   error={errors.ReportsTo?.message}
+                  helperText="Their manager, and that manager's managers, can see the leads and complaints this person holds, when their own role's 'Can see' is Their team or wider."
                 />
               )}
             />
@@ -682,6 +690,9 @@ const UserForm = ({
         maxWidth={confirmation.confirmationState.maxWidth}
       />
     </FormModal>
+    {/* Outside the form modal: the form closes on save, the notice must not. */}
+    <StrandedWorkDialog people={stranded} onClose={() => setStranded([])} />
+    </>
   );
 };
 

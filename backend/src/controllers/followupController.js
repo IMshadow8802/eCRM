@@ -3,33 +3,33 @@ const { success, error, validationError } = require("../utils/responseHelper");
 const {
   asyncRoute, firstRow, spStatus, spOk, spMessage, pageParams, positiveInt, istDateTime, optionalDateTime,
 } = require("../utils/controllerKit");
-const { assertRecordAccess, assertCanAssign, canSeeRecord, scopeParams } = require("../middleware/permission");
+const { assertRecordAccess, visibleFollowUp } = require("../middleware/permission");
+const { actor } = require("../utils/actor");
 
 const blank = (s) => !s || !String(s).trim();
 
 const BAD_DUE = "Follow-up date is not valid";
 
-// A follow-up is governed by its lead's visibility, plus one extra: the person
-// an OPEN follow-up is assigned to may act on it even when the lead sits outside
-// their owner scope (a manager scheduled it onto them). A done/cancelled one
-// needs the lead: a transfer re-points only open rows, so a past owner keeps
-// the old ones (access review F1, 2026-11-21). Resolved in one read via
-// sp_FetchFollowUpLead; sends 404/403 itself and returns null on refusal.
+// Which follow-ups a person sees is the database's answer (fn_VisibleFollowUps via
+// sp_FetchFollowUpLead): Via 1 = its lead is visible, Via 2 = an OPEN one assigned to
+// them, Via 3 = a manager's look-only line (CanAct 0). Acting needs Via 1, or Via 2 while
+// still open — a done one needs the lead, since a transfer re-points only open rows
+// (access review F1). Not returned → 404. Sends the refusal itself, null on refusal.
 async function loadVisibleFollowUp(req, res, id) {
   const Id = positiveInt(id);
   if (!Id) {
     validationError(res, "Follow-up Id is required");
     return null;
   }
-  const result = await database.executeStoredProcedure("sp_FetchFollowUpLead", { CompId: req.user.CompId, Id });
-  const row = firstRow(result);
+  const row = await visibleFollowUp(req, Id);
   if (!row) {
     error(res, "Follow-up not found", "NOT_FOUND", 404);
     return null;
   }
-  const mine = row.Status === "open" && Number(row.AssignedTo) === Number(req.user.UserId);
-  if (!mine && !canSeeRecord(req, row, "OwnerId")) {
-    error(res, "You do not have access to this follow-up", "FORBIDDEN", 403);
+  const via = Number(row.Via);
+  const canAct = Number(row.CanAct) === 1 && (via === 1 || (via === 2 && row.Status === "open"));
+  if (!canAct) {
+    error(res, "You can view this follow-up but not act on it", "FORBIDDEN", 403);
     return null;
   }
   return row;
@@ -51,12 +51,12 @@ class FollowupController {
       if (!DueAt) return validationError(res, "Due date is required");
       const due = istDateTime(DueAt);
       if (!due) return validationError(res, BAD_DUE);
-      if (!(await assertRecordAccess(req, res, "lead", LeadId))) return;
-      // Scheduling onto someone else is an assignment: same roster gate as a
-      // lead transfer. Branch stays null — a follow-up never moves a lead.
-      if (AssignedTo && !(await assertCanAssign(req, res, { toUserId: AssignedTo, toBranchId: null }))) return;
+      if (!positiveInt(LeadId)) return validationError(res, "Lead is required");
+      const { CompId, UserId } = actor(req);
+      // The procedure gates it all (133): the lead must be visible (404), the caller
+      // may schedule (403), and AssignedTo must be someone they can assign to (403).
       const result = await database.executeStoredProcedure("sp_ScheduleFollowUp", {
-        CompId: req.user.CompId, LeadId: positiveInt(LeadId), UserId: req.user.UserId,
+        CompId, UserId, LeadId: positiveInt(LeadId),
         Type, DueAt: due, AssignedTo: positiveInt(AssignedTo),
       });
       return reply(res, firstRow(result), "Follow-up scheduled", (r) => ({ Id: r.Id }));
@@ -72,8 +72,9 @@ class FollowupController {
       const nextDue = NextDueAt == null || NextDueAt === "" ? null : istDateTime(NextDueAt);
       if (NextDueAt != null && NextDueAt !== "" && !nextDue) return validationError(res, BAD_DUE);
       if (!(await loadVisibleFollowUp(req, res, Id))) return;
+      const { CompId, UserId } = actor(req);
       const result = await database.executeStoredProcedure("sp_CompleteFollowUp", {
-        CompId: req.user.CompId, Id: positiveInt(Id), UserId: req.user.UserId,
+        CompId, Id: positiveInt(Id), UserId,
         OutcomeId: positiveInt(OutcomeId), Remarks: String(Remarks).trim(),
         Direction, Duration: positiveInt(Duration), NextType, NextDueAt: nextDue,
       });
@@ -88,8 +89,9 @@ class FollowupController {
       const { Id, Remarks } = req.body;
       if (blank(Remarks)) return validationError(res, "Remarks are required");
       if (!(await loadVisibleFollowUp(req, res, Id))) return;
+      const { CompId, UserId } = actor(req);
       const result = await database.executeStoredProcedure("sp_SkipFollowUp", {
-        CompId: req.user.CompId, Id: positiveInt(Id), UserId: req.user.UserId, Remarks: String(Remarks).trim(),
+        CompId, Id: positiveInt(Id), UserId, Remarks: String(Remarks).trim(),
       });
       return reply(res, firstRow(result), "Follow-up skipped", (r) => ({ Id: r.Id }));
     },
@@ -109,18 +111,18 @@ class FollowupController {
       if (DoneFrom === undefined || DoneTo === undefined) return validationError(res, "DoneFrom / DoneTo is not a valid date");
 
       // Per-lead: the lead is the record being read; gate on it and return the
-      // full list. Queue: the SP applies scope itself.
+      // full list. Queue: the SP applies the person's definition itself.
       if (LeadId && !(await assertRecordAccess(req, res, "lead", LeadId))) return;
 
+      const { CompId, UserId } = actor(req);
       const result = await database.executeStoredProcedure("sp_FetchFollowUps", {
-        CompId: req.user.CompId, LeadId,
+        CompId, UserId, LeadId,
         AssignedTo: positiveInt(AssignedTo), Status, DueFrom, DueTo,
         // Only when set: every key is bound, and a DB without 118 would reject the parameter.
         ...(DoneFrom && { DoneFrom }),
         ...(DoneTo && { DoneTo }),
         Overdue: Overdue === true || Overdue === 1 || Overdue === "true",
         SearchTerm, PageNumber, PageSize,
-        ...scopeParams(req),
       });
       const followups = result.recordsets?.[0] ?? [];
       if (LeadId) return success(res, "Follow-ups fetched successfully", { followups });
@@ -144,7 +146,8 @@ class FollowupController {
     async (req, res) => {
       const { Id } = req.body;
       if (!(await loadVisibleFollowUp(req, res, Id))) return;
-      const result = await database.executeStoredProcedure("sp_DeleteFollowUp", { Id: positiveInt(Id), CompId: req.user.CompId });
+      const { CompId } = actor(req);
+      const result = await database.executeStoredProcedure("sp_DeleteFollowUp", { Id: positiveInt(Id), CompId });
       return reply(res, firstRow(result), "Follow-up deleted", () => null);
     },
     "Failed to delete follow-up",

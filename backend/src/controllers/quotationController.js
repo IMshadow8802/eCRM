@@ -8,7 +8,8 @@
 // amount from the lines; anything total-shaped in a request body is dropped.
 const database = require("../config/database");
 const responseHelper = require("../utils/responseHelper");
-const { scopeParams, canSeeRecord, assertRecordAccess } = require("../middleware/permission");
+const { assertRecordAccess } = require("../middleware/permission");
+const { actor } = require("../utils/actor");
 const { positiveInt, pageParams } = require("../utils/controllerKit");
 const { applyMobiles } = require("../utils/mobile");
 const { parseDay } = require("../utils/reportKit");
@@ -142,7 +143,7 @@ async function gateLeadBranch(req, res) {
 
 const quotationController = {
   async save(req, res) {
-    const { CompId, UserId } = req.user;
+    const { CompId, UserId } = actor(req);
     const Id = positiveInt(req.body.Id) ?? 0;
     let LeadId = positiveInt(req.body.LeadId);
 
@@ -163,12 +164,14 @@ const quotationController = {
 
   async fetch(req, res) {
     try {
-      const { CompId } = req.user;
+      const { CompId, UserId } = actor(req);
       const { SearchTerm = null, Status = null, OwnerId = null, BranchId = null, LeadId = null, FromDate = null, ToDate = null } = req.body;
       const { PageNumber, PageSize } = pageParams(req.body, 25);
 
+      // Visibility is the procedure's: it lists quotations of leads the caller can see.
       const result = await database.executeStoredProcedure("sp_FetchQuotations", {
         CompId,
+        UserId,
         PageNumber,
         PageSize,
         SearchTerm: text(SearchTerm),
@@ -178,7 +181,6 @@ const quotationController = {
         LeadId: positiveInt(LeadId),
         FromDate: isoDay(FromDate),
         ToDate: isoDay(ToDate),
-        ...scopeParams(req),
       });
 
       const quotations = result.recordsets?.[0] ?? [];
@@ -199,19 +201,20 @@ const quotationController = {
   },
 
   async detail(req, res) {
-    const { CompId } = req.user;
     const QuotationId = positiveInt(req.body.QuotationId);
     if (!QuotationId) return responseHelper.validationError(res, "QuotationId is required");
     try {
+      const { CompId, UserId } = actor(req);
       const result = await database.executeStoredProcedure("sp_FetchQuotationDetail", {
         CompId,
+        UserId,
         QuotationId,
       });
       const rs = result.recordsets ?? [];
       const row = rs[0]?.[0] || null;
-      // RS1 carries the LEAD's OwnerId / BranchId / CreatedBy. 404 rather than
-      // 403: a user who cannot see a lead should not learn it has quotations.
-      if (!canSeeRecord(req, row, "OwnerId")) {
+      // No row when the caller cannot see the quotation's lead. 404 rather than
+      // 403: they should not learn it has quotations.
+      if (!row) {
         return responseHelper.error(res, "Quotation not found", "NOT_FOUND", 404);
       }
       const { CompanyJSON, ContentJSON, ...quotation } = row;
@@ -229,21 +232,21 @@ const quotationController = {
   async finalise(req, res) {
     const QuotationId = await gateQuotation(req, res);
     if (!QuotationId) return;
-    const { CompId, UserId } = req.user;
+    const { CompId, UserId } = actor(req);
     return runSp(res, "sp_FinaliseQuotation", { CompId, QuotationId, UserId }, "Failed to finalise quotation");
   },
 
   async revise(req, res) {
     const QuotationId = await gateQuotation(req, res);
     if (!QuotationId) return;
-    const { CompId, UserId } = req.user;
+    const { CompId, UserId } = actor(req);
     return runSp(res, "sp_ReviseQuotation", { CompId, QuotationId, UserId }, "Failed to revise quotation");
   },
 
   async reject(req, res) {
     const QuotationId = await gateQuotation(req, res);
     if (!QuotationId) return;
-    const { CompId, UserId } = req.user;
+    const { CompId, UserId } = actor(req);
     const Remarks = text(req.body.Remarks);
     return runSp(res, "sp_RejectQuotation", { CompId, QuotationId, UserId, Remarks }, "Failed to reject quotation");
   },
@@ -253,7 +256,7 @@ const quotationController = {
   async remove(req, res) {
     const QuotationId = await gateQuotation(req, res);
     if (!QuotationId) return;
-    const { CompId } = req.user;
+    const { CompId } = actor(req);
     try {
       const result = await database.executeStoredProcedure("sp_DeleteQuotation", {
         CompId,
@@ -278,7 +281,7 @@ const quotationController = {
   async ensureProfile(req, res) {
     const BranchId = await gateLeadBranch(req, res);
     if (!BranchId) return;
-    const { CompId, UserId } = req.user;
+    const { CompId, UserId } = actor(req);
     try {
       const result = await database.executeStoredProcedure("sp_EnsureQuoteProfile", {
         CompId,
@@ -310,7 +313,7 @@ const quotationController = {
 
     const BranchId = await gateLeadBranch(req, res);
     if (!BranchId) return;
-    const { CompId, UserId } = req.user;
+    const { CompId, UserId } = actor(req);
     const fields = Object.fromEntries(PROFILE_TEXT.map((k) => [k, text(b[k])]));
     fields.GSTIN = gstin(b.GSTIN);
     const IsAdmin = req.scope?.isAdmin ? 1 : 0;

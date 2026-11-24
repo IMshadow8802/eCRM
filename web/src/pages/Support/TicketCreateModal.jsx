@@ -8,21 +8,22 @@ import { Pencil, Plus } from "lucide-react";
 import dayjs from "dayjs";
 import { Box } from "@mui/material";
 
-import { Modal, Button, TextInput, TextArea, Combobox } from "../../components/ui";
+import { Modal, Button, TextInput, TextArea, Combobox, AssigneePicker } from "../../components/ui";
 import DynamicField from "../../components/DynamicField";
 import Attachments from "../../components/Attachments";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { useApiMutation } from "../../hooks/useApiMutation";
-import { useAssignableUsers } from "../../hooks/useAssignableUsers";
 import { useLookups } from "../../hooks/useLookups";
 import { SUPPORT_ENDPOINTS } from "../../api/supportQueries";
 import { SALES_ENDPOINTS } from "../../api/salesQueries";
 import { formatDateTime } from "../../utils/format";
+import { apiClient } from "../../utils/axiosConfig";
 import CustomerPicker from "./CustomerPicker";
+import useAuthStore from "../../stores/useAuthStore";
 
 // Only the columns sp_SaveTicket takes (spec 2 §3). CompId/BranchId/UserId are
 // injected server-side; the status is the SP's (first 'open' on insert, never
-// touched on update) and the assignee moves only through a transfer.
+// touched on update) and the holder moves only through Reassign.
 const schema = z.object({
   Customer: z.any().refine((v) => Boolean(v?.Id), { message: "Pick a customer" }),
   Subject: z.string().trim().min(1, "Subject is required"),
@@ -85,6 +86,7 @@ const clean = (s) => (s?.trim() ? s.trim() : null);
  */
 export default function TicketCreateModal({ open, onClose, ticket = null, onSaved }) {
   const isEdit = Boolean(ticket?.Id);
+  const myId = useAuthStore((s) => s.user?.UserId ?? s.UserId);
   const { control, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm({
     resolver: zodResolver(schema),
     defaultValues: EMPTY,
@@ -97,7 +99,6 @@ export default function TicketCreateModal({ open, onClose, ticket = null, onSave
   const { lookups: categories } = useLookups("ticket_category", whileOpen);
   const { lookups: priorities } = useLookups("priority", whileOpen);
   const { lookups: channels } = useLookups("ticket_channel", whileOpen);
-  const { users } = useAssignableUsers({ enabled: open && !isEdit, module: "complaints" });
 
   const { data: productsData } = useApiQuery({
     queryKey: ["products", "active"], endpoint: SALES_ENDPOINTS.products.fetchProducts,
@@ -117,7 +118,6 @@ export default function TicketCreateModal({ open, onClose, ticket = null, onSave
     priority: useMemo(() => priorities.map((p) => ({ value: p.Id, label: p.Value })), [priorities]),
     channel: useMemo(() => channels.map((c) => ({ value: c.Id, label: c.Value })), [channels]),
     product: useMemo(() => (productsData?.products ?? []).map((p) => ({ value: p.Id, label: p.Name })), [productsData]),
-    assignee: useMemo(() => users.map((u) => ({ value: u.Id, label: u.FullName })), [users]),
   };
   // In edit mode the ticket row already carries the display name
   // (CategoryName/PriorityName/ChannelName) — used as a fallback so the field
@@ -161,8 +161,16 @@ export default function TicketCreateModal({ open, onClose, ticket = null, onSave
 
   const saveMutation = useApiMutation({
     endpoint: SUPPORT_ENDPOINTS.tickets.saveTicket,
-    successMessage: isEdit ? "Complaint updated" : "Complaint created",
-    invalidateQueries: [["tickets"], ["ticket-detail"], ["customer-detail"]],
+    // A create is worded by the server ("Logged and assigned to Vivek"), so
+    // the message travels with the row; useApiMutation's own fn drops it.
+    mutationFn: async (body) => {
+      const { data } = await apiClient.post(SUPPORT_ENDPOINTS.tickets.saveTicket, body);
+      if (!data.success) throw new Error(data.message || "Operation failed");
+      return { ...data.data, message: data.message };
+    },
+    showSuccessMessage: isEdit,
+    successMessage: "Complaint updated",
+    invalidateQueries: [["tickets"], ["ticket-detail"], ["customer-detail"], ["logged-by-me"]],
   });
 
   const handleClose = () => {
@@ -183,22 +191,28 @@ export default function TicketCreateModal({ open, onClose, ticket = null, onSave
       CategoryId: v.CategoryId ?? null,
       Priority: v.Priority ?? null,
       ProductId: v.ProductId ?? null,
-      // Assignment moves only through a transfer; the SP ignores @AssignedTo
+      // Assignment moves only through Reassign; the SP ignores @AssignedTo
       // on update, and sending it would still be a lie about intent.
       ...(isEdit ? {} : { AssignedTo: v.AssignedTo ?? null }),
       LinkedLeadId: ticket?.LinkedLeadId ?? null,
       Description: clean(v.Description),
       CustomJSON: JSON.stringify(fieldRows.map(({ def }) => ({ fieldId: def.Id, type: def.Type, value: custom[def.Id] }))),
     };
+    // Assigned to someone else, the logger can no longer open the record (the
+    // server hands it over). The staged files still go up: the logger may
+    // upload to what they just logged for 15 minutes (139, sp_LoggerMayAttach).
+    const assignedAway = !isEdit && Boolean(v.AssignedTo) && v.AssignedTo !== myId;
     try {
       const saved = await saveMutation.mutateAsync(body);
+      if (!isEdit) enqueueSnackbar(saved?.message || "Complaint logged", { variant: "success" });
       if (!isEdit && saved?.Id && attachmentsRef.current?.stagedCount) {
         const { failed } = await attachmentsRef.current.uploadStaged(saved.Id);
-        if (failed) enqueueSnackbar(`${failed} file(s) failed to upload — add them from the complaint`, { variant: "warning" });
+        if (failed) enqueueSnackbar(`${failed} file(s) failed to upload — ${assignedAway ? "send them to the person it is assigned to" : "add them from the complaint"}`, { variant: "warning" });
       }
       reset(EMPTY);
       setCustom({});
-      onSaved?.(saved);
+      // The caller must not navigate to a record handed away.
+      onSaved?.(saved, { assignedAway });
       onClose?.();
     } catch {
       // useApiMutation already surfaced the server's message.
@@ -300,12 +314,12 @@ export default function TicketCreateModal({ open, onClose, ticket = null, onSave
               <Combobox label="Product" options={opts.product} value={byId(opts.product, field.value, ticket?.ProductName)}
                 onChange={(o) => field.onChange(o?.value ?? null)} placeholder="Which product" data-testid="ticket-product" />
             )} />
-            {/* Assignment on create only — afterwards it moves through Transfer,
+            {/* Assignment on create only — afterwards it moves through Reassign,
                 which writes a reason and remarks into the history. */}
             {!isEdit && (
               <Controller control={control} name="AssignedTo" render={({ field }) => (
-                <Combobox label="Assign to" options={opts.assignee} value={byId(opts.assignee, field.value)}
-                  onChange={(o) => field.onChange(o?.value ?? null)} placeholder="Leave blank for the queue" data-testid="ticket-assignee" />
+                <AssigneePicker module="complaints" label="Assign to" allowUnassigned enabled={open}
+                  value={field.value ?? null} onChange={(id) => field.onChange(id)} data-testid="ticket-assignee" />
               )} />
             )}
           </Box>

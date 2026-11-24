@@ -44,8 +44,8 @@ const CASES: [string, Case][] = [
   ["fetchLookups lead_status", { call: () => config.fetchLookups({ Kind: config.LOOKUP_KIND.leadStatus }), url: "/api/config/fetchLookups", key: "lookups", body: { Kind: "lead_status" } }],
   ["fetchCustomFields", { call: () => config.fetchCustomFields({ Entity: "ticket" }), url: "/api/config/fetchCustomFields", key: "customFields", body: { Entity: "ticket" } }],
   ["fetchUserDirectory", { call: users.fetchUserDirectory, url: "/api/users/directory", key: "users", body: {} }],
-  ["fetchAssignableUsers default", { call: users.fetchAssignableUsers, url: "/api/users/fetchAssignableUsers", key: "users", body: { BranchId: null, Module: "leads" } }],
-  ["fetchAssignableUsers complaints", { call: () => users.fetchAssignableUsers({ Module: "complaints" }), url: "/api/users/fetchAssignableUsers", key: "users", body: { BranchId: null, Module: "complaints" } }],
+  ["fetchAssignableUsers leads", { call: () => users.fetchAssignableUsers({ Module: "leads" }), url: "/api/users/fetchAssignableUsers", key: "users", body: { Module: "leads", RecordId: null } }],
+  ["fetchAssignableUsers complaints record", { call: () => users.fetchAssignableUsers({ Module: "complaints", RecordId: 7 }), url: "/api/users/fetchAssignableUsers", key: "users", body: { Module: "complaints", RecordId: 7 } }],
   // ME-02: sp_UpdateOwnProfile (058) writes all four columns, so the body is exactly what the caller sent.
   ["updateMyProfile", { call: () => users.updateMyProfile({ FullName: "Asha", Email: "a@b.in", Mobile: "9825012345", Avatar: "icon:rocket|blue" }), url: "/api/users/me/updateProfile", body: { FullName: "Asha", Email: "a@b.in", Mobile: "9825012345", Avatar: "icon:rocket|blue" } }],
   // @ts-expect-error ME-02: a partial profile would blank Email/Mobile/Avatar server-side — it must not compile.
@@ -142,8 +142,8 @@ const CASES: [string, Case][] = [
   ["reopenTicket", { call: () => tickets.reopenTicket({ TicketId: 7, Remarks: "again" }), url: "/api/tickets/reopenTicket", body: { TicketId: 7, Remarks: "again" } }],
   ["transferTicket", { call: () => tickets.transferTicket({ TicketId: 7, ToUserId: 4, ReasonId: 2, Remarks: "leave" }), url: "/api/tickets/transferTicket", body: { TicketId: 7, ToUserId: 4, ToBranchId: null, ReasonId: 2, Remarks: "leave" } }],
   ["escalateTicket", { call: () => tickets.escalateTicket({ TicketId: 7, ToUserId: 4, Remarks: "late" }), url: "/api/tickets/escalateTicket", body: { TicketId: 7, ToUserId: 4, Remarks: "late" } }],
-  ["fetchEscalationTargets", { call: () => tickets.fetchEscalationTargets(), url: "/api/tickets/fetchEscalationTargets", key: "users", body: { ForUserId: null } }],
-  ["fetchEscalationTargets for", { call: () => tickets.fetchEscalationTargets(4), url: "/api/tickets/fetchEscalationTargets", key: "users", body: { ForUserId: 4 } }],
+  ["transferTicket send back", { call: () => tickets.transferTicket({ TicketId: 7, ToUserId: 4, Remarks: "not mine", SendBack: true }), url: "/api/tickets/transferTicket", body: { TicketId: 7, ToUserId: 4, ToBranchId: null, Remarks: "not mine", SendBack: true } }],
+  ["fetchEscalationTargets", { call: () => tickets.fetchEscalationTargets(7), url: "/api/tickets/fetchEscalationTargets", key: "users", body: { TicketId: 7 } }],
   ["deleteTicket", { call: () => tickets.deleteTicket({ Id: 7 }), url: "/api/tickets/deleteTicket", body: { Id: 7 } }],
 ];
 
@@ -166,6 +166,26 @@ describe.each(CASES)("%s", (_name, c) => {
 });
 
 // ----------------------------------------------- fetchers that reshape the reply
+
+describe("fetchLoggedByMe", () => {
+  const pagination = { currentPage: 2, pageSize: 10, totalRecords: 11, totalPages: 2 };
+
+  it("posts its defaults and returns rows + pagination", async () => {
+    respond({ success: true, data: { rows: [ROW], pagination } });
+    await expect(tickets.fetchLoggedByMe()).resolves.toEqual({ rows: [ROW], pagination });
+    expect(lastRequest()).toMatchObject({ url: "/api/tickets/fetchLoggedByMe" });
+    expect(lastRequest().body).toStrictEqual({ SearchTerm: null, PageNumber: 1, PageSize: 50 });
+  });
+
+  it("passes search and paging, and maps an empty reply to no rows", async () => {
+    respond({ success: true, data: null });
+    await expect(tickets.fetchLoggedByMe({ SearchTerm: "ravi", PageNumber: 2, PageSize: 10 })).resolves.toEqual({
+      rows: [],
+      pagination: { currentPage: 2, pageSize: 10, totalRecords: 0, totalPages: 0 },
+    });
+    expect(lastRequest().body).toStrictEqual({ SearchTerm: "ravi", PageNumber: 2, PageSize: 10 });
+  });
+});
 
 describe("fetchTaskById", () => {
   it("asks for one row and returns it", async () => {

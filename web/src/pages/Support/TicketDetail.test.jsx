@@ -14,10 +14,11 @@ vi.mock("react-router-dom", async () => ({ ...(await vi.importActual("react-rout
 // call `onClose`, which left every one of those closures un-invoked.
 vi.mock("./ResolveTicketModal", () => ({
   __esModule: true,
-  default: ({ open, status, onClose }) => (open ? (
+  default: ({ open, status, onClose, onError }) => (open ? (
     <div data-testid="resolve-modal">
       status:{status?.value}
       <button type="button" onClick={onClose}>close-resolve</button>
+      <button type="button" onClick={() => onError({ response: { status: 404, data: { message: "Complaint not found", code: "NOT_FOUND" } } })}>resolve-404</button>
     </div>
   ) : null),
 }));
@@ -34,8 +35,11 @@ vi.mock("./RemarksModal", () => ({
 }));
 vi.mock("./TransferTicketModal", () => ({
   __esModule: true,
-  default: ({ open, ticketIds, onClose }) => (open ? (
-    <div data-testid="transfer-modal">{ticketIds.join(",")}<button type="button" onClick={onClose}>close-transfer</button></div>
+  default: ({ open, ticketIds, onClose, onDone }) => (open ? (
+    <div data-testid="transfer-modal">{ticketIds.join(",")}
+      <button type="button" onClick={onClose}>close-transfer</button>
+      <button type="button" onClick={() => onDone()}>reassigned</button>
+    </div>
   ) : null),
 }));
 vi.mock("./EscalateTicketModal", () => ({
@@ -99,7 +103,7 @@ describe("TicketDetail (spec 2)", () => {
 
   it("an overdue, escalated complaint says so in the header", async () => {
     mockTicketEndpoints({}, {
-      detail: ticketDetail({ ticket: ticketRow({ IsOverdue: 1, EscalatedTo: 16, EscalatedToName: "Neha Verma", PreviousTickets: 2 }) }),
+      detail: ticketDetail({ ticket: ticketRow({ CanEdit: 1, IsOverdue: 1, EscalatedTo: 16, EscalatedToName: "Neha Verma", PreviousTickets: 2 }) }),
     });
     renderDetail();
     expect(await screen.findByTestId("ticket-due-chip")).toHaveTextContent("overdue");
@@ -107,7 +111,7 @@ describe("TicketDetail (spec 2)", () => {
   });
 
   it("the customer card links to that customer's other complaints", async () => {
-    mockTicketEndpoints({}, { detail: ticketDetail({ ticket: ticketRow({ PreviousTickets: 2, CustomerEmail: "acme@example.com", CustomerCity: "Pune" }) }) });
+    mockTicketEndpoints({}, { detail: ticketDetail({ ticket: ticketRow({ CanEdit: 1, PreviousTickets: 2, CustomerEmail: "acme@example.com", CustomerCity: "Pune" }) }) });
     renderDetail();
     const card = await screen.findByTestId("ticket-customer-card");
     expect(card).toHaveTextContent("Acme Corp");
@@ -144,7 +148,7 @@ describe("TicketDetail (spec 2)", () => {
 
   it("a finished complaint has no Resolve button", async () => {
     mockTicketEndpoints({}, {
-      detail: ticketDetail({ ticket: ticketRow({ StatusId: 65, StatusName: "Closed", StatusCode: "closed" }) }),
+      detail: ticketDetail({ ticket: ticketRow({ CanEdit: 1, StatusId: 65, StatusName: "Closed", StatusCode: "closed" }) }),
     });
     renderDetail();
     expect(await screen.findByTestId("ticket-status-chip")).toHaveTextContent("Closed");
@@ -173,7 +177,7 @@ describe("TicketDetail (spec 2)", () => {
 
   it("closing a RESOLVED complaint posts straight away — the customer confirmed", async () => {
     const cap = mockTicketEndpoints({}, {
-      detail: ticketDetail({ ticket: ticketRow({ StatusId: 64, StatusName: "Resolved", StatusCode: "resolved", ResolvedAt: "2026-09-16T09:00:00Z", ResolutionId: 8, ResolutionName: "Fixed" }) }),
+      detail: ticketDetail({ ticket: ticketRow({ CanEdit: 1, StatusId: 64, StatusName: "Resolved", StatusCode: "resolved", ResolvedAt: "2026-09-16T09:00:00Z", ResolutionId: 8, ResolutionName: "Fixed" }) }),
     });
     renderDetail();
     await screen.findByTestId("ticket-detail");
@@ -199,9 +203,9 @@ describe("TicketDetail (spec 2)", () => {
 
   // Spec §2 + §6: reopening is a manager's act. The client always asks for
   // remarks; the server decides whether the caller may.
-  it("reopening a closed complaint asks for remarks, and a 403 keeps the prompt open with the server's words", async () => {
-    mockTicketEndpoints({}, { detail: ticketDetail({ ticket: ticketRow({ StatusId: 65, StatusName: "Closed", StatusCode: "closed", ClosedAt: "2026-09-16T12:00:00Z" }) }) });
-    server.use(http.post("*/api/tickets/setTicketStatus", () => refuse("Reopening requires a manager", 403)));
+  it("reopening a closed complaint asks for remarks, and a 400 keeps the prompt open with the server's words", async () => {
+    mockTicketEndpoints({}, { detail: ticketDetail({ ticket: ticketRow({ CanEdit: 1, StatusId: 65, StatusName: "Closed", StatusCode: "closed", ClosedAt: "2026-09-16T12:00:00Z" }) }) });
+    server.use(http.post("*/api/tickets/setTicketStatus", () => refuse("Reopening requires a manager", 400)));
     renderDetail();
     await screen.findByTestId("ticket-detail");
     const user = userEvent.setup();
@@ -211,8 +215,6 @@ describe("TicketDetail (spec 2)", () => {
     expect(modal).toHaveTextContent("Reopen complaint");
 
     await user.click(screen.getByText("remarks-submit"));
-    // The axios interceptor also toasts a generic "Access denied" for every
-    // 403; what matters is that the SP's own sentence reaches the user.
     expect(await screen.findByText("Reopening requires a manager")).toBeInTheDocument();
     expect(screen.getByTestId("remarks-modal")).toBeInTheDocument();
   });
@@ -225,7 +227,7 @@ describe("TicketDetail (spec 2)", () => {
 
     await user.click(screen.getByTestId("log-call-btn"));
     expect(screen.getByTestId("log-call-modal")).toHaveTextContent("ticket:7");
-    await user.click(screen.getByTestId("transfer-ticket-btn"));
+    await user.click(screen.getByTestId("reassign-ticket-btn"));
     expect(screen.getByTestId("transfer-modal")).toHaveTextContent("7");
     await user.click(screen.getByTestId("escalate-ticket-btn"));
     expect(screen.getByTestId("escalate-modal")).toHaveTextContent("ticket:7");
@@ -288,7 +290,7 @@ describe("TicketDetail (spec 2)", () => {
 
   it("shows the linked lead link when the complaint tracks one", async () => {
     mockTicketEndpoints({}, {
-      detail: ticketDetail({ ticket: ticketRow({ LinkedLeadId: 11 }), linkedLead: { Id: 11, Name: "Acme Corp Lead" } }),
+      detail: ticketDetail({ ticket: ticketRow({ CanEdit: 1, LinkedLeadId: 11 }), linkedLead: { Id: 11, Name: "Acme Corp Lead" } }),
     });
     renderDetail();
     const link = await screen.findByTestId("linked-lead-link");
@@ -302,7 +304,7 @@ describe("TicketDetail (spec 2)", () => {
   // with no basename prefix and fail this assertion.
   it("the linked-lead link goes through router navigation, so it keeps the app's basename", async () => {
     mockTicketEndpoints({}, {
-      detail: ticketDetail({ ticket: ticketRow({ LinkedLeadId: 11 }), linkedLead: { Id: 11, Name: "Acme Corp Lead" } }),
+      detail: ticketDetail({ ticket: ticketRow({ CanEdit: 1, LinkedLeadId: 11 }), linkedLead: { Id: 11, Name: "Acme Corp Lead" } }),
     });
     renderWithProviders(
       <MemoryRouter basename="/prdcrm" initialEntries={["/prdcrm/support/tickets/7"]}>
@@ -333,7 +335,7 @@ describe("TicketDetail (spec 2)", () => {
     await user.click(screen.getByText("close-call"));
     expect(screen.queryByTestId("log-call-modal")).toBeNull();
 
-    await user.click(screen.getByTestId("transfer-ticket-btn"));
+    await user.click(screen.getByTestId("reassign-ticket-btn"));
     await user.click(screen.getByText("close-transfer"));
     expect(screen.queryByTestId("transfer-modal")).toBeNull();
 
@@ -360,5 +362,196 @@ describe("TicketDetail (spec 2)", () => {
     await user.click(await screen.findByText("close-remarks"));
     expect(screen.queryByTestId("remarks-modal")).toBeNull();
     expect(cap.status).toBeUndefined();
+  });
+
+  describe("access model: Reassign, Send back, Reopen, stale screens", () => {
+    const withTicket = (over) => ticketDetail({ ticket: { ...ticketDetail().ticket, ...over } });
+
+    it("labels the holder 'Assigned to' and the office 'Office'", async () => {
+      mockTicketEndpoints();
+      renderDetail();
+      const info = await screen.findByTestId("ticket-core-info");
+      expect(info).toHaveTextContent("Assigned to");
+      expect(info).toHaveTextContent("Office");
+      expect(screen.getByTestId("ticket-detail").textContent).not.toMatch(/transfer|branch|assignee/i);
+    });
+
+    it("hides Reassign when the server says CanReassign 0", async () => {
+      mockTicketEndpoints({}, { detail: withTicket({ CanReassign: 0 }) });
+      renderDetail();
+      await screen.findByTestId("ticket-detail");
+      expect(screen.queryByTestId("reassign-ticket-btn")).toBeNull();
+    });
+
+    it("has no Send back button when SendBackToId is null", async () => {
+      mockTicketEndpoints();
+      renderDetail();
+      await screen.findByTestId("ticket-detail");
+      expect(screen.queryByTestId("send-back-ticket-btn")).toBeNull();
+    });
+
+    // Final review m2: a send back is a reassign (gate 3 runs first), so it is
+    // never offered where the server would answer "Only a manager can reassign".
+    it("no Send back on a record the caller may not reassign, even with a SendBackToId", async () => {
+      mockTicketEndpoints({}, { detail: withTicket({ CanReassign: 0, SendBackToId: 16, SendBackToName: "Nitin" }) });
+      renderDetail();
+      await screen.findByTestId("ticket-detail");
+      expect(screen.queryByTestId("send-back-ticket-btn")).toBeNull();
+    });
+
+    it("Send back is labelled with the server's name and posts SendBack with remarks only", async () => {
+      const cap = mockTicketEndpoints({}, { detail: withTicket({ SendBackToId: 16, SendBackToName: "Nitin" }) });
+      renderDetail();
+      const user = userEvent.setup();
+      const btn = await screen.findByTestId("send-back-ticket-btn");
+      expect(btn).toHaveTextContent("Send back to Nitin");
+
+      await user.click(btn);
+      expect(screen.getByTestId("remarks-modal")).toHaveTextContent("Send back to Nitin");
+      await user.click(screen.getByText("remarks-submit"));
+      await waitFor(() => expect(cap.transfer).toEqual({ TicketId: 7, SendBack: true, Remarks: "Customer called back" }));
+      expect(cap.transfer).not.toHaveProperty("ReasonId");
+      expect(await screen.findByText("Sent back to Nitin")).toBeInTheDocument();
+      await waitFor(() => expect(screen.queryByTestId("remarks-modal")).toBeNull());
+    });
+
+    it("a send back that takes it away drops the cache and returns to the list", async () => {
+      let calls = 0;
+      mockTicketEndpoints({}, { detail: withTicket({ SendBackToId: 16, SendBackToName: "Nitin" }) });
+      server.use(http.post("*/api/tickets/fetchTicketDetail", () => {
+        calls += 1;
+        return calls === 1 ? json(withTicket({ SendBackToId: 16, SendBackToName: "Nitin" })) : refuse("Complaint not found", 404);
+      }));
+      renderDetail();
+      const user = userEvent.setup();
+      await user.click(await screen.findByTestId("send-back-ticket-btn"));
+      await user.click(screen.getByText("remarks-submit"));
+      await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith("/support/tickets"));
+      expect(await screen.findByText("Sent back to Nitin")).toBeInTheDocument();
+      expect(screen.queryByText("This record is no longer with you")).toBeNull();
+    });
+
+    // Review Focus 3: the giver lost the module between load and tap.
+    it("a refused send back shows the server's sentence and refetches, so the button goes", async () => {
+      let calls = 0;
+      mockTicketEndpoints();
+      server.use(
+        http.post("*/api/tickets/fetchTicketDetail", () => {
+          calls += 1;
+          return json(calls === 1 ? withTicket({ SendBackToId: 16, SendBackToName: "Nitin" }) : withTicket({}));
+        }),
+        http.post("*/api/tickets/transferTicket", () => refuse("Nitin can no longer take this. Reassign it instead.", 400)),
+      );
+      renderDetail();
+      const user = userEvent.setup();
+      await user.click(await screen.findByTestId("send-back-ticket-btn"));
+      await user.click(screen.getByText("remarks-submit"));
+
+      expect(await screen.findByText("Nitin can no longer take this. Reassign it instead.")).toBeInTheDocument();
+      await waitFor(() => expect(screen.queryByTestId("send-back-ticket-btn")).toBeNull());
+      expect(calls).toBeGreaterThan(1);
+      expect(mockNavigate).not.toHaveBeenCalledWith("/support/tickets");
+    });
+
+    it("Reopen shows when CanReopen and asks for remarks onto the open status", async () => {
+      const cap = mockTicketEndpoints({}, { detail: withTicket({ StatusId: 65, StatusName: "Closed", StatusCode: "closed", CanReopen: 1 }) });
+      renderDetail();
+      const user = userEvent.setup();
+      await user.click(await screen.findByTestId("reopen-ticket-btn"));
+      expect(screen.getByTestId("remarks-modal")).toHaveTextContent("Reopen complaint");
+      await user.click(screen.getByText("remarks-submit"));
+      await waitFor(() => expect(cap.status).toEqual({ TicketId: 7, StatusId: 61, Remarks: "Customer called back" }));
+    });
+
+    it("hides Edit, Resolve, Escalate and the status select when CanEdit is 0", async () => {
+      mockTicketEndpoints({}, { detail: withTicket({ CanEdit: 0 }) });
+      renderDetail();
+      await screen.findByTestId("ticket-detail");
+      for (const id of ["edit-ticket-btn", "resolve-ticket-btn", "escalate-ticket-btn", "ticket-status-select"]) {
+        expect(screen.queryByTestId(id)).toBeNull();
+      }
+    });
+
+    it("shows Edit, Resolve, Escalate and the status select when CanEdit is 1", async () => {
+      mockTicketEndpoints({}, { detail: withTicket({ CanEdit: 1 }) });
+      renderDetail();
+      for (const id of ["edit-ticket-btn", "resolve-ticket-btn", "escalate-ticket-btn", "ticket-status-select"]) {
+        expect(await screen.findByTestId(id)).toBeInTheDocument();
+      }
+    });
+
+    it("no Reopen button without CanReopen", async () => {
+      mockTicketEndpoints({}, { detail: withTicket({ StatusId: 65, StatusName: "Closed", StatusCode: "closed", CanReopen: 0 }) });
+      renderDetail();
+      await screen.findByTestId("ticket-detail");
+      expect(screen.queryByTestId("reopen-ticket-btn")).toBeNull();
+    });
+
+    // Review Focus 4: someone else moved it while the page was open.
+    it("a 404 on a status move from a stale page returns to the list with the record-gone message", async () => {
+      mockTicketEndpoints();
+      server.use(http.post("*/api/tickets/setTicketStatus", () => refuse("Complaint not found", 404)));
+      renderDetail();
+      await screen.findByTestId("ticket-detail");
+      await pickStatus(userEvent.setup(), "On Hold");
+      await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith("/support/tickets"));
+      expect(await screen.findByText("This record is no longer with you")).toBeInTheDocument();
+    });
+
+    it("a 404 on Resolve (from the resolve dialog) does the same", async () => {
+      mockTicketEndpoints();
+      renderDetail();
+      const user = userEvent.setup();
+      await user.click(await screen.findByTestId("resolve-ticket-btn"));
+      await user.click(screen.getByText("resolve-404"));
+      await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith("/support/tickets"));
+      expect(await screen.findByText("This record is no longer with you")).toBeInTheDocument();
+    });
+
+    // 403 = still visible, this action refused: say so and stay.
+    it("a 403 on a status move shows the server's message and stays on the complaint", async () => {
+      mockTicketEndpoints();
+      server.use(http.post("*/api/tickets/setTicketStatus", () => refuse("You cannot change this complaint", 403)));
+      renderDetail();
+      await screen.findByTestId("ticket-detail");
+      await pickStatus(userEvent.setup(), "On Hold");
+      expect(await screen.findByText("You cannot change this complaint")).toBeInTheDocument();
+      expect(mockNavigate).not.toHaveBeenCalledWith("/support/tickets");
+      expect(screen.queryByText("This record is no longer with you")).toBeNull();
+      expect(screen.getByTestId("ticket-detail")).toBeInTheDocument();
+    });
+
+    it("a complaint that is gone on load returns to the list", async () => {
+      mockTicketEndpoints();
+      server.use(http.post("*/api/tickets/fetchTicketDetail", () => refuse("Complaint not found", 404)));
+      renderDetail();
+      await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith("/support/tickets"));
+      expect(await screen.findByText("This record is no longer with you")).toBeInTheDocument();
+    });
+
+    it("a reassign that keeps it visible stays on the page", async () => {
+      mockTicketEndpoints();
+      renderDetail();
+      const user = userEvent.setup();
+      await user.click(await screen.findByTestId("reassign-ticket-btn"));
+      await user.click(screen.getByText("reassigned"));
+      await waitFor(() => expect(screen.getByTestId("ticket-detail")).toBeInTheDocument());
+      expect(mockNavigate).not.toHaveBeenCalledWith("/support/tickets");
+    });
+
+    it("a reassign that takes it away leaves without the record-gone message", async () => {
+      let calls = 0;
+      mockTicketEndpoints();
+      server.use(http.post("*/api/tickets/fetchTicketDetail", () => {
+        calls += 1;
+        return calls === 1 ? json(ticketDetail()) : refuse("Complaint not found", 404);
+      }));
+      renderDetail();
+      const user = userEvent.setup();
+      await user.click(await screen.findByTestId("reassign-ticket-btn"));
+      await user.click(screen.getByText("reassigned"));
+      await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith("/support/tickets"));
+      expect(screen.queryByText("This record is no longer with you")).toBeNull();
+    });
   });
 });

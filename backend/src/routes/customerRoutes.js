@@ -7,8 +7,8 @@ const { requirePayload, allowEmptyPayload } = require("../middleware/payloadVali
 const router = express.Router();
 
 // Governed by the customers module (delete is admin-only). loadScope populates
-// req.scope; fetchCustomerDetail passes it on so RS2 (the customer's complaints)
-// is narrowed to what the caller may see.
+// req.scope (customers keep Node-fed lists); fetchCustomerDetail's RS2 (the
+// customer's complaints) is narrowed by the database's complaint definitions.
 router.use(verifyToken, loadScope);
 
 router.post("/saveCustomer", requirePayload, requireModule("customers", saveAction), customerController.save);

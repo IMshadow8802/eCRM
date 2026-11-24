@@ -38,6 +38,25 @@ Several roles: per module the union of actions and the widest reach. `IsAdmin` c
 `tblUserGroups.CanSeeSensitive` (Owner, Admin, HR Manager) lets a caller see others' `HourlyRate`, `Mobile`, `Email`.
 Menus show when the role can view the menu's module (`tblMenu.Module`); `sp_ValidateUser` still returns menu rights in the old shape.
 
+## Access model — leads, complaints, follow-ups (live 2026-11-24, scripts 129–134, 139, 140, 143)
+
+**Can see ≠ can assign to.** For `leads` and `complaints`, `tblGroupModule` has two reaches:
+`Reach` (whose records you see) and `AssignReach` (who you may hand a record to; 130 filled it,
+e.g. Own/Team roles → `Office`). Change either in Admin → Roles; no code.
+
+- **SQL decides visibility, once.** `fn_VisibleLeads(@CompId,@UserId)` → `LeadId`,
+  `fn_VisibleTickets` → `TicketId`, `fn_VisibleFollowUps` → `FollowUpId, Via`. Every list, detail,
+  report (`fn_SalesReportRows`, `fn_ReportTree`) and action gate (`fn_RecordActions`,
+  `fn_ReassignGate`) reads them. The lead, complaint, follow-up and quotation controllers pass only
+  `actor(req)` — no office/owner lists, no Node re-checks (`tests/unit/controllers/actorContract.test.js`).
+  This supersedes the list parameters described below for those four controllers.
+- **Assign pickers** come from `fn_AssignableUsers`: people inside `AssignReach` who hold the module.
+- **Reassign** moves a record with a reason; the giver loses it. **Send back** returns it to the giver
+  (`fn_RecordGiver`); the `sent_back` reason is set only by that button — a normal reassign with it
+  answers 400 (143).
+- **Escalated** tab = complaints escalated to you.
+- **Check query:** 134 step 3 (must return no rows). **Rollback:** `135_access_model_rollback.sql -v From=131`.
+
 ## The one visibility rule
 
 Every list, detail, report and dashboard figure of a reach module:

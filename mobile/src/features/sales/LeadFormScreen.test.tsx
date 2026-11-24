@@ -126,6 +126,21 @@ describe("create", () => {
     }
   });
 
+  it("assigned to someone else: back to the list with the server's sentence, no lead detail", async () => {
+    jest.mocked(fetchAssignableUsers).mockResolvedValue([person(42, "Priya Shah"), person(9, "Asha Rao")]);
+    jest.mocked(createLead).mockResolvedValue(envelope({ Id: 501 }, { message: "Lead saved and assigned to Asha Rao" }));
+    const navigation = makeNavigation<"LeadForm">();
+    await mount(undefined, navigation);
+    await screen.findByText("Asha Rao");
+    await fillRequired();
+    await fireEvent.press(screen.getByText("Asha Rao"));
+    await save();
+    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
+    expect(createLead).toHaveBeenCalledWith(expect.objectContaining({ OwnerId: 9 }));
+    expect(navigation.replace).not.toHaveBeenCalled();
+    expect(await screen.findByText("Lead saved and assigned to Asha Rao")).toBeOnTheScreen();
+  });
+
   it("with no open status the default is still never Won", async () => {
     jest.mocked(fetchLookups).mockImplementation(async ({ Kind }) =>
       Kind === "lead_status" ? [status(3, "Won", "converted"), status(2, "Hot", "qualified")] : [],
@@ -166,6 +181,14 @@ describe("create", () => {
     await save();
     await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
     expect(navigation.replace).not.toHaveBeenCalled();
+  });
+
+  it("Assign to marks someone away today; nobody is ever labelled Owner", async () => {
+    jest.mocked(fetchAssignableUsers).mockResolvedValue([person(42, "Priya Shah"), { ...person(9, "Asha Rao"), AwayToday: true }]);
+    await mount();
+    await screen.findByText("Asha Rao");
+    expect(screen.getAllByText(/Away today/)).toHaveLength(1);
+    expect(screen.queryByText(/owner/i)).toBeNull();
   });
 
   it("owner is nobody when I am not assignable; follow-up None sends null", async () => {
@@ -243,7 +266,7 @@ describe("create", () => {
 describe("E 16", () => {
   afterEach(() => jest.useRealTimers());
 
-  const LABELS = /^(Name|Mobile|Alternate mobile|Company|Source|Product|Estimated value|Status|Owner|First follow-up|Roof type|Email|City|State|Pincode|Address|Remarks)( \*)?$/;
+  const LABELS = /^(Name|Mobile|Alternate mobile|Company|Source|Product|Estimated value|Status|Assign to|First follow-up|Roof type|Email|City|State|Pincode|Address|Remarks)( \*)?$/;
 
   it("Save is in the band; the fields run in E's order, custom fields under More details", async () => {
     jest.mocked(fetchCustomFields).mockResolvedValue([fieldDef({})]);
@@ -254,7 +277,7 @@ describe("E 16", () => {
     // Field labels only: a dropdown's sheet title repeats its label as a header.
     const labels = screen.getAllByText(LABELS).filter((n) => n.props.accessibilityRole !== "header");
     expect(labels.map((n) => String([n.props.children].flat()[0]))).toEqual([
-      "Name", "Mobile", "Alternate mobile", "Company", "Source", "Product", "Estimated value", "Status", "Owner",
+      "Name", "Mobile", "Alternate mobile", "Company", "Source", "Product", "Estimated value", "Status", "Assign to",
       "First follow-up", "Roof type", "Email", "City", "State", "Pincode", "Address", "Remarks",
     ]);
     // Me as owner reads "(you)".
@@ -390,7 +413,7 @@ describe("edit", () => {
       expect(screen.getByDisplayValue(v)).toBeOnTheScreen();
     }
     expect(screen.queryByText("Status")).toBeNull();
-    expect(screen.queryByText("Owner")).toBeNull();
+    expect(screen.queryByText("Assign to")).toBeNull();
     expect(screen.queryByText("First follow-up")).toBeNull();
     expect(screen.queryByText("More details")).toBeNull();
 

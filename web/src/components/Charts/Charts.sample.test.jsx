@@ -10,23 +10,65 @@ import Funnel from "./Funnel";
 import RadialLoad from "./RadialLoad";
 import ActivityBar from "./ActivityBar";
 import RadialGoal from "./RadialGoal";
+import SparkLine from "./SparkLine";
+import SparkBar from "./SparkBar";
+import Gauge from "./Gauge";
 
 const wrap = (ui) => render(<ThemeProvider theme={buildTheme("light")}>{ui}</ThemeProvider>);
 
-describe("chart sample-data hint", () => {
+describe("charts never invent numbers", () => {
+  // Regression: with no data these charts drew a hard-coded demo series
+  // ("Google 42", "Visit 1200", ...) behind a small "Sample data" badge.
   it.each([
-    ["AreaTrend", <AreaTrend />, <AreaTrend data={[{ name: "Mon", leads: 2, converted: 1 }]} />],
-    ["Donut", <Donut />, <Donut data={[{ name: "Google", value: 3 }]} />],
-    ["Funnel", <Funnel />, <Funnel data={[{ name: "New", value: 4 }]} />],
-    ["RadialLoad", <RadialLoad />, <RadialLoad data={[{ name: "Asha", value: 80 }]} />],
-    ["ActivityBar", <ActivityBar />, <ActivityBar data={[{ name: "Q1", leads: 1, calls: 2, tickets: 3 }]} />],
-  ])("%s shows the badge only on fallback", (_name, withoutData, withData) => {
-    const { unmount } = wrap(withoutData);
-    expect(screen.getByText("Sample data")).toBeInTheDocument();
+    ["AreaTrend", <AreaTrend />, <AreaTrend data={[{ name: "Mon", leads: 2, converted: 1 }]} />, "18"],
+    ["Donut", <Donut />, <Donut data={[{ name: "Google", value: 3 }]} />, "Direct"],
+    ["Funnel", <Funnel />, <Funnel data={[{ name: "New", value: 4 }]} />, "Inquiry"],
+    ["RadialLoad", <RadialLoad />, <RadialLoad data={[{ name: "Asha", value: 80 }]} />, "Emails"],
+    ["ActivityBar", <ActivityBar />, <ActivityBar data={[{ name: "Q1", leads: 1, calls: 2, tickets: 3 }]} />, "Q3"],
+  ])("%s shows an empty state, not demo data, when it has none", (_name, withoutData, withData, demo) => {
+    const { unmount, container } = wrap(withoutData);
+    expect(screen.getByText("No data yet")).toBeInTheDocument();
+    expect(screen.queryByText("Sample data")).not.toBeInTheDocument();
+    expect(screen.queryByText(demo)).not.toBeInTheDocument();
+    expect(container.querySelector(".recharts-responsive-container")).toBeNull();
     unmount();
 
     wrap(withData);
-    expect(screen.queryByText("Sample data")).not.toBeInTheDocument();
+    expect(screen.queryByText("No data yet")).not.toBeInTheDocument();
+  });
+
+  it.each([["SparkLine", SparkLine], ["SparkBar", SparkBar]])(
+    "%s shows only the real value, no invented trend or delta, without data",
+    (_name, Comp) => {
+      const { container, unmount } = wrap(<Comp label="Follow-ups" value={3} />);
+      expect(screen.getByText("3")).toBeInTheDocument();
+      expect(screen.queryByText(/%/)).not.toBeInTheDocument();
+      expect(container.querySelector(".recharts-responsive-container")).toBeNull();
+      unmount();
+
+      const real = wrap(<Comp label="Follow-ups" value={3} data={[1, 2, 3]} />);
+      expect(real.container.querySelector(".recharts-responsive-container")).not.toBeNull();
+    },
+  );
+
+  it("Gauge shows 'of N' only when a real cap is given", () => {
+    const { unmount } = wrap(<Gauge label="Missed" value={4} />);
+    expect(screen.getByText("4")).toBeInTheDocument();
+    expect(screen.queryByText(/^of /)).not.toBeInTheDocument();
+    unmount();
+
+    for (const [value, max] of [[1, 10], [4, 10], [9, 10]]) {
+      const { unmount: u } = wrap(<Gauge label="Missed" value={value} max={max} unit="x" />);
+      expect(screen.getByText(`of ${max}`)).toBeInTheDocument();
+      u();
+    }
+  });
+
+  it("SparkLine draws a real downward trend with its unit", () => {
+    wrap(<SparkLine label="Calls" data={[10, 5]} unit="calls" tone="nope" />);
+    expect(screen.getByText("5")).toBeInTheDocument();
+    expect(screen.getByText("calls")).toBeInTheDocument();
+    expect(screen.getByText("50%")).toBeInTheDocument();
   });
 
   it("AreaTrend totals reflect the real series when passed", () => {

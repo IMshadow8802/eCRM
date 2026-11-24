@@ -6,11 +6,11 @@ appId: com.shadowider.eCRM
 - assertVisible: "medium"
 - assertVisible: "Unassigned"
 - assertVisible: ".*97${output.stamp}"
-# The detail's action bar (E 11): Log call · On hold · Resolve (main) · Transfer.
+# The detail's action bar (E 11): Log call · On hold · Resolve (main) · Reassign.
 - assertVisible:
     id: "action-bar"
 - assertVisible: "Log call"
 - assertVisible: "On hold"
 - assertVisible: "Resolve"
-- assertVisible: "Transfer"
+- assertVisible: "Reassign"
 - takeScreenshot: complaints-created-detail

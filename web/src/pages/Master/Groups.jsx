@@ -2,12 +2,14 @@
 //
 // Roles & Permissions admin: left panel lists user groups (roles) with
 // create/edit/delete; right panel edits the selected role's module grid
-// (View / Add / Edit / Delete per module, plus a reach on record modules) and
-// its "can see salary & contact details" flag. Backend contract:
+// (View / Add / Edit / Delete per module, a "Can see" on record modules and a
+// "Can assign to" on leads + complaints) and its "can see salary & contact
+// details" flag. Backend contract:
 //   fetchUserGroups / saveUserGroup / deleteUserGroup
 //   fetchGroupModules { GroupId }
-//     -> { modules: [{ Module, CanView, CanAdd, CanEdit, CanDelete, Reach }], canSeeSensitive, isAdmin }
+//     -> { modules: [{ Module, CanView, CanAdd, CanEdit, CanDelete, Reach, AssignReach }], canSeeSensitive, isAdmin }
 //   saveGroupModules { GroupId, Modules: [...viewed rows only], CanSeeSensitive }
+//     -> { groupId, stranded: { count, people: [{ UserId, FullName, Leads, Complaints }] } }
 // An admin role has every right; the server ignores its grid, so none is shown.
 import React, { useEffect, useState } from "react";
 import { Helmet } from "react-helmet-async";
@@ -38,6 +40,7 @@ import {
 } from "../../api/masterQueries";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { useConfirmation } from "../../hooks";
+import StrandedWorkDialog from "./components/StrandedWorkDialog";
 
 const emptyForm = { Id: 0, Name: "", Description: "", IsActive: true };
 
@@ -68,9 +71,9 @@ const MODULE_ROWS = [
 // Plain-words help for modules whose name alone does not say what they grant.
 const ROW_HINT = {
   partners: "View: see partners, commission terms and amounts. Add/Edit: add or change partners, mark commission ready to pay or paid. Salespeople pick a partner on a lead without this.",
-  cards: "View: see scanned visiting cards within the reach. Add: scan cards in the VisiScan app. Delete: remove a card.",
+  cards: "View: see scanned visiting cards within what this role can see. Add: scan cards in the VisiScan app. Delete: remove a card.",
   attendance: "Attendance: see who is signed in, late or on leave (Today > My team), mark leave or on duty, and open the Attendance report. "
-    + "Reach decides whose attendance this role can see on the Today page and in the Attendance report. Own: only themselves. Their team: people who report to them. Their office: everyone in their office. Their office + offices below: also the offices under it. Whole company: everyone.",
+    + "Can see decides whose attendance this role can see on the Today page and in the Attendance report. Own: only themselves. Their team: people who report to them. Their office: everyone in their office. Their office + offices below: also the offices under it. Whole company: everyone.",
 };
 const REACH_OPTIONS = [
   { value: "Own", label: "Own records" },
@@ -80,6 +83,15 @@ const REACH_OPTIONS = [
   { value: "Company", label: "Whole company" },
 ];
 const REACH_ROW = new Set(MODULE_ROWS.filter((m) => m.reach).map((m) => m.key));
+// "Can assign to": who this role may give a record to. NULL on the server reads as Team.
+const ASSIGN_OPTIONS = [
+  { value: "Team", label: "Their manager and team" },
+  { value: "Office", label: "Their office" },
+  { value: "OfficeTree", label: "Their office + offices below" },
+  { value: "Company", label: "Whole company" },
+];
+const ASSIGN_ROW = new Set(["leads", "complaints"]);
+const CROSS_OFFICE = new Set(["OfficeTree", "Company"]);
 const EMPTY_ROW = { CanView: false, CanAdd: false, CanEdit: false, CanDelete: false, Reach: null };
 
 // One editable row per grantable module, seeded from what the server holds.
@@ -94,6 +106,7 @@ const seedRows = (modules = []) =>
       CanEdit: !!m.CanEdit,
       CanDelete: !!m.CanDelete,
       Reach: REACH_ROW.has(key) ? m.Reach || "Own" : null,
+      ...(ASSIGN_ROW.has(key) && { AssignReach: m.AssignReach || "Team" }),
     };
   });
 
@@ -103,6 +116,7 @@ const toggle = (row, field) => {
   if (field === "CanView" && !on) return { ...row, ...EMPTY_ROW };
   const next = { ...row, [field]: on, CanView: row.CanView || on };
   if (next.CanView && REACH_ROW.has(row.Module) && !next.Reach) next.Reach = "Own";
+  if (next.CanView && ASSIGN_ROW.has(row.Module) && !next.AssignReach) next.AssignReach = "Team";
   return next;
 };
 
@@ -122,6 +136,7 @@ const Groups = () => {
   // selected role, so another role's rows (or edits) are never shown or saved.
   const [seededFor, setSeededFor] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [stranded, setStranded] = useState([]);
 
   const groupsQuery = useApiQuery({
     queryKey: ["userGroups"],
@@ -225,21 +240,29 @@ const Groups = () => {
 
   const toggleCell = (module, field) =>
     setRows((prev) => prev.map((r) => (r.Module === module ? toggle(r, field) : r)));
-  const setReach = (module, opt) =>
+  const setField = (module, field, opt) =>
     setRows((prev) =>
-      prev.map((r) => (r.Module === module ? { ...r, Reach: opt.value } : r))
+      prev.map((r) => (r.Module === module ? { ...r, [field]: opt.value } : r))
     );
+  const viewed = rows.filter((r) => r.CanView);
+  const crossOffice = viewed.some((r) => CROSS_OFFICE.has(r.AssignReach));
+  const cust = rows.find((r) => r.Module === "customers");
+  const customersTooNarrow = cust.CanAdd && ["Own", "Team"].includes(cust.Reach);
 
   const savePermissions = async () => {
     setIsSaving(true);
     try {
       const res = await saveGroupModules({
         GroupId: selectedGroupId,
-        Modules: rows.filter((r) => r.CanView),
+        Modules: viewed,
         CanSeeSensitive: canSeeSensitive,
       });
       if (res.data.success) {
         enqueueSnackbar("Permissions saved successfully!", { variant: "success" });
+        const s = res.data.data?.stranded;
+        if (s?.count > 0) {
+          setStranded(s.people.map((x) => ({ name: x.FullName, leads: x.Leads, complaints: x.Complaints })));
+        }
         // Refresh the cache so coming back to this role shows what was saved.
         modulesQuery.refetch();
       } else {
@@ -430,7 +453,10 @@ const Groups = () => {
                             </th>
                           ))}
                           <th style={{ textAlign: "left", padding: "calc(10rem / 15) calc(14rem / 15)", width: "calc(240rem / 15)", color: p.text.secondary }}>
-                            Reach
+                            Can see
+                          </th>
+                          <th style={{ textAlign: "left", padding: "calc(10rem / 15) calc(14rem / 15)", width: "calc(240rem / 15)", color: p.text.secondary }}>
+                            Can assign to
                           </th>
                         </tr>
                       </thead>
@@ -466,13 +492,13 @@ const Groups = () => {
                                   <span data-testid={`reach-${key}-none`} style={{ color: p.text.tertiary }}>—</span>
                                 )}
                                 {reach && !!row.CanView && (
-                                  <Tooltip title={key === "attendance" ? "Reach decides whose attendance this role can see on the Today page and in the Attendance report. Own: only themselves. Their team: people who report to them. Their office: everyone in their office. Their office + offices below: also the offices under it. Whole company: everyone." : undefined}>
+                                  <Tooltip title={key === "attendance" ? "Can see decides whose attendance this role can see on the Today page and in the Attendance report. Own: only themselves. Their team: people who report to them. Their office: everyone in their office. Their office + offices below: also the offices under it. Whole company: everyone." : undefined}>
                                     <div>
                                       <Combobox
                                         id={`reach-${key}`}
                                         size="sm"
                                         value={REACH_OPTIONS.find((o) => o.value === row.Reach) ?? null}
-                                        onChange={(opt) => setReach(key, opt)}
+                                        onChange={(opt) => setField(key, "Reach", opt)}
                                         options={REACH_OPTIONS}
                                         disableClearable
                                         data-testid={`reach-${key}`}
@@ -481,11 +507,45 @@ const Groups = () => {
                                   </Tooltip>
                                 )}
                               </td>
+                              <td style={{ padding: "calc(6rem / 15) calc(14rem / 15)" }}>
+                                {ASSIGN_ROW.has(key) && !row.CanView && (
+                                  <span data-testid={`assign-${key}-none`} style={{ color: p.text.tertiary }}>—</span>
+                                )}
+                                {ASSIGN_ROW.has(key) && !!row.CanView && (
+                                  <>
+                                  <label htmlFor={`assign-${key}`} className="sr-only">{`${label}: Can assign to`}</label>
+                                  <Combobox
+                                    id={`assign-${key}`}
+                                    size="sm"
+                                    value={ASSIGN_OPTIONS.find((o) => o.value === row.AssignReach) ?? null}
+                                    onChange={(opt) => setField(key, "AssignReach", opt)}
+                                    options={ASSIGN_OPTIONS}
+                                    disableClearable
+                                    data-testid={`assign-${key}`}
+                                  />
+                                  </>
+                                )}
+                              </td>
                             </tr>
                           );
                         })}
                       </tbody>
                     </table>
+                  </Box>
+                  <Box sx={{ mt: 1, fontSize: "calc(13rem / 15)", color: p.text.secondary, display: "flex", flexDirection: "column", gap: 0.5 }}>
+                    <div>
+                      Can see = whose records this role can open. Can assign to = who this role can give a record to. Assigning to someone does not let you see their records.
+                    </div>
+                    {crossOffice && (
+                      <div data-testid="cross-office-note" style={{ color: p.warning?.text ?? p.text.primary }}>
+                        This role can send a record to another office. The record then belongs to that office.
+                      </div>
+                    )}
+                    {customersTooNarrow && (
+                      <div data-testid="customers-warning" style={{ color: p.warning?.text ?? p.text.primary }}>
+                        A role that registers customers usually needs Customers 'Can see: Their office'. Below that, an agent cannot find a customer a colleague registered.
+                      </div>
+                    )}
                   </Box>
                   <Box sx={{ mt: 1.5 }}>
                     <Checkbox
@@ -546,6 +606,8 @@ const Groups = () => {
           </Button>
         </Modal.Footer>
       </Modal>
+
+      <StrandedWorkDialog people={stranded} onClose={() => setStranded([])} />
 
       <ConfirmationDialog
         open={confirmation.isOpen}

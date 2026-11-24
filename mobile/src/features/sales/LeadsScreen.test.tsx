@@ -365,7 +365,8 @@ describe("T3: tablet two-pane", () => {
     answer(() => Promise.resolve(leadsReply([row, lead({ Id: 12, Name: "Meera Joshi", Company: "Joshi Mills" })], 2)));
     jest.mocked(fetchLeadDetail).mockImplementation(({ LeadId }) =>
       Promise.resolve({
-        lead: LeadId === 12 ? lead({ Id: 12, Name: "Meera Joshi", Company: "Joshi Mills" }) : row,
+        // CanEdit: the server's per-record answer the detail's write actions need.
+        lead: { ...(LeadId === 12 ? lead({ Id: 12, Name: "Meera Joshi", Company: "Joshi Mills" }) : row), CanEdit: true },
         fields: [],
         activity: [],
         followups: [],

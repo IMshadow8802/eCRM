@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http } from "msw";
+import { http, HttpResponse } from "msw";
 import dayjs from "dayjs";
 
 import TicketCreateModal from "./TicketCreateModal";
+import { uploadAttachment } from "../../api/attachmentQueries";
 import useAuthStore from "../../stores/useAuthStore";
 import { server } from "../../test/mocks/server";
 import renderWithProviders from "../../test/renderWithProviders";
@@ -12,6 +13,11 @@ import {
   json, refuse, ticketRow, ticketDetail, customerRow,
   mockSupportRefData, mockTicketEndpoints, mockCustomerEndpoints,
 } from "../../test/supportMocks";
+
+vi.mock("../../api/attachmentQueries", async (importOriginal) => ({
+  ...(await importOriginal()),
+  uploadAttachment: vi.fn(),
+}));
 
 const DEFS = [
   { Id: 55, Label: "Account #", Type: "text", Options: null, IsRequired: false, SortOrder: 1 },
@@ -50,7 +56,7 @@ describe("TicketCreateModal — create", () => {
     await pick(user, "ticket-priority", "High");
     await pick(user, "ticket-channel", "Phone");
     await pick(user, "ticket-product", "Gold Chain 22K");
-    await pick(user, "ticket-assignee", "Sara Khan");
+    await pick(user, "ticket-assignee", /^Sara Khan/);
     await user.type(screen.getByTestId("ticket-description"), "Flickers for a minute after power-on.");
     await user.click(screen.getByTestId("create-ticket-submit"));
 
@@ -72,7 +78,7 @@ describe("TicketCreateModal — create", () => {
     for (const key of ["CompId", "UserId", "StatusId", "PipelineId", "StageId", "CustomerName", "Channel"]) {
       expect(cap.save).not.toHaveProperty(key);
     }
-    expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ Id: 909, TicketNo: "TKT-0909" }));
+    expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ Id: 909, TicketNo: "TKT-0909" }), { assignedAway: true });
     expect(onClose).toHaveBeenCalled();
   }, 20000);
 
@@ -129,9 +135,85 @@ describe("TicketCreateModal — create", () => {
     expect(await screen.findByText(new RegExp(`Due by ${dayjs().add(168, "hour").format("DD-MM-YYYY")}`))).toBeInTheDocument();
   });
 
+  it("a create shows the server's own message ('Logged and assigned to …')", async () => {
+    mockTicketEndpoints();
+    server.use(http.post("*/api/tickets/saveTicket", () => HttpResponse.json({
+      success: true, message: "Logged and assigned to Sara Khan", responseCode: 200,
+      data: { Id: 909, TicketNo: "TKT-0909", ResponseCode: 200, ResponseMess: "Saved" },
+    })));
+    renderModal();
+    const user = userEvent.setup();
+    await pick(user, "customer-picker", "Acme Corp · 9990001111");
+    await user.type(screen.getByTestId("ticket-subject"), "Invoice mismatch");
+    await user.click(screen.getByTestId("create-ticket-submit"));
+    expect(await screen.findByText("Logged and assigned to Sara Khan")).toBeInTheDocument();
+  });
+
+  it("created unassigned: onSaved says the logger keeps it (assignedAway false)", async () => {
+    mockTicketEndpoints();
+    const onSaved = vi.fn();
+    renderModal({ onSaved });
+    const user = userEvent.setup();
+    await pick(user, "customer-picker", "Acme Corp · 9990001111");
+    await user.type(screen.getByTestId("ticket-subject"), "No owner yet");
+    await user.click(screen.getByTestId("create-ticket-submit"));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(onSaved.mock.calls[0][1]).toEqual({ assignedAway: false });
+  });
+
+  // Final review I1 (FR-I1): logging a complaint onto someone else with photos
+  // staged. The server now accepts the logger's uploads for 15 minutes; the
+  // modal must upload to the new id, and never tell the logger to "add them
+  // from the complaint" — a complaint they can no longer open.
+  describe("staged files on a complaint logged for someone else", () => {
+    beforeEach(() => {
+      URL.createObjectURL = vi.fn(() => "blob:staged");   // jsdom has neither
+      URL.revokeObjectURL = vi.fn();
+    });
+    const logWithFile = async () => {
+      mockTicketEndpoints();
+      renderModal();
+      const user = userEvent.setup();
+      await pick(user, "customer-picker", "Acme Corp · 9990001111");
+      await user.type(screen.getByTestId("ticket-subject"), "Panel cracked");
+      await pick(user, "ticket-assignee", /^Sara Khan/);
+      await user.upload(screen.getByTestId("attachment-input"), new File(["x"], "panel.png", { type: "image/png" }));
+      await user.click(screen.getByTestId("create-ticket-submit"));
+    };
+
+    it("uploads them to the new complaint and says nothing about failures", async () => {
+      vi.mocked(uploadAttachment).mockReset().mockResolvedValue({ success: true });
+      await logWithFile();
+      await waitFor(() => expect(uploadAttachment).toHaveBeenCalledWith(
+        expect.objectContaining({ Entity: "ticket", EntityId: 909, file: expect.objectContaining({ name: "panel.png" }) })));
+      expect(screen.queryByText(/failed to upload/)).toBeNull();
+    }, 20000);
+
+    // REGRESSION: the warning used to point at a complaint the logger cannot open.
+    it("a real failure says to send the files to the assignee, not to add them from the complaint", async () => {
+      vi.mocked(uploadAttachment).mockReset().mockRejectedValue(new Error("boom"));
+      await logWithFile();
+      expect(await screen.findByText("1 file(s) failed to upload — send them to the person it is assigned to")).toBeInTheDocument();
+      expect(screen.queryByText(/add them from the complaint/)).toBeNull();
+    }, 20000);
+  });
+
+  it("a 200 that says success:false is still a refusal", async () => {
+    mockTicketEndpoints();
+    server.use(http.post("*/api/tickets/saveTicket", () => HttpResponse.json({ success: false, message: "Could not save" })));
+    const onClose = vi.fn();
+    renderModal({ onClose });
+    const user = userEvent.setup();
+    await pick(user, "customer-picker", "Acme Corp · 9990001111");
+    await user.type(screen.getByTestId("ticket-subject"), "Invoice mismatch");
+    await user.click(screen.getByTestId("create-ticket-submit"));
+    expect(await screen.findByText("Could not save")).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it("keeps the modal open and shows the server's refusal", async () => {
     mockTicketEndpoints();
-    server.use(http.post("*/api/tickets/saveTicket", () => refuse("Customer not found", 404)));
+    server.use(http.post("*/api/tickets/saveTicket", () => refuse("Customer not found", 400)));
     const onClose = vi.fn();
     renderModal({ onClose });
     const user = userEvent.setup();
@@ -227,7 +309,7 @@ describe("TicketCreateModal — edit", () => {
       Id: 7, CustomerId: 3, Subject: "Screen flickers and clicks",
       CategoryId: 6, Priority: 3, ChannelId: 71, LinkedLeadId: 11,
     });
-    // Transfer is the only way to move a complaint; the status dropdown is the
+    // Reassign is the only way to move a complaint; the status dropdown is the
     // only way to move its lifecycle. Neither belongs in a save.
     expect(cap.save).not.toHaveProperty("AssignedTo");
     expect(cap.save).not.toHaveProperty("StatusId");

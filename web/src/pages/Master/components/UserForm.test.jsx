@@ -440,7 +440,7 @@ describe("UserForm deactivation", () => {
     expect(screen.getByText(/2 open complaints/i)).toBeInTheDocument();
     expect(screen.getByText(/1 workspace they own: Ops/i)).toBeInTheDocument();
     expect(screen.getByText(/1 person reports to them: Asha/i)).toBeInTheDocument();
-    const links = screen.getAllByRole("link", { name: "Transfer" });
+    const links = screen.getAllByRole("link", { name: "Reassign" });
     expect(links[0].getAttribute("href")).toMatch(/\/sales\/leads\?OwnerId=11$/);
     expect(links[1].getAttribute("href")).toMatch(/\/support\/tickets\?AssignedTo=11$/);
 
@@ -737,5 +737,38 @@ describe("UserForm shift and attendance", () => {
     const payload = post.mock.calls.find(([u]) => u === "/api/users/saveUser")[1];
     expect(payload.WorkCalendarId).toBe(5);
     expect(payload.PresenceExempt).toBe(true);
+  });
+});
+
+describe("UserForm access-model notes", () => {
+  const saves = () => post.mock.calls.filter(([u]) => u === "/api/users/saveUser");
+
+  it("explains beside Reports To who can see this person's leads and complaints", () => {
+    renderForm({ editingUser: EXISTING_USER });
+    expect(screen.getByText(
+      "Their manager, and that manager's managers, can see the leads and complaints this person holds, when their own role's 'Can see' is Their team or wider."
+    )).toBeInTheDocument();
+  });
+
+  it("after a save that strands open work, says what is left with the person and that their manager was told", async () => {
+    post.mockResolvedValue({ data: { success: true, data: { stranded: { leads: 3, complaints: 2 } } } });
+    const onClose = vi.fn();
+    renderForm({ editingUser: EXISTING_USER, onClose });
+    await submit(/update user/i);
+    expect(await screen.findByText("2 open complaints are still assigned to Vikas Jaiswal")).toBeInTheDocument();
+    expect(screen.getByText("3 open leads are still assigned to Vikas Jaiswal")).toBeInTheDocument();
+    expect(screen.getByText("Their manager has been told.")).toBeInTheDocument();
+    expect(onClose).toHaveBeenCalled(); // the form closes; the notice outlives it
+    await userEvent.click(screen.getByRole("button", { name: "OK" }));
+    await waitFor(() => expect(screen.queryByText("Their manager has been told.")).toBeNull());
+  });
+
+  it("shows no notice when nothing is stranded", async () => {
+    post.mockResolvedValue({ data: { success: true, data: { stranded: { leads: 0, complaints: 0 } } } });
+    renderForm({ editingUser: EXISTING_USER });
+    await submit(/update user/i);
+    await waitFor(() => expect(saves()).toHaveLength(1));
+    await waitFor(() => expect(enqueueSnackbar).toHaveBeenCalled());
+    expect(screen.queryByText("Their manager has been told.")).toBeNull();
   });
 });

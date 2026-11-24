@@ -1,8 +1,11 @@
 jest.mock("../../../src/config/database", () => ({
   executeStoredProcedure: jest.fn(),
 }));
+jest.mock("../../../src/realtime/events", () => ({ emitToUser: jest.fn(), emitToWorkspace: jest.fn() }));
 
 const database = require("../../../src/config/database");
+const { emitToUser } = require("../../../src/realtime/events");
+const { SCOPES } = require("../../../src/realtime/contract");
 const leadController = require("../../../src/controllers/leadController");
 const { mockRes } = require("../../helpers/mockRes");
 const { accessForScope } = require("../../helpers/mockAccess");
@@ -37,24 +40,19 @@ const baseReq = (overrides = {}) => {
 
 beforeEach(() => {
   database.executeStoredProcedure.mockReset();
+  emitToUser.mockReset();
 });
 
-// Guard lookup: mutations fetch the lead (sp_FetchLeadDetail) and apply
-// canSeeRecord before running the mutating SP. sp_FetchLeadDetail returns five
-// recordsets since 071 (core, custom values, timeline, follow-ups, assignments).
+// Guard lookup: writes ask sp_FetchLeadDetail as the session person. Since 132
+// it returns no row when the lead is not visible to them, and CanEdit on the
+// row (a write needs it).
 function mockLeadLookup(lead) {
   database.executeStoredProcedure.mockResolvedValueOnce({
     recordsets: [lead ? [lead] : [], [], [], [], []],
   });
 }
-const visibleLead = { Id: 9, BranchId: 2, OwnerId: 7, CreatedBy: 7 };
-
-// assertCanAssign's roster lookup (sp_FetchAssignableUsers).
-function mockRoster(...ids) {
-  database.executeStoredProcedure.mockResolvedValueOnce({
-    recordsets: [ids.map((Id) => ({ Id }))],
-  });
-}
+const visibleLead = { Id: 9, BranchId: 2, OwnerId: 7, CreatedBy: 7, CanEdit: 1 };
+const calls = (name) => database.executeStoredProcedure.mock.calls.filter((c) => c[0] === name);
 
 const EDIT_BODY = {
   Id: 9, Name: "Acme", Company: "Acme Ltd", MobileNo: "9825012345", City: "Pune", Pincode: "411001",
@@ -62,30 +60,50 @@ const EDIT_BODY = {
 };
 
 describe("leadController.save", () => {
-  it("creates with the new fields, creator's branch, and no stage/pipeline", async () => {
-    mockRoster(3); // OwnerId 3 is assignable by the caller
+  it("creates with the new fields, the live home office, and no stage/pipeline", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
-      recordset: [{ ResponseCode: 200, ResponseMess: "Saved", Id: 42 }],
+      recordset: [{ ResponseCode: 200, ResponseMess: "Lead saved successfully", Id: 42 }],
     });
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ Id: 3, FullName: "Vinod Kumar" }]] });
+    const req = baseReq({ body: { ...EDIT_BODY, Id: 0, UserId: 999, CompId: 999 } });
+    req.access.primaryBranchId = 6; // moved office since sign-in; the token still says 2
     const res = mockRes();
-    await leadController.save(baseReq({ body: { ...EDIT_BODY, Id: 0 } }), res);
-    const [sp, params] = database.executeStoredProcedure.mock.calls[1];
+    await leadController.save(req, res);
+    const [sp, params] = database.executeStoredProcedure.mock.calls[0];
     expect(sp).toBe("sp_SaveLead");
     expect(params).toMatchObject({
-      Id: 0, CompId: 5, BranchId: 2, UserId: 7, Company: "Acme Ltd", City: "Pune",
+      Id: 0, CompId: 5, BranchId: 6, UserId: 7, Company: "Acme Ltd", City: "Pune",
       Pincode: "411001", ProductId: 2, StatusId: 5, OwnerId: 3, Remarks: "hot",
       FirstFollowupAt: "2026-09-10",
     });
     expect(params).not.toHaveProperty("PipelineId");
     expect(params).not.toHaveProperty("StageId");
+    expect(database.executeStoredProcedure.mock.calls[1]).toEqual(["sp_FetchAssignableUsers", {
+      CompId: 5, UserId: 7, Module: "leads", RecordId: null, TargetUserId: 3,
+    }]);
     expect(res.json.mock.calls[0][0].data.Id).toBe(42);
+    expect(res.json.mock.calls[0][0].message).toBe("Lead saved and assigned to Vinod Kumar");
+  });
+
+  it("keeps the procedure's message when the name cannot be read", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordset: [{ ResponseCode: 200, ResponseMess: "Lead saved successfully", Id: 42 }] });
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
+    const res = mockRes();
+    await leadController.save(baseReq({ body: { ...EDIT_BODY, Id: 0 } }), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json.mock.calls[0][0].message).toBe("Lead saved successfully");
+
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordset: [{ ResponseCode: 200, ResponseMess: "Lead saved successfully", Id: 43 }] });
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[]] });
+    const res2 = mockRes();
+    await leadController.save(baseReq({ body: { ...EDIT_BODY, Id: 0 } }), res2);
+    expect(res2.json.mock.calls[0][0].message).toBe("Lead saved successfully");
   });
 
   it("normalises FirstFollowupAt with a time to full ISO seconds before the SP", async () => {
-    mockRoster(3);
     database.executeStoredProcedure.mockResolvedValueOnce({ recordset: [{ ResponseCode: 200, ResponseMess: "Saved", Id: 42 }] });
-    await leadController.save(baseReq({ body: { ...EDIT_BODY, Id: 0, FirstFollowupAt: "2026-11-17T11:00" } }), mockRes());
-    expect(database.executeStoredProcedure.mock.calls[1][1].FirstFollowupAt).toBe("2026-11-17T11:00:00");
+    await leadController.save(baseReq({ body: { ...EDIT_BODY, Id: 0, OwnerId: null, FirstFollowupAt: "2026-11-17T11:00" } }), mockRes());
+    expect(database.executeStoredProcedure.mock.calls[0][1].FirstFollowupAt).toBe("2026-11-17T11:00:00");
   });
 
   it("400s a garbage FirstFollowupAt with no SP call", async () => {
@@ -96,10 +114,9 @@ describe("leadController.save", () => {
   });
 
   it("sends a null FirstFollowupAt as null", async () => {
-    mockRoster(3);
     database.executeStoredProcedure.mockResolvedValueOnce({ recordset: [{ ResponseCode: 200, ResponseMess: "Saved", Id: 42 }] });
-    await leadController.save(baseReq({ body: { ...EDIT_BODY, Id: 0, FirstFollowupAt: "" } }), mockRes());
-    expect(database.executeStoredProcedure.mock.calls[1][1].FirstFollowupAt).toBeNull();
+    await leadController.save(baseReq({ body: { ...EDIT_BODY, Id: 0, OwnerId: null, FirstFollowupAt: "" } }), mockRes());
+    expect(database.executeStoredProcedure.mock.calls[0][1].FirstFollowupAt).toBeNull();
   });
 
   // Ownership only moves through transfer (history) and status through
@@ -109,31 +126,45 @@ describe("leadController.save", () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordset: [{ ResponseCode: 200, ResponseMess: "Saved", Id: 9 }],
     });
-    await leadController.save(baseReq({ body: EDIT_BODY }), mockRes());
-    const params = database.executeStoredProcedure.mock.calls[1][1];
-    expect(params).toMatchObject({ Id: 9, OwnerId: null, StatusId: null, FirstFollowupAt: null, Company: "Acme Ltd" });
-  });
-
-  it("403s an edit of a lead the caller cannot see", async () => {
-    mockLeadLookup({ Id: 9, BranchId: 9, OwnerId: 3, CreatedBy: 3 });
     const res = mockRes();
     await leadController.save(baseReq({ body: EDIT_BODY }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(database.executeStoredProcedure.mock.calls[0]).toEqual(["sp_FetchLeadDetail", { CompId: 5, UserId: 7, LeadId: 9 }]);
+    const params = database.executeStoredProcedure.mock.calls[1][1];
+    expect(params).toMatchObject({ Id: 9, OwnerId: null, StatusId: null, FirstFollowupAt: null, Company: "Acme Ltd" });
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(2); // no name lookup on edit
+    expect(res.json.mock.calls[0][0].message).toBe("Saved");
+  });
+
+  it("404s an edit of a lead the caller cannot see (the procedure returns no row)", async () => {
+    mockLeadLookup(null);
+    const res = mockRes();
+    await leadController.save(baseReq({ body: EDIT_BODY }), res);
+    expect(res.status).toHaveBeenCalledWith(404);
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
   });
 
-  // REGRESSION: create was a side door around the assignment rule — transfer
-  // checks the roster, so create must too.
-  it("403s a create assigned to someone outside the caller's roster", async () => {
-    mockRoster(4); // not 3
+  it("403s an edit of a lead the caller can see but not edit (CanEdit 0)", async () => {
+    mockLeadLookup({ ...visibleLead, CanEdit: 0 });
+    const res = mockRes();
+    await leadController.save(baseReq({ body: EDIT_BODY }), res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(calls("sp_SaveLead")).toHaveLength(0);
+  });
+
+  // The assign rule lives in sp_SaveLead now; Node asks no roster of its own.
+  it("relays the procedure's 403 for a person outside the caller's assign list", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordset: [{ Id: 0, ResponseCode: 403, ResponseMess: "You cannot assign records to that person" }],
+    });
     const res = mockRes();
     await leadController.save(baseReq({ body: { ...EDIT_BODY, Id: 0 } }), res);
     expect(res.status).toHaveBeenCalledWith(403);
-    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1); // roster only
-    expect(database.executeStoredProcedure).not.toHaveBeenCalledWith("sp_SaveLead", expect.anything());
+    expect(res.json.mock.calls[0][0].message).toBe("You cannot assign records to that person");
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
+    expect(calls("sp_FetchAssignableUsers")).toHaveLength(0);
   });
 
-  it("skips the roster check for an unassigned create", async () => {
+  it("an unassigned create is one call", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordset: [{ ResponseCode: 200, ResponseMess: "Saved", Id: 43 }],
     });
@@ -194,37 +225,16 @@ describe("leadController.save", () => {
 });
 
 describe("leadController.fetch", () => {
-  // REGRESSION: fetch used to pass req.user.BranchId as the visibility filter,
-  // so a sales lead raised in another branch was invisible to everyone outside
-  // it. Visibility must come from req.scope instead.
-  it("passes scope (not the caller's own BranchId) as the visibility filter", async () => {
+  // Visibility is the procedure's (132): Node sends the session person and
+  // nothing that describes their reach.
+  it("sends the session person, never an office or owner list, never the body's person", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[], []] });
-    const req = baseReq({ scope: { branchIds: [1, 2, 3, 4, 5], ownerIds: null }, body: {} });
-    const res = mockRes();
-    await leadController.fetch(req, res);
-
-    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
-      "sp_FetchLeads",
-      expect.objectContaining({
-        UserId: 7,
-        AccessibleBranchIdsJson: "[1,2,3,4,5]",
-        OwnerIdsJson: null, // wide scope -> no ownership filter
-        BranchId: null, // not the caller's branch
-      }),
-    );
-  });
-
-  // A sales exec must not see a colleague's pipeline.
-  it("sends an ownership filter for a Self-scoped sales executive", async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[], []] });
-    const req = baseReq({ scope: { branchIds: [2], ownerIds: [7] }, body: {} });
-    const res = mockRes();
-    await leadController.fetch(req, res);
-
-    expect(database.executeStoredProcedure).toHaveBeenCalledWith(
-      "sp_FetchLeads",
-      expect.objectContaining({ AccessibleBranchIdsJson: "[2]", OwnerIdsJson: "[7]" }),
-    );
+    const req = baseReq({ scope: { branchIds: [1, 2, 3, 4, 5], ownerIds: [7] }, body: { UserId: 999, CompId: 999 } });
+    await leadController.fetch(req, mockRes());
+    const params = database.executeStoredProcedure.mock.calls[0][1];
+    expect(params).toMatchObject({ CompId: 5, UserId: 7, BranchId: null });
+    expect(params).not.toHaveProperty("AccessibleBranchIdsJson");
+    expect(params).not.toHaveProperty("OwnerIdsJson");
   });
 
   // 119: rows go out as the SP returns them, so NextFollowupType reaches the
@@ -401,41 +411,34 @@ describe("leadController.detail", () => {
     expect(data.assignments).toEqual([{ Id: 31, ToUserId: 3 }]);
   });
 
-  it("404s a lead owned by someone else when Self-scoped", async () => {
+  it("asks the procedure as the session person and returns the action fields", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
-      recordsets: [[{ Id: 9, BranchId: 2, OwnerId: 3, CreatedBy: 3 }], [], [], [], []],
+      recordsets: [[{ Id: 9, OwnerId: 3, CanEdit: 1, CanReassign: 1, SendBackToId: 16, SendBackToName: "Neha" }], [], [], [], []],
     });
     const res = mockRes();
-    await leadController.detail(baseReq({ scope: { branchIds: [2], ownerIds: [7] }, body: { LeadId: 9 } }), res);
-    expect(res.status).toHaveBeenCalledWith(404);
+    await leadController.detail(baseReq({ body: { LeadId: "9", UserId: 999 } }), res);
+    expect(database.executeStoredProcedure.mock.calls[0]).toEqual(["sp_FetchLeadDetail", { CompId: 5, UserId: 7, LeadId: 9 }]);
+    expect(res.json.mock.calls[0][0].data.lead).toMatchObject({ CanEdit: 1, CanReassign: 1, SendBackToId: 16, SendBackToName: "Neha" });
   });
 
-  it("404s a lead from a branch outside the caller's scope", async () => {
+  // W3: Node no longer re-judges a row against req.scope lists. A row the
+  // procedure returns is visible, whatever the old Own/Office lists said.
+  it("W3 regression: shows a row the procedure returns even outside the old scope lists", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
       recordsets: [[{ Id: 9, BranchId: 9, OwnerId: 3, CreatedBy: 3 }], [], [], [], []],
     });
-    const req = baseReq({ scope: { branchIds: [2], ownerIds: null }, body: { LeadId: 9 } });
     const res = mockRes();
-    await leadController.detail(req, res);
-    expect(res.status).toHaveBeenCalledWith(404);
-  });
-
-  it("shows a lead owned by the caller even from an out-of-scope branch", async () => {
-    database.executeStoredProcedure.mockResolvedValueOnce({
-      recordsets: [[{ Id: 9, BranchId: 9, OwnerId: 7, CreatedBy: 3 }], [], [], [], []],
-    });
-    const req = baseReq({ scope: { branchIds: [2], ownerIds: [7] }, body: { LeadId: 9 } });
-    const res = mockRes();
-    await leadController.detail(req, res);
+    await leadController.detail(baseReq({ scope: { branchIds: [2], ownerIds: [7] }, body: { LeadId: 9 } }), res);
     expect(res.status).toHaveBeenCalledWith(200);
   });
 
-  it("404s when the lead does not exist", async () => {
+  it("404s 'Lead not found' when the procedure returns no row (absent or not visible alike)", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[], [], [], [], []] });
     const req = baseReq({ body: { LeadId: 9 } });
     const res = mockRes();
     await leadController.detail(req, res);
     expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json.mock.calls[0][0].message).toBe("Lead not found");
   });
 
   it("handles DB error as 500", async () => {
@@ -473,94 +476,165 @@ describe("leadController.setStatus", () => {
 
   // REGRESSION: the write path used to trust the client-supplied LeadId — a
   // Self-scoped exec could restatus any colleague's lead by posting its Id.
-  it("403s a lead the caller cannot see, without running the mutation", async () => {
-    mockLeadLookup({ Id: 9, BranchId: 2, OwnerId: 3, CreatedBy: 3 });
-    const req = baseReq({ scope: { branchIds: [2], ownerIds: [7] }, body: { LeadId: 9, StatusId: 6 } });
+  it("404s a lead the caller cannot see, without running the mutation", async () => {
+    mockLeadLookup(null);
+    const req = baseReq({ body: { LeadId: 9, StatusId: 6 } });
     const res = mockRes();
     await leadController.setStatus(req, res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1); // lookup only
   });
 });
 
 describe("leadController.transfer", () => {
   const body = { LeadId: 9, ToUserId: 3, ReasonId: 1, Remarks: "Absent" };
+  const moved = (extra = {}) => ({
+    recordset: [{ Id: 9, ResponseCode: 200, ResponseMess: "Lead reassigned successfully", FromUserId: 7, ToUserId: 3, ToName: "Vinod", ...extra }],
+  });
 
-  it("gates on the lead, then the target, then transfers", async () => {
-    mockLeadLookup(visibleLead);                                        // sp_FetchLeadDetail
-    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ Id: 3 }]] }); // roster
-    database.executeStoredProcedure.mockResolvedValueOnce({
-      recordset: [{ Id: 9, ResponseCode: 200, ResponseMess: "Lead transferred successfully" }],
-    });
+  it("gates on the lead, then reassigns in one procedure call and tells both holders", async () => {
+    mockLeadLookup(visibleLead);
+    database.executeStoredProcedure.mockResolvedValueOnce(moved());
     const res = mockRes();
     await leadController.transfer(baseReq({ body }), res);
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(2);
     expect(database.executeStoredProcedure).toHaveBeenLastCalledWith("sp_TransferLead", {
-      CompId: 5, LeadId: 9, ToUserId: 3, ToBranchId: null, ReasonId: 1, Remarks: "Absent", UserId: 7,
+      CompId: 5, LeadId: 9, ToUserId: 3, ToBranchId: null, ReasonId: 1, Remarks: "Absent", UserId: 7, SendBack: 0,
     });
     expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json.mock.calls[0][0].data).toMatchObject({ FromUserId: 7, ToUserId: 3, ToName: "Vinod" });
+    expect(emitToUser).toHaveBeenCalledTimes(2);
+    expect(emitToUser).toHaveBeenCalledWith(7, SCOPES.RECORDS, { module: "leads" });
+    expect(emitToUser).toHaveBeenCalledWith(3, SCOPES.RECORDS, { module: "leads" });
   });
 
-  it("403s when the target is not assignable and never calls the SP", async () => {
+  it("send back needs remarks but no reason, and passes SendBack 1", async () => {
     mockLeadLookup(visibleLead);
-    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ Id: 4 }]] });
+    database.executeStoredProcedure.mockResolvedValueOnce(moved({ ResponseMess: "Lead sent back", ToUserId: 16 }));
     const res = mockRes();
-    await leadController.transfer(baseReq({ body }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
-    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(2);
+    await leadController.transfer(baseReq({ body: { LeadId: 9, SendBack: true, Remarks: "Not mine" } }), res);
+    expect(database.executeStoredProcedure).toHaveBeenLastCalledWith("sp_TransferLead", {
+      CompId: 5, LeadId: 9, ToUserId: null, ToBranchId: null, ReasonId: null, Remarks: "Not mine", UserId: 7, SendBack: 1,
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(emitToUser).toHaveBeenCalledWith(16, SCOPES.RECORDS, { module: "leads" });
   });
 
-  it("400s without remarks before touching the DB", async () => {
+  it("send back without remarks 400s before the DB", async () => {
     const res = mockRes();
-    await leadController.transfer(baseReq({ body: { ...body, Remarks: "  " } }), res);
+    await leadController.transfer(baseReq({ body: { LeadId: 9, SendBack: true, Remarks: " " } }), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json.mock.calls[0][0].message).toBe("Remarks are required to send this back");
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  it("unassign: one emit for the previous holder only", async () => {
+    mockLeadLookup(visibleLead);
+    database.executeStoredProcedure.mockResolvedValueOnce(moved({ ToUserId: null, ToName: null }));
+    await leadController.transfer(baseReq({ body: { ...body, ToUserId: null } }), mockRes());
+    expect(emitToUser).toHaveBeenCalledTimes(1);
+    expect(emitToUser).toHaveBeenCalledWith(7, SCOPES.RECORDS, { module: "leads" });
+  });
+
+  // The assign rule (gates 1-8) is the procedure's; its answer goes out unchanged.
+  it.each([
+    [403, "You cannot assign records to that person"],
+    [404, "Record not found"],
+    [400, "There is nobody to send this back to."],
+    [400, "Choose another reason. Sent back is set only by the Send back button."],   // 143: a hand-picked sent_back reason
+  ])("relays the procedure's %i and its message, and tells nobody", async (code, message) => {
+    mockLeadLookup(visibleLead);
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordset: [{ Id: 9, ResponseCode: code, ResponseMess: message }] });
+    const res = mockRes();
+    await leadController.transfer(baseReq({ body }), res);
+    expect(res.status).toHaveBeenCalledWith(code);
+    expect(res.json.mock.calls[0][0].message).toBe(message);
+    expect(emitToUser).not.toHaveBeenCalled();
+  });
+
+  it("legacy payload: without SendBack it still needs a reason and remarks", async () => {
+    for (const patch of [{ Remarks: "  " }, { ReasonId: null }]) {
+      const res = mockRes();
+      await leadController.transfer(baseReq({ body: { ...body, ...patch } }), res);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json.mock.calls[0][0].message).toBe("A reason and remarks are required to reassign");
+    }
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
+
+  it("400s without a LeadId before the DB", async () => {
+    const res = mockRes();
+    await leadController.transfer(baseReq({ body: { ...body, LeadId: "x" } }), res);
     expect(res.status).toHaveBeenCalledWith(400);
     expect(database.executeStoredProcedure).not.toHaveBeenCalled();
   });
 
-  it("400s without a reason before touching the DB", async () => {
-    const res = mockRes();
-    await leadController.transfer(baseReq({ body: { ...body, ReasonId: null } }), res);
-    expect(res.status).toHaveBeenCalledWith(400);
-    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
-  });
-
-  it("403s transferring a lead the caller cannot see", async () => {
-    mockLeadLookup({ Id: 9, BranchId: 9, OwnerId: 3, CreatedBy: 3 });
+  it("404s reassigning a lead the caller cannot see", async () => {
+    mockLeadLookup(null);
     const res = mockRes();
     await leadController.transfer(baseReq({ body }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
+  });
+
+  it("500s when the procedure throws", async () => {
+    mockLeadLookup(visibleLead);
+    database.executeStoredProcedure.mockRejectedValueOnce(new Error("boom"));
+    const res = mockRes();
+    await leadController.transfer(baseReq({ body }), res);
+    expect(res.status).toHaveBeenCalledWith(500);
   });
 });
 
 describe("leadController.bulkTransfer", () => {
-  const body = { LeadIds: [9, 10], ToUserId: 3, ReasonId: 1, Remarks: "Back on duty" };
+  const body = { LeadIds: [9, 10, 9, "x"], ToUserId: 3, ReasonId: 1, Remarks: "Back on duty" };
 
-  it("checks every lead, the target once, then calls the bulk SP with JSON ids", async () => {
-    mockLeadLookup(visibleLead);
-    mockLeadLookup({ ...visibleLead, Id: 10 });
-    database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[{ Id: 3 }]] });
+  it("one procedure call, no per-id reads; tells every holder in the second result set", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
-      recordset: [{ Transferred: 2, Skipped: 0, ResponseCode: 200, ResponseMess: "2 lead(s) transferred" }],
+      recordset: [{ Transferred: 2, Skipped: 0, Moved: 2, Refused: 0, ResponseCode: 200, ResponseMess: "2 lead(s) reassigned" }],
+      recordsets: [
+        [{ Transferred: 2, Skipped: 0, Moved: 2, Refused: 0, ResponseCode: 200, ResponseMess: "2 lead(s) reassigned" }],
+        [{ UserId: 4 }, { UserId: 3 }, { UserId: 4 }],
+      ],
     });
     const res = mockRes();
     await leadController.bulkTransfer(baseReq({ body }), res);
-    expect(database.executeStoredProcedure).toHaveBeenLastCalledWith("sp_BulkTransferLeads", {
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_BulkTransferLeads", {
       CompId: 5, LeadIdsJson: "[9,10]", ToUserId: 3, ToBranchId: null, ReasonId: 1, Remarks: "Back on duty", UserId: 7,
     });
-    expect(res.json.mock.calls[0][0].data).toMatchObject({ Transferred: 2, Skipped: 0 });
+    expect(res.json.mock.calls[0][0].data).toMatchObject({ Moved: 2, Refused: 0 });
+    expect(emitToUser.mock.calls).toEqual([
+      [4, SCOPES.RECORDS, { module: "leads" }],
+      [3, SCOPES.RECORDS, { module: "leads" }],
+    ]);
   });
 
-  it("400s on an empty id list", async () => {
+  // S7: all-or-nothing; the first failing gate's sentence with the count.
+  it("Refused > 0: relays the gate's status and sentence with the count, tells nobody", async () => {
+    const row = { Transferred: 0, Moved: 0, Refused: 2, ResponseCode: 403, ResponseMess: "Only a manager can reassign a closed record (2 of 5 refused)" };
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordset: [row], recordsets: [[row]] });
     const res = mockRes();
-    await leadController.bulkTransfer(baseReq({ body: { ...body, LeadIds: [] } }), res);
-    expect(res.status).toHaveBeenCalledWith(400);
+    await leadController.bulkTransfer(baseReq({ body }), res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json.mock.calls[0][0].message).toBe("Only a manager can reassign a closed record (2 of 5 refused)");
+    expect(emitToUser).not.toHaveBeenCalled();
   });
 
-  it("400s on more than 200 ids", async () => {
-    const LeadIds = Array.from({ length: 201 }, (_, i) => i + 1);
+  it("copes with a 200 that carries no holder list", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({ recordset: [{ ResponseCode: 200, ResponseMess: "0 lead(s) reassigned" }] });
     const res = mockRes();
-    await leadController.bulkTransfer(baseReq({ body: { ...body, LeadIds } }), res);
-    expect(res.status).toHaveBeenCalledWith(400);
+    await leadController.bulkTransfer(baseReq({ body }), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(emitToUser).not.toHaveBeenCalled();
+  });
+
+  it("0 ids and 201 ids are refused before any DB call", async () => {
+    for (const LeadIds of [[], Array.from({ length: 201 }, (_, i) => i + 1), "9"]) {
+      const res = mockRes();
+      await leadController.bulkTransfer(baseReq({ body: { ...body, LeadIds } }), res);
+      expect(res.status).toHaveBeenCalledWith(400);
+    }
     expect(database.executeStoredProcedure).not.toHaveBeenCalled();
   });
 
@@ -569,14 +643,6 @@ describe("leadController.bulkTransfer", () => {
     await leadController.bulkTransfer(baseReq({ body: { ...body, Remarks: "" } }), res);
     expect(res.status).toHaveBeenCalledWith(400);
     expect(database.executeStoredProcedure).not.toHaveBeenCalled();
-  });
-
-  it("403s if any lead is out of scope", async () => {
-    mockLeadLookup(visibleLead);
-    mockLeadLookup({ Id: 10, BranchId: 9, OwnerId: 3, CreatedBy: 3 });
-    const res = mockRes();
-    await leadController.bulkTransfer(baseReq({ body }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
   });
 });
 
@@ -593,12 +659,12 @@ describe("leadController.delete", () => {
     expect(res.status).toHaveBeenCalledWith(200);
   });
 
-  it("403s deleting a colleague's lead under Self scope", async () => {
-    mockLeadLookup({ Id: 9, BranchId: 2, OwnerId: 3, CreatedBy: 3 });
-    const req = baseReq({ scope: { branchIds: [2], ownerIds: [7] }, body: { Id: 9 } });
+  it("404s deleting a lead the caller cannot see", async () => {
+    mockLeadLookup(null);
+    const req = baseReq({ body: { Id: 9 } });
     const res = mockRes();
     await leadController.delete(req, res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
   });
 
@@ -685,11 +751,11 @@ describe("leadController.convert", () => {
     expect(database.executeStoredProcedure.mock.calls[1][1].WonValue).toBe(0);
   });
 
-  it("403s a lead the caller cannot see", async () => {
-    mockLeadLookup({ Id: 9, BranchId: 9, OwnerId: 3, CreatedBy: 3 });
+  it("404s a lead the caller cannot see", async () => {
+    mockLeadLookup(null);
     const res = mockRes();
     await leadController.convert(baseReq({ body: { LeadId: 9, WonValue: 100 } }), res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
   });
 
@@ -731,26 +797,44 @@ describe("leadController.convert", () => {
   });
 });
 
-// Fix round 1: the record gate on a write also checks the leads EDIT right, so
-// a view-only role is refused at the record, before any lookup — even if the
-// route layer were to let the request through.
-describe("leadController writes need the leads edit right", () => {
-  const viewOnly = (body) => {
-    const req = baseReq({ body });
-    req.access = accessForScope(req.scope, 7, "v");
-    return req;
-  };
+// A lead owned by someone else, out of the caller's view: the procedure
+// returns no row. Detail and every write answer 404 (no hint it exists), every
+// write before its mutation.
+describe("a lead owned by someone else", () => {
+  it("a lead owned by someone else answers 404 on detail and on every write", async () => {
+    database.executeStoredProcedure.mockResolvedValue({ recordsets: [[], [], [], [], []] });
+    const res = mockRes();
+    await leadController.detail(baseReq({ body: { LeadId: 9 } }), res);
+    expect(res.status).toHaveBeenCalledWith(404);
+
+    for (const [method, body] of [
+      ["save", { Id: 9, Name: "Acme" }],
+      ["setStatus", { LeadId: 9, StatusId: 6 }],
+      ["convert", { LeadId: 9, WonValue: 100 }],
+      ["transfer", { LeadId: 9, ToUserId: 3, ReasonId: 1, Remarks: "Absent" }],
+      ["transfer", { LeadId: 9, SendBack: true, Remarks: "Not mine" }],
+      ["delete", { Id: 9 }],
+    ]) {
+      const r = mockRes();
+      await leadController[method](baseReq({ body }), r);
+      expect(r.status).toHaveBeenCalledWith(404);
+    }
+    const names = database.executeStoredProcedure.mock.calls.map((c) => c[0]);
+    expect(new Set(names)).toEqual(new Set(["sp_FetchLeadDetail"]));
+  });
+
+  // Seen but not editable (CanEdit 0): writes 403 without the mutation.
   it.each([
     ["save (edit)", "save", { Id: 9, Name: "Acme" }],
     ["setStatus", "setStatus", { LeadId: 9, StatusId: 6 }],
     ["transfer", "transfer", { LeadId: 9, ToUserId: 3, ReasonId: 1, Remarks: "Absent" }],
-    ["bulkTransfer", "bulkTransfer", { LeadIds: [9], ToUserId: 3, ReasonId: 1, Remarks: "Absent" }],
     ["delete", "delete", { Id: 9 }],
-  ])("403s a view-only role on %s without a DB call", async (_label, method, body) => {
+  ])("403s %s on a lead without CanEdit", async (_label, method, body) => {
+    mockLeadLookup({ ...visibleLead, CanEdit: 0 });
     const res = mockRes();
-    await leadController[method](viewOnly(body), res);
+    await leadController[method](baseReq({ body }), res);
     expect(res.status).toHaveBeenCalledWith(403);
-    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -760,7 +844,6 @@ describe("leadController partner (spec 2026-10-10, merged procs)", () => {
     req.access.modules.partners = { view: true, add: false, edit: false, delete: false, reach: null };
     return req;
   };
-  const calls = (name) => database.executeStoredProcedure.mock.calls.filter((c) => c[0] === name);
   const create = (body, view) => {
     const req = baseReq({ body: { ...EDIT_BODY, Id: 0, OwnerId: null, ...body } });
     return view ? withPartners(req) : req;

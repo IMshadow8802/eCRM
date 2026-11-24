@@ -38,6 +38,7 @@ const CASES: [string, Case][] = [
   ["convertLead", { call: () => leads.convertLead({ LeadId: 9, WonValue: 0 }), url: "/api/leads/convertLead", body: { LeadId: 9, WonValue: 0, Remarks: null } }],
   ["convertLead remarks", { call: () => leads.convertLead({ LeadId: 9, WonValue: 1200, Remarks: "paid" }), url: "/api/leads/convertLead", body: { LeadId: 9, WonValue: 1200, Remarks: "paid" } }],
   ["transferLead", { call: () => leads.transferLead({ LeadId: 9, ToUserId: 4, ToBranchId: null, ReasonId: 2, Remarks: "leave" }), url: "/api/leads/transferLead", body: { LeadId: 9, ToUserId: 4, ToBranchId: null, ReasonId: 2, Remarks: "leave" } }],
+  ["transferLead send back", { call: () => leads.transferLead({ LeadId: 9, ToUserId: 3, ToBranchId: null, Remarks: "not mine", SendBack: true }), url: "/api/leads/transferLead", body: { LeadId: 9, ToUserId: 3, ToBranchId: null, Remarks: "not mine", SendBack: true } }],
 ];
 
 describe.each(CASES)("%s", (_name, c) => {

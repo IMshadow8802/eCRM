@@ -128,10 +128,11 @@ export function localDay(offset = 0, from = new Date()): string {
 }
 
 /** What axios rejects with when the API refuses: the envelope's message is the reason. */
-export const serverError = (status: number, message: string) =>
+/** `code` as the server sends it: a 404 is the record's own NOT_FOUND unless a test says otherwise. */
+export const serverError = (status: number, message: string, code = status === 404 ? "NOT_FOUND" : "SP_ERROR") =>
   new AxiosError(`Request failed with status code ${status}`, "ERR_BAD_REQUEST", undefined, null, {
     status,
-    data: envelope(null, { success: false, message, responseCode: status }),
+    data: envelope(null, { success: false, message, code, responseCode: status }),
     // ponytail: only `status` and `data` are real; headers/config/request are
     // absent. Add them if code under test ever reads them.
   } as AxiosResponse);

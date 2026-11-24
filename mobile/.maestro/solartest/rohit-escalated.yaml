@@ -1,0 +1,34 @@
+# Rohit (Support Team Lead): Escalated lists the complaint Vivek escalated to
+# him (setup.js) and it opens showing "Escalated to". Env: ESC, TAG.
+appId: com.shadowider.eCRM
+---
+- runFlow: ../common/open-work.yaml
+- tapOn: "Open My complaints"
+- assertVisible:
+    id: "complaint-presets"
+- runFlow:
+    file: ../access/preset.yaml
+    env:
+      NAME: "Escalated"
+- tapOn: "Search number, customer, mobile"
+- inputText: "${TAG}"
+- extendedWaitUntil:
+    visible: ".*${ESC}.*"
+    timeout: 15000
+- repeat:
+    times: 3
+    while:
+      notVisible: "Complaint actions"
+    commands:
+      - waitForAnimationToEnd
+      - tapOn:
+          text: ".*${ESC}.*"
+          optional: true
+      - extendedWaitUntil:
+          visible: "Complaint actions"
+          timeout: 8000
+          optional: true
+- assertVisible: "Complaint actions"
+- assertVisible: "Escalated to"
+- assertVisible: "ROHIT GAUR"
+- takeScreenshot: st-rohit-escalated

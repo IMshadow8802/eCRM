@@ -1,0 +1,37 @@
+# Neha (Branch Manager): the Leads list shows the office's leads; All, search
+# a tele-caller's lead (NEHA_LEAD), open it. Env: NEHA_LEAD.
+appId: com.shadowider.eCRM
+---
+- runFlow: ../common/open-work.yaml
+- tapOn: "Leads, \\d+ yours"
+- extendedWaitUntil:
+    visible:
+      id: "leads-list"
+    timeout: 15000
+- tapOn: "All, \\d+"
+- takeScreenshot: st-neha-leads-all
+- tapOn: "Search name, company, mobile"
+- inputText: "${NEHA_LEAD}"
+- extendedWaitUntil:
+    visible:
+      text: ".*${NEHA_LEAD}.*"
+      below: "Search name, company, mobile"
+    timeout: 15000
+- repeat:
+    times: 3
+    while:
+      notVisible: "Lead actions"
+    commands:
+      - waitForAnimationToEnd
+      - tapOn:
+          text: ".*${NEHA_LEAD}.*"
+          below: "Search name, company, mobile"
+          optional: true
+      - extendedWaitUntil:
+          visible: "Lead actions"
+          timeout: 8000
+          optional: true
+- assertVisible: "Lead actions"
+- assertVisible: "Assigned to"
+- assertVisible: "Kasak\\s*"  # stored as "Kasak "
+- takeScreenshot: st-neha-lead-open

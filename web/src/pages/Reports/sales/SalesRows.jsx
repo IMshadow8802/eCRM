@@ -81,17 +81,17 @@ const FAMILIES = {
     text("type", "Follow-up", (r) => typeLabel(r.Detail1)), MOBILE, status("Status now"), text("person", "Due with", (r) => r.PersonName ?? null)],
   done: [LEAD, CREATED, dateCol("done", "Done on", "EventAt", { time: true }), text("type", "What", (r) => typeLabel(r.Detail1)),
     text("notes", "Notes", (r) => r.Detail2 ?? null), MOBILE, status("Status now"), text("person", "Done by", (r) => r.PersonName ?? null)],
-  new: [LEAD, CREATED, MOBILE, text("company", "Company", (r) => r.Company ?? null), status("Status now"), money("value", "Value ₹", "Amount"), owner("owner", "Owner")],
+  new: [LEAD, CREATED, MOBILE, text("company", "Company", (r) => r.Company ?? null), status("Status now"), money("value", "Value ₹", "Amount"), owner("owner", "Assigned to")],
   won: [LEAD, CREATED, dateCol("won", "Won on", "EventAt"), text("company", "Company", (r) => r.Company ?? null), owner("person", "Person"),
     text("source", "Source", (r) => r.SourceName ?? null), money("amount", "Won ₹", "Amount", "won"), text("quote", "Quotation no.", (r) => r.QuoteNo ?? null),
     text("days", "Days to win", (r) => dayjs(r.EventAt).startOf("day").diff(dayjs(r.CreatedAt).startOf("day"), "day"), {
       align: "right", cell: (r, p, v) => (v === 0 ? "same day" : count(v, "day", "days")),
     })],
   lost: [LEAD, CREATED, dateCol("lostOn", "Lost on", "EventAt"), text("reason", "Reason", (r) => r.LostReason ?? null),
-    text("remarks", "Remarks", (r) => r.Remarks ?? null), money("value", "Value ₹", "Amount"), owner("owner", "Owner")],
+    text("remarks", "Remarks", (r) => r.Remarks ?? null), money("value", "Value ₹", "Amount"), owner("owner", "Assigned to")],
   open: [LEAD, CREATED, text("age", "Age", (r) => (r.AgeDays == null ? null : Number(r.AgeDays)), { align: "right", cell: (r, p, v) => count(v, "day", "days") }),
     status("Status now"), money("value", "Value ₹", "Amount"), LAST,
-    dateCol("next", "Next follow-up", "NextFollowupDate", { time: true, ink: (r) => (r.IsOverdue ? "late" : null) }), owner("owner", "Owner")],
+    dateCol("next", "Next follow-up", "NextFollowupDate", { time: true, ink: (r) => (r.IsOverdue ? "late" : null) }), owner("owner", "Assigned to")],
   leads: [LEAD, CREATED, MOBILE, status("Status"), money("value", "Value ₹", "EstValue"), LAST,
     text("why", "Why it is here", (r) => whyParts(r).map((x) => x.text).join(" · "), {
       cell: (r, p) => whyParts(r).map((x, i) => (
@@ -152,27 +152,24 @@ export default function SalesRows({ report: slug }) {
     retry: false,
     showErrorMessage: false,
   });
-  const raw = data?.rows ?? [];
+  // The server lists only leads the caller can open (D8); dropping a row marked
+  // CanOpen = 0 is a backstop against an older server, never the rule itself.
+  const raw = (data?.rows ?? []).filter((r) => r.CanOpen == null || Boolean(r.CanOpen));
+  // total = the summary cell = listed rows + hiddenCount.
   const total = data?.total ?? 0;
+  const hidden = Number(data?.hiddenCount ?? 0);
   const path = data?.path ?? [];
   const person = path[path.length - 1] ?? null;
   const previous = isWon ? data?.previous ?? null : null;
 
-  const leadCell = (r) =>
-    r.CanOpen ? (
-      <Link to={`/sales/leads/${r.LeadId}`} onClick={(e) => e.stopPropagation()} style={{ color: p.text.primary, fontWeight: 600 }}>{r.LeadName}</Link>
-    ) : (
-      <span>
-        <span style={{ fontWeight: 600 }}>{r.LeadName}</span>
-        {r.OwnerName && <span style={{ color: p.text.secondary }}> now with {r.OwnerName}</span>}
-      </span>
-    );
-  const openCell = (r) =>
-    r.CanOpen ? (
-      <Link to={`/sales/leads/${r.LeadId}`} onClick={(e) => e.stopPropagation()} aria-label="Open lead" style={{ color: p.text.tertiary, display: "inline-flex" }}>
-        <ExternalLink size={14} />
-      </Link>
-    ) : null;
+  const leadCell = (r) => (
+    <Link to={`/sales/leads/${r.LeadId}`} onClick={(e) => e.stopPropagation()} style={{ color: p.text.primary, fontWeight: 600 }}>{r.LeadName}</Link>
+  );
+  const openCell = (r) => (
+    <Link to={`/sales/leads/${r.LeadId}`} onClick={(e) => e.stopPropagation()} aria-label="Open lead" style={{ color: p.text.tertiary, display: "inline-flex" }}>
+      <ExternalLink size={14} />
+    </Link>
+  );
 
   const specs = family ? FAMILIES[family] : [];
   const rows = raw.map((r) => ({ _r: r, ...Object.fromEntries(specs.map((c) => [c.key, c.value(r)])) }));
@@ -269,7 +266,7 @@ export default function SalesRows({ report: slug }) {
     content = <EmptyState icon={<CalendarX />} title={family === "leads" ? "No work recorded in this period" : "Nothing in this period"} action={tryMonth} />;
   } else {
     const context = data?.truncated
-      ? `Showing the first ${int(raw.length)} of ${int(total)} — narrow the dates`
+      ? `Showing the first ${int(raw.length)} of ${int(total - hidden)} — narrow the dates`
       : isWon
         ? `${count(total, "deal", "deals")} · Won ₹ is the before-tax value of the accepted quotation, or what the agent typed`
         : family === "leads" ? `${count(total, "lead", "leads")} touched in these days` : count(total, "row", "rows");
@@ -284,7 +281,7 @@ export default function SalesRows({ report: slug }) {
           rowKey={(row) => `${row._r.Metric ?? "lead"}-${row._r.Src ?? ""}-${row._r.RefId ?? row._r.LeadId}`}
           testId="sales-rows-table"
           loading={isLoading}
-          onRowClick={(row) => row._r.CanOpen && navigate(`/sales/leads/${row._r.LeadId}`)}
+          onRowClick={(row) => navigate(`/sales/leads/${row._r.LeadId}`)}
         />
       </>
     );
@@ -299,6 +296,13 @@ export default function SalesRows({ report: slug }) {
       <ReportFilterRow report={report} filters={filters} onChange={update} onExport={exportCsv} canExport={raw.length > 0} />
       <Card padding="none" sx={{ display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
         {content}
+        {family && !filters.error && !error && hidden > 0 && (
+          <Box data-testid="sales-rows-hidden" sx={{ px: fs(12), py: fs(10), fontSize: fs(13), color: p.text.secondary }}>
+            {family === "leads" // there hiddenCount counts leads, elsewhere activities
+              ? (hidden === 1 ? "1 lead no longer in your view" : `${int(hidden)} leads no longer in your view`)
+              : (hidden === 1 ? "1 activity on a lead no longer in your view" : `${int(hidden)} activities on leads no longer in your view`)}
+          </Box>
+        )}
       </Card>
     </Box>
   );

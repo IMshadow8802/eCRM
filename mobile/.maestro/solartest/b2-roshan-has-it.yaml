@@ -1,0 +1,12 @@
+# B2 Roshan has the lead, with the visit Kasak booked.
+appId: com.shadowider.eCRM
+---
+- runFlow:
+    file: ../access/find-lead.yaml
+    env:
+      NAME: "${NEHA_LEAD}"
+- assertVisible: "Assigned to"
+- assertVisible: "Roshan"
+- tapOn: "Follow-ups.*"
+- assertVisible: ".*Visit.*"
+- takeScreenshot: b2-roshan-followups

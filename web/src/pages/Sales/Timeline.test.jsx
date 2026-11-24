@@ -49,6 +49,22 @@ describe("Timeline", () => {
     expect(screen.getByText("Budget changed to 5000")).toBeInTheDocument();
   });
 
+  // SolarTest 2026-11-23: rows logged before the access model say "Transferred to";
+  // the screens now say "Reassigned". Reworded on display, the stored text is left alone.
+  it("rewords a legacy 'Transferred to' summary as 'Reassigned to'", () => {
+    wrap(
+      <Timeline
+        activity={[
+          { Id: 1, Type: "assigned", Summary: "Transferred to Vinod Kumar — Wrong branch", CreatedAt: "2026-11-20T10:00:00Z" },
+          { Id: 2, Type: "note", Summary: "Customer said: Transferred to Pune", CreatedAt: "2026-11-21T10:00:00Z" },
+        ]}
+      />,
+    );
+    expect(screen.getByText("Reassigned to Vinod Kumar — Wrong branch")).toBeInTheDocument();
+    expect(screen.queryByText(/^Transferred/)).toBeNull();
+    expect(screen.getByText("Customer said: Transferred to Pune")).toBeInTheDocument();
+  });
+
   // Spec 3: a lead's activity trail carries quotation events (created,
   // finalised, accepted, …) as ordinary rows, labelled and iconed like any
   // other type.

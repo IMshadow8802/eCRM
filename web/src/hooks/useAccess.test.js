@@ -9,7 +9,7 @@ describe("useAccess", () => {
   it("reads a module's rights and computes wide", () => {
     setAccess({ isAdmin: false, modules: { leads: { view: true, add: true, edit: false, delete: false, reach: "Office" } } });
     const { result } = renderHook(() => useAccess("leads"));
-    expect(result.current).toEqual({ view: true, add: true, edit: false, delete: false, reach: "Office", wide: true });
+    expect(result.current).toEqual({ view: true, add: true, edit: false, delete: false, reach: "Office", assignReach: null, wide: true });
   });
   it("Own and Team reach are not wide", () => {
     setAccess({ isAdmin: false, modules: { leads: { view: true, reach: "Own" }, tasks: { view: true, reach: "Team" } } });
@@ -26,9 +26,14 @@ describe("useAccess", () => {
     expect(renderHook(() => useIsAdmin()).result.current).toBe(false);
     expect(renderHook(() => useCanSeeSensitive()).result.current).toBe(false);
   });
+  it("carries the module's Can assign to as a field", () => {
+    setAccess({ isAdmin: false, modules: { complaints: { view: true, reach: "Own", assignReach: "Office" } } });
+    expect(renderHook(() => useAccess("complaints")).result.current.assignReach).toBe("Office");
+    expect(renderHook(() => useAccess("leads")).result.current.assignReach).toBeNull();
+  });
   it("admin is everything", () => {
     setAccess({ isAdmin: true, canSeeSensitive: true, modules: {} });
-    expect(renderHook(() => useAccess("settings")).result.current).toMatchObject({ view: true, delete: true, wide: true });
+    expect(renderHook(() => useAccess("settings")).result.current).toMatchObject({ view: true, delete: true, wide: true, assignReach: "Company" });
     expect(renderHook(() => useIsAdmin()).result.current).toBe(true);
     expect(renderHook(() => useCanSeeSensitive()).result.current).toBe(true);
   });

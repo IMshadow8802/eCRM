@@ -20,15 +20,15 @@ import {
   RotateCcw,
   Smartphone,
   Trash2,
+  Undo2,
   UserCheck,
 } from "lucide-react-native";
 
 import { fetchCalls } from "../../api/callQueries";
 import { fetchCustomerDetail } from "../../api/customerQueries";
-import { apiErrorMessage } from "../../api/errors";
+import { apiErrorMessage, RECORD_GONE_MESSAGE, recordGone } from "../../api/errors";
 import { deleteTicket, fetchEscalationTargets, fetchTicketDetail } from "../../api/ticketQueries";
 import { useActionBar } from "../../navigation/Shell";
-import useAuthStore from "../../stores/useAuthStore";
 import { activityBadge, colors, complaintBadge, escalatedMark, metrics, priorityChip, spacing } from "../../theme";
 import {
   ActionSheet,
@@ -59,6 +59,7 @@ import {
   type SheetAction,
   type SheetRef,
 } from "../../ui";
+import { activityText } from "../../utils/activityText";
 import AttachmentList from "../attachments/AttachmentList";
 import { useAccess } from "../auth/useAccess";
 import { ComplaintSheets, type ComplaintAction, type ComplaintSheetsHandle } from "./ComplaintSheets";
@@ -81,6 +82,7 @@ export interface ComplaintDetailBodyProps {
   /** Phone: the band's back. The tablet pane has none. */
   onBack?: () => void;
   onEdit: (ticketId: number) => void;
+  /** Deleted, or no longer the caller's (reassigned, sent back, a 404): leave the record. */
   onDeleted: () => void;
   /** Another of the customer's complaints. */
   onOpenTicket: (ticketId: number) => void;
@@ -88,7 +90,7 @@ export interface ComplaintDetailBodyProps {
 
 /** Summaries that lead with one of these verbs get it bold (E 11 / T2: "**Escalated** to Neha Kapoor"). */
 const ACTIVITY_VERBS = new Set([
-  "created", "escalated", "assigned", "transferred", "unassigned", "resolved", "reopened", "closed", "rejected", "called",
+  "created", "escalated", "assigned", "reassigned", "transferred", "unassigned", "resolved", "reopened", "closed", "rejected", "called",
 ]);
 
 /**
@@ -123,7 +125,6 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
   const queryClient = useQueryClient();
   const toast = useToast();
   const layout = useLayout();
-  const userId = useAuthStore((s) => s.UserId);
   // Courtesy only (CLAUDE.md §3): the routes 403 without these grants anyway.
   const can = useAccess("complaints");
   const canSeeCustomers = useAccess("customers").view;
@@ -146,6 +147,9 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
   const ticket = detailQuery.data?.ticket ?? null;
   const code = ticket ? lifecycleOf(ticket) : "open";
   const active = isActive(code);
+  // The server's per-record answers (fn_RecordActions) on top of the module grant.
+  const canEdit = can.edit && ticket?.CanEdit === true;
+  const canReopen = canEdit && ticket?.CanReopen === true;
 
   const { statuses, callOutcomes } = useTicketRefData();
   // sp_LogCall's activity row only says a call happened; the notes are on tblCall.
@@ -153,12 +157,11 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
     queryKey: ["calls", "ticket", ticketId],
     queryFn: () => fetchCalls({ TicketId: ticketId }),
   });
-  // The chain above whoever is working it — no chain, no Escalate.
-  const forUserId = ticket?.AssignedTo ?? userId;
+  // The chain above whoever is working it (the server works it out) — no chain, no Escalate.
   const { data: seniors } = useQuery({
-    queryKey: ["escalation-targets", forUserId],
-    queryFn: () => fetchEscalationTargets(forUserId),
-    enabled: can.edit && !!ticket && active,
+    queryKey: ["escalation-targets", ticketId],
+    queryFn: () => fetchEscalationTargets(ticketId),
+    enabled: canEdit && active,
   });
   // The customer's complaints — only once asked for.
   const historyQuery = useQuery({
@@ -170,7 +173,14 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
 
   const remove = useMutation({
     mutationFn: (p: Parameters<typeof deleteTicket>[0]) => deleteTicket(p),
-    onError: (err) => toast.error(apiErrorMessage(err, "Could not delete this complaint.")),
+    onError: (err) => {
+      if (!recordGone(err)) return toast.error(apiErrorMessage(err, "Could not delete this complaint."));
+      setConfirmingDelete(false);
+      onDeleted();
+      queryClient.removeQueries({ queryKey: ["ticket", ticketId] });
+      void queryClient.invalidateQueries({ queryKey: ["tickets"] });
+      toast.error(RECORD_GONE_MESSAGE);
+    },
     onSuccess: () => {
       setConfirmingDelete(false);
       void queryClient.invalidateQueries({ queryKey: ["tickets"] });
@@ -181,16 +191,16 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
   const run = (action: ComplaintAction) => () => ticket && sheets?.open(action, ticket);
   const has = (c: Parameters<typeof statusFor>[1]) => !!statusFor(statuses, c);
 
-  // E 11: Log call · On hold · Resolve (main) · Transfer · Escalate. On hold →
-  // Resume; terminal → Reopen is the main one. No edit grant → nothing: every
-  // one of them is a write the server would refuse (logCall checks write too).
+  // E 11: Log call · On hold · Resolve (main) · Reassign · Escalate. On hold →
+  // Resume; terminal → Reopen is the main one. No edit → nothing: every one of
+  // them is a write the server would refuse (logCall checks write too).
   const bar: BarAction[] =
-    !ticket || !can.edit
+    !ticket || !canEdit
       ? []
       : [
           { key: "call", label: "Log call", icon: PhoneCall, onPress: run("call") },
           ...(isTerminal(code)
-            ? has("open")
+            ? has("open") && canReopen
               ? [{ key: "reopen", label: "Reopen", icon: RotateCcw, main: true, onPress: run("reopen") }]
               : []
             : [
@@ -203,8 +213,9 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
                     : []),
                 ...(has("resolved") ? [{ key: "resolve", label: "Resolve", icon: CircleCheck, main: true, onPress: run("resolve") }] : []),
               ]),
-          { key: "transfer", label: "Transfer", icon: ArrowLeftRight, onPress: run("transfer") },
-          ...(active && seniors?.length ? [{ key: "escalate", label: "Escalate", icon: ChevronsUp, onPress: run("escalate") }] : []),
+          ...(ticket.CanReassign === true ? [{ key: "reassign", label: "Reassign", icon: ArrowLeftRight, onPress: run("reassign") }] : []),
+          // Shown once the chain is known, even empty: the sheet then says why nobody is there.
+          ...(active && seniors ? [{ key: "escalate", label: "Escalate", icon: ChevronsUp, onPress: run("escalate") }] : []),
         ];
   const { inBand } = useActionBar(bar);
 
@@ -212,7 +223,8 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
 
   if (!ticket) {
     const status = isAxiosError(detailQuery.error) ? detailQuery.error.response?.status : undefined;
-    const forbidden = status === 403 || status === 404 || (detailQuery.isSuccess && !ticket);
+    // 404 = not visible / gone (X404); a 403 is a refusal, not a missing record.
+    const forbidden = status === 404 || (detailQuery.isSuccess && !ticket);
     return (
       <>
         <Band variant="record" title="Complaint" titleVariant="h2" tone={inBand ? "raised" : "band"} gutter={inBand ? metrics.pane.detailBand : undefined} {...back} />
@@ -256,7 +268,7 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
           key: `a-${a.Id}`,
           at: a.CreatedAt,
           badge: { tone: b.tone, icon: b.icon, size: rowBadge },
-          ...activityTitle(a.Summary ?? a.Type ?? ""),
+          ...activityTitle(activityText(a.Summary ?? a.Type ?? "")),
           meta: a.UserName ? `By ${a.UserName}` : undefined,
           right: { text: whenText(a.CreatedAt) },
         };
@@ -335,13 +347,17 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
   ];
 
   const menu: SheetAction[] = [
-    ...(can.edit ? [{ key: "edit", label: "Edit complaint", icon: Pencil, onPress: () => onEdit(ticketId) }] : []),
-    ...(can.edit ? [{ key: "status", label: "Change status", icon: ArrowLeftRight, onPress: () => statusRef.current?.present() }] : []),
-    ...(can.edit && code !== "closed"
+    ...(canEdit ? [{ key: "edit", label: "Edit complaint", icon: Pencil, onPress: () => onEdit(ticketId) }] : []),
+    // Only when the server names who gave it (fn_RecordGiver); the bar is full at five.
+    ...(canEdit && ticket.CanReassign === true && ticket.SendBackToId && ticket.SendBackToName
+      ? [{ key: "sendback", label: `Send back to ${ticket.SendBackToName}`, icon: Undo2, onPress: run("sendback") }]
+      : []),
+    ...(canEdit ? [{ key: "status", label: "Change status", icon: ArrowLeftRight, onPress: () => statusRef.current?.present() }] : []),
+    ...(canEdit && code !== "closed"
       ? [{ key: "close", label: "Close", icon: Archive, onPress: run("close") }]
       : []),
-    ...(can.edit && active ? [{ key: "reject", label: "Reject", icon: CircleX, onPress: run("reject") }] : []),
-    ...(can.edit && isTerminal(code) ? [{ key: "reopen", label: "Reopen", icon: RotateCcw, onPress: run("reopen") }] : []),
+    ...(canEdit && active ? [{ key: "reject", label: "Reject", icon: CircleX, onPress: run("reject") }] : []),
+    ...(canReopen && isTerminal(code) ? [{ key: "reopen", label: "Reopen", icon: RotateCcw, onPress: run("reopen") }] : []),
     // T2: in the band Escalate folds in here, so the ticket number has room.
     ...(inBand ? bar.filter((a) => a.key === "escalate").map(({ key, label, icon, onPress }) => ({ key, label, icon, onPress })) : []),
     { key: "files", label: "Files", icon: Paperclip, onPress: () => scrollRef.current?.scrollTo({ y: filesY, animated: true }) },
@@ -353,7 +369,8 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
   // Every company status but the current one (as before E), each with its
   // Code's badge. The pick asks exactly what that Code demands (ComplaintSheets).
   const statusMoves: SheetAction[] = statuses
-    .filter((s) => s.Id !== ticket.StatusId)
+    // A reopen only when the server says this caller may (CanReopen).
+    .filter((s) => s.Id !== ticket.StatusId && (canReopen || !(isTerminal(code) && isActive(asStatusCode(s.Code)))))
     .map((s) => {
       const to = asStatusCode(s.Code);
       const b = complaintBadge(to);
@@ -494,7 +511,7 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
 
           <View onLayout={(e) => setFilesY(e.nativeEvent.layout.y)}>
             <GroupHeader label="Files" />
-            <AttachmentList entity="ticket" entityId={ticketId} canManage={can.edit} embedded />
+            <AttachmentList entity="ticket" entityId={ticketId} canManage={canEdit} embedded />
           </View>
 
           {assignments.length ? (
@@ -518,7 +535,7 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
         </ScrollView>
       </BandSheet>
 
-      <ComplaintSheets ref={setSheets} />
+      <ComplaintSheets ref={setSheets} onGone={onDeleted} />
       <ActionSheet ref={menuRef} title="Complaint actions" actions={menu} />
       <ActionSheet
         ref={statusRef}

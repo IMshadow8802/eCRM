@@ -7,8 +7,9 @@ import { http, HttpResponse } from "msw";
 import { server } from "./mocks/server";
 
 export const json = (data) => HttpResponse.json({ success: true, message: "ok", responseCode: 200, data });
-export const refuse = (message, status = 400) =>
-  HttpResponse.json({ success: false, message, responseCode: status }, { status });
+// `code` as the server sends it: a 404 is the record's own NOT_FOUND.
+export const refuse = (message, status = 400, code = status === 404 ? "NOT_FOUND" : "SP_ERROR") =>
+  HttpResponse.json({ success: false, message, code, responseCode: status }, { status });
 
 const page = (rows) => ({ currentPage: 1, pageSize: 25, totalRecords: rows.length, totalPages: 1 });
 
@@ -67,6 +68,7 @@ export const ticketDetail = (over = {}) => ({
   ticket: ticketRow({
     EditBy: null, CustomerContactPerson: "Gurpreet", CustomerEmail: "acme@example.com",
     CustomerCity: "Pune", CustomerAddress: "12 MG Road", PreviousTickets: 2,
+    CanEdit: 1, CanReassign: 1, CanReopen: 0, SendBackToId: null, SendBackToName: null,
   }),
   fields: [],
   activity: [

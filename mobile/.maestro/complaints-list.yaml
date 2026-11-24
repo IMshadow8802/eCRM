@@ -1,4 +1,5 @@
-# The queue (E 10): five presets with counts, the status pills led by
+# The queue (E 10): five presets with counts (the row scrolls sideways:
+# access/preset.yaml swipes to each), the status pills led by
 # "Active n" (equal to the preset), search, and the empty state.
 appId: com.shadowider.eCRM
 ---
@@ -8,20 +9,35 @@ appId: com.shadowider.eCRM
 - assertVisible:
     id: "complaint-presets"
 - assertVisible: "Mine, \\d+"
-- tapOn: "Team, \\d+"
+- runFlow:
+    file: access/preset.yaml
+    env:
+      NAME: "Team, \\d+"
 - assertVisible: "Active, \\d+"
 - assertVisible:
     id: "complaints-list"
-- tapOn: "Unassigned, \\d+"
+- runFlow:
+    file: access/preset.yaml
+    env:
+      NAME: "Unassigned, \\d+"
 - assertVisible: "Active, \\d+"
-- tapOn: "Overdue, \\d+"
+- runFlow:
+    file: access/preset.yaml
+    env:
+      NAME: "Overdue, \\d+"
 - assertVisible: "Active, \\d+"
 - assertVisible: "Overdue \\d+ d"
 - takeScreenshot: complaints-list
-- tapOn: "Escalated, \\d+"
+- runFlow:
+    file: access/preset.yaml
+    env:
+      NAME: "Escalated, \\d+"
 - assertVisible: "Active, \\d+"
 # A status pill narrows within the preset.
-- tapOn: "Team, \\d+"
+- runFlow:
+    file: access/preset.yaml
+    env:
+      NAME: "Team, \\d+"
 - tapOn: "New, \\d+"
 - waitForAnimationToEnd
 - tapOn: "Active, \\d+"

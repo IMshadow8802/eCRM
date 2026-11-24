@@ -10,7 +10,7 @@ const json = (data) => HttpResponse.json({ success: true, message: "ok", respons
 export function mockReportEndpoints(path, data, capture = {}) {
   server.use(
     http.post("*/api/users/fetchBranches", () => json({ branches: [{ Id: 1, BranchName: "HEAD OFFICE" }, { Id: 2, BranchName: "SOUTH EXTENSION" }] })),
-    http.post("*/api/users/fetchAssignableUsers", () => json({ users: [{ Id: 17, FullName: "Amit Singh" }, { Id: 18, FullName: "Sara Khan" }] })),
+    http.post("*/api/users/fetchUsers", () => json({ users: [{ Id: 17, FullName: "Amit Singh" }, { Id: 18, FullName: "Sara Khan" }] })),
     http.post("*/api/config/fetchLookups", () => json({ lookups: [{ Id: 11, Value: "Website" }, { Id: 12, Value: "Referral" }] })),
     http.post("*/api/products/fetchProducts", () => json({ products: [{ Id: 1, Name: "Gold Chain 22K" }], pagination: { currentPage: 1, pageSize: 200, totalRecords: 1, totalPages: 1 } })),
     http.post(`*${path}`, async ({ request }) => {

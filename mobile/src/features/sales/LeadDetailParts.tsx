@@ -46,8 +46,8 @@ const owner = (lead: Lead) => (
 );
 
 /**
- * Mobile + call/message (G30), then Owner and Source (phone) or the facts
- * list in the 300 column (T3: Owner · Source · Product · custom fields · Created).
+ * Mobile + call/message (G30), then Assigned to and Source (phone) or the facts
+ * list in the 300 column (T3: Assigned to · Source · Product · custom fields · Created).
  */
 export function ContactCard({
   lead, fields, wide, onCall, onMessage,
@@ -78,7 +78,7 @@ export function ContactCard({
           <Facts
             layout="list"
             items={[
-              { label: "Owner", node: owner(lead) },
+              { label: "Assigned to", node: owner(lead) },
               { label: "Source", value: lead.SourceName ?? "—" },
               { label: "Product", value: lead.ProductName ?? "—" },
               ...fields.map((f) => ({ label: f.Label, value: customValue(f) })),
@@ -89,7 +89,7 @@ export function ContactCard({
       ) : (
         <View style={styles.facts}>
           <View style={styles.flex}>
-            <Text variant="label" color="textMuted">Owner</Text>
+            <Text variant="label" color="textMuted">Assigned to</Text>
             <View style={styles.factValue}>{owner(lead)}</View>
           </View>
           <View style={styles.flex}>
@@ -143,10 +143,12 @@ export function DetailsFacts({ lead, fields, wide }: { lead: Lead; fields: Custo
 /**
  * Follow-ups (E 15 / T3): the next open one as the butter card, then the rest
  * as rows. `onOpen` is absent for a view-only role; T3 puts Mark done and
- * Reschedule on the card itself (`wide`).
+ * Reschedule on the card itself (`wide`). `acts` answers per follow-up (its
+ * own CanAct): one delegated to the caller stays actionable on a lead they
+ * cannot edit, and one they may not touch offers nothing.
  */
 export function FollowUpsTab({
-  followups, next, plannedBy, wide, onOpen, onDone, onReschedule,
+  followups, next, plannedBy, wide, onOpen, onDone, onReschedule, acts = () => true,
 }: {
   followups: FollowUp[];
   next: FollowUp | undefined;
@@ -155,16 +157,18 @@ export function FollowUpsTab({
   onOpen?: (f: FollowUp) => void;
   onDone?: (f: FollowUp) => void;
   onReschedule?: (f: FollowUp) => void;
+  acts?: (f: FollowUp) => boolean;
 }) {
   const rest = followups.filter((f) => f !== next);
   if (!followups.length) {
     return <Text variant="meta" style={styles.none}>No follow-ups yet.</Text>;
   }
   const by = next ? plannedBy(next) : null;
+  const nextActs = next ? acts(next) : false;
   return (
     <View>
       {next ? (
-        <Card tone="followUp" gap={0} style={wide ? styles.nextWide : styles.next} onPress={onOpen && !wide ? () => onOpen(next) : undefined} testID="next-followup">
+        <Card tone="followUp" gap={0} style={wide ? styles.nextWide : styles.next} onPress={onOpen && nextActs && !wide ? () => onOpen(next) : undefined} testID="next-followup">
           <View style={styles.row}>
             <StatusBadge tone="butter" icon={CalendarClock} />
             <View style={styles.flex}>
@@ -180,7 +184,7 @@ export function FollowUpsTab({
             </View>
           </View>
           {next.Remarks ? <Text variant="text" style={styles.remarks}>{next.Remarks}</Text> : null}
-          {wide && onDone && onReschedule ? (
+          {wide && nextActs && onDone && onReschedule ? (
             <View style={styles.buttons}>
               <Button title="Mark done" icon={Check} size="sm" onPress={() => onDone(next)} />
               <Button title="Reschedule" size="sm" variant="secondary" onPress={() => onReschedule(next)} />
@@ -201,7 +205,7 @@ export function FollowUpsTab({
                 titleTone={open ? "default" : "muted"}
                 meta={followUpMeta(f)}
                 noSeparator={i === 0}
-                onPress={open && onOpen ? () => onOpen(f) : undefined}
+                onPress={open && onOpen && acts(f) ? () => onOpen(f) : undefined}
                 testID={`followup-${f.Id}`}
               />
             );

@@ -30,22 +30,20 @@ beforeEach(() => {
 });
 
 describe("reportController.getDashboard", () => {
-  it("passes leads scope and complaints scope separately", async () => {
+  // REGRESSION F6: the old call sent the leads lists + the complaints lists.
+  it("F6 regression: getDashboard passes only CompId and UserId", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[]] });
     await reportController.getDashboard(
       dashReq([DASH, ["leads", "v", "Own"], ["complaints", "v", "Office"]]), mockRes());
-    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_Dashboard", {
-      CompId: 5, UserId: 7,
-      AccessibleBranchIdsJson: "[2]", OwnerIdsJson: "[7]",
-      TicketBranchIdsJson: "[2]", TicketOwnerIdsJson: null,
-    });
+    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_Dashboard", { CompId: 5, UserId: 7 });
   });
 
-  it("sends an empty ticket allow-list when the role has no complaints module", async () => {
+  it("takes the person from the session, never the body", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [[]] });
-    await reportController.getDashboard(dashReq([DASH, ["leads", "v", "Office"]]), mockRes());
-    expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_Dashboard",
-      expect.objectContaining({ TicketBranchIdsJson: "[]", TicketOwnerIdsJson: "[]", OwnerIdsJson: null }));
+    const req = dashReq([DASH]);
+    req.body = { UserId: 99, CompId: 98 };
+    await reportController.getDashboard(req, mockRes());
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toEqual({ CompId: 5, UserId: 7 });
   });
 
   it("maps the chart series recordsets into named keys", async () => {
@@ -113,10 +111,8 @@ describe("reportController ticket reports", () => {
     // and fail-open for anyone whose tblUser.BranchId is NULL.
     expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_TicketsByCategory", {
       CompId: 5,
-      BranchId: null,
       UserId: 7,
-      AccessibleBranchIdsJson: "[2]",
-      OwnerIdsJson: "[7]",
+      BranchId: null,
     });
     expect(res.json.mock.calls[0][0].data.categories).toHaveLength(1);
   });
@@ -129,14 +125,20 @@ describe("reportController ticket reports", () => {
     await reportController.resolutionSummary(scopedReq(), res);
     expect(database.executeStoredProcedure).toHaveBeenCalledWith("sp_ResolutionSummary", {
       CompId: 5,
-      BranchId: null,
       UserId: 7,
-      AccessibleBranchIdsJson: "[2]",
-      OwnerIdsJson: "[7]",
+      BranchId: null,
     });
     const rows = res.json.mock.calls[0][0].data.resolutions;
     expect(rows).toHaveLength(1);
     expect(rows[0].AvgResolutionMins).toBe(95);
+  });
+
+  it("an office filter narrows (BranchId passed), the database decides the rest", async () => {
+    database.executeStoredProcedure.mockResolvedValue({ recordsets: [[]] });
+    await reportController.ticketsByCategory(baseReq({ body: { BranchId: "4" } }), mockRes());
+    await reportController.resolutionSummary(baseReq({ body: { BranchId: 4 } }), mockRes());
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toEqual({ CompId: 5, UserId: 7, BranchId: 4 });
+    expect(database.executeStoredProcedure.mock.calls[1][1]).toEqual({ CompId: 5, UserId: 7, BranchId: 4 });
   });
 
   it("handles DB error as 500 on a ticket report", async () => {
@@ -315,7 +317,7 @@ const salesCall = (n) => database.executeStoredProcedure.mock.calls[n][1];
 describe("reportController.sales", () => {
   const rs = (lines, path = [], ok = 1) => ({ recordsets: [lines, path, [{ NodeOk: ok }]] });
 
-  it("calls sp_RptSales for the range and the previous range with the caller's scope", async () => {
+  it("calls sp_RptSales for the range and the previous range with the session person, no lists", async () => {
     database.executeStoredProcedure
       .mockResolvedValueOnce(rs([{ GroupKey: 3, GroupLabel: "A", LineKind: "person", New: 2, WonValue: "10.00" }]))
       .mockResolvedValueOnce(rs([{ GroupKey: 3, New: 1, WonValue: "0.00" }]));
@@ -324,8 +326,7 @@ describe("reportController.sales", () => {
     await reportController.sales(req, res);
     expect(database.executeStoredProcedure).toHaveBeenNthCalledWith(1, "sp_RptSales", {
       CompId: 5, FromDate: "2026-11-17", ToDate: "2026-11-17", GroupBy: "team", NodeId: 12,
-      BranchId: null, SourceId: null, ProductId: null,
-      UserId: 7, AccessibleBranchIdsJson: expect.anything(), OwnerIdsJson: expect.anything() });
+      BranchId: null, SourceId: null, ProductId: null, UserId: 7 });
     expect(salesCall(1)).toMatchObject({ FromDate: "2026-11-16", ToDate: "2026-11-16", NodeId: 12 });
     const data = res.json.mock.calls[0][0].data;
     expect(data.totals).toMatchObject({ New: 2, WonValue: 10 });
@@ -380,11 +381,14 @@ describe("reportController.sales", () => {
     expect(salesCall(0).FromDate).toBe(salesCall(0).ToDate);
   });
 
-  it("passes an empty owner list as '[]', never null", async () => {
+  it("sends no lists to either call, whatever the caller's scope", async () => {
     database.executeStoredProcedure.mockResolvedValue(rs([]));
-    await reportController.sales(salesReq({ FromDate: "2026-11-17", ToDate: "2026-11-17" }, { branchIds: [2], ownerIds: [] }), mockRes());
-    expect(salesCall(0)).toMatchObject({ OwnerIdsJson: "[]", AccessibleBranchIdsJson: "[2]" });
-    expect(salesCall(1)).toMatchObject({ OwnerIdsJson: "[]" });
+    await reportController.sales(salesReq({ FromDate: "2026-11-17", ToDate: "2026-11-17", UserId: 99 }, { branchIds: [2], ownerIds: [] }), mockRes());
+    for (const n of [0, 1]) {
+      expect(salesCall(n)).not.toHaveProperty("AccessibleBranchIdsJson");
+      expect(salesCall(n)).not.toHaveProperty("OwnerIdsJson");
+      expect(salesCall(n).UserId).toBe(7);
+    }
   });
 
   it("answers nodeOk false with no rows when the SP refuses the node", async () => {
@@ -431,9 +435,9 @@ describe("reportController.salesRows", () => {
     LeadName: "Acme", MobileNo: "9825012345", Amount: "5.00", Detail1: "12", StatusCode: "open" };
   const body = (over = {}) => ({ FromDate: "2026-09-01", ToDate: "2026-09-30", Metric: "call", PersonId: 9, Rollup: true, ...over });
 
-  it("passes the drill and scope, MaxRows 2000, and reports truncation from the true total", async () => {
+  it("passes the drill and the session person, MaxRows 2000, and reports truncation from the true total", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce({
-      recordsets: [[ROW, { ...ROW, RefId: 2 }], [{ Total: 6412, AmountTotal: "5.00" }], [{ Ord: 1, Id: 9, Name: "Neha" }]],
+      recordsets: [[ROW, { ...ROW, RefId: 2 }], [{ Total: 6412, AmountTotal: "5.00" }], [{ Ord: 1, Id: 9, Name: "Neha" }], [{ HiddenCount: 0 }]],
     });
     const res = mockRes();
     await reportController.salesRows(salesReq(body()), res);
@@ -441,8 +445,7 @@ describe("reportController.salesRows", () => {
     expect(database.executeStoredProcedure.mock.calls[0][0]).toBe("sp_RptSalesRows");
     expect(salesCall(0)).toMatchObject({
       CompId: 5, FromDate: "2026-09-01", ToDate: "2026-09-30", GroupBy: "team",
-      Metric: "call", Shape: "events", PersonId: 9, Rollup: 1, MaxRows: 2000,
-      UserId: 7, AccessibleBranchIdsJson: "[2]", OwnerIdsJson: "[7]",
+      Metric: "call", Shape: "events", PersonId: 9, Rollup: 1, MaxRows: 2000, UserId: 7,
     });
     const data = res.json.mock.calls[0][0].data;
     expect(data.total).toBe(6412);
@@ -454,6 +457,39 @@ describe("reportController.salesRows", () => {
     expect(data.range).toEqual({ from: "2026-09-01", to: "2026-09-30" });
     // text and date columns stay as they came; money becomes a number
     expect(data.rows[0]).toMatchObject({ EventAt: ROW.EventAt, MobileNo: "9825012345", Detail1: "12", Amount: 5, LeadId: 9 });
+  });
+
+  it("salesRows returns hiddenCount from the last recordset", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[ROW], [{ Total: 4, AmountTotal: "5.00" }], [], [{ HiddenCount: 3 }]],
+    });
+    const res = mockRes();
+    await reportController.salesRows(salesReq(body()), res);
+    expect(res.json.mock.calls[0][0].data).toMatchObject({ total: 4, hiddenCount: 3, truncated: false });
+  });
+
+  // REGRESSION F2: the drill was fed Node's lists and every matching row came back.
+  it("F2 regression: salesRows passes no list and returns only the rows the procedure returned", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[ROW, { ...ROW, RefId: 2 }], [{ Total: 5, AmountTotal: "5.00" }], [], [{ HiddenCount: 3 }]],
+    });
+    const res = mockRes();
+    await reportController.salesRows(salesReq(body(), { branchIds: [2], ownerIds: [] }), res);
+    expect(salesCall(0)).not.toHaveProperty("AccessibleBranchIdsJson");
+    expect(salesCall(0)).not.toHaveProperty("OwnerIdsJson");
+    const data = res.json.mock.calls[0][0].data;
+    expect(data.rows.map((r) => r.RefId)).toEqual([1, 2]);
+    // rows + hiddenCount = total: nothing was cut off, so not truncated
+    expect(data).toMatchObject({ total: 5, hiddenCount: 3, truncated: false });
+  });
+
+  it("is truncated when visible matches exceed the rows returned", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce({
+      recordsets: [[ROW], [{ Total: 10, AmountTotal: 0 }], [], [{ HiddenCount: 3 }]],
+    });
+    const res = mockRes();
+    await reportController.salesRows(salesReq(body()), res);
+    expect(res.json.mock.calls[0][0].data).toMatchObject({ total: 10, hiddenCount: 3, truncated: true });
   });
 
   it("clamps a larger MaxRows to 2000", async () => {
@@ -519,6 +555,6 @@ describe("reportController.salesRows", () => {
     database.executeStoredProcedure.mockResolvedValueOnce({ recordsets: [] });
     const res = mockRes();
     await reportController.salesRows(salesReq(body()), res);
-    expect(res.json.mock.calls[0][0].data).toMatchObject({ rows: [], total: 0, amountTotal: 0, truncated: false, path: [] });
+    expect(res.json.mock.calls[0][0].data).toMatchObject({ rows: [], total: 0, amountTotal: 0, hiddenCount: 0, truncated: false, path: [] });
   });
 });

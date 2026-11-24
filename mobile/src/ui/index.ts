@@ -8,6 +8,7 @@
 // If a screen needs a widget that is not here, add it here.
 export { ActionBar } from "./ActionBar";
 export { ActionSheet } from "./ActionSheet";
+export { AssignSheet } from "./AssignSheet";
 export { Avatar, AvatarStack, avatarTone } from "./Avatar";
 export { Band, BandSheet } from "./Band";
 export { BoardColumns, boardColumnWidth, BOARD_GAP } from "./BoardColumns";
@@ -50,6 +51,7 @@ export { KeyboardScrollView } from "./KeyboardScrollView";
 
 export type { ActionBarProps, BarAction } from "./ActionBar";
 export type { ActionSheetProps, SheetAction } from "./ActionSheet";
+export type { AssignPerson, AssignSheetProps } from "./AssignSheet";
 export type { AvatarProps, AvatarStackProps } from "./Avatar";
 export type { BandProps, BandSheetProps, BandVariant } from "./Band";
 export type { BoardColumnsProps } from "./BoardColumns";

@@ -1,7 +1,7 @@
 import { useTheme } from "@mui/material/styles";
 import useUiScale from "../../hooks/useUiScale";
 import { Box } from "@mui/material";
-import SampleBadge from "./SampleBadge";
+import ChartEmpty from "./ChartEmpty";
 import {
   Funnel as RechartsFunnel,
   FunnelChart as RechartsFunnelChart,
@@ -11,20 +11,13 @@ import {
   Cell,
 } from "recharts";
 
-const FALLBACK = [
-  { name: "Visit", value: 1200 },
-  { name: "Inquiry", value: 780 },
-  { name: "Order", value: 420 },
-  { name: "Click", value: 260 },
-  { name: "Show", value: 140 },
-];
-
 export default function Funnel({ data, height = 240 }) {
   const theme = useTheme();
   const k = useUiScale();
   const p = theme.tokens;
   const hasData = Array.isArray(data) && data.length > 0;
-  const rows = hasData ? data : FALLBACK;
+  if (!hasData) return <ChartEmpty height={height * k} />;
+  const rows = data;
   const palette = [
     p.primary.main,
     p.info.main,
@@ -36,7 +29,6 @@ export default function Funnel({ data, height = 240 }) {
 
   return (
     <Box sx={{ position: "relative" }}>
-      {!hasData && <SampleBadge />}
       <ResponsiveContainer width="100%" height={height * k}>
         <RechartsFunnelChart>
         <Tooltip

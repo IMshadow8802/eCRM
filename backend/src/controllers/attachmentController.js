@@ -5,6 +5,7 @@ const { cleanSpRows } = require("../utils/spHelpers");
 const { UPLOAD_ROOT, ENTITIES } = require("../middleware/upload");
 const { logActivity, ACTIONS } = require("../utils/activityLogger");
 const { assertRecordAccess } = require("../middleware/permission");
+const { actor } = require("../utils/actor");
 
 // Attaching to a task is a work artifact (assignees + creator + owner/manager),
 // not a redefinition of it. Other entities keep the coarse write level, which
@@ -31,7 +32,36 @@ function unlinkQuiet(p) {
 const refusal = (res, message) => res.status(409).json({
   success: false, message, code: "CONFLICT", responseCode: 409, timestamp: new Date().toISOString(),
 });
+// A response double: assertRecordAccess answers into it, the caller decides
+// whether that answer goes out.
+const capture = () => ({ status(c) { this.code = c; return this; }, json(b) { this.body = b; return this; } });
+// Gate on an attachment's parent without answering for it. A parent the caller
+// cannot see must read EXACTLY like a missing attachment (else ids can be
+// probed); only a visible-but-not-editable write keeps its 403. Returns the
+// granted record, or false after calling missing() / replaying the refusal.
+async function gateParent(req, res, row, level, missing) {
+  const cap = capture();
+  const granted = await assertRecordAccess(req, cap, row.Entity, row.EntityId, level);
+  if (granted) return granted;
+  if (cap.code === 404 || (cap.code === 403 && level === "view")) missing();
+  else res.status(cap.code).json(cap.body);
+  return false;
+}
 const DRAFT_ONLY = "Only a draft quotation's pictures can be changed";
+
+// FR-I1: whoever logged a lead / complaint may still UPLOAD to it for a short
+// while after creating it, even when it was created onto someone else and they
+// no longer see it. The rule is the database's (sp_LoggerMayAttach); upload
+// only — listing, downloading and deleting still need the record visible.
+async function loggerMayAttach(req, entity, entityId) {
+  if (entity !== "lead" && entity !== "ticket") return false;
+  const { CompId, UserId } = actor(req);
+  const r = await database.executeStoredProcedure("sp_LoggerMayAttach", {
+    CompId, UserId, Entity: entity, EntityId: entityId,
+  });
+  const v = r.recordsets?.[0]?.[0]?.MayAttach;
+  return v === true || v === 1;
+}
 
 class AttachmentController {
   // POST /api/attachments/save  (multipart: file + Entity + EntityId)
@@ -65,10 +95,16 @@ class AttachmentController {
       // evidence belongs to whoever is doing the work, not only to whoever
       // defined it. assertRecordAccess ignores the level for lead/ticket, so
       // those paths are unaffected.
-      const parent = await assertRecordAccess(req, res, String(Entity), Number(EntityId), ATTACH_LEVEL(Entity));
+      const refused = capture();
+      let parent = await assertRecordAccess(req, refused, String(Entity), Number(EntityId), ATTACH_LEVEL(Entity));
+      // Refused (404 hidden/missing, 403 not editable): the logger's window may
+      // still allow it. Otherwise the gate's own answer goes out, so a hidden
+      // record still reads exactly like a missing one.
+      if (!parent && (refused.code === 404 || refused.code === 403)
+          && (await loggerMayAttach(req, String(Entity), Number(EntityId)))) parent = true;
       if (!parent) {
-        unlinkQuiet(file.path); // 403 already sent → clean the just-written file
-        return;
+        unlinkQuiet(file.path); // reject → clean the just-written file
+        return res.status(refused.code).json(refused.body);
       }
       if (String(Entity) === "quotation" && parent.Status !== "draft") {
         unlinkQuiet(file.path);
@@ -152,8 +188,13 @@ class AttachmentController {
       const attachments = cleanSpRows(result.recordsets[0]);
 
       // Id-only fetch: the entity comes from the DB row, never the client.
-      if (Id > 0 && attachments[0]
-          && !(await assertRecordAccess(req, res, attachments[0].Entity, attachments[0].EntityId))) return;
+      if (Id > 0 && attachments[0]) {
+        const sendEmpty = () => res.status(200).json({
+          success: true, message: "Attachments fetched", responseCode: 200,
+          data: { attachments: [] }, timestamp: new Date().toISOString(),
+        });
+        if (!(await gateParent(req, res, attachments[0], "view", sendEmpty))) return;
+      }
 
       return res.status(200).json({
         success: true, message: "Attachments fetched", responseCode: 200,
@@ -192,13 +233,12 @@ class AttachmentController {
       });
       const rows = cleanSpRows(result.recordsets[0], "Id");
       const row = rows[0];
-      if (!row) {
-        return res.status(404).json({ success: false, message: "Attachment not found", responseCode: 404 });
-      }
+      const notFound = () => res.status(404).json({ success: false, message: "Attachment not found", responseCode: 404 });
+      if (!row) return notFound();
 
       // Entity/EntityId come from the DB row, never the client. Lead/ticket
       // via scope, task via workspace membership (personal beats admin).
-      if (!(await assertRecordAccess(req, res, row.Entity, row.EntityId))) return;
+      if (!(await gateParent(req, res, row, "view", notFound))) return;
 
       const abs = filePath(row.Entity, row.StoredName);
       if (!fs.existsSync(abs)) {
@@ -234,17 +274,16 @@ class AttachmentController {
         Id, CompId: req.user.CompId, Entity: null, EntityId: null,
       });
       const row = cleanSpRows(lookup.recordsets[0], "Id")[0];
-      if (!row) {
-        return res.status(404).json({
-          success: false, message: "Attachment not found",
-          code: "NOT_FOUND", responseCode: 404, timestamp: new Date().toISOString(),
-        });
-      }
+      const notFound = () => res.status(404).json({
+        success: false, message: "Attachment not found",
+        code: "NOT_FOUND", responseCode: 404, timestamp: new Date().toISOString(),
+      });
+      if (!row) return notFound();
       if (row.Entity === "quoteprofile") {
         return refusal(res, "Letterhead images are kept — issued quotations still use them");
       }
 
-      const parent = await assertRecordAccess(req, res, row.Entity, row.EntityId, ATTACH_LEVEL(row.Entity));
+      const parent = await gateParent(req, res, row, ATTACH_LEVEL(row.Entity), notFound);
       if (!parent) return;
       if (row.Entity === "quotation" && parent.Status !== "draft") return refusal(res, DRAFT_ONLY);
 

@@ -1,4 +1,5 @@
-# Log a call on a lead, then hand it to another owner with reason + remarks.
+# Log a call on a lead, then reassign it with reason + remarks. A reassign
+# leaves the record (back to the list), so the call history is checked first.
 appId: com.shadowider.eCRM
 ---
 - runFlow: common/new-lead.yaml
@@ -13,22 +14,32 @@ appId: com.shadowider.eCRM
 - tapOn: "Save call"
 - assertNotVisible: "Save call"
 - waitForAnimationToEnd
-
-- tapOn: "Transfer"
-- assertVisible: "Transfer to…"
-- takeScreenshot: lead-transfer-picker
-- tapOn: "Amit Singh \\(Exec HO, under Neha\\)"
-- assertVisible: "Transfer to Amit Singh.*"
-- tapOn: "Overloaded"
-- tapOn: "Anything the next person should know"
-- inputText: "MAESTRO lead transfer ${output.stamp}"
-- tapOn:
-    text: "Transfer"
-    below:
-      text: "Anything the next person should know|MAESTRO lead transfer.*"
-- waitForAnimationToEnd
-- assertVisible: "Amit Singh \\(Exec HO, under Neha\\)"
 - tapOn: "Activity"
 - assertVisible: ".*MAESTRO lead call.*"   # typed text can drop letters on the emulator keyboard
-- assertVisible: ".*Amit Singh.*"
-- takeScreenshot: lead-call-transfer-history
+- takeScreenshot: lead-call-history
+
+- tapOn: "Reassign"
+- assertVisible: "Reassign lead"
+# Wait for the grouped list (it loads when the sheet opens) before typing.
+- extendedWaitUntil:
+    visible: "Your manager and team|Your office"
+    timeout: 15000
+- takeScreenshot: lead-reassign-picker
+- tapOn:
+    id: "reassign-search"
+- inputText: "Priya Singh"
+# The row, not the search box that now reads the same.
+- tapOn:
+    text: "Priya Singh"
+    below:
+      id: "reassign-search"
+- waitForAnimationToEnd
+- assertVisible: "Reassign to Priya"
+- tapOn: "Overloaded"
+- tapOn:
+    id: "reassign-remarks"
+- inputText: "MAESTRO lead reassign ${output.stamp}"
+- tapOn: "Reassign to Priya"
+- waitForAnimationToEnd
+- assertVisible: "Reassigned to Priya Singh.*"
+- takeScreenshot: lead-reassigned

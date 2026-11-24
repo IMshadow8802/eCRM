@@ -5,10 +5,12 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react-
 
 import { fetchCalls } from "../../api/callQueries";
 import { fetchLookups, LOOKUP_KIND } from "../../api/configQueries";
-import { fetchEscalationTargets, fetchTicketDetail, fetchTickets, setTicketStatus, type FetchTicketsParams } from "../../api/ticketQueries";
+import {
+  fetchEscalationTargets, fetchLoggedByMe, fetchTicketDetail, fetchTickets, setTicketStatus, type FetchTicketsParams,
+} from "../../api/ticketQueries";
 import { fetchAssignableUsers } from "../../api/userQueries";
 import { fetchAttachments } from "../../api/attachmentQueries";
-import type { Lookup, Ticket } from "../../types/api";
+import type { LoggedByMeRow, Lookup, Ticket } from "../../types/api";
 import { envelope, pagination, ticket } from "../../test/fixtures";
 import { makeNavigation, makeRoute, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import { spySheets } from "../../test/sheets";
@@ -123,6 +125,105 @@ describe("E 10 · the band", () => {
     await waitFor(() => expect(lastList()).toMatchObject({ AssignedTo: null, Unassigned: false }));
     await fireEvent.press(screen.getByRole("tab", { name: "Unassigned, 3" }));
     await waitFor(() => expect(lastList()).toMatchObject({ Unassigned: true, StatusCode: "active" }));
+  });
+});
+
+describe("Logged by me (Task 27, §2.5)", () => {
+  const logged = (patch: Partial<LoggedByMeRow> = {}): LoggedByMeRow => ({
+    Id: 31, TicketNo: "T-31", CreatedAt: "2026-11-02T10:00:00", CustomerName: "Sunrise Traders", Subject: "Panel cracked",
+    StatusName: "Open", StatusCode: "open", AssignedToName: "Vivek Rao", DueAt: "2026-11-03T10:00:00", IsOverdue: true,
+    ClosedOn: null, CanOpen: true, ...patch,
+  });
+  let loggedRows: LoggedByMeRow[];
+  beforeEach(() => {
+    loggedRows = [
+      logged(),
+      logged({ Id: null, TicketNo: "T-32", Subject: "Gone elsewhere", AssignedToName: null, CanOpen: false, IsOverdue: false, DueAt: null }),
+      logged({ Id: 33, TicketNo: "T-33", Subject: "Fixed", StatusName: "Resolved", StatusCode: "resolved", IsOverdue: false, ClosedOn: "2026-11-01T12:00:00" }),
+      logged({ Id: 34, TicketNo: "T-34", Subject: "Shut", StatusName: "Closed", StatusCode: "closed", IsOverdue: false, ClosedOn: "2026-11-01T12:00:00" }),
+    ];
+    jest.mocked(fetchLoggedByMe).mockImplementation(async () => ({ rows: loggedRows, pagination: pagination(loggedRows.length) }));
+  });
+
+  const openLogged = async (navigation = makeNavigation<"Complaints">()) => {
+    await mount(navigation);
+    await screen.findByText("Inverter keeps tripping");
+    await fireEvent.press(screen.getByRole("tab", { name: "Logged by me" }));
+    await screen.findByText("Panel cracked");
+    return navigation;
+  };
+
+  it("is the sixth preset, after Escalated, and asks fetchLoggedByMe; no pills, its own search words", async () => {
+    await mount();
+    await screen.findByText("Inverter keeps tripping");
+    expect(fetchLoggedByMe).not.toHaveBeenCalled();
+    const names = screen.getAllByRole("tab").map((t) => t.props.accessibilityLabel as string);
+    const at = names.indexOf("Logged by me");
+    expect(names[at - 1]).toMatch(/^Escalated/);
+    await fireEvent.press(screen.getByRole("tab", { name: "Logged by me" }));
+    expect(await screen.findByText("Panel cracked")).toBeOnTheScreen();
+    expect(fetchLoggedByMe).toHaveBeenCalledWith({ SearchTerm: null, PageNumber: 1 });
+    expect(screen.getByPlaceholderText("Search number, subject or customer")).toBeOnTheScreen();
+    expect(screen.queryByTestId("status-pills")).toBeNull();
+  });
+
+  it("a row: number · customer, status, Assigned to or Unassigned, logged date, due with Overdue, resolved / closed date", async () => {
+    await openLogged();
+    const first = within(screen.getByTestId("logged-T-31"));
+    expect(first.getByText(/T-31 · Sunrise Traders/)).toBeOnTheScreen();
+    expect(first.getByText("Open")).toBeOnTheScreen();
+    expect(first.getByText(/^Assigned to Vivek Rao · Logged /)).toBeOnTheScreen();
+    expect(first.getByText(/^Overdue/)).toBeOnTheScreen();
+    expect(within(screen.getByTestId("logged-T-32")).getByText(/^Unassigned · Logged /)).toBeOnTheScreen();
+    expect(within(screen.getByTestId("logged-T-33")).getByText(/^Resolved /)).toBeOnTheScreen();
+    expect(within(screen.getByTestId("logged-T-34")).getByText(/^Closed /)).toBeOnTheScreen();
+  });
+
+  it("a row the caller can open opens it; a CanOpen false row does not react", async () => {
+    const navigation = await openLogged();
+    await fireEvent.press(screen.getByText("Gone elsewhere"));
+    expect(navigation.navigate).not.toHaveBeenCalled();
+    expect(screen.getByTestId("logged-T-32").props.accessibilityRole).toBeUndefined();
+    await fireEvent.press(screen.getByText("Panel cracked"));
+    expect(navigation.navigate).toHaveBeenCalledWith("ComplaintDetail", { ticketId: 31 });
+  });
+
+  it("the search goes to the server; an empty answer says nothing matches", async () => {
+    await openLogged();
+    loggedRows = [];
+    await fireEvent.changeText(screen.getByPlaceholderText("Search number, subject or customer"), "zzz");
+    await act(() => jest.advanceTimersByTimeAsync(500));
+    await waitFor(() => expect(fetchLoggedByMe).toHaveBeenLastCalledWith({ SearchTerm: "zzz", PageNumber: 1 }));
+    expect(await screen.findByText("Nothing matches")).toBeOnTheScreen();
+  });
+
+  it("nothing logged has its own empty line", async () => {
+    loggedRows = [];
+    await mount();
+    await screen.findByText("Inverter keeps tripping");
+    await fireEvent.press(screen.getByRole("tab", { name: "Logged by me" }));
+    expect(await screen.findByText("Nothing logged by you")).toBeOnTheScreen();
+  });
+
+  it("loads the next page at the end of the list, never past the last", async () => {
+    jest.mocked(fetchLoggedByMe).mockImplementation(async ({ PageNumber = 1 } = {}) => ({
+      rows: [logged({ Id: PageNumber, TicketNo: `T-${PageNumber}`, Subject: PageNumber === 1 ? "Panel cracked" : `Page ${PageNumber}` })],
+      pagination: pagination(2, { totalPages: 2 }),
+    }));
+    await openLogged();
+    await fireEvent(screen.getByTestId("logged-list"), "onEndReached");
+    expect(await screen.findByText("Page 2")).toBeOnTheScreen();
+    await fireEvent(screen.getByTestId("logged-list"), "onEndReached");
+    expect(fetchLoggedByMe).toHaveBeenCalledTimes(2);
+  });
+
+  it("a failed first load offers a retry", async () => {
+    jest.mocked(fetchLoggedByMe).mockRejectedValueOnce(new Error("offline"));
+    await mount();
+    await screen.findByText("Inverter keeps tripping");
+    await fireEvent.press(screen.getByRole("tab", { name: "Logged by me" }));
+    await fireEvent.press(await screen.findByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("Panel cracked")).toBeOnTheScreen();
   });
 });
 
@@ -449,7 +550,7 @@ describe("route params", () => {
 describe("T2 · two panes", () => {
   beforeEach(() => {
     setWindow(...TABLET);
-    jest.mocked(fetchTicketDetail).mockResolvedValue({ ticket: ticket(), fields: [], activity: [], assignments: [], linkedLead: null });
+    jest.mocked(fetchTicketDetail).mockResolvedValue({ ticket: ticket({ CanEdit: true }), fields: [], activity: [], assignments: [], linkedLead: null });
   });
 
   it("starts on 'Pick a complaint'; a tap selects instead of pushing, and tints the row", async () => {

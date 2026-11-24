@@ -5,10 +5,12 @@
 // sentence or a resolution prompt for it first. Nothing here matches on a
 // status NAME — companies rename them — and nothing resolves an id into a
 // label: sp_FetchTicketDetail joins every one of them, custom fields included.
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useTheme } from "@mui/material/styles";
-import { ArrowRightLeft, CircleCheck, Flag, Pencil, PhoneCall } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { enqueueSnackbar } from "notistack";
+import { CircleCheck, Flag, Pencil, PhoneCall, RotateCcw, Undo2, Users } from "lucide-react";
 
 import { PageHeader, Card, Chip, Button, Tabs, Skeleton, Combobox } from "../../components/ui";
 import Attachments from "../../components/Attachments";
@@ -17,6 +19,7 @@ import { useApiMutation } from "../../hooks/useApiMutation";
 import { useLookups } from "../../hooks/useLookups";
 import { SUPPORT_ENDPOINTS } from "../../api/supportQueries";
 import { formatDate, formatDateTime } from "../../utils/format";
+import { recordGone, RECORD_GONE_MESSAGE } from "../../utils/recordGone";
 import { statusTone, dueLabel, isActiveCode, isTerminalCode } from "./ticketStatus";
 import Timeline, { timelineCount } from "../Sales/Timeline";
 import LogCallModal from "../Sales/LogCallModal";
@@ -59,15 +62,48 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
   const [transferOpen, setTransferOpen] = useState(false);
   const [escalateOpen, setEscalateOpen] = useState(false);
   const [resolvePick, setResolvePick] = useState(null);   // status awaiting a resolution
-  const [remarksPick, setRemarksPick] = useState(null);   // { status, title, submitLabel }
+  const [remarksPick, setRemarksPick] = useState(null);   // { status | sendBack, title, submitLabel }
+  const queryClient = useQueryClient();
+  const movedRef = useRef(false);   // true while checking whether our own reassign took it away
 
-  const { data, isLoading, refetch } = useApiQuery({
+  const { data, isLoading, error, refetch } = useApiQuery({
     queryKey: ["ticket-detail", ticketId],
     endpoint: SUPPORT_ENDPOINTS.tickets.fetchTicketDetail,
     params: { TicketId: ticketId },
     enabled: Boolean(ticketId),
     showErrorMessage: false,
+    // A 404 is an answer (the complaint left this user), not a blip.
+    retry: (n, e) => !recordGone(e) && n < 1,
   });
+
+  // The complaint is no longer this user's (Review Focus 4): drop the cached
+  // copy, go back to the list, say why. `message` null = already said.
+  const leave = useCallback((message) => {
+    queryClient.removeQueries({ queryKey: ["ticket-detail", ticketId] });
+    navigate("/support/tickets");
+    if (message) enqueueSnackbar(message, { variant: "info" });
+  }, [queryClient, navigate, ticketId]);
+
+  useEffect(() => {
+    if (recordGone(error)) leave(movedRef.current ? null : RECORD_GONE_MESSAGE);
+  }, [error, leave]);
+
+  // Every action on this page: a 404 means a stale screen; anything else (403 refused,
+  // 400, 409 race, "<Name> can no longer take this") is shown and
+  // the detail refetched so the buttons match the server again.
+  const onActionError = (e) => {
+    if (recordGone(e)) return leave(RECORD_GONE_MESSAGE);
+    enqueueSnackbar(e?.response?.data?.message || e?.message || "Operation failed", { variant: "error" });
+    refetch();
+  };
+
+  // After a reassign / send back: if the refetch says it is gone, leave
+  // quietly (the move's own toast already named the person).
+  const afterMove = async () => {
+    movedRef.current = true;
+    const r = await refetch();
+    if (!recordGone(r.error)) movedRef.current = false;
+  };
 
   const quiet = { showErrorMessage: false };
   const { lookups: statuses } = useLookups("ticket_status", quiet);
@@ -98,7 +134,18 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
   const statusMutation = useApiMutation({
     endpoint: SUPPORT_ENDPOINTS.tickets.setTicketStatus,
     successMessage: "Status updated",
-    invalidateQueries: [["tickets"], ["ticket-detail", ticketId], ["customer-detail"]],
+    showErrorMessage: false,
+    onError: onActionError,
+    invalidateQueries: [["tickets"], ["ticket-detail", ticketId], ["customer-detail"], ["logged-by-me"]],
+  });
+
+  // Send back: remarks only, to whoever gave it (SendBackToId, from the server).
+  const sendBackMutation = useApiMutation({
+    endpoint: SUPPORT_ENDPOINTS.tickets.transferTicket,
+    showSuccessMessage: false,
+    showErrorMessage: false,
+    onError: onActionError,
+    invalidateQueries: [["tickets"], ["logged-by-me"]],
   });
 
   /**
@@ -128,14 +175,31 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
   };
 
   const submitRemarks = async (remarks) => {
+    if (remarksPick.sendBack) {
+      const name = ticket.SendBackToName;
+      try {
+        await sendBackMutation.mutateAsync({ TicketId: ticketId, SendBack: true, Remarks: remarks });
+        enqueueSnackbar(`Sent back to ${name}`, { variant: "success" });
+        setRemarksPick(null);
+        await afterMove();
+      } catch {
+        // Refused ("<Name> can no longer take this…"): shown, refetched; the
+        // button disappears with the refetch, so the prompt closes too.
+        setRemarksPick(null);
+      }
+      return;
+    }
     try {
       await statusMutation.mutateAsync({ TicketId: ticketId, StatusId: remarksPick.status.value, Remarks: remarks });
       setRemarksPick(null);
     } catch {
-      // The server's own words are already on screen (the reopen gate's 403);
-      // the prompt stays open so the move is not silently lost.
+      // The server's own words are already on screen; the prompt stays open
+      // so the move is not silently lost (unless the record left, see leave).
     }
   };
+
+  const openOpt = statusOpts.find((o) => o.code === "open") ?? null;
+  const reopen = () => setRemarksPick({ status: openOpt, title: "Reopen complaint", subtitle: "The due date restarts from now.", submitLabel: "Reopen" });
 
   if (isLoading || !ticket) {
     return (
@@ -176,6 +240,7 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
         }
         actions={
           <div style={{ display: "flex", gap: "calc(8rem / 15)", alignItems: "center", flexWrap: "wrap" }}>
+            {Boolean(ticket.CanEdit) && (
             <div style={{ width: "calc(190rem / 15)" }}>
               {/* blurOnSelect: a pick that opens a prompt instead of moving the
                   status must not linger in the input, or the header contradicts
@@ -190,13 +255,33 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
                 data-testid="ticket-status-select"
               />
             </div>
+            )}
             <Button variant="ghost" leftIcon={<PhoneCall size={14} />} onClick={() => setCallOpen(true)} data-testid="log-call-btn">Log call</Button>
-            {isActiveCode(ticket.StatusCode) && resolvedOpt && (
+            {Boolean(ticket.CanEdit) && isActiveCode(ticket.StatusCode) && resolvedOpt && (
               <Button variant="primary" leftIcon={<CircleCheck size={14} />} onClick={() => setResolvePick(resolvedOpt)} data-testid="resolve-ticket-btn">Resolve</Button>
             )}
-            <Button variant="tonal" leftIcon={<ArrowRightLeft size={14} />} onClick={() => setTransferOpen(true)} data-testid="transfer-ticket-btn">Transfer</Button>
-            <Button variant="tonal" leftIcon={<Flag size={14} />} onClick={() => setEscalateOpen(true)} data-testid="escalate-ticket-btn">Escalate</Button>
-            <Button variant="tonal" leftIcon={<Pencil size={14} />} onClick={() => setEditOpen(true)} data-testid="edit-ticket-btn">Edit</Button>
+            {Boolean(ticket.CanReopen) && openOpt && (
+              <Button variant="primary" leftIcon={<RotateCcw size={14} />} onClick={reopen} data-testid="reopen-ticket-btn">Reopen</Button>
+            )}
+            {Boolean(ticket.CanReassign) && (
+              <Button variant="tonal" leftIcon={<Users size={14} />} onClick={() => setTransferOpen(true)} data-testid="reassign-ticket-btn">Reassign</Button>
+            )}
+            {ticket.SendBackToId != null && Boolean(ticket.CanReassign) && (
+              <Button
+                variant="tonal"
+                leftIcon={<Undo2 size={14} />}
+                onClick={() => setRemarksPick({ sendBack: true, title: `Send back to ${ticket.SendBackToName}`, subtitle: "Say why it is going back.", submitLabel: "Send back" })}
+                data-testid="send-back-ticket-btn"
+              >
+                Send back to {ticket.SendBackToName}
+              </Button>
+            )}
+            {Boolean(ticket.CanEdit) && (
+              <Button variant="tonal" leftIcon={<Flag size={14} />} onClick={() => setEscalateOpen(true)} data-testid="escalate-ticket-btn">Escalate</Button>
+            )}
+            {Boolean(ticket.CanEdit) && (
+              <Button variant="tonal" leftIcon={<Pencil size={14} />} onClick={() => setEditOpen(true)} data-testid="edit-ticket-btn">Edit</Button>
+            )}
           </div>
         }
       />
@@ -256,9 +341,9 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
                 <InfoItem label="Category" value={ticket.CategoryName} />
                 <InfoItem label="Channel" value={ticket.ChannelName} />
                 <InfoItem label="Product" value={ticket.ProductName} />
-                <InfoItem label="Assignee" value={ticket.AssigneeName || "Unassigned"} />
+                <InfoItem label="Assigned to" value={ticket.AssigneeName || "Unassigned"} />
                 <InfoItem label="Assigned since" value={formatDate(ticket.AssignedAt, { empty: "—" })} />
-                <InfoItem label="Branch" value={ticket.BranchName} />
+                <InfoItem label="Office" value={ticket.BranchName} />
                 <InfoItem label="Reported by" value={[ticket.ContactPerson, ticket.Contact].filter(Boolean).join(" · ")} />
                 <InfoItem label="Raised" value={formatDateTime(ticket.CreatedAt, { empty: "—" })} />
                 <InfoItem label="Resolution" value={ticket.ResolutionName} />
@@ -290,7 +375,7 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
 
             <Card>
               <h3 style={{ margin: "0 0 calc(16rem / 15)", fontSize: "calc(15rem / 15)", fontWeight: 700 }}>Attachments</h3>
-              <Attachments entity="ticket" entityId={ticket.Id} />
+              <Attachments entity="ticket" entityId={ticket.Id} disabled={!ticket.CanEdit} />
             </Card>
           </div>
         )}
@@ -321,14 +406,15 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
         onLogged={() => { refetch(); refetchCalls(); }}
       />
       <TicketCreateModal open={editOpen} ticket={ticket} onClose={() => setEditOpen(false)} onSaved={refetch} />
-      <TransferTicketModal open={transferOpen} ticketIds={[ticketId]} onClose={() => setTransferOpen(false)} onDone={refetch} />
-      <EscalateTicketModal open={escalateOpen} ticket={ticket} onClose={() => setEscalateOpen(false)} onDone={refetch} />
+      <TransferTicketModal open={transferOpen} ticketIds={[ticketId]} onClose={() => setTransferOpen(false)} onDone={afterMove} onError={onActionError} />
+      <EscalateTicketModal open={escalateOpen} ticket={ticket} onClose={() => setEscalateOpen(false)} onDone={refetch} onError={onActionError} />
       <ResolveTicketModal
         open={Boolean(resolvePick)}
         ticket={ticket}
         status={resolvePick}
         onClose={() => setResolvePick(null)}
         onDone={refetch}
+        onError={onActionError}
       />
       <RemarksModal
         open={Boolean(remarksPick)}
@@ -336,7 +422,7 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
         subtitle={remarksPick?.subtitle}
         submitLabel={remarksPick?.submitLabel}
         required
-        busy={statusMutation.isPending}
+        busy={statusMutation.isPending || sendBackMutation.isPending}
         onClose={() => setRemarksPick(null)}
         onSubmit={submitRemarks}
       />

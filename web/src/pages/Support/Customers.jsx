@@ -9,6 +9,7 @@ import { Eye, Pencil, Plus } from "lucide-react";
 import { Button, Chip, IconButton, Tooltip } from "../../components/ui";
 import PageHeader from "../../components/ui/PageHeader";
 import useServerTable from "../../hooks/useServerTable";
+import { useAccess } from "../../hooks/useAccess";
 import { SUPPORT_ENDPOINTS } from "../../api/supportQueries";
 import { formatDate } from "../../utils/format";
 import CustomerFormModal from "./CustomerFormModal";
@@ -32,6 +33,8 @@ const Customers = () => {
 
   // Filled from the fetched rows below; the column list is built before them.
   const [multiOffice, setMultiOffice] = useState(false);
+  // Counts are visible complaints only (server); without complaints View they are not drawn.
+  const seesComplaints = useAccess("complaints").view;
 
   const columns = useMemo(() => [
     { accessorKey: "Name", header: "Name", enableSorting: true },
@@ -39,11 +42,13 @@ const Customers = () => {
     { accessorKey: "Mobile", header: "Mobile", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "—" },
     ...(multiOffice ? [{ accessorKey: "BranchName", header: "Office", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "—" }] : []),
     { accessorKey: "City", header: "City", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "—" },
+    ...(seesComplaints ? [
     { accessorKey: "OpenTickets", header: "Open", enableSorting: false, size: 80,
       Cell: ({ cell }) => <Chip label={String(cell.getValue() ?? 0)} size="sm" tone={cell.getValue() > 0 ? "warning" : "default"} data-testid="open-count-chip" /> },
     { accessorKey: "TotalTickets", header: "Total", enableSorting: false, size: 80, Cell: ({ cell }) => cell.getValue() ?? 0 },
     { accessorKey: "LastTicketAt", header: "Last complaint", enableSorting: true, Cell: ({ cell }) => formatDate(cell.getValue(), { empty: "—" }) },
-  ], [multiOffice]);
+    ] : []),
+  ], [multiOffice, seesComplaints]);
 
   const { table, data } = useServerTable({
     columns, queryKey: "customers", endpoint: SUPPORT_ENDPOINTS.customers.fetchCustomers, dataKey: "customers",

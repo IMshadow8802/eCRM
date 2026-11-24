@@ -9,7 +9,9 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
 } from "../../api/notificationQueries";
-import { apiErrorMessage } from "../../api/errors";
+import { apiErrorMessage, RECORD_GONE_MESSAGE, recordGone } from "../../api/errors";
+import { fetchLeadDetail } from "../../api/leadQueries";
+import { fetchTicketDetail } from "../../api/ticketQueries";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import { notificationBadge } from "../../theme";
 import type { AppNotification } from "../../types/api";
@@ -20,6 +22,13 @@ import {
 import { clockTime, sameDay, shortDate } from "./timeLabels";
 
 const QUERY_KEY = ["notifications"];
+
+/**
+ * Open the list, not a record (as web TopNav): a bulk notice carries EntityId 0,
+ * stranded_work carries a person's id, and a moved-away one names a record the
+ * reader can no longer open.
+ */
+const LIST_ONLY_TYPE = /_moved_away$|_bulk_|^stranded_work$/;
 
 /** E 18: the band, then Today and Earlier as grouped rows. */
 export default function NotificationsScreen() {
@@ -66,8 +75,24 @@ export default function NotificationsScreen() {
         navigation.navigate("TaskDetail", { taskId: n.EntityId, workspaceId: null });
         break;
       case "ticket":
-        navigation.navigate("ComplaintDetail", { ticketId: n.EntityId });
+      case "lead": {
+        const ticket = entity === "ticket";
+        if (!(n.EntityId > 0) || LIST_ONLY_TYPE.test(n.Type ?? "")) {
+          navigation.navigate(ticket ? "Complaints" : "Leads");
+          break;
+        }
+        const id = n.EntityId;
+        const go = () =>
+          ticket ? navigation.navigate("ComplaintDetail", { ticketId: id }) : navigation.navigate("LeadDetail", { leadId: id });
+        // Fetch first (into the detail's own cache key): a record that has left
+        // the reader says so here and the Inbox stays; any other failure opens
+        // the detail, which shows its own error.
+        const fetched: Promise<unknown> = ticket
+          ? queryClient.fetchQuery({ queryKey: ["ticket", id], queryFn: () => fetchTicketDetail({ TicketId: id }) })
+          : queryClient.fetchQuery({ queryKey: ["lead", id], queryFn: () => fetchLeadDetail({ LeadId: id }) });
+        void fetched.then(go, (err: unknown) => (recordGone(err) ? toast.error(RECORD_GONE_MESSAGE) : go()));
         break;
+      }
       case "workspace":
         navigation.navigate("Boards");
         break;
