@@ -287,6 +287,14 @@ function HolidaysTab({ holidays, offices, canEdit, confirmation, run }) {
   );
 }
 
+// Minutes of the day <-> "HH:mm" for a time input (calling hours, 149).
+const pad2 = (n) => String(n).padStart(2, "0");
+const hhmm = (min) => `${pad2(Math.floor(min / 60))}:${pad2(min % 60)}`;
+const minutesOf = (t) => {
+  const m = /^(\d{2}):(\d{2})$/.exec(t ?? "");
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+};
+
 const hoursOf = (minutes) => (minutes == null ? "" : String(Math.round((minutes / 60) * 100) / 100));
 
 const COMMISSION_DUE_ON = [
@@ -303,7 +311,11 @@ function RulesTab({ settings, tatPolicy, canEdit, run }) {
     NotifyNotSignedIn: Boolean(s.NotifyNotSignedIn),
     GoLiveDate: dateOnly(s.GoLiveDate),
     CommissionDueOn: s.CommissionDueOn || "manual",
+    CallStart: hhmm(s.CallStartMin ?? 540),
+    CallEnd: hhmm(s.CallEndMin ?? 1260),
+    CallbackCap: String(s.CallbackCap ?? 20),
   });
+  const [callError, setCallError] = useState("");
   const [tat, setTat] = useState(() =>
     Object.fromEntries(PRIORITIES.map((p) => [p, hoursOf(tatPolicy.find((t) => t.Priority === p)?.Minutes)])),
   );
@@ -313,11 +325,16 @@ function RulesTab({ settings, tatPolicy, canEdit, run }) {
   );
 
   const save = async () => {
+    const CallStartMin = minutesOf(form.CallStart);
+    const CallEndMin = minutesOf(form.CallEnd);
+    if (CallStartMin == null || CallEndMin == null || CallStartMin >= CallEndMin) return setCallError("Calling hours must start before they end");
+    setCallError("");
     const ok = await run(
       () => saveCompanySetting({
         LateGraceMin: Number(form.LateGraceMin), SessionBufferMin: Number(form.SessionBufferMin),
         WarnPct: Number(form.WarnPct), NotifyNotSignedIn: form.NotifyNotSignedIn, GoLiveDate: form.GoLiveDate || null,
         CommissionDueOn: form.CommissionDueOn,
+        CallStartMin, CallEndMin, CallbackCap: Number(form.CallbackCap),
       }),
       "Rules saved",
     );
@@ -350,6 +367,13 @@ function RulesTab({ settings, tatPolicy, canEdit, run }) {
         options={COMMISSION_DUE_ON}
         helperText="When we mark it: commission stays Earned until someone marks it Ready to pay (for example after the customer pays). As soon as the lead converts: it is ready to pay straight away."
       />
+      <h3>Calling lists</h3>
+      <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.5 }}>
+        <TextInput label="Calling hours from" type="time" value={form.CallStart} onChange={set("CallStart")} disabled={!canEdit} error={callError || undefined} />
+        <TextInput label="Calling hours to" type="time" value={form.CallEnd} onChange={set("CallEnd")} disabled={!canEdit}
+          hint="Contacts are handed out only between these times." />
+      </Box>
+      {num("Booked callbacks per caller", "CallbackCap", "The most callbacks one caller can have booked at a time.")}
       <h3>Time allowed per task, by priority (working hours)</h3>
       {PRIORITIES.map((p) => (
         <TextInput

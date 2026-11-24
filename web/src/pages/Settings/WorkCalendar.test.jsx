@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 
@@ -163,9 +163,27 @@ describe("WorkCalendar", () => {
     await waitFor(() => expect(bodies["tat/saveTatPolicy"]).toBeDefined());
     expect(bodies["work/saveCompanySetting"]).toEqual({
       LateGraceMin: 10, SessionBufferMin: 30, WarnPct: 80, NotifyNotSignedIn: true, GoLiveDate: "2026-11-01",
-      CommissionDueOn: "manual",
+      CommissionDueOn: "manual", CallStartMin: 540, CallEndMin: 1260, CallbackCap: 20,
     });
     expect(bodies["tat/saveTatPolicy"]).toEqual({ Items: [{ Priority: "high", Minutes: 150 }, { Priority: "low", Minutes: 1440 }] });
+  });
+
+  it("calling hours and the callback cap: prefilled, saved in minutes, and an end before the start refused", async () => {
+    settings.settings = { ...settings.settings, CallStartMin: 540, CallEndMin: 1260, CallbackCap: 20 };
+    const user = userEvent.setup();
+    renderWithProviders(<WorkCalendar />);
+    await user.click(await screen.findByTestId("work-calendar-tabs-rules"));
+    const from = await screen.findByLabelText("Calling hours from");
+    expect(from).toHaveValue("09:00");
+    expect(screen.getByLabelText("Calling hours to")).toHaveValue("21:00");
+    expect(screen.getByLabelText("Booked callbacks per caller")).toHaveValue(20);
+    fireEvent.change(from, { target: { value: "22:00" } });
+    await user.click(screen.getByRole("button", { name: "Save rules" }));
+    expect(await screen.findByText("Calling hours must start before they end")).toBeInTheDocument();
+    expect(bodies["work/saveCompanySetting"]).toBeUndefined();
+    fireEvent.change(from, { target: { value: "10:00" } });
+    await user.click(screen.getByRole("button", { name: "Save rules" }));
+    await waitFor(() => expect(bodies["work/saveCompanySetting"]).toMatchObject({ CallStartMin: 600, CallEndMin: 1260, CallbackCap: 20 }));
   });
 
   it("shows the current 'Commission becomes payable' value and sends a changed one", async () => {

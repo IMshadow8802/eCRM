@@ -13,6 +13,9 @@ vi.mock("../stores/useAuthStore", () => {
   return { __esModule: true, default: fn };
 });
 
+let mockCallingView = false;
+vi.mock("../hooks/useAccess", () => ({ useAccess: () => ({ view: mockCallingView }) }));
+
 let mockThemeMode = "light";
 vi.mock("../stores/useThemeStore", () => {
   const fn = vi.fn((selector) => {
@@ -233,6 +236,22 @@ describe("TopNav notification routing", () => {
   beforeEach(() => {
     mockNavigate.mockClear();
     capturedOnOpenEntity = null;
+  });
+
+  it("a missed-callback notice opens its list's missed callbacks; another calling notice its list (149)", () => {
+    mockCallingView = true;
+    renderTopNav();
+    capturedOnOpenEntity({ EntityType: "call_list", Type: "call_callback_missed", EntityId: 5 });
+    expect(mockNavigate).toHaveBeenLastCalledWith("/sales/calling-lists/5?tab=contacts&missed=1");
+    capturedOnOpenEntity({ EntityType: "call_list", Type: "call_assigned", EntityId: 6 });
+    expect(mockNavigate).toHaveBeenLastCalledWith("/sales/calling-lists/6");
+    mockCallingView = false;
+  });
+
+  it("a caller without the calling grant is not sent to a list page", () => {
+    renderTopNav();
+    capturedOnOpenEntity({ EntityType: "call_list", Type: "call_assigned", EntityId: 6 });
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
   it("opens a task notification on the board", () => {
