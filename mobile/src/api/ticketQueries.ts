@@ -23,10 +23,6 @@ const TICKET_ENDPOINTS = {
   fetchTickets: "/api/tickets/fetchTickets",
   fetchTicketDetail: "/api/tickets/fetchTicketDetail",
   setTicketStatus: "/api/tickets/setTicketStatus",
-  resolveTicket: "/api/tickets/resolveTicket",
-  closeTicket: "/api/tickets/closeTicket",
-  rejectTicket: "/api/tickets/rejectTicket",
-  reopenTicket: "/api/tickets/reopenTicket",
   transferTicket: "/api/tickets/transferTicket",
   escalateTicket: "/api/tickets/escalateTicket",
   fetchEscalationTargets: "/api/tickets/fetchEscalationTargets",
@@ -219,38 +215,6 @@ export const setTicketStatus = (params: {
     Remarks: null,
     ...params,
   });
-
-/** Shortcut into setTicketStatus — the company's first `resolved` status. */
-export const resolveTicket = (params: {
-  TicketId: number;
-  ResolutionId: number;
-  Remarks: string;
-}): Promise<ApiEnvelope<unknown>> =>
-  post(TICKET_ENDPOINTS.resolveTicket, params);
-
-/** Shortcut — the first `closed` status. Resolution only when coming from active. */
-export const closeTicket = (params: {
-  TicketId: number;
-  ResolutionId?: number | null;
-  Remarks?: string | null;
-}): Promise<ApiEnvelope<unknown>> =>
-  post(TICKET_ENDPOINTS.closeTicket, {
-    ResolutionId: null,
-    Remarks: null,
-    ...params,
-  });
-
-/** Shortcut — the first `rejected` status. Never solved; remarks required. */
-export const rejectTicket = (params: {
-  TicketId: number;
-  Remarks: string;
-}): Promise<ApiEnvelope<unknown>> => post(TICKET_ENDPOINTS.rejectTicket, params);
-
-/** Shortcut — back to the first `open` status. Manager-gated server-side. */
-export const reopenTicket = (params: {
-  TicketId: number;
-  Remarks: string;
-}): Promise<ApiEnvelope<unknown>> => post(TICKET_ENDPOINTS.reopenTicket, params);
 
 /**
  * Reassign (reason + remarks) or, with `SendBack`, return it to whoever gave

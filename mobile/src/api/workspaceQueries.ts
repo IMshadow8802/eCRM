@@ -23,7 +23,6 @@ const WORKSPACE_ENDPOINTS = {
   transferWorkspaceOwnership: "/api/workspaces/transferWorkspaceOwnership",
   syncProjectWorkspaceMembers: "/api/workspaces/syncProjectWorkspaceMembers",
   ensurePersonalWorkspace: "/api/workspaces/ensurePersonalWorkspace",
-  applyKanbanTemplate: "/api/workspaces/applyKanbanTemplate",
 } as const;
 
 export const fetchWorkspaces = (
@@ -157,12 +156,3 @@ export const syncProjectWorkspaceMembers = (params: {
 /** Idempotent — safe on every login. Seeds a personal workspace if missing. */
 export const ensurePersonalWorkspace = (): Promise<ApiEnvelope<unknown>> =>
   post(WORKSPACE_ENDPOINTS.ensurePersonalWorkspace, {});
-
-export const applyKanbanTemplate = (params: {
-  WorkspaceId: number;
-  TemplateKey?: string;
-}): Promise<ApiEnvelope<unknown>> =>
-  post(WORKSPACE_ENDPOINTS.applyKanbanTemplate, {
-    TemplateKey: "basic",
-    ...params,
-  });
