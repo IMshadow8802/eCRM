@@ -25,6 +25,9 @@ describe("REPORTS", () => {
     expect(COLUMNS.reachPct.value({ DialReached: 1, Dials: 0 })).toBeNull();
     expect(COLUMNS.avgDialSec.value({ DialSecSum: 90, DialSecN: 3 })).toBe(30);
     expect(COLUMNS.costPerLead.value({ ListCost: 42000, New: 78 })).toBeCloseTo(538.46);
+    // Cost ÷ new leads, named apart from the calling pages' cost ÷ "Turned lead".
+    expect(COLUMNS.costPerLead.header).toBe("Cost per new lead ₹");
+    expect(COLUMNS.costPerLead.hint).toBe("Cost divided by new leads.");
     expect(COLUMNS.returnPerRupee.value({ CohortWonValue: 100, ListCost: null })).toBeNull();
     expect(COLUMNS.costPerWon.value({ ListCost: 100, CohortWon: 0 })).toBeNull();
     expect(COLUMNS.sheetBadPct.value({ SkippedDup: 1, SkippedBad: 1, SheetRows: 8 })).toBe(25);

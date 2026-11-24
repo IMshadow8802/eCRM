@@ -582,7 +582,11 @@ describe("calling figures on the sales report (149)", () => {
     const admin = mockRes();
     await reportController.sales(callingReq({ GroupBy: "calllist", CallListId: 4 }, true), admin);
     expect(admin.json.mock.calls[0][0].data.rows[0]).toMatchObject({ ListCost: 5000, SheetRows: 100 });
-    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({ FromDate: null, ToDate: null, CallListId: 4 });
+    // Any time on a dated report = 2000-01-01 .. today (NULL would match no row); no previous line for it.
+    const d = new Date();
+    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({ FromDate: "2000-01-01", ToDate: today, CallListId: 4 });
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
     database.executeStoredProcedure.mockResolvedValue(rs([line]));
     const other = mockRes();
     await reportController.sales(callingReq({ GroupBy: "calllist" }), other);
@@ -595,5 +599,14 @@ describe("calling figures on the sales report (149)", () => {
     await reportController.salesRows(callingReq({ GroupBy: "caller", Metric: "dial", Flag: "reached", CallListId: 4 }), res);
     expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({ Metric: "dial", Flag: "reached", CallListId: 4 });
     expect(res.json.mock.calls[0][0].data.rows[0]).toMatchObject({ CallListName: "Surat", CallListId: 4 });
+  });
+  it("salesRows for a list with no dates (See every call) sends 2000-01-01 .. today and skips the previous line", async () => {
+    database.executeStoredProcedure.mockResolvedValue({ recordsets: [[], [{ Total: 3 }], [], [{ HiddenCount: 0 }]] });
+    const res = mockRes();
+    await reportController.salesRows(callingReq({ GroupBy: "calllist", Metric: "dial", GroupKey: 4, WithPrevious: true }), res);
+    expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({ FromDate: "2000-01-01", GroupKey: 4 });
+    expect(database.executeStoredProcedure.mock.calls[0][1].ToDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(res.json.mock.calls[0][0].data).toMatchObject({ total: 3, previous: null });
   });
 });

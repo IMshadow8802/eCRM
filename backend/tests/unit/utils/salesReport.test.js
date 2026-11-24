@@ -114,9 +114,15 @@ it("sumRows keeps money totals exact to the paisa", () => {
 });
 
 describe("calling figures (149)", () => {
-  it("caller with no dates is yesterday; calllist with no dates is any time", () => {
-    expect(parseSalesArgs({ GroupBy: "caller" }, { today: NOW }).args).toMatchObject({ GroupBy: "caller", FromDate: "2026-11-17", ToDate: "2026-11-17" });
-    expect(parseSalesArgs({ GroupBy: "calllist" }, { today: NOW }).args).toMatchObject({ GroupBy: "calllist", FromDate: null, ToDate: null });
+  // Dated families filter x >= @From AND x < @ToEx, so NULL dates would match nothing: Any time is 2000-01-01 .. today.
+  it.each(["caller", "calllist"])("%s with no dates is any time, sent as 2000-01-01 .. today (summary and rows)", (GroupBy) => {
+    expect(parseSalesArgs({ GroupBy }, { today: NOW }).args).toMatchObject({ GroupBy, FromDate: "2000-01-01", ToDate: "2026-11-18" });
+    expect(parseSalesArgs({ GroupBy, Metric: "dial" }, { rows: true, today: NOW }).args)
+      .toMatchObject({ GroupBy, FromDate: "2000-01-01", ToDate: "2026-11-18" });
+  });
+  it("caller with dates keeps them", () => {
+    expect(parseSalesArgs({ GroupBy: "caller", FromDate: "2026-11-01", ToDate: "2026-11-05" }, { today: NOW }).args)
+      .toMatchObject({ FromDate: "2026-11-01", ToDate: "2026-11-05" });
   });
   it("accepts the calling metrics and flags in rows mode and refuses a misspelt flag", () => {
     const { args } = parseSalesArgs({ GroupBy: "caller", Metric: "dial", Flag: "reached" }, { rows: true, today: NOW });

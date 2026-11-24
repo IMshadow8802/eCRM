@@ -162,6 +162,12 @@ describe("convert", () => {
     expect(r.status).toHaveBeenCalledWith(409);
     expect(r.json.mock.calls[0][0].data.toCall).toBeDefined();
   });
+  it("on 409 (already a lead or customer: the contact is closed) re-reads with TopUp 1 so the next batch arrives", async () => {
+    stub({ sp_SaveLead: statusRow({ ResponseCode: 409, ResponseMess: "This number is already a lead" }) });
+    await c.convert(req({ ContactId: 9 }), res);
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(calls("sp_FetchMyCallList")).toEqual([{ CompId: 1, UserId: 7, TopUp: 1 }]);
+  });
   it("400s a missing contact, a bad follow-up or dial time, and a long note", async () => {
     for (const b of [{}, { ContactId: 9, FirstFollowupAt: "soon" }, { ContactId: 9, DialedAt: "x" }, { ContactId: 9, Notes: "x".repeat(1001) }]) {
       const r = mockRes();

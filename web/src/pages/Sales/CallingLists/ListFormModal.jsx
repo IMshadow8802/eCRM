@@ -1,5 +1,5 @@
 // src/pages/Sales/CallingLists/ListFormModal.jsx — New list / Add contacts (spec 13.2).
-// Three steps in one modal: Details → Sheet → Callers. Lazy-loaded by its pages,
+// Three steps in one modal: Details → Sheet → Callers (Callers only with calling edit). Lazy-loaded by its pages,
 // so sheetParse (and read-excel-file behind it) stays out of every other bundle.
 // Server sentences are shown in the step that caused them, never only a snackbar.
 import { useMemo, useState } from "react";
@@ -15,7 +15,7 @@ import { Button, Chip, Combobox, DateField, Modal, Switch, TextArea, TextInput }
 import FormGrid, { FormGridSpan } from "../../../components/ui/FormGrid";
 import { useApiQuery } from "../../../hooks/useApiQuery";
 import { useAssignableUsers } from "../../../hooks/useAssignableUsers";
-import { useIsAdmin } from "../../../hooks/useAccess";
+import { useAccess, useIsAdmin } from "../../../hooks/useAccess";
 import { CALLING_ENDPOINTS, call, listBody } from "../../../api/callingQueries";
 import { SALES_ENDPOINTS } from "../../../api/salesQueries";
 import { toCsv } from "../../Reports/reportUtils";
@@ -49,13 +49,15 @@ const schema = (admin) => z.object({
   Script: z.string().optional(),
 });
 
+// Without calling edit the Callers step is left out: handing out is an edit (spec 3a).
 function Steps({ step }) {
   const p = useTheme().tokens;
-  const at = STEPS.findIndex(([k]) => k === step);
+  const steps = useAccess("calling").edit ? STEPS : STEPS.slice(0, 2);
+  const at = steps.findIndex(([k]) => k === step);
   return (
     <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }} data-testid="list-steps">
-      {STEPS.map(([k, label], i) => (
-        <Box key={k} sx={{ display: "flex", alignItems: "center", gap: 1, flex: i < 2 ? 1 : "none" }}>
+      {steps.map(([k, label], i) => (
+        <Box key={k} sx={{ display: "flex", alignItems: "center", gap: 1, flex: i < steps.length - 1 ? 1 : "none" }}>
           <Box aria-current={i === at ? "step" : undefined} sx={{ display: "flex", alignItems: "center", gap: 0.75, fontSize: "calc(13rem / 15)", fontWeight: 600, color: i <= at ? p.text.primary : p.text.tertiary }}>
             <Box sx={{ width: "calc(22rem / 15)", height: "calc(22rem / 15)", borderRadius: "50%", display: "grid", placeItems: "center", fontSize: "calc(12rem / 15)",
               background: i < at ? p.success.main : i === at ? p.primary.main : p.surface.track, color: i <= at ? p.primary.contrastText : p.text.secondary }}>
@@ -63,7 +65,7 @@ function Steps({ step }) {
             </Box>
             {label}
           </Box>
-          {i < 2 && <Box sx={{ flex: 1, height: "1px", background: p.border.default }} />}
+          {i < steps.length - 1 && <Box sx={{ flex: 1, height: "1px", background: p.border.default }} />}
         </Box>
       ))}
     </Box>
@@ -148,7 +150,7 @@ function DetailsStep({ saved, onSaved, onCancel }) {
   );
 }
 
-function SheetStep({ list, adding, onBack, onDone }) {
+function SheetStep({ list, adding, last, onBack, onDone }) {
   const p = useTheme().tokens;
   const [sheet, setSheet] = useState(null);
   const [mapping, setMapping] = useState([]);
@@ -290,7 +292,7 @@ function SheetStep({ list, adding, onBack, onDone }) {
         {!adding && !done && <Button variant="ghost" onClick={onBack} disabled={busy}>Back</Button>}
         {!preview && !done && <Button disabled={!sheet || !hasMobile || busy} loading={busy} onClick={() => run(true)} data-testid="preview-btn">Preview</Button>}
         {preview && !done && <Button loading={busy} onClick={() => run(false)} data-testid="import-btn">Import</Button>}
-        {done && <Button onClick={onDone} data-testid="sheet-next">{adding ? "Done" : "Next: callers"}</Button>}
+        {done && <Button onClick={onDone} data-testid="sheet-next">{last ? "Done" : "Next: callers"}</Button>}
       </Modal.Footer>
     </>
   );
@@ -401,6 +403,9 @@ function CallersStep({ list, onDone }) {
 /** New list (no `list`) or Add contacts to `list` (opens on the Sheet step). */
 export default function ListFormModal({ open, onClose, list = null }) {
   const qc = useQueryClient();
+  const { edit } = useAccess("calling");
+  const last = Boolean(list) || !edit; // the Sheet is the last step
+  const n = edit ? 3 : 2;
   const [step, setStep] = useState(list ? "sheet" : "details");
   const [saved, setSaved] = useState(list ? listBody(list) : null);
   const close = () => {
@@ -409,12 +414,12 @@ export default function ListFormModal({ open, onClose, list = null }) {
     qc.invalidateQueries({ queryKey: ["calling-contacts"] });
     onClose?.();
   };
-  const sub = { details: "Step 1 of 3 · what was bought", sheet: `Step 2 of 3 · ${saved?.Name ?? ""}`, callers: `Step 3 of 3 · who calls · ${saved?.Name ?? ""}` }[step];
+  const sub = { details: `Step 1 of ${n} · what was bought`, sheet: `Step 2 of ${n} · ${saved?.Name ?? ""}`, callers: `Step 3 of 3 · who calls · ${saved?.Name ?? ""}` }[step];
   return (
     <Modal open={open} onClose={close} size={step === "sheet" ? "xl" : "lg"} dismissOnBackdrop={false} data-testid="list-form-modal">
       <Modal.Header title={list ? `Add contacts · ${list.Name}` : "New calling list"} subtitle={list ? undefined : sub} icon={<FileSpreadsheet size={18} />} onClose={close} />
       {step === "details" && <DetailsStep saved={saved} onCancel={close} onSaved={(b) => { setSaved(b); setStep("sheet"); }} />}
-      {step === "sheet" && <SheetStep list={saved} adding={Boolean(list)} onBack={() => setStep("details")} onDone={() => (list ? close() : setStep("callers"))} />}
+      {step === "sheet" && <SheetStep list={saved} adding={Boolean(list)} last={last} onBack={() => setStep("details")} onDone={() => (last ? close() : setStep("callers"))} />}
       {step === "callers" && <CallersStep list={saved} onDone={close} />}
     </Modal>
   );

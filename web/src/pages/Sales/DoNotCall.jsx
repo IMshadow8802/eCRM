@@ -1,5 +1,5 @@
 // src/pages/Sales/DoNotCall.jsx — /sales/do-not-call (spec 13.4). The company's own list.
-// List managers (calling edit) read it; Owner / Admin add and clear, each with a note.
+// List managers (calling edit) read it and add a number (as /api/phoneMark/set allows); Owner / Admin clear, with a note.
 import { useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { Box } from "@mui/material";
@@ -100,7 +100,7 @@ export default function DoNotCall() {
       <PageHeader
         title="Do not call"
         subtitle="The company's own list. A marked number is never handed out and shows a warning wherever it appears."
-        actions={edit && admin ? <Button size="sm" leftIcon={<Plus size={14} />} onClick={() => setAdding(true)} data-testid="add-number-btn">Add number</Button> : null}
+        actions={edit ? <Button size="sm" leftIcon={<Plus size={14} />} onClick={() => setAdding(true)} data-testid="add-number-btn">Add number</Button> : null}
       />
       <Helmet><title>PRD Infotech | Do not call</title></Helmet>
       {edit ? <MaterialReactTable table={table} /> : (

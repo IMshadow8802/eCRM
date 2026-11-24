@@ -71,12 +71,12 @@ describe("Do not call page", () => {
     expect(await screen.findByText("Mark not found")).toBeInTheDocument();
   });
 
-  it("a list manager reads it without Add or Clear", async () => {
+  it("a list manager (calling edit) adds a number but cannot clear one", async () => {
     as(MANAGER);
     mockCallingEndpoints({ marks: MARKS });
     renderWithProviders(<DoNotCall />);
     await screen.findByText("9899011223");
-    expect(screen.queryByTestId("add-number-btn")).toBeNull();
+    expect(screen.getByTestId("add-number-btn")).toBeInTheDocument();
     expect(screen.queryByTestId("clear-31")).toBeNull();
   });
 

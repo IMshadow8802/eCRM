@@ -20,6 +20,7 @@ const AGE_BUCKETS = ["0_7", "8_30", "31_90", "90p"];
 const FLAGS = ["overdue", "nonext", "stale", "reached", "nodial", "cbbooked", "cbkept", "cbmissed", "used"];
 const MAX_ROWS = 2000;          // drill cap; the controller clamps MaxRows to it
 const PREVIOUS_MAX_DAYS = 92;   // the previous-period line is skipped over this
+const ANY_TIME_FROM = "2000-01-01"; // "Any time" for the dated calling reports (before any data)
 
 // Every numeric RS1 column of sp_RptSales (not GroupKey/TeamSize/IsActive/NoManager/Ord).
 const SUM_KEYS = ["New", "Calls", "Visits", "Meetings", "Other",
@@ -65,8 +66,9 @@ function previousRange(from, to) {
 
 /**
  * Body -> { args } for sp_RptSales (or sp_RptSalesRows with rows: true), or { error } for a 400.
- * Dates: both or neither. Neither = yesterday, except GroupBy 'person' (Open leads) and 'calllist'
- * (a list bought in November and worked in January is one line) = any time (null).
+ * Dates: both or neither. Neither = yesterday, except GroupBy 'person' (Open leads) = any time (null),
+ * and 'caller' / 'calllist' (the Calls report's Any time; a list bought in November and worked in
+ * January is one line) = any time as 2000-01-01 .. today, because their families are dated.
  */
 function parseSalesArgs(body, { rows = false, today = new Date() } = {}) {
   const b = body ?? {};
@@ -83,7 +85,12 @@ function parseSalesArgs(body, { rows = false, today = new Date() } = {}) {
     const range = parseRange(b, today);
     if (range.error) return range;
     ({ from: FromDate, to: ToDate } = range);
-  } else if (GroupBy !== "person" && GroupBy !== "calllist") {
+  } else if (GroupBy === "caller" || GroupBy === "calllist") {
+    // Any time. The calling families are dated (x >= @From AND x < @ToEx), so NULL would match nothing.
+    // The previous-period line skips itself: the span is far over PREVIOUS_MAX_DAYS.
+    FromDate = ANY_TIME_FROM;
+    ToDate = isoDay(today);
+  } else if (GroupBy !== "person") {
     FromDate = ToDate = isoDay(addDays(today, -1));
   }
 

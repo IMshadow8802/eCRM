@@ -22,7 +22,7 @@ const istDate = (s) => new Date(`${s.replace(" ", "T")}+05:30`);
 const fetchList = async (CompId, UserId, TopUp) =>
   shapeMyList(await database.executeStoredProcedure("sp_FetchMyCallList", { CompId, UserId, TopUp }));
 
-// After a write: 2xx → the fresh list (plus `extra`); 409 → the sentence and the fresh list,
+// After a write: 2xx → the fresh list (plus `extra`); 409 → the sentence and the fresh list (same TopUp),
 // so the phone refetches nothing; anything else (404 "Contact not found") → the sentence only.
 async function afterWrite(res, row, CompId, UserId, TopUp, extra = {}) {
   const code = spStatus(row);
@@ -33,7 +33,7 @@ async function afterWrite(res, row, CompId, UserId, TopUp, extra = {}) {
     return success(res, spMessage(row, "Saved"), { ...extra, ...list }, code);
   }
   if (code === 409) {
-    const data = await fetchList(CompId, UserId, 0);
+    const data = await fetchList(CompId, UserId, TopUp); // convert: the contact closed, so top up (saveResult / undo pass 0)
     return res.status(409).json({ success: false, message: spMessage(row, "This contact is no longer on your list"),
       code: "SP_ERROR", responseCode: 409, data, timestamp: new Date().toISOString() });
   }

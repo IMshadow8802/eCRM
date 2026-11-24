@@ -94,7 +94,7 @@ export const COLUMNS = Object.fromEntries([
   col("listLeads", "Leads", "new", "int", true, field("New"), { Metric: "new" }, "Leads made from the list."),
   col("leadPct", "Lead % of reached", "stock", "pct", true, (l) => ratio(l.New, l.DialReached), null, "Leads out of the calls that reached someone."),
   col("listCost", "Cost ₹", "stock", "money", null, field("ListCost"), null, "What the list cost.", { cost: true }),
-  col("costPerLead", "Cost per lead ₹", "stock", "money", false, (l) => ratio(l.ListCost, l.New, 1), null, "Cost divided by leads.", { cost: true }),
+  col("costPerLead", "Cost per new lead ₹", "stock", "money", false, (l) => ratio(l.ListCost, l.New, 1), null, "Cost divided by new leads.", { cost: true }),
   col("costPerWon", "Cost per won ₹", "stock", "money", false, (l) => ratio(l.ListCost, l.CohortWon, 1), null, "Cost divided by deals won.", { cost: true }),
   col("returnPerRupee", "₹ won per ₹ spent", "won", "ratio", true, (l) => ratio(l.CohortWonValue, l.ListCost, 1), null,
     "Won value divided by cost.", { cost: true }),

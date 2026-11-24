@@ -132,6 +132,31 @@ describe("ListFormModal", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("without calling edit (Add only) the Callers step is left out: two steps, Done after the import closes", async () => {
+    useAuthStore.setState({ access: { isAdmin: false, modules: { calling: { view: true, add: true } } } });
+    const cap = mockCallingEndpoints();
+    mockRead.mockResolvedValue({ headers: ["Name", "Mobile"], rows: mobiles(3) });
+    const onClose = vi.fn();
+    renderWithProviders(<ListFormModal open onClose={onClose} />);
+    const user = userEvent.setup();
+    expect(screen.getByText("Step 1 of 2 · what was bought")).toBeInTheDocument();
+    expect(within(screen.getByTestId("list-steps")).queryByText("Callers")).toBeNull();
+    await user.type(screen.getByTestId("list-Name"), "Surat traders");
+    await option(user, "list-BranchId", "Delhi");
+    await user.click(screen.getByTestId("list-next"));
+    await screen.findByText("Drop the sheet here, or browse");
+    expect(screen.getByText(/Step 2 of 2 · Surat traders/)).toBeInTheDocument();
+    pickFile();
+    await user.click(await screen.findByTestId("preview-btn"));
+    await user.click(await screen.findByTestId("import-btn"));
+    const next = await screen.findByTestId("sheet-next");
+    expect(next).toHaveTextContent("Done");
+    await user.click(next);
+    expect(onClose).toHaveBeenCalled();
+    expect(screen.queryByTestId("callers-save")).toBeNull();
+    expect(cap.assign).toBeUndefined();
+  });
+
   describe("Callers step", () => {
     const toCallers = async (user) => {
       await user.type(screen.getByTestId("list-Name"), "Surat traders");
