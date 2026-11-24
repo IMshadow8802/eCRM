@@ -93,10 +93,10 @@ export default function ComplaintsScreen({ navigation, route }: Props) {
   // Active by default: the set every count (preset, Home, Search) counted, so a number equals the list it opens.
   const [status, setStatus] = useState<ComplaintStatusFilter>("active");
   const [search, setSearch] = useState(route.params?.term ?? "");
-  // "Mine" unless a navigate() (Home's numbers, Search's "See all") asks for
-  // another queue — which also resets the pill and takes the carried term, so
-  // the list is exactly what was counted.
-  const [queue, setQueue] = useParamState<Preset>(route.params, route.params?.queue, "mine", () => {
+  // "Team" (everything the server lets you see) unless a navigate() (Home's numbers,
+  // Search's "See all") asks for another queue — which also resets the pill and
+  // takes the carried term, so the list is exactly what was counted.
+  const [queue, setQueue] = useParamState<Preset>(route.params, route.params?.queue, "team", () => {
     setStatus("active");
     setSearch(route.params?.term ?? "");
   });

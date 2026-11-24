@@ -70,7 +70,7 @@ const serve = () =>
 const listCalls = () => jest.mocked(fetchTickets).mock.calls.map((c) => c[0]!).filter((p) => p.PageSize !== 1);
 const lastList = () => listCalls().at(-1);
 
-const mount = (navigation = makeNavigation<"Complaints">(), params?: { queue?: "overdue"; term?: string }) =>
+const mount = (navigation = makeNavigation<"Complaints">(), params?: { queue?: "overdue" | "mine"; term?: string }) =>
   renderWithProviders(<ComplaintsScreen navigation={navigation} route={makeRoute("Complaints", params)} />);
 
 const FULL = { view: true, add: true, edit: true, delete: true, reach: "Company" as const };
@@ -115,7 +115,7 @@ describe("E 10 · the band", () => {
     for (const q of ["mine", "team", "unassigned", "overdue", "escalated"] as const) {
       expect(fetchTickets).toHaveBeenCalledWith({ ...complaintQueueParams(q, "active", 42, ""), PageSize: 1 });
     }
-    expect(screen.getByRole("tab", { name: "Mine, 7" })).toBeSelected();
+    expect(screen.getByRole("tab", { name: "Team, 18" })).toBeSelected();
   });
 
   it("a preset is WHICH complaints; the band stays live", async () => {
@@ -230,20 +230,21 @@ describe("Logged by me (Task 27, §2.5)", () => {
 describe("E 10 · status pills", () => {
   it("opens on Active — the set the preset counted — then each status's count; none shows no number", async () => {
     await mount();
-    // The tab and the default list agree: Mine 7 opens Active 7.
-    expect(await screen.findByRole("radio", { name: "Active, 7" })).toBeSelected();
-    expect(screen.getByRole("tab", { name: "Mine, 7" })).toBeSelected();
+    // Opens on Team: everything the server lets the caller see (an owner sees all,
+    // an agent only his own) — 2026-11-24, an owner on "Mine" thought he had no access.
+    expect(await screen.findByRole("radio", { name: "Active, 18" })).toBeSelected();
+    expect(screen.getByRole("tab", { name: "Team, 18" })).toBeSelected();
     expect(screen.queryByRole("radio", { name: /^All/ })).toBeNull();
     expect(screen.getByRole("radio", { name: "Open, 6" })).toBeOnTheScreen();
     expect(screen.getByRole("radio", { name: "On hold, 1" })).toBeOnTheScreen();
     expect(await screen.findByRole("radio", { name: "Rejected" })).toBeOnTheScreen();
-    expect(lastList()).toMatchObject({ AssignedTo: 42, StatusCode: "active", StatusId: null });
+    expect(lastList()).toMatchObject({ AssignedTo: null, StatusCode: "active", StatusId: null });
   });
 
   it("a pill narrows within the preset by status id; its tone is the status's", async () => {
     await mount();
     await fireEvent.press(await screen.findByRole("radio", { name: "On hold, 1" }));
-    await waitFor(() => expect(lastList()).toMatchObject({ AssignedTo: 42, StatusId: 2, StatusCode: null }));
+    await waitFor(() => expect(lastList()).toMatchObject({ AssignedTo: null, StatusId: 2, StatusCode: null }));
     expect(flat(screen.getByRole("radio", { name: "Open, 6" })).backgroundColor).toBe(chipTones.sky.fill);
     expect(flat(screen.getByRole("radio", { name: "On hold, 1" })).backgroundColor).toBe(colors.primary);
   });
@@ -404,7 +405,7 @@ describe("20a–c · states", () => {
   it("20a: a preset with nothing in any status draws no status pills (E 20a)", async () => {
     rows = [];
     jest.mocked(fetchTickets).mockImplementation(async () => envelope({ tickets: [], pagination: pagination(0) }));
-    await mount();
+    await mount(undefined, { queue: "mine" });
     expect(await screen.findByText("Nothing assigned to you")).toBeOnTheScreen();
     expect(screen.queryByTestId("status-pills")).toBeNull();
     // Top-aligned under the presets, like E, not centred in the sheet.
@@ -423,7 +424,7 @@ describe("20a–c · states", () => {
 
   it("switching from an empty preset shows skeletons, not the old preset's empty state, until the new one answers (device)", async () => {
     rows = [];
-    await mount();
+    await mount(undefined, { queue: "mine" });
     expect(await screen.findByText("Nothing assigned to you")).toBeOnTheScreen();
     const counts = jest.mocked(fetchTickets).getMockImplementation()!;
     // Team's list never answers; its counts do.
@@ -496,7 +497,7 @@ it("while a search is set the status pills go without counts — no count storm 
 // Review C-M3: with no user id, "mine" sent AssignedTo null — the whole reach, labelled Mine.
 it("with no user id, Mine asks nothing rather than the whole reach", async () => {
   useAuthStore.setState({ UserId: null });
-  await mount();
+  await mount(undefined, { queue: "mine" });
   await act(async () => { jest.advanceTimersByTime(300); });
   const mine = jest.mocked(fetchTickets).mock.calls.map((c) => c[0]!).filter((p) => !p.Overdue && !p.Escalated && !p.Unassigned && p.AssignedTo == null);
   // Only the Team preset count goes out with no AssignedTo; no list and no pill counts posing as Mine.
@@ -509,7 +510,7 @@ describe("count equality", () => {
   it("Home → Mine: the number Home showed is the rows the list shows", async () => {
     // The server answers the list with exactly the active Mine set.
     rows = Array.from({ length: 7 }, (_, i) => ticket({ Id: 100 + i, Subject: `Complaint ${i}` }));
-    await mount(undefined, { queue: "mine" } as never);
+    await mount(undefined, { queue: "mine" });
     expect(await screen.findByRole("tab", { name: "Mine, 7" })).toBeOnTheScreen();
     await screen.findByText("Complaint 0");
     expect(screen.getAllByTestId(/^complaint-\d+$/)).toHaveLength(7);
