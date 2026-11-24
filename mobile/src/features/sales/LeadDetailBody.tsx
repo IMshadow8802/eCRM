@@ -17,6 +17,7 @@ import {
   Phone,
   PhoneCall,
   PhoneIncoming,
+  PhoneOff,
   PhoneOutgoing,
   Plus,
   Tag,
@@ -28,11 +29,12 @@ import {
 
 import { convertLead, fetchLeadDetail, setLeadStatus, transferLead } from "../../api/leadQueries";
 import { scheduleFollowUp } from "../../api/followupQueries";
+import { setPhoneMark } from "../../api/phoneMarkQueries";
 import { fetchCalls, logCall } from "../../api/callQueries";
 import { fetchAssignableUsers, fetchUserDirectory } from "../../api/userQueries";
 import { apiErrorMessage, RECORD_GONE_MESSAGE, recordGone } from "../../api/errors";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
-import type { FollowUp, FollowUpType } from "../../types/api";
+import type { FollowUp, FollowUpType, PhoneMark } from "../../types/api";
 import { colors, metrics, spacing } from "../../theme";
 import {
   ActionSheet,
@@ -41,11 +43,13 @@ import {
   BandSheet,
   Chip,
   ComposeSheet,
+  Dialog,
   EmptyState,
   ErrorCard,
   HeaderButton,
   IconButton,
   LogCallSheet,
+  MarkBanner,
   SegmentedTabs,
   SkeletonRows,
   Text,
@@ -70,7 +74,7 @@ import { useLeadRefData } from "./useLeadRefData";
 
 type Tab = "details" | "followups" | "activity";
 /** The sheets that can show a server refusal inline. */
-type SheetKey = "status" | "schedule" | "call";
+type SheetKey = "status" | "schedule" | "call" | "mark";
 
 const first = (name: string) => name.split(" ")[0];
 
@@ -145,6 +149,10 @@ export function LeadDetailBody({ leadId, navigation, onBack, onGone = onBack, us
   const layout = useLayout();
   // Every write here needs the leads edit grant on the server. Courtesy only.
   const can = useAccess("leads");
+  // Marking a number is the calling edit grant on the server (149).
+  const canMark = useAccess("calling").edit;
+  /** A do-not-call number asks before the dialler or WhatsApp opens. */
+  const [confirmDnc, setConfirmDnc] = useState<"call" | "message" | null>(null);
 
   const [tab, setTab] = useState<Tab>("followups");
   const [failure, setFailure] = useState<{ on: SheetKey; message: string } | null>(null);
@@ -157,6 +165,7 @@ export function LeadDetailBody({ leadId, navigation, onBack, onGone = onBack, us
   const callRef = useRef<SheetRef>(null);
   const reassignRef = useRef<SheetRef>(null);
   const sendBackRef = useRef<SheetRef>(null);
+  const markRef = useRef<SheetRef>(null);
   const followUpSheets = useRef<FollowUpSheetsHandle>(null);
 
   const detailQuery = useQuery({ queryKey: ["lead", leadId], queryFn: () => fetchLeadDetail({ LeadId: leadId }) });
@@ -203,6 +212,15 @@ export function LeadDetailBody({ leadId, navigation, onBack, onGone = onBack, us
   const won = useLeadWrite(leadId, convertLead, statusRef, inSheet("status"), "Could not mark this lead won.", gone);
   const schedule = useLeadWrite(leadId, scheduleFollowUp, scheduleRef, inSheet("schedule"), "Could not schedule the follow-up.", gone);
   const call = useLeadWrite(leadId, logCall, callRef, inSheet("call"), "Could not log that call.", gone);
+  const mark = useMutation({
+    mutationFn: (p: Parameters<typeof setPhoneMark>[0]) => setPhoneMark(p),
+    onError: (err) => inSheet("mark")(apiErrorMessage(err, "Could not mark the number.")),
+    onSuccess: () => {
+      markRef.current?.dismiss();
+      toast.success("Marked");
+      void queryClient.invalidateQueries({ queryKey: ["lead", leadId] });
+    },
+  });
   const reassign = useMutation({
     mutationFn: transferLead,
     onError: (err, vars) => {
@@ -228,11 +246,14 @@ export function LeadDetailBody({ leadId, navigation, onBack, onGone = onBack, us
     setFailure(null);
     sheet.current?.present();
   };
-  const dial = () => {
+  const dnc = lead?.PhoneMark === "dnc";
+  const openDialler = () => {
     if (mobile) Linking.openURL(`tel:${mobile}`).catch(() => toast.error("Can't open the dialer on this device"));
   };
+  const dial = () => (dnc ? setConfirmDnc("call") : openDialler());
   // G30: WhatsApp when it is installed, else a plain SMS.
-  const message = () => {
+  const message = () => (dnc ? setConfirmDnc("message") : openMessage());
+  const openMessage = () => {
     if (!mobile) return;
     Linking.openURL(`whatsapp://send?phone=91${mobile}`)
       .catch(() => Linking.openURL(`sms:${mobile}`))
@@ -342,6 +363,9 @@ export function LeadDetailBody({ leadId, navigation, onBack, onGone = onBack, us
     ...(next ? [{ key: "skip", label: "Skip follow-up", sublabel: "It is not happening", icon: CalendarX, onPress: () => followUpSheets.current?.skip(next) }] : []),
     { key: "status", label: "Won or lost", sublabel: "Through the status sheet", icon: Trophy, onPress: changeStatus },
     { key: "files", label: "Files", sublabel: "On the Details tab", icon: Paperclip, onPress: () => setTab("details") },
+    ...(canMark && mobile
+      ? [{ key: "mark", label: "Mark number", sublabel: "Do not call, or call with caution", icon: PhoneOff, onPress: () => openSheet(markRef) }]
+      : []),
   ];
   const rowActions: SheetAction[] = picked
     ? [
@@ -357,7 +381,10 @@ export function LeadDetailBody({ leadId, navigation, onBack, onGone = onBack, us
       : status.mutate({ LeadId: leadId, StatusId: change.StatusId, LostReasonId: change.LostReasonId });
 
   const contact = (
-    <ContactCard lead={lead} fields={detailQuery.data?.fields ?? []} wide={wide} onCall={dial} onMessage={message} />
+    <View style={styles.contact}>
+      <MarkBanner mark={lead.PhoneMark} note={lead.PhoneMarkNote} by={lead.PhoneMarkBy} at={lead.PhoneMarkAt} />
+      <ContactCard lead={lead} fields={detailQuery.data?.fields ?? []} wide={wide} onCall={dial} onMessage={message} />
+    </View>
   );
   const tabs = (
     <View style={[styles.flex, !wide && styles.tabsGap]}>
@@ -550,6 +577,20 @@ export function LeadDetailBody({ leadId, navigation, onBack, onGone = onBack, us
               }
             />
           ) : null}
+          {canMark && mobile ? (
+            <ComposeSheet
+              ref={markRef}
+              title="Mark number"
+              subtitle={mobile}
+              badge={{ tone: "red", icon: PhoneOff }}
+              submitLabel="Mark number"
+              busy={mark.isPending}
+              error={failed("mark")}
+              choices={[{ key: "mark", label: "Mark", required: true, options: [{ value: "dnc", label: "Do not call" }, { value: "caution", label: "Call with caution" }] }]}
+              fields={[{ key: "note", placeholder: "Why? Everyone who gets this number reads it", multiline: true, required: true }]}
+              onSubmit={(v, p) => mark.mutate({ Mobile: mobile, Mark: p.mark as PhoneMark, Note: v.note! })}
+            />
+          ) : null}
           {canSendBack ? (
             <ComposeSheet
               ref={sendBackRef}
@@ -570,12 +611,28 @@ export function LeadDetailBody({ leadId, navigation, onBack, onGone = onBack, us
           ) : null}
         </>
       ) : null}
+      <Dialog
+        visible={confirmDnc != null}
+        title="This number is marked do not call"
+        message={lead.PhoneMarkNote ?? undefined}
+        badge={{ tone: "red", icon: PhoneOff }}
+        confirmLabel={confirmDnc === "message" ? "Message anyway" : "Call anyway"}
+        destructive
+        onConfirm={() => {
+          const then = confirmDnc;
+          setConfirmDnc(null);
+          if (then === "message") openMessage();
+          else openDialler();
+        }}
+        onCancel={() => setConfirmDnc(null)}
+      />
     </>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1, minWidth: 0 },
+  contact: { gap: spacing[3] },
   bandActions: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
   titleRow: { flexDirection: "row", alignItems: "flex-end", gap: spacing[3] },
   titleRowWide: { gap: spacing[4] },
