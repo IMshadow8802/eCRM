@@ -26,7 +26,12 @@ const fetchList = async (CompId, UserId, TopUp) =>
 // so the phone refetches nothing; anything else (404 "Contact not found") → the sentence only.
 async function afterWrite(res, row, CompId, UserId, TopUp, extra = {}) {
   const code = spStatus(row);
-  if (spOk(row)) return success(res, spMessage(row, "Saved"), { ...extra, ...(await fetchList(CompId, UserId, TopUp)) }, code);
+  if (spOk(row)) {
+    const list = await fetchList(CompId, UserId, TopUp);
+    // The save ran the top-up itself; the re-read (TopUp 0) cannot know how many it gave.
+    if (row.Given > 0) list.head = { ...list.head, Given: row.Given };
+    return success(res, spMessage(row, "Saved"), { ...extra, ...list }, code);
+  }
   if (code === 409) {
     const data = await fetchList(CompId, UserId, 0);
     return res.status(409).json({ success: false, message: spMessage(row, "This contact is no longer on your list"),

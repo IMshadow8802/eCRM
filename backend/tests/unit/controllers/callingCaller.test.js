@@ -54,6 +54,16 @@ describe("saveResult", () => {
     expect(body(res).data.AttemptId).toBe(55);
     expect(body(res).data.toCall.map((r) => r.Id)).not.toContain(9);
   });
+  it("carries the top-up count the save returned into head.Given (the re-read runs with TopUp 0)", async () => {
+    stub({ sp_SaveCallResult: statusRow({ Id: 55, ResponseCode: 200, Given: 10 }), sp_FetchMyCallList: myList([{ Id: 10 }]) });
+    await c.saveResult(req({ ContactId: 9, Result: "no_answer" }), res);
+    expect(body(res).data.head.Given).toBe(10);
+  });
+  it("leaves head.Given as the list says when the save gave none", async () => {
+    stub({ sp_SaveCallResult: statusRow({ Id: 55, ResponseCode: 200, Given: 0 }), sp_FetchMyCallList: myList([{ Id: 10 }]) });
+    await c.saveResult(req({ ContactId: 9, Result: "no_answer" }), res);
+    expect(body(res).data.head.Given).toBeUndefined();
+  });
   it("[holding] relays 404 for a contact the caller does not hold, and fetches nothing else", async () => {
     stub({ sp_SaveCallResult: statusRow({ ResponseCode: 404, ResponseMess: "Contact not found" }) });
     await c.saveResult(req({ ContactId: 9, Result: "busy" }), res);
