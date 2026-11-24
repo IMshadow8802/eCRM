@@ -31,6 +31,24 @@ const SALES_REPORT_GUIDES = {
 };
 
 export const HELP_GUIDES = {
+  callingLists: {
+    titleHi: "Calling lists कैसे चलाएँ",
+    titleEn: "How to run calling lists",
+    steps: [
+      {
+        hi: "New list से खरीदी गई sheet (.xlsx या .csv) डालें। बताएँ कि कौन सा column mobile नंबर है; Preview बताता है कितने नए जुड़ेंगे और कितने पहले से lead, customer या do-not-call हैं।",
+        en: "Use New list to upload a bought sheet (.xlsx or .csv). Say which column is the mobile number; Preview shows how many are new and how many are already a lead, a customer or do-not-call.",
+      },
+      {
+        hi: "Callers चुनें: किसी को अभी N contacts दें, या Automatic चालू करें ताकि हर caller के पास एक बार में N रहें और batch खत्म होते ही अगला आ जाए।",
+        en: "Pick callers: give someone N contacts now, or switch on Automatic so each caller holds N at a time and gets the next batch when they finish.",
+      },
+      {
+        hi: "Caller phone app पर Calling में नंबर लगाकर result चुनते हैं। सिर्फ़ 'Interested' contact ही lead बनता है। List खोलकर pool, callers और नतीजे देखें; रिपोर्ट Reports → Calling में है।",
+        en: "Callers ring from Calling on the phone app and tap a result. Only an 'Interested' contact becomes a lead. Open a list to see its pool, callers and results; the report is under Reports → Calling.",
+      },
+    ],
+  },
   tasks: {
     titleHi: "टास्क कैसे इस्तेमाल करें",
     titleEn: "How to use Tasks",
