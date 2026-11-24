@@ -31,6 +31,7 @@ export const moduleIcons: Record<UiModule, { bar: LucideIcon; tile: LucideIcon }
   complaints: { bar: Headset, tile: Headset },
   leads: { bar: Target, tile: Target },
   followups: { bar: CalendarClock, tile: CalendarCheck },
+  calling: { bar: PhoneCall, tile: PhoneCall },
   more: { bar: Ellipsis, tile: Ellipsis },
 };
 
