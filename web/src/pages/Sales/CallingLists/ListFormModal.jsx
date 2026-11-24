@@ -16,10 +16,9 @@ import FormGrid, { FormGridSpan } from "../../../components/ui/FormGrid";
 import { useApiQuery } from "../../../hooks/useApiQuery";
 import { useAssignableUsers } from "../../../hooks/useAssignableUsers";
 import { useIsAdmin } from "../../../hooks/useAccess";
-import { CALLING_ENDPOINTS, listBody } from "../../../api/callingQueries";
+import { CALLING_ENDPOINTS, call, listBody } from "../../../api/callingQueries";
 import { SALES_ENDPOINTS } from "../../../api/salesQueries";
 import { toCsv } from "../../Reports/reportUtils";
-import { apiClient } from "../../../utils/axiosConfig";
 import { buildRows, chunks, guessMapping, MAX_ROWS, readSheet, TARGETS } from "./sheetParse";
 
 const STEPS = [["details", "Details"], ["sheet", "Sheet"], ["callers", "Callers"]];
@@ -28,16 +27,6 @@ const COUNT_LABELS = [["Added", "Will be added"], ["InPool", "Already in pool"],
 const ZERO = Object.fromEntries(COUNT_LABELS.map(([k]) => [k, 0]));
 const GROUPS = { 1: "Your manager and team", 2: "Your office", 3: "Other offices" };
 const PREVIEW_ROWS = 10;
-
-// One POST, answered as { ok, message, data } — a refusal is a sentence, not a throw.
-export async function call(url, body) {
-  try {
-    const { data } = await apiClient.post(url, body);
-    return { ok: !!data?.success, message: data?.message ?? "", data: data?.data };
-  } catch (e) {
-    return { ok: false, message: e.response?.data?.message || e.message || "Request failed" };
-  }
-}
 
 /** The original sheet rows that were skipped, plus a Reason column — to argue with the vendor. */
 export function skippedCsv(headers, rows, skipped) {

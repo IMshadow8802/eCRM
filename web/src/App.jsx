@@ -37,6 +37,7 @@ const Offices = lazy(() => import("./pages/Master/Offices"));
 const Partners = lazy(() => import("./pages/Sales/Partners/Partners"));
 const VisitingCards = lazy(() => import("./pages/Sales/VisitingCards/VisitingCards"));
 const CallingLists = lazy(() => import("./pages/Sales/CallingLists/CallingLists"));
+const CallingListDetail = lazy(() => import("./pages/Sales/CallingLists/ListDetail"));
 const SalesLeads = lazy(() => import("./pages/Sales/Leads"));
 const LeadDetail = lazy(() => import("./pages/Sales/LeadDetail"));
 const SalesFollowUps = lazy(() => import("./pages/Sales/FollowUps"));
@@ -95,6 +96,7 @@ export const routesConfig = [
   { path: "/sales/partners", element: <ProtectedRoute element={<Partners />} /> },
   { path: "/sales/visiting-cards", element: <ProtectedRoute element={<VisitingCards />} /> },
   { path: "/sales/calling-lists", element: <ProtectedRoute element={<CallingLists />} /> },
+  { path: "/sales/calling-lists/:listId", element: <ProtectedRoute element={<CallingListDetail />} /> },
   { path: "/sales/leads/:leadId", element: <ProtectedRoute element={<LeadDetail />} /> },
   // Task 17. Lazy on purpose: it's a plain filtered list (no PDF chain in its
   // import graph — QUOTE_STATUS comes from quoteStatus.js, not LeadQuotations),

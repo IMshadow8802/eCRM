@@ -234,7 +234,7 @@ describe("retired My Work", () => {
 });
 
 describe("calling list routes (149)", () => {
-  it.each(["/sales/calling-lists"])("%s is a protected route", (path) => {
+  it.each(["/sales/calling-lists", "/sales/calling-lists/:listId"])("%s is a protected route", (path) => {
     const route = routesConfig.find((r) => r.path === path);
     expect(route?.element.type).toBe(ProtectedRoute);
   });

@@ -1,6 +1,7 @@
 // src/api/callingQueries.js — calling lists (149) and do-not-call marks.
 // Endpoints only: pages call them through useApiQuery / useApiMutation / useServerTable.
 // The calling report rides SALES_ENDPOINTS.reports (no report endpoint of its own).
+import { apiClient } from "../utils/axiosConfig";
 
 const names = (base, list) => Object.fromEntries(list.map((n) => [n, `${base}/${n}`]));
 
@@ -45,3 +46,14 @@ export const listBody = (list, over = {}) => {
 
 // A list with nothing eligible and nothing in the pool is used up: time to buy more.
 export const usedUp = (l) => l.Status === "active" && Number(l.Eligible) === 0 && Number(l.InPool) === 0;
+
+// One POST answered as { ok, message, data }: a refusal is the server's sentence, not a throw,
+// so a modal can show it in place. The message matters on success too ("18 given, the list has no more").
+export async function call(url, body) {
+  try {
+    const { data } = await apiClient.post(url, body);
+    return { ok: !!data?.success, message: data?.message ?? "", data: data?.data };
+  } catch (e) {
+    return { ok: false, message: e.response?.data?.message || e.message || "Request failed" };
+  }
+}
