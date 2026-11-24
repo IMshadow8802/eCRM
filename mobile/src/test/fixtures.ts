@@ -333,7 +333,8 @@ export const callContact = (p: Partial<CallContact> = {}): CallContact => ({
 
 /** A finished call (RS4): a record, no number. */
 export const callDone = (p: Partial<CallDone> = {}): CallDone => ({
-  AttemptId: 41, ContactId: 9, Name: "First Trader", Result: "no_answer", CalledAt: `${localDay()}T16:31:00`, LeadId: null, CanUndo: true, ...p,
+  // An instant, as the API serialises a DATETIME ("…Z"): 4:31 pm today on the phone.
+  AttemptId: 41, ContactId: 9, Name: "First Trader", Result: "no_answer", CalledAt: (() => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate(), 16, 31).toISOString(); })(), LeadId: null, CanUndo: true, ...p,
 });
 
 /** The calling screen's reply: First Trader (9) and Second Trader (10) to call, 5 called today. */

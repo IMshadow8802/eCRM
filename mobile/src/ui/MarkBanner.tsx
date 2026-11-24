@@ -13,10 +13,11 @@ export interface MarkBannerProps {
   at?: string | null;
 }
 
-/** "20 Nov" from "2026-11-20T…" — the day part only, so no zone can shift it. */
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** "20 Nov" in the phone's local day: the server sends an instant ("…Z"), so never slice the string. */
 const shortDay = (at: string) => {
-  const [y, m, d] = at.slice(0, 10).split("-").map(Number);
-  return new Date(y!, m! - 1, d!).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+  const d = new Date(at);
+  return Number.isNaN(d.getTime()) ? "" : `${d.getDate()} ${MONTHS[d.getMonth()]}`;
 };
 
 /**
@@ -27,7 +28,8 @@ export function MarkBanner({ mark, note, by, at }: MarkBannerProps) {
   if (!mark) return null;
   const dnc = mark === "dnc";
   const Icon = dnc ? PhoneOff : TriangleAlert;
-  const byline = by ? ` · marked by ${by}${at ? `, ${shortDay(at)}` : ""}` : "";
+  const day = at ? shortDay(at) : "";
+  const byline = by ? ` · marked by ${by}${day ? `, ${day}` : ""}` : "";
   const text = `${dnc ? "Do not call" : "Call with caution"}${note ? ` — ${note}` : ""}${byline}`;
   return (
     <View accessible accessibilityRole="alert" style={[styles.box, { backgroundColor: dnc ? colors.dangerSoft : colors.warningSoft }]}>

@@ -14,6 +14,7 @@ import type { CallContact, CallResult, MyCallList } from "../../types/api";
 import {
   ActionSheet, Button, ComposeSheet, DateField, Sheet, Text, useToast, type SheetAction, type SheetRef,
 } from "../../ui";
+import { clock, parseDate } from "../sales/leadHelpers";
 import { RESULT_LABELS, callbackChoices, titleOf } from "./callingHelpers";
 
 export type CallReply = MyCallList & { AttemptId?: number; LeadId?: number };
@@ -60,6 +61,8 @@ export const ResultSheets = forwardRef<ResultSheetsHandle, ResultSheetsProps>(fu
   const cautionRef = useRef<SheetRef>(null);
   const dncRef = useRef<SheetRef>(null);
 
+  // One write at a time: a second tap while the first is in flight must not save twice.
+  const busy = useRef(false);
   const save = useMutation({ mutationFn: (p: Parameters<typeof saveCallResult>[0]) => saveCallResult(p) });
   const convert = useMutation({ mutationFn: (p: Parameters<typeof convertCallContact>[0]) => convertCallContact(p) });
   const mark = useMutation({ mutationFn: (p: Parameters<typeof setPhoneMark>[0]) => setPhoneMark(p) });
@@ -78,9 +81,16 @@ export const ResultSheets = forwardRef<ResultSheetsHandle, ResultSheetsProps>(fu
     r.current?.present();
   };
 
-  /** A failure: refused → the screen says why and swaps the list; else retry from where the caller was. */
+  /**
+   * A failure. Refused and the contact gone → the screen says why and swaps the list. Otherwise
+   * (a network failure, a 400, or a 409 that left the contact with them — the callback cap) the
+   * caller retries from where they were: the open sheet with the sentence, or the result sheet.
+   */
   const failed = (e: unknown, sheet?: RefObject<SheetRef | null>) => {
-    if (isRefusal(e)) {
+    const fresh = isAxiosError(e) ? (e.response?.data as { data?: MyCallList | null } | undefined)?.data : null;
+    const id = target?.contact.Id;
+    const stillMine = !!fresh?.head && [...fresh.toCall, ...fresh.callbacks].some((c) => c.Id === id);
+    if (isRefusal(e) && !stillMine) {
       sheet?.current?.dismiss();
       setTarget(null);
       onRefused(e);
@@ -93,7 +103,8 @@ export const ResultSheets = forwardRef<ResultSheetsHandle, ResultSheetsProps>(fu
   };
 
   const saveResult = async (Result: CallResult, extra: { CallbackAt?: string | null; Notes?: string } = {}, sheet?: RefObject<SheetRef | null>) => {
-    if (!target) return;
+    if (!target || busy.current) return;
+    busy.current = true;
     setError(null);
     try {
       const res = await save.mutateAsync({
@@ -104,11 +115,14 @@ export const ResultSheets = forwardRef<ResultSheetsHandle, ResultSheetsProps>(fu
       onSaved(res.data as CallReply, { label: RESULT_LABELS[Result] });
     } catch (e) {
       failed(e, sheet);
+    } finally {
+      busy.current = false;
     }
   };
 
   const createLead = async (values: Record<string, string>, due: string | null) => {
-    if (!target || !due) return;
+    if (!target || !due || busy.current) return;
+    busy.current = true;
     setError(null);
     try {
       const res = await convert.mutateAsync({
@@ -120,6 +134,8 @@ export const ResultSheets = forwardRef<ResultSheetsHandle, ResultSheetsProps>(fu
       onSaved(reply, { label: RESULT_LABELS.interested, leadId: reply.LeadId });
     } catch (e) {
       failed(e, interestedRef);
+    } finally {
+      busy.current = false;
     }
   };
 
@@ -162,7 +178,7 @@ export const ResultSheets = forwardRef<ResultSheetsHandle, ResultSheetsProps>(fu
     ? callbackChoices(new Date()).map((c) => ({
       key: c.key,
       label: c.label,
-      sublabel: c.key === "none" ? "Goes back to the pool; anyone may get it" : c.key === "pick" ? "Choose the day and time" : `${c.at!.slice(11)} · stays with you`,
+      sublabel: c.key === "none" ? "Goes back to the pool; anyone may get it" : c.key === "pick" ? "Choose the day and time" : `${clock(parseDate(c.at)!)} · stays with you`,
       badge: { tone: c.key === "none" ? "slate" : "sky", icon: CalendarClock },
       onPress: () => {
         if (c.key === "pick") {

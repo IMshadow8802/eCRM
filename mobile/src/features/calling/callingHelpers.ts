@@ -5,6 +5,8 @@ import { addDays, clock, localDay, parseDate } from "../sales/leadHelpers";
 
 /** One key for the calling screen and the Home tile: every write's reply replaces it. */
 export const CALLING_QUERY = ["calling", "mine"] as const;
+/** Home's read of the same list, without a top-up — its own cache entry so it never stands in for the screen's. */
+export const CALLING_HOME_QUERY = ["calling", "home"] as const;
 
 export const RESULT_LABELS: Record<CallResult | "interested", string> = {
   no_answer: "No answer",

@@ -63,6 +63,28 @@ it("Call back → Tomorrow books 11:00 tomorrow; No time sends no CallbackAt", a
   await waitFor(() => expect(saveCallResult).toHaveBeenLastCalledWith(expect.objectContaining({ Result: "callback", CallbackAt: null })));
 });
 
+it("the call-back choices say when, in 12-hour time", async () => {
+  await open();
+  expect(screen.getByText("11:00 am · stays with you")).toBeOnTheScreen();
+});
+
+it("the callback cap (a 409 that leaves the contact with them) keeps the pick sheet open with the sentence", async () => {
+  const err = serverError(409, "You already hold 20 callbacks");
+  err.response!.data = envelope(myCallList(), { success: false, message: "You already hold 20 callbacks" });
+  jest.mocked(saveCallResult).mockRejectedValue(err);
+  await open();
+  await fireEvent.press(menu("Call back"));
+  await fireEvent.press(menu("Pick date & time"));
+  await fireEvent.press(screen.getByText("Choose a day"));
+  await pickDay(localDay(2));
+  await fireEvent.press(screen.getByText("Choose a time"));
+  await pickTime("16:00");
+  await fireEvent.press(screen.getByRole("button", { name: "Book callback" }));
+  expect((await screen.findAllByText("You already hold 20 callbacks")).length).toBeGreaterThan(0);
+  expect(onRefused).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "Book callback" })).toBeOnTheScreen();
+});
+
 it("Call back → Pick date & time needs both before Save", async () => {
   await open();
   await fireEvent.press(menu("Call back"));

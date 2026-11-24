@@ -16,8 +16,12 @@ const CALLING_ENDPOINTS = {
   undoResult: "/api/calling/undoResult",
 } as const;
 
-/** Runs the top-up on the server, then returns what the caller holds. */
-export const fetchMyCallList = (): Promise<ApiEnvelope<MyCallList>> => post<MyCallList>(CALLING_ENDPOINTS.myList, {});
+/**
+ * What the caller holds. `TopUp` 1 (the calling screen) hands out the next batch
+ * first; Home reads with 0 — only opening or refreshing the calling screen tops up.
+ */
+export const fetchMyCallList = (TopUp: 0 | 1 = 1): Promise<ApiEnvelope<MyCallList>> =>
+  post<MyCallList>(CALLING_ENDPOINTS.myList, { TopUp });
 
 export interface SaveCallResultParams {
   ContactId: number;

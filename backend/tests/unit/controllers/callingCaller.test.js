@@ -42,6 +42,12 @@ describe("myList", () => {
     expect(Object.keys(calls("sp_FetchMyCallList")[0]).sort()).toEqual(["CompId", "TopUp", "UserId"]);
     expect(calls("sp_FetchMyCallList")[0].UserId).toBe(7);
   });
+  it.each([[{ TopUp: 0 }, 0], [{ TopUp: 1 }, 1], [{}, 1], [{ TopUp: "yes" }, 1], [{ TopUp: 2 }, 1], [{ TopUp: false }, 1]])(
+    "TopUp %j reads the list with TopUp %i (Home reads without handing out)", async (b, expected) => {
+      stub();
+      await c.myList(req(b), res);
+      expect(calls("sp_FetchMyCallList")[0].TopUp).toBe(expected);
+    });
 });
 
 describe("saveResult", () => {

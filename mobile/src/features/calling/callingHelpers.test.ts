@@ -42,7 +42,8 @@ it("titles a contact by name, then company, then number", () => {
 
 it("describes earlier tries", () => {
   const now = new Date(2026, 10, 16, 9, 0);
-  expect(historyLine(contact({ Attempts: 2, LastResult: "no_answer", LastCalledAt: "2026-11-15T16:10:00" }), now))
+  // The API sends instants: 10:40 UTC is 4:10 pm IST.
+  expect(historyLine(contact({ Attempts: 2, LastResult: "no_answer", LastCalledAt: "2026-11-15T10:40:00.000Z" }), now))
     .toBe("3rd try · no answer yesterday 4:10 pm");
   expect(historyLine(contact({ Attempts: 0, LastResult: "callback", LastCalledAt: "2026-11-16T08:05:00" }), now))
     .toBe("1st try · call back today 8:05 am");
@@ -65,7 +66,7 @@ it.each([
 
 it("a callback is overdue once its time has passed", () => {
   const now = new Date(2026, 10, 16, 16, 22);
-  expect(isOverdue(contact({ CallbackAt: "2026-11-16T16:00:00" }), now)).toBe(true);
+  expect(isOverdue(contact({ CallbackAt: "2026-11-16T10:30:00.000Z" }), now)).toBe(true); // 4:00 pm IST
   expect(isOverdue(contact({ CallbackAt: "2026-11-17T11:00:00" }), now)).toBe(false);
   expect(isOverdue(contact({ CallbackAt: null }), now)).toBe(false);
 });

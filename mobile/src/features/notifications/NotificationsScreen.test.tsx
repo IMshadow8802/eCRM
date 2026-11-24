@@ -282,15 +282,24 @@ describe("tap → read + open", () => {
     ["stranded complaints (EntityId is a person)", { Type: "stranded_work", EntityType: "ticket", EntityId: 82 }, ["Complaints"]],
     ["stranded leads", { Type: "stranded_work", EntityType: "lead", EntityId: 82 }, ["Leads"]],
     // 149: calling notifications open the caller's screen; a due callback its Callbacks tab.
-    ["contacts handed out", { Type: "call_assigned", EntityType: "call_list", EntityId: 3 }, ["Calling", undefined]],
+    ["contacts handed out", { Type: "call_assigned", EntityType: "call_list", EntityId: 3 }, ["Calling"]],
     ["a callback due", { Type: "call_callback_due", EntityType: "call_contact", EntityId: 9 }, ["Calling", { tab: "callbacks" }]],
-    ["a missed callback", { Type: "call_callback_missed", EntityType: "call_list", EntityId: 3 }, ["Calling", undefined]],
   ] as const)("tapping %s opens the right place", async (_label, patch, target) => {
     jest.mocked(fetchNotifications).mockResolvedValue(reply([note({ ...patch, Title: "Tap me" })]));
     await mountInbox();
     await fireEvent.press(await screen.findByText("Tap me"));
     await waitFor(() => expect(mockNav.navigate).toHaveBeenCalledWith(...target));
     expect(mockNav.navigate).toHaveBeenCalledTimes(1);
+  });
+
+  it("a missed callback (a manager's notice) is marked read and opens nothing", async () => {
+    const n = note({ Type: "call_callback_missed", EntityType: "call_list", EntityId: 3, Title: "Tap me" });
+    jest.mocked(fetchNotifications).mockResolvedValue(reply([n]));
+    await mountInbox();
+    await fireEvent.press(await screen.findByText("Tap me"));
+    expect(markNotificationRead).toHaveBeenCalledWith(n.Id);
+    await waitFor(() => expect(fetchNotifications).toHaveBeenCalledTimes(2));
+    expect(mockNav.navigate).not.toHaveBeenCalled();
   });
 
   it("a list-only notice never fetches the record it names", async () => {

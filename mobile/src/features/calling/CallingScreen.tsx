@@ -16,7 +16,7 @@ import {
 } from "../../ui";
 import { useAccess } from "../auth/useAccess";
 import { clock, parseDate, whenText } from "../sales/leadHelpers";
-import { CALLING_QUERY, RESULT_LABELS, emptyCopy, isOverdue, localDateTime, titleOf } from "./callingHelpers";
+import { CALLING_HOME_QUERY, CALLING_QUERY, RESULT_LABELS, emptyCopy, isOverdue, localDateTime, titleOf } from "./callingHelpers";
 import { ContactCard } from "./ContactCard";
 import { ResultSheets, type CallReply, type ResultSheetsHandle } from "./ResultSheets";
 
@@ -43,15 +43,24 @@ export default function CallingScreen({ navigation, route }: Props) {
   const scriptRef = useRef<SheetRef>(null);
   const sheets = useRef<ResultSheetsHandle>(null);
   // ponytail: in memory only — if the OS kills the app mid-call the caller taps Save result; persist to AsyncStorage if that proves common.
-  const dial = useRef<{ contactId: number; dialedAt: string } | null>(null);
+  // `left` = the app really went to the background (the dialler took over). iOS's
+  // "Call?" prompt only makes it inactive, so Cancel there comes back without it.
+  const dial = useRef<{ contactId: number; dialedAt: string; left: boolean } | null>(null);
 
-  // Opening the screen runs the top-up on the server, so never serve it stale.
-  const query = useQuery({ queryKey: CALLING_QUERY, queryFn: fetchMyCallList, staleTime: 0, refetchOnWindowFocus: true });
+  // Opening the screen (and pull to refresh) runs the top-up on the server, so never serve it stale.
+  // No refetch on focus: coming back from the dialler, a refetch racing the save could bring back
+  // the contact just finished.
+  const query = useQuery({ queryKey: CALLING_QUERY, queryFn: () => fetchMyCallList(1), staleTime: 0, refetchOnWindowFocus: false });
   const list = query.data?.data ?? null;
 
-  const put = (data: MyCallList) =>
+  const put = (data: MyCallList) => {
+    // A fetch still in flight would land after this and resurrect what the reply removed.
+    void queryClient.cancelQueries({ queryKey: CALLING_QUERY });
     queryClient.setQueryData<ApiEnvelope<MyCallList>>(CALLING_QUERY, (old) =>
       old ? { ...old, data } : { success: true, message: "", responseCode: 200, data, timestamp: "" });
+    // Home reads its own copy.
+    void queryClient.invalidateQueries({ queryKey: CALLING_HOME_QUERY });
+  };
 
   /** The server said no: its sentence, and the list it sent (else a refetch). */
   const refused = (e: unknown) => {
@@ -73,6 +82,9 @@ export default function CallingScreen({ navigation, route }: Props) {
   const saved = (reply: CallReply, { label, leadId }: { label: string; leadId?: number }) => {
     put(reply);
     if (leadId) {
+      // A new lead and its first follow-up: every lead and follow-up list (Home's too) is out of date.
+      void queryClient.invalidateQueries({ queryKey: ["leads"] });
+      void queryClient.invalidateQueries({ queryKey: ["followups"] });
       toast.success("Lead created", { label: "Open", onPress: () => navigation.navigate("LeadDetail", { leadId }) });
       return;
     }
@@ -85,9 +97,12 @@ export default function CallingScreen({ navigation, route }: Props) {
   // Back from the dialler: the result sheet opens by itself for the contact just called.
   useEffect(() => {
     const sub = AppState.addEventListener("change", (state) => {
-      if (state !== "active" || !dial.current) return;
-      const { contactId, dialedAt } = dial.current;
+      if (!dial.current) return;
+      if (state === "background") dial.current.left = true;
+      if (state !== "active") return;
+      const { contactId, dialedAt, left } = dial.current;
       dial.current = null;
+      if (!left) return;
       const cur = queryClient.getQueryData<ApiEnvelope<MyCallList>>(CALLING_QUERY)?.data;
       const contact = [...(cur?.toCall ?? []), ...(cur?.callbacks ?? [])].find((c) => c.Id === contactId);
       if (contact) sheets.current?.open(contact, dialedAt);
@@ -96,7 +111,7 @@ export default function CallingScreen({ navigation, route }: Props) {
   }, [queryClient]);
 
   const call = (c: CallContact) => {
-    dial.current = { contactId: c.Id, dialedAt: localDateTime(new Date()) };
+    dial.current = { contactId: c.Id, dialedAt: localDateTime(new Date()), left: false };
     Linking.openURL(`tel:${c.Mobile}`).catch(() => {
       dial.current = null;
       toast.error("Can't open the dialer on this device");
@@ -188,7 +203,7 @@ export default function CallingScreen({ navigation, route }: Props) {
               chips={[{ label: d.LeadId ? `${RESULT_LABELS[d.Result]} · lead` : RESULT_LABELS[d.Result], tone: d.Result === "interested" ? "green" : d.Result === "dnc" ? "red" : "slate" }]}
               right={at ? { text: clock(at) } : undefined}
               trailing={d.CanUndo ? (
-                <Button size="xs" variant="ghost" title="Undo" accessibilityLabel={`Undo ${name}`} loading={undo.isPending} onPress={() => undo.mutate(d.AttemptId)} />
+                <Button size="xs" variant="ghost" title="Undo" accessibilityLabel={`Undo ${name}`} loading={undo.isPending && undo.variables === d.AttemptId} onPress={() => undo.mutate(d.AttemptId)} />
               ) : undefined}
             />
           );

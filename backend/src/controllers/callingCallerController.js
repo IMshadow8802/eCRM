@@ -43,7 +43,9 @@ async function afterWrite(res, row, CompId, UserId, TopUp, extra = {}) {
 module.exports = {
   myList: asyncRoute(async (req, res) => {
     const { CompId, UserId } = actor(req);
-    return success(res, "Calling list fetched", await fetchList(CompId, UserId, 1));
+    // Only the calling screen tops up; Home reads with TopUp 0. Anything but 0 means 1.
+    const TopUp = req.body?.TopUp === 0 ? 0 : 1;
+    return success(res, "Calling list fetched", await fetchList(CompId, UserId, TopUp));
   }, "Failed to fetch your calling list", "CALL_MY_LIST_ERROR"),
 
   saveResult: asyncRoute(async (req, res) => {

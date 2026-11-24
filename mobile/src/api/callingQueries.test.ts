@@ -6,7 +6,8 @@ import * as calling from "./callingQueries";
 const ENVELOPE = { success: true, message: "OK", data: { head: {}, toCall: [], callbacks: [], done: [], lists: [] } };
 
 const CASES: [string, { call: () => Promise<unknown>; url: string; body: unknown }][] = [
-  ["fetchMyCallList", { call: () => calling.fetchMyCallList(), url: "/api/calling/myList", body: {} }],
+  ["fetchMyCallList", { call: () => calling.fetchMyCallList(), url: "/api/calling/myList", body: { TopUp: 1 } }],
+  ["fetchMyCallList without a top-up (Home)", { call: () => calling.fetchMyCallList(0), url: "/api/calling/myList", body: { TopUp: 0 } }],
   ["saveCallResult bare", { call: () => calling.saveCallResult({ ContactId: 9, Result: "no_answer" }), url: "/api/calling/saveResult",
     body: { ContactId: 9, Result: "no_answer", Notes: null, DialedAt: null, CallbackAt: null } }],
   ["saveCallResult full", { call: () => calling.saveCallResult({ ContactId: 9, Result: "callback", Notes: "after 6", DialedAt: "2026-11-24T16:05", CallbackAt: "2026-11-25T11:00" }),

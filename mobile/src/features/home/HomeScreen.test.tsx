@@ -641,6 +641,9 @@ describe("149 · calling", () => {
     expect(screen.getByRole("button", { name: /^Inbox,/ })).toBeOnTheScreen();
     await fireEvent.press(tile);
     expect(mockNav.navigate).toHaveBeenLastCalledWith("Calling");
+    // Home only reads: opening the calling screen is what hands out contacts.
+    expect(fetchMyCallList).toHaveBeenCalledWith(0);
+    expect(fetchMyCallList).not.toHaveBeenCalledWith(1);
   });
 
   it("with tasks too, Calling leads and the odd tile out (Inbox) still gives way", async () => {
@@ -670,8 +673,9 @@ describe("149 · calling", () => {
   it("lists today's callbacks beside follow-ups and opens the Callbacks tab", async () => {
     jest.mocked(fetchMyCallList).mockResolvedValue(envelope(myCallList({
       callbacks: [
-        callContact({ Id: 22, Name: "Anita Malhotra", CallbackAt: "2026-11-02T16:00:00" }),
-        callContact({ Id: 23, Name: "Rohan Duggal", CallbackAt: "2026-11-03T11:00:00" }),
+        // Instants, as the API sends them: 10:30Z is 4:00 pm IST today; 20:00Z on the 2nd is already the 3rd.
+        callContact({ Id: 22, Name: "Anita Malhotra", CallbackAt: "2026-11-02T10:30:00.000Z" }),
+        callContact({ Id: 23, Name: "Rohan Duggal", CallbackAt: "2026-11-02T20:00:00.000Z" }),
       ],
       head: { Callbacks: 2 },
     })));
@@ -685,9 +689,20 @@ describe("149 · calling", () => {
     expect(mockNav.navigate).toHaveBeenLastCalledWith("Calling", { tab: "callbacks" });
   });
 
+  it("a callback missed on an earlier day still needs you, marked overdue", async () => {
+    jest.mocked(fetchMyCallList).mockResolvedValue(envelope(myCallList({
+      callbacks: [callContact({ Id: 24, Name: "Vikram Chopra", CallbackAt: "2026-10-31T10:30:00.000Z" })],
+    })));
+    signInCaller();
+    await renderWithProviders(<HomeScreen />);
+    const group = screen.getByTestId("needs-you");
+    expect(await within(group).findByText("Call back Vikram Chopra")).toBeOnTheScreen();
+    expect(within(group).getAllByText("Overdue").length).toBeGreaterThan(0);
+  });
+
   it("T1 tablet: today's callbacks join the Follow-ups today column", async () => {
     setWindow(...TABLET);
-    jest.mocked(fetchMyCallList).mockResolvedValue(envelope(myCallList({ callbacks: [callContact({ Id: 22, Name: "Anita Malhotra", CallbackAt: "2026-11-02T16:00:00" })] })));
+    jest.mocked(fetchMyCallList).mockResolvedValue(envelope(myCallList({ callbacks: [callContact({ Id: 22, Name: "Anita Malhotra", CallbackAt: "2026-11-02T10:30:00.000Z" })] })));
     signInCaller();
     await renderWithProviders(<HomeScreen />);
     expect((await screen.findAllByText("Call back Anita Malhotra")).length).toBeGreaterThan(0);

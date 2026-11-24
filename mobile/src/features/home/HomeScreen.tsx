@@ -24,9 +24,9 @@ import {
   ListRow, ModuleTile, Screen, SearchField, Text, useLayout, type HeroStat, type ListRowProps,
 } from "../../ui";
 import { useAccess } from "../auth/useAccess";
-import { CALLING_QUERY, titleOf } from "../calling/callingHelpers";
+import { CALLING_HOME_QUERY, titleOf } from "../calling/callingHelpers";
 import { useUnreadCount } from "../notifications/useUnreadCount";
-import { firstOpenStatus, followUpTypeLabel, openValue as sumOpenValue, followUpViewParams, leadCountQuery, leadQueueParams, rupees, type LeadQueue } from "../sales/leadHelpers";
+import { firstOpenStatus, followUpTypeLabel, parseDate, openValue as sumOpenValue, followUpViewParams, leadCountQuery, leadQueueParams, rupees, type LeadQueue } from "../sales/leadHelpers";
 import { complaintCountQuery, complaintQueueParams, type ComplaintQueue } from "../support/ticketHelpers";
 import { greetingFor, longDate } from "../tasks/greeting";
 import { parseIst } from "../tasks/tatChip";
@@ -207,11 +207,20 @@ export default function HomeScreen() {
   // ------------------------------------------------------------ calling (149)
   // Anyone who can add leads may be given contacts; the tile shows once they are on a list.
   const canCall = leadsAccess.add;
-  const calling = useQuery({ queryKey: CALLING_QUERY, queryFn: fetchMyCallList, enabled: canCall && me });
+  // TopUp 0: Home only reads; opening the calling screen is what hands out contacts (spec §10.3).
+  const calling = useQuery({ queryKey: CALLING_HOME_QUERY, queryFn: () => fetchMyCallList(0), enabled: canCall && me });
   const callHead = calling.data?.data?.head;
   const showCalling = canCall && !!callHead?.Active;
+  // Booked for today, or missed on an earlier day (times arrive as UTC instants: compare local days).
   const todayYmd = ymd(new Date());
-  const callbacksToday = (calling.data?.data?.callbacks ?? []).filter((c) => c.CallbackAt?.slice(0, 10) === todayYmd);
+  const callbackDay = (c: CallContact) => {
+    const d = parseDate(c.CallbackAt);
+    return d ? ymd(d) : null;
+  };
+  const callbacksToday = (calling.data?.data?.callbacks ?? []).filter((c) => {
+    const day = callbackDay(c);
+    return day != null && day <= todayYmd;
+  });
   const fuOverdueCount = total(fuOverdue.data);
 
   // ------------------------------------------------------------ inbox (G27)
@@ -429,7 +438,7 @@ export default function HomeScreen() {
     key: `cb${c.Id}`,
     badge: { tone: "teal", icon: CalendarClock },
     title: `Call back ${titleOf(c)}`,
-    right: { text: dueClock(c.CallbackAt) ?? "Today" },
+    right: callbackDay(c)! < todayYmd ? { text: "Overdue", tone: "danger" } : { text: dueClock(c.CallbackAt) ?? "Today" },
     meta: c.ListName,
     onPress: () => navigation.navigate("Calling", { tab: "callbacks" }),
   });

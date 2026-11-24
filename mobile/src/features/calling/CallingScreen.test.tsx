@@ -18,7 +18,8 @@ const doneRow = callDone;
 const second = myCallList().toCall[1]!;
 
 let appState: ((s: string) => void)[] = [];
-const backFromDialler = () => act(async () => appState.forEach((h) => h("active")));
+/** The dialler took over (background), then the caller came back. */
+const backFromDialler = () => act(async () => appState.forEach((h) => { h("inactive"); h("background"); h("active"); }));
 const nav = makeNavigation<"Calling">();
 
 async function mount(list = listWith(), params: { tab?: "callbacks" } | undefined = undefined) {
@@ -80,6 +81,47 @@ it("coming back to the app without having dialled opens nothing", async () => {
   await mount();
   await backFromDialler();
   expect(screen.queryByRole("menuitem", { name: "No answer" })).toBeNull();
+});
+
+it("iOS's Call? prompt cancelled (inactive → active, never background) opens nothing", async () => {
+  await mount();
+  await fireEvent.press(screen.getByRole("button", { name: "Call First Trader" }));
+  await act(async () => appState.forEach((h) => { h("inactive"); h("active"); }));
+  expect(screen.queryByRole("menuitem", { name: "No answer" })).toBeNull();
+  // …and a later trip away and back is not mistaken for that call.
+  await backFromDialler();
+  expect(screen.queryByRole("menuitem", { name: "No answer" })).toBeNull();
+});
+
+it("opening the screen asks for the list with a top-up", async () => {
+  await mount();
+  expect(fetchMyCallList).toHaveBeenCalledWith(1);
+});
+
+it("tapping a result twice while the first save is in flight saves once", async () => {
+  let resolve!: (v: unknown) => void;
+  jest.mocked(saveCallResult).mockReturnValue(new Promise((r) => { resolve = r; }) as never);
+  await mount();
+  await openResult();
+  await fireEvent.press(menu("Busy"));
+  await fireEvent.press(menu("Busy"));
+  await fireEvent.press(menu("No answer"));
+  expect(saveCallResult).toHaveBeenCalledTimes(1);
+  await act(async () => resolve(envelope(listWith({ toCall: [second] }))));
+});
+
+it("a refetch already in flight when a save lands cannot bring the finished contact back", async () => {
+  jest.mocked(saveCallResult).mockResolvedValue(envelope({ AttemptId: 41, ...listWith({ toCall: [second], head: { ToCall: 1 } }) }));
+  const { queryClient } = await mount();
+  let resolveStale!: (v: unknown) => void;
+  jest.mocked(fetchMyCallList).mockReturnValueOnce(new Promise((r) => { resolveStale = r; }) as never);
+  void queryClient.refetchQueries({ queryKey: ["calling", "mine"] });
+  await openResult();
+  await fireEvent.press(menu("Busy"));
+  await screen.findByText("1 left · 5 called today");
+  await act(async () => resolveStale(envelope(listWith())));
+  expect(screen.queryByTestId("contact-9")).toBeNull();
+  expect(screen.getByTestId("contact-10")).toBeOnTheScreen();
 });
 
 it("a phone that cannot dial says so and opens no sheet on return", async () => {
@@ -199,7 +241,8 @@ it("says the next batch arrived when the reply has Given 10", async () => {
 
 it("Interested creates the lead with the edited name, note and tomorrow's date, and stays on the screen", async () => {
   jest.mocked(convertCallContact).mockResolvedValue(envelope({ ...listWith({ toCall: [second] }), LeadId: 77 }));
-  await mount();
+  const { queryClient } = await mount();
+  const invalidate = jest.spyOn(queryClient, "invalidateQueries");
   await openResult();
   await fireEvent.press(menu("Interested"));
   expect(screen.getByLabelText("Name").props.value).toBe("First Trader");
@@ -211,6 +254,9 @@ it("Interested creates the lead with the edited name, note and tomorrow's date, 
   }));
   expect(await screen.findByText("Lead created")).toBeOnTheScreen();
   expect(nav.navigate).not.toHaveBeenCalled();
+  // The new lead and its follow-up belong in every lead / follow-up list, Home's included.
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ["leads"] });
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ["followups"] });
   await fireEvent.press(screen.getByRole("button", { name: "Open" }));
   expect(nav.navigate).toHaveBeenCalledWith("LeadDetail", { leadId: 77 });
 });
@@ -276,6 +322,15 @@ it("Done today is read-only, with Undo only where the server allows it", async (
   await fireEvent.press(screen.getByRole("button", { name: "Undo First Trader" }));
   await waitFor(() => expect(undoCallResult).toHaveBeenCalledWith(41));
   expect(await screen.findByText("Undone")).toBeOnTheScreen();
+});
+
+it("only the row being undone shows a spinner", async () => {
+  jest.mocked(undoCallResult).mockReturnValue(new Promise(() => {}) as never);
+  await mount(listWith({ done: [doneRow(), doneRow({ AttemptId: 40, Name: "Old One" })] }));
+  await fireEvent.press(screen.getByRole("tab", { name: /^Done today/ }));
+  await fireEvent.press(screen.getByRole("button", { name: "Undo First Trader" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Undo First Trader" })).toHaveProp("accessibilityState", expect.objectContaining({ busy: true })));
+  expect(screen.getByRole("button", { name: "Undo Old One" })).toHaveProp("accessibilityState", expect.objectContaining({ busy: false }));
 });
 
 it("empty Callbacks and Done today tabs say so", async () => {
