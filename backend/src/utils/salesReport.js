@@ -9,14 +9,15 @@
 const { parseRange, parseDay } = require("./reportKit");
 const { positiveInt } = require("./controllerKit");
 
-const GROUP_BYS = ["team", "source", "person", "reason"];
+const GROUP_BYS = ["team", "source", "person", "reason", "caller", "calllist"]; // 149: + caller, calllist
 // sp_RptSalesRows @Metric: visits = visit + meeting, fu_due = the five fu_*, all = everything but open.
 const METRICS = ["new", "call", "visit", "meeting", "other", "visits", "fu_due", "fu_ontime",
-  "fu_late", "fu_skipped", "fu_missed", "fu_open", "won", "lost", "open", "all"];
+  "fu_late", "fu_skipped", "fu_missed", "fu_open", "won", "lost", "open", "all",
+  "dial", "dial_first", "contact"]; // 149 calling families
 const SHAPES = ["events", "leads"];
 const STATES = ["open", "won", "lost", "junk", "untouched"];
 const AGE_BUCKETS = ["0_7", "8_30", "31_90", "90p"];
-const FLAGS = ["overdue", "nonext", "stale"];
+const FLAGS = ["overdue", "nonext", "stale", "reached", "nodial", "cbbooked", "cbkept", "cbmissed", "used"];
 const MAX_ROWS = 2000;          // drill cap; the controller clamps MaxRows to it
 const PREVIOUS_MAX_DAYS = 92;   // the previous-period line is skipped over this
 
@@ -26,7 +27,10 @@ const SUM_KEYS = ["New", "Calls", "Visits", "Meetings", "Other",
   "Won", "WonValue", "Lost", "LostValue", "OpenNow", "OpenValue",
   "OverdueNow", "NoNext", "Stale", "Age0_7", "Age8_30", "Age31_90", "Age90Plus",
   "CohortOpen", "CohortWon", "CohortWonValue", "CohortLost", "CohortJunk", "CohortUntouched",
-  "DaysOpenSum", "DaysOpenN"];
+  "DaysOpenSum", "DaysOpenN",
+  // 149 calling counts. ListCost / SheetRows / SkippedDup / SkippedBad are a list's attributes, never summed.
+  "Dials", "DialContacts", "DialReached", "DialNoDial", "DialSecSum", "DialSecN",
+  "CbBooked", "CbKept", "CbMissed", "ListContacts", "ListUsed"];
 
 const pad = (n) => String(n).padStart(2, "0");
 // Local calendar day, never toISOString() (UTC rolls IST mornings back a day).
@@ -61,7 +65,8 @@ function previousRange(from, to) {
 
 /**
  * Body -> { args } for sp_RptSales (or sp_RptSalesRows with rows: true), or { error } for a 400.
- * Dates: both or neither. Neither = yesterday, except GroupBy 'person' (Open leads) = any time (null).
+ * Dates: both or neither. Neither = yesterday, except GroupBy 'person' (Open leads) and 'calllist'
+ * (a list bought in November and worked in January is one line) = any time (null).
  */
 function parseSalesArgs(body, { rows = false, today = new Date() } = {}) {
   const b = body ?? {};
@@ -78,7 +83,7 @@ function parseSalesArgs(body, { rows = false, today = new Date() } = {}) {
     const range = parseRange(b, today);
     if (range.error) return range;
     ({ from: FromDate, to: ToDate } = range);
-  } else if (GroupBy !== "person") {
+  } else if (GroupBy !== "person" && GroupBy !== "calllist") {
     FromDate = ToDate = isoDay(addDays(today, -1));
   }
 
@@ -86,6 +91,7 @@ function parseSalesArgs(body, { rows = false, today = new Date() } = {}) {
     BranchId: positiveInt(b.BranchId),
     SourceId: positiveInt(b.SourceId),
     ProductId: positiveInt(b.ProductId),
+    CallListId: positiveInt(b.CallListId),
   };
   if (!rows) return { args: { FromDate, ToDate, GroupBy, NodeId: positiveInt(b.NodeId), ...filters } };
 

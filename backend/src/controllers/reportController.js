@@ -178,7 +178,7 @@ controller.tatClocks = asyncRoute(
 const LINE_KEEP = ["GroupKey", "GroupLabel", "LineKind"];
 const ROW_KEEP = ["EventAt", "Metric", "Src", "LeadName", "CreatedAt", "MobileNo", "Company", "PersonName",
   "OwnerName", "SourceName", "StatusName", "StatusCode", "Detail1", "Detail2", "LostReason", "Remarks",
-  "QuoteNo", "LastActivityAt", "NextFollowupDate"];
+  "QuoteNo", "LastActivityAt", "NextFollowupDate", "CallListName"];
 const toPath = (rows = []) => rows.map((r) => ({ Id: num(r.Id), Name: r.Name }));
 // Previous period only for a dated, non-Open-leads range of at most 92 days.
 const previousOf = ({ FromDate, ToDate, GroupBy }) =>
@@ -199,7 +199,9 @@ controller.sales = asyncRoute(
       prev && run({ FromDate: prev.from, ToDate: prev.to }),
     ]);
     const rs = result?.recordsets ?? [];
-    const rows = (rs[0] ?? []).map((r) => numRow(r, LINE_KEEP));
+    // 149: a list's cost goes to admins only (the proc NULLs it too).
+    const rows = (rs[0] ?? []).map((r) => numRow(r, LINE_KEEP))
+      .map((r) => ("ListCost" in r && !req.scope?.isAdmin ? { ...r, ListCost: null } : r));
     return success(res, "Report fetched successfully", {
       rows,
       totals: sumRows(rows),

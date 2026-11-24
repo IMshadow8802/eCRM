@@ -1,4 +1,4 @@
-const { MODULES, REACH_MODULES, buildAccess, scopeFor, isWide, stripSensitive, publicAccess, roleWithin } = require("../../../src/middleware/access");
+const { MODULES, REACH_MODULES, ASSIGN_MODULES, buildAccess, scopeFor, isWide, stripSensitive, publicAccess, roleWithin } = require("../../../src/middleware/access");
 
 // recordsets as sp_FetchUserAccess returns them
 const rs = ({ admin = false, sensitive = false, modules = [], lists = [], owners = [] } = {}) => [
@@ -21,8 +21,24 @@ const LISTS = [
 describe("module list", () => {
   it("holds the spec keys and the four reach modules", () => {
     expect(MODULES).toEqual(["leads", "sales_reports", "complaints", "support_reports", "customers", "people",
-      "tasks", "teams", "projects", "roles", "offices", "settings", "dashboard", "attendance", "partners", "cards"]);
+      "tasks", "teams", "projects", "roles", "offices", "settings", "dashboard", "attendance", "partners", "cards", "calling"]);
     expect([...REACH_MODULES]).toEqual(["leads", "complaints", "customers", "people", "attendance", "cards"]);
+  });
+});
+
+describe("calling module (149)", () => {
+  const { mockAccess } = require("../../helpers/mockAccess");
+  it("calling is a plain module: no reach, no can-assign-to", () => {
+    expect(MODULES).toContain("calling");
+    expect([...REACH_MODULES]).not.toContain("calling");
+    expect([...ASSIGN_MODULES]).not.toContain("calling");
+  });
+  it("a list manager with view + edit can view and edit, not add or delete", () => {
+    const a = mockAccess({ modules: [["calling", "ve"]] }, 7);
+    expect(scopeFor(a, "calling", 7).can).toEqual({ view: true, add: false, edit: true, delete: false });
+  });
+  it("a salesperson has no calling module, and needs none to call", () => {
+    expect(scopeFor(mockAccess({ modules: [["leads", "vae", "Own"]] }, 7), "calling", 7).can.view).toBe(false);
   });
 });
 

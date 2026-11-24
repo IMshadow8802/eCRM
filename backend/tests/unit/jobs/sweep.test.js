@@ -220,3 +220,35 @@ describe("tatStep", () => {
     expect(calls("sp_TatSweep")).toEqual([{ CompId: 1 }]);
   });
 });
+
+describe("callStep (149)", () => {
+  const callStub = (byComp = {}) => database.executeStoredProcedure.mockImplementation(async (name, p) => {
+    if (name === "sp_FetchLiveCompanies") return { recordsets: [[{ CompId: 1 }, { CompId: 2 }]] };
+    if (name === "sp_FetchPresenceCandidates") return { recordsets: [[]] };
+    if (name === "sp_CallSweep") {
+      if (byComp[p.CompId] instanceof Error) throw byComp[p.CompId];
+      return { recordsets: [byComp[p.CompId] ?? []] };
+    }
+    return { recordsets: [[]] };
+  });
+  it("runOnce calls sp_CallSweep once per live company, after the TAT step", async () => {
+    callStub();
+    await sweep.runOnce(ist("10:00"));
+    expect(calls("sp_CallSweep")).toEqual([{ CompId: 1 }, { CompId: 2 }]);
+    const names = database.executeStoredProcedure.mock.calls.map((c) => c[0]);
+    expect(names.indexOf("sp_CallSweep")).toBeGreaterThan(names.indexOf("sp_TatSweep"));
+  });
+  it("emits once per distinct notified user", async () => {
+    callStub({ 1: [{ UserId: 7 }, { UserId: 7 }, { UserId: 9 }] });
+    await sweep.callStep(1);
+    expect(emitToUser.mock.calls).toEqual([[7, "notifications"], [9, "notifications"]]);
+  });
+  it("a throwing sp_CallSweep for company 1 does not stop company 2 and does not skip the TAT step", async () => {
+    callStub({ 1: new Error("deadlock"), 2: [{ UserId: 5 }] });
+    await sweep.runOnce(ist("10:00"));
+    expect(calls("sp_TatSweep")).toEqual([{ CompId: 1 }, { CompId: 2 }]);
+    expect(calls("sp_CallSweep")).toEqual([{ CompId: 1 }, { CompId: 2 }]);
+    expect(emitToUser).toHaveBeenCalledWith(5, "notifications");
+    expect(console.error).toHaveBeenCalledWith("[sweep] company 1 calling failed:", "deadlock");
+  });
+});

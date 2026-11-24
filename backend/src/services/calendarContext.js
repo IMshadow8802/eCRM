@@ -69,6 +69,9 @@ async function settings(compId) {
     warnPct: r.WarnPct ?? 80,
     notifyNotSignedIn: r.NotifyNotSignedIn === true || r.NotifyNotSignedIn === 1,
     goLiveDate: r.GoLiveDate ?? null,
+    callStartMin: r.CallStartMin ?? 540, // 149 calling hours (minutes of the day) and callback cap
+    callEndMin: r.CallEndMin ?? 1260,
+    callbackCap: r.CallbackCap ?? 20,
   };
   cache.set(compId, { at: Date.now(), value });
   return value;

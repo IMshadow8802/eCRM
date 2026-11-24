@@ -41,6 +41,28 @@ describe("fetchWorkSettings", () => {
 
 describe("saveCompanySetting", () => {
   const good = { LateGraceMin: 10, SessionBufferMin: 30, WarnPct: 80, NotifyNotSignedIn: true, GoLiveDate: "2026-10-10" };
+  it("sends null for the three calling settings when the body omits them (149)", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(ok());
+    await c.saveCompanySetting(req(good), mockRes());
+    expect(calls("sp_SaveCompanySetting")[0]).toMatchObject({ CallStartMin: null, CallEndMin: null, CallbackCap: null });
+  });
+  it("passes calling hours and the callback cap (149)", async () => {
+    database.executeStoredProcedure.mockResolvedValueOnce(ok());
+    await c.saveCompanySetting(req({ ...good, CallStartMin: 600, CallEndMin: "1200", CallbackCap: 30 }), mockRes());
+    expect(calls("sp_SaveCompanySetting")[0]).toMatchObject({ CallStartMin: 600, CallEndMin: 1200, CallbackCap: 30 });
+  });
+  it.each([
+    [{ CallStartMin: 1300, CallEndMin: 600 }, "Calling hours must start before they end"],
+    [{ CallStartMin: 1500 }, "Calling hours must be 0 to 1440 minutes"],
+    [{ CallEndMin: "x" }, "Calling hours must be 0 to 1440 minutes"],
+    [{ CallbackCap: 0 }, "Callback limit must be 1 to 200"],
+  ])("400s %j (149)", async (bad, msg) => {
+    const res = mockRes();
+    await c.saveCompanySetting(req({ ...good, ...bad }), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json.mock.calls[0][0].message).toBe(msg);
+    expect(database.executeStoredProcedure).not.toHaveBeenCalled();
+  });
   it("saves and clears the settings cache", async () => {
     database.executeStoredProcedure.mockResolvedValueOnce(ok());
     const res = mockRes();

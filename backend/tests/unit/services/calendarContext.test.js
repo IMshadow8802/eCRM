@@ -55,7 +55,8 @@ describe("settings", () => {
     database.executeStoredProcedure.mockResolvedValue({ recordsets: [[row]] });
     const a = await cc.settings(1);
     await cc.settings(1);
-    expect(a).toEqual({ lateGraceMin: 10, sessionBufferMin: 30, warnPct: 75, notifyNotSignedIn: true, goLiveDate: "2026-10-10" });
+    expect(a).toEqual({ lateGraceMin: 10, sessionBufferMin: 30, warnPct: 75, notifyNotSignedIn: true, goLiveDate: "2026-10-10",
+      callStartMin: 540, callEndMin: 1260, callbackCap: 20 });
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(1);
     await cc.settings(2);
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(2);
@@ -64,11 +65,17 @@ describe("settings", () => {
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(3);
   });
 
+  it("reads the calling settings (149)", async () => {
+    database.executeStoredProcedure.mockResolvedValue({ recordsets: [[{ ...row, CallStartMin: 600, CallEndMin: 1200, CallbackCap: 15 }]] });
+    expect(await cc.settings(9)).toMatchObject({ callStartMin: 600, callEndMin: 1200, callbackCap: 15 });
+  });
+
   it("reloads after 60 s and falls back to safe defaults for an empty row", async () => {
     database.executeStoredProcedure.mockResolvedValue({ recordsets: [[]] });
     const now = jest.spyOn(Date, "now");
     now.mockReturnValue(1000);
-    expect(await cc.settings(1)).toEqual({ lateGraceMin: 0, sessionBufferMin: 0, warnPct: 80, notifyNotSignedIn: false, goLiveDate: null });
+    expect(await cc.settings(1)).toEqual({ lateGraceMin: 0, sessionBufferMin: 0, warnPct: 80, notifyNotSignedIn: false, goLiveDate: null,
+      callStartMin: 540, callEndMin: 1260, callbackCap: 20 });
     now.mockReturnValue(1000 + 61000);
     await cc.settings(1);
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(2);

@@ -326,7 +326,7 @@ describe("reportController.sales", () => {
     await reportController.sales(req, res);
     expect(database.executeStoredProcedure).toHaveBeenNthCalledWith(1, "sp_RptSales", {
       CompId: 5, FromDate: "2026-11-17", ToDate: "2026-11-17", GroupBy: "team", NodeId: 12,
-      BranchId: null, SourceId: null, ProductId: null, UserId: 7 });
+      BranchId: null, SourceId: null, ProductId: null, CallListId: null, UserId: 7 });
     expect(salesCall(1)).toMatchObject({ FromDate: "2026-11-16", ToDate: "2026-11-16", NodeId: 12 });
     const data = res.json.mock.calls[0][0].data;
     expect(data.totals).toMatchObject({ New: 2, WonValue: 10 });
@@ -556,5 +556,44 @@ describe("reportController.salesRows", () => {
     const res = mockRes();
     await reportController.salesRows(salesReq(body()), res);
     expect(res.json.mock.calls[0][0].data).toMatchObject({ rows: [], total: 0, amountTotal: 0, hiddenCount: 0, truncated: false, path: [] });
+  });
+});
+
+describe("calling figures on the sales report (149)", () => {
+  const rs = (lines) => ({ recordsets: [lines, [], [{ NodeOk: 1 }]] });
+  const callingReq = (body, admin = false) => {
+    const req = baseReq({ body });
+    req.access = mockAccess({ admin, modules: [["sales_reports", "v"], ["calling", "ve"], ["leads", "v", "Own"]] }, 7);
+    req.scope = scopeFor(req.access, "sales_reports", 7);
+    return req;
+  };
+  it("GroupBy caller runs sp_RptSales with CompId, UserId and no list parameter", async () => {
+    database.executeStoredProcedure.mockResolvedValue(rs([{ GroupKey: 7, GroupLabel: "Ravi", Dials: 4 }]));
+    const res = mockRes();
+    await reportController.sales(callingReq({ GroupBy: "caller", FromDate: "2026-11-17", ToDate: "2026-11-17" }), res);
+    const p = database.executeStoredProcedure.mock.calls[0][1];
+    expect(p).toMatchObject({ CompId: 5, UserId: 7, GroupBy: "caller", CallListId: null });
+    expect(Object.keys(p).some((k) => /Json$|Ids$/.test(k))).toBe(false);
+    expect(res.json.mock.calls[0][0].data.totals.Dials).toBe(4);
+  });
+  it("GroupBy calllist returns ListCost to an admin and null to a non-admin with sales_reports and calling", async () => {
+    const line = { GroupKey: 4, GroupLabel: "Surat", LineKind: "list", ListCost: "5000.00", SheetRows: 100, Dials: 2 };
+    database.executeStoredProcedure.mockResolvedValue(rs([line]));
+    const admin = mockRes();
+    await reportController.sales(callingReq({ GroupBy: "calllist", CallListId: 4 }, true), admin);
+    expect(admin.json.mock.calls[0][0].data.rows[0]).toMatchObject({ ListCost: 5000, SheetRows: 100 });
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({ FromDate: null, ToDate: null, CallListId: 4 });
+    database.executeStoredProcedure.mockResolvedValue(rs([line]));
+    const other = mockRes();
+    await reportController.sales(callingReq({ GroupBy: "calllist" }), other);
+    expect(other.json.mock.calls[0][0].data.rows[0].ListCost).toBeNull();
+    expect(other.json.mock.calls[0][0].data.previous).toBeNull();
+  });
+  it("salesRows keeps CallListName on a row and passes the calling metric", async () => {
+    database.executeStoredProcedure.mockResolvedValue({ recordsets: [[{ LeadName: "Mahesh", CallListId: 4, CallListName: "Surat", Detail1: "busy" }], [{ Total: 1 }], [], [{ HiddenCount: 0 }]] });
+    const res = mockRes();
+    await reportController.salesRows(callingReq({ GroupBy: "caller", Metric: "dial", Flag: "reached", CallListId: 4 }), res);
+    expect(database.executeStoredProcedure.mock.calls[0][1]).toMatchObject({ Metric: "dial", Flag: "reached", CallListId: 4 });
+    expect(res.json.mock.calls[0][0].data.rows[0]).toMatchObject({ CallListName: "Surat", CallListId: 4 });
   });
 });

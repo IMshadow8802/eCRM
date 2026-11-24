@@ -97,6 +97,15 @@ describe("reportRoutes", () => {
     mockAcc = saved;
   });
 
+  it("holding calling or leads is no back door into the sales report (149)", async () => {
+    const saved = mockAcc;
+    mockAcc = mockAccess({ modules: [["calling", "vaed"], ["leads", "vae", "Office"]] });
+    for (const p of ["sales", "salesRows"]) {
+      expect((await request(app).post(`/api/reports/${p}`).send({ GroupBy: "caller" })).status).toBe(403);
+    }
+    mockAcc = saved;
+  });
+
   it("no longer exposes pipelineFunnel", async () => {
     const r = await request(app).post("/api/reports/pipelineFunnel").send({ PipelineId: 3 });
     expect(r.status).toBe(404);
