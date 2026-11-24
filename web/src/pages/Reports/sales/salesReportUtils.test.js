@@ -5,7 +5,7 @@ import { COLUMNS } from "./columns";
 import { REPORTS } from "./reports";
 import {
   readFilters, writeFilters, toBody, drillUrl, leadsOfUrl, readDrill, drillBody, whyParts, drillTitle,
-  previousLabel, diffOf, exportName, summaryCsv, rowsCsv, slug,
+  previousLabel, diffOf, exportName, summaryCsv, rowsCsv, slug, lineView,
 } from "./salesReportUtils";
 
 const F = { preset: "custom", from: "2026-09-01", to: "2026-09-30", at: null, BranchId: 2, SourceId: null, ProductId: null };
@@ -50,7 +50,7 @@ describe("drillUrl", () => {
 describe("filters", () => {
   it("reads the report's default, ids and the open node", () => {
     expect(readFilters(new URLSearchParams("at=9&BranchId=2&SourceId=x"), team, TODAY)).toEqual({
-      preset: "yesterday", from: "2026-11-17", to: "2026-11-17", error: null, at: 9, BranchId: 2, SourceId: null, ProductId: null,
+      preset: "yesterday", from: "2026-11-17", to: "2026-11-17", error: null, at: 9, line: null, BranchId: 2, SourceId: null, ProductId: null,
     });
     expect(readFilters(new URLSearchParams(""), REPORTS.open, TODAY)).toMatchObject({ preset: "any", from: null, to: null });
     expect(readFilters(new URLSearchParams("preset=any"), team, TODAY).preset).toBe("yesterday");
@@ -174,3 +174,35 @@ describe("export", () => {
     expect(rowsCsv(cols, [])).toBe("﻿Lead,Won ₹");
   });
 });
+
+describe("lines (149)", () => {
+  const calling = REPORTS.calling;
+  it("reads line=, falling back to the first line on an unknown value, and writes it only when not the first", () => {
+    expect(readFilters(new URLSearchParams("line=calllist"), calling, TODAY).line).toBe("calllist");
+    expect(readFilters(new URLSearchParams("line=junk"), calling, TODAY).line).toBe("caller");
+    expect(readFilters(new URLSearchParams(""), REPORTS.sources, TODAY).line).toBe("source");
+    expect(writeFilters({ preset: "yesterday", line: "caller" }, calling)).toEqual({});
+    expect(writeFilters({ preset: "yesterday", line: "calllist" }, calling)).toEqual({ line: "calllist" });
+  });
+  it("toBody sends the line's GroupBy; the view takes the line's columns and heading", () => {
+    const f = readFilters(new URLSearchParams("line=calllist&preset=any"), calling, TODAY);
+    expect(toBody(f, calling)).toMatchObject({ GroupBy: "calllist" });
+    expect(toBody(readFilters(new URLSearchParams(""), calling, TODAY), calling).GroupBy).toBe("caller");
+    expect(lineView(calling, f)).toMatchObject({ firstHeader: "Calling list", columns: calling.lines[1].columns });
+    expect(lineView(REPORTS.team, F)).toBe(REPORTS.team);
+  });
+  it("a calling cell drills to the calling rows page with the line, its key and the column's metric / flag", () => {
+    const f = readFilters(new URLSearchParams("line=calllist&preset=any"), calling, TODAY);
+    const url = drillUrl(calling, f, { GroupKey: 5, LineKind: "group", DialReached: 40 }, COLUMNS.reached);
+    expect(url).toBe("/reports/sales/calling/rows?metric=dial&shape=events&key=5&flag=reached&preset=any&line=calllist");
+    const d = readDrill(new URLSearchParams(url.split("?")[1]));
+    expect(d).toMatchObject({ Metric: "dial", GroupKey: 5, Flag: "reached" });
+    expect(drillBody(calling, f, d)).toMatchObject({ GroupBy: "calllist", Metric: "dial", GroupKey: 5, Flag: "reached" });
+  });
+  it("names the calling drills", () => {
+    expect(drillTitle({ Metric: "dial", Flag: "reached" }, 40)).toBe("40 calls that reached someone");
+    expect(drillTitle({ Metric: "dial_first" }, 1)).toBe("1 contact called");
+    expect(drillTitle({ Metric: "contact", Flag: "used" }, 3)).toBe("3 contacts used");
+  });
+});
+

@@ -357,4 +357,37 @@ describe("SalesRows", () => {
     expect(where()).toContain("BranchId=1");
     expect(where()).toContain("from=2026-09-01");
   });
+
+  describe("calling rows (149)", () => {
+    const k = (o) => ev({ Metric: "dial", Src: "K", RefId: 70, LeadId: null, LeadName: "Mrs. HARJEET KAUR", MobileNo: "9810823710", PersonName: "Rohit Sharma",
+      Detail1: "not_interested", Detail2: null, CallListId: 5, CallListName: "MLSS Delhi", CanOpen: 1, EventAt: "2026-11-17T11:05:00", ...o });
+
+    it("posts the calling drill and shows When · Contact · Mobile · Caller · Result · List, linking to the list's contacts", async () => {
+      const cap = mockReportEndpoints("/api/reports/salesRows", data({
+        rows: [k(), k({ RefId: 71, LeadName: null, MobileNo: null, CanOpen: 0, Detail1: "callback" })], total: 2,
+      }));
+      renderRows("calling", "/reports/sales/calling/rows?metric=dial&shape=events&key=5&line=calllist&preset=any");
+      await waitFor(() => expect(bodyRows().length).toBe(2));
+      expect(cap.body).toMatchObject({ GroupBy: "calllist", Metric: "dial", GroupKey: 5 });
+      expect(headers()).toEqual(["When", "Contact", "Mobile", "Caller", "Result", "List", ""]);
+      const [open, closed] = bodyRows();
+      expect(within(open).getByRole("link", { name: "Mrs. HARJEET KAUR" })).toHaveAttribute("href", "/sales/calling-lists/5?tab=contacts");
+      expect(within(open).getByText("Not interested")).toBeInTheDocument();
+      expect(within(closed).queryByRole("link")).toBeNull();
+      expect(within(closed).getByText("Call back")).toBeInTheDocument();
+      expect(closed).not.toHaveTextContent("9810823710");
+      expect(screen.getByText("2 calls")).toBeInTheDocument();
+      await userEvent.click(within(open).getByText("MLSS Delhi"));
+      expect(where()).toBe("/sales/calling-lists/5?tab=contacts");
+    });
+
+    it("a contact row shows its status; the hidden line still adds up", async () => {
+      mockReportEndpoints("/api/reports/salesRows", data({ rows: [k({ Metric: "contact", Detail1: "held", EventAt: null })], total: 3, hiddenCount: 2 }));
+      renderRows("calling", "/reports/sales/calling/rows?metric=contact&shape=events&key=5&line=calllist&preset=any");
+      await waitFor(() => expect(bodyRows().length).toBe(1));
+      expect(within(bodyRows()[0]).getByText("With caller")).toBeInTheDocument();
+      expect(screen.getByTestId("sales-rows-hidden")).toHaveTextContent("2 activities");
+    });
+  });
 });
+

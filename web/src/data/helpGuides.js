@@ -24,6 +24,10 @@ const SALES_REPORT_GUIDES = {
     hi: "हर कारण की एक पंक्ति। तारीखें वे दिन हैं जब leads lost मार्क हुईं।",
     en: "One line per reason. The dates are when the leads were marked lost.",
   }),
+  salesCalling: salesGuide("Calling report कैसे पढ़ें", "How to read the Calling report", {
+    hi: "Caller चुनने पर हर caller की एक पंक्ति, तारीखें वे दिन हैं जब calls हुईं। Calling list चुनने पर हर खरीदी गई list की एक पंक्ति: उसके contacts, leads, जीत और (admin को) लागत।",
+    en: "With Caller, one line per caller; the dates are the days the calls were made. With Calling list, one line per bought list: its contacts, leads, wins and, for an admin, what it cost.",
+  }),
   salesWon: salesGuide("Won deals कैसे पढ़ें", "How to read Won deals", {
     hi: "जीती गई हर lead की एक पंक्ति। तारीखें वे दिन हैं जब वह won मार्क हुई।",
     en: "One line per lead won. The dates are when it was marked won.",

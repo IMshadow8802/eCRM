@@ -18,6 +18,7 @@ import HelpGuide from "../../../components/HelpGuide";
 import { HELP_GUIDES } from "../../../data/helpGuides";
 import { useApiQuery } from "../../../hooks/useApiQuery";
 import { SALES_ENDPOINTS } from "../../../api/salesQueries";
+import { CALL_RESULT, CONTACT_STATUS } from "../../../api/callingQueries";
 import { keyInk, reportKey } from "../../../styles/tokens";
 import { formatDate, formatDue } from "../../../utils/format";
 import { FOLLOWUP_TYPES, isActiveCode, statusChipColors } from "../../Sales/leadStatus";
@@ -32,7 +33,8 @@ const fs = (px) => `calc(${px}rem / 15)`;
 const int = (n) => Number(n || 0).toLocaleString("en-IN");
 const count = (n, one, many) => `${int(n)} ${Number(n) === 1 ? one : many}`;
 const rupees = (n) => `₹${Number(n).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
-const FILTER_KEYS = ["preset", "from", "to", "at", "BranchId", "SourceId", "ProductId"];
+const FILTER_KEYS = ["preset", "from", "to", "at", "line", "BranchId", "SourceId", "ProductId"];
+const CALLING = ["dial", "dial_first", "contact"];
 const DONE = ["call", "visit", "meeting", "other", "visits"];
 const typeLabel = (v) => FOLLOWUP_TYPES.find((t) => t.value === v)?.label ?? v ?? null;
 const day = (v) => (v ? dayjs(v).format("YYYY-MM-DD") : null);
@@ -42,6 +44,7 @@ const familyOf = (d) => {
   if (d.Shape === "leads") return "leads";
   if (!d.Metric || d.Metric === "all") return null;
   if (d.Metric.startsWith("fu_")) return "fu";
+  if (CALLING.includes(d.Metric)) return "calling";
   return DONE.includes(d.Metric) ? "done" : d.Metric; // new, won, lost, open
 };
 
@@ -92,6 +95,11 @@ const FAMILIES = {
   open: [LEAD, CREATED, text("age", "Age", (r) => (r.AgeDays == null ? null : Number(r.AgeDays)), { align: "right", cell: (r, p, v) => count(v, "day", "days") }),
     status("Status now"), money("value", "Value ₹", "Amount"), LAST,
     dateCol("next", "Next follow-up", "NextFollowupDate", { time: true, ink: (r) => (r.IsOverdue ? "late" : null) }), owner("owner", "Assigned to")],
+  // 149: a calling row is a call (or a contact); its name and number only reach a manager of the list.
+  calling: [dateCol("when", "When", "EventAt", { time: true }), text("lead", "Contact", (r) => r.LeadName ?? null), MOBILE,
+    text("person", "Caller", (r) => r.PersonName ?? null),
+    text("result", "Result", (r) => (r.Metric === "contact" ? CONTACT_STATUS[r.Detail1]?.label : CALL_RESULT[r.Detail1]) ?? r.Detail1 ?? null),
+    text("list", "List", (r) => r.CallListName ?? null)],
   leads: [LEAD, CREATED, MOBILE, status("Status"), money("value", "Value ₹", "EstValue"), LAST,
     text("why", "Why it is here", (r) => whyParts(r).map((x) => x.text).join(" · "), {
       cell: (r, p) => whyParts(r).map((x, i) => (
@@ -154,7 +162,8 @@ export default function SalesRows({ report: slug }) {
   });
   // The server lists only leads the caller can open (D8); dropping a row marked
   // CanOpen = 0 is a backstop against an older server, never the rule itself.
-  const raw = (data?.rows ?? []).filter((r) => r.CanOpen == null || Boolean(r.CanOpen));
+  // A calling row is listed either way (149): without CanOpen it simply carries no name, number or link.
+  const raw = (data?.rows ?? []).filter((r) => r.Src === "K" || r.CanOpen == null || Boolean(r.CanOpen));
   // total = the summary cell = listed rows + hiddenCount.
   const total = data?.total ?? 0;
   const hidden = Number(data?.hiddenCount ?? 0);
@@ -162,14 +171,21 @@ export default function SalesRows({ report: slug }) {
   const person = path[path.length - 1] ?? null;
   const previous = isWon ? data?.previous ?? null : null;
 
-  const leadCell = (r) => (
-    <Link to={`/sales/leads/${r.LeadId}`} onClick={(e) => e.stopPropagation()} style={{ color: p.text.primary, fontWeight: 600 }}>{r.LeadName}</Link>
-  );
-  const openCell = (r) => (
-    <Link to={`/sales/leads/${r.LeadId}`} onClick={(e) => e.stopPropagation()} aria-label="Open lead" style={{ color: p.text.tertiary, display: "inline-flex" }}>
-      <ExternalLink size={14} />
-    </Link>
-  );
+  // Where a row opens: its lead, or for a calling row its list's contacts (a manager of the list only).
+  const hrefOf = (r) => (r.Src === "K" ? (Number(r.CanOpen) && r.CallListId ? `/sales/calling-lists/${r.CallListId}?tab=contacts` : null) : `/sales/leads/${r.LeadId}`);
+  const leadCell = (r) => {
+    const to = hrefOf(r);
+    if (!to) return <span style={{ fontWeight: 600 }}>{r.LeadName ?? "—"}</span>;
+    return <Link to={to} onClick={(e) => e.stopPropagation()} style={{ color: p.text.primary, fontWeight: 600 }}>{r.LeadName ?? "—"}</Link>;
+  };
+  const openCell = (r) => {
+    const to = hrefOf(r);
+    return to && (
+      <Link to={to} onClick={(e) => e.stopPropagation()} aria-label={r.Src === "K" ? "Open calling list" : "Open lead"} style={{ color: p.text.tertiary, display: "inline-flex" }}>
+        <ExternalLink size={14} />
+      </Link>
+    );
+  };
 
   const specs = family ? FAMILIES[family] : [];
   const rows = raw.map((r) => ({ _r: r, ...Object.fromEntries(specs.map((c) => [c.key, c.value(r)])) }));
@@ -281,7 +297,7 @@ export default function SalesRows({ report: slug }) {
           rowKey={(row) => `${row._r.Metric ?? "lead"}-${row._r.Src ?? ""}-${row._r.RefId ?? row._r.LeadId}`}
           testId="sales-rows-table"
           loading={isLoading}
-          onRowClick={(row) => navigate(`/sales/leads/${row._r.LeadId}`)}
+          onRowClick={(row) => { const to = hrefOf(row._r); if (to) navigate(to); }}
         />
       </>
     );

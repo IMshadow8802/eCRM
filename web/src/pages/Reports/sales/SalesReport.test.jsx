@@ -312,4 +312,62 @@ describe("SalesReport", () => {
     expect(legend).toHaveTextContent("0 = none");
     expect(KEY_LEGEND.map((x) => x.k)).toEqual(["new", "call", "visit", "won", "lost", "late", "idle", "stock"]);
   });
+
+  describe("Calling (149)", () => {
+    const CALLER = line({ GroupKey: 17, GroupLabel: "Rohit Sharma", LineKind: "group", Dials: 34, DialContacts: 30, DialReached: 17, CbBooked: 3, CbKept: 2, CbMissed: 1, DialNoDial: 4, DialSecSum: 300, DialSecN: 10 });
+    const LIST = line({ GroupKey: 5, GroupLabel: "MLSS Delhi", LineKind: "group", ListContacts: 4186, ListUsed: 784, Dials: 744, DialReached: 402, New: 78, CohortWon: 6, CohortWonValue: 1140000, ListCost: 42000, SheetRows: 5000, SkippedDup: 365, SkippedBad: 151 });
+
+    it("opens on the Caller line: posts GroupBy caller with its columns", async () => {
+      const cap = mockReportEndpoints("/api/reports/sales", data({ rows: [CALLER], totals: { Dials: 34 } }));
+      renderReport("calling");
+      await waitFor(() => expect(cap.body).toMatchObject({ GroupBy: "caller", FromDate: "2026-11-17", ToDate: "2026-11-17" }));
+      const row = (await screen.findByText("Rohit Sharma")).closest("tr");
+      expect(within(row).getByRole("link", { name: "17" }).getAttribute("href")).toBe("/reports/sales/calling/rows?metric=dial&shape=events&key=17&flag=reached");
+      expect(within(row).getByText("50.0%")).toBeInTheDocument();
+      expect(within(row).getAllByText("30")).toHaveLength(2); // contacts called, and 300 s over 10 dials
+      expect(screen.getByText("1 caller")).toBeInTheDocument();
+      expect(screen.getByText("Caller")).toBeInTheDocument();
+    });
+
+    it("Calling list line swaps the columns; cost columns only when a line carries a cost", async () => {
+      const cap = mockReportEndpoints("/api/reports/sales", (b) => data({ rows: b.GroupBy === "calllist" ? [LIST, line({ GroupKey: 6, GroupLabel: "Free list", LineKind: "group", ListContacts: 10, ListCost: null })] : [CALLER] }));
+      renderReport("calling");
+      await screen.findByText("Rohit Sharma");
+      const user = userEvent.setup();
+      await user.click(screen.getByTestId("filter-line-input"));
+      await user.click(await screen.findByRole("option", { name: "Calling list" }));
+      await waitFor(() => expect(cap.body.GroupBy).toBe("calllist"));
+      expect(where()).toContain("line=calllist");
+      const row = (await screen.findByText("MLSS Delhi")).closest("tr");
+      for (const t of ["₹42,000.00", "₹538.46", "27.1", "10.3%"]) expect(within(row).getByText(t)).toBeInTheDocument();
+      const free = screen.getByText("Free list").closest("tr");
+      expect(within(free).getAllByText("—").length).toBeGreaterThan(3);
+      expect(screen.getByText("2 calling lists")).toBeInTheDocument();
+    });
+
+    it("no cost columns when no line carries a cost (not an admin)", async () => {
+      mockReportEndpoints("/api/reports/sales", data({ rows: [{ ...LIST, ListCost: null }] }));
+      renderReport("calling", "/reports/sales/calling?line=calllist");
+      await screen.findByText("MLSS Delhi");
+      expect(screen.queryByText("Cost ₹")).toBeNull();
+      expect(screen.queryByText("₹ won per ₹ spent")).toBeNull();
+      expect(screen.getByText("Used %")).toBeInTheDocument();
+    });
+
+    it("Lead sources by calling list posts calllist; a report without lines has no Lines control", async () => {
+      const cap = mockReportEndpoints("/api/reports/sales", data({ rows: [LIST] }));
+      renderReport("sources", "/reports/sales/sources?line=calllist");
+      await waitFor(() => expect(cap.body.GroupBy).toBe("calllist"));
+      expect(await screen.findByText("1 calling list")).toBeInTheDocument();
+      expect(screen.getByText("Calling list")).toBeInTheDocument();
+    });
+
+    it("the team report has no Lines control", async () => {
+      mockReportEndpoints("/api/reports/sales", data());
+      renderReport("team");
+      await screen.findByTestId("report-legend");
+      expect(screen.queryByTestId("filter-line-input")).toBeNull();
+    });
+  });
 });
+

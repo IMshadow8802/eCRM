@@ -23,7 +23,8 @@ function formatNumber(column, v) {
   switch (column.format) {
     case "money": return formatCurrency(v);
     case "pct": return `${Number(v).toFixed(1)}%`;
-    case "days": return Number(v).toFixed(1);
+    case "days":
+    case "ratio": return Number(v).toFixed(1);
     default: return Number(v).toLocaleString("en-IN");
   }
 }

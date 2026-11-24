@@ -8,6 +8,8 @@
 
 const n = (v) => (v === null || v === undefined ? null : Number(v));
 const sum = (l, ...keys) => keys.reduce((s, k) => s + (Number(l[k]) || 0), 0);
+// a / b, as a percent unless `scale` is given; null when either side is missing or b is 0.
+const ratio = (a, b, scale = 100) => (a == null || !Number(b) ? null : (scale * Number(a)) / Number(b));
 
 const col = (key, header, k, format, goodUp, value, drill, hint, extra = {}) =>
   ({ key, header, hint, k, format, goodUp, value, drill, ...extra });
@@ -73,6 +75,31 @@ export const COLUMNS = Object.fromEntries([
   col("lostValue", "Value lost ₹", "lost", "money", false, field("LostValue"), { Metric: "lost" }, "Estimated value of those leads."),
   col("avgDays", "Avg days open", "stock", "days", null, (l) => (Number(l.DaysOpenN) ? Number(l.DaysOpenSum) / Number(l.DaysOpenN) : null), null,
     "From created to lost, on average."),
+  // Calling (149). A ratio with a zero or empty divisor is null ("—"); `cost` columns are the admin's only.
+  col("dials", "Calls", "call", "int", true, field("Dials"), { Metric: "dial" }, "Calls saved in these days, credited to whoever rang."),
+  col("dialContacts", "Contacts called", "call", "int", true, field("DialContacts"), { Metric: "dial_first" },
+    "Different contacts called in these days."),
+  col("reached", "Reached", "call", "int", true, field("DialReached"), { Metric: "dial", Flag: "reached" },
+    "Calls that reached someone: interested, not interested, call back or do not call."),
+  col("reachPct", "Reach %", "stock", "pct", true, (l) => ratio(l.DialReached, l.Dials), null, "Reached out of the calls."),
+  col("cbBooked", "Callbacks booked", "stock", "int", null, field("CbBooked"), { Metric: "dial", Flag: "cbbooked" }, "Calls that booked a callback."),
+  col("cbKept", "Callbacks kept", "won", "int", true, field("CbKept"), { Metric: "dial", Flag: "cbkept" }, "Booked callbacks that were made."),
+  col("cbMissed", "Callbacks missed", "late", "int", false, field("CbMissed"), { Metric: "dial", Flag: "cbmissed" }, "Booked callbacks that were not made in time."),
+  col("noDial", "Saved without dialling", "idle", "int", false, field("DialNoDial"), { Metric: "dial", Flag: "nodial" },
+    "Results saved without tapping Call first."),
+  col("avgDialSec", "Avg seconds dial → result", "stock", "int", null, (l) => ratio(l.DialSecSum, l.DialSecN, 1), null,
+    "From tapping Call to saving the result, on average."),
+  col("listContacts", "Contacts", "stock", "int", null, field("ListContacts"), { Metric: "contact" }, "Contacts on the list, as it stands now.", { now: true }),
+  col("usedPct", "Used %", "stock", "pct", null, (l) => ratio(l.ListUsed, l.ListContacts), null, "Contacts handed out or called at least once."),
+  col("listLeads", "Leads", "new", "int", true, field("New"), { Metric: "new" }, "Leads made from the list."),
+  col("leadPct", "Lead % of reached", "stock", "pct", true, (l) => ratio(l.New, l.DialReached), null, "Leads out of the calls that reached someone."),
+  col("listCost", "Cost ₹", "stock", "money", null, field("ListCost"), null, "What the list cost.", { cost: true }),
+  col("costPerLead", "Cost per lead ₹", "stock", "money", false, (l) => ratio(l.ListCost, l.New, 1), null, "Cost divided by leads.", { cost: true }),
+  col("costPerWon", "Cost per won ₹", "stock", "money", false, (l) => ratio(l.ListCost, l.CohortWon, 1), null, "Cost divided by deals won.", { cost: true }),
+  col("returnPerRupee", "₹ won per ₹ spent", "won", "ratio", true, (l) => ratio(l.CohortWonValue, l.ListCost, 1), null,
+    "Won value divided by cost.", { cost: true }),
+  col("sheetBadPct", "Duplicate or bad in sheet %", "idle", "pct", false, (l) => ratio(sum(l, "SkippedDup", "SkippedBad"), l.SheetRows), null,
+    "Sheet rows skipped as already known or a bad number."),
 ].map((c) => [c.key, c]));
 
 // The colour-key line above every summary, in this order.
