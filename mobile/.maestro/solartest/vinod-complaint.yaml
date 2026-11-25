@@ -1,5 +1,5 @@
-# Vinod (Support Agent, reports to Rohit): Mine lists TKT-000002; it opens; its history reads "Reassigned to";
-# Escalate offers Rohit (his manager). Nothing is escalated. Env: T60.
+# Vinod (Support Head, reports to Amit since 150): Mine lists TKT-000002; it opens; its history reads "Reassigned to";
+# Escalate offers Amit (his manager). Nothing is escalated. Env: T60.
 appId: com.shadowider.eCRM
 ---
 - runFlow: ../common/open-work.yaml
@@ -42,7 +42,7 @@ appId: com.shadowider.eCRM
 - tapOn: "Escalate"
 - assertVisible: "Escalate complaint"
 - extendedWaitUntil:
-    visible: "ROHIT GAUR"
+    visible: "Amit"
     timeout: 15000
 - takeScreenshot: st-vinod-escalate-sheet
 - back

@@ -46,6 +46,16 @@ for _ in $(seq 1 60); do
   seen="$(adb -s "$DEVICE" exec-out uiautomator dump /dev/tty 2>/dev/null)"
   # A wiped dev client opens its developer menu (intro, then the menu) over the app: Continue, then Close.
   if grep -q 'Runtime version' <<<"$seen"; then
+    # The menu's floating "Tools button" (a gear) lands on the header's "+ New" and
+    # opens this menu instead of the form: switch it off once, before Close. It
+    # stays off across restart_app (only pm clear above resets it).
+    if [ -z "${tools_off:-}" ] && grep -q 'text="Tools button"' <<<"$seen" && ! grep -q 'text="Continue"' <<<"$seen"; then
+      node_="$(grep -oE '<node [^>]*text="Tools button"[^>]*>' <<<"$seen" | head -1)"
+      read -r x1 y1 x2 y2 <<<"$(grep -oE 'bounds="[^"]+"' <<<"$node_" | grep -oE '[0-9]+' | tr '\n' ' ')"
+      w="$(adb -s "$DEVICE" shell wm size | grep -oE '[0-9]+x' | tr -d x | tail -1)"
+      adb -s "$DEVICE" shell input tap $((w * 85 / 100)) $(((y1 + y2) / 2)); tools_off=1
+      sleep 2; continue
+    fi
     for want in 'text="Continue"' 'content-desc="Close"'; do
       node_="$(grep -oE "<node [^>]*${want}[^>]*>" <<<"$seen" | head -1)"
       [ -n "$node_" ] || continue
@@ -87,8 +97,8 @@ m() { maestro --device "$DEVICE" test --debug-output "$DEBUG/debug" --test-outpu
 if [ "$MODE" = full ]; then
   STEPS=(
     "A|Nitin |a1-nitin-logs" "A|Vinod |a2-vinod-sends-back" "A|Nitin |a3-nitin-reassigns" "A|Vivek|a4-vivek-escalates"
-    "A|Rohit |a5-rohit-reassigns" "A|Vivek|a6-vivek-lost-it" "A|Vinod |a7-vinod-resolves" "A|Neha |a8-neha-reopens"
-    "A|Prasant |a9-prasant-finds-nothing"
+    "A|Vinod |a5-vinod-reassigns" "A|Vivek|a6-vivek-lost-it" "A|Rohit |a7-rohit-resolves" "A|Neha |a8-neha-reopens"
+    "A|Prasant |a9-prasant-sees-it"
     "B|Kasak |b1-kasak-hands-over" "B|Roshan|b2-roshan-has-it" "B|Neha |b3-neha-hands-back" "B|Kasak |b4-kasak-has-it"
   )
   for u in "Amit" "Neha "; do STEPS+=("C|$u|c-menu-both"); done
@@ -108,8 +118,8 @@ elif [ "$MODE" = screens ]; then
   [ $# -gt 1 ] && USERS=("${@:2}")
   STEPS=(); for u in "${USERS[@]}"; do STEPS+=("S|$u|screens"); done
 else
-  declare -A WHO=([neha-leads]="Neha " [vinod-complaint]="Vinod " [nitin-log-reassign]="Nitin " [kasak-leads]="Kasak " [rohit-escalated]="Rohit ")
-  FLOWS=(neha-leads vinod-complaint nitin-log-reassign kasak-leads rohit-escalated)
+  declare -A WHO=([neha-leads]="Neha " [vinod-complaint]="Vinod " [nitin-log-reassign]="Nitin " [kasak-leads]="Kasak " [vinod-escalated]="Vinod ")
+  FLOWS=(neha-leads vinod-complaint nitin-log-reassign kasak-leads vinod-escalated)
   [ $# -gt 0 ] && FLOWS=("$@")
   STEPS=(); for f in "${FLOWS[@]}"; do STEPS+=("-|${WHO[$f]}|$f"); done
 fi

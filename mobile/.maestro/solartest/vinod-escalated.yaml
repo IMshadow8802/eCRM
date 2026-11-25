@@ -1,4 +1,4 @@
-# Rohit (Support Team Lead): Escalated lists the complaint Vivek escalated to
+# Vinod (Support Head, Vivek's manager): Escalated lists the complaint Vivek escalated to
 # him (setup.js) and it opens showing "Escalated to". Env: ESC, TAG.
 appId: com.shadowider.eCRM
 ---
@@ -30,5 +30,5 @@ appId: com.shadowider.eCRM
           optional: true
 - assertVisible: "Complaint actions"
 - assertVisible: "Escalated to"
-- assertVisible: "ROHIT GAUR"
-- takeScreenshot: st-rohit-escalated
+- assertVisible: "Vinod Kumar\\s*"
+- takeScreenshot: st-vinod-escalated

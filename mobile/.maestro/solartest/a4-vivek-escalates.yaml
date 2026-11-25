@@ -1,4 +1,4 @@
-# A4 Vivek opens it from Mine and escalates it to Rohit (his manager); it stays with him.
+# A4 Vivek opens it from Mine and escalates it to Vinod (his manager; Rohit is a peer since 150); it stays with him.
 appId: com.shadowider.eCRM
 ---
 - runFlow:
@@ -9,13 +9,13 @@ appId: com.shadowider.eCRM
 - tapOn: "Escalate"
 - assertVisible: "Escalate complaint"
 - extendedWaitUntil:
-    visible: "ROHIT GAUR"
+    visible: "Vinod Kumar\\s*"
     timeout: 15000
-- tapOn: "ROHIT GAUR"
+- tapOn: "Vinod Kumar\\s*"
 - tapOn: "What they need to know — they get a notification"
 - inputText: "${TAG} need senior"
 - hideKeyboard
-- tapOn: "Escalate to ROHIT GAUR"
+- tapOn: "Escalate to Vinod Kumar\\s*"
 - extendedWaitUntil:
     notVisible: "Escalate complaint"
     timeout: 15000

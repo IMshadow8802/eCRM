@@ -1,6 +1,6 @@
 // node setup.js <out.json> [full] — this SolarTest run's names (read only), plus,
-// unless "full", one complaint escalated to Rohit (Nitin logs it for Vivek,
-// Vivek escalates) for the rohit-escalated slice. Talks only to
+// unless "full", one complaint escalated to Vinod (Nitin logs it for Vivek,
+// Vivek escalates) for the vinod-escalated slice. Talks only to
 // localhost:5001; LIVE_PASSWORD comes from the environment and is never printed.
 const fs = require("node:fs");
 const base = "http://localhost:5001";
@@ -26,10 +26,10 @@ async function post(who, path, body) {
   const mine = await post("kasak", "/api/leads/fetchLeads", { PageNumber: 1, PageSize: 1, OwnerId: id("Kasak ") });
   const t60 = (await post("amit", "/api/tickets/fetchTicketDetail", { TicketId: 60 })).ticket;
   const reason = (await post("amit", "/api/config/fetchLookups", { Kind: "transfer_reason" })).lookups.find((x) => x.Code !== "sent_back");
-  const subject = `${tag} escalated to Rohit`;
+  const subject = `${tag} escalated to Vinod`;
   if (process.argv[3] !== "full") {
     const saved = await post("nitin", "/api/tickets/saveTicket", { CustomerId: t60.CustomerId, Subject: subject, Description: tag, AssignedTo: id("Vivek") });
-    await post("vivek", "/api/tickets/escalateTicket", { TicketId: saved.Id, ToUserId: id("Rohit "), Remarks: `${tag} need senior` });
+    await post("vivek", "/api/tickets/escalateTicket", { TicketId: saved.Id, ToUserId: id("Vinod "), Remarks: `${tag} need senior` });
   }
   const roshan = await post("roshan", "/api/leads/fetchLeads", { PageNumber: 1, PageSize: 1, OwnerId: id("Roshan") });
   const resolution = (await post("amit", "/api/config/fetchLookups", { Kind: "resolution" })).lookups[0];

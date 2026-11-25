@@ -1,4 +1,4 @@
-# A5 Rohit finds it under Escalated, opens it, reassigns it to Vinod.
+# A5 Vinod finds it under Escalated, opens it, reassigns it to Rohit.
 appId: com.shadowider.eCRM
 ---
 - runFlow:
@@ -8,7 +8,7 @@ appId: com.shadowider.eCRM
       KEY: "${TAG}"
 - scrollUntilVisible:
     element: "Escalated to"
-- takeScreenshot: a5-rohit-escalated
+- takeScreenshot: a5-vinod-escalated
 - tapOn: "Reassign"
 - assertVisible: "Reassign complaint"
 - extendedWaitUntil:
@@ -19,31 +19,31 @@ appId: com.shadowider.eCRM
 # settling sheet drops a character now and then (nothing matches): retype.
 - tapOn:
     id: "reassign-search"
-- inputText: "vinod"
+- inputText: "rohit"
 # (Vivek stays on screen: the sheet's subtitle names him as the current holder.)
 - waitForAnimationToEnd
 - repeat:
     times: 3
     while:
-      notVisible: "Vinod Kumar\\s*"
+      notVisible: "ROHIT GAUR"
     commands:
       - tapOn:
           id: "reassign-search"
       - eraseText
-      - inputText: "vinod"
+      - inputText: "rohit"
       - extendedWaitUntil:
-          visible: "Vinod Kumar\\s*"
+          visible: "ROHIT GAUR"
           timeout: 10000
           optional: true
-- assertVisible: "Vinod Kumar\\s*"
+- assertVisible: "ROHIT GAUR"
 - hideKeyboard
-- tapOn: "Vinod Kumar\\s*"
+- tapOn: "ROHIT GAUR"
 - tapOn: "${REASON}"
 - tapOn:
     id: "reassign-remarks"
 - inputText: "${TAG} you take it"
 - hideKeyboard
-- tapOn: "Reassign to Vinod"
+- tapOn: "Reassign to ROHIT.*"
 - extendedWaitUntil:
     visible:
       id: "complaint-presets"

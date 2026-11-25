@@ -1,0 +1,19 @@
+# A9 Prasant (Support Manager, office reach since 145/150): the complaint desk sees every
+# complaint, so Team search finds it even though he never touched it.
+appId: com.shadowider.eCRM
+---
+- runFlow: ../common/open-work.yaml
+- tapOn: "Open My complaints"
+- assertVisible:
+    id: "complaint-presets"
+- runFlow:
+    file: ../access/preset.yaml
+    env:
+      NAME: "Team"
+- tapOn: "Search number, customer, mobile"
+- inputText: "${TAG}"
+- extendedWaitUntil:
+    visible: ".*${TAG}.*"
+    timeout: 15000
+- assertNotVisible: "Nothing matches"
+- takeScreenshot: a9-prasant-sees-it

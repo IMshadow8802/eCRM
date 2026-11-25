@@ -1,4 +1,4 @@
-# A7 Vinod resolves it (resolution + remarks); then no Reopen anywhere for him.
+# A7 Rohit resolves it (resolution + remarks); then no Reopen anywhere for him.
 appId: com.shadowider.eCRM
 ---
 - runFlow:
@@ -21,5 +21,5 @@ appId: com.shadowider.eCRM
 - assertNotVisible: "Reopen"
 - tapOn: "Complaint actions"
 - assertNotVisible: "Reopen"
-- takeScreenshot: a7-vinod-no-reopen
+- takeScreenshot: a7-rohit-no-reopen
 - back

@@ -77,7 +77,7 @@ test("a. Neha hands Kasak's lead to Roshan; Kasak loses it; Neha hands it back",
   await kasak.ctx.close();
 });
 
-test("b. complaint: desk → Vinod → back → Vivek → escalate Rohit → Vinod → resolve → Neha reopens", async ({ browser }) => {
+test("b. complaint: desk → Vinod → back → Vivek → escalate Vinod → Rohit → resolve → Neha reopens", async ({ browser }) => {
   const t60 = (await api("amit", "/api/tickets/fetchTicketDetail", { TicketId: 60 })).body.data.ticket;
   const subject = `${STAMP} complaint`;
   let id;
@@ -124,39 +124,40 @@ test("b. complaint: desk → Vinod → back → Vivek → escalate Rohit → Vin
     await expect(snackbar(nitin.page, "Reassigned to Vivek")).toBeVisible();
   });
 
+  // Escalation goes up the ReportsTo chain only: Vivek -> Vinod (150), never to Rohit, his peer.
   const vivek = await signIn(browser, "vivek");
-  await test.step("Vivek escalates to Rohit", async () => {
+  await test.step("Vivek escalates to Vinod", async () => {
     await open(vivek.page);
     await vivek.page.getByTestId("escalate-ticket-btn").click();
-    await pick(vivek.page, "escalate-target", /ROHIT/i);
+    await pick(vivek.page, "escalate-target", /Vinod/i);
     await vivek.page.getByTestId("escalate-remarks").fill(`${STAMP} need senior`);
     await vivek.page.getByTestId("escalate-submit").click();
-    await expect(vivek.page.getByTestId("ticket-escalated-chip")).toContainText(/ROHIT/i);
+    await expect(vivek.page.getByTestId("ticket-escalated-chip")).toContainText(/Vinod/i);
+  });
+
+  await test.step("Vinod opens it and reassigns to Rohit", async () => {
+    await open(vinod.page);
+    await expect(vinod.page.getByTestId("ticket-escalated-chip")).toContainText(/Vinod/i);
+    await vinod.page.getByTestId("reassign-ticket-btn").click();
+    await pick(vinod.page, "ticket-reassign-person", /ROHIT/i);
+    await reasonAndRemarks(vinod.page, "ticket-reassign", `${STAMP} you take it`);
+    await vinod.page.getByTestId("ticket-reassign-submit").click();
+    await expect(snackbar(vinod.page, /Reassigned to ROHIT/i)).toBeVisible();
   });
 
   const rohit = await signIn(browser, "rohit");
-  await test.step("Rohit opens it and reassigns to Vinod", async () => {
+  await test.step("Rohit resolves; then no Reopen for him", async () => {
     await open(rohit.page);
-    await expect(rohit.page.getByTestId("ticket-escalated-chip")).toContainText(/ROHIT/i);
-    await rohit.page.getByTestId("reassign-ticket-btn").click();
-    await pick(rohit.page, "ticket-reassign-person", /Vinod/);
-    await reasonAndRemarks(rohit.page, "ticket-reassign", `${STAMP} you take it`);
-    await rohit.page.getByTestId("ticket-reassign-submit").click();
-    await expect(snackbar(rohit.page, "Reassigned to Vinod")).toBeVisible();
-  });
-
-  await test.step("Vinod resolves; then no Reopen for him", async () => {
-    await open(vinod.page);
-    await vinod.page.getByTestId("resolve-ticket-btn").click();
-    await vinod.page.getByTestId("resolution-combobox-input").click();
-    await vinod.page.getByRole("option").first().click();
-    await vinod.page.getByTestId("resolve-remarks").fill(`${STAMP} fixed`);
-    await vinod.page.getByTestId("resolve-submit").click();
-    await expect(vinod.page.getByTestId("resolve-ticket-modal")).toHaveCount(0);
-    await vinod.page.reload();
-    await expect(vinod.page.getByTestId("ticket-detail")).toBeVisible();
-    await expect(vinod.page.getByTestId("ticket-status-chip")).toBeVisible();
-    await expect(vinod.page.getByTestId("reopen-ticket-btn")).toHaveCount(0);
+    await rohit.page.getByTestId("resolve-ticket-btn").click();
+    await rohit.page.getByTestId("resolution-combobox-input").click();
+    await rohit.page.getByRole("option").first().click();
+    await rohit.page.getByTestId("resolve-remarks").fill(`${STAMP} fixed`);
+    await rohit.page.getByTestId("resolve-submit").click();
+    await expect(rohit.page.getByTestId("resolve-ticket-modal")).toHaveCount(0);
+    await rohit.page.reload();
+    await expect(rohit.page.getByTestId("ticket-detail")).toBeVisible();
+    await expect(rohit.page.getByTestId("ticket-status-chip")).toBeVisible();
+    await expect(rohit.page.getByTestId("reopen-ticket-btn")).toHaveCount(0);
   });
 
   const neha = await signIn(browser, "neha");
