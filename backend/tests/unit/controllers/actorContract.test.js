@@ -52,6 +52,20 @@ describe("actor contract — the person only through actor(req)", () => {
   });
 });
 
+// Calling lists (149): held to all three patterns. A file not written yet is skipped,
+// so each controller is caught the moment it appears.
+const CALLING = ["calling", "callingCaller", "phoneMark"];
+describe("actor contract — calling controllers", () => {
+  const present = CALLING.map(file).filter((f) => fs.existsSync(path.join(__dirname, "../../..", f)));
+  if (!present.length) {
+    it("no calling controller yet", () => expect(present).toEqual([]));
+    return;
+  }
+  it.each(present)("%s never names a list parameter", (f) => expect(read(f)).not.toMatch(LIST_PARAMS));
+  it.each(present)("%s never takes the person or company from the request", (f) => expect(read(f)).not.toMatch(PERSON_FROM_REQUEST));
+  it.each(present)("%s never reads UserId/CompId off req.user", (f) => expect(read(f)).not.toMatch(PERSON_FROM_SESSION_RAW));
+});
+
 describe("actor contract — pending list stays honest", () => {
   if (PENDING.length === 0) {
     it("every controller is converted", () => expect(DONE).toHaveLength(4));

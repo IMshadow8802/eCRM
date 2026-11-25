@@ -144,12 +144,12 @@ describe("Roles & Permissions (Groups) page", () => {
     await openRole(1);
     expect(await screen.findByText(/Salesperson — Permissions/)).toBeInTheDocument();
     const labels = [
-      "Leads, follow-ups, quotations", "Sales reports", "Partners & commission", "Visiting cards", "Complaints", "Support reports",
+      "Leads, follow-ups, quotations", "Sales reports", "Partners & commission", "Visiting cards", "Calling lists", "Complaints", "Support reports",
       "Customers", "People", "Tasks & Today", "Teams", "Projects",
       "Attendance (team presence)", "Settings & products", "Dashboard",
     ];
     for (const l of labels) expect(screen.getByText(l)).toBeInTheDocument();
-    expect(screen.getAllByTestId(/^module-row-/)).toHaveLength(14);
+    expect(screen.getAllByTestId(/^module-row-/)).toHaveLength(15);
     expect(screen.queryByTestId("module-row-roles")).toBeNull();
     expect(screen.queryByTestId("module-row-offices")).toBeNull();
 
@@ -187,6 +187,23 @@ describe("Roles & Permissions (Groups) page", () => {
     // §4 words: the hint says "what this role can see", never "reach".
     fireEvent.mouseOver(screen.getByTestId("module-row-cards").querySelector("span[tabindex]"));
     expect(await screen.findByText(/visiting cards within what this role can see/)).toBeInTheDocument();
+  });
+
+  it("has a Calling lists row with four ticks and no Can see / Can assign to", async () => {
+    const user = await openRole(1);
+    await screen.findByText(/Salesperson — Permissions/);
+    for (const f of ["CanView", "CanAdd", "CanEdit", "CanDelete"]) expect(screen.getByTestId(`perm-calling-${f}`)).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("perm-calling-CanEdit"));
+    expect(screen.queryByTestId("reach-calling-input")).toBeNull();
+    expect(screen.queryByTestId("assign-calling-input")).toBeNull();
+    expect(screen.queryByTestId("assign-calling-none")).toBeNull();
+    fireEvent.mouseOver(screen.getByTestId("module-row-calling").querySelector("span[tabindex]"));
+    expect(await screen.findByText(/Callers need nothing here/)).toBeInTheDocument();
+    await user.click(screen.getByTestId("save-permissions-btn"));
+    await waitFor(() => expect(savedBody()).toBeDefined());
+    const row = savedBody().Modules.find((m) => m.Module === "calling");
+    expect(row).toMatchObject({ CanView: true, CanAdd: false, CanEdit: true, CanDelete: false, Reach: null });
+    expect("AssignReach" in row).toBe(false);
   });
 
   it("saving the attendance row with Office reach sends Reach Office", async () => {

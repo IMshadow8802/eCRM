@@ -124,6 +124,7 @@ describe("E §1.6 status → badge", () => {
       complaints: { bar: Headset, tile: Headset },
       leads: { bar: Target, tile: Target },
       followups: { bar: CalendarClock, tile: CalendarCheck },
+      calling: { bar: PhoneCall, tile: PhoneCall },
       more: { bar: Ellipsis, tile: Ellipsis },
     });
   });

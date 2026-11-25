@@ -24,6 +24,10 @@ const SALES_REPORT_GUIDES = {
     hi: "हर कारण की एक पंक्ति। तारीखें वे दिन हैं जब leads lost मार्क हुईं।",
     en: "One line per reason. The dates are when the leads were marked lost.",
   }),
+  salesCalling: salesGuide("Calling report कैसे पढ़ें", "How to read the Calling report", {
+    hi: "Caller चुनने पर हर caller की एक पंक्ति, तारीखें वे दिन हैं जब calls हुईं। Calling list चुनने पर हर खरीदी गई list की एक पंक्ति: उसके contacts, leads, जीत और (admin को) लागत।",
+    en: "With Caller, one line per caller; the dates are the days the calls were made. With Calling list, one line per bought list: its contacts, leads, wins and, for an admin, what it cost.",
+  }),
   salesWon: salesGuide("Won deals कैसे पढ़ें", "How to read Won deals", {
     hi: "जीती गई हर lead की एक पंक्ति। तारीखें वे दिन हैं जब वह won मार्क हुई।",
     en: "One line per lead won. The dates are when it was marked won.",
@@ -31,6 +35,24 @@ const SALES_REPORT_GUIDES = {
 };
 
 export const HELP_GUIDES = {
+  callingLists: {
+    titleHi: "Calling lists कैसे चलाएँ",
+    titleEn: "How to run calling lists",
+    steps: [
+      {
+        hi: "New list से खरीदी गई sheet (.xlsx या .csv) डालें। बताएँ कि कौन सा column mobile नंबर है; Preview बताता है कितने नए जुड़ेंगे और कितने पहले से lead, customer या do-not-call हैं।",
+        en: "Use New list to upload a bought sheet (.xlsx or .csv). Say which column is the mobile number; Preview shows how many are new and how many are already a lead, a customer or do-not-call.",
+      },
+      {
+        hi: "Callers चुनें: किसी को अभी N contacts दें, या Automatic चालू करें ताकि हर caller के पास एक बार में N रहें और batch खत्म होते ही अगला आ जाए।",
+        en: "Pick callers: give someone N contacts now, or switch on Automatic so each caller holds N at a time and gets the next batch when they finish.",
+      },
+      {
+        hi: "Caller phone app पर Calling में नंबर लगाकर result चुनते हैं। सिर्फ़ 'Interested' contact ही lead बनता है। List खोलकर pool, callers और नतीजे देखें; रिपोर्ट Reports → Calling में है।",
+        en: "Callers ring from Calling on the phone app and tap a result. Only an 'Interested' contact becomes a lead. Open a list to see its pool, callers and results; the report is under Reports → Calling.",
+      },
+    ],
+  },
   tasks: {
     titleHi: "टास्क कैसे इस्तेमाल करें",
     titleEn: "How to use Tasks",

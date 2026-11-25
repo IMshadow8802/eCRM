@@ -286,3 +286,13 @@ it("a new initialTime reseeds the time row", async () => {
   await fireEvent.press(screen.getByRole("button", { name: "Go" }));
   expect(onSubmit).toHaveBeenCalledWith({}, {}, `${localDayPlus(1)}T17:30`);
 });
+
+it("initialChip is picked on open, so a required when can submit at once; dismiss puts it back", async () => {
+  const ref = createRef<SheetRef>();
+  const { onSubmit } = await renderSheet({ fields: [], choices: [], when: { label: "When", required: true, initialChip: "tomorrow" }, ref } as Partial<ComposeSheetProps>);
+  expect(submitButton()).toBeEnabled();
+  await fireEvent.press(screen.getByText("In 3 days"));
+  await act(() => ref.current!.dismiss());
+  await fireEvent.press(submitButton());
+  expect(onSubmit).toHaveBeenCalledWith({}, {}, localDayPlus(1));
+});

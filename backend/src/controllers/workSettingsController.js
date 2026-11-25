@@ -74,7 +74,8 @@ class WorkSettingsController {
 
   saveCompanySetting = asyncRoute(
     async (req, res) => {
-      const { LateGraceMin, SessionBufferMin, WarnPct, NotifyNotSignedIn, GoLiveDate, CommissionDueOn } = req.body;
+      const { LateGraceMin, SessionBufferMin, WarnPct, NotifyNotSignedIn, GoLiveDate, CommissionDueOn,
+        CallStartMin, CallEndMin, CallbackCap } = req.body;
       if (!inRange(LateGraceMin, 0, 120)) return validationError(res, "Count-as-late-after must be 0 to 120 minutes");
       if (!inRange(SessionBufferMin, 0, 480)) return validationError(res, "Stay-signed-in-after-shift must be 0 to 480 minutes");
       if (!inRange(WarnPct, 50, 95)) return validationError(res, "Warning percentage must be 50 to 95 percent");
@@ -83,6 +84,16 @@ class WorkSettingsController {
       if (CommissionDueOn != null && CommissionDueOn !== "" && !["manual", "convert"].includes(CommissionDueOn)) {
         return validationError(res, "Choose when commission becomes payable");
       }
+      // 149 calling settings: optional; an absent key goes as null and the procedure keeps the column.
+      const given = (v) => v != null && v !== "";
+      if ([CallStartMin, CallEndMin].some((v) => given(v) && !inRange(v, 0, 1440))) {
+        return validationError(res, "Calling hours must be 0 to 1440 minutes");
+      }
+      if (given(CallStartMin) && given(CallEndMin) && Number(CallStartMin) >= Number(CallEndMin)) {
+        return validationError(res, "Calling hours must start before they end");
+      }
+      if (given(CallbackCap) && !inRange(CallbackCap, 1, 200)) return validationError(res, "Callback limit must be 1 to 200");
+      const opt = (v) => (given(v) ? Number(v) : null);
       const result = await database.executeStoredProcedure("sp_SaveCompanySetting", {
         CompId: req.user.CompId,
         LateGraceMin: Number(LateGraceMin),
@@ -91,6 +102,9 @@ class WorkSettingsController {
         NotifyNotSignedIn: NotifyNotSignedIn ? 1 : 0,
         GoLiveDate: live ? at(live, 0) : null,
         CommissionDueOn: CommissionDueOn || null,
+        CallStartMin: opt(CallStartMin),
+        CallEndMin: opt(CallEndMin),
+        CallbackCap: opt(CallbackCap),
       });
       calendarContext.clearSettingsCache();
       return reply(res, firstRow(result));

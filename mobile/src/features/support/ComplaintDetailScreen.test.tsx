@@ -532,3 +532,30 @@ describe("access model on the record", () => {
     expect(navigation.goBack).toHaveBeenCalled();
   });
 });
+
+describe("149 · number marks", () => {
+  it("shows the banner and asks before calling a do-not-call number", async () => {
+    const open = jest.spyOn(Linking, "openURL").mockResolvedValue(true);
+    jest.mocked(fetchTicketDetail).mockResolvedValue(detail(ticket({ PhoneMark: "dnc", PhoneMarkNote: "Said stop calling", PhoneMarkBy: "Priya Verma", PhoneMarkAt: "2026-11-20T10:15:00" })));
+    await mount();
+    await loaded();
+    expect(screen.getByText("Do not call — Said stop calling · marked by Priya Verma, 20 Nov")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Call 9825012345" }));
+    expect(open).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole("button", { name: "Cancel" }));
+    expect(open).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole("button", { name: "Call 9825012345" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Call anyway" }));
+    expect(open).toHaveBeenCalledWith("tel:9825012345");
+  });
+
+  it("under caution the dialler opens at once", async () => {
+    const open = jest.spyOn(Linking, "openURL").mockResolvedValue(true);
+    jest.mocked(fetchTicketDetail).mockResolvedValue(detail(ticket({ PhoneMark: "caution", PhoneMarkNote: "Evenings only" })));
+    await mount();
+    await loaded();
+    expect(screen.getByText("Call with caution — Evenings only")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Call 9825012345" }));
+    expect(open).toHaveBeenCalledWith("tel:9825012345");
+  });
+});

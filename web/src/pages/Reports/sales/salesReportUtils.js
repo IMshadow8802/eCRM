@@ -12,10 +12,10 @@ import { COLUMNS } from "./columns";
 
 // The closed lists of sp_RptSalesRows (backend/src/utils/salesReport.js). Anything else in an address is dropped.
 const METRICS = ["new", "call", "visit", "meeting", "other", "visits", "fu_due", "fu_ontime",
-  "fu_late", "fu_skipped", "fu_missed", "fu_open", "won", "lost", "open", "all"];
+  "fu_late", "fu_skipped", "fu_missed", "fu_open", "won", "lost", "open", "all", "dial", "dial_first", "contact"];
 const STATES = ["open", "won", "lost", "junk", "untouched"];
 const AGE_BUCKETS = ["0_7", "8_30", "31_90", "90p"];
-const FLAGS = ["overdue", "nonext", "stale"];
+const FLAGS = ["overdue", "nonext", "stale", "reached", "nodial", "cbbooked", "cbkept", "cbmissed", "used"];
 const ID_KEYS = ["BranchId", "SourceId", "ProductId"];
 
 const idOf = (v) => (v && /^\d+$/.test(v) && Number(v) > 0 ? Number(v) : null);
@@ -23,19 +23,29 @@ const oneOf = (v, list) => (list.includes(v) ? v : null);
 const int = (v) => Number(v).toLocaleString("en-IN");
 const plural = (count, one, many) => `${int(count)} ${count === 1 ? one : many}`;
 
-/** Address bar -> { preset, from, to, error, at, BranchId, SourceId, ProductId }. */
+const lineOf = (report, v) => (report.lines ? oneOf(v, report.lines.map((l) => l.value)) ?? report.lines[0].value : null);
+
+/** Address bar -> { preset, from, to, error, at, line, BranchId, SourceId, ProductId }. `line` = the report's Lines choice, else null. */
 export function readFilters(params, report, today = dayjs()) {
   return {
     ...readRange(params, { defaultPreset: report.defaultPreset, allowAny: report.allowAny, today }),
     at: idOf(params.get("at")),
+    line: lineOf(report, params.get("line")),
     ...Object.fromEntries(ID_KEYS.map((k) => [k, idOf(params.get(k))])),
   };
+}
+
+/** The report as the chosen line shows it: its columns and first heading (a report without lines is itself). */
+export function lineView(report, filters) {
+  const line = report.lines?.find((l) => l.value === filters.line);
+  return line ? { ...report, columns: line.columns, firstHeader: line.firstHeader ?? report.firstHeader } : report;
 }
 
 /** Filters -> address-bar params, defaults left out. */
 export function writeFilters(f, report) {
   const out = writeRange(f, { defaultPreset: report.defaultPreset });
   if (f.at) out.at = String(f.at);
+  if (report.lines && f.line && f.line !== report.lines[0].value) out.line = f.line;
   for (const k of ID_KEYS) if (f[k]) out[k] = String(f[k]);
   return out;
 }
@@ -44,7 +54,7 @@ const dates = (f) => (f.preset === ANY.value || !f.from ? {} : { FromDate: f.fro
 const ids = (f) => Object.fromEntries(ID_KEYS.map((k) => [k, f[k] ?? null]));
 
 /** Filters -> the POST body of /api/reports/sales. No dates for Any time. */
-export const toBody = (f, report) => ({ GroupBy: report.groupBy, ...dates(f), NodeId: f.at ?? null, ...ids(f) });
+export const toBody = (f, report) => ({ GroupBy: f.line || report.groupBy, ...dates(f), NodeId: f.at ?? null, ...ids(f) });
 
 // The frame's own params (dates and ids) at the end of every drill address; `at` stays on the summary.
 const frameQuery = (report, f) => {
@@ -101,7 +111,7 @@ export function readDrill(params) {
 }
 
 /** The POST body of /api/reports/salesRows. */
-export const drillBody = (report, filters, drill) => ({ GroupBy: report.groupBy, ...dates(filters), ...drill, ...ids(filters) });
+export const drillBody = (report, filters, drill) => ({ GroupBy: filters.line || report.groupBy, ...dates(filters), ...drill, ...ids(filters) });
 
 /** "New · 2 calls · 1 follow-up missed" on a per-lead line, each part with its colour-key hue. */
 export function whyParts(r) {
@@ -125,10 +135,13 @@ const TITLE = {
   fu_late: ["follow-up done late", "follow-ups done late"], fu_skipped: ["follow-up skipped", "follow-ups skipped"],
   fu_missed: ["follow-up missed", "follow-ups missed"], fu_open: ["follow-up still open", "follow-ups still open"],
   won: ["deal won", "deals won"], lost: ["lead lost", "leads lost"], open: ["open lead", "open leads"], all: ["lead", "leads"],
+  dial: ["call", "calls"], dial_first: ["contact called", "contacts called"], contact: ["contact", "contacts"],
 };
 const STATE_WORDS = { open: "still open", won: "won by now", lost: "lost by now", junk: "marked junk" };
 const AGE_WORDS = { "0_7": "0–7 days old", "8_30": "8–30 days old", "31_90": "31–90 days old", "90p": "90+ days old" };
-const FLAG_WORDS = { overdue: "overdue", nonext: "with no next follow-up", stale: "not touched 7+ days" };
+const FLAG_WORDS = { overdue: "overdue", nonext: "with no next follow-up", stale: "not touched 7+ days",
+  reached: "that reached someone", nodial: "saved without dialling", cbbooked: "booking a callback",
+  cbkept: "with the callback kept", cbmissed: "with the callback missed", used: "used" };
 
 /** "93 follow-ups missed", "4 leads not contacted yet", "12 open leads overdue". */
 export function drillTitle(d, total) {
@@ -170,7 +183,7 @@ const BOM = "﻿";
 // Money is the plain number so Excel sums it; percent and days to one decimal.
 const csvCell = (column, v) => {
   if (v === null || v === undefined || Number.isNaN(v)) return null;
-  return column.format === "pct" || column.format === "days" ? Number(v).toFixed(1) : Number(v);
+  return ["pct", "days", "ratio"].includes(column.format) ? Number(v).toFixed(1) : Number(v);
 };
 
 /** Every column of the report (shown, then export-only), the lines, Total, and the previous period. */

@@ -50,6 +50,7 @@
     "react-pdf-html": "2.1.5",
     "react-router-dom": "^7.14.1",
     "react-spinners": "^0.17.0",
+    "read-excel-file": "^9.3.20",
     "recharts": "^3.8.1",
     "socket.io-client": "^4.8.3",
     "zod": "^4.3.6",

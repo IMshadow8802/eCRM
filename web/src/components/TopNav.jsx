@@ -18,6 +18,7 @@ import { Sun, Moon, UserCog, ChevronRight } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 
 import useAuthStore from "../stores/useAuthStore";
+import { useAccess } from "../hooks/useAccess";
 import useThemeStore from "../stores/useThemeStore";
 import { logoutUser } from "../api/platformQueries";
 import UiAvatar from "./ui/Avatar";
@@ -55,6 +56,8 @@ const TopNav = ({ onOpenMobileSidebar }) => {
   const { setSlot } = useHeaderSlot();
 
   const { user, logout, menuRights, companyName } = useAuthStore();
+  // A calling-list notice opens the list for its managers; a caller's own ("contacts given to you") lives on the phone.
+  const managesCalling = useAccess("calling").view;
   const themeMode = useThemeStore((s) => s.mode);
   const toggleThemeMode = useThemeStore((s) => s.toggleMode);
 
@@ -200,6 +203,9 @@ const TopNav = ({ onOpenMobileSidebar }) => {
               // that has gone since lands back on the list (detail pages).
               const toList = !n.EntityId || LIST_ONLY_TYPE.test(String(n.Type ?? ""));
               navigate(toList ? list : `${list}/${n.EntityId}`);
+            } else if (entity === "call_list" && n?.EntityId && managesCalling) {
+              const list = `/sales/calling-lists/${n.EntityId}`;
+              navigate(n.Type === "call_callback_missed" ? `${list}?tab=contacts&missed=1` : list);
             } else if (entity === "user" && n?.Type === "presence_not_signed_in") {
               navigate("/today?tab=team");
             } else if (entity === "workspace") {

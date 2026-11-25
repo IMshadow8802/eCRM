@@ -36,6 +36,9 @@ const Offices = lazy(() => import("./pages/Master/Offices"));
 // Sales module (leads, calls, follow-ups, products)
 const Partners = lazy(() => import("./pages/Sales/Partners/Partners"));
 const VisitingCards = lazy(() => import("./pages/Sales/VisitingCards/VisitingCards"));
+const CallingLists = lazy(() => import("./pages/Sales/CallingLists/CallingLists"));
+const CallingListDetail = lazy(() => import("./pages/Sales/CallingLists/ListDetail"));
+const DoNotCall = lazy(() => import("./pages/Sales/DoNotCall"));
 const SalesLeads = lazy(() => import("./pages/Sales/Leads"));
 const LeadDetail = lazy(() => import("./pages/Sales/LeadDetail"));
 const SalesFollowUps = lazy(() => import("./pages/Sales/FollowUps"));
@@ -93,6 +96,9 @@ export const routesConfig = [
   { path: "/sales/leads", element: <ProtectedRoute element={<SalesLeads />} /> },
   { path: "/sales/partners", element: <ProtectedRoute element={<Partners />} /> },
   { path: "/sales/visiting-cards", element: <ProtectedRoute element={<VisitingCards />} /> },
+  { path: "/sales/calling-lists", element: <ProtectedRoute element={<CallingLists />} /> },
+  { path: "/sales/calling-lists/:listId", element: <ProtectedRoute element={<CallingListDetail />} /> },
+  { path: "/sales/do-not-call", element: <ProtectedRoute element={<DoNotCall />} /> },
   { path: "/sales/leads/:leadId", element: <ProtectedRoute element={<LeadDetail />} /> },
   // Task 17. Lazy on purpose: it's a plain filtered list (no PDF chain in its
   // import graph — QUOTE_STATUS comes from quoteStatus.js, not LeadQuotations),
@@ -111,10 +117,12 @@ export const routesConfig = [
   { path: "/reports/sales/sources", element: <ProtectedRoute element={<SalesReport report="sources" />} /> },
   { path: "/reports/sales/open", element: <ProtectedRoute element={<SalesReport report="open" />} /> },
   { path: "/reports/sales/lost", element: <ProtectedRoute element={<SalesReport report="lost" />} /> },
+  { path: "/reports/sales/calling", element: <ProtectedRoute element={<SalesReport report="calling" />} /> },
   { path: "/reports/sales/team/rows", element: <ProtectedRoute element={<SalesRows report="team" />} /> },
   { path: "/reports/sales/sources/rows", element: <ProtectedRoute element={<SalesRows report="sources" />} /> },
   { path: "/reports/sales/open/rows", element: <ProtectedRoute element={<SalesRows report="open" />} /> },
   { path: "/reports/sales/lost/rows", element: <ProtectedRoute element={<SalesRows report="lost" />} /> },
+  { path: "/reports/sales/calling/rows", element: <ProtectedRoute element={<SalesRows report="calling" />} /> },
   { path: "/reports/sales/won", element: <ProtectedRoute element={<SalesRows report="won" />} /> },
   { path: "/reports/tat", element: <ProtectedRoute element={<TatReport />} /> },
   { path: "/reports/attendance", element: <ProtectedRoute element={<AttendanceReport />} /> },

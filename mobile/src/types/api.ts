@@ -130,7 +130,9 @@ export interface ClientConfig {
 export type ModuleKey =
   | "leads" | "sales_reports" | "complaints" | "support_reports" | "customers"
   | "people" | "tasks" | "teams" | "projects" | "roles" | "offices"
-  | "settings" | "dashboard" | "attendance" | "partners" | "cards";
+  | "settings" | "dashboard" | "attendance" | "partners" | "cards"
+  /** 149: managing calling lists. The phone's calling screen needs leads add, not this. */
+  | "calling";
 export type Reach = "Own" | "Team" | "Office" | "OfficeTree" | "Company";
 /** "Can assign to" on a role's leads/complaints grant (130). NULL reads as Team on the server. */
 export type AssignReach = "Team" | "Office" | "OfficeTree" | "Company";
@@ -606,6 +608,11 @@ export interface Ticket {
   /** Who "Send back" returns it to; null when there is no one to send it back to. */
   SendBackToId?: number | null;
   SendBackToName?: string | null;
+  /** 149 (sp_FetchTicketDetail): a do-not-call or caution mark on the customer's or the ticket's number. */
+  PhoneMark?: PhoneMark | null;
+  PhoneMarkNote?: string | null;
+  PhoneMarkBy?: string | null;
+  PhoneMarkAt?: string | null;
 }
 
 /** A row of tblTicketActivity (sp_FetchTicketDetail RS3), author joined. */
@@ -748,6 +755,11 @@ export interface Lead {
   /** Who "Send back" returns it to; null when there is no one to send it back to. */
   SendBackToId?: number | null;
   SendBackToName?: string | null;
+  /** 149: a do-not-call or caution mark on one of the lead's numbers. */
+  PhoneMark?: PhoneMark | null;
+  PhoneMarkNote?: string | null;
+  PhoneMarkBy?: string | null;
+  PhoneMarkAt?: string | null;
 }
 
 /** A row of tblLeadActivity (sp_FetchLeadDetail RS3), author joined. */
@@ -969,4 +981,59 @@ export interface Product {
   UnitPrice: number | null;
   MarginPct: number | null;
   IsActive: boolean;
+}
+
+// ---------------------------------------------------------------- calling (149)
+
+/** What a caller may save through saveResult; "interested" goes through convert. */
+export type CallResult = "no_answer" | "busy" | "not_interested" | "wrong_number" | "callback" | "dnc";
+export type PhoneMark = "dnc" | "caution";
+
+/** RS2 / RS3 of sp_FetchMyCallList: a contact the caller holds right now. `extras` = the sheet's kept columns. */
+export interface CallContact {
+  Id: number;
+  CallListId: number;
+  ListName: string;
+  Name: string | null;
+  Company: string | null;
+  City: string | null;
+  State: string | null;
+  Mobile: string;
+  AltMobile: string | null;
+  extras: { label: string; value: string }[];
+  Attempts: number;
+  LastResult: CallResult | "interested" | null;
+  LastCalledAt: string | null;
+  CallbackAt: string | null;
+  PhoneMark: PhoneMark | null;
+  PhoneMarkNote: string | null;
+}
+
+/** RS4: a finished call. A record, not a contact: no number, nothing to dial. */
+export interface CallDone {
+  AttemptId: number;
+  ContactId: number;
+  Name: string | null;
+  Result: CallResult | "interested";
+  CalledAt: string;
+  LeadId: number | null;
+  CanUndo: boolean;
+}
+
+/** callingService.shapeMyList — the whole phone screen in one reply. */
+export interface MyCallList {
+  head: {
+    ToCall: number;
+    Callbacks: number;
+    CalledToday: number;
+    Given: number;
+    OutsideHours: boolean;
+    Active: boolean;
+    EmptyReason: "hours" | "paused" | "finished" | "manual" | null;
+    CallbackCap: number;
+  };
+  toCall: CallContact[];
+  callbacks: CallContact[];
+  done: CallDone[];
+  lists: { CallListId: number; Name: string; Script: string | null }[];
 }

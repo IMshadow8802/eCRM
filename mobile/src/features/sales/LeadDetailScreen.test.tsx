@@ -7,6 +7,7 @@ import { fetchCalls, logCall } from "../../api/callQueries";
 import { fetchLookups, LOOKUP_KIND } from "../../api/configQueries";
 import { completeFollowUp, scheduleFollowUp, skipFollowUp } from "../../api/followupQueries";
 import { convertLead, fetchLeadDetail, setLeadStatus, transferLead } from "../../api/leadQueries";
+import { setPhoneMark } from "../../api/phoneMarkQueries";
 import { fetchProducts } from "../../api/productQueries";
 import { fetchAssignableUsers, fetchUserDirectory } from "../../api/userQueries";
 import type { AssignableUser, FollowUp, Lead, LeadDetail, Lookup } from "../../types/api";
@@ -28,6 +29,7 @@ jest.mock("../../api/configQueries");
 jest.mock("../../api/userQueries");
 jest.mock("../../api/productQueries");
 jest.mock("../../api/attachmentQueries");
+jest.mock("../../api/phoneMarkQueries");
 
 // The Shell draws the action bar from what the screen publishes; outside a
 // navigator there is no Shell, so this stand-in records the published actions
@@ -928,5 +930,95 @@ describe("T3: at the rail", () => {
     await fireEvent.press(card.getByRole("button", { name: "Reschedule" }));
     await fireEvent.press(screen.getAllByRole("button", { name: "Reassign" })[0]!);
     expect(present).toHaveBeenCalledTimes(4);
+  });
+});
+
+describe("149 · number marks", () => {
+  const DNC = { PhoneMark: "dnc" as const, PhoneMarkNote: "Said stop calling", PhoneMarkBy: "Priya Verma", PhoneMarkAt: "2026-11-20T10:15:00" };
+
+  it("shows the do-not-call banner with its note, who and when", async () => {
+    jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead(DNC)));
+    await mount();
+    await loaded();
+    expect(screen.getByText("Do not call — Said stop calling · marked by Priya Verma, 20 Nov")).toBeOnTheScreen();
+  });
+
+  it("under a dnc mark, Call asks first and only Call anyway reaches the dialler", async () => {
+    const open = jest.spyOn(Linking, "openURL").mockResolvedValue(true);
+    jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead(DNC)));
+    await mount();
+    await loaded();
+    await fireEvent.press(screen.getByRole("button", { name: "Call" }));
+    expect(screen.getByText("This number is marked do not call")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Cancel" }));
+    expect(open).not.toHaveBeenCalled();
+    expect(screen.queryByText("This number is marked do not call")).toBeNull();
+    await fireEvent.press(screen.getByRole("button", { name: "Call" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Call anyway" }));
+    expect(open).toHaveBeenCalledWith("tel:9825012345");
+  });
+
+  it("the same for WhatsApp", async () => {
+    const open = jest.spyOn(Linking, "openURL").mockResolvedValue(true);
+    jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead(DNC)));
+    await mount();
+    await loaded();
+    await fireEvent.press(screen.getByRole("button", { name: "Message" }));
+    expect(open).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole("button", { name: "Message anyway" }));
+    expect(open).toHaveBeenCalledWith("whatsapp://send?phone=919825012345");
+  });
+
+  it("under caution the dialler opens at once, below the amber banner", async () => {
+    const open = jest.spyOn(Linking, "openURL").mockResolvedValue(true);
+    jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead({ PhoneMark: "caution", PhoneMarkNote: "Evenings only" })));
+    await mount();
+    await loaded();
+    expect(screen.getByText("Call with caution — Evenings only")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Call" }));
+    expect(open).toHaveBeenCalledWith("tel:9825012345");
+  });
+
+  it("Mark number: a choice and a required note, then the lead is refetched", async () => {
+    seedAuth({ UserId: 42, access: { modules: { leads: FULL, calling: FULL } } });
+    jest.mocked(setPhoneMark).mockResolvedValue(envelope({}));
+    await mount();
+    await loaded();
+    await fireEvent.press(screen.getByRole("button", { name: "Lead actions" }));
+    await fireEvent.press(screen.getByRole("menuitem", { name: "Mark number" }));
+    const submit = screen.getByRole("button", { name: "Mark number" });
+    expect(submit).toBeDisabled();
+    await fireEvent.press(screen.getByText("Call with caution"));
+    await fireEvent.changeText(screen.getByLabelText("Why? Everyone who gets this number reads it"), "Evenings only");
+    await fireEvent.press(submit);
+    await waitFor(() => expect(setPhoneMark).toHaveBeenCalledWith({ Mobile: "9825012345", Mark: "caution", Note: "Evenings only" }));
+    expect(await screen.findByText("Marked")).toBeOnTheScreen();
+    await waitFor(() => expect(fetchLeadDetail).toHaveBeenCalledTimes(2));
+  });
+
+  it("a refused mark keeps the sheet open with the server's sentence", async () => {
+    seedAuth({ UserId: 42, access: { modules: { leads: FULL, calling: FULL } } });
+    jest.mocked(setPhoneMark).mockRejectedValue(serverError(400, "A note is required"));
+    await mount();
+    await loaded();
+    await fireEvent.press(screen.getByRole("menuitem", { name: "Mark number" }));
+    await fireEvent.press(screen.getByText("Do not call"));
+    await fireEvent.changeText(screen.getByLabelText("Why? Everyone who gets this number reads it"), "x");
+    await fireEvent.press(screen.getByRole("button", { name: "Mark number" }));
+    expect(await screen.findByText("A note is required")).toBeOnTheScreen();
+  });
+
+  it("no Mark number without the calling edit grant, or without a mobile", async () => {
+    await mount();
+    await loaded();
+    expect(screen.queryByRole("menuitem", { name: "Mark number" })).toBeNull();
+  });
+
+  it("no Mark number on a lead with no mobile", async () => {
+    seedAuth({ UserId: 42, access: { modules: { leads: FULL, calling: FULL } } });
+    jest.mocked(fetchLeadDetail).mockResolvedValue(detail(lead({ MobileNo: null })));
+    await mount();
+    await loaded();
+    expect(screen.queryByRole("menuitem", { name: "Mark number" })).toBeNull();
   });
 });

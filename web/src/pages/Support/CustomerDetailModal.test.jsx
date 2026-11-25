@@ -1,6 +1,6 @@
 // web/src/pages/Support/CustomerDetailModal.test.jsx
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const mockNavigate = vi.fn();
@@ -89,5 +89,22 @@ describe("CustomerDetailModal", () => {
     expect(screen.queryByText(/Complaints \(/)).toBeNull();
     expect(screen.queryByTestId("customer-ticket-7")).toBeNull();
     expect(screen.queryByText("Open / total")).toBeNull();
+  });
+
+  it("shows the mark banner and, for a list manager, Mark number", async () => {
+    mockCustomerEndpoints({}, { detail: { customer: customerRow({ PhoneMark: "dnc", PhoneMarkNote: "Stop calling", PhoneMarkBy: "Ayush Mishra", PhoneMarkAt: "2026-11-15T10:15:00" }), tickets: [] } });
+    renderModal();
+    expect(await screen.findByTestId("phone-mark-banner")).toHaveTextContent("Do not call — Stop calling · marked by Ayush Mishra, 15-11-2026");
+    fireEvent.click(screen.getByTestId("customer-mark-number"));
+    expect(await screen.findByText("Mark 9990001111")).toBeInTheDocument();
+  });
+
+  it("no Mark number without the calling grant", async () => {
+    useAuthStore.setState({ access: { isAdmin: false, modules: { complaints: { view: true } } } });
+    mockCustomerEndpoints({}, { detail: { customer: customerRow(), tickets: [] } });
+    renderModal();
+    await screen.findByText("Acme Corp");
+    expect(screen.queryByTestId("customer-mark-number")).toBeNull();
+    expect(screen.queryByTestId("phone-mark-banner")).toBeNull();
   });
 });

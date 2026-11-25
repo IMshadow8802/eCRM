@@ -25,6 +25,7 @@ import ComplaintFormScreen from "../features/support/ComplaintFormScreen";
 import LeadsScreen from "../features/sales/LeadsScreen";
 import LeadDetailScreen from "../features/sales/LeadDetailScreen";
 import LeadFormScreen from "../features/sales/LeadFormScreen";
+import CallingScreen from "../features/calling/CallingScreen";
 import FollowUpsScreen from "../features/sales/FollowUpsScreen";
 import NotificationsScreen from "../features/notifications/NotificationsScreen";
 import MeScreen from "../features/profile/MeScreen";
@@ -79,6 +80,8 @@ export type RootStackParamList = {
   Me: undefined;
   /** Global search (G25), from Home's band. */
   Search: undefined;
+  /** 149: the caller's calling list, from Home's tile and calling notifications. */
+  Calling: { tab?: "callbacks" } | undefined;
 };
 
 export type TabParamList = {
@@ -185,6 +188,7 @@ export default function RootNavigator() {
           <Stack.Screen name="Inbox" component={NotificationsScreen} />
           <Stack.Screen name="Me" component={MeScreen} />
           <Stack.Screen name="Search" component={SearchScreen} />
+          <Stack.Screen name="Calling" component={CallingScreen} />
         </>
       ) : (
         <Stack.Screen name="Login" component={LoginScreen} />

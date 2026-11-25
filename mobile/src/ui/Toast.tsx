@@ -37,17 +37,24 @@ import { Text } from "./Text";
 
 type ToastTone = "danger" | "success";
 
+/** One follow-up a confirmation may offer: "Undo", "Open". */
+export interface ToastAction {
+  label: string;
+  onPress: () => void;
+}
+
 interface ToastState {
   id: number;
   tone: ToastTone;
   message: string;
+  action?: ToastAction;
 }
 
 interface ToastApi {
   /** A write was refused. Pass the server's own words — see apiErrorMessage. */
   error: (message: string) => void;
-  /** Confirmation for something with no visible result of its own. */
-  success: (message: string) => void;
+  /** Confirmation for something with no visible result of its own; `action` = Undo / Open. */
+  success: (message: string, action?: ToastAction) => void;
 }
 
 const ToastContext = createContext<ToastApi | null>(null);
@@ -66,20 +73,20 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const [toast, setToast] = useState<ToastState | null>(null);
   const seq = useRef(0);
 
-  const show = useCallback((tone: ToastTone, message: string) => {
+  const show = useCallback((tone: ToastTone, message: string, action?: ToastAction) => {
     const trimmed = message?.trim();
     if (!trimmed) return;
     seq.current += 1;
     // Replace rather than queue. Two failures in a row almost always share a
     // cause, and making someone read a backlog to get to the current state is
     // worse than showing them the latest one.
-    setToast({ id: seq.current, tone, message: trimmed });
+    setToast({ id: seq.current, tone, message: trimmed, action });
   }, []);
 
   const api = useMemo<ToastApi>(
     () => ({
       error: (message) => show("danger", message),
-      success: (message) => show("success", message),
+      success: (message, action) => show("success", message, action),
     }),
     [show],
   );
@@ -94,6 +101,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           key={toast.id}
           tone={toast.tone}
           message={toast.message}
+          action={toast.action}
           onDone={() => setToast((cur) => (cur?.id === toast.id ? null : cur))}
         />
       ) : null}
@@ -114,10 +122,12 @@ export function useToast(): ToastApi {
 function ToastBar({
   tone,
   message,
+  action,
   onDone,
 }: {
   tone: ToastTone;
   message: string;
+  action?: ToastAction;
   onDone: () => void;
 }) {
   const insets = useSafeAreaInsets();
@@ -144,7 +154,8 @@ function ToastBar({
       useNativeDriver: true,
     }).start();
 
-    const timer = setTimeout(leave, DURATION[tone]);
+    // An offer (Undo) has to stay long enough to be taken.
+    const timer = setTimeout(leave, action ? DURATION.danger : DURATION[tone]);
     return () => {
       cancelled = true;
       clearTimeout(timer);
@@ -187,6 +198,19 @@ function ToastBar({
         <Text variant="text" color="textOnBrand" style={styles.message}>
           {message}
         </Text>
+        {action ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={action.label}
+            hitSlop={spacing[3]}
+            onPress={() => {
+              onDone();
+              action.onPress();
+            }}
+          >
+            <Text variant="metaStrong" color="textOnBrand">{action.label}</Text>
+          </Pressable>
+        ) : null}
       </Pressable>
     </Animated.View>
   );

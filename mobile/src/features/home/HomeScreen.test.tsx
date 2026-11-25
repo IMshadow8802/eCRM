@@ -1,5 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react-native";
 
+import { fetchMyCallList } from "../../api/callingQueries";
 import { fetchLookups } from "../../api/configQueries";
 import { fetchFollowUps } from "../../api/followupQueries";
 import { fetchLeads } from "../../api/leadQueries";
@@ -10,7 +11,7 @@ import { fetchMyDay } from "../../api/todayQueries";
 import { overdueFollowUpsCountQuery, overdueTicketsCountQuery } from "../../navigation/badges";
 import { colors } from "../../theme";
 import type { AppNotification, DayTask, Lookup, ModuleKey } from "../../types/api";
-import { envelope, followUp, lead, makeTask, pagination, ticket } from "../../test/fixtures";
+import { callContact, envelope, followUp, lead, makeTask, myCallList, pagination, ticket } from "../../test/fixtures";
 import { makeNavigation, renderWithProviders, seedAuth } from "../../test/renderWithProviders";
 import { flat } from "../../test/style";
 import { PHONE, setWindow, TABLET } from "../../test/window";
@@ -18,6 +19,7 @@ import { followUpViewParams, leadQueueParams } from "../sales/leadHelpers";
 import { complaintQueueParams } from "../support/ticketHelpers";
 import HomeScreen, { resolvedWindow } from "./HomeScreen";
 
+jest.mock("../../api/callingQueries");
 jest.mock("../../api/configQueries");
 jest.mock("../../api/followupQueries");
 jest.mock("../../api/leadQueries");
@@ -620,5 +622,89 @@ describe("B-I2 · Home follows layout.columns", () => {
     signInWith("tasks", "complaints", "leads");
     await renderWithProviders(<HomeScreen />);
     expect(await screen.findByRole("button", { name: "Create" })).toBeOnTheScreen();
+  });
+});
+
+describe("149 · calling", () => {
+  const ADD = { ...VIEW, add: true };
+  const signInCaller = (...extra: ModuleKey[]) =>
+    seedAuth({ UserId: ME, user: { FullName: "Ayush Mishra" }, access: { modules: { leads: ADD, ...Object.fromEntries(extra.map((m) => [m, VIEW])) } } });
+
+  it("shows the Calling tile only for someone who can add leads and is on a list (head.Active)", async () => {
+    jest.mocked(fetchMyCallList).mockResolvedValue(envelope(myCallList({ head: { ToCall: 5, Callbacks: 2 } })));
+    signInCaller();
+    await renderWithProviders(<HomeScreen />);
+    const tile = await screen.findByRole("button", { name: "Calling, 5 to call" });
+    expect(screen.getByText("2 callbacks")).toBeOnTheScreen();
+    // First in the bento, and the leads-only pair grows to two rows with Inbox.
+    expect(within(screen.getByTestId("tile-row-0")).getByText("Calling")).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: /^Inbox,/ })).toBeOnTheScreen();
+    await fireEvent.press(tile);
+    expect(mockNav.navigate).toHaveBeenLastCalledWith("Calling");
+    // Home only reads: opening the calling screen is what hands out contacts.
+    expect(fetchMyCallList).toHaveBeenCalledWith(0);
+    expect(fetchMyCallList).not.toHaveBeenCalledWith(1);
+  });
+
+  it("with tasks too, Calling leads and the odd tile out (Inbox) still gives way", async () => {
+    jest.mocked(fetchMyCallList).mockResolvedValue(envelope(myCallList()));
+    signInCaller("tasks");
+    await renderWithProviders(<HomeScreen />);
+    expect(await screen.findByRole("button", { name: "Calling, 2 to call" })).toBeOnTheScreen();
+    expect(screen.queryByRole("button", { name: /^Inbox,/ })).toBeNull();
+  });
+
+  it("a salesperson never given contacts (head.Active false) sees no tile", async () => {
+    jest.mocked(fetchMyCallList).mockResolvedValue(envelope(myCallList({ toCall: [], head: { ToCall: 0, Active: false } })));
+    signInCaller();
+    await renderWithProviders(<HomeScreen />);
+    await waitFor(() => expect(fetchMyCallList).toHaveBeenCalled());
+    await screen.findByText("My leads");
+    expect(screen.queryByText("Calling")).toBeNull();
+  });
+
+  it("without leads add the calling list is never asked for", async () => {
+    signInWith("leads");
+    await renderWithProviders(<HomeScreen />);
+    await screen.findByText("My leads");
+    expect(fetchMyCallList).not.toHaveBeenCalled();
+  });
+
+  it("lists today's callbacks beside follow-ups and opens the Callbacks tab", async () => {
+    jest.mocked(fetchMyCallList).mockResolvedValue(envelope(myCallList({
+      callbacks: [
+        // Instants, as the API sends them: 10:30Z is 4:00 pm IST today; 20:00Z on the 2nd is already the 3rd.
+        callContact({ Id: 22, Name: "Anita Malhotra", CallbackAt: "2026-11-02T10:30:00.000Z" }),
+        callContact({ Id: 23, Name: "Rohan Duggal", CallbackAt: "2026-11-02T20:00:00.000Z" }),
+      ],
+      head: { Callbacks: 2 },
+    })));
+    signInCaller();
+    await renderWithProviders(<HomeScreen />);
+    const group = screen.getByTestId("needs-you");
+    const row = await within(group).findByText("Call back Anita Malhotra");
+    expect(within(group).getByText("4:00 pm")).toBeOnTheScreen();
+    expect(screen.queryByText("Call back Rohan Duggal")).toBeNull();
+    await fireEvent.press(row);
+    expect(mockNav.navigate).toHaveBeenLastCalledWith("Calling", { tab: "callbacks" });
+  });
+
+  it("a callback missed on an earlier day still needs you, marked overdue", async () => {
+    jest.mocked(fetchMyCallList).mockResolvedValue(envelope(myCallList({
+      callbacks: [callContact({ Id: 24, Name: "Vikram Chopra", CallbackAt: "2026-10-31T10:30:00.000Z" })],
+    })));
+    signInCaller();
+    await renderWithProviders(<HomeScreen />);
+    const group = screen.getByTestId("needs-you");
+    expect(await within(group).findByText("Call back Vikram Chopra")).toBeOnTheScreen();
+    expect(within(group).getAllByText("Overdue").length).toBeGreaterThan(0);
+  });
+
+  it("T1 tablet: today's callbacks join the Follow-ups today column", async () => {
+    setWindow(...TABLET);
+    jest.mocked(fetchMyCallList).mockResolvedValue(envelope(myCallList({ callbacks: [callContact({ Id: 22, Name: "Anita Malhotra", CallbackAt: "2026-11-02T10:30:00.000Z" })] })));
+    signInCaller();
+    await renderWithProviders(<HomeScreen />);
+    expect((await screen.findAllByText("Call back Anita Malhotra")).length).toBeGreaterThan(0);
   });
 });

@@ -28,6 +28,7 @@ import TransferTicketModal from "./TransferTicketModal";
 import EscalateTicketModal from "./EscalateTicketModal";
 import ResolveTicketModal from "./ResolveTicketModal";
 import RemarksModal from "./RemarksModal";
+import PhoneMarkBanner from "../../components/PhoneMarkBanner";
 
 function InfoItem({ label, value }) {
   const p = useTheme().tokens;
@@ -286,6 +287,11 @@ export default function TicketDetail({ ticketId: ticketIdProp }) {
         }
       />
 
+      {ticket.PhoneMark && (
+        <div style={{ marginTop: "calc(12rem / 15)" }}>
+          <PhoneMarkBanner mark={ticket.PhoneMark} note={ticket.PhoneMarkNote} by={ticket.PhoneMarkBy} at={ticket.PhoneMarkAt} />
+        </div>
+      )}
       <Card data-testid="ticket-customer-card" padding="md" sx={{ marginTop: 12 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(calc(170rem / 15), 1fr))", gap: "calc(16rem / 15)" }}>
           <InfoItem label="Customer" value={ticket.CustomerName} />

@@ -23,7 +23,7 @@ import { reportKey } from "../../../styles/tokens";
 import { COLUMNS, KEY_LEGEND } from "./columns";
 import { REPORTS } from "./reports";
 import SummaryTable from "./SummaryTable";
-import { drillUrl, exportName, leadsOfUrl, readFilters, summaryCsv, toBody, writeFilters } from "./salesReportUtils";
+import { drillUrl, exportName, leadsOfUrl, lineView, readFilters, summaryCsv, toBody, writeFilters } from "./salesReportUtils";
 
 const fs = (px) => `calc(${px}rem / 15)`;
 const NO_MANAGER_SECTION = "Not under anyone — set “Reports to” in Users";
@@ -67,9 +67,17 @@ export function ReportFilterRow({ report, filters, onChange, onExport, canExport
   // An id in the address that the list does not hold is still applied: name it, never show the placeholder.
   const optById = (list, v) => (v == null ? null : list.find((o) => o.value === v) ?? (list.length ? { value: v, label: `Unknown (#${v})` } : null));
 
+  const lineOpts = (report.lines ?? []).map((l) => ({ value: l.value, label: l.label }));
   return (
     <>
       <Box sx={{ display: "flex", alignItems: "center", gap: fs(8), flexWrap: "wrap" }}>
+        {report.lines && (
+          <Box sx={{ width: fs(170) }}>
+            <Combobox size="sm" fullWidth disableClearable options={lineOpts} aria-label="Lines"
+              value={lineOpts.find((o) => o.value === filters.line) ?? lineOpts[0]}
+              onChange={(opt) => onChange({ line: opt?.value ?? null })} data-testid="filter-line" />
+          </Box>
+        )}
         <DateRangeField
           value={filters}
           onChange={(v) => onChange(v)}
@@ -125,6 +133,10 @@ export default function SalesReport({ report: slug }) {
   });
   const lines = data?.rows ?? [];
   const totals = data?.totals ?? {};
+  // The chosen line's columns; what a list cost is the admin's only (null for everyone else).
+  const view = lineView(report, filters);
+  const showCost = lines.some((l) => l.ListCost != null);
+  const columns = view.columns.map((k) => COLUMNS[k]).filter((c) => !c.cost || showCost);
   const previous = report.previous ? data?.previous ?? null : null;
   const path = data?.path ?? [];
   const person = filters.at ? path[path.length - 1] : null;
@@ -176,11 +188,13 @@ export default function SalesReport({ report: slug }) {
       const asOf = data?.asOf ? dayjs(data.asOf).format("DD-MM-YYYY HH:mm") : "";
       return `${count(totals.OpenNow, "open lead", "open leads")} · as of ${asOf} · ages count from the Created date`;
     }
+    if (filters.line === "calllist") return count(lines.length, "calling list", "calling lists");
+    if (filters.line === "caller") return count(lines.length, "caller", "callers");
     return slug === "sources" ? count(lines.length, "source", "sources") : count(lines.length, "reason", "reasons");
   })();
 
   const exportCsv = () => {
-    const blob = new Blob([summaryCsv(report, lines, totals, previous)], { type: "text/csv;charset=utf-8" });
+    const blob = new Blob([summaryCsv({ ...view, columns: columns.map((c) => c.key) }, lines, totals, previous)], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -221,8 +235,8 @@ export default function SalesReport({ report: slug }) {
           {isLoading ? <Skeleton variant="text" width={180} /> : <div>{context}</div>}
         </Box>
         <SummaryTable
-          firstHeader={report.firstHeader}
-          columns={report.columns.map((k) => COLUMNS[k])}
+          firstHeader={view.firstHeader}
+          columns={columns}
           lines={lines}
           totals={totals}
           previous={previous}

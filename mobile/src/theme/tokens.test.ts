@@ -116,7 +116,7 @@ describe("E §1.3 module tones", () => {
   it.each([
     ["home", "#D5D9F5", "#2E3A8C"], ["inbox", "#D5D9F5", "#2E3A8C"], ["tasks", "#D9C8FA", "#3B1C6B"],
     ["complaints", "#FFCCB8", "#6E1F0E"], ["leads", "#BCEBD5", "#0D4A33"], ["followups", "#FFE48C", "#574000"],
-    ["more", "#D9DEEE", "#2E3760"],
+    ["more", "#D9DEEE", "#2E3760"], ["calling", "#BDEBE8", "#0D5C5A"],
   ] as const)("%s tile is %s / %s", (m, fill, ink) => expect(badgeTones[moduleTones[m].badge]).toEqual({ fill, ink }));
 });
 

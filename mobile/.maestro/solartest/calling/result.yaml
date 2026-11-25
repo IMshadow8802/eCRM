@@ -1,0 +1,21 @@
+# Save a plain result for ${NAME} (no dialling): ${LABEL} = No answer | Busy | Not interested | Wrong number.
+appId: com.shadowider.eCRM
+---
+- scrollUntilVisible:
+    element:
+      text: "Save result for ${NAME}"
+    direction: DOWN
+    timeout: 10000
+# The tap can land while the last save's toast and sheet are still settling: retry it.
+- waitForAnimationToEnd
+- repeat:
+    times: 3
+    while:
+      notVisible: "${LABEL}"
+    commands:
+      - tapOn: "Save result for ${NAME}"
+      - waitForAnimationToEnd
+- tapOn: "${LABEL}"
+- extendedWaitUntil:
+    notVisible: "Save result for ${NAME}"
+    timeout: 15000

@@ -24,6 +24,8 @@ vi.mock("./TransferLeadModal", () => ({ __esModule: true, default: ({ open, lead
     <button type="button" onClick={() => onError?.({ response: { status: 404, data: { code: "NOT_FOUND" } } })}>mock-gone</button>
   </div>
 ) : null) }));
+const markInvalidate = [];
+vi.mock("../../components/PhoneMarkModal", () => ({ __esModule: true, default: ({ mobile, invalidate }) => { markInvalidate.push(invalidate); return <div>{`Mark ${mobile}`}</div>; } }));
 vi.mock("./LeadCreateModal", () => ({ __esModule: true, default: ({ open, lead }) => (open ? <div data-testid="edit-modal">{lead?.Id}</div> : null) }));
 
 const json = (data) => HttpResponse.json({ success: true, message: "ok", responseCode: 200, data });
@@ -614,5 +616,41 @@ describe("LeadDetail — Assigned to, Reassign, Send back, record gone", () => {
     expect(await screen.findByText(message)).toBeInTheDocument();
     expect(screen.getByTestId("lead-detail")).toBeInTheDocument();
     expect(screen.queryByTestId("leads-list")).toBeNull();
+  });
+
+  describe("calling lists and number marks (149)", () => {
+    it("shows the do-not-call banner, even when the mark sits on the alternate number", async () => {
+      mocks({}, { MobileNo: "9825012345", AltMobile: "9898011111", PhoneMark: "dnc", PhoneMarkNote: "Asked never to be called", PhoneMarkBy: "Priya Verma", PhoneMarkAt: "2026-11-22T17:22:00" });
+      renderDetail();
+      expect(await screen.findByTestId("phone-mark-banner")).toHaveTextContent("Do not call — Asked never to be called · marked by Priya Verma, 22-11-2026");
+    });
+
+    it("names the calling list as text, or as a link for a list manager", async () => {
+      mocks({}, { CallListId: 5, CallListName: "MLSS Delhi" });
+      renderDetail();
+      expect(await screen.findByText("MLSS Delhi")).toBeInTheDocument();
+      expect(screen.queryByTestId("lead-call-list")).toBeNull();
+      expect(screen.queryByTestId("mark-number-btn")).toBeNull();
+    });
+
+    it("a list manager gets the link and Mark number, which opens the mark dialog for the lead's mobile", async () => {
+      useAuthStore.setState({ access: { isAdmin: false, modules: { calling: { view: true, edit: true } } } });
+      mocks({}, { CallListId: 5, CallListName: "MLSS Delhi" });
+      renderDetail();
+      expect(await screen.findByTestId("lead-call-list")).toHaveAttribute("href", "/sales/calling-lists/5");
+      fireEvent.click(screen.getByTestId("mark-number-btn"));
+      expect(await screen.findByText("Mark 98200")).toBeInTheDocument();
+      expect(markInvalidate.at(-1)).toEqual([["lead-detail", 9], ["leads"]]);
+      useAuthStore.setState({ access: null });
+    });
+
+    it("no Mark number when the lead has no mobile", async () => {
+      useAuthStore.setState({ access: { isAdmin: true, modules: {} } });
+      mocks({}, { MobileNo: null });
+      renderDetail();
+      await screen.findByTestId("lead-detail");
+      expect(screen.queryByTestId("mark-number-btn")).toBeNull();
+      useAuthStore.setState({ access: null });
+    });
   });
 });

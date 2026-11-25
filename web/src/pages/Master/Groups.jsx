@@ -57,6 +57,7 @@ const MODULE_ROWS = [
   { key: "sales_reports", label: "Sales reports" },
   { key: "partners", label: "Partners & commission" },
   { key: "cards", label: "Visiting cards", reach: true },
+  { key: "calling", label: "Calling lists" },
   { key: "complaints", label: "Complaints", reach: true },
   { key: "support_reports", label: "Support reports" },
   { key: "customers", label: "Customers", reach: true },
@@ -72,6 +73,7 @@ const MODULE_ROWS = [
 const ROW_HINT = {
   partners: "View: see partners, commission terms and amounts. Add/Edit: add or change partners, mark commission ready to pay or paid. Salespeople pick a partner on a lead without this.",
   cards: "View: see scanned visiting cards within what this role can see. Add: scan cards in the VisiScan app. Delete: remove a card.",
+  calling: "For the people who manage bought contact lists. View: see the lists and their figures. Add: create a list and upload a sheet. Edit: see the pool, give out and pull back contacts. Callers need nothing here: anyone who can add leads can be given contacts, and a caller sees only the contacts they hold.",
   attendance: "Attendance: see who is signed in, late or on leave (Today > My team), mark leave or on duty, and open the Attendance report. "
     + "Can see decides whose attendance this role can see on the Today page and in the Attendance report. Own: only themselves. Their team: people who report to them. Their office: everyone in their office. Their office + offices below: also the offices under it. Whole company: everyone.",
 };

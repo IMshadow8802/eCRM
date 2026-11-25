@@ -1,0 +1,39 @@
+# Pawan (Sales Executive, auto top-up, holds 5): exactly his 5, none of Ashish's
+# (first batch or next); dialler → Wrong number, Do not call (note), a callback
+# with no time (back to the pool), No answer, Interested; then his next batch.
+# Env from calling-setup.mjs: P1..P5 (his), A1..A5 + ANEXT (Ashish's), PNEXT, WHO.
+appId: com.shadowider.eCRM
+---
+- runFlow: calling/open.yaml
+- assertVisible: "To call, 5"
+- assertVisible: "${P1}"
+- assertNotVisible: "${A1}"
+- assertNotVisible: "${A2}"
+- assertNotVisible: "${ANEXT}"
+- takeScreenshot: st-calling-pawan-start
+- runFlow:
+    file: calling/dial.yaml
+    env: { NAME: "${P1}", LABEL: "Wrong number" }
+- runFlow:
+    file: calling/dnc.yaml
+    env: { NAME: "${P2}" }
+- runFlow:
+    file: calling/callback.yaml
+    env: { NAME: "${P3}", WHEN: "No time" }
+- assertVisible: "Callbacks, 0"
+- runFlow:
+    file: calling/result.yaml
+    env: { NAME: "${P4}", LABEL: "No answer" }
+- runFlow:
+    file: calling/interested.yaml
+    env: { NAME: "${P5}" }
+- extendedWaitUntil:
+    visible: "To call, 5"
+    timeout: 15000
+- assertVisible: "${PNEXT}"
+- assertNotVisible: "${ANEXT}"
+- takeScreenshot: st-calling-pawan-next-batch
+- tapOn: "Done today, .*"
+- assertVisible: "${P2}"
+- assertNotVisible: "${A1}"
+- takeScreenshot: st-calling-pawan-done

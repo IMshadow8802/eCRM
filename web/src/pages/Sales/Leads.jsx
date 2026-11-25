@@ -26,6 +26,7 @@ import { LEAD_PRESETS, presetParams, isActiveCode, isStale, statusChipColors, le
 import LeadCreateModal from "./LeadCreateModal";
 import TransferLeadModal from "./TransferLeadModal";
 import DeleteLeadModal from "./DeleteLeadModal";
+import { PhoneMarkDot } from "../../components/PhoneMarkBanner";
 
 // Name, Assigned to and Partner wrap so the list fits without sideways scroll.
 const wrap = { sx: { whiteSpace: "normal", overflowWrap: "anywhere" } };
@@ -89,7 +90,8 @@ const Leads = () => {
         return <span data-stale={String(stale)} style={stale ? { color: idleInk, fontWeight: 600 } : undefined}>{formatDate(row.original.LastActivityAt, { empty: "—" })}</span>;
       } },
     { accessorKey: "Company", header: "Company", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "—" },
-    { accessorKey: "MobileNo", header: "Mobile", enableSorting: false, size: 120 },
+    { accessorKey: "MobileNo", header: "Mobile", enableSorting: false, size: 120,
+      Cell: ({ cell, row }) => (row?.original?.PhoneMark ? <>{cell.getValue()}<PhoneMarkDot mark={row.original.PhoneMark} /></> : cell.getValue()) },
     { accessorKey: "StatusName", header: "Status", enableSorting: false, size: 110,
       Cell: ({ row }) => <Chip label={row.original.StatusName || "—"} size="sm" tone={isActiveCode(row.original.StatusCode) ? "primary" : "default"} colors={statusChipColors(row.original.StatusCode)} /> },
     { accessorKey: "ProductName", header: "Product", enableSorting: false, Cell: ({ cell }) => cell.getValue() || "—" },

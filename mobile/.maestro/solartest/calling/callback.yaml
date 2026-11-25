@@ -1,0 +1,20 @@
+# Call back for ${NAME}: ${WHEN} = Tomorrow (stays with the caller) | No time (back to the pool).
+appId: com.shadowider.eCRM
+---
+# The tap can land while the last save's toast and sheet are still settling: retry it.
+- waitForAnimationToEnd
+- repeat:
+    times: 3
+    while:
+      notVisible: "Call back"
+    commands:
+      - tapOn: "Save result for ${NAME}"
+      - waitForAnimationToEnd
+- tapOn: "Call back"
+- extendedWaitUntil:
+    visible: "Call back when\\?"
+    timeout: 10000
+- tapOn: "${WHEN}"
+- extendedWaitUntil:
+    notVisible: "Save result for ${NAME}"
+    timeout: 15000

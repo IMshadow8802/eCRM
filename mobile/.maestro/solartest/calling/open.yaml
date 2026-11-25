@@ -1,0 +1,13 @@
+# Home → the Calling tile → the Calling screen's To call tab.
+appId: com.shadowider.eCRM
+---
+- runFlow: ../../common/open-work.yaml
+- scrollUntilVisible:
+    element:
+      text: "Calling, .*"
+    direction: DOWN
+    timeout: 15000
+- tapOn: "Calling, .*"
+- extendedWaitUntil:
+    visible: "To call, .*"
+    timeout: 20000

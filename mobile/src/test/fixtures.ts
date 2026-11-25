@@ -6,10 +6,13 @@ import { AxiosError, type AxiosResponse } from "axios";
 import type {
   Access,
   ApiEnvelope,
+  CallContact,
+  CallDone,
   Customer,
   FollowUp,
   Lead,
   LoginData,
+  MyCallList,
   Pagination,
   Task,
   TaskComment,
@@ -319,4 +322,27 @@ export const followUp = (overrides: Partial<FollowUp> = {}): FollowUp => ({
   LeadStatus: null,
   LeadStatusCode: null,
   ...overrides,
+});
+
+/** A contact the caller holds (sp_FetchMyCallList RS2/RS3). */
+export const callContact = (p: Partial<CallContact> = {}): CallContact => ({
+  Id: 9, CallListId: 1, ListName: "MLSS Delhi", Name: "First Trader", Company: null, City: "New Delhi", State: null,
+  Mobile: "9825012345", AltMobile: null, extras: [{ label: "Ref No.", value: "MLSS-0001" }], Attempts: 0, LastResult: null,
+  LastCalledAt: null, CallbackAt: null, PhoneMark: null, PhoneMarkNote: null, ...p,
+});
+
+/** A finished call (RS4): a record, no number. */
+export const callDone = (p: Partial<CallDone> = {}): CallDone => ({
+  // An instant, as the API serialises a DATETIME ("…Z"): 4:31 pm today on the phone.
+  AttemptId: 41, ContactId: 9, Name: "First Trader", Result: "no_answer", CalledAt: (() => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate(), 16, 31).toISOString(); })(), LeadId: null, CanUndo: true, ...p,
+});
+
+/** The calling screen's reply: First Trader (9) and Second Trader (10) to call, 5 called today. */
+export const myCallList = (p: Partial<Omit<MyCallList, "head">> & { head?: Partial<MyCallList["head"]> } = {}): MyCallList => ({
+  toCall: [callContact(), callContact({ Id: 10, Name: "Second Trader", Mobile: "9898011111", City: "Saket", extras: [] })],
+  callbacks: [],
+  done: [],
+  lists: [{ CallListId: 1, Name: "MLSS Delhi", Script: "Namaste ji" }],
+  ...p,
+  head: { ToCall: 2, Callbacks: 0, CalledToday: 5, Given: 0, OutsideHours: false, Active: true, EmptyReason: null, CallbackCap: 20, ...p.head },
 });

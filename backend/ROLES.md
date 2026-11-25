@@ -23,7 +23,7 @@ No row or `CanView = 0` = no module: 403 and no data, reports and dashboard figu
 
 Modules: `leads` (leads, follow-ups, calls, quotations) · `sales_reports` (uses `leads` reach) ·
 `complaints` (tickets, escalations) · `support_reports` (uses `complaints` reach) · `customers` ·
-`people` · `attendance` · `cards` · `tasks` · `teams` · `projects` · `roles` (admin) · `offices` (admin) · `settings` · `dashboard`.
+`people` · `attendance` · `cards` · `calling` (calling lists, 149) · `tasks` · `teams` · `projects` · `roles` (admin) · `offices` (admin) · `settings` · `dashboard`.
 Only `leads`, `complaints`, `customers`, `people`, `attendance`, `cards` take a reach.
 
 | Reach | Offices | Owner filter |
@@ -121,6 +121,25 @@ Tasks: V/A/E/D. Report and dashboard modules: V only. Leads, complaints and cust
 Business cards scanned by the VisiScan app. A card whose `OwnerId` is the caller (the scanner) is always visible; reach widens it.
 Role recipe for a VisiScan-only client: **Manager** (not admin, since an admin gets every module) with `people` Edit Company + `cards` View Company;
 **Card scanner** with `cards` View/Add/Delete Own.
+
+### Calling lists (`calling`, 149)
+
+- **Callers need no grant.** Anyone with `leads` add can be given contacts. A caller sees only what they hold right now
+  (`HeldBy`): a saved result clears the contact from their list, and a contact they do not hold answers 404
+  ("Contact not found"; 409 when it was theirs and has left). The caller routes ask for `leads` add.
+- **`calling` is the managing grant**, with no reach and no "Can assign to" of its own:
+  View = lists and figures · Add = create a list, upload a sheet, add a contact · Edit = the pool, give out, pull back,
+  callers and settings, the do-not-call list · Delete = not used (deleting a list with no calls is admin-only; otherwise archive).
+- **Which lists:** `fn_VisibleCallLists` — an admin gets every list; anyone else the lists whose office is in their
+  `leads` offices (borrowed the way `sales_reports` borrows `leads` reach). No creator rule.
+- **Hand-outs** go only to people in `fn_AssignableUsers(…, 'leads')` — the giver's leads "Can assign to".
+- **Cost** (a list's price, cost per lead) is admin-only, in Node and in SQL. **Deleting a list** is admin-only.
+- **Marks:** setting one on a typed number needs `calling` Edit (a dnc closes that number's contacts in every list);
+  a caller marks dnc only through a call result on a contact they hold. Clearing a mark is admin-only.
+- **Calling figures** are in the sales reports (`sales_reports`, GroupBy `caller` / `calllist`).
+
+Recipes: **a salesperson who calls** = the stock Sales Executive, unchanged. **A list manager** = add `calling`
+View + Edit (and Add only if they should upload sheets) to a Sales Head / Team Lead role. Seeded: Owner and Admin only.
 
 **Legacy:** `tblGroupAccess`, `tblUserGroups.DataScope` and `HierarchyLevel` are read by nothing, except `HierarchyLevel` for ordering roles on screen.
 `tblUser.IsAdmin` is a mirror written by `sp_SaveUser`, read by nothing.

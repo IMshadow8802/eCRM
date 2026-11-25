@@ -96,6 +96,13 @@ export default function NotificationsScreen() {
       case "workspace":
         navigation.navigate("Boards");
         break;
+      // 149: a hand-out and a due callback are the caller's; open their screen. A missed
+      // callback is a manager's notice about someone else's list: read, nothing to open here.
+      case "call_list":
+      case "call_contact":
+        if (n.Type === "call_assigned") navigation.navigate("Calling");
+        else if (n.Type === "call_callback_due") navigation.navigate("Calling", { tab: "callbacks" });
+        break;
       // "Not signed in yet" is about a person. The web opens Today's team tab;
       // the phone's Today is Home — the one tab every role has.
       case "user":

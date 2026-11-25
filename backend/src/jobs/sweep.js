@@ -61,6 +61,12 @@ async function tatStep(compId, now) {
   for (const id of new Set(notified.map((r) => Number(r.UserId)))) emitToUser(id, SCOPES.NOTIFICATIONS);
 }
 
+// Calling lists (149): callback warnings, missed callbacks back to the pool, holders who left.
+async function callStep(compId) {
+  const notified = rows(await database.executeStoredProcedure("sp_CallSweep", { CompId: compId }));
+  for (const id of new Set(notified.map((r) => Number(r.UserId)))) emitToUser(id, SCOPES.NOTIFICATIONS);
+}
+
 async function runOnce(now = new Date()) {
   const companies = rows(await database.executeStoredProcedure("sp_FetchLiveCompanies", {}));
   let expired = 0;
@@ -73,6 +79,7 @@ async function runOnce(now = new Date()) {
     expired += await step(CompId, "expireSessions", () => expireSessions(CompId));
     marked += await step(CompId, "notSignedIn", () => notSignedIn(CompId, now));
     await step(CompId, "tat", () => tatStep(CompId, now));
+    await step(CompId, "calling", () => callStep(CompId));
   }
   return { companies: companies.length, expired, notSignedIn: marked };
 }
@@ -90,4 +97,4 @@ function start() {
   return () => { clearTimeout(first); clearInterval(timer); };
 }
 
-module.exports = { runOnce, start, tatStep };
+module.exports = { runOnce, start, tatStep, callStep };

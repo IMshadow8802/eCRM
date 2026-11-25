@@ -224,6 +224,8 @@ export const moduleTones = {
   complaints: { badge: "peach", chip: "peach" },
   leads: { badge: "mint", chip: "mint" },
   followups: { badge: "butter", chip: "butter" },
+  /** 149: teal, unused by any other module (mockup P1). */
+  calling: { badge: "teal", chip: "teal" },
   more: { badge: "slate", chip: null },
 } as const satisfies Record<string, { badge: BadgeTone; chip: ChipTone | null }>;
 

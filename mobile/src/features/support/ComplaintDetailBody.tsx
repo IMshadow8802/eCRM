@@ -48,6 +48,7 @@ import {
   IconButton,
   ListGroup,
   ListRow,
+  MarkBanner,
   SkeletonRows,
   StatusBadge,
   Text,
@@ -139,6 +140,8 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
   const [expanded, setExpanded] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  /** 149: a do-not-call number asks before the dialler opens. */
+  const [confirmingCall, setConfirmingCall] = useState(false);
 
   const detailQuery = useQuery({
     queryKey: ["ticket", ticketId],
@@ -254,7 +257,9 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
   const due = dueFact(ticket);
   const contact = ticket.ContactPerson || ticket.CustomerContactPerson;
   const mobile = ticket.CustomerMobile;
-  const call = () => mobile && void Linking.openURL(`tel:${mobile}`);
+  const openDialler = () => mobile && void Linking.openURL(`tel:${mobile}`);
+  const call = () => (ticket.PhoneMark === "dnc" ? setConfirmingCall(true) : openDialler());
+  const markBanner = <MarkBanner mark={ticket.PhoneMark} note={ticket.PhoneMarkNote} by={ticket.PhoneMarkBy} at={ticket.PhoneMarkAt} />;
   const rowBadge: 32 | 36 = inBand ? 36 : 32;
 
   // Two sources woven together: the activity row says a call happened, tblCall
@@ -474,6 +479,7 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          {ticket.PhoneMark ? <View style={styles.banner}>{markBanner}</View> : null}
           {inBand ? (
             <View style={styles.pair}>
               {customer}
@@ -557,6 +563,18 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
         }
       />
       <Dialog
+        visible={confirmingCall}
+        title="This number is marked do not call"
+        message={ticket.PhoneMarkNote ?? undefined}
+        confirmLabel="Call anyway"
+        destructive
+        onConfirm={() => {
+          setConfirmingCall(false);
+          openDialler();
+        }}
+        onCancel={() => setConfirmingCall(false)}
+      />
+      <Dialog
         visible={confirmingDelete}
         title="Delete this complaint?"
         message="Its history, calls and attachments go with it. This cannot be undone."
@@ -572,6 +590,7 @@ export function ComplaintDetailBody({ ticketId, onBack, onEdit, onDeleted, onOpe
 
 const styles = StyleSheet.create({
   title: { marginTop: spacing[1] },
+  banner: { marginBottom: spacing[3] },
   chips: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: spacing[2], marginTop: metrics.pairGap },
   bandActions: { flexDirection: "row", alignItems: "center", gap: spacing[2] },
   content: { paddingTop: metrics.sheetPadTop, paddingBottom: spacing[8] },

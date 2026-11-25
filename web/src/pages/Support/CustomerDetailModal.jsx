@@ -1,7 +1,8 @@
 // src/pages/Support/CustomerDetailModal.jsx
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "@mui/material/styles";
-import { Inbox, Pencil } from "lucide-react";
+import { Ban, Inbox, Pencil } from "lucide-react";
 
 import { Modal, Button, Card, Chip, EmptyState, Skeleton } from "../../components/ui";
 import { useApiQuery } from "../../hooks/useApiQuery";
@@ -9,6 +10,8 @@ import { useAccess } from "../../hooks/useAccess";
 import { SUPPORT_ENDPOINTS } from "../../api/supportQueries";
 import { formatDate } from "../../utils/format";
 import { statusTone, dueLabel } from "./ticketStatus";
+import PhoneMarkBanner from "../../components/PhoneMarkBanner";
+import PhoneMarkModal from "../../components/PhoneMarkModal";
 
 function Fact({ label, value }) {
   const p = useTheme().tokens;
@@ -30,6 +33,8 @@ export default function CustomerDetailModal({ customerId, open, onClose, onEdit 
   const navigate = useNavigate();
   const p = useTheme().tokens;
   const seesComplaints = useAccess("complaints").view;
+  const canMark = useAccess("calling").edit;
+  const [marking, setMarking] = useState(false);
 
   const { data, isLoading } = useApiQuery({
     queryKey: ["customer-detail", customerId],
@@ -57,6 +62,7 @@ export default function CustomerDetailModal({ customerId, open, onClose, onEdit 
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "calc(20rem / 15)" }}>
+            <PhoneMarkBanner mark={customer.PhoneMark} note={customer.PhoneMarkNote} by={customer.PhoneMarkBy} at={customer.PhoneMarkAt} />
             <Card data-testid="customer-profile">
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(calc(160rem / 15), 1fr))", gap: "calc(16rem / 15)" }}>
                 <Fact label="Mobile" value={customer.Mobile} />
@@ -114,12 +120,16 @@ export default function CustomerDetailModal({ customerId, open, onClose, onEdit 
       </Modal.Body>
       <Modal.Footer>
         <Button variant="ghost" onClick={onClose}>Close</Button>
+        {customer?.Mobile && canMark && (
+          <Button variant="tonal" leftIcon={<Ban size={14} />} onClick={() => setMarking(true)} data-testid="customer-mark-number">Mark number</Button>
+        )}
         {customer && onEdit && (
           <Button variant="tonal" leftIcon={<Pencil size={14} />} onClick={() => onEdit(customer)} data-testid="customer-detail-edit">
             Edit
           </Button>
         )}
       </Modal.Footer>
+      {marking && <PhoneMarkModal open mobile={customer.Mobile} onClose={() => setMarking(false)} invalidate={[["customer-detail", customerId], ["customers"]]} />}
     </Modal>
   );
 }

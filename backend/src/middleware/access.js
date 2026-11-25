@@ -5,7 +5,9 @@
 // one scope per module. No DB, no Express — permission.js wires it in.
 
 const MODULES = ["leads", "sales_reports", "complaints", "support_reports", "customers", "people",
-  "tasks", "teams", "projects", "roles", "offices", "settings", "dashboard", "attendance", "partners", "cards"];
+  "tasks", "teams", "projects", "roles", "offices", "settings", "dashboard", "attendance", "partners", "cards",
+  // 149: managing calling lists. Plain (no reach, no Can assign to): lists follow the leads offices in SQL.
+  "calling"];
 const REACH_MODULES = new Set(["leads", "complaints", "customers", "people", "attendance", "cards"]);
 // Report modules have their own on/off but read with the source module's reach;
 // everything else that has no reach of its own reads with people's. Since 131 this
@@ -113,4 +115,4 @@ function roleWithin(access, roleRows = []) {
 const publicAccess = (a) => ({ isAdmin: a.isAdmin, canSeeSensitive: a.canSeeSensitive,
   primaryBranchId: a.primaryBranchId, modules: a.modules });
 
-module.exports = { MODULES, REACH_MODULES, buildAccess, scopeFor, isWide, stripSensitive, publicAccess, roleWithin };
+module.exports = { MODULES, REACH_MODULES, ASSIGN_MODULES, buildAccess, scopeFor, isWide, stripSensitive, publicAccess, roleWithin };

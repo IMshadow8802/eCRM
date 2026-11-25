@@ -27,6 +27,8 @@ const tatRoutes = require("../routes/tatRoutes");
 const todayRoutes = require("../routes/todayRoutes");
 const cardRoutes = require("../routes/cardRoutes");
 const cardPhotoRoutes = require("../routes/cardPhotoRoutes");
+const callingRoutes = require("../routes/callingRoutes");
+const phoneMarkRoutes = require("../routes/phoneMarkRoutes");
 const { success, dbErrors } = require("../utils/responseHelper");
 const database = require("./database");
 const { version } = require("../../package.json");
@@ -74,6 +76,8 @@ function setupRoutes(app) {
   app.use("/api/today", todayRoutes);
   app.use("/api/Card", cardRoutes); // VisiScan app paths (JRS contract)
   app.use("/uploads/cards", cardPhotoRoutes);
+  app.use("/api/calling", callingRoutes); // 149 calling lists
+  app.use("/api/phoneMark", phoneMarkRoutes); // 149 do-not-call / caution marks
 
   // Polled by Docker's HEALTHCHECK and devlens. Public, so it names no DB server,
   // user or connection string, and a failure is reported by its code only.

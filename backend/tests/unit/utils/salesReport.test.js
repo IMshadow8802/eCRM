@@ -7,7 +7,7 @@ describe("parseSalesArgs (summary)", () => {
   it("defaults to yesterday and GroupBy team", () => {
     expect(parseSalesArgs({}, { today: NOW })).toEqual({ args: {
       FromDate: "2026-11-17", ToDate: "2026-11-17", GroupBy: "team",
-      NodeId: null, BranchId: null, SourceId: null, ProductId: null } });
+      NodeId: null, BranchId: null, SourceId: null, ProductId: null, CallListId: null } });
   });
   it("person with no dates means any time (both null)", () => {
     const { args } = parseSalesArgs({ GroupBy: "person" }, { today: NOW });
@@ -104,11 +104,43 @@ it("sumRows sums every metric column and treats null as 0", () => {
 
 it("exports the closed lists the procs accept", () => {
   expect(METRICS).toEqual(["new", "call", "visit", "meeting", "other", "visits", "fu_due", "fu_ontime",
-    "fu_late", "fu_skipped", "fu_missed", "fu_open", "won", "lost", "open", "all"]);
+    "fu_late", "fu_skipped", "fu_missed", "fu_open", "won", "lost", "open", "all", "dial", "dial_first", "contact"]);
   expect([MAX_ROWS, PREVIOUS_MAX_DAYS]).toEqual([2000, 92]);
-  expect(SUM_KEYS).toHaveLength(31);
+  expect(SUM_KEYS).toHaveLength(42); // 31 + 11 calling counts (149)
 });
 
 it("sumRows keeps money totals exact to the paisa", () => {
   expect(sumRows([{ WonValue: 0.1 }, { WonValue: "0.2" }]).WonValue).toBe(0.3);
+});
+
+describe("calling figures (149)", () => {
+  // Dated families filter x >= @From AND x < @ToEx, so NULL dates would match nothing: Any time is 2000-01-01 .. today.
+  it.each(["caller", "calllist"])("%s with no dates is any time, sent as 2000-01-01 .. today (summary and rows)", (GroupBy) => {
+    expect(parseSalesArgs({ GroupBy }, { today: NOW }).args).toMatchObject({ GroupBy, FromDate: "2000-01-01", ToDate: "2026-11-18" });
+    expect(parseSalesArgs({ GroupBy, Metric: "dial" }, { rows: true, today: NOW }).args)
+      .toMatchObject({ GroupBy, FromDate: "2000-01-01", ToDate: "2026-11-18" });
+  });
+  it("caller with dates keeps them", () => {
+    expect(parseSalesArgs({ GroupBy: "caller", FromDate: "2026-11-01", ToDate: "2026-11-05" }, { today: NOW }).args)
+      .toMatchObject({ FromDate: "2026-11-01", ToDate: "2026-11-05" });
+  });
+  it("accepts the calling metrics and flags in rows mode and refuses a misspelt flag", () => {
+    const { args } = parseSalesArgs({ GroupBy: "caller", Metric: "dial", Flag: "reached" }, { rows: true, today: NOW });
+    expect(args).toMatchObject({ Metric: "dial", Flag: "reached", CallListId: null });
+    for (const Metric of ["dial_first", "contact"]) expect(parseSalesArgs({ Metric }, { rows: true, today: NOW }).error).toBeUndefined();
+    for (const Flag of ["nodial", "cbbooked", "cbkept", "cbmissed", "used"]) expect(parseSalesArgs({ Metric: "dial", Flag }, { rows: true, today: NOW }).error).toBeUndefined();
+    expect(parseSalesArgs({ Metric: "dial", Flag: "cb_booked" }, { rows: true, today: NOW }).error).toMatch(/Flag must be one of/);
+  });
+  it("reads CallListId as a positive integer or null", () => {
+    expect(parseSalesArgs({ CallListId: "12" }, { today: NOW }).args.CallListId).toBe(12);
+    expect(parseSalesArgs({ CallListId: "abc" }, { today: NOW }).args.CallListId).toBeNull();
+    expect(parseSalesArgs({ Metric: "dial", CallListId: 4 }, { rows: true, today: NOW }).args.CallListId).toBe(4);
+  });
+  it("sumRows adds the calling counts and leaves the list attributes out", () => {
+    const t = sumRows([{ Dials: 3, CbMissed: 1, ListCost: 5000, SheetRows: 10 }, { Dials: "2", ListContacts: 4 }]);
+    expect(t).toMatchObject({ Dials: 5, CbMissed: 1, ListContacts: 4 });
+    for (const k of ["ListCost", "SheetRows", "SkippedDup", "SkippedBad"]) expect(t).not.toHaveProperty(k);
+    expect(SUM_KEYS).toEqual(expect.arrayContaining(["Dials", "DialContacts", "DialReached", "DialNoDial", "DialSecSum", "DialSecN",
+      "CbBooked", "CbKept", "CbMissed", "ListContacts", "ListUsed"]));
+  });
 });

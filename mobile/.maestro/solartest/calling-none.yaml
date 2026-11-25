@@ -1,0 +1,8 @@
+# A person who cannot add leads (support) or is on no list: Home has no Calling tile.
+appId: com.shadowider.eCRM
+---
+- runFlow: ../common/open-work.yaml
+- scroll
+- assertNotVisible: "Calling, .*"
+- assertNotVisible: "To call, .*"
+- takeScreenshot: st-calling-none-${WHO}

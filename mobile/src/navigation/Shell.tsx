@@ -44,6 +44,8 @@ const ROUTE_OWNER: Record<StackRoute, RouteOwner> = {
   ComplaintForm: "none",
   LeadForm: "none",
   WorkspaceForm: "none",
+  // A focused work screen (mockup P2 has no bar).
+  Calling: "none",
 };
 
 /** Until a record screen publishes its actions, the bar keeps showing its list's tab. */

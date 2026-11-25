@@ -64,6 +64,12 @@ describe("settings", () => {
     expect(database.executeStoredProcedure).toHaveBeenCalledTimes(3);
   });
 
+  it("leaves the calling settings (149) out: the procedures read them, Node does not", async () => {
+    database.executeStoredProcedure.mockResolvedValue({ recordsets: [[{ ...row, CallStartMin: 600, CallEndMin: 1200, CallbackCap: 15 }]] });
+    const s = await cc.settings(9);
+    for (const k of ["callStartMin", "callEndMin", "callbackCap"]) expect(s).not.toHaveProperty(k);
+  });
+
   it("reloads after 60 s and falls back to safe defaults for an empty row", async () => {
     database.executeStoredProcedure.mockResolvedValue({ recordsets: [[]] });
     const now = jest.spyOn(Date, "now");

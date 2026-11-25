@@ -232,3 +232,10 @@ describe("retired My Work", () => {
     expect(route.element.props.replace).toBe(true);
   });
 });
+
+describe("calling list routes (149)", () => {
+  it.each(["/sales/calling-lists", "/sales/calling-lists/:listId", "/sales/do-not-call", "/reports/sales/calling", "/reports/sales/calling/rows"])("%s is a protected route", (path) => {
+    const route = routesConfig.find((r) => r.path === path);
+    expect(route?.element.type).toBe(ProtectedRoute);
+  });
+});

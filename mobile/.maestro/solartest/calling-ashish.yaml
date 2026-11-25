@@ -1,0 +1,60 @@
+# Ashish (Sales Executive, auto top-up, holds 5) on the phone: he sees exactly his
+# 5 and none of Pawan's; calls one through the dialler (back returns, the result
+# sheet opens by itself), saves No answer, Busy, a callback for tomorrow, Not
+# interested and Interested (his lead); finishing the 5 brings the next batch.
+# Env from calling-setup.mjs: A1..A5 (his), P1..P5 (Pawan's), ANEXT, WHO.
+appId: com.shadowider.eCRM
+---
+- runFlow: calling/open.yaml
+- assertVisible: "To call, 5"
+- assertVisible: "${A1}"
+- assertNotVisible: "${P1}"
+- assertNotVisible: "${P2}"
+- takeScreenshot: st-calling-ashish-start
+- runFlow:
+    file: calling/dial.yaml
+    env: { NAME: "${A1}", LABEL: "No answer" }
+- assertVisible: "To call, 4"
+- runFlow:
+    file: calling/result.yaml
+    env: { NAME: "${A2}", LABEL: "Busy" }
+- runFlow:
+    file: calling/callback.yaml
+    env: { NAME: "${A3}", WHEN: "Tomorrow" }
+- assertVisible: "Callbacks, 1"
+- runFlow:
+    file: calling/result.yaml
+    env: { NAME: "${A4}", LABEL: "Not interested" }
+- assertVisible: "To call, 1"
+- runFlow:
+    file: calling/interested.yaml
+    env: { NAME: "${A5}" }
+# The last of the 5 done (a booked callback does not count): the next batch is here.
+- extendedWaitUntil:
+    visible: "To call, 5"
+    timeout: 15000
+- assertVisible: "${ANEXT}"
+- assertNotVisible: "${A1}"
+- assertNotVisible: "${A2}"
+- takeScreenshot: st-calling-ashish-next-batch
+- tapOn: "Callbacks, 1"
+- assertVisible: "${A3}"
+- takeScreenshot: st-calling-ashish-callbacks
+- tapOn: "Done today, .*"
+- assertVisible: "${A1}"
+- assertVisible: "${A5}"
+- takeScreenshot: st-calling-ashish-done
+# The lead is in his Leads.
+- back
+- runFlow: ../common/open-work.yaml
+- tapOn: "Leads, \\d+ yours"
+- extendedWaitUntil:
+    visible:
+      id: "leads-list"
+    timeout: 15000
+- tapOn: "Search name, company, mobile"
+- inputText: "${A5}"
+- extendedWaitUntil:
+    visible: "${A5}"
+    timeout: 15000
+- takeScreenshot: st-calling-ashish-lead

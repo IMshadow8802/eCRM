@@ -101,6 +101,12 @@ describe("TicketDetail (spec 2)", () => {
     expect(screen.getByTestId("ticket-core-info")).toHaveTextContent("Amit Singh");
   });
 
+  it("a marked customer number shows the warning banner", async () => {
+    mockTicketEndpoints({}, { detail: ticketDetail({ ticket: ticketRow({ CanEdit: 1, PhoneMark: "caution", PhoneMarkNote: "Speaks only Punjabi", PhoneMarkBy: "Priya Verma", PhoneMarkAt: "2026-11-20T18:40:00" }) }) });
+    renderDetail();
+    expect(await screen.findByTestId("phone-mark-banner")).toHaveTextContent("Call with caution — Speaks only Punjabi · marked by Priya Verma, 20-11-2026");
+  });
+
   it("an overdue, escalated complaint says so in the header", async () => {
     mockTicketEndpoints({}, {
       detail: ticketDetail({ ticket: ticketRow({ CanEdit: 1, IsOverdue: 1, EscalatedTo: 16, EscalatedToName: "Neha Verma", PreviousTickets: 2 }) }),
