@@ -102,6 +102,19 @@ services:
     volumes:
       - ./OSGUploads:/app/uploads
 
+  crm_mlss:
+    <<: *crm
+    container_name: nexus_crm_mlss
+    ports:
+      - "5005:5005"
+    environment:
+      <<: *crm-env
+      PORT: 5005
+    env_file:
+      - .env.mlss
+    volumes:
+      - ./MLSSUploads:/app/uploads
+
 networks:
   nexus_network:
     driver: bridge
