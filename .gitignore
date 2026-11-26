@@ -113,3 +113,11 @@ backend/CRMUploads/
 web/e2e/.auth/
 web/test-results/
 web/playwright-report/
+
+# private: plans/specs live in the shadow-config overlay; MCP browser leftovers
+docs/superpowers/
+.playwright-mcp/
+# hash-bearing or test-copy-only SQL, kept locally, never committed
+backend/sql/147_*.sql
+backend/sql/148_*.sql
+backend/sql/150_*.sql
